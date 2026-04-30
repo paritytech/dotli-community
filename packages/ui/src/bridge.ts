@@ -1,9 +1,15 @@
-// dot.li — Host-container bridge
+// dot.li — TrUAPI host bridge
 //
-// Connects embedded dApps to host services (accounts, signing, chain
-// connections, scoped storage) via postMessage protocol.
-// Only imported by the host build — keeps smoldot, auth, and verifiable.js
-// out of the sandbox bundle.
+// Boots a WASM TrUAPI core instance and connects it to a sandboxed
+// product iframe via `@truapi/host-web`. Each render swaps the running
+// runtime, so disposing the last host tears down both the iframe and
+// the core.
+//
+// Nested dApp-in-dApp composition (old `setupNestedBridgeDetector`) is
+// dropped: `createIframeHost` uses a dedicated `MessageChannel`, so
+// inner iframes have no host port. Tracked in §6.1 of the refactor plan
+// as a known regression; a future `attachNested` API in `@truapi/host-web`
+// will restore it.
 
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
@@ -14,24 +20,35 @@ import {
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { buildAllowAttribute } from "./permissions";
+import { createHostCallbacks } from "./host-callbacks/handlers";
 
 // Re-export sandbox-safe rendering functions
 export { renderContent, renderArchive, prepareIframe } from "./render";
 
-// Eagerly load the container bridge chunk — starts downloading when
-// this module is imported, so it's ready by the time we need it.
+// Eagerly load the iframe host chunk + worker constructor so they're ready
+// by the time we need them. The wasm core lives inside the worker; the host
+// shell only owns the postMessage bridge, keeping smoldot's CPU off the
+// main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
-const containerChunkPromise = import("./container").then((mod) => {
+const runtimeChunkPromise = Promise.all([
+  import("@truapi/host-web"),
+  import("@truapi/host-shared/dist/worker-runtime.js?worker"),
+]).then(([web, workerMod]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
-  return mod;
+  return {
+    createWebWorkerHostRuntime: web.createWebWorkerHostRuntime,
+    createIframeHost: web.createIframeHost,
+    HostWorker: workerMod.default as new () => Worker,
+  };
 });
-void containerChunkPromise.catch(() => {
+void runtimeChunkPromise.catch(() => {
   /* fire-and-forget */
 });
 
 const app = document.getElementById("app") ?? document.body;
 
-let currentDispose: (() => void) | null = null;
+let currentHost: { iframe: HTMLIFrameElement; dispose: () => void } | null =
+  null;
 let currentPanelDispose: (() => void) | null = null;
 
 // Track current product state for permission-grant reloads
@@ -76,12 +93,46 @@ function getDeepPath(): string {
   return stripped + search + hash;
 }
 
+function applyIframeStyling(
+  iframe: HTMLIFrameElement,
+  label: string,
+  opts: { topbarOffset: boolean },
+): void {
+  iframe.allow = `${buildAllowAttribute(label)}; cross-origin-isolated`;
+  iframe.style.cssText = opts.topbarOffset
+    ? "position:fixed;top:40px;left:0;width:100%;height:calc(100vh - 40px);border:none;margin:0;padding:0;"
+    : "position:fixed;top:0;left:0;width:100%;height:100vh;border:none;margin:0;padding:0;";
+  document.body.style.margin = "0";
+  document.body.style.overflow = "hidden";
+}
+
+async function createHost(args: {
+  iframeUrl: string;
+  allowedOrigin: string;
+  sandbox: string;
+  label: string;
+  container: HTMLElement;
+}): Promise<{ iframe: HTMLIFrameElement; dispose: () => void }> {
+  const { createWebWorkerHostRuntime, createIframeHost, HostWorker } =
+    await runtimeChunkPromise;
+  const runtime = await createWebWorkerHostRuntime(
+    new HostWorker(),
+    createHostCallbacks({
+      label: args.label,
+      storagePrefix: `dotli:${args.label}:`,
+    }),
+  );
+  return createIframeHost({
+    iframeUrl: args.iframeUrl,
+    allowedOrigin: args.allowedOrigin,
+    sandbox: args.sandbox,
+    container: args.container,
+    runtime,
+  });
+}
+
 /**
- * Render an iframe with the host-container bridge.
- *
- * Unlike the base renderIframe, this sets up the postMessage bridge
- * between the host and the embedded dApp, enabling accounts, signing,
- * chain connections, and scoped storage.
+ * Render a dApp iframe backed by the TrUAPI host bridge.
  */
 export async function renderIframe(url: string, label: string): Promise<void> {
   const stopSetup = m.timer(S.BRIDGE_SETUP);
@@ -92,41 +143,28 @@ export async function renderIframe(url: string, label: string): Promise<void> {
   currentUrl = url;
   currentCid = null;
 
-  const hasTopbar = document.getElementById("topbar") !== null;
-  const iframeStyle = hasTopbar
-    ? "position:fixed;top:40px;left:0;width:100%;height:calc(100vh - 40px);border:none;margin:0;padding:0;"
-    : "position:fixed;top:0;left:0;width:100%;height:100vh;border:none;margin:0;padding:0;";
-
   app.innerHTML = "";
-  const iframe = document.createElement("iframe");
-  // TODO: Review sandbox default permissions
-  iframe.sandbox.add(
-    "allow-scripts",
-    "allow-same-origin",
-    "allow-forms",
-    "allow-pointer-lock",
-  );
-  iframe.allow = `${buildAllowAttribute(label)}; cross-origin-isolated`;
-  iframe.style.cssText = iframeStyle;
-  document.body.style.margin = "0";
-  document.body.style.overflow = "hidden";
-  app.appendChild(iframe);
 
-  const { setupContainer, setupNestedBridgeDetector } =
-    await containerChunkPromise;
-  const disposePrimary = setupContainer(iframe, url, label);
-  const disposeNested = setupNestedBridgeDetector(iframe, label);
-  currentDispose = () => {
-    disposePrimary();
-    disposeNested();
-  };
+  const hasTopbar = document.getElementById("topbar") !== null;
+  const iframeUrl = new URL(url, window.location.href);
+  const host = await createHost({
+    iframeUrl: iframeUrl.href,
+    allowedOrigin: iframeUrl.origin,
+    // TODO: Review sandbox default permissions
+    sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
+    label,
+    container: app,
+  });
+  applyIframeStyling(host.iframe, label, { topbarOffset: hasTopbar });
+  currentHost = host;
 
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
-    currentPanelDispose = setupViolationPanel(iframe);
+    const { setupViolationPanel } = await import(
+      "@dotli/sandbox-checker/sandbox-checker-ui"
+    );
+    currentPanelDispose = setupViolationPanel(host.iframe);
   }
 
   stopSetup();
@@ -141,8 +179,9 @@ export async function renderIframe(url: string, label: string): Promise<void> {
  * Render content in a cross-origin app subdomain iframe (cid.app.dot.li).
  * Used by the host build to delegate content fetching+rendering to the app context.
  *
- * Sets up the container bridge targeting the app iframe. The app context
- * acts as a transparent postMessage relay between the host and the dApp iframe.
+ * The app context acts as a transparent relay between the host and the dApp
+ * iframe. Only the app subdomain itself participates in the TrUAPI
+ * MessageChannel; any nested dApp iframe it loads is opaque to the host.
  */
 export async function renderAppSubdomain(
   cid: string,
@@ -208,45 +247,34 @@ export async function renderAppSubdomain(
     }
   }
 
-  const iframe = document.createElement("iframe");
-  iframe.sandbox.add(
-    "allow-scripts",
-    "allow-same-origin",
-    "allow-forms",
-    "allow-pointer-lock",
-    "allow-popups",
-  );
-  iframe.allow = buildAllowAttribute(label);
-  iframe.style.cssText =
-    "position:fixed;top:40px;left:0;width:100%;height:calc(100vh - 40px);border:none;margin:0;padding:0;";
-  document.body.style.margin = "0";
-  document.body.style.overflow = "hidden";
-
   // Keep the loading overlay visible — the sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only remove non-loading children from #app before appending the iframe.
+  // Only remove non-loading children from #app before handing it off.
   const loading = app.querySelector(".loading");
   app.innerHTML = "";
   if (loading) {
     app.appendChild(loading);
   }
-  app.appendChild(iframe);
 
-  const { setupContainer, setupNestedBridgeDetector } =
-    await containerChunkPromise;
-  const disposePrimary = setupContainer(iframe, url, label);
-  const disposeNested = setupNestedBridgeDetector(iframe, label);
-  currentDispose = () => {
-    disposePrimary();
-    disposeNested();
-  };
+  const iframeUrl = new URL(url);
+  const host = await createHost({
+    iframeUrl: url,
+    allowedOrigin: iframeUrl.origin,
+    sandbox:
+      "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
+    label,
+    container: app,
+  });
+  applyIframeStyling(host.iframe, label, { topbarOffset: true });
+  currentHost = host;
 
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
-    currentPanelDispose = setupViolationPanel(iframe);
+    const { setupViolationPanel } = await import(
+      "@dotli/sandbox-checker/sandbox-checker-ui"
+    );
+    currentPanelDispose = setupViolationPanel(host.iframe);
   }
 
   stopSetup();
@@ -271,8 +299,8 @@ function cleanup(): void {
     currentPanelDispose();
     currentPanelDispose = null;
   }
-  if (currentDispose) {
-    currentDispose();
-    currentDispose = null;
+  if (currentHost) {
+    currentHost.dispose();
+    currentHost = null;
   }
 }

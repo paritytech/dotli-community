@@ -3,9 +3,9 @@
 // Takes fetched content and renders it in a sandboxed <iframe>.
 // The iframe isolates the resolved site from the viewer's origin.
 //
-// This module is bridge-free — it does not import the container bridge,
+// This module is bridge-free — it does not import the host bridge,
 // auth, resolver, or smoldot. The host build uses bridge.ts which
-// adds container bridge support for dApp ↔ host communication.
+// adds TrUAPI dApp ↔ host communication.
 
 import { packArchive, type ArchiveFiles } from "@dotli/content/archive";
 import { buildAllowAttribute } from "./permissions";
@@ -179,7 +179,7 @@ export function prepareIframe(): void {
   const hasTopbar = document.getElementById("topbar") !== null;
   const iframe = document.createElement("iframe");
   // TODO(security): allow-scripts + allow-same-origin together allows sandbox
-  // escape. This is intentional — the container bridge (container.ts) needs
+  // escape. This is intentional — the host bridge (bridge.ts) needs
   // same-origin access to communicate with the parent frame via postMessage
   // and to access SW-served resources. Without allow-same-origin the SW cannot
   // intercept iframe fetches, breaking archive serving entirely.
