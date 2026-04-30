@@ -2185,13 +2185,13 @@
 
     "@dotli/ui/@truapi/client/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@dotli/ui/@truapi/host-shared/@truapi/client": ["@truapi/client@file:../../js/packages/truapi-client", {}],
+    "@dotli/ui/@truapi/host-shared/@truapi/client": ["@truapi/client@file:../../js/packages/truapi-client", { "dependencies": { "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^5.7" } }],
 
     "@dotli/ui/@truapi/host-shared/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@dotli/ui/@truapi/host-web/@truapi/client": ["@truapi/client@file:../../js/packages/truapi-client", {}],
+    "@dotli/ui/@truapi/host-web/@truapi/client": ["@truapi/client@file:../../js/packages/truapi-client", { "dependencies": { "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^5.7" } }],
 
-    "@dotli/ui/@truapi/host-web/@truapi/host-shared": ["@truapi/host-shared@file:../../host-libs/js/shared", {}],
+    "@dotli/ui/@truapi/host-web/@truapi/host-shared": ["@truapi/host-shared@file:../../host-libs/js/shared", { "dependencies": { "@truapi/client": "file:../../../js/packages/truapi-client" }, "devDependencies": { "typescript": "^5.7" } }],
 
     "@dotli/ui/@truapi/host-web/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
@@ -2262,6 +2262,8 @@
     "write-package/read-pkg/unicorn-magic": ["unicorn-magic@0.1.0", "", {}, "sha512-lRfVq8fE8gz6QMBuDM6a+LO3IAzTi05H6gCVaUpir2E1Rwpo4ZUog45KpNXKC/Mn3Yb9UDuHumeFTo9iV/D9FQ=="],
 
     "yargs/find-up/locate-path": ["locate-path@5.0.0", "", { "dependencies": { "p-locate": "^4.1.0" } }, "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g=="],
+
+    "@dotli/ui/@truapi/host-web/@truapi/host-shared/@truapi/client": ["@truapi/client@file:../../js/packages/truapi-client", { "dependencies": { "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^5.7" } }],
 
     "@novasamatech/statement-store/@polkadot-labs/hdkd-helpers/@scure/sr25519/@noble/curves": ["@noble/curves@2.0.1", "", { "dependencies": { "@noble/hashes": "2.0.1" } }, "sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw=="],
 

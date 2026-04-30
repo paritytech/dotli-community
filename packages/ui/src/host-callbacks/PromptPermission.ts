@@ -1,9 +1,10 @@
 // Permission prompt — collapses the legacy device/remote split into one
-// synchronous `true|false` decision. The existing consent modal is async,
-// so for `ask` state we return false synchronously (denying the request)
-// and kick off the modal plus iframe reload in the background. Once the
-// user grants, the reload re-runs the product with the permission set to
-// `granted` so the next call resolves true without a round-trip.
+// async `true|false` decision. Returns a Promise<boolean>; the Rust core
+// awaits it before encoding the response, so a slow modal blocks the
+// product just as long as the user takes to dismiss it. If the iframe
+// reloads while the promise is pending (device-permission grant path),
+// the worker disappears and the response is dropped — the product on the
+// new iframe retries and reads the cached decision instead.
 
 import type {
   HostPermission,
@@ -45,57 +46,11 @@ function gatedRemotePermissionName(
   }
 }
 
-function promptDevice(
-  label: string,
-  name: EnforceablePermissionName,
-  limiter: { allow: () => boolean },
-): void {
-  if (!limiter.allow()) {
-    return;
-  }
-  showPermissionRequestModal(label, name)
-    .then(() => {
-      setPermissionStatus(label, name, "granted");
-      setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("dotli:device-permission-changed", {
-            detail: { label, permission: name },
-          }),
-        );
-      }, 0);
-    })
-    .catch(() => {
-      setPermissionStatus(label, name, "denied");
-    });
-}
-
-function promptRemote(
-  label: string,
-  name: EnforceablePermissionName,
-  limiter: { allow: () => boolean },
-): void {
-  if (!limiter.allow()) {
-    return;
-  }
-  showPermissionRequestModal(label, name)
-    .then(() => {
-      setPermissionStatus(label, name, "granted");
-      window.dispatchEvent(
-        new CustomEvent("dotli:permission-changed", {
-          detail: { label },
-        }),
-      );
-    })
-    .catch(() => {
-      setPermissionStatus(label, name, "denied");
-    });
-}
-
 export function createPromptPermission(
   label: string,
 ): WasmHostCallbacks["promptPermission"] {
   const limiter = createSubmitRateLimiter();
-  return (permission) => {
+  return async (permission) => {
     if (permission.tag === "Device") {
       const tag = toDevicePermissionName(permission.value.tag);
       // Notifications / OpenUrl have no host-side enforcement point;
@@ -113,34 +68,61 @@ export function createPromptPermission(
     }
     return decide(label, name, "Remote", limiter);
   };
+}
 
-  function decide(
-    label: string,
-    name: EnforceablePermissionName,
-    kind: "Device" | "Remote",
-    limiter: { allow: () => boolean },
-  ): boolean {
-    const status = getPermissionStatus(label, name);
-    if (status === "granted") {
-      return true;
-    }
-    if (status === "denied") {
-      showNotification({
-        label: `${label}.dot`,
-        text:
-          kind === "Device"
-            ? `${name} access is blocked. Use the permissions menu in the top bar to change this.`
-            : "Transaction signing is blocked. Use the permissions menu in the top bar to change this.",
-        dismissMs: 6000,
-        browserNotification: false,
-      });
-      return false;
-    }
-    if (kind === "Device") {
-      promptDevice(label, name, limiter);
-    } else {
-      promptRemote(label, name, limiter);
-    }
+async function decide(
+  label: string,
+  name: EnforceablePermissionName,
+  kind: "Device" | "Remote",
+  limiter: { allow: () => boolean },
+): Promise<boolean> {
+  const status = getPermissionStatus(label, name);
+  if (status === "granted") {
+    return true;
+  }
+  if (status === "denied") {
+    showNotification({
+      label: `${label}.dot`,
+      text:
+        kind === "Device"
+          ? `${name} access is blocked. Use the permissions menu in the top bar to change this.`
+          : "Transaction signing is blocked. Use the permissions menu in the top bar to change this.",
+      dismissMs: 6000,
+      browserNotification: false,
+    });
     return false;
   }
+  // status === "ask": show the modal and wait for the user.
+  if (!limiter.allow()) {
+    return false;
+  }
+  try {
+    await showPermissionRequestModal(label, name);
+  } catch {
+    setPermissionStatus(label, name, "denied");
+    return false;
+  }
+  setPermissionStatus(label, name, "granted");
+  if (kind === "Device") {
+    // Device permissions are also gated by the iframe `allow` attribute,
+    // which is fixed at iframe load time. Reload so the next attempt sees
+    // the updated attribute. Defer to the next tick so the prompt response
+    // can flush before the iframe is disposed; return `false` because the
+    // current call dies with the iframe and the product will retry on the
+    // fresh one (which will short-circuit on the now-cached "granted").
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("dotli:device-permission-changed", {
+          detail: { label, permission: name },
+        }),
+      );
+    }, 0);
+    return false;
+  }
+  // Remote permissions have no browser-level gate, so we can return the
+  // actual grant. The event keeps the topbar in sync.
+  window.dispatchEvent(
+    new CustomEvent("dotli:permission-changed", { detail: { label } }),
+  );
+  return true;
 }

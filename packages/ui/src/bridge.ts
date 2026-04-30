@@ -106,6 +106,17 @@ function applyIframeStyling(
   document.body.style.overflow = "hidden";
 }
 
+/** Read once at boot — flipping the flag while a runtime is alive
+ * doesn't reach the worker. The user must reload after toggling. */
+function isDebugEnabled(): boolean {
+  try {
+    return window.localStorage.getItem("truapi:debug") === "1";
+    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (Safari private mode); fall through to disabled.
+  } catch {
+    return false;
+  }
+}
+
 async function createHost(args: {
   iframeUrl: string;
   allowedOrigin: string;
@@ -121,6 +132,7 @@ async function createHost(args: {
       label: args.label,
       storagePrefix: `dotli:${args.label}:`,
     }),
+    { debug: isDebugEnabled() },
   );
   return createIframeHost({
     iframeUrl: args.iframeUrl,
