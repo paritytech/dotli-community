@@ -34,6 +34,9 @@
     "@noble/hashes": "^2.2.0",
     "@novasamatech/sdk-statement": "^0.6.0",
     "@novasamatech/statement-store": "^0.7.0",
+    "@truapi/client": "file:../../../../js/packages/truapi-client",
+    "@truapi/host-shared": "file:../../../../host-libs/js/shared",
+    "@truapi/host-web": "file:../../../../host-libs/js/web",
     "neverthrow": "^8.2.0",
     "polkadot-api": "^2.1.0",
     "qrcode": "^1.5.4"

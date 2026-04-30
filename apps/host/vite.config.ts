@@ -317,6 +317,7 @@ function sentry(): Plugin | false {
 
 const PACKAGES = resolve(import.meta.dirname, "../../packages");
 const SANDBOX_CHECKER_SRC = resolve(PACKAGES, "sandbox-checker/src");
+const TRUAPI_REPO_ROOT = resolve(import.meta.dirname, "../../../..");
 
 export default defineConfig({
   base: process.env.VITE_APP_URL
@@ -378,6 +379,9 @@ export default defineConfig({
     },
   },
   server: {
+    fs: {
+      allow: [resolve(import.meta.dirname, "../.."), TRUAPI_REPO_ROOT],
+    },
     headers: {
       "Service-Worker-Allowed": "/",
       "Access-Control-Allow-Origin": "*",
