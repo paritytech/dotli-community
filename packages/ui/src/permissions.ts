@@ -7,10 +7,9 @@
 //
 // Permission status: 'ask' (default), 'granted', or 'denied'.
 
-import type { CodecType } from "@novasamatech/host-api";
-import type { DevicePermission as DevicePermissionCodec } from "@novasamatech/host-api";
+import type { DevicePermission } from "@truapi/client";
 
-export type DevicePermissionName = CodecType<typeof DevicePermissionCodec>;
+export type DevicePermissionName = DevicePermission["tag"];
 
 export type PermissionName =
   | DevicePermissionName

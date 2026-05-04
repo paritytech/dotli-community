@@ -6,29 +6,17 @@
 // the worker disappears and the response is dropped — the product on the
 // new iframe retries and reads the cached decision instead.
 
-import type {
-  HostPermission,
-  WasmHostCallbacks,
-} from "@truapi/host-shared";
+import type { WasmHostCallbacks } from "@truapi/host-shared";
 import type { RemotePermission } from "@truapi/client";
 import {
   getPermissionStatus,
   isEnforceableDevicePermission,
   setPermissionStatus,
-  type DevicePermissionName,
   type EnforceablePermissionName,
 } from "../permissions";
 import { showPermissionRequestModal } from "../permission-modal";
 import { showNotification } from "../notification";
 import { createSubmitRateLimiter } from "./rate-limit";
-
-// Storage uses uppercase `NFC`; the TrUAPI codec emits Pascal-cased `Nfc`.
-// Other device tags align one-to-one.
-function toDevicePermissionName(
-  tag: (HostPermission & { tag: "Device" })["value"]["tag"],
-): DevicePermissionName {
-  return tag === "Nfc" ? "NFC" : (tag as DevicePermissionName);
-}
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -52,7 +40,7 @@ export function createPromptPermission(
   const limiter = createSubmitRateLimiter();
   return async (permission) => {
     if (permission.tag === "Device") {
-      const tag = toDevicePermissionName(permission.value.tag);
+      const tag = permission.value.tag;
       // Notifications / OpenUrl have no host-side enforcement point;
       // auto-grant rather than show a modal whose deny button can't
       // actually block the underlying browser API.

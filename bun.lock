@@ -95,7 +95,6 @@
         "@dotli/protocol": "workspace:*",
         "@dotli/resolver": "workspace:*",
         "@dotli/shared": "workspace:*",
-        "@novasamatech/host-api": "^0.7.0",
         "@novasamatech/host-papp": "^0.7.0",
         "@novasamatech/sdk-statement": "^0.6.0",
         "@novasamatech/statement-store": "^0.7.0",

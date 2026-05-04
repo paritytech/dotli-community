@@ -19,7 +19,7 @@ import {
   type StatementStoreAdapter,
 } from "@novasamatech/statement-store";
 import type { Statement } from "@novasamatech/sdk-statement";
-import { toHex } from "@novasamatech/host-api";
+import { toHex } from "@dotli/shared/hex";
 import { getWsProvider } from "polkadot-api/ws";
 import { getPeopleChainProvider } from "@dotli/resolver/smoldot";
 import { SITE_ID, SS_USE_SMOLDOT, isLocalhost } from "@dotli/config/config";

@@ -5,7 +5,7 @@
 // `address` with the session's remote account id (the only value papp
 // accepts). The display label (dApp name) is passed separately.
 
-import { SigningErr, toHex } from "@novasamatech/host-api";
+import { toHex } from "@dotli/shared/hex";
 import { log } from "@dotli/shared/log";
 import type { UserSession } from "@novasamatech/host-papp";
 
@@ -192,7 +192,7 @@ export function showSignPayloadModal(
     cancelBtn.addEventListener("click", () => {
       log.warn("[dot.li signing] user cancelled signPayload");
       removeModal(backdrop);
-      reject(new SigningErr.Rejected());
+      reject(new Error("Rejected"));
     });
 
     signBtn.addEventListener("click", () => {
@@ -227,7 +227,7 @@ export function showSignPayloadModal(
             (e) => {
               log.error("[dot.li signing] signPayload FAILED:", e.message, e);
               removeModal(backdrop);
-              reject(new SigningErr.Unknown({ reason: e.message }));
+              reject(new Error(e.message));
             },
           );
         },
@@ -235,7 +235,7 @@ export function showSignPayloadModal(
           log.error("[dot.li signing] signPayload timed out:", e);
           removeModal(backdrop);
           const msg = e instanceof Error ? e.message : "Request timed out";
-          reject(new SigningErr.Unknown({ reason: msg }));
+          reject(new Error(msg));
         },
       );
     });
@@ -277,7 +277,7 @@ export function showSignRawModal(
     cancelBtn.addEventListener("click", () => {
       log.warn("[dot.li signing] user cancelled signRaw");
       removeModal(backdrop);
-      reject(new SigningErr.Rejected());
+      reject(new Error("Rejected"));
     });
 
     signBtn.addEventListener("click", () => {
@@ -308,7 +308,7 @@ export function showSignRawModal(
             (e) => {
               log.error("[dot.li signing] signRaw FAILED:", e.message, e);
               removeModal(backdrop);
-              reject(new SigningErr.Unknown({ reason: e.message }));
+              reject(new Error(e.message));
             },
           );
         },
@@ -316,7 +316,7 @@ export function showSignRawModal(
           log.error("[dot.li signing] signRaw timed out:", e);
           removeModal(backdrop);
           const msg = e instanceof Error ? e.message : "Request timed out";
-          reject(new SigningErr.Unknown({ reason: msg }));
+          reject(new Error(msg));
         },
       );
     });
