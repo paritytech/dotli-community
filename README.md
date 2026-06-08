@@ -59,14 +59,14 @@ Each `cid.app.dot.li` is a distinct origin, preventing SW/storage/security confl
 
 1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/smol-dot/smoldot) light client connected to Asset Hub Paseo, querying dotNS contracts through the Revive EVM pallet.
 2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via [Helia](https://github.com/ipfs/helia) P2P (bitswap), with IPFS gateway fallback.
-3. **Renders** the content in a sandboxed iframe with a full host-container bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage — all through postMessage.
+3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage — all through a `MessageChannel`.
 
 ```
 testingout.dot.li
     -> Host: smoldot resolves dotNS -> IPFS CID
     -> Host: iframes cid.app.dot.li
     -> App:  Helia fetches content (P2P or gateway)
-    -> App:  renders dApp in sandboxed iframe with container bridge
+    -> App:  renders dApp in sandboxed iframe with TrUAPI bridge
 ```
 
 Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served through a Service Worker that acts as a virtual file system.
@@ -108,26 +108,26 @@ On repeat visits, content renders instantly from cache while smoldot validates t
 | Orange | Gateway — resolved via gateway, awaiting chain confirmation |
 | Red    | Outdated — on-chain CID differs; an update banner appears   |
 
-## Host-container bridge
+## TrUAPI Rust bridge
 
-Loaded SPAs communicate with dot.li through `@novasamatech/host-container`, a postMessage-based protocol. The bridge exposes:
+Loaded SPAs communicate with dot.li through the shared Rust TrUAPI core exposed by `@parity/truapi-host-wasm`. dot.li starts the core in a Web Worker, connects it to the product iframe with a dedicated `MessageChannel`, and implements host callbacks for UI, storage, chain access, notifications, preimage, and product-local storage.
 
 | Handler                        | What it does                                                  |
 | ------------------------------ | ------------------------------------------------------------- |
 | `accountGet`                   | Derives a per-app public key via HDKD soft derivation         |
 | `getNonProductAccounts`        | Returns the connected Polkadot App account                    |
-| `signPayload` / `signRaw`      | Shows signing modals, delegates to host-papp session          |
+| `signPayload` / `signRaw`      | Uses the core-owned SSO session channel for wallet approval   |
 | `chainConnection`              | Returns a smoldot-backed JsonRpcProvider for supported chains |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                       |
 | `navigateTo`                   | Opens URLs in new tabs                                        |
 | `featureSupported`             | Reports supported chain genesis hashes                        |
 | `connectionStatus`             | Streams auth state changes to the SPA                         |
 
+Login and logout are core-owned. Pairing is initiated through the SSO QR/deeplink flow, the Rust core validates and persists an opaque single-session blob under host storage, and the topbar disconnect button calls the core public `disconnect()` path. UI code does not clear the session store directly.
+
 ### Nested dApp support
 
-dApps can embed other dApps via iframes (e.g. a marketplace app embedding a payments app). The host automatically detects nested dApps and creates separate bridges for each one, regardless of nesting depth.
-
-When the host receives a protocol message from an unknown iframe window, it dynamically creates a new container bridge targeting that window. The dApp SDK always sends to `window.top`, so all nested dApps communicate directly with the host — no relay needed.
+Nested dApps are not given separate host runtimes, sessions, product identities, or storage namespaces in the Rust bridge cutover. Product content should use the shared Rust core exposed by the active host bridge. The previous dynamic nested bridge detector is intentionally not ported as an independent bridge model.
 
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
@@ -148,7 +148,7 @@ Local development uses wildcard subdomains:
 
 ## Sandbox API Checker
 
-dApps rendered in dot.li's sandboxed iframe should communicate exclusively through the container bridge (postMessage), not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
+dApps rendered in dot.li's sandboxed iframe should communicate exclusively through TrUAPI, not use host-controlled web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
 
 The checker is activated by setting `VITE_SANDBOX_CHECKER=true` at build time. When the env var is not set, the checker is tree-shaken out of production builds entirely.
 
