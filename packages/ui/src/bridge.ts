@@ -11,7 +11,18 @@
 // as a known regression; a future nested-port API in the TrUAPI host bridge
 // will restore it.
 
-import { createMessagePortProvider, type Provider } from "@parity/truapi";
+import {
+  decodeWireMessage,
+  encodeWireMessage,
+  HostRequestLoginError,
+  HostRequestLoginResponse,
+  scale,
+  VersionedHostRequestLoginRequest,
+  type HostRequestLoginResponse as LoginResponse,
+  type Provider,
+  createMessagePortProvider,
+} from "@parity/truapi";
+import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
@@ -51,6 +62,7 @@ const app = document.getElementById("app") ?? document.body;
 
 interface ActiveHost {
   iframe: HTMLIFrameElement;
+  requestLogin: (reason?: string) => Promise<LoginResponse>;
   disconnect: () => Promise<void>;
   dispose: () => void;
 }
@@ -84,6 +96,28 @@ window.addEventListener("dotli:device-permission-changed", () => {
 
 window.addEventListener("dotli:truapi-disconnect-request", () => {
   void currentHost?.disconnect();
+});
+
+window.addEventListener("dotli:truapi-login-request", (event: Event) => {
+  const detail = (event as CustomEvent<{ reason?: string }>).detail;
+  const host = currentHost;
+  if (!host) {
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-login-error", {
+        detail: { message: "No active product runtime" },
+      }),
+    );
+    return;
+  }
+  void host.requestLogin(detail?.reason).catch((error: unknown) => {
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-login-error", {
+        detail: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }),
+    );
+  });
 });
 
 /**
@@ -147,6 +181,72 @@ function pipeProviders(product: Provider, core: Provider): () => void {
   };
 }
 
+let topbarLoginRequestSeq = 0;
+
+function requestCoreLogin(
+  core: Provider,
+  reason?: string,
+): Promise<LoginResponse> {
+  const requestId = `dotli:topbar-login:${++topbarLoginRequestSeq}`;
+  const responseCodec = scale.indexedTaggedUnion({
+    V1: [
+      0,
+      scale.Result(HostRequestLoginResponse, HostRequestLoginError),
+    ] as const,
+  });
+  const frame = encodeWireMessage({
+    requestId,
+    payload: {
+      id: ACCOUNT_REQUEST_LOGIN.request,
+      value: VersionedHostRequestLoginRequest.enc({
+        tag: "V1",
+        value: { reason },
+      }),
+    },
+  });
+  if (frame.isErr()) {
+    return Promise.reject(frame.error);
+  }
+
+  return new Promise<LoginResponse>((resolve, reject) => {
+    const unsubscribe = core.subscribe((message) => {
+      const decoded = decodeWireMessage(message);
+      if (decoded.isErr()) {
+        cleanup();
+        reject(decoded.error);
+        return;
+      }
+      if (
+        decoded.value.requestId !== requestId ||
+        decoded.value.payload.id !== ACCOUNT_REQUEST_LOGIN.response
+      ) {
+        return;
+      }
+      cleanup();
+      try {
+        const result = responseCodec.dec(decoded.value.payload.value).value;
+        if (result.success) {
+          resolve(result.value as LoginResponse);
+        } else {
+          reject(new Error(JSON.stringify(result.value)));
+        }
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+    const cleanup = (): void => {
+      unsubscribe();
+    };
+
+    try {
+      core.postMessage(frame.value);
+    } catch (error) {
+      cleanup();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
 async function createHost(args: {
   iframeUrl: string;
   allowedOrigin: string;
@@ -189,6 +289,9 @@ async function createHost(args: {
   });
   return {
     iframe: host.iframe,
+    requestLogin(reason) {
+      return requestCoreLogin(coreProvider, reason);
+    },
     disconnect() {
       return coreProvider.disconnect();
     },

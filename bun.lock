@@ -305,7 +305,6 @@
         "@dotli/sandbox-checker": "workspace:*",
         "@dotli/shared": "workspace:*",
         "@noble/hashes": "^2.2.0",
-        "@novasamatech/host-papp": "^0.7.0",
         "@parity/truapi": "file:../../../../js/packages/truapi",
         "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm",
         "neverthrow": "^8.2.0",
@@ -323,11 +322,9 @@
         "vitest": "^4.1.5",
       },
       "peerDependencies": {
-        "@dotli/auth": "workspace:*",
         "@dotli/resolver": "workspace:*",
       },
       "optionalPeers": [
-        "@dotli/auth",
         "@dotli/resolver",
       ],
     },

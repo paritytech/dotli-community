@@ -28,7 +28,6 @@
     "@dotli/protocol": "workspace:*",
     "@dotli/sandbox-checker": "workspace:*",
     "@dotli/shared": "workspace:*",
-    "@novasamatech/host-papp": "^0.7.0",
     "@noble/hashes": "^2.2.0",
     "@parity/truapi": "file:../../../../js/packages/truapi",
     "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm",
@@ -37,13 +36,9 @@
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {
-    "@dotli/auth": "workspace:*",
     "@dotli/resolver": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@dotli/auth": {
-      "optional": true
-    },
     "@dotli/resolver": {
       "optional": true
     }

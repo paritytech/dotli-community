@@ -3,16 +3,11 @@
 // Manages the auth button, QR pairing modal, and user popover.
 // All plain DOM manipulation — no framework.
 //
-// Auth module is lazy-loaded — the heavy host-papp, statement-store, and
-// polkadot-api WS deps only load when a persisted session exists or the
-// user clicks the auth button.
+// Login/session state is owned by the shared Rust TrUAPI core.
 
-import type { AuthState } from "@dotli/auth/auth";
-import type { Identity } from "@novasamatech/host-papp";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import {
-  SITE_ID,
   PASEO_RELAY_GENESIS,
   ASSET_HUB_PASEO_GENESIS,
 } from "@dotli/config/config";
@@ -87,35 +82,6 @@ let currentQrPayload: string | null = null;
 let activeTruapiPairingCancel: (() => void) | null = null;
 let truapiSessionConnected = false;
 
-// ── Lazy Auth Loading ─────────────────────────────────────
-
-interface AuthModule {
-  initAuth: () => void;
-  getAuthState: () => AuthState;
-  onAuthStateChange: (fn: (state: AuthState) => void) => () => void;
-  startPairing: () => void;
-  abortPairing: () => void;
-  disconnect: () => Promise<void>;
-  shortenName: (identity: Identity) => string;
-}
-
-let authMod: AuthModule | null = null;
-
-/**
- * Lazy-load and initialize the auth module. Subsequent calls return
- * the cached module immediately (initAuth is idempotent).
- */
-async function ensureAuth(): Promise<AuthModule> {
-  if (authMod) {
-    return authMod;
-  }
-  authMod = await import("@dotli/auth/auth");
-  authMod.initAuth();
-  authMod.onAuthStateChange(renderAuthState);
-  renderAuthState(authMod.getAuthState());
-  return authMod;
-}
-
 // ── Theme Toggle ──────────────────────────────────────────
 
 function getStoredTheme(): "light" | "dark" {
@@ -182,28 +148,6 @@ export function initTopBar(): void {
   // Disconnect button
   userPopoverDisconnect.addEventListener("click", handleDisconnect);
 
-  // RFC-0009 — products can trigger the login flow via
-  // `handleRequestLogin`. `requestLogin()` in @dotli/auth dispatches
-  // this event after checking the already-connected fast path; the
-  // topbar owns the QR modal so we open it here and kick off pairing.
-  window.addEventListener("dotli:request-login", (e: Event) => {
-    const detail = (e as CustomEvent<{ reason?: string; label?: string }>)
-      .detail;
-    openModal(detail.reason, detail.label);
-    void ensureAuth().then(() => {
-      // Skip if the flow advanced between dispatch and here.
-      const state = authMod?.getAuthState();
-      if (
-        state &&
-        state.status !== "authenticated" &&
-        state.status !== "pairing" &&
-        state.status !== "attesting"
-      ) {
-        authMod?.startPairing();
-      }
-    });
-  });
-
   window.addEventListener("dotli:truapi-pairing", (e: Event) => {
     const { deeplink, label, cancel } = (e as CustomEvent<TrUApiPairingRequest>)
       .detail;
@@ -220,9 +164,15 @@ export function initTopBar(): void {
     closeModal({ skipTruapiCancel: true });
     if (connected) {
       renderTruapiLoggedIn();
-    } else if (!authMod) {
+    } else {
       renderLoggedOut();
     }
+  });
+
+  window.addEventListener("dotli:truapi-login-error", (e: Event) => {
+    const { message } = (e as CustomEvent<{ message: string }>).detail;
+    openModal(undefined, currentProductLabel ?? undefined);
+    renderError(message);
   });
 
   // Close popovers when clicking outside
@@ -269,78 +219,14 @@ export function initTopBar(): void {
 
   // Show default logged-out state
   renderLoggedOut();
-
-  // Probe the shared auth storage on host.dot.li. Sessions now live on the
-  // shared host origin so sibling host shells can rehydrate after a
-  // cross-subdomain navigation without eagerly loading the auth bundle for
-  // every visitor.
-  requestIdleCallback(() => {
-    void (async () => {
-      try {
-        const { hasSharedAuthSession } = await import("@dotli/protocol/client");
-        if (await hasSharedAuthSession(SITE_ID)) {
-          await ensureAuth();
-        }
-      } catch (error) {
-        log.warn("[dot.li auth] Shared session probe failed:", error);
-      }
-    })();
-  });
 }
 
 // ── Render ─────────────────────────────────────────────────
-
-function renderAuthState(state: AuthState): void {
-  switch (state.status) {
-    case "idle":
-      renderLoggedOut();
-      break;
-    case "pairing":
-      renderPairing(state.payload);
-      break;
-    case "attesting":
-      renderAttesting();
-      break;
-    case "authenticated":
-      renderLoggedIn(state);
-      closeModal();
-      break;
-    case "error":
-      renderError(state.message);
-      break;
-  }
-}
 
 function renderLoggedOut(): void {
   authButton.innerHTML = USER_SVG;
   authButton.title = "Login with Polkadot Mobile";
   window.dispatchEvent(new Event("dotli:logged-out"));
-}
-
-function renderLoggedIn(state: AuthState & { status: "authenticated" }): void {
-  const initials =
-    state.identity && authMod ? authMod.shortenName(state.identity) : "??";
-  authButton.innerHTML = `<div class="user-badge">${escapeHtml(initials)}</div>`;
-  authButton.title = "Account";
-  window.dispatchEvent(new Event("dotli:authenticated"));
-
-  // Update popover with identity name or truncated account address
-  let username: string;
-  const fullName = state.identity?.fullUsername;
-  const liteName = state.identity?.liteUsername;
-  if (
-    (fullName !== undefined && fullName !== "") ||
-    (liteName !== undefined && liteName !== "")
-  ) {
-    username = fullName ?? liteName ?? "";
-  } else {
-    // Fallback to truncated account address
-    const id = Array.from(state.session.remoteAccount.accountId)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    username = `0x${id.slice(0, 6)}...${id.slice(-4)}`;
-  }
-  userPopoverUsername.textContent = username;
 }
 
 function renderTruapiLoggedIn(): void {
@@ -383,15 +269,6 @@ function renderPairing(payload: string): void {
     });
 }
 
-function renderAttesting(): void {
-  modalQr.innerHTML = `
-    <div class="attesting">
-      <div class="spinner"></div>
-      <p>Logging in...</p>
-    </div>
-  `;
-}
-
 function renderError(message: string): void {
   const container = document.createElement("div");
   container.style.textAlign = "center";
@@ -405,7 +282,7 @@ function renderError(message: string): void {
   retry.className = "auth-modal-retry";
   retry.textContent = "Retry";
   retry.addEventListener("click", () => {
-    authMod?.startPairing();
+    requestTruapiLogin();
   });
   container.appendChild(retry);
 
@@ -416,38 +293,26 @@ function renderError(message: string): void {
 // ── Handlers ───────────────────────────────────────────────
 
 function handleAuthButtonClick(): void {
-  if (authMod) {
-    const state = authMod.getAuthState();
-
-    if (state.status === "authenticated") {
-      // Toggle user popover
-      userPopover.classList.toggle("open");
-    } else if (state.status === "attesting") {
-      // Attestation still running in background — just reshow the modal
-      modalBackdrop.classList.add("open");
-    } else {
-      // Open modal and start pairing
-      openModal();
-      authMod.startPairing();
-    }
-  } else if (truapiSessionConnected) {
+  if (truapiSessionConnected) {
     userPopover.classList.toggle("open");
   } else {
-    // Auth not loaded yet — load it and start pairing
-    openModal();
-    void ensureAuth().then(() => {
-      authMod?.startPairing();
-    });
+    requestTruapiLogin();
   }
 }
 
 function handleDisconnect(): void {
   userPopover.classList.remove("open");
-  if (authMod) {
-    void authMod.disconnect();
-  } else {
-    window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
-  }
+  window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
+}
+
+function requestTruapiLogin(): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:truapi-login-request", {
+      detail: {
+        label: currentProductLabel ?? undefined,
+      },
+    }),
+  );
 }
 
 // ── Permissions ───────────────────────────────────────────
@@ -1755,13 +1620,5 @@ function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   if (!opts.skipTruapiCancel) {
     activeTruapiPairingCancel?.();
     activeTruapiPairingCancel = null;
-  }
-
-  if (authMod) {
-    const state = authMod.getAuthState();
-    // Only abort during pairing or error — let attestation continue in background
-    if (state.status === "pairing" || state.status === "error") {
-      authMod.abortPairing();
-    }
   }
 }
