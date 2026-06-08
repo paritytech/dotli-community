@@ -302,6 +302,10 @@ function handleAuthButtonClick(): void {
 
 function handleDisconnect(): void {
   userPopover.classList.remove("open");
+  requestTruapiDisconnect();
+}
+
+export function requestTruapiDisconnect(): void {
   window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
 }
 
