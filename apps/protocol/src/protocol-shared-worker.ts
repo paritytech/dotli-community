@@ -14,6 +14,10 @@ import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
 import { MAX_CONNECTIONS_PER_ORIGIN } from "@dotli/config/config";
 import { createChainProvider, isChainSupported } from "@dotli/resolver/chains";
 import {
+  getTestSigner,
+  submitPreimageTransaction,
+} from "@dotli/resolver/bulletin";
+import {
   getRelayChain,
   getSmoldotDirect,
   resolveDotName,
@@ -436,6 +440,26 @@ async function handleRequest(
       }
       swLog(
         `Chain disconnected: ${payload.connectionId} (${String(chainConnections.size)} remaining)`,
+      );
+      sendToPort(port, {
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: request.id,
+        ok: true,
+        result: true,
+      });
+      return;
+    }
+
+    case "bulletinSubmitPreimage": {
+      const payload =
+        request.payload as ProtocolRequestMap["bulletinSubmitPreimage"];
+      if (!(payload.value instanceof Uint8Array)) {
+        throw new Error("Invalid value: expected Uint8Array");
+      }
+      await submitPreimageTransaction(payload.value, getTestSigner());
+      swLog(
+        `Bulletin preimage submitted (${String(payload.value.byteLength)} bytes, ${String(Math.round(performance.now() - t))}ms)`,
       );
       sendToPort(port, {
         namespace: "dotli:protocol",

@@ -22,6 +22,7 @@ import { createFeatureSupported } from "./FeatureSupported";
 import { createThemeSubscribe } from "./Theme";
 import { createPresentPairing } from "./Pairing";
 import { createSessionStoreAdapters } from "./SessionStore";
+import { createUserConfirmationAdapters } from "./UserConfirmation";
 
 export interface CreateHostCallbacksOptions {
   label: string;
@@ -42,6 +43,7 @@ export function createHostCallbacks(
     clear: createLocalStorageClear(storagePrefix),
     presentPairing: createPresentPairing(label),
     ...createSessionStoreAdapters(),
+    ...createUserConfirmationAdapters(label),
     ...createPreimageAdapters(label),
     subscribeTheme: createThemeSubscribe(),
     connect: createChainConnect(),

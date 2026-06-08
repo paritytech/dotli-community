@@ -5,15 +5,34 @@
 
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { concatBytes } from "@noble/hashes/utils.js";
-import { hashToCid } from "@dotli/content/preimage";
+import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getContentBackend } from "@dotli/config/mode";
+import { submitPreimageRemote } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
-import { toHexPrefixed } from "./hex";
+import { showPreimageSubmitModal } from "../preimage-modal";
+import { fromHexPrefixed, toHexPrefixed } from "./hex";
 import { createResultStream } from "./result-stream";
 
 const POLL_INTERVAL_MS = 10_000;
 const INITIAL_POLL_DELAY_MS = 1000;
+const preimageCache = new Map<string, Uint8Array>();
+
+function createPreimageSubmitConfirm(): HostCallbacks["confirmPreimageSubmit"] {
+  return async (size) => {
+    await showPreimageSubmitModal(Number(size));
+  };
+}
+
+function createPreimageSubmit(label: string): HostCallbacks["submitPreimage"] {
+  return async (value) => {
+    const key = computePreimageKey(value);
+    await submitPreimageRemote(value);
+    preimageCache.set(key, value);
+    log.warn(`[${label}] Preimage stored, key: ${key}`);
+    return fromHexPrefixed(key);
+  };
+}
 
 function createPreimageLookupSubscribe(
   label: string,
@@ -26,6 +45,12 @@ function createPreimageLookupSubscribe(
     return createResultStream<Uint8Array | undefined>([undefined], (push) => {
       const poll = async (): Promise<void> => {
         if (stopped) {
+          return;
+        }
+
+        const cached = preimageCache.get(key);
+        if (cached) {
+          push(cached);
           return;
         }
 
@@ -87,8 +112,13 @@ function createPreimageLookupSubscribe(
 
 export function createPreimageAdapters(
   label: string,
-): Pick<HostCallbacks, "lookupPreimage"> {
+): Pick<
+  HostCallbacks,
+  "confirmPreimageSubmit" | "submitPreimage" | "lookupPreimage"
+> {
   return {
+    confirmPreimageSubmit: createPreimageSubmitConfirm(),
+    submitPreimage: createPreimageSubmit(label),
     lookupPreimage: createPreimageLookupSubscribe(label),
   };
 }

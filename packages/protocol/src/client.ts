@@ -537,6 +537,10 @@ export async function resolveOwnerRemote(
   return (await postRequest("resolveOwner", { label })) as string | null;
 }
 
+export async function submitPreimageRemote(value: Uint8Array): Promise<void> {
+  await postRequest("bulletinSubmitPreimage", { value });
+}
+
 export async function hasSharedAuthSession(siteId: SiteId): Promise<boolean> {
   return (await postRequest("authHasSession", { siteId })) as boolean;
 }

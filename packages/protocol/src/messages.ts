@@ -9,6 +9,7 @@ export interface ProtocolRequestMap {
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };
+  bulletinSubmitPreimage: { value: Uint8Array };
 }
 
 export type ProtocolRequestMethod = keyof ProtocolRequestMap;
