@@ -11,7 +11,7 @@ export function createNotificationAdapters(
   label: string,
 ): Pick<HostCallbacks, "pushNotification" | "cancelNotification"> {
   const timers = new Map<number, ReturnType<typeof setTimeout>>();
-  const pushNotification: HostCallbacks["pushNotification"] = async ({
+  const pushNotification: HostCallbacks["pushNotification"] = ({
     text,
     deeplink,
     scheduledAt,
@@ -23,7 +23,9 @@ export function createNotificationAdapters(
       deeplink,
       scheduledAt,
     });
-    const fire = (): void => showNotification({ text, deeplink, label });
+    const fire = (): void => {
+      showNotification({ text, deeplink, label });
+    };
     const scheduledMs =
       scheduledAt === undefined ? undefined : Number(scheduledAt);
     const delay =
@@ -39,17 +41,16 @@ export function createNotificationAdapters(
         }, delay),
       );
     }
-    return { id };
+    return Promise.resolve({ id });
   };
 
-  const cancelNotification: HostCallbacks["cancelNotification"] = async (
-    id,
-  ) => {
+  const cancelNotification: HostCallbacks["cancelNotification"] = (id) => {
     const timer = timers.get(id);
     if (timer) {
       clearTimeout(timer);
       timers.delete(id);
     }
+    return Promise.resolve(undefined);
   };
 
   return { pushNotification, cancelNotification };

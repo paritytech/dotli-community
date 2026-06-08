@@ -77,8 +77,12 @@ function showConfirmationModal(
       resolve(accepted);
     };
 
-    cancelBtn.addEventListener("click", () => finish(false));
-    allowBtn.addEventListener("click", () => finish(true));
+    cancelBtn.addEventListener("click", () => {
+      finish(false);
+    });
+    allowBtn.addEventListener("click", () => {
+      finish(true);
+    });
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
         finish(false);

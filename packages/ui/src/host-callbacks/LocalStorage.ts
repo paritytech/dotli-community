@@ -6,15 +6,19 @@ import type { HostCallbacks } from "@parity/truapi-host-wasm";
 export function createLocalStorageRead(
   storagePrefix: string,
 ): HostCallbacks["read"] {
-  return async (key) => {
+  return (key) => {
     try {
       const raw = localStorage.getItem(storagePrefix + key);
       if (raw === null) {
-        return undefined;
+        return Promise.resolve(undefined);
       }
-      return Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-    } catch {
-      throw new Error("Failed to read from storage");
+      return Promise.resolve(
+        Uint8Array.from(atob(raw), (c) => c.charCodeAt(0)),
+      );
+    } catch (cause) {
+      return Promise.reject(
+        new Error("Failed to read from storage", { cause }),
+      );
     }
   };
 }
@@ -22,12 +26,13 @@ export function createLocalStorageRead(
 export function createLocalStorageWrite(
   storagePrefix: string,
 ): HostCallbacks["write"] {
-  return async (key, value) => {
+  return (key, value) => {
     try {
       const b64 = btoa(String.fromCharCode(...value));
       localStorage.setItem(storagePrefix + key, b64);
-    } catch {
-      throw new Error("Failed to write to storage");
+      return Promise.resolve();
+    } catch (cause) {
+      return Promise.reject(new Error("Failed to write to storage", { cause }));
     }
   };
 }
@@ -35,11 +40,12 @@ export function createLocalStorageWrite(
 export function createLocalStorageClear(
   storagePrefix: string,
 ): HostCallbacks["clear"] {
-  return async (key) => {
+  return (key) => {
     try {
       localStorage.removeItem(storagePrefix + key);
-    } catch {
-      throw new Error("Failed to clear storage");
+      return Promise.resolve();
+    } catch (cause) {
+      return Promise.reject(new Error("Failed to clear storage", { cause }));
     }
   };
 }

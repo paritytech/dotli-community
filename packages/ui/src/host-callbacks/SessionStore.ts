@@ -51,8 +51,10 @@ export function createSessionStoreAdapters(): Pick<
       emitSessionUiState(false);
     },
     subscribeSessionStore() {
-      return createResultStream<void>([undefined], (push) => {
-        const onLocalChange = (): void => push(undefined);
+      return createResultStream<undefined>([undefined], (push) => {
+        const onLocalChange = (): void => {
+          push(undefined);
+        };
         window.addEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
         const unsubscribeRemote = subscribeSharedAuthStorage((change) => {
           if (

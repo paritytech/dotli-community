@@ -136,7 +136,9 @@ export function initTopBar(): void {
   authButton.addEventListener("click", handleAuthButtonClick);
 
   // Modal close button
-  modalClose.addEventListener("click", () => closeModal());
+  modalClose.addEventListener("click", () => {
+    closeModal();
+  });
 
   // Clicking backdrop (outside modal) closes modal
   modalBackdrop.addEventListener("click", (e) => {
@@ -1593,7 +1595,7 @@ function openModal(reason?: string, label?: string): void {
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
 
-  if (!opts.skipTruapiCancel) {
+  if (opts.skipTruapiCancel !== true) {
     activeTruapiPairingCancel?.();
     activeTruapiPairingCancel = null;
   }

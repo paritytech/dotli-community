@@ -18,7 +18,9 @@ export function createResultStream<T>(
         value: undefined as never,
       });
       const push = (value: T): void => {
-        if (stopped) return;
+        if (stopped) {
+          return;
+        }
         if (resolve) {
           const send = resolve;
           resolve = null;
@@ -31,7 +33,9 @@ export function createResultStream<T>(
 
       return {
         next(): Promise<IteratorResult<Result<T, GenericError>>> {
-          if (stopped) return Promise.resolve(complete());
+          if (stopped) {
+            return Promise.resolve(complete());
+          }
           const item = queue.shift();
           if (item) {
             return Promise.resolve({ done: false, value: ok(item.value) });

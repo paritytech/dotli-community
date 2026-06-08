@@ -4,15 +4,11 @@ import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/cha
 import { isRpcChainSupported } from "@dotli/resolver/rpc-chain";
 
 export function createFeatureSupported(): HostCallbacks["featureSupported"] {
-  return async (request) => {
-    switch (request.tag) {
-      case "Chain": {
-        const supported =
-          getChainBackend() === "rpc"
-            ? isRpcChainSupported(request.value.genesisHash)
-            : isSmoldotChainSupported(request.value.genesisHash);
-        return { supported };
-      }
-    }
+  return (request) => {
+    const supported =
+      getChainBackend() === "rpc"
+        ? isRpcChainSupported(request.value.genesisHash)
+        : isSmoldotChainSupported(request.value.genesisHash);
+    return Promise.resolve({ supported });
   };
 }

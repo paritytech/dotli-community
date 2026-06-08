@@ -12,10 +12,13 @@
 
 import { bytesToHex } from "@parity/truapi/scale";
 import type {
+  JsonRpcRequest,
+  JsonRpcProvider,
+} from "@polkadot-api/json-rpc-provider";
+import type {
   HostCallbacks,
   PlatformJsonRpcConnection,
 } from "@parity/truapi-host-wasm";
-import type { JsonRpcProvider } from "polkadot-api";
 import { getChainBackend } from "@dotli/config/mode";
 import {
   createChainProvider as createSmoldotChainProvider,
@@ -27,10 +30,28 @@ import {
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
 
+function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const id = record.id;
+  return (
+    record.jsonrpc === "2.0" &&
+    typeof record.method === "string" &&
+    (id === undefined ||
+      id === null ||
+      typeof id === "string" ||
+      typeof id === "number")
+  );
+}
+
 function toConnection(
-  provider: JsonRpcProvider | null,
+  provider: JsonRpcProvider<unknown> | null,
 ): PlatformJsonRpcConnection {
-  if (!provider) throw new Error("Chain provider unavailable");
+  if (!provider) {
+    throw new Error("Chain provider unavailable");
+  }
   const queue: string[] = [];
   let wake: (() => void) | null = null;
   let stopped = false;
@@ -42,13 +63,20 @@ function toConnection(
 
   return {
     send(request: string): void {
-      conn.send(JSON.parse(request));
+      const parsed: unknown = JSON.parse(request);
+      if (!isJsonRpcRequest(parsed)) {
+        throw new Error("Invalid JSON-RPC request");
+      }
+      conn.send(parsed);
     },
     async *responses(): AsyncIterable<string> {
       try {
         while (!stopped) {
           while (queue.length > 0) {
-            yield queue.shift()!;
+            const response = queue.shift();
+            if (response !== undefined) {
+              yield response;
+            }
           }
           await new Promise<void>((resolve) => {
             wake = resolve;
@@ -63,7 +91,7 @@ function toConnection(
 }
 
 export function createChainConnect(): HostCallbacks["connect"] {
-  return async (genesisHashBytes) => {
+  return (genesisHashBytes) => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getChainBackend();
     if (backend === "rpc") {
@@ -73,7 +101,7 @@ export function createChainConnect(): HostCallbacks["connect"] {
         );
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      return toConnection(createRpcChainProvider(genesisHash));
+      return Promise.resolve(toConnection(createRpcChainProvider(genesisHash)));
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
@@ -82,6 +110,8 @@ export function createChainConnect(): HostCallbacks["connect"] {
       );
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return toConnection(createSmoldotChainProvider(genesisHash));
+    return Promise.resolve(
+      toConnection(createSmoldotChainProvider(genesisHash)),
+    );
   };
 }

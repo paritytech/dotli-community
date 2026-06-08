@@ -50,7 +50,7 @@ const runtimeChunkPromise = Promise.all([
   return {
     createWebWorkerProvider: web.createWebWorkerProvider,
     createIframeHost: web.createIframeHost,
-    HostWorker: workerMod.default as new () => Worker,
+    HostWorker: workerMod.default,
   };
 });
 void runtimeChunkPromise.catch(() => {
@@ -108,7 +108,7 @@ window.addEventListener("dotli:truapi-login-request", (event: Event) => {
     );
     return;
   }
-  void host.requestLogin(detail?.reason).catch((error: unknown) => {
+  void host.requestLogin(detail.reason).catch((error: unknown) => {
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-login-error", {
         detail: {
@@ -155,7 +155,6 @@ function applyIframeStyling(
 function isDebugEnabled(): boolean {
   try {
     return window.localStorage.getItem("truapi:debug") === "1";
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (Safari private mode); fall through to disabled.
   } catch {
     return false;
   }
@@ -163,16 +162,25 @@ function isDebugEnabled(): boolean {
 
 function pipeProviders(product: Provider, core: Provider): () => void {
   const unsubs = [
-    product.subscribe((message) => core.postMessage(message)),
-    core.subscribe((message) => product.postMessage(message)),
-    product.subscribeClose?.(() => core.dispose()),
-    core.subscribeClose?.(() => product.dispose()),
+    product.subscribe((message) => {
+      core.postMessage(message);
+    }),
+    core.subscribe((message) => {
+      product.postMessage(message);
+    }),
+    product.subscribeClose?.(() => {
+      core.dispose();
+    }),
+    core.subscribeClose?.(() => {
+      product.dispose();
+    }),
   ].filter((fn): fn is () => void => typeof fn === "function");
 
   return () => {
     for (const unsub of unsubs) {
       try {
         unsub();
+        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort; stale MessagePorts can already be closed while the next cleanup still must run.
       } catch {
         /* ignore teardown races */
       }
@@ -186,7 +194,7 @@ function requestCoreLogin(
   core: Provider,
   reason?: string,
 ): Promise<LoginResponse> {
-  const requestId = `dotli:topbar-login:${++topbarLoginRequestSeq}`;
+  const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
   const responseCodec = scale.indexedTaggedUnion({
     V1: [
       0,
@@ -225,7 +233,7 @@ function requestCoreLogin(
       try {
         const result = responseCodec.dec(decoded.value.payload.value).value;
         if (result.success) {
-          resolve(result.value as LoginResponse);
+          resolve(result.value);
         } else {
           reject(new Error(JSON.stringify(result.value)));
         }

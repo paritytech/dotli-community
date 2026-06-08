@@ -26,7 +26,7 @@ function getHostOrigin(): string {
 }
 
 export function createNavigateTo(): HostCallbacks["navigateTo"] {
-  return async (url) => {
+  return (url) => {
     const dotUrl = dotNsUrl.parseDotNsDomain(url);
 
     if (dotUrl && dotNsUrl.isDotDomain(dotUrl.identifier)) {
@@ -37,16 +37,17 @@ export function createNavigateTo(): HostCallbacks["navigateTo"] {
         ),
         "_blank",
       );
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     const localhostUrl = dotNsUrl.parseLocalhostUrl(url);
     if (localhostUrl) {
       const suffix = localhostUrl.pathname ? "/" + localhostUrl.pathname : "";
       window.open(`${getHostOrigin()}/${localhostUrl.host}${suffix}`, "_blank");
-      return undefined;
+      return Promise.resolve(undefined);
     }
 
     window.open(dotNsUrl.normalizeUrl(url), "_blank");
+    return Promise.resolve(undefined);
   };
 }
