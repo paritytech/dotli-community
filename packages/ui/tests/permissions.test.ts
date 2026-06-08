@@ -126,11 +126,11 @@ describe("isDevicePermission", () => {
 
 describe("isEnforceableDevicePermission", () => {
   it("rejects auto-granted device permissions", () => {
-    expect(isEnforceableDevicePermission("Notifications")).toBe(false);
     expect(isEnforceableDevicePermission("OpenUrl")).toBe(false);
   });
 
   it("accepts gateable device permissions", () => {
+    expect(isEnforceableDevicePermission("Notifications")).toBe(true);
     expect(isEnforceableDevicePermission("Camera")).toBe(true);
     expect(isEnforceableDevicePermission("Microphone")).toBe(true);
   });
@@ -185,6 +185,8 @@ describe("ALL_PERMISSIONS (data invariants)", () => {
     expect(names).toContain("ChainSubmit");
     expect(names).toContain("PreimageSubmit");
     expect(names).toContain("StatementSubmit");
+    expect(names).toContain("UserId");
+    expect(names).toContain("Notifications");
     expect(names).not.toContain("TransactionSubmit");
   });
 });

@@ -10,7 +10,12 @@
 // dotli's resolver already maintains. Routing through dotli's existing
 // providers reuses already-synced chains and respects the toggle.
 
-import type { ChainConnect, WasmHostCallbacks } from "@truapi/host-shared";
+import { bytesToHex } from "@parity/truapi/scale";
+import type {
+  HostCallbacks,
+  PlatformJsonRpcConnection,
+} from "@parity/truapi-host-wasm";
+import type { JsonRpcProvider } from "polkadot-api";
 import { getChainBackend } from "@dotli/config/mode";
 import {
   createChainProvider as createSmoldotChainProvider,
@@ -22,45 +27,61 @@ import {
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
 
-export function createChainConnect(): ChainConnect {
-  return (genesisHash, onResponse) => {
-    // host-shared transports raw JSON strings; polkadot-api's
-    // JsonRpcProvider speaks typed objects. Bridge with parse/stringify
-    // at this boundary so the adapter is otherwise a pass-through.
-    const onMessage = (message: unknown): void => {
-      onResponse(JSON.stringify(message));
-    };
+function toConnection(
+  provider: JsonRpcProvider | null,
+): PlatformJsonRpcConnection {
+  if (!provider) throw new Error("Chain provider unavailable");
+  const queue: string[] = [];
+  let wake: (() => void) | null = null;
+  let stopped = false;
+  const conn = provider((message: unknown) => {
+    queue.push(JSON.stringify(message));
+    wake?.();
+    wake = null;
+  });
+
+  return {
+    send(request: string): void {
+      conn.send(JSON.parse(request));
+    },
+    async *responses(): AsyncIterable<string> {
+      try {
+        while (!stopped) {
+          while (queue.length > 0) {
+            yield queue.shift()!;
+          }
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      } finally {
+        stopped = true;
+        conn.disconnect();
+      }
+    },
+  };
+}
+
+export function createChainConnect(): HostCallbacks["connect"] {
+  return async (genesisHashBytes) => {
+    const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getChainBackend();
     if (backend === "rpc") {
       if (!isRpcChainSupported(genesisHash)) {
         log.warn(
           `[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`,
         );
-        return null;
+        throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      const provider = createRpcChainProvider(genesisHash);
-      if (!provider) return null;
-      const conn = provider(onMessage);
-      return {
-        send: (request) => conn.send(JSON.parse(request)),
-        close: conn.disconnect,
-      };
+      return toConnection(createRpcChainProvider(genesisHash));
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
       log.warn(
         `[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`,
       );
-      return null;
+      throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    const provider = createSmoldotChainProvider(genesisHash);
-    if (!provider) return null;
-    const conn = provider(onMessage);
-    return {
-      send: (request) => conn.send(JSON.parse(request)),
-      close: conn.disconnect,
-    };
+    return toConnection(createSmoldotChainProvider(genesisHash));
   };
 }
-
-export type ChainCallback = NonNullable<WasmHostCallbacks["chainConnect"]>;

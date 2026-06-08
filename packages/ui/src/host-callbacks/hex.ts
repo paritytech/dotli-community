@@ -1,7 +1,6 @@
-// Minimal hex utilities for the @truapi/client wire types (which use
-// `Hex = Uint8Array`) bridging to the `0x${string}` shape host-papp expects.
-// Kept local so the UI package does not need to depend on @novasamatech/host-api
-// once Phase B5 drops that dep.
+// Minimal hex utilities for generated TrUAPI wire types (`Uint8Array`)
+// bridging to the `0x${string}` shape host-papp expects.
+// Kept local so the UI package does not need host-api hex helpers.
 
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 

@@ -1,16 +1,18 @@
 // dot.li — TrUAPI host bridge
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
-// product iframe via `@truapi/host-web`. Each render swaps the running
+// product iframe via `@parity/truapi-host-wasm`. Each render swaps the running
 // runtime, so disposing the last host tears down both the iframe and
 // the core.
 //
 // Nested dApp-in-dApp composition (old `setupNestedBridgeDetector`) is
 // dropped: `createIframeHost` uses a dedicated `MessageChannel`, so
 // inner iframes have no host port. Tracked in §6.1 of the refactor plan
-// as a known regression; a future `attachNested` API in `@truapi/host-web`
+// as a known regression; a future nested-port API in the TrUAPI host bridge
 // will restore it.
 
+import { createMessagePortProvider, type Provider } from "@parity/truapi";
+import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
   getChainBackend,
@@ -31,12 +33,12 @@ export { renderContent, renderArchive, prepareIframe } from "./render";
 // main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
 const runtimeChunkPromise = Promise.all([
-  import("@truapi/host-web"),
-  import("@truapi/host-shared/dist/worker-runtime.js?worker"),
+  import("@parity/truapi-host-wasm/web"),
+  import("@parity/truapi-host-wasm/worker-runtime?worker"),
 ]).then(([web, workerMod]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {
-    createWebWorkerHostRuntime: web.createWebWorkerHostRuntime,
+    createWebWorkerProvider: web.createWebWorkerProvider,
     createIframeHost: web.createIframeHost,
     HostWorker: workerMod.default as new () => Worker,
   };
@@ -117,6 +119,25 @@ function isDebugEnabled(): boolean {
   }
 }
 
+function pipeProviders(product: Provider, core: Provider): () => void {
+  const unsubs = [
+    product.subscribe((message) => core.postMessage(message)),
+    core.subscribe((message) => product.postMessage(message)),
+    product.subscribeClose?.(() => core.dispose()),
+    core.subscribeClose?.(() => product.dispose()),
+  ].filter((fn): fn is () => void => typeof fn === "function");
+
+  return () => {
+    for (const unsub of unsubs) {
+      try {
+        unsub();
+      } catch {
+        /* ignore teardown races */
+      }
+    }
+  };
+}
+
 async function createHost(args: {
   iframeUrl: string;
   allowedOrigin: string;
@@ -124,23 +145,48 @@ async function createHost(args: {
   label: string;
   container: HTMLElement;
 }): Promise<{ iframe: HTMLIFrameElement; dispose: () => void }> {
-  const { createWebWorkerHostRuntime, createIframeHost, HostWorker } =
+  const { createWebWorkerProvider, createIframeHost, HostWorker } =
     await runtimeChunkPromise;
-  const runtime = await createWebWorkerHostRuntime(
+  const coreProvider = await createWebWorkerProvider(
     new HostWorker(),
-    createHostCallbacks({
-      label: args.label,
-      storagePrefix: `dotli:${args.label}:`,
-    }),
-    { debug: isDebugEnabled() },
+    createWasmRawCallbacks(
+      createHostCallbacks({
+        label: args.label,
+        storagePrefix: `dotli:${args.label}:`,
+      }),
+    ),
+    {
+      debug: isDebugEnabled(),
+      runtimeConfig: {
+        productId: args.label.startsWith("localhost:")
+          ? args.label
+          : `${args.label}.dot`,
+        productLabel: args.label,
+        siteId: window.location.origin,
+      },
+    },
   );
-  return createIframeHost({
+  let productProvider: Provider | null = null;
+  let disposePipe: (() => void) | null = null;
+  const host = createIframeHost({
     iframeUrl: args.iframeUrl,
     allowedOrigin: args.allowedOrigin,
     sandbox: args.sandbox,
     container: args.container,
-    runtime,
+    onPort: (port) => {
+      productProvider = createMessagePortProvider(port);
+      disposePipe = pipeProviders(productProvider, coreProvider);
+    },
   });
+  return {
+    iframe: host.iframe,
+    dispose() {
+      disposePipe?.();
+      productProvider?.dispose();
+      coreProvider.dispose();
+      host.dispose();
+    },
+  };
 }
 
 /**
@@ -173,9 +219,8 @@ export async function renderIframe(url: string, label: string): Promise<void> {
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } = await import(
-      "@dotli/sandbox-checker/sandbox-checker-ui"
-    );
+    const { setupViolationPanel } =
+      await import("@dotli/sandbox-checker/sandbox-checker-ui");
     currentPanelDispose = setupViolationPanel(host.iframe);
   }
 
@@ -283,9 +328,8 @@ export async function renderAppSubdomain(
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } = await import(
-      "@dotli/sandbox-checker/sandbox-checker-ui"
-    );
+    const { setupViolationPanel } =
+      await import("@dotli/sandbox-checker/sandbox-checker-ui");
     currentPanelDispose = setupViolationPanel(host.iframe);
   }
 

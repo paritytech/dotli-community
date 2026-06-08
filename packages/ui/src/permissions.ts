@@ -7,18 +7,19 @@
 //
 // Permission status: 'ask' (default), 'granted', or 'denied'.
 
-import type { DevicePermission } from "@truapi/client";
+import type { HostDevicePermissionRequest } from "@parity/truapi";
 
-export type DevicePermissionName = DevicePermission["tag"];
+export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
   | DevicePermissionName
   | "ChainSubmit"
   | "PreimageSubmit"
-  | "StatementSubmit";
+  | "StatementSubmit"
+  | "UserId";
 
 /** Device permissions the host can't actually gate (see AUTO_GRANT_DEVICE_PERMISSIONS). */
-export type AutoGrantDevicePermission = "Notifications" | "OpenUrl";
+export type AutoGrantDevicePermission = "OpenUrl";
 
 /** Device permissions that DO have a host-side enforcement point. */
 export type EnforceableDevicePermission = Exclude<
@@ -56,9 +57,9 @@ export const DEVICE_PERMISSION_POLICY: Partial<
   Biometrics: "publickey-credentials-get",
   // Chromium-only; harmless to include on browsers that ignore it.
   NFC: "nfc",
-  // Notifications and OpenUrl are not gated by a Permissions Policy
-  // directive — the browser Notifications API has its own prompt, and
-  // cross-origin navigation is controlled by the anchor/window.open path.
+  // Notifications has no Permissions Policy directive but is still
+  // surfaced through the host permission store. OpenUrl is auto-granted
+  // because cross-origin navigation is controlled by window.open.
 };
 
 /**
@@ -70,7 +71,7 @@ export const DEVICE_PERMISSION_POLICY: Partial<
  * mislead users.
  */
 export const AUTO_GRANT_DEVICE_PERMISSIONS: ReadonlySet<AutoGrantDevicePermission> =
-  new Set<AutoGrantDevicePermission>(["Notifications", "OpenUrl"]);
+  new Set<AutoGrantDevicePermission>(["OpenUrl"]);
 
 /** Type guard: narrows `DevicePermissionName` past the auto-grant set. */
 export function isEnforceableDevicePermission(
@@ -84,6 +85,7 @@ export const ALL_PERMISSIONS: readonly {
   name: EnforceablePermissionName;
   label: string;
 }[] = [
+  { name: "Notifications", label: "Notifications" },
   { name: "Camera", label: "Camera" },
   { name: "Microphone", label: "Microphone" },
   { name: "Location", label: "Location" },
@@ -94,6 +96,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: "ChainSubmit", label: "Sign Transactions" },
   { name: "PreimageSubmit", label: "Submit Preimages" },
   { name: "StatementSubmit", label: "Submit Statements" },
+  { name: "UserId", label: "Share Identity" },
 ];
 
 /** Returns true if the permission name maps to an iframe `allow` directive. */

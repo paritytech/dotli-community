@@ -2,7 +2,7 @@
 // needs to classify the result so `.dot` domains land on the right host
 // subdomain and localhost products wrap into the configured host origin.
 
-import type { WasmHostCallbacks } from "@truapi/host-shared";
+import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
@@ -25,8 +25,8 @@ function getHostOrigin(): string {
   return `${window.location.protocol}//${BASE_DOMAIN}`;
 }
 
-export function createOpenUrl(): WasmHostCallbacks["openUrl"] {
-  return (url) => {
+export function createNavigateTo(): HostCallbacks["navigateTo"] {
+  return async (url) => {
     const dotUrl = dotNsUrl.parseDotNsDomain(url);
 
     if (dotUrl && dotNsUrl.isDotDomain(dotUrl.identifier)) {
@@ -37,17 +37,14 @@ export function createOpenUrl(): WasmHostCallbacks["openUrl"] {
         ),
         "_blank",
       );
-      return;
+      return undefined;
     }
 
     const localhostUrl = dotNsUrl.parseLocalhostUrl(url);
     if (localhostUrl) {
       const suffix = localhostUrl.pathname ? "/" + localhostUrl.pathname : "";
-      window.open(
-        `${getHostOrigin()}/${localhostUrl.host}${suffix}`,
-        "_blank",
-      );
-      return;
+      window.open(`${getHostOrigin()}/${localhostUrl.host}${suffix}`, "_blank");
+      return undefined;
     }
 
     window.open(dotNsUrl.normalizeUrl(url), "_blank");

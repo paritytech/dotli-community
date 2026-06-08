@@ -1,13 +1,12 @@
-// Permission prompt — collapses the legacy device/remote split into one
-// async `true|false` decision. Returns a Promise<boolean>; the Rust core
-// awaits it before encoding the response, so a slow modal blocks the
-// product just as long as the user takes to dismiss it. If the iframe
+// Permission prompt. The Rust core awaits the typed response before encoding
+// the product reply, so a slow modal blocks the product just as long as the
+// user takes to dismiss it. If the iframe
 // reloads while the promise is pending (device-permission grant path),
 // the worker disappears and the response is dropped — the product on the
 // new iframe retries and reads the cached decision instead.
 
-import type { WasmHostCallbacks } from "@truapi/host-shared";
-import type { RemotePermission } from "@truapi/client";
+import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
   isEnforceableDevicePermission,
@@ -26,7 +25,9 @@ function gatedRemotePermissionName(
 ): EnforceablePermissionName | null {
   switch (tag) {
     case "ChainSubmit":
+    case "PreimageSubmit":
     case "StatementSubmit":
+    case "UserId":
       return tag;
     case "Remote":
     case "WebRtc":
@@ -36,26 +37,28 @@ function gatedRemotePermissionName(
 
 export function createPromptPermission(
   label: string,
-): WasmHostCallbacks["promptPermission"] {
+): Pick<HostCallbacks, "devicePermission" | "remotePermission"> {
   const limiter = createSubmitRateLimiter();
-  return async (permission) => {
-    if (permission.tag === "Device") {
-      const tag = permission.value.tag;
-      // Notifications / OpenUrl have no host-side enforcement point;
-      // auto-grant rather than show a modal whose deny button can't
-      // actually block the underlying browser API.
-      if (!isEnforceableDevicePermission(tag)) {
-        return true;
-      }
-      return decide(label, tag, "Device", limiter);
+  const devicePermission: HostCallbacks["devicePermission"] = async (tag) => {
+    // OpenUrl has no host-side enforcement point; auto-grant rather than show
+    // a modal whose deny button cannot block the underlying browser API.
+    if (!isEnforceableDevicePermission(tag)) {
+      return { granted: true };
     }
-
-    const name = gatedRemotePermissionName(permission.value.tag);
-    if (name === null) {
-      return true;
-    }
-    return decide(label, name, "Remote", limiter);
+    return { granted: await decide(label, tag, "Device", limiter) };
   };
+
+  const remotePermission: HostCallbacks["remotePermission"] = async (
+    request,
+  ) => {
+    const name = gatedRemotePermissionName(request.permission.tag);
+    if (name === null) {
+      return { granted: true };
+    }
+    return { granted: await decide(label, name, "Remote", limiter) };
+  };
+
+  return { devicePermission, remotePermission };
 }
 
 async function decide(

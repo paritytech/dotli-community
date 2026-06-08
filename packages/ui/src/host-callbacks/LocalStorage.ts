@@ -1,13 +1,12 @@
 // Mirrors the legacy `container.handleLocalStorage*` bodies: base64
-// round-trip into `window.localStorage[storagePrefix + key]`. Throwing an
-// Error is the documented contract on `WasmHostCallbacks` failure.
+// round-trip into `window.localStorage[storagePrefix + key]`.
 
-import type { WasmHostCallbacks } from "@truapi/host-shared";
+import type { HostCallbacks } from "@parity/truapi-host-wasm";
 
 export function createLocalStorageRead(
   storagePrefix: string,
-): WasmHostCallbacks["localStorageRead"] {
-  return (key) => {
+): HostCallbacks["read"] {
+  return async (key) => {
     try {
       const raw = localStorage.getItem(storagePrefix + key);
       if (raw === null) {
@@ -22,8 +21,8 @@ export function createLocalStorageRead(
 
 export function createLocalStorageWrite(
   storagePrefix: string,
-): WasmHostCallbacks["localStorageWrite"] {
-  return (key, value) => {
+): HostCallbacks["write"] {
+  return async (key, value) => {
     try {
       const b64 = btoa(String.fromCharCode(...value));
       localStorage.setItem(storagePrefix + key, b64);
@@ -35,8 +34,8 @@ export function createLocalStorageWrite(
 
 export function createLocalStorageClear(
   storagePrefix: string,
-): WasmHostCallbacks["localStorageClear"] {
-  return (key) => {
+): HostCallbacks["clear"] {
+  return async (key) => {
     try {
       localStorage.removeItem(storagePrefix + key);
     } catch {
