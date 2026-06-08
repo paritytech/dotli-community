@@ -32,6 +32,7 @@ import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
+import { createTruapiRuntimeConfig } from "./runtime-config";
 
 // Re-export sandbox-safe rendering functions
 export { renderContent, renderArchive, prepareIframe } from "./render";
@@ -264,13 +265,7 @@ async function createHost(args: {
     ),
     {
       debug: isDebugEnabled(),
-      runtimeConfig: {
-        productId: args.label.startsWith("localhost:")
-          ? args.label
-          : `${args.label}.dot`,
-        productLabel: args.label,
-        siteId: window.location.origin,
-      },
+      runtimeConfig: createTruapiRuntimeConfig(args.label),
     },
   );
   let productProvider: Provider | null = null;

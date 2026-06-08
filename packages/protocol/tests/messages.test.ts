@@ -4,6 +4,7 @@ import {
   PASEO_RELAY_GENESIS,
   ASSET_HUB_PASEO_GENESIS,
   BULLETIN_PASEO_GENESIS,
+  PEOPLE_PASEO_GENESIS,
 } from "@dotli/config/config";
 import {
   isProtocolEnvelope,
@@ -141,12 +142,16 @@ describe("SUPPORTED_GENESIS_HASHES", () => {
     expect(SUPPORTED_GENESIS_HASHES.has(BULLETIN_PASEO_GENESIS)).toBe(true);
   });
 
+  it("contains the People Paseo genesis hash", () => {
+    expect(SUPPORTED_GENESIS_HASHES.has(PEOPLE_PASEO_GENESIS)).toBe(true);
+  });
+
   it("does not contain arbitrary hashes", () => {
     expect(SUPPORTED_GENESIS_HASHES.has("0xdeadbeef")).toBe(false);
   });
 
-  it("has exactly 3 supported chains", () => {
-    expect(SUPPORTED_GENESIS_HASHES.size).toBe(3);
+  it("has exactly 4 supported chains", () => {
+    expect(SUPPORTED_GENESIS_HASHES.size).toBe(4);
   });
 });
 

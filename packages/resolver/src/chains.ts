@@ -13,12 +13,14 @@ import {
   PASEO_RELAY_GENESIS as PASEO_RELAY,
   ASSET_HUB_PASEO_GENESIS as ASSET_HUB_PASEO,
   BULLETIN_PASEO_GENESIS as BULLETIN_PASEO,
+  PEOPLE_PASEO_GENESIS as PEOPLE_PASEO,
 } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 
 import {
   getDappAssetHubProvider,
   getBulletinChain,
+  getPeopleChain,
   makeNonRemovingChain,
   getRelayChain,
 } from "./smoldot";
@@ -27,6 +29,7 @@ const SUPPORTED_GENESIS = new Set([
   PASEO_RELAY.toLowerCase(),
   ASSET_HUB_PASEO.toLowerCase(),
   BULLETIN_PASEO.toLowerCase(),
+  PEOPLE_PASEO.toLowerCase(),
 ]);
 
 export function isChainSupported(genesisHash: string): boolean {
@@ -62,6 +65,13 @@ export function createChainProvider(
     log.warn("[dot.li chains] Returning Bulletin Paseo provider (smoldot)");
     return getSmProvider(() =>
       getBulletinChain().then((chain) => makeNonRemovingChain(chain)),
+    );
+  }
+
+  if (key === PEOPLE_PASEO.toLowerCase()) {
+    log.warn("[dot.li chains] Returning People Paseo provider (smoldot)");
+    return getSmProvider(() =>
+      getPeopleChain().then((chain) => makeNonRemovingChain(chain)),
     );
   }
 
