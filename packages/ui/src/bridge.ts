@@ -5,11 +5,9 @@
 // runtime, so disposing the last host tears down both the iframe and
 // the core.
 //
-// Nested dApp-in-dApp composition (old `setupNestedBridgeDetector`) is
-// dropped: `createIframeHost` uses a dedicated `MessageChannel`, so
-// inner iframes have no host port. Tracked in §6.1 of the refactor plan
-// as a known regression; a future nested-port API in the TrUAPI host bridge
-// will restore it.
+// Nested dApp-in-dApp composition is not modeled as separate Rust runtimes,
+// sessions, product identities, or storage namespaces. Any future nested
+// traffic must share the top-level core/provider context.
 
 import {
   decodeWireMessage,

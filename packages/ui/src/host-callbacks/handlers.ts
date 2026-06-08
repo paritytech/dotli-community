@@ -5,7 +5,7 @@
 // Scoping:
 // - `label` identifies the dApp, used in topbar notifications, permission
 //   storage keys, and sign modal titles.
-// - `storagePrefix` scopes `localStorage` per dApp (and per nested bridge).
+// - `storagePrefix` scopes `localStorage` per dApp.
 //
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { createNavigateTo } from "./OpenUrl";
