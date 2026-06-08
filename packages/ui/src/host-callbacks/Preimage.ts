@@ -18,6 +18,10 @@ const POLL_INTERVAL_MS = 10_000;
 const INITIAL_POLL_DELAY_MS = 1000;
 const preimageCache = new Map<string, Uint8Array>();
 
+function noop(): void {
+  return;
+}
+
 function createPreimageSubmitConfirm(): HostCallbacks["confirmPreimageSubmit"] {
   return async (size) => {
     await showPreimageSubmitModal(Number(size));
@@ -41,8 +45,26 @@ function createPreimageLookupSubscribe(
     const key = toHexPrefixed(request);
     log.warn(`[${label}] Preimage lookup subscribe, key: ${key}`);
 
+    const cached = preimageCache.get(key);
+    if (cached) {
+      return createResultStream<Uint8Array | undefined>([cached], () => noop);
+    }
+
     let stopped = false;
     return createResultStream<Uint8Array | undefined>([undefined], (push) => {
+      let intervalId: ReturnType<typeof setInterval> | null = null;
+      let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
+      const stopPolling = (): void => {
+        stopped = true;
+        if (intervalId !== null) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        if (initialTimeoutId !== null) {
+          clearTimeout(initialTimeoutId);
+          initialTimeoutId = null;
+        }
+      };
       const poll = async (): Promise<void> => {
         if (stopped) {
           return;
@@ -76,14 +98,18 @@ function createPreimageLookupSubscribe(
             if (chunks.length > 0) {
               const data = concatBytes(...chunks);
               if (data.length > 0) {
+                preimageCache.set(key, data);
                 push(data);
+                stopPolling();
                 return;
               }
             }
           } else {
             const result = await fetchFromIpfs(cidString);
             if (result.data.length > 0) {
+              preimageCache.set(key, result.data);
               push(result.data);
+              stopPolling();
               return;
             }
           }
@@ -95,16 +121,14 @@ function createPreimageLookupSubscribe(
         }
       };
 
-      const intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
-      const initialTimeoutId = setTimeout(
+      intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
+      initialTimeoutId = setTimeout(
         () => void poll(),
         INITIAL_POLL_DELAY_MS,
       );
 
       return () => {
-        stopped = true;
-        clearInterval(intervalId);
-        clearTimeout(initialTimeoutId);
+        stopPolling();
       };
     });
   };
