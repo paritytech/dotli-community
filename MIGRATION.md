@@ -67,6 +67,7 @@ The runtime manifests and source must not depend on or import:
 - `@novasamatech/host-papp`
 - `@novasamatech/sdk-statement`
 - `@novasamatech/statement-store`
+- `@novasamatech/storage-adapter`
 
 `packages/ui/tests/nova-removal.test.ts` guards this invariant across dotli
 manifests, `bun.lock`, `apps/*/src`, and `packages/*/src`.
