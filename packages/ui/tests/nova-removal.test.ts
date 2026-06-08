@@ -9,6 +9,7 @@ const forbiddenPackages = [
   "@novasamatech/host-papp",
   "@novasamatech/sdk-statement",
   "@novasamatech/statement-store",
+  "@novasamatech/storage-adapter",
 ] as const;
 
 async function collectFiles(
