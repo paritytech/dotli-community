@@ -20,6 +20,8 @@ import { createPreimageAdapters } from "./Preimage";
 import { createChainConnect } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
 import { createThemeSubscribe } from "./Theme";
+import { createPresentPairing } from "./Pairing";
+import { createSessionStoreAdapters } from "./SessionStore";
 
 export interface CreateHostCallbacksOptions {
   label: string;
@@ -38,6 +40,8 @@ export function createHostCallbacks(
     read: createLocalStorageRead(storagePrefix),
     write: createLocalStorageWrite(storagePrefix),
     clear: createLocalStorageClear(storagePrefix),
+    presentPairing: createPresentPairing(label),
+    ...createSessionStoreAdapters(),
     ...createPreimageAdapters(label),
     subscribeTheme: createThemeSubscribe(),
     connect: createChainConnect(),

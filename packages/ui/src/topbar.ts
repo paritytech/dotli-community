@@ -41,6 +41,7 @@ import {
   setPermissionStatus,
   type PermissionStatus,
 } from "./permissions";
+import type { TrUApiPairingRequest } from "./host-callbacks/Pairing";
 
 // ── DOM refs ───────────────────────────────────────────────
 
@@ -83,6 +84,8 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
+let activeTruapiPairingCancel: (() => void) | null = null;
+let truapiSessionConnected = false;
 
 // ── Lazy Auth Loading ─────────────────────────────────────
 
@@ -167,7 +170,7 @@ export function initTopBar(): void {
   authButton.addEventListener("click", handleAuthButtonClick);
 
   // Modal close button
-  modalClose.addEventListener("click", closeModal);
+  modalClose.addEventListener("click", () => closeModal());
 
   // Clicking backdrop (outside modal) closes modal
   modalBackdrop.addEventListener("click", (e) => {
@@ -199,6 +202,27 @@ export function initTopBar(): void {
         authMod?.startPairing();
       }
     });
+  });
+
+  window.addEventListener("dotli:truapi-pairing", (e: Event) => {
+    const { deeplink, label, cancel } = (e as CustomEvent<TrUApiPairingRequest>)
+      .detail;
+    activeTruapiPairingCancel?.();
+    activeTruapiPairingCancel = cancel;
+    openModal(undefined, label);
+    renderPairing(deeplink);
+  });
+
+  window.addEventListener("dotli:truapi-session-state", (e: Event) => {
+    const { connected } = (e as CustomEvent<{ connected: boolean }>).detail;
+    truapiSessionConnected = connected;
+    activeTruapiPairingCancel = null;
+    closeModal({ skipTruapiCancel: true });
+    if (connected) {
+      renderTruapiLoggedIn();
+    } else if (!authMod) {
+      renderLoggedOut();
+    }
   });
 
   // Close popovers when clicking outside
@@ -319,6 +343,13 @@ function renderLoggedIn(state: AuthState & { status: "authenticated" }): void {
   userPopoverUsername.textContent = username;
 }
 
+function renderTruapiLoggedIn(): void {
+  authButton.innerHTML = `<div class="user-badge">TU</div>`;
+  authButton.title = "Account";
+  userPopoverUsername.textContent = "Connected with Polkadot Mobile";
+  window.dispatchEvent(new Event("dotli:authenticated"));
+}
+
 function renderPairing(payload: string): void {
   currentQrPayload = payload;
 
@@ -399,6 +430,8 @@ function handleAuthButtonClick(): void {
       openModal();
       authMod.startPairing();
     }
+  } else if (truapiSessionConnected) {
+    userPopover.classList.toggle("open");
   } else {
     // Auth not loaded yet — load it and start pairing
     openModal();
@@ -412,6 +445,8 @@ function handleDisconnect(): void {
   userPopover.classList.remove("open");
   if (authMod) {
     void authMod.disconnect();
+  } else {
+    window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
   }
 }
 
@@ -1714,8 +1749,13 @@ function openModal(reason?: string, label?: string): void {
   modalBackdrop.classList.add("open");
 }
 
-function closeModal(): void {
+function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
+
+  if (!opts.skipTruapiCancel) {
+    activeTruapiPairingCancel?.();
+    activeTruapiPairingCancel = null;
+  }
 
   if (authMod) {
     const state = authMod.getAuthState();

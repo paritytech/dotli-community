@@ -49,8 +49,13 @@ void runtimeChunkPromise.catch(() => {
 
 const app = document.getElementById("app") ?? document.body;
 
-let currentHost: { iframe: HTMLIFrameElement; dispose: () => void } | null =
-  null;
+interface ActiveHost {
+  iframe: HTMLIFrameElement;
+  disconnect: () => Promise<void>;
+  dispose: () => void;
+}
+
+let currentHost: ActiveHost | null = null;
 let currentPanelDispose: (() => void) | null = null;
 
 // Track current product state for permission-grant reloads
@@ -75,6 +80,10 @@ window.addEventListener("dotli:device-permission-changed", () => {
   ) {
     void renderAppSubdomain(currentCid, currentLabel);
   }
+});
+
+window.addEventListener("dotli:truapi-disconnect-request", () => {
+  void currentHost?.disconnect();
 });
 
 /**
@@ -144,7 +153,7 @@ async function createHost(args: {
   sandbox: string;
   label: string;
   container: HTMLElement;
-}): Promise<{ iframe: HTMLIFrameElement; dispose: () => void }> {
+}): Promise<ActiveHost> {
   const { createWebWorkerProvider, createIframeHost, HostWorker } =
     await runtimeChunkPromise;
   const coreProvider = await createWebWorkerProvider(
@@ -180,6 +189,9 @@ async function createHost(args: {
   });
   return {
     iframe: host.iframe,
+    disconnect() {
+      return coreProvider.disconnect();
+    },
     dispose() {
       disposePipe?.();
       productProvider?.dispose();
