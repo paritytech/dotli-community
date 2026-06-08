@@ -1036,9 +1036,6 @@ declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__:
   | { name: string; version: string }[]
   | undefined;
-declare const __NOVASAMATECH_VERSIONS__:
-  | { name: string; version: string }[]
-  | undefined;
 
 /**
  * Render the Diagnostics block at the bottom of the settings popover. Rows
@@ -1132,29 +1129,9 @@ function renderDiagnostics(parent: HTMLElement): void {
     polkadotApi.push(...__POLKADOT_API_VERSIONS__);
   }
 
-  // @novasamatech/* versions move in lockstep — showing every single
-  // package is noise. Keep only the two that are independently meaningful:
-  // host-api (the host runtime) and sdk-statement (the statement store
-  // client). Everything else in the scope tracks host-api's version.
-  const NOVASAMATECH_ALLOWLIST = new Set([
-    "@novasamatech/host-api",
-    "@novasamatech/sdk-statement",
-  ]);
-  const novasamatech = (
-    typeof __NOVASAMATECH_VERSIONS__ === "undefined"
-      ? []
-      : __NOVASAMATECH_VERSIONS__
-  ).filter((p) => NOVASAMATECH_ALLOWLIST.has(p.name));
-
   if (polkadotApi.length > 0) {
     appendSectionHeader(parent, "@polkadot-api");
     for (const pkg of polkadotApi) {
-      renderInfoRow(parent, pkg.name, pkg.version);
-    }
-  }
-  if (novasamatech.length > 0) {
-    appendSectionHeader(parent, "@triangle-sdk");
-    for (const pkg of novasamatech) {
       renderInfoRow(parent, pkg.name, pkg.version);
     }
   }
@@ -1171,7 +1148,6 @@ function renderDiagnostics(parent: HTMLElement): void {
       base,
       smoldotInfo,
       polkadotApi,
-      novasamatech,
     );
     const body = [
       "<!-- Describe the issue above this line; the diagnostics below are auto-filled. -->",
@@ -1199,15 +1175,14 @@ function renderDiagnostics(parent: HTMLElement): void {
  *                 so the snapshot matches what's actually live right now.
  *    3. Permissions — per-product; omitted on landing where we don't have
  *                     a scoped label to query.
- *    4. Packages — flat list: smoldot + polkadot-api + novasamatech. The
- *                   live block heights from the @smoldot popover section
- *                   aren't included here because they're noise in a bug
- *                   report; the popover already shows them live. */
+ *    4. Packages — flat list: smoldot + polkadot-api. The live block heights
+ *                   from the @smoldot popover section aren't included here
+ *                   because they're noise in a bug report; the popover already
+ *                   shows them live. */
 function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
   polkadotApi: { name: string; version: string }[],
-  novasamatech: { name: string; version: string }[],
 ): string {
   const lines: string[] = [];
   for (const [k, v] of base) {
@@ -1237,9 +1212,6 @@ function formatDiagnosticsReport(
   // dependency and the one most issues are ultimately about.
   lines.push("", "Packages:", `  smoldot: ${smoldot.version}`);
   for (const p of polkadotApi) {
-    lines.push(`  ${p.name}: ${p.version}`);
-  }
-  for (const p of novasamatech) {
     lines.push(`  ${p.name}: ${p.version}`);
   }
   return lines.join("\n");

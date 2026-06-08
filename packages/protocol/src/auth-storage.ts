@@ -9,10 +9,9 @@ export type SharedAuthRequestMethod =
 
 export const SHARED_AUTH_SESSION_KEY = "SsoSessions";
 
-// SCALE-encoded empty `Vec<Session>` from `@novasamatech/host-papp` — a single
-// length byte of 0. If host-papp ever changes the session list encoding (e.g.
-// wraps it in an `Option<>`), this sentinel must be updated or the probe will
-// return true for empty payloads and trigger `ensureAuth()` on every load.
+// SCALE-encoded empty `Vec<Session>`: a single length byte of 0. Keep this in
+// sync with the core session list encoding so an empty session list does not
+// make the host report a stored SSO session.
 const EMPTY_SHARED_AUTH_SESSION_LIST = "0x00";
 
 const SHARED_AUTH_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;

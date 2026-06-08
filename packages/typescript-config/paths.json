@@ -2,7 +2,6 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "paths": {
-      "@dotli/auth/*": ["../auth/src/*"],
       "@dotli/config/*": ["../config/src/*"],
       "@dotli/content/*": ["../content/src/*"],
       "@dotli/metrics/*": ["../metrics/src/*"],

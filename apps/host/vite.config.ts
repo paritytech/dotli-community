@@ -339,7 +339,6 @@ export default defineConfig({
       "@dotli/resolver": resolve(PACKAGES, "resolver/src"),
       "@dotli/protocol": resolve(PACKAGES, "protocol/src"),
       "@dotli/content": resolve(PACKAGES, "content/src"),
-      "@dotli/auth": resolve(PACKAGES, "auth/src"),
       "@dotli/ui": resolve(PACKAGES, "ui/src"),
       "@dotli/sandbox-checker": SANDBOX_CHECKER_SRC,
     },
@@ -356,9 +355,6 @@ export default defineConfig({
     __POLKADOT_API_VERSIONS__: JSON.stringify(
       collectDirectScopedDeps("@polkadot-api/"),
     ),
-    __NOVASAMATECH_VERSIONS__: JSON.stringify(
-      collectDirectScopedDeps("@novasamatech/"),
-    ),
   },
   optimizeDeps: {
     exclude: ["@polkadot-api/wasm-executor", "verifiablejs"],
@@ -368,15 +364,6 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("@novasamatech/scale")) {
-            return "nova-scale";
-          }
-        },
-      },
-    },
   },
   server: {
     fs: {
