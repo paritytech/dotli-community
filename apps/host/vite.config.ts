@@ -1,6 +1,12 @@
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import { readFileSync, readdirSync, copyFileSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+} from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
@@ -300,6 +306,30 @@ function githubPages404(): Plugin {
 }
 
 /**
+ * The Rust core worker dynamically imports
+ * `./wasm/web/truapi_server.js` relative to its emitted worker asset. Vite
+ * treats that path as a runtime dynamic import, so copy wasm-pack's generated
+ * web bundle beside the worker under `assets/wasm/web/`.
+ */
+function copyTruapiWasmWebBundle(): Plugin {
+  return {
+    name: "copy-truapi-wasm-web-bundle",
+    apply: "build",
+    writeBundle() {
+      const source = resolve(
+        TRUAPI_REPO_ROOT,
+        "js/packages/truapi-host-wasm/dist/wasm/web",
+      );
+      const targetParent = resolve(import.meta.dirname, OUT_DIR, "assets/wasm");
+      const target = resolve(targetParent, "web");
+      mkdirSync(targetParent, { recursive: true });
+      cpSync(source, target, { recursive: true });
+      console.log("Copied TrUAPI WASM web bundle -> assets/wasm/web/\n");
+    },
+  };
+}
+
+/**
  * Sentry plugin — only active when SENTRY_AUTH_TOKEN is set (CI deploys).
  * Skipped locally so source maps are preserved for debugging.
  */
@@ -327,6 +357,7 @@ export default defineConfig({
     wasm(),
     preconnectBootnodes(),
     preloadCriticalAssets(),
+    copyTruapiWasmWebBundle(),
     githubPages404(),
     sentry(),
   ],
