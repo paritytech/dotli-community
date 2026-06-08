@@ -2,7 +2,6 @@ export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
   resolveOwner: { label: string };
-  authHasSession: { siteId: string };
   authStorageRead: { siteId: string; key: string };
   authStorageWrite: { siteId: string; key: string; value: string };
   authStorageClear: { siteId: string; key: string };
@@ -94,8 +93,8 @@ export interface ProtocolInitFailedEnvelope {
 }
 
 // Unsolicited notification from the host iframe to its parent window when a
-// sibling tab writes or clears a shared-auth storage key. Drives cross-tab
-// `StorageAdapter.subscribe` callbacks — see `@dotli/protocol/client`
+// sibling tab writes or clears a shared host-origin storage key. Drives
+// cross-tab SessionStore notifications — see `@dotli/protocol/client`
 // `subscribeSharedAuthStorage` and `apps/protocol/src/main.ts`'s
 // BroadcastChannel relay.
 export interface ProtocolAuthStorageChangedEnvelope {

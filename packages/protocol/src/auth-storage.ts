@@ -2,21 +2,14 @@ import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config/config";
 import type { ProtocolRequestMethod } from "./messages";
 
 export type SharedAuthRequestMethod =
-  | "authHasSession"
   | "authStorageRead"
   | "authStorageWrite"
   | "authStorageClear";
 
-export const SHARED_AUTH_SESSION_KEY = "SsoSessions";
-
-// SCALE-encoded empty `Vec<Session>`: a single length byte of 0. Keep this in
-// sync with the core session list encoding so an empty session list does not
-// make the host report a stored SSO session.
-const EMPTY_SHARED_AUTH_SESSION_LIST = "0x00";
+export const SHARED_CORE_SESSION_KEY = "session";
 
 const SHARED_AUTH_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>([
-  "authHasSession",
   "authStorageRead",
   "authStorageWrite",
   "authStorageClear",
@@ -29,9 +22,9 @@ export function isSharedAuthRequestMethod(
 }
 
 /**
- * Shared auth sessions are scoped to the registrable root domain the shell is
- * running on. Each host iframe only accepts requests whose siteId equals its
- * own `SITE_ID`, so:
+ * Shared host-origin session storage is scoped to the registrable root domain
+ * the shell is running on. Each host iframe only accepts requests whose siteId
+ * equals its own `SITE_ID`, so:
  *   - `host.dot.li`         → only siteId `"dot.li"`
  *   - `host.paseo.li`       → only siteId `"paseo.li"`
  *   - `host.paseoli.dev`    → only siteId `"paseoli.dev"`
@@ -46,17 +39,14 @@ export function isSharedAuthSiteId(value: string): value is SiteId {
 }
 
 export function isSharedAuthStorageKey(key: string): boolean {
-  return SHARED_AUTH_KEY_PATTERN.test(key);
+  return key === SHARED_CORE_SESSION_KEY || SHARED_AUTH_KEY_PATTERN.test(key);
 }
 
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
-  return `PAPP_${siteId}_${key}`;
-}
-
-export function hasStoredSharedAuthSession(value: string | null): boolean {
-  return (
-    value !== null && value !== "" && value !== EMPTY_SHARED_AUTH_SESSION_LIST
-  );
+  if (key === SHARED_CORE_SESSION_KEY) {
+    return `TRUAPI_SESSION_${siteId}`;
+  }
+  return `TRUAPI_${siteId}_${key}`;
 }
 
 export function isSharedAuthOriginAllowed(origin: string): boolean {

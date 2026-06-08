@@ -541,10 +541,6 @@ export async function submitPreimageRemote(value: Uint8Array): Promise<void> {
   await postRequest("bulletinSubmitPreimage", { value });
 }
 
-export async function hasSharedAuthSession(siteId: SiteId): Promise<boolean> {
-  return (await postRequest("authHasSession", { siteId })) as boolean;
-}
-
 export async function readSharedAuthStorage(
   siteId: SiteId,
   key: string,
@@ -570,7 +566,7 @@ export async function clearSharedAuthStorage(
 }
 
 /**
- * Subscribe to cross-tab shared auth storage changes.
+ * Subscribe to cross-tab shared host-origin storage changes.
  *
  * Writes and clears performed by *sibling tabs* of the same root domain (e.g.
  * another `*.dot.li` tab) arrive here as notifications. The originating tab

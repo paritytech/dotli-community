@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { SITE_ID } from "@dotli/config/config";
 import {
   buildSharedAuthStorageKey,
-  hasStoredSharedAuthSession,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedAuthStorageKey,
+  SHARED_CORE_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 
 describe("shared auth storage helpers", () => {
@@ -57,7 +57,7 @@ describe("shared auth storage helpers", () => {
   });
 
   it("validates storage keys", () => {
-    expect(isSharedAuthStorageKey("SsoSessions")).toBe(true);
+    expect(isSharedAuthStorageKey(SHARED_CORE_SESSION_KEY)).toBe(true);
     expect(isSharedAuthStorageKey("UserSecrets_abc-123")).toBe(true);
     expect(isSharedAuthStorageKey("identity_0x1234")).toBe(true);
     expect(isSharedAuthStorageKey("../secrets")).toBe(false);
@@ -65,21 +65,19 @@ describe("shared auth storage helpers", () => {
     expect(isSharedAuthStorageKey("")).toBe(false);
   });
 
-  it("builds stable storage keys and detects empty session payloads", () => {
-    expect(buildSharedAuthStorageKey("dot.li", "SsoSessions")).toBe(
-      "PAPP_dot.li_SsoSessions",
+  it("builds stable Rust-owned host storage keys", () => {
+    expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
+      "TRUAPI_SESSION_dot.li",
     );
-    expect(buildSharedAuthStorageKey("paseoli.dev", "SsoSessions")).toBe(
-      "PAPP_paseoli.dev_SsoSessions",
+    expect(
+      buildSharedAuthStorageKey("paseoli.dev", SHARED_CORE_SESSION_KEY),
+    ).toBe("TRUAPI_SESSION_paseoli.dev");
+    expect(buildSharedAuthStorageKey("dot.li", "UserSecrets_abc-123")).toBe(
+      "TRUAPI_dot.li_UserSecrets_abc-123",
     );
-    expect(hasStoredSharedAuthSession(null)).toBe(false);
-    expect(hasStoredSharedAuthSession("")).toBe(false);
-    expect(hasStoredSharedAuthSession("0x00")).toBe(false);
-    expect(hasStoredSharedAuthSession("0x04010203")).toBe(true);
   });
 
   it("identifies shared-auth RPC methods", () => {
-    expect(isSharedAuthRequestMethod("authHasSession")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageRead")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageWrite")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageClear")).toBe(true);
