@@ -81,6 +81,30 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return `SSO deeplink generated (${str(p.scheme)}).`;
     case "sso:awaiting_response":
       return `Waiting for SSO pairing response for ${str(p.label)}.`;
+    case "sso:statement_store_connecting":
+      return `Connecting SSO statement-store channel (${str(p.backend)}, ${short(str(p.genesisHash))}).`;
+    case "sso:statement_store_connected":
+      return `SSO statement-store channel connected (${str(p.backend)}).`;
+    case "sso:statement_store_connect_failed":
+      return `SSO statement-store channel failed (${str(p.backend)}): ${str(p.reason)}.`;
+    case "sso:statement_store_request":
+      return `SSO statement-store ${str(p.requestKind)} request sent (${str(p.method)}, id=${str(p.requestId)}).`;
+    case "sso:statement_store_response": {
+      const count =
+        typeof p.statementCount === "number"
+          ? `, statements=${String(p.statementCount)}`
+          : "";
+      const remaining =
+        typeof p.remaining === "number"
+          ? `, remaining=${String(p.remaining)}`
+          : "";
+      const remote =
+        typeof p.remoteSubscriptionId === "string"
+          ? `, remote=${short(p.remoteSubscriptionId)}`
+          : "";
+      const error = typeof p.error === "string" ? `, error=${p.error}` : "";
+      return `SSO statement-store ${str(p.requestKind)} response (${str(p.method)}${remote}${count}${remaining}${error}).`;
+    }
     case "sso:session_established":
       return `SSO session established (${str(p.result)}).`;
     case "sso:pairing_failed":
@@ -142,6 +166,10 @@ function str(v: unknown): string {
     return String(v);
   }
   return "?";
+}
+
+function short(v: string): string {
+  return v.length > 14 ? `${v.slice(0, 10)}...` : v;
 }
 
 function numMs(v: unknown): string {

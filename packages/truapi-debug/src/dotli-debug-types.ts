@@ -451,6 +451,63 @@ export type SsoEvent =
     }
   | {
       layer: "sso";
+      event: "statement_store_connecting";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        backend: string;
+        genesisHash: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_connected";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        backend: string;
+        genesisHash: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_connect_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        backend: string;
+        genesisHash: string;
+        reason: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_request";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        method: string;
+        requestId: string;
+        requestKind: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_response";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        method: string;
+        requestId?: string;
+        requestKind: string;
+        remoteSubscriptionId?: string;
+        statementCount?: number;
+        remaining?: number;
+        error?: string;
+      };
+    }
+  | {
+      layer: "sso";
       event: "session_established";
       flowId: string;
       timestamp: number;

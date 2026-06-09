@@ -29,6 +29,17 @@ import {
   isRpcChainSupported,
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
+import {
+  emitSsoStatementStoreConnected,
+  emitSsoStatementStoreConnecting,
+  emitSsoStatementStoreConnectFailed,
+  emitSsoStatementStoreRequest,
+  emitSsoStatementStoreResponse,
+} from "./SsoDebug";
+
+const PAIRING_REQUEST_ID_PREFIX = "truapi:sso-pairing:";
+const STATEMENT_SUBSCRIBE_METHOD = "statement_subscribeStatement";
+const STATEMENT_UNSUBSCRIBE_METHOD = "statement_unsubscribeStatement";
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== "object" || value === null) {
@@ -67,6 +78,7 @@ function toConnection(
       if (!isJsonRpcRequest(parsed)) {
         throw new Error("Invalid JSON-RPC request");
       }
+      emitPairingStatementStoreRequest(parsed);
       conn.send(parsed);
     },
     async *responses(): AsyncIterable<string> {
@@ -75,6 +87,7 @@ function toConnection(
           while (queue.length > 0) {
             const response = queue.shift();
             if (response !== undefined) {
+              emitPairingStatementStoreResponse(response);
               yield response;
             }
           }
@@ -90,28 +103,152 @@ function toConnection(
   };
 }
 
+function emitPairingStatementStoreRequest(request: JsonRpcRequest<unknown>) {
+  const { method, id } = request;
+  if (
+    method !== STATEMENT_SUBSCRIBE_METHOD &&
+    method !== STATEMENT_UNSUBSCRIBE_METHOD
+  ) {
+    return;
+  }
+  if (typeof id !== "string" || !id.startsWith(PAIRING_REQUEST_ID_PREFIX)) {
+    return;
+  }
+  emitSsoStatementStoreRequest({
+    method,
+    requestId: id,
+    requestKind: requestKindFromId(id, method),
+  });
+}
+
+function emitPairingStatementStoreResponse(response: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response);
+  } catch {
+    return;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.id === "string") {
+    if (!record.id.startsWith(PAIRING_REQUEST_ID_PREFIX)) {
+      return;
+    }
+    const error = errorMessage(record.error);
+    emitSsoStatementStoreResponse({
+      method: statementMethodFromRequestId(record.id),
+      requestId: record.id,
+      requestKind: requestKindFromId(record.id),
+      ...(typeof record.result === "string"
+        ? { remoteSubscriptionId: record.result }
+        : {}),
+      ...(error !== undefined ? { error } : {}),
+    });
+    return;
+  }
+
+  if (record.method !== STATEMENT_SUBSCRIBE_METHOD) {
+    return;
+  }
+  const params =
+    typeof record.params === "object" && record.params !== null
+      ? (record.params as Record<string, unknown>)
+      : null;
+  const result =
+    typeof params?.result === "object" && params.result !== null
+      ? (params.result as Record<string, unknown>)
+      : null;
+  const data =
+    typeof result?.data === "object" && result.data !== null
+      ? (result.data as Record<string, unknown>)
+      : null;
+  const statements = Array.isArray(data?.statements) ? data.statements : [];
+  emitSsoStatementStoreResponse({
+    method: STATEMENT_SUBSCRIBE_METHOD,
+    requestKind: "page",
+    ...(typeof params?.subscription === "string"
+      ? { remoteSubscriptionId: params.subscription }
+      : {}),
+    statementCount: statements.length,
+    ...(typeof data?.remaining === "number"
+      ? { remaining: data.remaining }
+      : {}),
+  });
+}
+
+function requestKindFromId(requestId: string, method?: string): string {
+  if (requestId.includes(":query:")) {
+    return "query";
+  }
+  if (requestId.endsWith(":unsubscribe")) {
+    return "unsubscribe";
+  }
+  if (method === STATEMENT_UNSUBSCRIBE_METHOD) {
+    return "unsubscribe";
+  }
+  return "live-subscribe";
+}
+
+function statementMethodFromRequestId(requestId: string): string {
+  return requestId.endsWith(":unsubscribe")
+    ? STATEMENT_UNSUBSCRIBE_METHOD
+    : STATEMENT_SUBSCRIBE_METHOD;
+}
+
+function errorMessage(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const message = (error as Record<string, unknown>).message;
+  return typeof message === "string" ? message : JSON.stringify(error);
+}
+
 export function createChainConnect(): HostCallbacks["connect"] {
   return (genesisHashBytes) => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
+    emitSsoStatementStoreConnecting({ backend, genesisHash });
     if (backend === "rpc-gateway") {
       if (!isRpcChainSupported(genesisHash)) {
         log.warn(
           `[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`,
         );
+        emitSsoStatementStoreConnectFailed({
+          backend,
+          genesisHash,
+          reason: `Unsupported RPC chain: ${genesisHash}`,
+        });
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      return Promise.resolve(toConnection(createRpcChainProvider(genesisHash)));
+      const connection = toConnection(createRpcChainProvider(genesisHash));
+      emitSsoStatementStoreConnected({ backend, genesisHash });
+      return Promise.resolve(connection);
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
       log.warn(
         `[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`,
       );
+      emitSsoStatementStoreConnectFailed({
+        backend,
+        genesisHash,
+        reason: `Unsupported smoldot chain: ${genesisHash}`,
+      });
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return Promise.resolve(
-      toConnection(createSmoldotChainProvider(genesisHash)),
-    );
+    try {
+      const connection = toConnection(createSmoldotChainProvider(genesisHash));
+      emitSsoStatementStoreConnected({ backend, genesisHash });
+      return Promise.resolve(connection);
+    } catch (error) {
+      emitSsoStatementStoreConnectFailed({
+        backend,
+        genesisHash,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   };
 }

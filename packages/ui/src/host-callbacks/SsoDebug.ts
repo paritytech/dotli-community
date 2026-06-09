@@ -17,6 +17,82 @@ function deeplinkScheme(deeplink: string): string {
   }
 }
 
+function activeFlowId(): string {
+  return activeSsoFlowId ?? newFlowId("sso");
+}
+
+export function emitSsoStatementStoreConnecting(args: {
+  backend: string;
+  genesisHash: string;
+}): void {
+  emitDotliDebugEvent({
+    layer: "sso",
+    event: "statement_store_connecting",
+    flowId: activeFlowId(),
+    timestamp: Date.now(),
+    payload: args,
+  });
+}
+
+export function emitSsoStatementStoreConnected(args: {
+  backend: string;
+  genesisHash: string;
+}): void {
+  emitDotliDebugEvent({
+    layer: "sso",
+    event: "statement_store_connected",
+    flowId: activeFlowId(),
+    timestamp: Date.now(),
+    payload: args,
+  });
+}
+
+export function emitSsoStatementStoreConnectFailed(args: {
+  backend: string;
+  genesisHash: string;
+  reason: string;
+}): void {
+  emitDotliDebugEvent({
+    layer: "sso",
+    event: "statement_store_connect_failed",
+    flowId: activeFlowId(),
+    timestamp: Date.now(),
+    payload: args,
+  });
+}
+
+export function emitSsoStatementStoreRequest(args: {
+  method: string;
+  requestId: string;
+  requestKind: string;
+}): void {
+  emitDotliDebugEvent({
+    layer: "sso",
+    event: "statement_store_request",
+    flowId: activeFlowId(),
+    timestamp: Date.now(),
+    payload: args,
+  });
+}
+
+export function emitSsoStatementStoreResponse(args: {
+  method: string;
+  requestId?: string;
+  requestKind: string;
+  remoteSubscriptionId?: string;
+  statementCount?: number;
+  remaining?: number;
+  error?: string;
+}): void {
+  emitDotliDebugEvent({
+    layer: "sso",
+    event: "statement_store_response",
+    flowId: activeFlowId(),
+    timestamp: Date.now(),
+    payload: args,
+  });
+}
+
 export function emitSsoPairingPresented(args: {
   label: string;
   deeplink: string;

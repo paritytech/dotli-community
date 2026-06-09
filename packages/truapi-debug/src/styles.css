@@ -90,7 +90,6 @@
   --sw-accent: #2dd4bf;
 }
 
-
 .td-tooltip {
   position: absolute;
   z-index: 1000;
@@ -100,8 +99,8 @@
   border: 1px solid #3a3a3a;
   border-radius: 3px;
   padding: 4px 8px;
-  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
-    Consolas, monospace;
+  font-family:
+    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   font-size: 11px;
   white-space: nowrap;
   opacity: 0;
@@ -121,8 +120,8 @@
   color: #d4d4d4;
   border-top: 1px solid #1f1f1f;
   z-index: 950;
-  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
-    Consolas, monospace;
+  font-family:
+    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   font-size: 12px;
   display: grid;
   grid-template-rows: 5px 32px auto 1fr;
@@ -482,6 +481,9 @@
 .td-tag-and-summary {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.td-row.system .td-tag-and-summary {
+  grid-column: 4 / -1;
 }
 .td-tag {
   color: #e0e0e0;
