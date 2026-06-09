@@ -1,7 +1,6 @@
 // Preimage lookup adapter — polls the user-selected content backend
 // (Helia P2P or IPFS gateway) until the preimage is found or the
-// subscription is dropped. Mirrors the legacy
-// `container.handlePreimageLookupSubscribe` behaviour.
+// subscription is dropped.
 
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
