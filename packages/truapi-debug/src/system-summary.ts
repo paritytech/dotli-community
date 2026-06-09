@@ -74,6 +74,18 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case "bridge:first_outbound":
       return `First message sent to product — bridge traffic established (productId=${str(p.productId)}).`;
 
+    // sso
+    case "sso:pairing_started":
+      return `SSO pairing started for ${str(p.label)}.`;
+    case "sso:deeplink_generated":
+      return `SSO deeplink generated (${str(p.scheme)}).`;
+    case "sso:awaiting_response":
+      return `Waiting for SSO pairing response for ${str(p.label)}.`;
+    case "sso:session_established":
+      return `SSO session established (${str(p.result)}).`;
+    case "sso:pairing_failed":
+      return `SSO pairing failed: ${str(p.reason)}.`;
+
     // failover
     case "failover:chain_backend":
       return `Chain backend failover: ${str(p.from)} → ${str(p.to)} (reason: ${str(p.reason)}).`;

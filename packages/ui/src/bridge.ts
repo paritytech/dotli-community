@@ -37,6 +37,10 @@ import * as S from "@dotli/metrics/spans";
 import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
+import {
+  emitSsoPairingFailed,
+  emitSsoSessionEstablished,
+} from "./host-callbacks/SsoDebug";
 import { createTruapiRuntimeConfig } from "./runtime-config";
 
 // Eagerly load the iframe host chunk + worker constructor so they're ready
@@ -115,8 +119,16 @@ window.addEventListener("dotli:truapi-login-request", (event: Event) => {
   void (async () => {
     const host = currentHost ?? (await getLandingAuthHost());
     const result = await host.requestLogin(detail.reason);
+    if (result === "Success" || result === "AlreadyConnected") {
+      emitSsoSessionEstablished(result);
+    } else {
+      emitSsoPairingFailed(result);
+    }
     dispatchSessionState(result === "Success" || result === "AlreadyConnected");
   })().catch((error: unknown) => {
+    emitSsoPairingFailed(
+      error instanceof Error ? error.message : String(error),
+    );
     dispatchLoginError(error);
   });
 });

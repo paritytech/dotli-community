@@ -18,6 +18,7 @@ export type DotliDebugEvent =
   | ResolveEvent
   | RenderEvent
   | BridgeEvent
+  | SsoEvent
   | FailoverEvent
   | MainEvent
   | SandboxEvent;
@@ -415,6 +416,55 @@ export type BridgeEvent =
       payload: {
         label: string;
         productId: string;
+      };
+    };
+
+/** SSO pairing lifecycle driven by host-owned login UI and Rust core. */
+export type SsoEvent =
+  | {
+      layer: "sso";
+      event: "pairing_started";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "deeplink_generated";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+        scheme: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "awaiting_response";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "session_established";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        result: "Success" | "AlreadyConnected";
+      };
+    }
+  | {
+      layer: "sso";
+      event: "pairing_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        reason: string;
       };
     };
 

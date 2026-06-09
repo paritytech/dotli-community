@@ -1,4 +1,5 @@
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import { emitSsoPairingPresented } from "./SsoDebug";
 
 export interface TrUApiPairingRequest {
   deeplink: string;
@@ -13,6 +14,7 @@ export function createPresentPairing(
 ): HostCallbacks["presentPairing"] {
   return (deeplink) =>
     new Promise<void>((resolve) => {
+      emitSsoPairingPresented({ label, deeplink });
       window.dispatchEvent(
         new CustomEvent<TrUApiPairingRequest>("dotli:truapi-pairing", {
           detail: {
