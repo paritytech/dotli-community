@@ -24,18 +24,20 @@ import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
-  getChainBackend,
-  getContentBackend,
+  SANDBOX_CONTRACT_PARAMS,
+  SANDBOX_SCHEMA_VERSION,
+} from "@dotli/config/host-sandbox-contract";
+import {
+  getBackend,
   getCacheSettings,
 } from "@dotli/config/mode";
+import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { createTruapiRuntimeConfig } from "./runtime-config";
-
-// Re-export sandbox-safe rendering functions
-export { renderContent, renderArchive, prepareIframe } from "./render";
 
 // Eagerly load the iframe host chunk + worker constructor so they're ready
 // by the time we need them. The wasm core lives inside the worker; the host
@@ -144,7 +146,7 @@ function applyIframeStyling(
 ): void {
   iframe.allow = `${buildAllowAttribute(label)}; cross-origin-isolated`;
   iframe.style.cssText = opts.topbarOffset
-    ? "position:fixed;top:40px;left:0;width:100%;height:calc(100vh - 40px);border:none;margin:0;padding:0;"
+    ? "position:fixed;top:56px;left:0;width:100%;height:calc(100vh - 56px);border:none;margin:0;padding:0;"
     : "position:fixed;top:0;left:0;width:100%;height:100vh;border:none;margin:0;padding:0;";
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
@@ -309,6 +311,15 @@ async function createHost(args: {
  * Render a dApp iframe backed by the TrUAPI host bridge.
  */
 export async function renderIframe(url: string, label: string): Promise<void> {
+  const renderFlowId = newFlowId("render");
+  const bridgeFlowId = newFlowId("bridge");
+  emitDotliDebugEvent({
+    layer: "render",
+    event: "iframe_begin",
+    flowId: renderFlowId,
+    timestamp: Date.now(),
+    payload: { label, url, mode: "iframe" },
+  });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   cleanup();
 
@@ -331,6 +342,19 @@ export async function renderIframe(url: string, label: string): Promise<void> {
   });
   applyIframeStyling(host.iframe, label, { topbarOffset: hasTopbar });
   currentHost = host;
+  host.iframe.addEventListener(
+    "load",
+    () => {
+      emitDotliDebugEvent({
+        layer: "bridge",
+        event: "iframe_load",
+        flowId: bridgeFlowId,
+        timestamp: Date.now(),
+        payload: { label, productId: label, mode: "iframe" },
+      });
+    },
+    { once: true },
+  );
 
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
@@ -346,6 +370,13 @@ export async function renderIframe(url: string, label: string): Promise<void> {
   window.dispatchEvent(
     new CustomEvent("dotli:product-loaded", { detail: { label } }),
   );
+  emitDotliDebugEvent({
+    layer: "render",
+    event: "iframe_ready",
+    flowId: renderFlowId,
+    timestamp: Date.now(),
+    payload: { label, mode: "iframe" },
+  });
 }
 
 /**
@@ -360,6 +391,8 @@ export async function renderAppSubdomain(
   cid: string,
   label: string,
 ): Promise<void> {
+  const renderFlowId = newFlowId("render");
+  const bridgeFlowId = newFlowId("bridge");
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   cleanup();
 
@@ -368,20 +401,13 @@ export async function renderAppSubdomain(
   currentCid = cid;
   currentUrl = null;
 
-  // Propagate the two independent backend axes. The legacy `?mode=`
-  // preset param is no longer sent — host and sandbox deploy together,
-  // there are no old sandbox builds in the wild, and the sandbox
-  // validator rejects unknown params so keeping it would guarantee a
-  // boot failure on the next deploy.
-  //
-  // The sandbox reads its own curated endpoint defaults from
-  // `@dotli/config/endpoints` (same package, built into its bundle), so
-  // the host no longer threads RPC/gateway URLs across the origin —
-  // there are no user-overridable endpoints to preserve.
-  const chainBackend = getChainBackend();
-  const contentBackend = getContentBackend();
+  // Propagate the current sandbox contract. The legacy `?mode=` preset param
+  // is no longer sent. Host and sandbox deploy together, and the sandbox
+  // validator rejects unknown params.
+  const chainBackend = getBackend();
+  const network = getNetwork();
   const cache = getCacheSettings();
-  const appOrigin = getAppOrigin(cid);
+  const appOrigin = getAppOrigin(label);
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
   // the first sandbox boot after "Save & Apply" wipes its own origin too.
@@ -400,23 +426,28 @@ export async function renderAppSubdomain(
   let url = deepPath ? `${appOrigin}${deepPath}` : appOrigin;
   try {
     const parsed = new URL(url);
-    parsed.searchParams.set("chainBackend", chainBackend);
-    parsed.searchParams.set("contentBackend", contentBackend);
+    parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
+    parsed.searchParams.set(
+      SANDBOX_CONTRACT_PARAMS.v,
+      String(SANDBOX_SCHEMA_VERSION),
+    );
+    parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.chainBackend, chainBackend);
+    parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
     if (cache.skipArchiveCache) {
-      parsed.searchParams.set("skipArchiveCache", "1");
+      parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
     }
     if (fullReset) {
-      parsed.searchParams.set("fullReset", "1");
+      parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
     }
     url = parsed.toString();
   } catch {
     const sep = url.includes("?") ? "&" : "?";
-    url += `${sep}chainBackend=${chainBackend}&contentBackend=${contentBackend}`;
+    url += `${sep}${SANDBOX_CONTRACT_PARAMS.cid}=${cid}&${SANDBOX_CONTRACT_PARAMS.v}=${String(SANDBOX_SCHEMA_VERSION)}&${SANDBOX_CONTRACT_PARAMS.chainBackend}=${chainBackend}&${SANDBOX_CONTRACT_PARAMS.network}=${network}`;
     if (cache.skipArchiveCache) {
-      url += "&skipArchiveCache=1";
+      url += `&${SANDBOX_CONTRACT_PARAMS.skipArchiveCache}=1`;
     }
     if (fullReset) {
-      url += "&fullReset=1";
+      url += `&${SANDBOX_CONTRACT_PARAMS.fullReset}=1`;
     }
   }
 
@@ -430,6 +461,13 @@ export async function renderAppSubdomain(
   }
 
   const iframeUrl = new URL(url);
+  emitDotliDebugEvent({
+    layer: "render",
+    event: "iframe_begin",
+    flowId: renderFlowId,
+    timestamp: Date.now(),
+    payload: { label, url, mode: "subdomain" },
+  });
   const host = await createHost({
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
@@ -440,6 +478,19 @@ export async function renderAppSubdomain(
   });
   applyIframeStyling(host.iframe, label, { topbarOffset: true });
   currentHost = host;
+  host.iframe.addEventListener(
+    "load",
+    () => {
+      emitDotliDebugEvent({
+        layer: "bridge",
+        event: "iframe_load",
+        flowId: bridgeFlowId,
+        timestamp: Date.now(),
+        payload: { label, productId: label, mode: "subdomain" },
+      });
+    },
+    { once: true },
+  );
 
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
@@ -455,15 +506,22 @@ export async function renderAppSubdomain(
   window.dispatchEvent(
     new CustomEvent("dotli:product-loaded", { detail: { label } }),
   );
+  emitDotliDebugEvent({
+    layer: "render",
+    event: "iframe_ready",
+    flowId: renderFlowId,
+    timestamp: Date.now(),
+    payload: { label, mode: "subdomain" },
+  });
 }
 
-function getAppOrigin(cid: string): string {
+function getAppOrigin(label: string): string {
   const hostname = window.location.hostname;
   if (hostname.endsWith(".localhost") || hostname === "localhost") {
     const port = import.meta.env.DEV ? "5174" : window.location.port;
-    return `http://${cid}.app.localhost:${port}`;
+    return `http://${label}.app.localhost:${port}`;
   }
-  return `https://${cid}.app.${BASE_DOMAIN}`;
+  return `https://${label}.app.${BASE_DOMAIN}`;
 }
 
 function cleanup(): void {
@@ -475,4 +533,11 @@ function cleanup(): void {
     currentHost.dispose();
     currentHost = null;
   }
+}
+
+function newFlowId(prefix: string): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 }

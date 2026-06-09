@@ -21,10 +21,6 @@ jobs:
   deploy:
     uses: ./.github/workflows/deploy.yml
     with:
-      environment: >-
-        ${{
-          github.event.inputs.target == 'westend' && 'development'
-          || github.event.inputs.target
-        }}
+      environment: ${{ github.event.inputs.target }}
       app_env: development
     secrets: inherit

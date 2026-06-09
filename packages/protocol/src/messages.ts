@@ -1,10 +1,22 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
   resolveOwner: { label: string };
+  resolveExecutableManifest: {
+    label: string;
+    kind: "app" | "widget" | "worker";
+  };
+  resolveRootManifest: { label: string };
+  authHasSession: { siteId: string };
   authStorageRead: { siteId: string; key: string };
   authStorageWrite: { siteId: string; key: string; value: string };
   authStorageClear: { siteId: string; key: string };
+  modeStorageRead: { siteId: string; key: string };
+  modeStorageWrite: { siteId: string; key: string; value: string };
+  modeStorageClear: { siteId: string; key: string };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };
@@ -66,7 +78,7 @@ export interface ProtocolReadyEnvelope {
 
 /**
  * Unsolicited broadcast from the protocol iframe (or its SharedWorker) when
- * smoldot has crashed/panicked. A panic leaves every chain dead — any
+ * smoldot has crashed/panicked. A panic leaves every chain dead. Any
  * in-flight request would hang indefinitely, so the client rejects all
  * pending requests on receipt instead of waiting for a per-request timeout.
  */
@@ -77,14 +89,11 @@ export interface ProtocolFatalEnvelope {
 }
 
 /**
- * Dedicated "iframe init failed before we even emitted a response" envelope.
+ * Signals that the iframe failed to initialize before emitting any response.
  *
- * Previously the protocol iframe signalled an early init failure by
- * posting a response envelope with `id: "__init__"` — a sentinel id
- * collision waiting to happen. `kind: "init-failed"` is explicit: no
- * request was in flight, no id is expected, and clients route it to
- * the same "reject everything pending + block new work" path as
- * `kind: "fatal"`.
+ * A dedicated kind avoids a sentinel id collision. No request was in flight
+ * and no id is expected, so clients route it to the same path as
+ * `kind: "fatal"`: reject everything pending, then block new work.
  */
 export interface ProtocolInitFailedEnvelope {
   namespace: "dotli:protocol";
@@ -93,8 +102,8 @@ export interface ProtocolInitFailedEnvelope {
 }
 
 // Unsolicited notification from the host iframe to its parent window when a
-// sibling tab writes or clears a shared host-origin storage key. Drives
-// cross-tab SessionStore notifications — see `@dotli/protocol/client`
+// sibling tab writes or clears a shared-auth storage key. Drives cross-tab
+// `StorageAdapter.subscribe` callbacks. See `@dotli/protocol/client`
 // `subscribeSharedAuthStorage` and `apps/protocol/src/main.ts`'s
 // BroadcastChannel relay.
 export interface ProtocolAuthStorageChangedEnvelope {

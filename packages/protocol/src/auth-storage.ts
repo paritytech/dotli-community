@@ -1,18 +1,44 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config/config";
 import type { ProtocolRequestMethod } from "./messages";
 
 export type SharedAuthRequestMethod =
+  | "authHasSession"
   | "authStorageRead"
   | "authStorageWrite"
   | "authStorageClear";
 
-export const SHARED_CORE_SESSION_KEY = "session";
+export type SharedModeRequestMethod =
+  | "modeStorageRead"
+  | "modeStorageWrite"
+  | "modeStorageClear";
 
-const SHARED_AUTH_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
+export const SHARED_CORE_SESSION_KEY = "session";
+export const SHARED_AUTH_SESSION_KEY = SHARED_CORE_SESSION_KEY;
+
+// Empty SCALE vec sentinel retained for older shared-auth probes. Rust core
+// persisted sessions use `SHARED_CORE_SESSION_KEY` and never encode an empty
+// session list, but this keeps the helper tolerant while the protocol method
+// remains in the wire surface.
+const EMPTY_SHARED_AUTH_SESSION_LIST = "0x00";
+
+// Both the shared-auth and shared-mode stores accept the same key shape, an
+// alphanumeric token with dots, underscores, colons and dashes. Keep the
+// regex shared so the validation contract is one thing. A future store
+// needing a different shape should get its own constant.
+const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>([
+  "authHasSession",
   "authStorageRead",
   "authStorageWrite",
   "authStorageClear",
+]);
+const SHARED_MODE_METHODS = new Set<ProtocolRequestMethod>([
+  "modeStorageRead",
+  "modeStorageWrite",
+  "modeStorageClear",
 ]);
 
 export function isSharedAuthRequestMethod(
@@ -21,25 +47,36 @@ export function isSharedAuthRequestMethod(
   return SHARED_AUTH_METHODS.has(method);
 }
 
+export function isSharedModeRequestMethod(
+  method: ProtocolRequestMethod,
+): method is SharedModeRequestMethod {
+  return SHARED_MODE_METHODS.has(method);
+}
+
 /**
- * Shared host-origin session storage is scoped to the registrable root domain
- * the shell is running on. Each host iframe only accepts requests whose siteId
- * equals its own `SITE_ID`, so:
- *   - `host.dot.li`         → only siteId `"dot.li"`
- *   - `host.paseo.li`       → only siteId `"paseo.li"`
- *   - `host.paseoli.dev`    → only siteId `"paseoli.dev"`
- *   - `host.localhost:5173` → only siteId `"local.li"`
+ * Shared auth sessions are scoped to the registrable root domain the shell is
+ * running on. Each host iframe only accepts requests whose siteId equals its
+ * own `SITE_ID`, so:
+ *   - `host.dot.li` accepts only siteId `"dot.li"`
+ *   - `host.paseo.li` accepts only siteId `"paseo.li"`
+ *   - `host.paseoli.dev` accepts only siteId `"paseoli.dev"`
+ *   - `host.localhost:5173` accepts only siteId `"local.li"`
  *
  * This guarantees sessions are never shared across unrelated root domains
- * (e.g. dot.li ↔ paseo.li) and trivially tolerates new deployment domains
+ * (e.g. dot.li and paseo.li) and trivially tolerates new deployment domains
  * without hard-coding an allowlist.
  */
 export function isSharedAuthSiteId(value: string): value is SiteId {
   return value === SITE_ID;
 }
 
-export function isSharedAuthStorageKey(key: string): boolean {
-  return key === SHARED_CORE_SESSION_KEY || SHARED_AUTH_KEY_PATTERN.test(key);
+/**
+ * Validate a caller-supplied shared-auth key (e.g. `SsoSessions`). This is
+ * the *raw* key. The namespaced form produced by `buildSharedAuthStorageKey`
+ * is for use against `localStorage`, not for this check.
+ */
+export function isValidSharedAuthKey(key: string): boolean {
+  return SHARED_STORAGE_KEY_PATTERN.test(key);
 }
 
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
@@ -47,6 +84,29 @@ export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
     return `TRUAPI_SESSION_${siteId}`;
   }
   return `TRUAPI_${siteId}_${key}`;
+}
+
+/**
+ * Shared mode-storage keys use a separate prefix from auth so the two stores
+ * cannot collide. The validation pattern is identical. Caller-supplied keys
+ * are caller-controlled but always namespaced under the prefix here.
+ */
+export function buildSharedModeStorageKey(siteId: SiteId, key: string): string {
+  return `DOTLI_MODE_${siteId}_${key}`;
+}
+
+/**
+ * Validate a caller-supplied shared-mode key (e.g. `dotli:chain-backend`).
+ * As with `isValidSharedAuthKey`, this is the *raw* key.
+ */
+export function isValidSharedModeKey(key: string): boolean {
+  return SHARED_STORAGE_KEY_PATTERN.test(key);
+}
+
+export function hasStoredSharedAuthSession(value: string | null): boolean {
+  return (
+    value !== null && value !== "" && value !== EMPTY_SHARED_AUTH_SESSION_LIST
+  );
 }
 
 export function isSharedAuthOriginAllowed(origin: string): boolean {

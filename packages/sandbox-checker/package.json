@@ -1,7 +1,8 @@
 {
   "name": "@dotli/sandbox-checker",
   "private": true,
-  "version": "0.3.3",
+  "license": "AGPL-3.0-only",
+  "version": "0.5.0",
   "type": "module",
   "exports": {
     "./*": "./src/*"
@@ -13,8 +14,8 @@
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
-    "eslint": "^10.2.1",
+    "eslint": "^10.4.1",
     "typescript": "~6.0.3",
-    "vite": "^8.0.10"
+    "vite": "^8.0.16"
   }
 }

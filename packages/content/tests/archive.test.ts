@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, it, expect } from "vitest";
 import {
   isCarFile,
@@ -5,8 +8,6 @@ import {
   parseIpfsResponse,
 } from "@dotli/content/archive";
 import type { ArchiveFiles } from "@dotli/content/archive";
-
-// ── isCarFile ──────────────────────────────────────────────
 
 describe("isCarFile", () => {
   it("returns false for empty buffer", () => {
@@ -90,8 +91,6 @@ describe("isCarFile", () => {
   });
 });
 
-// ── packArchive ──────────────────────────────────────────────
-
 describe("packArchive", () => {
   it("packs empty archive", () => {
     const result = packArchive({});
@@ -148,8 +147,6 @@ describe("packArchive", () => {
     expect(extracted).toBe(content);
   });
 });
-
-// ── parseIpfsResponse ──────────────────────────────────────
 
 describe("parseIpfsResponse", () => {
   it("treats non-CAR data as single index.html", async () => {

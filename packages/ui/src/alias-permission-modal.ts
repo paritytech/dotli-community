@@ -1,4 +1,7 @@
-// dot.li — Alias permission modal (vanilla DOM)
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Alias permission modal (vanilla DOM)
 //
 // Shows a confirmation dialog when a product requests an alias
 // in the context of a different domain. Returns a Promise that

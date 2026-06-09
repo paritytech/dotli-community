@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, it, expect, vi } from "vitest";
 import { m } from "../src/metrics";
 
@@ -49,7 +52,7 @@ describe("metrics (disabled)", () => {
       addBreadcrumb: vi.fn(),
     };
     m.bind(fake);
-    // Still disabled — bind doesn't enable metrics
+    // Still disabled: bind doesn't enable metrics
     m.count("test");
     expect(fake.metrics.count).not.toHaveBeenCalled();
   });

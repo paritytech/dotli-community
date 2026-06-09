@@ -7,7 +7,7 @@ export function toHex(bytes: Uint8Array): HexString {
   for (const byte of bytes) {
     chars.push(byte.toString(16).padStart(2, "0"));
   }
-  return `0x${chars.join("")}` as HexString;
+  return `0x${chars.join("")}`;
 }
 
 export function fromHex(hex: string): Uint8Array {

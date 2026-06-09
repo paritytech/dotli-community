@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, expect, it, vi } from "vitest";
 import type {
   JsonRpcConnection,
@@ -170,7 +173,7 @@ describe("createChainBrokerManager", () => {
     );
   });
 
-  it("releases owned subscriptions on disconnect and tears down the upstream when empty", () => {
+  it("releases owned subscriptions on disconnect but keeps the upstream warm until disconnectAll", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
     const connection = manager.connectRemote("asset-hub", "conn-a", () => {});
@@ -192,6 +195,35 @@ describe("createChainBrokerManager", () => {
     const release = harness.sent[1] as { method: string; params: string[] };
     expect(release.method).toBe("chainHead_v1_unfollow");
     expect(release.params[0]).toBe("up-a");
+    expect(harness.disconnect).not.toHaveBeenCalled();
+
+    manager.disconnectAll();
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the warm upstream when a new session attaches after every previous one disconnected", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+
+    const connectionA = manager.connectRemote("asset-hub", "conn-a", () => {});
+    connectionA?.disconnect();
+    expect(harness.disconnect).not.toHaveBeenCalled();
+
+    const connectionB = manager.connectRemote("asset-hub", "conn-b", () => {});
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "chainSpec_v1_chainName",
+        params: [],
+      }),
+    );
+    expect(harness.sent.at(-1)).toMatchObject({
+      method: "chainSpec_v1_chainName",
+    });
+    expect(harness.disconnect).not.toHaveBeenCalled();
+
+    manager.disconnectAll();
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -344,7 +376,7 @@ describe("createChainBrokerManager", () => {
 
     expect(localProvider).not.toBeNull();
 
-    // `getLocalProvider` uses the object wire; `connectRemote` the string wire.
+    // `getLocalProvider` uses the object wire. `connectRemote` uses the string wire.
     const localMessages: JsonRpcMessage[] = [];
     const localConnection = localProvider?.((message) => {
       localMessages.push(message);

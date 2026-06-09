@@ -1,5 +1,16 @@
-REMOTE_PRD = ubuntu@51.158.111.82
-REMOTE_STG = ubuntu@51.159.177.252
+# Force a valid UTF-8 locale on the remote. macOS Terminal exports
+# LC_CTYPE=UTF-8 (not a recognized locale on Linux) and SSH forwards it via
+# the default SendEnv LC_*; setting LC_ALL here overrides it everywhere.
+export LC_ALL := C.UTF-8
+
+# Deploy SSH targets are not committed. Set them in a gitignored deploy.env
+# (copy deploy.env.example) or pass REMOTE=user@host on the command line. CI
+# deploys read DEPLOY_HOST and DEPLOY_USER secrets via the ci-deploy target and
+# do not use these.
+-include deploy.env
+
+REMOTE_PRD ?=
+REMOTE_STG ?=
 
 # env tag → site filename in /etc/nginx/sites-available/
 SITE_polkadot      := dot.li
@@ -28,33 +39,138 @@ DEPLOY_PATH_dev-test      := /var/www/testnetli
 DEPLOY_PATH_westend       := /var/www/westendli
 DEPLOY_PATH_dev-westend   := /var/www/westendlidev
 
+# One cert per env covering <base>, *.<base>, and *.app.<base>. The cert
+# lands at /etc/letsencrypt/live/<base>/, matching ssl_certificate paths in
+# every server block of nginx.<env>. host.<base> is covered by *.<base>.
+CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
+CERT_DOMAINS_dev-polkadot := dotli.dev *.dotli.dev *.app.dotli.dev
+CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
+CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
+CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
+CERT_DOMAINS_westend      := westend.li *.westend.li *.app.westend.li
+CERT_DOMAINS_dev-westend  := westendli.dev *.westendli.dev *.app.westendli.dev
+
 VALID_ENVS := polkadot dev-polkadot paseo dev-paseo dev-test westend dev-westend
 
-.PHONY: build deploy ci-deploy deploy-nginx
+# Default env when none is passed on the command line.
+ENV ?= polkadot
+
+# Packages required on a fresh Ubuntu 22.04+ box. The brotli module is split
+# across two packages on noble (filter + static) and both ship a drop-in in
+# /etc/nginx/modules-enabled/ so they auto-load. unzip is needed by bun's
+# installer; curl/ca-certificates by both bun and certbot interactions.
+APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw unzip curl ca-certificates
+
+# Remote working dir where source is rsynced and built. Outside DEPLOY_PATH
+# so a failed build never affects the live site; node_modules and dist are
+# preserved across runs for incremental rebuilds.
+REMOTE_BUILD_PATH := /tmp/dotli-build
+
+.PHONY: build provision provision-prereqs provision-firewall provision-bun provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx _require-env
 
 build:
 	bun run build
 
-# Usage: make deploy ENV=<polkadot|dev-polkadot|paseo|dev-paseo|dev-test|westend|dev-westend>
-deploy: build
-	@test -n "$(ENV)" || (echo "Usage: make deploy ENV=<$(subst $() ,|,$(VALID_ENVS))> [REMOTE=user@host]"; exit 1)
-	@test -n "$(DEPLOY_PATH_$(ENV))" || (echo "Unknown ENV: $(ENV). Valid: $(VALID_ENVS)"; exit 1)
+# ====================================================================
+# Fresh-server provisioning. Idempotent; safe to re-run.
+#
+#   make provision ENV=<env> \
+#                  ADMIN_EMAIL=<email> \
+#                  CLOUDFLARE_API_TOKEN=<token> \
+#                  [REMOTE=ubuntu@1.2.3.4]
+#
+# REMOTE defaults to the per-env mapping above; override when bringing up
+# a brand-new box. ADMIN_EMAIL is the Let's Encrypt contact; the Cloudflare
+# token needs DNS edit permission on the zone being certified.
+# ====================================================================
+provision: provision-prereqs provision-firewall provision-bun provision-cloudflare-creds provision-cert provision-renewal deploy deploy-nginx
+	@echo
+	@echo "Provisioning complete for ENV=$(ENV)."
+
+provision-prereqs: _require-env
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	ssh $(REMOTE_TARGET) 'set -euo pipefail; \
+		sudo DEBIAN_FRONTEND=noninteractive apt-get update -y; \
+		sudo DEBIAN_FRONTEND=noninteractive apt-get install -y $(APT_PACKAGES); \
+		sudo rm -f /etc/nginx/sites-enabled/default'
+
+# OpenSSH allow runs first so we never lock ourselves out before enabling ufw.
+provision-firewall: _require-env
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	ssh $(REMOTE_TARGET) 'sudo ufw allow OpenSSH && sudo ufw allow "Nginx Full" && sudo ufw --force enable'
+
+# Token is piped over SSH (never written locally); shows up only inside the
+# remote `tee` invocation, which lasts a few ms.
+provision-cloudflare-creds: _require-env
+	@test -n "$(CLOUDFLARE_API_TOKEN)" || (echo "CLOUDFLARE_API_TOKEN not set"; exit 1)
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	@printf 'dns_cloudflare_api_token = %s\n' '$(CLOUDFLARE_API_TOKEN)' | ssh $(REMOTE_TARGET) 'sudo install -d -m 0700 /etc/letsencrypt && sudo tee /etc/letsencrypt/cloudflare.ini > /dev/null && sudo chmod 600 /etc/letsencrypt/cloudflare.ini && sudo chown root:root /etc/letsencrypt/cloudflare.ini'
+
+# --keep-until-expiring + --expand makes this safe to re-run; only re-issues
+# if the cert is about to expire or the SAN list changed. --cert-name pins
+# the live/<name>/ directory so it matches the nginx ssl_certificate paths.
+provision-cert: _require-env
+	@test -n "$(ADMIN_EMAIL)" || (echo "ADMIN_EMAIL not set"; exit 1)
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	$(eval CERT_FLAGS := $(foreach d,$(CERT_DOMAINS_$(ENV)), -d '$(d)'))
+	ssh $(REMOTE_TARGET) "sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini --dns-cloudflare-propagation-seconds 30 --non-interactive --agree-tos -m '$(ADMIN_EMAIL)' --keep-until-expiring --expand --cert-name $(SITE_$(ENV)) $(CERT_FLAGS)"
+
+provision-renewal: _require-env
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	ssh $(REMOTE_TARGET) 'sudo systemctl enable --now certbot.timer'
+
+# Installs bun for the SSH user only if missing, then symlinks the binaries
+# into /usr/local/bin so any user (including root, for systemd timers) can
+# invoke them. To force an upgrade later, ssh in and run `bun upgrade`.
+provision-bun: _require-env
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	ssh $(REMOTE_TARGET) 'set -euo pipefail; \
+		if ! command -v bun >/dev/null 2>&1; then \
+			curl -fsSL https://bun.sh/install | bash; \
+			sudo ln -sf "$$HOME/.bun/bin/bun" /usr/local/bin/bun; \
+			sudo ln -sf "$$HOME/.bun/bin/bunx" /usr/local/bin/bunx; \
+		fi; \
+		bun --version'
+
+# ====================================================================
+# Remote-build deploy. Source is rsynced to $(REMOTE_BUILD_PATH), bun
+# installs deps and runs the workspace build on the remote, then the
+# resulting dist directories are rsynced (still on the remote) into the
+# nginx-served paths. node_modules and turbo cache live under the build
+# path and persist across runs for incremental rebuilds.
+# ====================================================================
+deploy: _require-env provision-bun
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval REMOTE_PATH   := $(DEPLOY_PATH_$(ENV)))
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'
-	$(call _rsync_dist,$(REMOTE_TARGET),$(REMOTE_PATH))
+	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_BUILD_PATH) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'
+	rsync -avz --delete \
+		--exclude='.git/' \
+		--exclude='node_modules/' \
+		--exclude='.turbo/' \
+		--exclude='apps/*/dist/' \
+		--exclude='packages/*/dist/' \
+		--exclude='test-results/' \
+		--exclude='.vite/' \
+		--exclude='.cache/' \
+		--exclude='coverage/' \
+		--exclude='.env' \
+		--exclude='.env.*' \
+		--exclude='.DS_Store' \
+		--exclude='*.log' \
+		./ $(REMOTE_TARGET):$(REMOTE_BUILD_PATH)/
+	ssh $(REMOTE_TARGET) 'set -euo pipefail; cd $(REMOTE_BUILD_PATH) && bun install --frozen-lockfile && bun run build'
+	ssh $(REMOTE_TARGET) "set -euo pipefail; \
+		rsync -av --delete --filter='P /assets/' $(REMOTE_BUILD_PATH)/apps/host/dist/     $(REMOTE_PATH)/host/; \
+		rsync -av --delete --filter='P /assets/' $(REMOTE_BUILD_PATH)/apps/sandbox/dist/  $(REMOTE_PATH)/app/; \
+		rsync -av --delete --filter='P /assets/' $(REMOTE_BUILD_PATH)/apps/protocol/dist/ $(REMOTE_PATH)/protocol/"
 
-# Usage: make deploy-nginx ENV=<polkadot|dev-polkadot|paseo|dev-paseo|dev-test|westend|dev-westend>
-deploy-nginx:
-	@test -n "$(ENV)" || (echo "Usage: make deploy-nginx ENV=<$(subst $() ,|,$(VALID_ENVS))> [REMOTE=user@host]"; exit 1)
-	@test -n "$(SITE_$(ENV))" || (echo "Unknown ENV: $(ENV). Valid: $(VALID_ENVS)"; exit 1)
+deploy-nginx: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
 	rsync -avz --delete nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
 	scp nginx/nginx.$(ENV) $(REMOTE_TARGET):/tmp/$(SITE).nginx
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
+	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
-# Usage by GitHub Actions workflow
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/host/dist/     $(1):$(2)/host/
 rsync -avz --delete --filter='P /assets/' apps/sandbox/dist/  $(1):$(2)/app/
@@ -68,3 +184,8 @@ ci-deploy:
 	@test -n "$(DEPLOY_PATH)" || (echo "ci-deploy: DEPLOY_PATH not set"; exit 1)
 	$(call _rsync_dist,$(DEPLOY_USER)@$(DEPLOY_HOST),$(DEPLOY_PATH))
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'find $(DEPLOY_PATH)/*/assets/ -type f -mtime +7 -delete 2>/dev/null || true'
+
+_require-env:
+	@test -n "$(ENV)" || (echo "ENV not set. Use ENV=<$(subst $() ,|,$(VALID_ENVS))>"; exit 1)
+	@test -n "$(DEPLOY_PATH_$(ENV))" || (echo "Unknown ENV: $(ENV). Valid: $(VALID_ENVS)"; exit 1)
+	@test -n "$(or $(REMOTE),$(REMOTE_FOR_$(ENV)))" || (echo "No deploy target for ENV=$(ENV). Set REMOTE_PRD/REMOTE_STG in deploy.env (copy deploy.env.example) or pass REMOTE=user@host."; exit 1)

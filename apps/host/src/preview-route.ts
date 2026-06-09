@@ -1,3 +1,7 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { isLocalhost } from "@dotli/config/config";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
 export function parsePreviewTargetUrl(
@@ -14,13 +18,17 @@ export function parsePreviewTargetUrl(
 
   try {
     const target = new URL(raw);
-    const isLocalhost = dotNsUrl.parseLocalhostUrl(target.toString()) !== null;
+    // A localhost preview target is only honoured when the host shell is
+    // itself served from a local origin. A deployed origin (dot.li, paseo.li,
+    // ...) must never proxy a visitor's localhost into the trusted host origin.
+    const targetIsLocalhost =
+      isLocalhost && dotNsUrl.parseLocalhostUrl(target.toString()) !== null;
     const isWebContainer =
       target.protocol === "https:" &&
-      target.hostname.endsWith(".local-credentialless.webcontainer-api.io");
+      dotNsUrl.isWebcontainerPreviewHost(target.hostname);
 
     if (
-      (!isLocalhost && !isWebContainer) ||
+      (!targetIsLocalhost && !isWebContainer) ||
       target.username ||
       target.password
     ) {

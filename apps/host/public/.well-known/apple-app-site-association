@@ -2,7 +2,25 @@
   "applinks": {
       "details": [
            {
-             "appIDs": ["P2PX3JU8FT.io.parity.polkadot"],
+             "appIDs": ["7SUDX74VMC.io.pcf.polkadotapp"],
+             "paths": [ "*" ],
+             "components": [
+                {
+                  "/": "/*"
+                }
+             ]
+           },
+           {
+             "appIDs": ["7SUDX74VMC.io.pcf.polkadotapp.alpha"],
+             "paths": [ "*" ],
+             "components": [
+                {
+                  "/": "/*"
+                }
+             ]
+           },
+           {
+             "appIDs": ["7SUDX74VMC.io.pcf.polkadotapp.develop"],
              "paths": [ "*" ],
              "components": [
                 {
@@ -11,11 +29,5 @@
              ]
            }
        ]
-   },
-   "webcredentials": {
-      "apps": ["P2PX3JU8FT.io.parity.polkadot"]
-   },
-   "appclips": {
-      "apps": ["P2PX3JU8FT.io.parity.polkadot.clip"]
    }
 }

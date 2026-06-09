@@ -1,7 +1,10 @@
-// dot.li — Password prompt modal for encrypted SPAs
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Password prompt modal for encrypted SPAs
 //
 // Shows a modal asking the user for a decryption password.
-// Follows the same DOM pattern as permission-modal.ts / signing.css.
+// Follows the same DOM pattern as permission-modal.ts and signing.css.
 
 /**
  * Show a password prompt modal. Resolves with the entered password,
@@ -107,7 +110,7 @@ export function showPasswordPrompt(opts?: { error?: string }): Promise<string> {
       reject(new Error("User cancelled decryption"));
     });
 
-    // Clicking the backdrop should not dismiss — the user must explicitly
+    // Clicking the backdrop should not dismiss. The user must explicitly
     // cancel or submit. Encrypted content has no fallback to show.
 
     // Focus the input after appending to DOM

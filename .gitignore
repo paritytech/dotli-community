@@ -13,6 +13,13 @@ dist
 coverage
 *.local
 
+# Ad-hoc screenshots dropped at the repo root during debugging.
+# Documentation images should live under docs/ (or be explicitly
+# force-added) rather than at the root.
+/*.png
+/*.jpg
+/*.jpeg
+
 # Lock files (keep bun.lock committed for reproducible CI builds)
 package-lock.json
 yarn.lock
@@ -32,20 +39,27 @@ pnpm-lock.yaml
 *.tsbuildinfo
 test-results/
 playwright-report/
-**/tests/results.json
+**/results.json
+apps/host/**/.auth/
 
 # PAPI
 .papi/descriptors
 
 # Env
-.env
-.env.sentry-build-plugin
+.env*
+!.env.example
+
+# Deploy (uncommitted SSH targets; see deploy.env.example)
+deploy.env
 
 # Turbo
 .turbo
 
-# AI files
-.claude
+# AI
+.claude/settings.local.json
+.claude/sessions/
+.claude/cache/
+.claude/worktrees
 .cursor
 .codeium
 .gemini
@@ -56,9 +70,13 @@ playwright-report/
 .swarm
 .ai
 .llm
-.mcp.json
 opencode.json
-docs
-CLAUDE.md
-AGENTS.md
 GEMINI.md
+
+# Vendored SDK packages (debug branch only).
+# Override the generic `dist` / `.papi/descriptors` rules so the
+# prebuilt packages under vendor/truapi-debug/ ship to CI.
+!vendor/truapi-debug/**/dist
+!vendor/truapi-debug/**/dist/**
+!vendor/truapi-debug/**/.papi
+!vendor/truapi-debug/**/.papi/**

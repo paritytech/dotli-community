@@ -1,10 +1,13 @@
-// dotNS URL parsing utilities
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dotNS URL parsing utilities.
 //
 // Parses .dot domain URLs in various formats (bare, with protocol, polkadot://)
 // and identifies products by the canonical `.dot` TLD.
 // URLs with other TLDs (dot.li, paseo.li, google.com, etc.) are regular websites.
 //
-// Parse outcomes are discriminated unions — a `null` return would hide
+// Parse outcomes are discriminated unions. A `null` return would hide
 // whether the input was empty, unparseable, the wrong TLD, a localhost
 // attempt, etc. Callers that only need a pass/fail signal can use the
 // legacy wrappers (`parseDotNsDomain`, `parseLocalhostUrl`, `normalizeUrl`)
@@ -12,10 +15,10 @@
 // `*Result` helpers.
 //
 // This module intentionally does not import `@dotli/metrics` to avoid a
-// dependency cycle (`metrics → shared → metrics`). Observability for
-// parse failures is the caller's responsibility — they have enough
-// context (which input, which user action) to tag the metric
-// meaningfully.
+// dependency cycle (`metrics` depends on `shared` which would depend on
+// `metrics`). Observability for parse failures is the caller's
+// responsibility. The caller has enough context (which input, which user
+// action) to tag the metric meaningfully.
 
 export interface DotNsUrl {
   identifier: string; // e.g. "mytestapp.dot" (always ends with .dot)
@@ -29,12 +32,10 @@ export type DotNsUrlResult =
   | { kind: "not-dot-domain"; hostname: string }
   | { kind: "port-or-userinfo"; hostname: string };
 
-// ── Helpers ──────────────────────────────────────────────────
-
 /**
  * `.dot` TLD check, NFC-normalized and case-folded.
  *
- * The `.dot` authority is defined over lowercase ASCII; a hostname
+ * The `.dot` authority is defined over lowercase ASCII. A hostname
  * arriving via `new URL(...)` might be pre-punycoded or mixed-case.
  * Normalizing here means both `Example.DOT` and `example.dot` hit the
  * same outcome, while genuine IDN labels outside the ASCII range still
@@ -42,6 +43,15 @@ export type DotNsUrlResult =
  */
 function isDotDomain(domain: string): boolean {
   return domain.normalize("NFC").toLowerCase().endsWith(".dot");
+}
+
+function isProductIdentifier(id: string): boolean {
+  const n = id.normalize("NFC").toLowerCase();
+  return n.endsWith(".dot") || n === "localhost" || n.startsWith("localhost:");
+}
+
+function isWebcontainerPreviewHost(host: string): boolean {
+  return host.toLowerCase().endsWith(".webcontainer-api.io");
 }
 
 function parseUrl(url: string): URL | null {
@@ -55,11 +65,10 @@ function parseUrl(url: string): URL | null {
 /**
  * Parse a URL, optionally assuming `https://` when no protocol is present.
  *
- * Callers must opt in explicitly via `assumeHttps` — the previous
- * `parseUrlWithFallbackProtocol` helper silently prepended `https://` on any
- * parse failure, which was a hidden fallback. When the prefix is applied
- * the call site is responsible for documenting *why* (e.g. user typed a
- * bare hostname).
+ * Callers must opt in explicitly via `assumeHttps`. Prepending `https://`
+ * on any parse failure would be a hidden fallback, so when the prefix is
+ * applied the call site is responsible for documenting the reason (e.g.
+ * the user typed a bare hostname).
  */
 function parseUrlWithExplicitHttps(
   url: string,
@@ -75,19 +84,16 @@ function parseUrlWithExplicitHttps(
   return parseUrl("https://" + url);
 }
 
-// ── Public (discriminated) API ──────────────────────────────
-
 /**
  * Parse a `.dot` domain URL. Returns a discriminated result so callers
- * can distinguish empty input from the wrong TLD from a parse failure —
- * each of which warrants a different UI hint.
+ * can distinguish empty input from the wrong TLD from a parse failure.
+ * Each warrants a different UI hint.
  *
  * Host validation rejects URLs that carry an explicit port or userinfo
- * component. `.dot` identifiers are resolved via the chain + IPFS path
- * and have no concept of either; silently dropping them (the old
- * behaviour) would let a user paste `user:pass@x.dot:8080/path` and
- * land on `x.dot/path` without being told the credentials/port were
- * discarded.
+ * component. `.dot` identifiers are resolved via the chain and IPFS path
+ * and have no concept of either. Silently dropping them would let a user
+ * paste `user:pass@x.dot:8080/path` and land on `x.dot/path` without being
+ * told the credentials and port were discarded.
  */
 export function parseDotNsDomainResult(url: string): DotNsUrlResult {
   const normalized = url.trim();
@@ -121,13 +127,11 @@ export function parseDotNsDomainResult(url: string): DotNsUrlResult {
   };
 }
 
-/** Legacy pass/fail wrapper; prefer `parseDotNsDomainResult`. */
+/** Legacy pass/fail wrapper. Prefer `parseDotNsDomainResult`. */
 function parseDotNsDomain(url: string): DotNsUrl | null {
   const result = parseDotNsDomainResult(url);
   return result.kind === "ok" ? result.url : null;
 }
-
-// ── Localhost ────────────────────────────────────────────────
 
 export interface LocalhostUrl {
   host: string; // e.g. "localhost:5000"
@@ -168,13 +172,11 @@ export function parseLocalhostUrlResult(url: string): LocalhostUrlResult {
   };
 }
 
-/** Legacy pass/fail wrapper; prefer `parseLocalhostUrlResult`. */
+/** Legacy pass/fail wrapper. Prefer `parseLocalhostUrlResult`. */
 function parseLocalhostUrl(url: string): LocalhostUrl | null {
   const result = parseLocalhostUrlResult(url);
   return result.kind === "ok" ? result.url : null;
 }
-
-// ── Normalization ───────────────────────────────────────────
 
 export type NormalizeUrlResult =
   | { kind: "ok"; url: string }
@@ -183,8 +185,9 @@ export type NormalizeUrlResult =
 
 /**
  * Ensure a URL has a protocol so it opens as absolute, not relative.
+ *
  * Returns a discriminated result so callers know whether the input was
- * returned unchanged (parse failure) vs normalized.
+ * returned unchanged (parse failure) or normalized.
  */
 export function normalizeUrlResult(url: string): NormalizeUrlResult {
   const trimmed = url.trim();
@@ -200,8 +203,9 @@ export function normalizeUrlResult(url: string): NormalizeUrlResult {
 
 /**
  * Legacy wrapper that collapses the discriminated outcome to a string.
+ *
  * Returns the raw input on parse failure so existing call sites keep
- * working; prefer `normalizeUrlResult` for new code.
+ * working. Prefer `normalizeUrlResult` for new code.
  */
 function normalizeUrl(url: string): string {
   const result = normalizeUrlResult(url);
@@ -217,6 +221,8 @@ function normalizeUrl(url: string): string {
 
 export const dotNsUrl = {
   isDotDomain,
+  isProductIdentifier,
+  isWebcontainerPreviewHost,
   parseDotNsDomain,
   parseLocalhostUrl,
   normalizeUrl,

@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -5,12 +8,17 @@ import type {
   JsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
 import { ProtocolFatalError, ProtocolInitFailedError } from "./errors";
+import type {
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+} from "@dotli/resolver/manifest";
+import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
-  BASE_DOMAIN,
-  SUPPORTED_GENESIS_HASHES,
-  type SiteId,
-} from "@dotli/config/config";
-import { getChainBackend, type ChainBackend } from "@dotli/config/mode";
+  getActiveSupportedGenesisHashes,
+  getNetwork,
+} from "@dotli/config/network";
+import { getBackend, type Backend } from "@dotli/config/mode";
 import { log } from "@dotli/shared/log";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
@@ -20,7 +28,10 @@ import {
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
 } from "./messages";
-import { isSharedAuthRequestMethod } from "./auth-storage";
+import {
+  isSharedAuthRequestMethod,
+  isSharedModeRequestMethod,
+} from "./auth-storage";
 import { serializeError } from "@dotli/shared/errors";
 
 interface PendingRequest {
@@ -60,7 +71,7 @@ interface ReadyWaiter {
 let pendingReadyResolvers: ReadyWaiter[] = [];
 
 /** Sub-mode to pass to the protocol iframe. `null` means the iframe is
- *  only needed for shared auth — no chain provider at all.
+ *  only needed for shared auth, with no chain provider at all.
  *
  *  `"shared-worker"` and `"direct"` are P2P (smoldot-backed) submodes.
  *  `"rpc"` is the gateway submode: chain calls are bridged over trusted
@@ -68,10 +79,10 @@ let pendingReadyResolvers: ReadyWaiter[] = [];
 type ProtocolSubMode = "shared-worker" | "direct" | "rpc";
 let protocolSubMode: ProtocolSubMode | null = null;
 
-/** Map the user-facing `ChainBackend` to the protocol iframe sub-mode.
- *  Same semantic axis, just without the `smoldot-` prefix that the iframe
- *  doesn't need (it already lives on the chain side of the split). */
-function chainBackendToSubMode(backend: ChainBackend): ProtocolSubMode {
+/** Map the user-facing `Backend` to the protocol iframe sub-mode.
+ *  The iframe doesn't carry the `smoldot-` / `rpc-gateway` prefix.
+ *  That prefix already lives on the chain side of the boundary. */
+function backendToSubMode(backend: Backend): ProtocolSubMode {
   if (backend === "smoldot-shared-worker") {
     return "shared-worker";
   }
@@ -82,7 +93,7 @@ function chainBackendToSubMode(backend: ChainBackend): ProtocolSubMode {
 }
 
 /** When true, ask the protocol iframe to purge its IDB caches before
- *  starting up — i.e. every cold start from scratch, no warm-start state. */
+ *  starting up, i.e. every cold start from scratch, no warm-start state. */
 let protocolSkipWorkerCache = false;
 
 /**
@@ -118,6 +129,29 @@ function resolveProtocolReady(): void {
   }
 }
 
+/**
+ * Tear down the cached iframe and ready state so the next request creates
+ * a fresh one. Exposed for callers (e.g. the shared-mode bootstrap) that
+ * may discover after the initial iframe load that the chosen sub-mode
+ * was wrong and need a clean restart before chain operations run.
+ *
+ * Side effects callers should be aware of:
+ *   - Any in-flight `postRequest()` whose response hasn't arrived will be
+ *     orphaned: it will time out via the per-method timer instead of
+ *     completing. Callers that have outstanding work should expect those
+ *     rejections.
+ *   - Any `waitForProtocolReady()` waiter is rejected immediately rather
+ *     than waiting for `IFRAME_READY_TIMEOUT_MS`.
+ *   - In `shared-worker` mode, removing the iframe drops its
+ *     `SharedWorker` port too. The SharedWorker itself stays alive (it's
+ *     shared across tabs), but this tab's connection cycles. Its pre-sync
+ *     progress is preserved on the worker side, while the local `port` is
+ *     gone and the next iframe load reopens a fresh one.
+ */
+export function resetProtocolFrame(): void {
+  resetProtocolFrameState();
+}
+
 function resetProtocolFrameState(reason?: Error): void {
   protocolIframe?.remove();
   protocolIframe = null;
@@ -125,7 +159,7 @@ function resetProtocolFrameState(reason?: Error): void {
   protocolReadyPromise = null;
   protocolReady = false;
   // Reject any callers blocked on `waitForProtocolReady()` before we drop the
-  // resolvers — otherwise their promises would hang until the 120s timeout.
+  // resolvers. Otherwise their promises would hang until the 120s timeout.
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
   if (orphaned.length > 0) {
@@ -183,7 +217,7 @@ function bindMessageListener(): void {
       }
       case "fatal":
       case "init-failed": {
-        // Smoldot (or the protocol iframe) has died — either crashed
+        // Smoldot (or the protocol iframe) has died, either crashed
         // mid-session (`fatal`) or failed to come up at all
         // (`init-failed`). Either way every in-flight request is
         // orphaned: the chain is gone, nothing will ever respond.
@@ -203,14 +237,14 @@ function bindMessageListener(): void {
         }
 
         // Route through the same reset path used by iframe load failures
-        // so that callers blocked on `waitForProtocolReady()`
-        // (`pendingReadyResolvers`) are also rejected immediately —
-        // previously they'd hang until `IFRAME_READY_TIMEOUT_MS` (120 s)
-        // even though the chain was already known dead. This also clears
-        // the iframe, `hostFramePromise`, and `protocolReadyPromise` so
-        // the next `ensureProtocolFrame()` call can attempt a clean
-        // re-boot (e.g. after the user switches settings) instead of
-        // being stuck on a poisoned cached rejection.
+        // so callers blocked on `waitForProtocolReady()`
+        // (`pendingReadyResolvers`) are rejected immediately rather than
+        // hanging until `IFRAME_READY_TIMEOUT_MS` even though the chain is
+        // already known dead. This also clears the iframe,
+        // `hostFramePromise`, and `protocolReadyPromise` so the next
+        // `ensureProtocolFrame()` call can attempt a clean re-boot (e.g.
+        // after the user switches settings) instead of being stuck on a
+        // poisoned cached rejection.
         resetProtocolFrameState(err);
         return;
       }
@@ -222,7 +256,7 @@ function bindMessageListener(): void {
           );
           return;
         }
-        // Envelope ships `message` as a string; the provider contract
+        // Envelope ships `message` as a string. The provider contract
         // wants the consumer to receive a parsed `JsonRpcMessage`.
         let parsed: JsonRpcMessage;
         try {
@@ -281,10 +315,10 @@ function createRequestId(): string {
 
 const IFRAME_LOAD_TIMEOUT_MS = 30_000;
 // The iframe signals "ready" only after the SharedWorker pre-syncs the
-// chain — must exceed `TIMEOUTS.SHARED_WORKER_READY` so the outer wait
+// chain. This must exceed `TIMEOUTS.SHARED_WORKER_READY` so the outer wait
 // doesn't race the inner presync.
 const IFRAME_READY_TIMEOUT_MS = 240_000;
-// NO automatic retries. The user picked this protocol path; if the iframe
+// NO automatic retries. The user picked this protocol path. If the iframe
 // load fails the cause must surface immediately so the user (or a
 // higher-level UI affordance) can decide whether to retry.
 
@@ -292,11 +326,12 @@ function createHostIframe(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const iframe = document.createElement("iframe");
     const params = new URLSearchParams();
-    // Fall back to the stored ChainBackend when the async
+    // Fall back to the stored Backend when the async
     // setProtocolSubMode() has not run yet.
     const mode: ProtocolSubMode =
-      protocolSubMode ?? chainBackendToSubMode(getChainBackend());
+      protocolSubMode ?? backendToSubMode(getBackend());
     params.set("mode", mode);
+    params.set("network", getNetwork());
     if (protocolSkipWorkerCache) {
       params.set("skipWorkerCache", "1");
     }
@@ -443,10 +478,10 @@ export async function ensureProtocolFrame(): Promise<void> {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-// Methods whose completion time depends on chain sync / user patience. No
-// per-request timeout — a smoldot panic emits a `fatal` envelope that
+// Methods whose completion time depends on chain sync or user patience.
+// No per-request timeout. A smoldot panic emits a `fatal` envelope that
 // rejects pending requests, and the user can abandon via the "Change
-// settings" affordance. Waiting longer than 5 min is fine; silently
+// settings" affordance. Waiting longer than 5 min is fine. Silently
 // killing the request is not.
 const UNTIMED_METHODS: ReadonlySet<ProtocolRequestMethod> =
   new Set<ProtocolRequestMethod>(["warmup"]);
@@ -454,13 +489,17 @@ const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   chainConnect: 30_000,
   resolveDotName: 90_000,
   resolveOwner: 90_000,
+  resolveExecutableManifest: 30_000,
+  resolveRootManifest: 30_000,
+  bulletinSubmitPreimage: 150_000,
 };
 
 async function postRequest<M extends ProtocolRequestMethod>(
   method: M,
   payload: ProtocolRequestMap[M],
   onProgress?: (message: string) => void,
-  needsProtocolReady = !isSharedAuthRequestMethod(method),
+  needsProtocolReady = !isSharedAuthRequestMethod(method) &&
+    !isSharedModeRequestMethod(method),
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
@@ -537,8 +576,37 @@ export async function resolveOwnerRemote(
   return (await postRequest("resolveOwner", { label })) as string | null;
 }
 
+/**
+ * Remote proxy for the executable-manifest reader.
+ *
+ * Returns the same discriminated result as the in-process
+ * `resolveExecutableManifest`. The bridge serialises the result as-is.
+ */
+export async function resolveExecutableManifestRemote(
+  label: string,
+  kind: "app" | "widget" | "worker",
+): Promise<ManifestResult<ExecutableManifest>> {
+  return (await postRequest("resolveExecutableManifest", {
+    label,
+    kind,
+  })) as ManifestResult<ExecutableManifest>;
+}
+
+/** Remote proxy for the root-manifest reader. */
+export async function resolveRootManifestRemote(
+  label: string,
+): Promise<ManifestResult<RootManifest>> {
+  return (await postRequest("resolveRootManifest", {
+    label,
+  })) as ManifestResult<RootManifest>;
+}
+
 export async function submitPreimageRemote(value: Uint8Array): Promise<void> {
   await postRequest("bulletinSubmitPreimage", { value });
+}
+
+export async function hasSharedAuthSession(siteId: SiteId): Promise<boolean> {
+  return (await postRequest("authHasSession", { siteId })) as boolean;
 }
 
 export async function readSharedAuthStorage(
@@ -566,11 +634,41 @@ export async function clearSharedAuthStorage(
 }
 
 /**
- * Subscribe to cross-tab shared host-origin storage changes.
+ * Shared mode storage lives on `host.<BASE_DOMAIN>` so the user's backend
+ * and cache preferences travel with them across every subdomain of the
+ * registrable root. Reads return `null` when the key has never been
+ * written (caller decides the default).
+ */
+export async function readSharedModeStorage(
+  siteId: SiteId,
+  key: string,
+): Promise<string | null> {
+  return (await postRequest("modeStorageRead", { siteId, key })) as
+    | string
+    | null;
+}
+
+export async function writeSharedModeStorage(
+  siteId: SiteId,
+  key: string,
+  value: string,
+): Promise<void> {
+  await postRequest("modeStorageWrite", { siteId, key, value });
+}
+
+export async function clearSharedModeStorage(
+  siteId: SiteId,
+  key: string,
+): Promise<void> {
+  await postRequest("modeStorageClear", { siteId, key });
+}
+
+/**
+ * Subscribe to cross-tab shared auth storage changes.
  *
  * Writes and clears performed by *sibling tabs* of the same root domain (e.g.
  * another `*.dot.li` tab) arrive here as notifications. The originating tab
- * does NOT receive its own writes via this channel — it already emits to local
+ * does NOT receive its own writes via this channel. It already emits to local
  * listeners inline when its own `write`/`clear` resolves.
  *
  * Ensures the host iframe is created so it can relay `BroadcastChannel`
@@ -581,7 +679,7 @@ export function subscribeSharedAuthStorage(
 ): () => void {
   sharedAuthListeners.add(listener);
   // Best-effort iframe warm-up so the relay path is live. We intentionally
-  // don't await or surface errors — the caller's subscribe contract is
+  // don't await or surface errors. The caller's subscribe contract is
   // synchronous, and the iframe will be lazily (re)created on the next
   // explicit request if this warm-up fails.
   void ensureHostFrame().catch((error: unknown) => {
@@ -596,11 +694,11 @@ export function subscribeSharedAuthStorage(
 }
 
 export function isRemoteChainSupported(genesisHash: string): boolean {
-  return SUPPORTED_GENESIS_HASHES.has(genesisHash.toLowerCase());
+  return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
 }
 
 /**
- * Notification-style requests (no `id`) get `null` — nothing to respond to.
+ * Notification-style requests (no `id`) get `null`, nothing to respond to.
  */
 function buildJsonRpcError(
   request: JsonRpcRequest,
@@ -646,7 +744,7 @@ export function createRemoteChainProvider(
         remote.pendingMessages = [];
       })
       .catch((error: unknown) => {
-        // Connection failed — send JSON-RPC error responses for all
+        // Connection failed. Send JSON-RPC error responses for all
         // pending messages so polkadot-api's client knows the connection
         // died instead of hanging on "Not connected" forever.
         const reason = serializeError(error);

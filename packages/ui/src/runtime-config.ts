@@ -1,4 +1,5 @@
-import { PEOPLE_PASEO_GENESIS, SITE_ID } from "@dotli/config/config";
+import { SITE_ID } from "@dotli/config/config";
+import { getActiveServicesConfig } from "@dotli/config/network";
 import type { WasmRuntimeConfig } from "@parity/truapi-host-wasm";
 
 type RuntimeLocation = Pick<Location, "hostname" | "origin">;
@@ -31,7 +32,7 @@ export function createTruapiRuntimeConfig(
     productLabel: label,
     siteId,
     hostMetadataUrl: pairingMetadataUrl(location),
-    peopleChainGenesisHash: PEOPLE_PASEO_GENESIS,
+    peopleChainGenesisHash: getActiveServicesConfig().people.genesis,
     pairingDeeplinkScheme: "polkadotapp",
   };
 }

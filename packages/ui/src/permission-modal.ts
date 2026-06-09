@@ -1,15 +1,18 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import {
   isDevicePermission,
   type EnforceablePermissionName,
 } from "./permissions";
 
-// dot.li — Permission request modal (vanilla DOM)
+// dot.li Permission request modal (vanilla DOM)
 //
 // Shows a confirmation dialog when a product requests a permission the
 // host can actually gate: the Permissions-Policy-backed device
-// variants (Notifications, Camera, Microphone, Location, Bluetooth, NFC,
-// Clipboard, Biometrics) and the internal submit gates (ChainSubmit,
-// PreimageSubmit, StatementSubmit, UserId). `OpenUrl` is auto-granted at the
+// variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
+// Biometrics, Notifications) and the internal submit gates (ChainSubmit,
+// PreimageSubmit, StatementSubmit). `OpenUrl` is auto-granted at the
 // container level and never reaches this modal.
 // Returns a Promise that resolves on "Allow" and rejects on "Deny".
 //
@@ -19,8 +22,8 @@ export const PERMISSION_DESCRIPTIONS: Record<
   EnforceablePermissionName,
   string
 > = {
+  Notifications: "Show in-app and system notifications",
   Camera: "Access your camera for photo and video capture",
-  Notifications: "Show product notifications from this site",
   Microphone: "Access your microphone for audio input",
   Location: "Access your location for geolocation services",
   Bluetooth: "Connect to nearby Bluetooth devices",
@@ -30,7 +33,7 @@ export const PERMISSION_DESCRIPTIONS: Record<
   ChainSubmit: "Sign and submit on-chain transactions on your behalf",
   PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
   StatementSubmit: "Submit signed statements to the statement store",
-  UserId: "Share your primary DotNS username with this product",
+  UserId: "Reveal your dotNS username to this app",
 };
 
 const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {

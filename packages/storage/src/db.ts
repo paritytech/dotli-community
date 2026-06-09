@@ -1,11 +1,14 @@
-// dot.li — Shared IndexedDB connection
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li shared IndexedDB connection.
 //
 // Single "dotli" database with stores for CID cache and smoldot chain data.
 // Pre-opened during HTML parse via an inline <script> (window.__dotliDb).
 //
 // The pre-opened-handle path does not silently fall back to a fresh open
-// when it rejects — the silent fallback would hide quota errors /
-// upgrade-blocked / origin-denied situations from operators. We log +
+// when it rejects. A silent fallback would hide quota errors,
+// upgrade-blocked, or origin-denied situations from operators. We log and
 // capture the underlying rejection before falling back, so the warm-start
 // failure is visible even though we still return a working DB.
 
@@ -19,7 +22,7 @@ declare global {
 }
 
 const DB_NAME = "dotli";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -40,6 +43,19 @@ function openFresh(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains("chains")) {
         db.createObjectStore("chains", { keyPath: "chain" });
+      }
+      // v2: scheduled notifications + per-product id counters.
+      if (!db.objectStoreNames.contains("scheduled_notifications")) {
+        const store = db.createObjectStore("scheduled_notifications", {
+          keyPath: "hostId",
+          autoIncrement: true,
+        });
+        store.createIndex("byProductId", "productId", { unique: false });
+        store.createIndex("byScheduledAt", "scheduledAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("notification_counters")) {
+        // keyPath: "productId". Value: { productId, next: number }.
+        db.createObjectStore("notification_counters", { keyPath: "productId" });
       }
     };
     req.onsuccess = () => {
@@ -65,8 +81,8 @@ function openFresh(): Promise<IDBDatabase> {
  * Reuses the pre-opened connection from window.__dotliDb if available.
  *
  * If the pre-opened handle rejects, the warm-start failure is logged and
- * captured to Sentry before we fall back to a fresh open — so the operator
- * can see *why* the optimization didn't fire, instead of silently losing
+ * captured to Sentry before we fall back to a fresh open, so the operator
+ * can see *why* the optimization didn't fire instead of silently losing
  * the signal.
  */
 export function getDb(): Promise<IDBDatabase> {
@@ -93,7 +109,7 @@ export function getDb(): Promise<IDBDatabase> {
   // Reset on close so we re-open on next access. If the close fires while
   // the same generation is still current, clear the cached promise so the
   // next getDb() opens a fresh handle. If a later getDb() already bumped
-  // the generation (racing refresh), leave it alone — otherwise we'd null
+  // the generation (racing refresh), leave it alone. Otherwise we'd null
   // out a newer, valid promise.
   void dbPromise
     .then((db) => {
@@ -111,10 +127,11 @@ export function getDb(): Promise<IDBDatabase> {
 }
 
 /**
- * Current DB handle generation. Callers holding a cached handle across
- * an async boundary can snapshot this before the boundary and compare
- * after — if it changed, the handle is stale and the operation should
- * be retried via a fresh `getDb()`.
+ * Current DB handle generation.
+ *
+ * Callers holding a cached handle across an async boundary can snapshot
+ * this before the boundary and compare after. If it changed, the handle
+ * is stale and the operation should be retried via a fresh `getDb()`.
  */
 export function getDbGeneration(): number {
   return dbGeneration;

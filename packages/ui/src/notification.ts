@@ -1,4 +1,7 @@
-// dot.li — Notification display
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Notification display
 //
 // Stackable in-DOM toasts. Auto-dismiss pauses while the tab is
 // hidden or the stack is expanded. Optionally fires browser
@@ -19,15 +22,13 @@ const CLOSE_SVG =
   '<line x1="18" y1="6" x2="6" y2="18"/>' +
   '<line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
-// ── Types ────────────────────────────────────────────────
-
 export interface NotificationParams {
   text: string;
   label: string;
   deeplink?: string;
   /** SVG string for the icon. Default: bell. */
   icon?: string;
-  /** CSS color for icon background. Default: #e6007a. */
+  /** CSS color for icon background. Default: inherits from .notif-icon (#0a0a0a). */
   iconBackground?: string;
   /** Auto-dismiss in ms. 0 = persistent (manual close only). Default: NOTIFICATION_DISMISS_MS. */
   dismissMs?: number;
@@ -54,8 +55,6 @@ interface Notif {
   action: { label: string; onClick: () => void } | undefined;
 }
 
-// ── State ────────────────────────────────────────────────
-
 const items: Notif[] = [];
 let expanded = false;
 let nextId = 0;
@@ -64,8 +63,6 @@ const timers = new Map<number, ReturnType<typeof setTimeout>>();
 let root: HTMLElement | null = null;
 let cardsEl: HTMLElement | null = null;
 let visListenerBound = false;
-
-// ── Helpers ──────────────────────────────────────────────
 
 function sanitizeText(raw: string): string {
   return raw.trim().slice(0, 200);
@@ -86,8 +83,6 @@ function validateDeeplink(dl: string | undefined): string | undefined {
 function shouldPause(): boolean {
   return expanded || document.visibilityState !== "visible";
 }
-
-// ── Timers ───────────────────────────────────────────────
 
 function startTimer(n: Notif): void {
   if (n.remaining <= 0 || n.leaving || shouldPause()) {
@@ -129,8 +124,6 @@ function resumeAll(): void {
   }
 }
 
-// ── Visibility listener ──────────────────────────────────
-
 function ensureVisibilityListener(): void {
   if (visListenerBound) {
     return;
@@ -145,8 +138,7 @@ function ensureVisibilityListener(): void {
   });
 }
 
-// ── DOM setup (created once, reused) ─────────────────────
-
+// DOM setup, created once and reused.
 function ensureRoot(): void {
   if (root) {
     return;
@@ -208,7 +200,7 @@ function handleClick(e: MouseEvent): void {
     return;
   }
 
-  // Click on cards area → expand (only collapsed, multiple items, not on links)
+  // Click on cards area expands the stack (only collapsed, multiple items, not on links)
   if (
     !expanded &&
     items.length > 1 &&
@@ -218,8 +210,6 @@ function handleClick(e: MouseEvent): void {
     expandStack();
   }
 }
-
-// ── Card element creation ────────────────────────────────
 
 function createCardEl(n: Notif): HTMLElement {
   const card = document.createElement("div");
@@ -283,8 +273,6 @@ function createCardEl(n: Notif): HTMLElement {
   return card;
 }
 
-// ── Layout update ────────────────────────────────────────
-
 function updateLayout(): void {
   if (!root || !cardsEl || !items.length) {
     return;
@@ -328,8 +316,6 @@ function hideCloseAll(): void {
   }
 }
 
-// ── Actions ──────────────────────────────────────────────
-
 function dismiss(id: number): void {
   const n = items.find((x) => x.id === id);
   if (!n || n.leaving) {
@@ -340,7 +326,7 @@ function dismiss(id: number): void {
   pauseTimer(n);
   n.onDismiss?.();
 
-  // Hidden cards (beyond stack limit) — remove immediately
+  // Hidden cards (beyond stack limit) are removed immediately
   if (n.el.classList.contains("notif-hidden-card")) {
     n.el.remove();
     items.splice(items.indexOf(n), 1);
@@ -456,8 +442,7 @@ function collapseStack(): void {
   updateLayout();
 }
 
-// ── Browser Notification (hidden tab supplement) ─────────
-
+// Browser Notification, used as a supplement when the tab is hidden.
 function fireBrowserNotification(
   text: string,
   deeplink: string | undefined,
@@ -490,8 +475,6 @@ function fireBrowserNotification(
     });
   }
 }
-
-// ── Public API ───────────────────────────────────────────
 
 export function showNotification(params: NotificationParams): void {
   const text = sanitizeText(params.text);

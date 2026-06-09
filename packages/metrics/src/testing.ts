@@ -1,4 +1,7 @@
-// dot.li — Test helpers for observability assertions
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Test helpers for observability assertions.
 //
 // Every failing-path test should assert that the failure was observable:
 // either a metric with a matching `outcome` was emitted, or a Sentry
@@ -43,10 +46,10 @@ export interface MetricsHarness {
  * matching `m.bind()` recipient so every metric call emitted during
  * the test is captured in `harness.metrics` / `harness.breadcrumbs`.
  *
- * Call once per test; call `harness.restore()` in `afterEach`. The
- * harness is re-entrant safe — multiple concurrent tests get their
- * own recorder (they share the module-level metrics bind, but each
- * install replaces the prior one so the last test wins).
+ * Call once per test, then call `harness.restore()` in `afterEach`. The
+ * harness is re-entrant safe: multiple concurrent tests get their own
+ * recorder (they share the module-level metrics bind, but each install
+ * replaces the prior one so the last test wins).
  */
 export function installMetricsHarness(): MetricsHarness {
   const metrics: RecordedMetric[] = [];
@@ -56,8 +59,13 @@ export function installMetricsHarness(): MetricsHarness {
   const stub = {
     startSpan: <T>(
       _opts: { op: string; name: string },
-      fn: (span: unknown) => T,
-    ): T => fn(undefined),
+      fn: (span: { setAttribute: (key: string, value: string) => void }) => T,
+    ): T =>
+      fn({
+        setAttribute: (key: string, value: string): void => {
+          tags.set(key, value);
+        },
+      }),
     setMeasurement: (): void => {
       /* no-op */
     },
@@ -130,7 +138,7 @@ export function expectMetric(
   name: string,
   attributes: Partial<Record<string, string>> = {},
 ): void {
-  // Metrics are emitted with the `"dotli."` prefix; callers pass the
+  // Metrics are emitted with the `"dotli."` prefix. Callers pass the
   // suffix for readability (matches the `S.*` constants in spans.ts).
   const fullName = name.startsWith("dotli.") ? name : `dotli.${name}`;
   const match = harness.metrics.find(
@@ -154,7 +162,7 @@ export function expectMetric(
 /**
  * Assert that a Sentry breadcrumb matching `predicate` was recorded.
  *
- * The predicate form keeps the helper flexible — tests can match on
+ * The predicate form keeps the helper flexible: tests can match on
  * category, level, message substring, or any subset of `data` fields.
  */
 export function expectSentryBreadcrumb(

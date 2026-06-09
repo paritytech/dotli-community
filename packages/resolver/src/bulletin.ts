@@ -1,9 +1,12 @@
-// dot.li — Bulletin Paseo chain connection for preimage operations
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Bulletin Paseo chain connection for preimage operations.
 //
 // Provides a smoldot-backed polkadot-api client for the Bulletin Paseo
 // parachain, used to submit preimage data via TransactionStorage.store().
 // Uses Alice test signer (DEV_PHRASE) matching the browser host's current
-// implementation — TODO: replace with production signer.
+// implementation. TODO: replace with production signer.
 
 import { getSmProvider } from "polkadot-api/sm-provider";
 import { createClient, type PolkadotClient } from "polkadot-api";
@@ -17,10 +20,10 @@ import {
 import { getBulletinChain, makeNonRemovingChain } from "./smoldot";
 import { log } from "@dotli/shared/log";
 
-// ── Bulletin client singleton ────────────────────────────────
+// Bulletin client singleton.
 //
 // Neither the cached client nor the in-flight promise are published to
-// the outer module until `getFinalizedBlock()` resolves — a failure
+// the outer module until `getFinalizedBlock()` resolves. A failure
 // before sync clears both so the next caller retries from scratch
 // instead of inheriting a dead client.
 
@@ -59,9 +62,9 @@ export async function ensureBulletinClient(): Promise<PolkadotClient> {
   return bulletinClientPromise;
 }
 
-// ── Test signer (Alice) ──────────────────────────────────────
+// Test signer (Alice).
 // TODO: Replace with production signer (People chain XCM authorization
-// + unsigned submission). For testing on Paseo, Alice's account is
+// and unsigned submission). For testing on Paseo, Alice's account is
 // pre-authorized via authorize_account.
 
 export function getTestSigner(): ReturnType<typeof getPolkadotSigner> {
@@ -75,7 +78,7 @@ export function getTestSigner(): ReturnType<typeof getPolkadotSigner> {
   );
 }
 
-// ── Preimage transaction submission ──────────────────────────
+// Preimage transaction submission.
 
 const TX_TIMEOUT_MS = 120_000;
 

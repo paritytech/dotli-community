@@ -1,8 +1,12 @@
-// dot.li — App context entry point
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// App context entry point.
 //
-// Runs on cid.app.dot.li — parses the CID from the subdomain,
-// fetches content via P2P, and renders it in a sandboxed iframe.
-// No dotns resolution, no smoldot, no topbar.
+// Runs on `<label>.app.dot.li` (the human dotns name). The resolved CID
+// arrives on the host-to-sandbox URL contract (`?cid=`). This fetches the
+// content over P2P, verifies it against the contract CID, and renders it in
+// a sandboxed iframe. No dotns resolution here, no smoldot, no topbar.
 
 import "@dotli/ui/styles.css";
 import {
@@ -37,7 +41,11 @@ import { isEncrypted, decryptContent } from "@dotli/content/decrypt";
 import { showError } from "@dotli/ui/ui";
 import { showPasswordPrompt } from "@dotli/ui/password-prompt";
 import { TIMEOUTS, BASE_DOMAIN } from "@dotli/config/config";
-import { validateSandboxParams } from "@dotli/config/host-sandbox-contract";
+import {
+  SANDBOX_CONTRACT_PARAMS,
+  validateSandboxParams,
+} from "@dotli/config/host-sandbox-contract";
+import { setNetworkOverride } from "@dotli/config/network";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
@@ -50,16 +58,12 @@ import * as S from "@dotli/metrics/spans";
 
 const T0 = performance.now();
 
-// The sandbox only runs embedded inside the host iframe (`dot.li` →
-// `cid.app.dot.li`). Direct / bookmarked loads of the sandbox origin are
-// unsupported: they have no container bridge to answer account / signing /
-// storage requests, no trust-shield context, and no unified loading UI.
-// `main()` rejects top-level loads with an explicit error; these helpers
-// now just postMessage to the host parent — there is no "else" branch.
-const loadingEl = document.querySelector<HTMLElement>("#app > .loading");
-if (loadingEl) {
-  loadingEl.style.display = "none";
-}
+// The sandbox only runs embedded inside the host iframe (`dot.li` iframes
+// `<label>.app.dot.li`). Direct or bookmarked loads of the sandbox origin
+// are unsupported. They have no container bridge to answer account, signing,
+// or storage requests, no trust-shield context, and no unified loading UI.
+// `main()` rejects top-level loads with an explicit error. These helpers
+// always postMessage to the host parent. There is no "else" branch.
 
 function showStatus(message: string): void {
   window.parent.postMessage({ type: "dotli:loading-status", message }, "*");
@@ -70,28 +74,50 @@ function notifyLoadingDone(): void {
 }
 
 /**
- * Extract the CID from the hostname.
- *
- * Examples:
- *   "bafyrei1234.app.dot.li"     → "bafyrei1234"
- *   "bafyrei1234.app.localhost"   → "bafyrei1234"
- *   "app.dot.li"                  → null (bare app domain)
- *   "dot.li"                      → null
+ * Remove host-to-sandbox contract keys from `window.location` so the dApp
+ * has only the user's own query params.
  */
-function parseCidFromHostname(): string | null {
+function stripContractParamsFromUrl(): void {
+  const cleaned = new URL(window.location.href);
+  for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
+    cleaned.searchParams.delete(key);
+  }
+  history.replaceState(null, "", cleaned.toString());
+}
+
+/**
+ * Render the sandbox-local error page AND tell the host shell its loading
+ * overlay is finished. Without the parent notify, the host's `.loading`
+ * stays visible (the host keeps it around as a sibling of the sandbox
+ * iframe so progress updates can land) and the two screens stack visibly:
+ * the error title plus the still-ticking progress bar from above.
+ */
+function failLoading(...args: Parameters<typeof showError>): void {
+  notifyLoadingDone();
+  showError(...args);
+}
+
+/**
+ * Extract the app subdomain label (the dotns name) from the hostname.
+ *
+ * The CID no longer lives in the origin (it arrives on the host contract), so
+ * this only confirms we are on a real `<label>.app.<root>` origin. Returns
+ * `null` for a bare `app.<root>` or any non-`*.app.*` host.
+ */
+function parseSubdomainLabel(): string | null {
   const hostname = window.location.hostname;
 
-  // Production: cid.app.{BASE_DOMAIN}
+  // Production: <label>.app.{BASE_DOMAIN}
   const appSuffix = `.app.${BASE_DOMAIN}`;
   if (hostname.endsWith(appSuffix)) {
-    const cid = hostname.slice(0, -appSuffix.length);
-    return cid || null;
+    const label = hostname.slice(0, -appSuffix.length);
+    return label || null;
   }
 
-  // Local dev: cid.app.localhost
+  // Local dev: <label>.app.localhost
   if (hostname.endsWith(".app.localhost")) {
-    const cid = hostname.slice(0, -".app.localhost".length);
-    return cid || null;
+    const label = hostname.slice(0, -".app.localhost".length);
+    return label || null;
   }
 
   return null;
@@ -180,9 +206,9 @@ function querySwVersion(sw: ServiceWorker): Promise<string | null> {
 
 /**
  * Check whether the active SW's build matches the page's build. On mismatch
- * surface a notification with a "Reload" action — the user decides whether
- * to take it. NO automatic reload: silently triggering `update()` +
- * `controllerchange → reload` would override the user's current session
+ * surface a notification with a "Reload" action, and the user decides whether
+ * to take it. NO automatic reload: silently triggering `update()` followed by
+ * a reload on `controllerchange` would override the user's current session
  * without consent.
  */
 async function ensureFreshServiceWorker(
@@ -210,8 +236,8 @@ async function ensureFreshServiceWorker(
     action: {
       label: "Reload",
       onClick: () => {
-        // User-driven update + reload. The SW self-promotes via
-        // `skipWaiting()` + `clients.claim()`; when the controller flips,
+        // User-driven update then reload. The SW self-promotes via
+        // `skipWaiting()` and `clients.claim()`. When the controller flips,
         // reload to pick up fresh assets.
         navigator.serviceWorker.addEventListener(
           "controllerchange",
@@ -272,8 +298,8 @@ async function registerAppServiceWorker({
         resolve();
       });
       void navigator.serviceWorker.ready.then((readyRegistration) => {
-        // In the reset path we explicitly ignore the current controller —
-        // only a `controllerchange` counts as "fresh". Prod the new SW to
+        // In the reset path we explicitly ignore the current controller.
+        // Only a `controllerchange` counts as "fresh". Prod the new SW to
         // claim clients so the controllerchange arrives quickly.
         if (!waitForFreshController && navigator.serviceWorker.controller) {
           clearTimeout(timeout);
@@ -325,7 +351,7 @@ async function storeArchiveInSW(
       } else if (msg?.type === "ARCHIVE_ERROR") {
         // The SW rejected the payload (malformed index or IDB persist
         // failure). Surface the real cause instead of waiting for the
-        // timeout — the page retry flow then has something to act on.
+        // timeout, so the page retry flow has something to act on.
         clearTimeout(timer);
         navigator.serviceWorker.removeEventListener("message", handler);
         reject(
@@ -351,7 +377,7 @@ async function storeArchiveInSW(
 /**
  * Optionally inject the sandbox checker script into HTML for relay mode.
  * In relay mode, document.write() replaces the page, so we must inject
- * the checker inline — the render.ts injection path is not used.
+ * the checker inline.
  */
 async function maybeInjectSandboxChecker(html: string): Promise<string> {
   if (
@@ -390,8 +416,8 @@ async function decryptIfNeeded(
   let error: string | undefined;
 
   // Only treat ChaCha20-Poly1305 auth-tag mismatch as "wrong password". Any
-  // other decryption error (corrupted ciphertext, library bug) is fatal —
-  // surface the real cause instead of looping infinitely with a misleading
+  // other decryption error (corrupted ciphertext, library bug) is fatal.
+  // Surface the real cause instead of looping infinitely with a misleading
   // "Wrong password" prompt.
   for (;;) {
     password ??= await showPasswordPrompt({ error });
@@ -412,9 +438,6 @@ async function decryptIfNeeded(
   }
 }
 
-// Module-level reference for cleanup
-let destroyHeliaFn: (() => Promise<void>) | null = null;
-
 /**
  * Wipe every piece of sandbox-origin state before init. Triggered by the
  * `fullReset=1` URL param the host sets on the first load after "Save &
@@ -428,13 +451,13 @@ let destroyHeliaFn: (() => Promise<void>) | null = null;
  *   - localStorage / sessionStorage (cleared to the empty object)
  *   - JS-visible cookies (expired on path=/ and on the current path)
  *
- * Best-effort across the board — some surfaces cannot be wiped from a
+ * Best-effort across the board. Some surfaces cannot be wiped from a
  * page context:
- *   - Firefox < 126 / Safari < 17 don't expose `indexedDB.databases()`,
+ *   - Firefox < 126 and Safari < 17 don't expose `indexedDB.databases()`,
  *     so IDB stores opened before this page load cannot be enumerated.
  *   - `HttpOnly` cookies are invisible to `document.cookie` and therefore
- *     unreachable from JS; clearing those requires server-side headers.
- * The user still gets a near-clean baseline; surviving state is logged
+ *     unreachable from JS. Clearing those requires server-side headers.
+ * The user still gets a near-clean baseline. Surviving state is logged
  * as a warning, not treated as fatal, because the reset is opt-in and
  * the worst case is a partial wipe.
  */
@@ -471,7 +494,7 @@ async function purgeSandboxOriginState(): Promise<void> {
   } catch (err) {
     log.warn("[dot.li app] IDB purge failed:", err);
   }
-  // CacheStorage (Cache API — not the SW archive which lives in IDB)
+  // CacheStorage (the Cache API, not the SW archive which lives in IDB)
   try {
     if (typeof caches !== "undefined") {
       const keys = await caches.keys();
@@ -490,9 +513,9 @@ async function purgeSandboxOriginState(): Promise<void> {
   } catch (err) {
     log.warn("[dot.li app] SW unregister failed:", err);
   }
-  // localStorage / sessionStorage. Previously omitted — the `purge…State`
-  // name promised a full wipe but the implementation left these alive, so
-  // a dApp that stashed preferences / tokens here survived the reset.
+  // localStorage and sessionStorage. The `purge…State` name promises a full
+  // wipe, so these must be cleared too. Otherwise a dApp that stashed
+  // preferences or tokens here would survive the reset.
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.clear();
@@ -508,7 +531,7 @@ async function purgeSandboxOriginState(): Promise<void> {
     log.warn("[dot.li app] sessionStorage purge failed:", err);
   }
   // Cookies visible to `document.cookie`. `HttpOnly` cookies are out of
-  // reach from JS — documented above. Expire on both `/` and the current
+  // reach from JS, as documented above. Expire on both `/` and the current
   // path since a dApp may have set the cookie on either.
   try {
     if (document.cookie.length > 0) {
@@ -532,13 +555,13 @@ async function main(): Promise<void> {
   performance.mark("dotli:app:start");
   log.warn(`[dot.li app] main() started (${elapsed(T0)})`);
 
-  // The sandbox is host-managed only — it must run as an iframe child of
+  // The sandbox is host-managed only. It must run as an iframe child of
   // the dot.li shell. A top-level load here has no bridge to answer
   // account/signing/storage calls, no shield/topbar context, and no
   // unified loading UI. Fail loudly instead of degrading into a broken
   // half-page. Users arriving via a bookmark are pointed back at dot.li.
   if (window.self === window.top) {
-    showError(
+    failLoading(
       "Sandbox URL not supported",
       `Open this dApp through https://${BASE_DOMAIN} — the sandbox origin (${window.location.host}) is not a standalone entry point.`,
     );
@@ -546,38 +569,39 @@ async function main(): Promise<void> {
     return;
   }
 
-  const cid = parseCidFromHostname();
-  if (cid === null) {
-    showError(
-      "No CID",
-      `This page requires a CID in the subdomain (e.g. bafyrei....app.${BASE_DOMAIN})`,
+  // The origin is now the dotns label (`<label>.app.<root>`), not the CID.
+  // We still require a subdomain so a bare `app.<root>` top load fails
+  // loudly. The actual CID arrives on the host contract below.
+  const subdomainLabel = parseSubdomainLabel();
+  if (subdomainLabel === null) {
+    failLoading(
+      "Sandbox URL not supported",
+      `This page must load as a dotns app subdomain (e.g. myapp.app.${BASE_DOMAIN}) through dot.li.`,
     );
     stopApp();
     return;
   }
 
-  log.warn(`[dot.li app] CID from hostname: ${cid}`);
   showStatus("Loading content...");
 
-  // The sandbox lives on cid.app.dot.li and cannot read the host's
-  // localStorage, so every user-chosen axis MUST arrive via URL param.
-  // The validator lives in `@dotli/config/host-sandbox-contract` so the
-  // schema + accepted values are a single source of truth for host +
-  // sandbox. Missing/unknown params are a hard error; there is no
-  // silent default.
+  // The sandbox lives on `<label>.app.dot.li` and cannot read the host's
+  // localStorage, so every user-chosen axis (and the resolved CID) must
+  // arrive via URL param. The validator in
+  // `@dotli/config/host-sandbox-contract` is the single source of truth
+  // for the schema and accepted values across host and sandbox. Missing
+  // or invalid contract values are a hard error. There is no silent
+  // default. Extra keys are user query params and pass through.
   const urlParams = new URL(window.location.href).searchParams;
   const parsed = validateSandboxParams(urlParams);
   if (!parsed.ok) {
-    showError("Invalid sandbox URL", parsed.reason);
+    failLoading("Invalid sandbox URL", parsed.reason);
     stopApp();
     return;
   }
-  const {
-    contentBackend: urlContentBackend,
-    chainBackend: urlChainBackend,
-    skipArchiveCache,
-  } = parsed.params;
-  const isCentralized = urlContentBackend === "ipfs-gateway";
+  const { cid, chainBackend, network, skipArchiveCache } = parsed.params;
+  const isGateway = chainBackend === "rpc-gateway";
+
+  setNetworkOverride(network);
 
   // Full-reset signal from the host settings popover: wipe sandbox-origin
   // state (IDB, CacheStorage, SW registrations) before the normal init
@@ -589,22 +613,17 @@ async function main(): Promise<void> {
     await purgeSandboxOriginState();
   }
 
-  // Propagate the explicit axes into every metric emitted from the sandbox
-  // so dashboards can slice either way (M-8, B-5, C-4).
-  const sessionDefaults: Record<string, string> = {
+  // Propagate the chainBackend and network choices into every metric emitted
+  // from the sandbox so dashboards can slice on them.
+  m.setDefaults({
     skip_archive_cache: String(skipArchiveCache),
-    content_backend: urlContentBackend,
-  };
-  if (urlChainBackend !== undefined) {
-    sessionDefaults.chain_backend = urlChainBackend;
-  }
-  m.setDefaults(sessionDefaults);
+    chain_backend: chainBackend,
+    network,
+  });
 
-  // Register SW + pre-load chunks in parallel.
-  // The fetch chunk is only pre-loaded in P2P mode — in gateway mode
-  // it is imported lazily so Vite can split out Helia/libp2p.
+  // Register the SW and pre-load chunks in parallel.
   // After a fullReset the existing `navigator.serviceWorker.controller`
-  // is the SW we just unregistered; force the registration path to wait
+  // is the SW we just unregistered, so force the registration path to wait
   // for a fresh controller rather than adopting that stale one.
   const stopSw = m.timer(S.APP_SW_REGISTER);
   const swReady = registerAppServiceWorker({
@@ -613,31 +632,28 @@ async function main(): Promise<void> {
     stopSw();
     return v;
   });
-  // The sandbox renders by writing HTML into its own window via
-  // `document.write` — it never instantiates `@dotli/ui/render`, so we
-  // don't pre-load that chunk here. The content-fetch chunk is only
-  // needed on a cache miss, and only in P2P mode (gateway mode does a
-  // plain HTTPS fetch) so the import is deferred.
-  const fetchChunkPromise = isCentralized
-    ? null
-    : import("@dotli/content/fetch");
+  // Pre-load the fetch chunk for the cache-miss path. Gateway mode only
+  // needs `fetchViaGateway` (small). The smoldot backends additionally
+  // need the bitswap-bridge module to call into the protocol iframe.
+  const fetchChunkPromise = import("@dotli/content/fetch");
+  const bitswapBridgePromise = isGateway ? null : import("./bitswap-bridge");
 
   // Wait for SW before cache check
   await swReady;
   log.warn(`[dot.li app] SW ready (${elapsed(T0)})`);
 
   // Check SW cache first (skip if user disabled content cache). The cache
-  // lookup is keyed by (cid, contentBackend) so a stale gateway-fetched
-  // archive cannot satisfy a P2P-mode request.
+  // lookup is keyed by (cid, chainBackend) so a stale gateway-fetched archive
+  // cannot satisfy a smoldot-mode request and vice versa.
   const cachedFiles = skipArchiveCache
     ? null
-    : await getCachedArchive(cid, cid, urlContentBackend);
+    : await getCachedArchive(cid, cid, chainBackend);
   if (cachedFiles) {
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
 
     // Extract index.html and write it directly into this window so it
-    // occupies the APP iframe. An archive without index.html is invalid
-    // — surface it instead of silently falling through to a no-op render.
+    // occupies the APP iframe. An archive without index.html is invalid,
+    // so surface it instead of silently falling through to a no-op render.
     const indexHtml = cachedFiles["index.html"] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
@@ -647,7 +663,7 @@ async function main(): Promise<void> {
     // For multi-file archives, store files in the SW so it can serve
     // sub-resources (CSS, JS, fonts) when the browser loads them.
     if (Object.keys(cachedFiles).length > 1) {
-      await storeArchiveInSW(cachedFiles, cid, cid, urlContentBackend);
+      await storeArchiveInSW(cachedFiles, cid, cid, chainBackend);
       log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
     }
     let html = new TextDecoder().decode(indexHtml);
@@ -658,16 +674,7 @@ async function main(): Promise<void> {
     notifyLoadingDone();
     performance.mark("dotli:app:end");
     stopApp();
-    if (destroyHeliaFn !== null) {
-      const destroy = destroyHeliaFn;
-      destroyHeliaFn = null;
-      void destroy().catch((err: unknown) => {
-        log.warn(
-          "[dot.li app] destroyHelia() failed before document.write:",
-          err,
-        );
-      });
-    }
+    stripContractParamsFromUrl();
     document.open();
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
     document.write(html);
@@ -677,35 +684,33 @@ async function main(): Promise<void> {
 
   let result: FetchResult;
 
-  if (isCentralized) {
-    // Centralized mode: IPFS gateway fetch only — no Helia/libp2p loaded.
+  if (isGateway) {
+    // rpc-gateway mode: HTTPS fetch from a trusted IPFS gateway.
     log.warn(
-      `[dot.li app] SW archive cache MISS — gateway mode, using IPFS gateway (${elapsed(T0)})`,
+      `[dot.li app] SW archive cache MISS — rpc-gateway mode, using IPFS gateway (${elapsed(T0)})`,
     );
     showStatus("Fetching via IPFS gateway...");
-    const { fetchArchive } = await import("@dotli/content/fetch");
+    const { fetchArchive } = await fetchChunkPromise;
     result = await fetchArchive(cid, showStatus, { useGateway: true });
   } else {
-    // P2P mode: Helia/bitswap fetch — full P2P stack loaded.
+    // smoldot-direct / smoldot-shared-worker: fetch via smoldot's `bitswap_v1_get`
+    // through the host-relayed protocol bridge. No libp2p in the sandbox.
     log.warn(
-      `[dot.li app] SW archive cache MISS — P2P mode, fetching via Helia (${elapsed(T0)})`,
+      `[dot.li app] SW archive cache MISS — ${chainBackend} (bitswap) (${elapsed(T0)})`,
     );
-    showStatus("Connecting to peers...");
-    // The P2P branch is gated on `!isCentralized`, which is the same
-    // condition that populates `fetchChunkPromise`. If we reached here
-    // without a pre-populated promise that's a logic bug — a silent
-    // dynamic import would mask a violation of "user picked X, we use X".
-    if (fetchChunkPromise === null) {
+    showStatus("Fetching via bitswap...");
+    if (bitswapBridgePromise === null) {
       throw new Error(
-        "Invariant violation: P2P branch reached but fetchChunkPromise was not pre-loaded",
+        "Invariant violation: smoldot branch reached but bitswapBridgePromise was not pre-loaded",
       );
     }
-    const fetchChunk = await fetchChunkPromise;
-    const { fetchArchive, ensureHelia, destroyHelia } = fetchChunk;
-    destroyHeliaFn = destroyHelia;
-    await ensureHelia();
-    log.warn(`[dot.li app] Helia P2P ready (${elapsed(T0)})`);
-    result = await fetchArchive(cid, showStatus);
+    const [{ fetchArchive }, { requestBitswapBlock }] = await Promise.all([
+      fetchChunkPromise,
+      bitswapBridgePromise,
+    ]);
+    result = await fetchArchive(cid, showStatus, {
+      bitswapBlockSource: requestBitswapBlock,
+    });
   }
   log.warn(`[dot.li app] Content fetched → ${result.type} (${elapsed(T0)})`);
 
@@ -720,14 +725,14 @@ async function main(): Promise<void> {
 
   // Write the dApp content directly into this window so it occupies the
   // APP iframe. The HOST's container bridge communicates with this iframe
-  // via window.top ↔ iframe.contentWindow.
+  // through window.top and iframe.contentWindow.
   let html: string;
   if (result.type === "single") {
     html = new TextDecoder().decode(result.content);
   } else {
     // For multi-file archives, store files in the SW so it can serve
     // sub-resources (CSS, JS, fonts) when the browser loads them.
-    await storeArchiveInSW(result.files, cid, cid, urlContentBackend);
+    await storeArchiveInSW(result.files, cid, cid, chainBackend);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
     const indexHtml = result.files["index.html"] as Uint8Array | undefined;
     if (indexHtml === undefined) {
@@ -743,20 +748,7 @@ async function main(): Promise<void> {
   notifyLoadingDone();
   performance.mark("dotli:app:end");
   stopApp();
-  // `document.open()/write()` wipes the current document, including
-  // the `beforeunload` handler we registered below for Helia cleanup.
-  // Tear down the Helia client synchronously first so libp2p sockets
-  // don't leak past the page replacement.
-  if (destroyHeliaFn !== null) {
-    const destroy = destroyHeliaFn;
-    destroyHeliaFn = null;
-    void destroy().catch((err: unknown) => {
-      log.warn(
-        "[dot.li app] destroyHelia() failed before document.write:",
-        err,
-      );
-    });
-  }
+  stripContractParamsFromUrl();
   document.open();
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
   document.write(html);
@@ -764,18 +756,11 @@ async function main(): Promise<void> {
   log.warn(`[dot.li app] Done (${elapsed(T0)})`);
 }
 
-// Cleanup on page unload
-window.addEventListener("beforeunload", () => {
-  if (destroyHeliaFn) {
-    void destroyHeliaFn();
-  }
-});
-
 // The retry button exists so a user can re-trigger a failed init after
 // fixing something out-of-band (e.g. toggling a flag). It is NOT an
-// automatic retry — only a click path. We still guard against runaway
+// automatic retry, only a click path. We still guard against runaway
 // recursion if the user mashes the button and against overlapping
-// `main()` calls (two invocations would race on Helia/SW state).
+// `main()` calls (two invocations would race on each other).
 let runInFlight = false;
 let runAttempts = 0;
 const MAX_RUN_ATTEMPTS = 5;
@@ -786,7 +771,7 @@ function run(): void {
     return;
   }
   if (runAttempts >= MAX_RUN_ATTEMPTS) {
-    showError(
+    failLoading(
       "Too many retry attempts",
       `Reached ${String(MAX_RUN_ATTEMPTS)} failed attempts. Reload the page to start over.`,
     );
@@ -795,46 +780,29 @@ function run(): void {
   runAttempts += 1;
   runInFlight = true;
 
-  // Before a retry, clear Helia/SW state that a prior `main()` attempt
-  // may have partially set up. Without this, re-running `main()` can
-  // re-use a half-initialized Helia client or stale SW archive state
-  // that doesn't match the user's current configuration.
-  const resetForRetry = async (): Promise<void> => {
-    if (destroyHeliaFn !== null) {
-      const destroy = destroyHeliaFn;
-      destroyHeliaFn = null;
-      try {
-        await destroy();
-      } catch (err) {
-        log.warn("[dot.li app] destroyHelia() failed during retry reset:", err);
-      }
-    }
-  };
-
-  void resetForRetry()
-    .then(() => main())
+  void main()
     .catch((err: unknown) => {
       // Surface before rendering so Sentry sees every failure. Attribute
-      // strictly from the explicit `contentBackend` URL param; tag `unknown`
-      // when missing rather than guessing P2P (the missing-param path is
-      // already a hard error from `main()`, but a thrown error before that
-      // validation also lands here).
+      // strictly from the explicit `chainBackend` URL param. Tag `unknown`
+      // when missing rather than guessing (the missing-param path is
+      // already a hard error from `main()`, but a thrown error before
+      // that validation also lands here).
       const params = new URL(window.location.href).searchParams;
-      const cb = params.get("contentBackend");
+      const b = params.get(SANDBOX_CONTRACT_PARAMS.chainBackend);
       const dependency =
-        cb === "ipfs-gateway"
+        b === "rpc-gateway"
           ? "ipfs-gateway"
-          : cb === "p2p-helia"
-            ? "helia-bulletin"
+          : b === "smoldot-direct" || b === "smoldot-shared-worker"
+            ? "smoldot-bitswap"
             : "unknown";
       captureException(err, {
         surface: "sandbox_main",
         dependency,
-        content_backend: cb ?? "unknown",
+        chain_backend: b ?? "unknown",
         attempt: String(runAttempts),
       });
       const message = err instanceof Error ? err.message : String(err);
-      showError(
+      failLoading(
         "Failed to load content",
         `${message} (via ${dependency})`,
         () => {

@@ -1,3 +1,6 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
 /* dot.li — Notification stack */
 
 .notif-stack {
@@ -71,7 +74,8 @@
   width: 36px;
   height: 36px;
   border-radius: 6px;
-  background: #e6007a;
+  background: #0a0a0a;
+  color: #fafafa;
   display: flex;
   align-items: center;
   justify-content: center;

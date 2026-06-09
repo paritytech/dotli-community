@@ -16,6 +16,12 @@ github-actions:
           - 'apps/sandbox/**'
           - '!apps/sandbox/package.json'
 
+"app: protocol":
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'apps/protocol/**'
+          - '!apps/protocol/package.json'
+
 "pkg: config":
   - changed-files:
       - all-globs-to-any-file:
@@ -75,6 +81,24 @@ github-actions:
       - all-globs-to-any-file:
           - 'packages/typescript-config/**'
           - '!packages/typescript-config/package.json'
+
+"pkg: metrics":
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/metrics/**'
+          - '!packages/metrics/package.json'
+
+"pkg: protocol":
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/protocol/**'
+          - '!packages/protocol/package.json'
+
+"pkg: truapi-debug":
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'packages/truapi-debug/**'
+          - '!packages/truapi-debug/package.json'
 
 nginx:
   - changed-files:

@@ -19,7 +19,7 @@ import type {
   HostCallbacks,
   PlatformJsonRpcConnection,
 } from "@parity/truapi-host-wasm";
-import { getChainBackend } from "@dotli/config/mode";
+import { getBackend } from "@dotli/config/mode";
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -93,8 +93,8 @@ function toConnection(
 export function createChainConnect(): HostCallbacks["connect"] {
   return (genesisHashBytes) => {
     const genesisHash = bytesToHex(genesisHashBytes);
-    const backend = getChainBackend();
-    if (backend === "rpc") {
+    const backend = getBackend();
+    if (backend === "rpc-gateway") {
       if (!isRpcChainSupported(genesisHash)) {
         log.warn(
           `[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`,

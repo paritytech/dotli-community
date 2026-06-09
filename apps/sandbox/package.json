@@ -1,7 +1,8 @@
 {
   "name": "@dotli/sandbox",
   "private": true,
-  "version": "0.3.3",
+  "license": "AGPL-3.0-only",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "build": "tsc && bunx --bun vite build",
@@ -12,11 +13,11 @@
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
-    "@types/node": "^25.6.0",
-    "eslint": "^10.2.1",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.1",
     "prettier": "^3.8.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.10",
+    "vite": "^8.0.16",
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
@@ -27,7 +28,7 @@
     "@dotli/content": "workspace:*",
     "@dotli/ui": "workspace:*",
     "@dotli/sandbox-checker": "workspace:*",
-    "@sentry/browser": "^10.50.0",
+    "@sentry/browser": "^10.56.0",
     "@sentry/vite-plugin": "^5.2.0"
   }
 }

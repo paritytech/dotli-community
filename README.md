@@ -1,3 +1,6 @@
+> [!WARNING]
+> The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+
 <div align="center">
 
 # dot.li
@@ -17,76 +20,81 @@ A decentralized web browser that runs in your browser. Visit any Polkadot applic
 
 ## How to access apps
 
-dot.li supports two URL formats:
+dot.li resolves apps by **subdomain** — the `.dot` name is the host:
 
-| Format        | Example                         |
-| ------------- | ------------------------------- |
-| **Subdomain** | `https://testingout.dot.li`     |
-| **Path**      | `https://dot.li/testingout.dot` |
+| Format        | Example                          |
+| ------------- | -------------------------------- |
+| **Subdomain** | `https://host-playground.dot.li` |
 
 ### Landing page
 
-When visiting the root (`dot.li`, or `paritytech.github.io/dotli/`), a landing page is shown with:
+When visiting the root (`dot.li`), a landing page is shown with:
 
-- A **search bar** where users type an app name (`.dot` suffix is pre-filled) and navigate
+- A **search bar** where users type an app name (a `.dot` suffix label is shown next to the input) and navigate
 - **Recently visited** apps shown as pill-shaped shortcuts (persisted in localStorage)
-- A **Polkadot App login** button in the top-right corner
+- A **login** button in the top-right corner
 
 The topbar is hidden on the landing page and only appears when viewing an app.
 
 ## Architecture
 
-dot.li uses a **two-build, CID-subdomain architecture** that separates concerns between the host shell and the app content layer:
+dot.li uses a **two-build, per-product subdomain architecture** that separates concerns between the host shell and the app content layer:
 
 ```
 name.dot.li              Host build (topbar, dotns resolution, smoldot, bridge)
-                          Resolves name -> CID, then iframes cid.app.dot.li
+                          Resolves name -> CID, iframes name.app.dot.li with the CID
+                          threaded through the URL contract
 
-cid.app.dot.li           App build (CID from subdomain, P2P fetch, render)
-                          Parses CID from URL, fetches via P2P/gateway, renders
+name.app.dot.li          App build (CID from URL contract, content fetch, render)
+                          Reads CID from URL, fetches via bitswap/gateway, renders
 ```
 
-| URL                            | Role         | What happens                                                     |
-| ------------------------------ | ------------ | ---------------------------------------------------------------- |
-| `testingout.dot.li`            | Host shell   | Resolves `testingout` via dotns, iframes `bafyrei....app.dot.li` |
-| `bafyrei....app.dot.li`        | App content  | Parses CID from subdomain, fetches content, renders              |
-| `dot.li`                       | Landing page | Search bar, recent apps                                          |
-| Direct `bafyrei....app.dot.li` | Standalone   | Works without a host — fetches and renders directly              |
+| URL                          | Role         | What happens                                                                          |
+| ---------------------------- | ------------ | ------------------------------------------------------------------------------------- |
+| `host-playground.dot.li`     | Host shell   | Resolves `host-playground` via dotns, iframes `host-playground.app.dot.li?cid=bafy..` |
+| `host-playground.app.dot.li` | App content  | Reads CID from URL contract, fetches content, renders                                 |
+| `dot.li`                     | Landing page | Search bar, recent apps                                                               |
 
-Each `cid.app.dot.li` is a distinct origin, preventing SW/storage/security conflicts between apps.
+Each product gets its own `<label>.app.dot.li` origin, so versions of the same product share an origin while different products stay isolated for SW/storage/security purposes.
 
 ### What it does
 
-1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/smol-dot/smoldot) light client connected to Asset Hub Paseo, querying dotNS contracts through the Revive EVM pallet.
-2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via [Helia](https://github.com/ipfs/helia) P2P (bitswap), with IPFS gateway fallback.
-3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage — all through a `MessageChannel`.
+1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected to Asset Hub Paseo, querying dotNS contracts.
+2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via smoldot `bitswap_v1_get` JSON-RPC or an IPFS gateway.
+3. **Renders** the content in a sandboxed iframe with a full host-container bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage.
 
 ```
-testingout.dot.li
+host-playground.dot.li
     -> Host: smoldot resolves dotNS -> IPFS CID
-    -> Host: iframes cid.app.dot.li
-    -> App:  Helia fetches content (P2P or gateway)
-    -> App:  renders dApp in sandboxed iframe with TrUAPI bridge
+    -> Host: iframes <label>.app.dot.li with cid in URL contract
+    -> App:  fetches content via smoldot bitswap_v1_get or IPFS gateway
+    -> App:  renders dApp in sandboxed iframe with container bridge
 ```
 
 Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served through a Service Worker that acts as a virtual file system.
 
+### What it doesn't do
+
+- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is delegated to the connected Polkadot App session.
+- It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and dotNS records are read directly from the contract storage.
+- It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally per session.
+- It is **not** a production-hardened product. Treat it as a reference blueprint (see [Security](#security)).
+
 ## How resolution works
 
-1. Parse label from URL — subdomain (`testingout.dot.li` -> `testingout`) or path (`/testingout.dot` -> `testingout`)
-2. Compute ENS-style namehash of `testingout.dot`
-3. Call `recordExists(node)` on the dotNS Registry contract via Revive dry-run
-4. Call `contenthash(node)` on the dotNS ContentResolver contract
-5. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
-6. Create an iframe to `cid.app.dot.li` which fetches and renders the content
+1. Parse the label from the subdomain (`host-playground.dot.li` -> `host-playground`)
+2. Compute the ENS-style namehash (`node`) of the name — the resolver tries `app.<label>.dot` first and falls back to `<label>.dot`
+3. Read the `contenthash` bytes for `node` directly from the dotNS ContentResolver contract storage
+4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
+5. Create an iframe to `<label>.app.dot.li?cid=<cid>` which fetches and renders the content
 
-All contract calls are read-only dry-runs executed through the smoldot light client — no RPC server needed.
+All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional gateway backend reads the same storage over a public RPC node instead.)
 
 ## How multi-file SPAs work
 
 When a CID points to an IPFS directory (not a single file):
 
-1. The gateway returns a CAR (Content Addressable aRchive) containing all files
+1. The gateway returns a CAR (Content-Addressable aRchive) containing all files
 2. `archive.ts` parses the CAR using `@ipld/car` + `@ipld/dag-pb` + `ipfs-unixfs` to extract a file map
 3. The file map is sent to the app Service Worker via `postMessage`
 4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory archive
@@ -97,41 +105,48 @@ When a CID points to an IPFS directory (not a single file):
 dot.li uses a two-layer cache for fast repeat visits:
 
 1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
-2. **Archive cache** (Service Worker) — stores fetched file maps keyed by domain + CID
+2. **Archive cache** (Service Worker) — stores fetched file maps keyed by domain; a cache hit additionally requires the stored CID (and content backend) to match
 
-On repeat visits, content renders instantly from cache while smoldot validates the CID in the background. The topbar shield indicates the verification state:
+On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield shows how the current page was loaded:
 
-| Shield | Meaning                                                     |
-| ------ | ----------------------------------------------------------- |
-| Yellow | Validating — rendering from cache, checking on-chain        |
-| Green  | Verified — on-chain CID matches cached version              |
-| Orange | Gateway — resolved via gateway, awaiting chain confirmation |
-| Red    | Outdated — on-chain CID differs; an update banner appears   |
+| Shield           | Meaning                                                                       |
+| ---------------- | ----------------------------------------------------------------------------- |
+| Green (Verified) | Checked by your in-browser light client (the default smoldot backend)         |
+| Orange (Trusted) | Served by an external RPC provider or IPFS gateway, not light-client verified |
 
-## TrUAPI Rust bridge
+If a background re-resolution finds the on-chain CID has changed, dot.li shows a **New version available** notification with a **Reload** action rather than swapping content silently.
 
-Loaded SPAs communicate with dot.li through the shared Rust TrUAPI core exposed by `@parity/truapi-host-wasm`. dot.li starts the core in a Web Worker, connects it to the product iframe with a dedicated `MessageChannel`, and implements host callbacks for UI, storage, chain access, notifications, preimage, and product-local storage.
+## Host-container bridge
 
-| Handler                        | What it does                                                  |
-| ------------------------------ | ------------------------------------------------------------- |
-| `accountGet`                   | Derives a per-app public key via HDKD soft derivation         |
-| `getNonProductAccounts`        | Returns the connected Polkadot App account                    |
-| `signPayload` / `signRaw`      | Uses the core-owned SSO session channel for wallet approval   |
-| `chainConnection`              | Returns a smoldot-backed JsonRpcProvider for supported chains |
-| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                       |
-| `navigateTo`                   | Opens URLs in new tabs                                        |
-| `featureSupported`             | Reports supported chain genesis hashes                        |
-| `connectionStatus`             | Streams auth state changes to the SPA                         |
+Loaded SPAs communicate with dot.li through a postMessage-based protocol. The bridge exposes:
 
-Login and logout are core-owned. Pairing is initiated through the SSO QR/deeplink flow, the Rust core validates and persists an opaque single-session blob under host storage, and the topbar disconnect button calls the core public `disconnect()` path. UI code does not clear the session store directly.
+| Handler                        | What it does                                                           |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `accountGet`                   | Derives a per-app public key via HDKD soft derivation                  |
+| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host |
+| `signPayload` / `signRaw`      | Shows signing modals, delegates to host-papp session                   |
+| `chainConnection`              | Returns a smoldot-backed JsonRpcProvider for supported chains          |
+| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                |
+| `navigateTo`                   | Opens URLs in new tabs                                                 |
+| `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)   |
+| `connectionStatus`             | Streams auth state changes to the SPA                                  |
 
 ### Nested dApp support
 
-Nested dApps are not given separate host runtimes, sessions, product identities, or storage namespaces in the Rust bridge cutover. Product content should use the shared Rust core exposed by the active host bridge. The previous dynamic nested bridge detector is intentionally not ported as an independent bridge model.
+dApps can embed other dApps via iframes (e.g. a marketplace app embedding a payments app). The host automatically detects nested dApps and creates separate bridges for each one, regardless of nesting depth.
+
+When the host receives a protocol message from an unknown iframe window, it dynamically creates a new container bridge targeting that window. The dApp SDK always sends to `window.top`, so all nested dApps communicate directly with the host — no relay needed.
 
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
 ## Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh) 1.3+ and Node 22+ to build locally.
+- **No funded account is required** to browse and resolve `.dot` names - resolution is trustless, client-side, and read-only.
+- The Polkadot App is only needed to log in and sign transactions inside a loaded dApp.
+- The app targets **Paseo testnet** out of the box (see [Network configuration](#network-configuration)); point it at another chain by editing `packages/config`.
 
 The project uses [Bun](https://bun.sh) and [Turborepo](https://turbo.build).
 
@@ -143,14 +158,33 @@ bun run preview          # Build + serve both apps on localhost:5173
 
 Local development uses wildcard subdomains:
 
-- `testingout.localhost:5173` — resolves `testingout.dot` via the host
-- `bafyrei....app.localhost:5173` — fetches and renders CID content directly
+- `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
+
+### Running an approved build
+
+Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dot.li deployment runs). To reproduce a specific approved version from a fresh checkout:
+
+```bash
+git checkout v0.5.0       # any published release tag
+bun install
+bun run build:prod        # production build of both apps
+```
+
+The published tag on the [Releases page](https://github.com/paritytech/dotli/releases) is the source of truth for what is deployed; rebuild from that tag to verify a deployment.
+
+## Debug panel
+
+dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, host-papp SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
+
+In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploys at `paseoli.dev` / `dotli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
+
+See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
 
 ## Sandbox API Checker
 
-dApps rendered in dot.li's sandboxed iframe should communicate exclusively through TrUAPI, not use host-controlled web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
+dApps rendered in dot.li's sandboxed iframe should communicate exclusively through the container bridge (postMessage), not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
 
-The checker is activated by setting `VITE_SANDBOX_CHECKER=true` at build time. When the env var is not set, the checker is tree-shaken out of production builds entirely.
+The checker is activated by defining `VITE_SANDBOX_CHECKER` at build time (e.g. `=true`). When the env var is unset, the gated import is statically eliminated, so the checker is tree-shaken out of production builds entirely.
 
 ### Monitored APIs
 
@@ -162,17 +196,38 @@ The checker is activated by setting `VITE_SANDBOX_CHECKER=true` at build time. W
 | DOM      | `document.createElement('iframe')`                                                       |
 | Wallet   | `window.injectedWeb3`, `window.polkadot`, `window.ethereum`                              |
 
-Same-origin requests (static dApp files served by the Service Worker) are excluded from reporting for `fetch` and `XMLHttpRequest`. Violations are logged but calls still proceed (log-and-forward pattern).
+Same-origin requests (static dApp files served by the Service Worker) are excluded from reporting for `fetch` and `XMLHttpRequest`. Violations are logged, but calls still proceed (log-and-forward pattern).
 
 The violation panel appears at the bottom of the viewport when the first violation is detected, showing the API name, details, and timestamp for each call.
 
 ## Network configuration
 
-The app currently targets **Paseo testnet**:
+The app targets **Paseo testnet** out of the box, via the `PASEO_NEXT_V2` network (the default returned by `defaultNetwork()`):
 
-- **dotNS Registry**: `0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f`
-- **dotNS ContentResolver**: `0x7756DF72CBc7f062e7403cD59e45fBc78bed1cD7`
-- **Bulletin Chain peers**: 4 Parity-hosted collator/RPC nodes (WebSocket)
-- **IPFS gateway**: `https://paseo-ipfs.polkadot.io`
+- **dotNS Registry**: `0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc`
+- **dotNS ContentResolver**: `0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64`
+- **Bulletin Chain RPC**: `wss://paseo-bulletin-next-rpc.polkadot.io` (WebSocket)
+- **IPFS gateway**: `https://paseo-bulletin-next-ipfs.polkadot.io`
 
-All addresses and endpoints are in `packages/config/src/config.ts`.
+All addresses and endpoints live in `packages/config/src/network.ts` (`NETWORK_NAME_TO_SERVICES_CONFIG`).
+
+## Security
+
+Before deploying it for real use cases, **you are responsible** for:
+
+- **Reviewing** the code yourself, we publish a reference, not a hardened production build
+- **Checking** that the dependencies are up to date and free of known vulnerabilities
+- **Securing** your own fork or deployment environment (keys, secrets, network configuration)
+- **Tracking** the latest tagged release/commits for security fixes; older releases are not backported (exceptions might apply)
+
+For Parity's security disclosure process, and **Bug Bounty** program, feel free to visit: https://parity.io/bug-bounty
+
+### Reporting a vulnerability
+
+This repository inherits the organization-wide security policy. **Do not** open a public issue for security reports. Follow the Parity security policy at [SECURITY](./SECURITY.md).
+
+## License
+
+dot.li is licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](./LICENSE).
+
+Third-party dependencies are distributed under their own licenses; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

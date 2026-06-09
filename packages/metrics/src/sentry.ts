@@ -1,7 +1,10 @@
-// dot.li — Centralized Sentry initialization
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Centralized Sentry initialization for dot.li.
 //
 // Kept in its own module so `@dotli/metrics/metrics` stays free of a hard
-// `@sentry/browser` import — callers that only need the `m` API (spans,
+// `@sentry/browser` import. Callers that only need the `m` API (spans,
 // counters, distributions) still get a Sentry-less bundle.
 //
 // Call once from the entry point of an app or Worker:
@@ -21,15 +24,13 @@ import { m } from "./metrics";
  */
 export type SentrySource = "host" | "worker" | "sandbox";
 
-// ── smoldot event tagging ────────────────────────────────────
-//
 // The smoldot WASM client panics at the Rust layer and surfaces the
-// crash as a `CrashError` with a `panicked at /__w/smoldot/…` message.
+// crash as a `CrashError` with a `panicked at /__w/smoldot/...` message.
 // These events can arrive via our own handlers or via Sentry's default
 // browser integrations (e.g. `auto.browser.browserapierrors`), so we
 // tag at `beforeSend` time to cover every path into the pipeline.
 
-/** Minimal structural view of a Sentry event — keeps the detector decoupled from `@sentry/browser` internals for testing. */
+/** Minimal structural view of a Sentry event, decoupling the detector from `@sentry/browser` internals for testing. */
 interface SmoldotEventLike {
   exception?: {
     values?: {
@@ -47,15 +48,15 @@ interface SmoldotEventLike {
 }
 
 // Stack frames live under `.../smoldot/dist/...` or the Bun-versioned
-// `.../smoldot@2.0.40/node_modules/smoldot/...`; both match this.
+// `.../smoldot@2.0.40/node_modules/smoldot/...`. Both match this.
 const SMOLDOT_PATH_RE = /[/\\]smoldot(?:@[\w.+-]+)?[/\\]/i;
-// Rust panic messages start with `panicked at /__w/smoldot/…`; the JS
-// wrapper raises "Smoldot has panicked" / "Smoldot has crashed".
+// Rust panic messages start with `panicked at /__w/smoldot/...`. The JS
+// wrapper raises "Smoldot has panicked" or "Smoldot has crashed".
 const SMOLDOT_VALUE_RE =
   /panicked at [^\n]*[/\\]smoldot[/\\]|Smoldot has (?:panicked|crashed)/i;
 
 /**
- * Return true when a Sentry event originated from smoldot — either a
+ * Return true when a Sentry event originated from smoldot: either a
  * `CrashError`, a Rust panic message, or a stack frame inside the
  * smoldot package. Exported for unit tests.
  */
@@ -92,27 +93,51 @@ function tagSmoldotEvents<E extends SmoldotEventLike>(event: E): E {
 /**
  * Initialize Sentry with the dot.li-standard config for the given source
  * and bind it to `@dotli/metrics` so spans/counters flow through. Safe to
- * call unconditionally — when the DSN env var is unset, Sentry becomes a
+ * call unconditionally. When the DSN env var is unset, Sentry becomes a
  * no-op, but we warn loudly instead of silently disabling reporting.
  */
 export function initSentry(source: SentrySource): void {
   const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
   const env =
     (import.meta.env.VITE_APP_ENV as string | undefined) ?? "development";
+  const integrations =
+    source === "worker"
+      ? []
+      : [Sentry.browserTracingIntegration({ idleTimeout: 120000 })];
   Sentry.init({
     dsn,
-    tunnel: "/t",
     environment: env,
     release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
     sendDefaultPii: false,
     beforeSend: tagSmoldotEvents,
+    integrations,
+    tracesSampleRate: 1.0,
   });
+
+  // Anonymous per-browser UUID for Sentry user-level metrics. No PII.
+  try {
+    const ls = (globalThis as { localStorage?: Storage }).localStorage;
+    if (ls) {
+      let uuid = ls.getItem("dotli:sentry-uuid");
+      if (uuid === null) {
+        uuid = crypto.randomUUID();
+        ls.setItem("dotli:sentry-uuid", uuid);
+      }
+      Sentry.setUser({ id: uuid });
+    }
+  } catch (err) {
+    log.warn(
+      "[dot.li sentry] anonymous user id setup skipped (localStorage unavailable)",
+      err,
+    );
+  }
+
   m.bind(Sentry as unknown as Parameters<typeof m.bind>[0]);
   // Use the canonical schema keys documented in `metrics.ts` (`source`,
-  // `env`). The metrics layer owns any Sentry-side prefixing, so we pass
-  // bare keys here — previously we used `dotli_source` / `dotli_env`,
-  // which became `dotli.dotli_source` / `dotli.dotli_env` after the
-  // mirroring layer's prefix, drifting away from the documented schema.
+  // `env`). The metrics layer owns any Sentry-side prefixing, so pass bare
+  // keys here. An already-prefixed key like `dotli_source` would become
+  // `dotli.dotli_source` after the mirroring layer's prefix and drift away
+  // from the documented schema.
   m.setDefaults({ source, env });
 
   // If the DSN is missing in any non-development build, warn loudly once so

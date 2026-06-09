@@ -1,0 +1,25 @@
+{
+  "name": "@dotli/truapi-debug",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.5.0",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx eslint src/"
+  },
+  "devDependencies": {
+    "@dotli/eslint-config": "workspace:*",
+    "@dotli/typescript-config": "workspace:*",
+    "eslint": "^10.4.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16"
+  },
+  "dependencies": {
+    "@dotli/shared": "workspace:*",
+    "nanoevents": "^9.1.0"
+  }
+}

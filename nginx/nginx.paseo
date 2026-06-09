@@ -38,7 +38,7 @@ server {
     include /etc/nginx/snippets/sentry-tunnel.conf;
 
     location = /__preview {
-        set $csp_ancestors "revx.dev stg.revx.dev";
+        set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
         try_files /index.html =404;
     }
@@ -88,7 +88,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/paseo.li/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    set $csp_ancestors "paseo.li *.paseo.li *.app.paseo.li revx.dev stg.revx.dev";
+    set $csp_ancestors "paseo.li *.paseo.li *.app.paseo.li revx.dev stg.revx.dev http://localhost:*";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 

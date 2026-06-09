@@ -1,8 +1,11 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, it, expect } from "vitest";
 import { serializeError, fullErrorChain } from "@dotli/shared/errors";
 
 describe("serializeError", () => {
-  // ── primitives ────────────────────────────────────────────────
+  // primitives
   it("returns 'null' for null", () => {
     expect(serializeError(null)).toBe("null");
   });
@@ -24,7 +27,7 @@ describe("serializeError", () => {
     expect(serializeError(false)).toBe("false");
   });
 
-  // ── Error instances ───────────────────────────────────────────
+  // Error instances
   it("extracts message from Error", () => {
     expect(serializeError(new Error("kaboom"))).toBe("kaboom");
   });
@@ -53,7 +56,7 @@ describe("serializeError", () => {
     expect(serializeError(err)).toBe("out of range");
   });
 
-  // ── .cause (ES2022) ───────────────────────────────────────────
+  // .cause chain
   it("appends a shallow cause description", () => {
     const inner = new Error("inner boom");
     const outer = new Error("outer boom", { cause: inner });
@@ -76,7 +79,7 @@ describe("serializeError", () => {
     expect(out).toContain("cause: b");
   });
 
-  // ── AggregateError ────────────────────────────────────────────
+  // AggregateError
   it("includes inner errors from AggregateError", () => {
     const agg = new AggregateError(
       [new Error("first"), new Error("second")],
@@ -99,7 +102,7 @@ describe("serializeError", () => {
     expect(serializeError(agg)).toBe("many failed [a; b; c, ...]");
   });
 
-  // ── plain objects ─────────────────────────────────────────────
+  // plain objects
   it("extracts .message from a plain object", () => {
     expect(serializeError({ message: "plain object error" })).toBe(
       "plain object error",
@@ -123,11 +126,11 @@ describe("serializeError", () => {
   it("tolerates circular objects", () => {
     const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
-    // Should not throw; should return a non-empty fallback.
+    // Should not throw. Should return a non-empty fallback.
     expect(serializeError(cyclic)).toBe("[object Object]");
   });
 
-  // ── invariant ─────────────────────────────────────────────────
+  // invariant
   it("never returns an empty string", () => {
     const inputs: unknown[] = [
       null,
@@ -148,7 +151,7 @@ describe("serializeError", () => {
   });
 });
 
-// ── Cycle detection uses the active DFS path, not a global visited set.
+// Cycle detection uses the active DFS path, not a global visited set.
 // Regression guard for the "shared references collapsed to Cycle" bug.
 describe("fullErrorChain cycle semantics", () => {
   it("walks shared cause references in separate branches independently", () => {
@@ -177,7 +180,7 @@ describe("fullErrorChain cycle semantics", () => {
     a.cause = b;
     b.cause = a;
     const chain = fullErrorChain(a);
-    // a → b → a(Cycle)
+    // a references b references a, where the last hop is the Cycle node.
     expect(chain.message).toBe("a");
     expect(chain.causes).toHaveLength(1);
     expect(chain.causes[0]?.message).toBe("b");
@@ -186,8 +189,9 @@ describe("fullErrorChain cycle semantics", () => {
   });
 
   it("walks a DAG where two branches share a leaf without cycling", () => {
-    // A → [B, C]; B.cause = Leaf, C.cause = Leaf. Leaf is shared but
-    // no back-edge exists. Both branches should fully materialise Leaf.
+    // A aggregates [B, C]. B.cause = Leaf and C.cause = Leaf. Leaf is
+    // shared but no back-edge exists, so both branches should fully
+    // materialize Leaf.
     const leaf = new Error("leaf");
     const b = new Error("B", { cause: leaf });
     const c = new Error("C", { cause: leaf });

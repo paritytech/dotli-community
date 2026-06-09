@@ -1,3 +1,6 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
 /* dot.li — Landing page */
 
 .landing {
@@ -72,6 +75,9 @@
   background: #111;
   border: 1px solid #333;
 }
+.landing-search-bar:focus-within {
+  border-color: rgba(255, 255, 255, 0.55);
+}
 .landing-search-input {
   flex: 1;
   background: transparent;
@@ -106,6 +112,10 @@
   transition:
     color 0.15s,
     background 0.15s;
+}
+
+.landing-search-input:not(:placeholder-shown) ~ .landing-go-btn {
+  color: #fff;
 }
 .landing-recent {
   margin-bottom: 2rem;
@@ -154,7 +164,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #4ade80;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
 .landing-footer-text {
   font-size: 0.78rem;

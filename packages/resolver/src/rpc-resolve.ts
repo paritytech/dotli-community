@@ -1,42 +1,64 @@
-// dot.li — Trusted RPC-based dotNS resolver
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Trusted RPC-based dotNS resolver.
 //
 // Reads the dotNS contract storage directly from a public Asset Hub Paseo
-// RPC node over WSS JSON-RPC. This trades trustlessness for speed — used
-// when the user chooses gateway mode.
+// RPC node over WSS JSON-RPC.
+//
+// The reader is the same `createRawApi(client)` used by the smoldot
+// path. It opens a `chainHead_v1_follow` (no metadata fetch) and reads
+// `Revive::AccountInfoOf` then the contract's child trie directly. The old
+// `getFinalizedBlock()` warmup that forced a metadata exchange we never
+// used is gone, and so is the per-read-site runtime-call adapter.
 //
 // Intentionally does NOT import from `./smoldot` so Vite can tree-shake the
 // smoldot worker out of any bundle that only pulls in this module.
 
-import { createClient, type PolkadotClient } from "polkadot-api";
+import {
+  createClient,
+  type SubstrateClient,
+} from "@polkadot-api/substrate-client";
 import { getWsProvider } from "polkadot-api/ws";
-import { CONTRACTS, STORAGE_SLOTS } from "@dotli/config/config";
-import { getActiveAssetHubRpcEndpoints } from "@dotli/config/endpoints";
+import { TIMEOUTS } from "@dotli/config/config";
+import { getActiveServicesConfig } from "@dotli/config/network";
 import { log } from "@dotli/shared/log";
 import { dur } from "@dotli/shared/perf";
 import { namehash, toHex, decodeIpfsContenthashResult } from "./abi";
-import { readMappingBytes, readMappingAddress } from "./storage";
-import type { StatusCallback, UnsafeApi } from "./storage";
+import {
+  ContenthashDecodeError,
+  NetworkSyncTimeoutError,
+  UnsupportedContenthashCodecError,
+} from "./errors";
+import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
+import type { StatusCallback } from "./access-raw-storage";
+import { createRawApi, type Api } from "./api";
+import { readExecutableManifest, readRootManifest } from "./manifest";
+import type {
+  ExecutableKind,
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+} from "./manifest";
 
-export type { StatusCallback } from "./storage";
-
-// ── Client lifecycle ─────────────────────────────────────────
+export type { StatusCallback } from "./access-raw-storage";
 
 /**
- * `WsJsonRpcProvider` from `polkadot-api/ws-provider` — its type is not
+ * `WsJsonRpcProvider` from `polkadot-api/ws-provider`. Its type is not
  * re-exported from the top-level entry point, so we derive it here.
  * Gives us `.getStatus()` which returns `{ type: "CONNECTED"|..., uri }`
- * so callers can read which node polkadot-api actually dialed (the
- * round-robin rotates on failure, so the first entry of the candidate
- * list may not be the currently answering endpoint).
+ * so callers can read which node we actually dialed (the round-robin
+ * rotates on failure, so the first entry of the candidate list may not
+ * be the currently answering endpoint).
  */
 type WsProviderHandle = ReturnType<typeof getWsProvider>;
 
-let clientInstance: PolkadotClient | null = null;
-let apiInstance: UnsafeApi | null = null;
-let clientPromise: Promise<UnsafeApi> | null = null;
+let clientInstance: SubstrateClient | null = null;
+let apiInstance: Api | null = null;
+let clientPromise: Promise<Api> | null = null;
 let providerInstance: WsProviderHandle | null = null;
 
-function ensureClient(onStatus?: StatusCallback): Promise<UnsafeApi> {
+function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (apiInstance !== null) {
     return Promise.resolve(apiInstance);
   }
@@ -49,51 +71,76 @@ function ensureClient(onStatus?: StatusCallback): Promise<UnsafeApi> {
   return clientPromise;
 }
 
-async function doCreateClient(onStatus?: StatusCallback): Promise<UnsafeApi> {
+async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   const t0 = performance.now();
-  // Dial a single endpoint — silent round-robin would hide which node is
-  // responsible for any failure, defeating the whole point of gateway mode's
-  // "trusted, deterministic" contract.
   onStatus?.(`Connecting to Asset Hub RPC...`);
-  const provider = getWsProvider(getActiveAssetHubRpcEndpoints(), {
-    // Public RPC endpoints can be tunnel-gated; the default 40s heartbeat
+  const provider = getWsProvider([...getActiveServicesConfig().assethub.rpcs], {
+    // Public RPC endpoints can be tunnel-gated. The default 40s heartbeat
     // is occasionally too tight.
     heartbeatTimeout: 120_000,
   });
   providerInstance = provider;
 
-  clientInstance = createClient(provider);
-  apiInstance = clientInstance.getUnsafeApi();
+  const client = createClient(provider);
+  const api = createRawApi(client);
 
-  // Touch the finalized block so the client performs its initial metadata
-  // exchange before we issue runtime API calls — surfaces connection errors
-  // early and makes subsequent get_storage calls warm.
+  // Bound the wait: without the race, an unreachable peer set leaves
+  // `whenReady()` pending forever and the UI sits on "Connecting…"
+  // indefinitely. The timeout throws so the outer catch can surface a
+  // visible error via `showError`. Mirrors the smoldot path at
+  // `resolve.ts:170-185`.
   try {
-    const block = await clientInstance.getFinalizedBlock();
-    log.warn(
-      `[dot.li rpc-resolve] Connected to RPC, finalized #${String(block.number)} (${dur(t0)})`,
+    await Promise.race([
+      api.whenReady(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new NetworkSyncTimeoutError(
+              "Asset Hub RPC",
+              TIMEOUTS.ASSET_HUB_FINALIZED_SYNC,
+            ),
+          );
+        }, TIMEOUTS.ASSET_HUB_FINALIZED_SYNC);
+      }),
+    ]);
+    log.warn(`[dot.li rpc-resolve] RPC chain head ready (${dur(t0)})`);
+  } catch (err) {
+    try {
+      api.destroy();
+      client.destroy();
+      // eslint-disable-next-line no-restricted-syntax -- best-effort teardown of a never-fully-initialised client; the real cause is rethrown on the next line.
+    } catch {
+      /* already dead */
+    }
+    log.error(
+      `[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`,
     );
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.error(`[dot.li rpc-resolve] RPC connection failed: ${message}`);
-    // Reset state so the next call can retry a fresh client.
-    clientInstance = null;
-    apiInstance = null;
     providerInstance = null;
     throw err;
   }
 
+  // If the chainHead follow dies (server emits stop, follow errors, WS
+  // disconnect), invalidate the cached client so the next `ensureClient`
+  // redials. Without this, every subsequent read returns `null` silently
+  // (the "name not found" path) even though the upstream is dead.
+  api.onStop(() => {
+    log.warn(
+      "[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client",
+    );
+    destroyRpcClient();
+  });
+
+  clientInstance = client;
+  apiInstance = api;
   onStatus?.("Connected to Asset Hub RPC");
   return apiInstance;
 }
-
-// ── Public API ───────────────────────────────────────────────
 
 /**
  * Resolve a `.dot` label to an IPFS CID by reading dotNS contract storage
  * directly over JSON-RPC (bypassing smoldot).
  *
- * This is the "trusted gateway" path — a normal client-server request to
+ * This is the "trusted gateway" path: a normal client-server request to
  * a known Polkadot RPC node instead of running a light client in-browser.
  */
 export async function resolveDotNameViaRpc(
@@ -108,18 +155,19 @@ export async function resolveDotNameViaRpc(
   const domain = `${label}.dot`;
   const node = namehash(domain);
 
-  onStatus?.(`Resolving "${domain}" via RPC...`);
+  onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
   const t0 = performance.now();
 
+  const dotns = getActiveServicesConfig().dotns;
   const contenthashBytes = await readMappingBytes(
     api,
-    CONTRACTS.DOTNS_CONTENT_RESOLVER,
+    dotns.DOTNS_CONTENT_RESOLVER,
     node,
-    STORAGE_SLOTS.CONTENTHASH,
+    dotns.storageSlots.CONTENTHASH,
   );
 
   log.warn(
-    `[dot.li rpc-resolve] JSON-RPC get_storage contenthash for ${domain}: ${dur(t0)}`,
+    `[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`,
   );
 
   if (contenthashBytes === null) {
@@ -133,25 +181,43 @@ export async function resolveDotNameViaRpc(
   switch (decoded.kind) {
     case "ok":
       log.warn(
-        `[dot.li rpc-resolve] JSON-RPC resolved ${domain} -> ${decoded.cid} (${dur(t0)})`,
+        `[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`,
       );
-      onStatus?.(`Resolved "${domain}" via RPC`);
+      onStatus?.(`Resolved "${domain}" via Trusted Provider`);
       return decoded.cid;
     case "empty":
       onStatus?.(`Domain "${domain}" not found or no content set`);
       return null;
     case "unsupported-codec":
-      throw new Error(
-        `Domain "${domain}" has a non-IPFS contenthash (codec=${decoded.codec ?? "unknown"})`,
-      );
-    case "decode-error": {
-      const cause = decoded.cause;
-      throw new Error(
-        `Failed to decode contenthash for "${domain}": ${cause instanceof Error ? cause.message : String(cause)}`,
-        cause instanceof Error ? { cause } : undefined,
-      );
-    }
+      throw new UnsupportedContenthashCodecError(domain, decoded.codec);
+    case "decode-error":
+      throw new ContenthashDecodeError(domain, decoded.cause);
   }
+}
+
+/**
+ * Read the executable manifest at `<kind>.<label>.dot` over the gateway
+ * RPC client.
+ *
+ * The return shape matches the smoldot path so the host shell can branch
+ * on a single discriminated union regardless of backend.
+ */
+export async function resolveExecutableManifestViaRpc(
+  label: string,
+  kind: ExecutableKind,
+): Promise<ManifestResult<ExecutableManifest>> {
+  const api = await ensureClient();
+  const dotns = getActiveServicesConfig().dotns;
+  return readExecutableManifest(api, dotns, label, kind);
+}
+
+/** Gateway-backed reader for the root manifest at `<label>.dot`. */
+export async function resolveRootManifestViaRpc(
+  label: string,
+): Promise<ManifestResult<RootManifest>> {
+  const api = await ensureClient();
+  const dotns = getActiveServicesConfig().dotns;
+  return readRootManifest(api, dotns, label);
 }
 
 /**
@@ -166,19 +232,20 @@ export async function resolveOwnerViaRpc(
   const domain = `${label}.dot`;
   const node = namehash(domain);
 
+  const dotns = getActiveServicesConfig().dotns;
   return readMappingAddress(
     api,
-    CONTRACTS.DOTNS_REGISTRY,
+    dotns.DOTNS_REGISTRY,
     node,
-    STORAGE_SLOTS.REGISTRY_RECORDS,
+    dotns.storageSlots.REGISTRY_RECORDS,
   );
 }
 
 /**
  * Return the Asset Hub RPC endpoint URI the shared ws-provider is
  * currently dialing, or `null` when no client has been instantiated
- * yet. The URI may not be the first entry of the candidate list —
- * polkadot-api's ws-provider rotates on failure — so callers that
+ * yet. The URI may not be the first entry of the candidate list,
+ * because polkadot-api's ws-provider rotates on failure. Callers that
  * want to display which node is actually answering (e.g. the
  * diagnostics popover) should read this instead of the config list.
  *
@@ -202,11 +269,14 @@ export function getConnectedAssetHubRpcEndpoint(): string | null {
 }
 
 /**
- * Tear down the RPC client. Safe to call multiple times.
+ * Tear down the RPC client. Safe to call multiple times. Must be invoked
+ * by the network-switch handler so a stale follow against the old network's
+ * endpoint can't satisfy reads against the new network's config.
  */
 export function destroyRpcClient(): void {
   if (clientInstance !== null) {
     try {
+      apiInstance?.destroy();
       clientInstance.destroy();
       // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: the WS client may already be disconnected; we still clear references below.
     } catch {

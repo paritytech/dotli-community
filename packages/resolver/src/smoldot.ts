@@ -1,12 +1,16 @@
-// dot.li — Smoldot lifecycle management
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Smoldot lifecycle management.
 //
 // Single shared smoldot instance plus a small set of provider factories.
 // The protocol host can override the resolver's Asset Hub provider so
 // `.dot` resolution and remote dApp clients share one upstream JSON-RPC
 // loop through a broker.
 //
-// Chain DB persistence is handled by smoldot internally — we do NOT
-// manually save/load chain databases to IndexedDB.
+// Chain DB persistence lives in `./smoldot-db`. Each chain loads any
+// saved blob and passes it as `addChain.databaseContent`, then snapshots
+// back into IDB on a timer. Keys are scoped by network + chain.
 
 import { start as startSmoldotDirect } from "polkadot-api/smoldot";
 import { startFromWorker } from "polkadot-api/smoldot/from-worker";
@@ -21,16 +25,21 @@ import {
 import { getSmProvider } from "polkadot-api/sm-provider";
 import type { JsonRpcProvider } from "polkadot-api";
 import { log } from "@dotli/shared/log";
+import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import {
+  loadChainDb,
+  saveChainDb,
+  tapChain,
+  type ChainDbTap,
+} from "./smoldot-db";
 
 /** The smoldot Client type (shared by `start()` and `startFromWorker()`). */
 export type SmoldotClient = ReturnType<typeof startFromWorker>;
 
 export type SmoldotChain = Awaited<ReturnType<SmoldotClient["addChain"]>>;
 
-// ── Connection issue detection ───────────────────────────────
-//
 // Smoldot's logCallback fires for all internal events. We watch for
 // connection-related errors/warnings and notify subscribers so the UI
 // can surface bootnode issues to the user.
@@ -49,10 +58,8 @@ export function onConnectionIssue(cb: ConnectionIssueCallback): () => void {
   };
 }
 
-// ── Fatal panic detection ────────────────────────────────────
-//
 // Smoldot's WASM can panic (e.g. the "Option::unwrap() on a None value"
-// crash during relay-chain sync). A panic leaves every chain dead — any
+// crash during relay-chain sync). A panic leaves every chain dead and any
 // in-flight request would hang forever. The log callback catches the
 // panic line so the surrounding layers can broadcast a fatal signal out
 // to the host client and reject pending requests immediately instead of
@@ -71,7 +78,7 @@ export function onSmoldotFatal(cb: FatalCallback): () => void {
       cb(smoldotFatalMessage);
       // eslint-disable-next-line no-restricted-syntax -- defensive multicast replay: one buggy late subscriber must not prevent the caller from registering.
     } catch {
-      /* listener threw — safe to ignore on replay */
+      /* listener threw, safe to ignore on replay */
     }
   }
   return () => {
@@ -89,7 +96,7 @@ function markSmoldotFatal(message: string): void {
       cb(message);
       // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the fatal broadcast to all others.
     } catch {
-      /* listener threw — don't let one listener break the broadcast */
+      /* listener threw, do not let one listener break the broadcast */
     }
   }
 }
@@ -110,13 +117,15 @@ function smoldotLogCallback(
   target: string,
   message: string,
 ): void {
-  // Level 1 = Error, 2 = Warn
+  // Level 1 = Error, 2 = Warn, 3 = Info, 4 = Debug, 5 = Trace
   if (level <= 2) {
     log.warn(`[smoldot:${target}] ${message}`);
+  } else {
+    log.debug(`[smoldot:${target}] ${message}`);
   }
 
-  // Panic — terminal, no recovery. Smoldot's log message starts with
-  // "Smoldot has panicked while executing task …". Surface as fatal.
+  // A panic is terminal with no recovery. Smoldot's log message starts
+  // with "Smoldot has panicked while executing task …". Surface as fatal.
   if (
     message.includes("Smoldot has panicked") ||
     message.includes("panicked at")
@@ -141,13 +150,102 @@ function smoldotLogCallback(
   }
 }
 
-// ── Shared smoldot instance ──────────────────────────────────
-
 let smoldotInstance: SmoldotClient | null = null;
 let relayChainPromise: Promise<SmoldotChain> | null = null;
 
+interface PersistenceEntry {
+  tap: ChainDbTap;
+  initialTimer: ReturnType<typeof setTimeout>;
+  periodicTimer: ReturnType<typeof setInterval>;
+}
+const persistence = new Map<string, PersistenceEntry>();
+
+function dbKeyFor(chainName: string): string {
+  return `${getNetwork()}:${chainName}`;
+}
+
+function unrefHandle(handle: ReturnType<typeof setTimeout>): void {
+  // Node-only no-op in browsers, lets vitest exit instead of hanging on timers.
+  const h = handle as unknown as { unref?: () => void };
+  if (typeof h.unref === "function") {
+    h.unref();
+  }
+}
+
+function schedulePersistence(chainName: string, tap: ChainDbTap): void {
+  if (persistence.has(chainName)) {
+    return;
+  }
+  const key = dbKeyFor(chainName);
+  let inFlight = false;
+  async function persist(): Promise<void> {
+    // The chain may have been removed through a path that didn't call
+    // `teardownPersistence` directly (e.g. a `getSmProvider` disconnect on the
+    // resolver chain). Self-heal so the interval doesn't leak for the life of
+    // the SharedWorker.
+    if (tap.isStopped()) {
+      teardownPersistence(chainName);
+      return;
+    }
+    if (inFlight) {
+      return;
+    }
+    inFlight = true;
+    try {
+      const content = await tap.extractDb();
+      if (content !== null && (await saveChainDb(key, content))) {
+        log.debug(
+          `[dot.li smoldot] persisted ${chainName} DB (${String(content.length)} bytes)`,
+        );
+      }
+    } catch (err: unknown) {
+      log.warn(
+        `[dot.li smoldot] persist ${chainName} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      inFlight = false;
+    }
+  }
+  const initialTimer = setTimeout(() => {
+    void persist();
+  }, 30_000);
+  const periodicTimer = setInterval(() => {
+    void persist();
+  }, 60_000);
+  unrefHandle(initialTimer);
+  unrefHandle(periodicTimer);
+  persistence.set(chainName, { tap, initialTimer, periodicTimer });
+}
+
+function teardownPersistence(chainName: string): void {
+  const entry = persistence.get(chainName);
+  if (entry === undefined) {
+    return;
+  }
+  clearTimeout(entry.initialTimer);
+  clearInterval(entry.periodicTimer);
+  entry.tap.stop();
+  persistence.delete(chainName);
+}
+
+function teardownAllPersistence(): void {
+  for (const name of [...persistence.keys()]) {
+    teardownPersistence(name);
+  }
+}
+
+function attachPersistence(
+  chainName: string,
+  underlying: SmoldotChain,
+): SmoldotChain {
+  teardownPersistence(chainName);
+  const tap = tapChain(underlying);
+  schedulePersistence(chainName, tap);
+  return tap.chain;
+}
+
 /**
- * Create smoldot using `start()` — runs on the current thread.
+ * Create smoldot using `start()`, which runs on the current thread.
  *
  * Used in SharedWorker context where the `Worker` constructor is unavailable.
  * Smoldot networking (WebSocket) is async; occasional CPU bursts for block
@@ -159,8 +257,15 @@ export function getSmoldotDirect(): SmoldotClient {
   }
   log.warn("[dot.li smoldot] Creating smoldot via start() (current thread)");
   smoldotInstance = startSmoldotDirect({
-    maxLogLevel: 2,
+    maxLogLevel: 5,
     logCallback: smoldotLogCallback,
+    // Smoldot's own auto-detection (no-auto-bytecode-browser.js) is buggy
+    // and never sets this in browsers, so peer-gossipped `ws://[ip]` addrs
+    // get attempted and tripped by the browser's mixed-content rules. They
+    // are either blocked (public) or surfaced as deprecation warnings
+    // (link-local), and either way the page is demoted from secure context
+    // (which breaks SW registration).
+    forbidNonLocalWs: true,
   });
   log.warn("[dot.li smoldot] Smoldot client ready (direct mode)");
   return smoldotInstance;
@@ -172,8 +277,9 @@ export function getSmoldot(): SmoldotClient {
   }
   log.warn("[dot.li smoldot] Creating smoldot via startFromWorker()");
   smoldotInstance = startFromWorker(new SmWorker(), {
-    maxLogLevel: import.meta.env.DEV ? 3 : 2,
+    maxLogLevel: 5,
     logCallback: smoldotLogCallback,
+    forbidNonLocalWs: true,
   });
   return smoldotInstance;
 }
@@ -185,7 +291,7 @@ export function getSmoldot(): SmoldotClient {
  * broadcast, etc.) every chain promise we had cached is pointing at a
  * dead `SmoldotChain`. If any of them survive, the next call to e.g.
  * `getBulletinChain()` would return a promise that resolves to a chain
- * whose `sendJsonRpc` is a no-op — the user would see a silent hang.
+ * whose `sendJsonRpc` is a no-op, and the user would see a silent hang.
  * Clear them all atomically so the next access re-creates against the
  * freshly booted smoldot.
  */
@@ -198,8 +304,9 @@ export function terminateSmoldot(): void {
     void smoldotInstance.terminate();
     // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: smoldot may already be dead (panic or prior terminate); surfacing the error would block the subsequent promise cleanup which is the important step here.
   } catch {
-    /* already destroyed or crashed — safe to ignore */
+    /* already destroyed or crashed, safe to ignore */
   }
+  teardownAllPersistence();
   smoldotInstance = null;
   relayChainPromise = null;
   resolverAssetHubPromise = null;
@@ -214,12 +321,22 @@ export function getRelayChain(): Promise<SmoldotChain> {
   // Clear the cached promise on rejection so the next call retries
   // against a fresh smoldot / chain-spec fetch instead of handing the
   // same dead rejection to every caller forever.
-  relayChainPromise ??= getPaseoChainSpec()
-    .then((chainSpec) => {
-      log.warn("[dot.li smoldot] Adding relay chain...");
-      m.breadcrumb("Adding relay chain");
-      return getSmoldot().addChain({ chainSpec });
+  relayChainPromise ??= Promise.all([
+    getPaseoChainSpec(),
+    loadChainDb(dbKeyFor("relay")),
+  ])
+    .then(([chainSpec, databaseContent]) => {
+      const warm = databaseContent !== null;
+      log.warn(
+        `[dot.li smoldot] Adding relay chain (${warm ? "WARM" : "COLD"} start${warm ? `, ${String(databaseContent.length)} bytes` : ""})`,
+      );
+      m.breadcrumb("Adding relay chain", { warm: String(warm) });
+      return getSmoldot().addChain({
+        chainSpec,
+        ...(databaseContent !== null ? { databaseContent } : {}),
+      });
     })
+    .then((chain) => attachPersistence("relay", chain))
     .catch((error: unknown) => {
       relayChainPromise = null;
       m.count(S.BOOTNODE_ERROR, { chain: "relay" });
@@ -228,10 +345,7 @@ export function getRelayChain(): Promise<SmoldotChain> {
   return relayChainPromise;
 }
 
-// ── Provider factories ──────────────────────────────────────
-
-// ── Bulletin Paseo chain (for preimage operations) ───────────
-// Long-lived singleton — no mutex conflict with Asset Hub.
+// Long-lived singleton with no mutex conflict with Asset Hub.
 
 let bulletinChainPromise: Promise<SmoldotChain> | null = null;
 
@@ -246,13 +360,21 @@ export function getBulletinChain(): Promise<SmoldotChain> {
   bulletinChainPromise ??= Promise.all([
     getRelayChain(),
     getBulletinPaseoChainSpec(),
+    loadChainDb(dbKeyFor("bulletin")),
   ])
-    .then(([relayChain, chainSpec]) =>
-      getSmoldot().addChain({
+    .then(([relayChain, chainSpec, databaseContent]) => {
+      const warm = databaseContent !== null;
+      log.warn(
+        `[dot.li smoldot] Adding Bulletin parachain (${warm ? "WARM" : "COLD"} start${warm ? `, ${String(databaseContent.length)} bytes` : ""})`,
+      );
+      m.breadcrumb("Adding Bulletin parachain", { warm: String(warm) });
+      return getSmoldot().addChain({
         chainSpec,
         potentialRelayChains: [relayChain],
-      }),
-    )
+        ...(databaseContent !== null ? { databaseContent } : {}),
+      });
+    })
+    .then((chain) => attachPersistence("bulletin", chain))
     .catch((error: unknown) => {
       bulletinChainPromise = null;
       m.count(S.BOOTNODE_ERROR, { chain: "bulletin" });
@@ -261,8 +383,6 @@ export function getBulletinChain(): Promise<SmoldotChain> {
   return bulletinChainPromise;
 }
 
-// ── Shared Asset Hub Paseo chain (for dApp connections) ──────
-// Created lazily after the resolver releases the mutex.
 /**
  * Wrap a chain so `.remove()` is a no-op.
  * Used for shared singletons (e.g. bulletin chain) where a polkadot-api
@@ -279,11 +399,10 @@ export function makeNonRemovingChain(chain: SmoldotChain): SmoldotChain {
   };
 }
 
-// ── People Chain (for statement store / auth) ────────────────
 // Long-lived singleton used by the auth module for statement store
-// operations via smoldot. The active chain spec (westend-local,
-// next-people-paseo, …) is hard-coded in `@dotli/config/config`
-// as `SS_PEOPLE_CHAIN` — change it there and deploy as a single commit.
+// operations via smoldot. The active chain spec follows the user's
+// network selection (`@dotli/config/mode#getNetwork`) and is resolved
+// inside `@dotli/resolver/chain-specs`.
 
 import { SS_RELAY_CHAIN } from "@dotli/config/config";
 
@@ -296,7 +415,7 @@ let peopleChainPromise: Promise<SmoldotChain> | null = null;
  *
  * Both the custom-relay and people-chain promises clear themselves on
  * rejection so the failure isn't permanently cached across a live
- * session — the next access rebuilds against a fresh smoldot chain.
+ * session. The next access rebuilds against a fresh smoldot chain.
  */
 export function getPeopleChain(): Promise<SmoldotChain> {
   if (peopleChainPromise !== null) {
@@ -305,8 +424,22 @@ export function getPeopleChain(): Promise<SmoldotChain> {
 
   const relayPromise =
     SS_RELAY_CHAIN !== undefined && SS_RELAY_CHAIN !== ""
-      ? (customRelayChainPromise ??= getCustomRelayChainSpec()
-          .then((spec) => getSmoldot().addChain({ chainSpec: spec }))
+      ? (customRelayChainPromise ??= Promise.all([
+          getCustomRelayChainSpec(),
+          loadChainDb(dbKeyFor("custom-relay")),
+        ])
+          .then(([spec, databaseContent]) => {
+            const warm = databaseContent !== null;
+            log.warn(
+              `[dot.li smoldot] Adding custom relay chain (${warm ? "WARM" : "COLD"} start${warm ? `, ${String(databaseContent.length)} bytes` : ""})`,
+            );
+            m.breadcrumb("Adding custom relay chain", { warm: String(warm) });
+            return getSmoldot().addChain({
+              chainSpec: spec,
+              ...(databaseContent !== null ? { databaseContent } : {}),
+            });
+          })
+          .then((chain) => attachPersistence("custom-relay", chain))
           .catch((error: unknown) => {
             customRelayChainPromise = null;
             m.count(S.BOOTNODE_ERROR, { chain: "custom-relay" });
@@ -314,14 +447,25 @@ export function getPeopleChain(): Promise<SmoldotChain> {
           }))
       : getRelayChain();
 
-  peopleChainPromise = Promise.all([relayPromise, getPeopleChainSpec()])
-    .then(([relayChain, chainSpec]) =>
-      getSmoldot().addChain({
+  peopleChainPromise = Promise.all([
+    relayPromise,
+    getPeopleChainSpec(),
+    loadChainDb(dbKeyFor("people")),
+  ])
+    .then(([relayChain, chainSpec, databaseContent]) => {
+      const warm = databaseContent !== null;
+      log.warn(
+        `[dot.li smoldot] Adding People parachain (${warm ? "WARM" : "COLD"} start${warm ? `, ${String(databaseContent.length)} bytes` : ""})`,
+      );
+      m.breadcrumb("Adding People parachain", { warm: String(warm) });
+      return getSmoldot().addChain({
         chainSpec,
         potentialRelayChains: [relayChain],
         statementStore: { maxSeenStatements: 65536 },
-      }),
-    )
+        ...(databaseContent !== null ? { databaseContent } : {}),
+      });
+    })
+    .then((chain) => attachPersistence("people", chain))
     .catch((error: unknown) => {
       peopleChainPromise = null;
       m.count(S.BOOTNODE_ERROR, { chain: "people" });
@@ -330,16 +474,6 @@ export function getPeopleChain(): Promise<SmoldotChain> {
   return peopleChainPromise;
 }
 
-/**
- * Get a JsonRpcProvider backed by the People Chain smoldot singleton.
- * Used by the auth module as a drop-in replacement for the WS provider.
- */
-export function getPeopleChainProvider(): JsonRpcProvider {
-  return getSmProvider(() => getPeopleChain().then(makeNonRemovingChain));
-}
-
-// ── Dedicated provider factories ─────────────────────────────
-
 let resolverAssetHubPromise: Promise<SmoldotChain> | null = null;
 let assetHubProvider: JsonRpcProvider | null = null;
 
@@ -347,15 +481,24 @@ function createAssetHubChain(
   relay: Promise<SmoldotChain>,
 ): Promise<SmoldotChain> {
   const t0 = performance.now();
-  return Promise.all([relay, getAssetHubPaseoChainSpec()])
-    .then(([relayChain, chainSpec]) => {
-      log.warn("[dot.li smoldot] Adding Asset Hub parachain...");
-      m.breadcrumb("Adding Asset Hub parachain");
+  return Promise.all([
+    relay,
+    getAssetHubPaseoChainSpec(),
+    loadChainDb(dbKeyFor("asset-hub")),
+  ])
+    .then(([relayChain, chainSpec, databaseContent]) => {
+      const warm = databaseContent !== null;
+      log.warn(
+        `[dot.li smoldot] Adding Asset Hub parachain (${warm ? "WARM" : "COLD"} start${warm ? `, ${String(databaseContent.length)} bytes` : ""})`,
+      );
+      m.breadcrumb("Adding Asset Hub parachain", { warm: String(warm) });
       return getSmoldot().addChain({
         chainSpec,
         potentialRelayChains: [relayChain],
+        ...(databaseContent !== null ? { databaseContent } : {}),
       });
     })
+    .then((chain) => attachPersistence("asset-hub", chain))
     .then((chain) => {
       m.measure(S.SMOLDOT_ASSET_HUB, performance.now() - t0);
       m.distribution(S.SMOLDOT_ASSET_HUB, performance.now() - t0);
@@ -382,8 +525,6 @@ export function getResolverAssetHubProvider(): JsonRpcProvider {
   return assetHubProvider;
 }
 
-// ── dApp Asset Hub chain (fresh, no shared history) ─────────────
-//
 // After the resolver finishes dotNS resolution, its chain can be released.
 // dApp connections then use a FRESH chain that has no "announced blocks"
 // history, avoiding smoldot's per-connection block deduplication.
@@ -400,6 +541,7 @@ export function releaseResolverAssetHubChain(): void {
     return;
   }
   log.warn("[dot.li smoldot] Releasing resolver Asset Hub chain");
+  teardownPersistence("asset-hub");
   void resolverAssetHubPromise
     .then((chain) => {
       chain.remove();
@@ -416,12 +558,12 @@ export function releaseResolverAssetHubChain(): void {
  * Get or create a fresh Asset Hub chain for dApp connections.
  *
  * This chain is separate from the resolver's chain and has no
- * "announced blocks" history — smoldot will send complete newBlock
+ * "announced blocks" history. Smoldot will send complete newBlock
  * events for all non-finalized blocks on new subscriptions.
  *
  * The returned chain wraps `remove()` to clear the cached promise,
  * so the next call creates a fresh chain. This is necessary because
- * `getSmProvider` calls `chain.remove()` on disconnect — without
+ * `getSmProvider` calls `chain.remove()` on disconnect. Without
  * cache invalidation, subsequent providers would reference a
  * destroyed chain.
  */
@@ -433,6 +575,7 @@ export function getDappAssetHubChain(): Promise<SmoldotChain> {
       jsonRpcResponses: chain.jsonRpcResponses,
       remove() {
         dappAssetHubPromise = null;
+        teardownPersistence("asset-hub");
         chain.remove();
       },
     }))

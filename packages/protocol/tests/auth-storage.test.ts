@@ -1,11 +1,15 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, expect, it } from "vitest";
 import { SITE_ID } from "@dotli/config/config";
 import {
   buildSharedAuthStorageKey,
+  hasStoredSharedAuthSession,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
-  isSharedAuthStorageKey,
+  isValidSharedAuthKey,
   SHARED_CORE_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 
@@ -38,7 +42,7 @@ describe("shared auth storage helpers", () => {
   it("accepts only the current shell's SITE_ID", () => {
     // In the vitest happy-dom environment, `self.location.hostname` is
     // "localhost", so `SITE_ID` is "local.li". The allowlist is runtime-
-    // driven, not a hard-coded list — this guarantees a host running on
+    // driven, not a hard-coded list. This guarantees a host running on
     // `host.paseoli.dev` would accept `"paseoli.dev"` and reject `"dot.li"`,
     // and vice versa.
     expect(SITE_ID).toBe("local.li");
@@ -46,9 +50,9 @@ describe("shared auth storage helpers", () => {
   });
 
   it("rejects siteIds belonging to unrelated root domains", () => {
-    // These would be `true` under the previous hard-coded allowlist — they
-    // must all be `false` now because cross-root-domain session sharing is
-    // explicitly disallowed (dot.li ↔ paseo.li ↔ paseoli.dev).
+    // A hard-coded allowlist would treat these as `true`. They must all be
+    // `false` because cross-root-domain session sharing is explicitly
+    // disallowed across dot.li, paseo.li, and paseoli.dev.
     expect(isSharedAuthSiteId("dot.li")).toBe(false);
     expect(isSharedAuthSiteId("paseo.li")).toBe(false);
     expect(isSharedAuthSiteId("paseoli.dev")).toBe(false);
@@ -57,27 +61,32 @@ describe("shared auth storage helpers", () => {
   });
 
   it("validates storage keys", () => {
-    expect(isSharedAuthStorageKey(SHARED_CORE_SESSION_KEY)).toBe(true);
-    expect(isSharedAuthStorageKey("UserSecrets_abc-123")).toBe(true);
-    expect(isSharedAuthStorageKey("identity_0x1234")).toBe(true);
-    expect(isSharedAuthStorageKey("../secrets")).toBe(false);
-    expect(isSharedAuthStorageKey("key with spaces")).toBe(false);
-    expect(isSharedAuthStorageKey("")).toBe(false);
+    expect(isValidSharedAuthKey("SsoSessions")).toBe(true);
+    expect(isValidSharedAuthKey("UserSecrets_abc-123")).toBe(true);
+    expect(isValidSharedAuthKey("identity_0x1234")).toBe(true);
+    expect(isValidSharedAuthKey("../secrets")).toBe(false);
+    expect(isValidSharedAuthKey("key with spaces")).toBe(false);
+    expect(isValidSharedAuthKey("")).toBe(false);
   });
 
-  it("builds stable Rust-owned host storage keys", () => {
+  it("builds stable storage keys and detects empty session payloads", () => {
     expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
       "TRUAPI_SESSION_dot.li",
     );
     expect(
       buildSharedAuthStorageKey("paseoli.dev", SHARED_CORE_SESSION_KEY),
     ).toBe("TRUAPI_SESSION_paseoli.dev");
-    expect(buildSharedAuthStorageKey("dot.li", "UserSecrets_abc-123")).toBe(
-      "TRUAPI_dot.li_UserSecrets_abc-123",
+    expect(buildSharedAuthStorageKey("dot.li", "UserSecrets")).toBe(
+      "TRUAPI_dot.li_UserSecrets",
     );
+    expect(hasStoredSharedAuthSession(null)).toBe(false);
+    expect(hasStoredSharedAuthSession("")).toBe(false);
+    expect(hasStoredSharedAuthSession("0x00")).toBe(false);
+    expect(hasStoredSharedAuthSession("0x04010203")).toBe(true);
   });
 
   it("identifies shared-auth RPC methods", () => {
+    expect(isSharedAuthRequestMethod("authHasSession")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageRead")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageWrite")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageClear")).toBe(true);

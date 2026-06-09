@@ -1,4 +1,7 @@
-// dot.li — Sandbox API Checker
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Sandbox API Checker.
 //
 // Generates a self-contained IIFE script that monkey-patches restricted
 // browser APIs inside the dApp iframe. Violations are reported to the

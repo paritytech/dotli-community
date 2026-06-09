@@ -1,11 +1,13 @@
-import { describe, it, expect } from "vitest";
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import {
-  SUPPORTED_GENESIS_HASHES,
-  PASEO_RELAY_GENESIS,
-  ASSET_HUB_PASEO_GENESIS,
-  BULLETIN_PASEO_GENESIS,
-  PEOPLE_PASEO_GENESIS,
-} from "@dotli/config/config";
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  NetworkName,
+  getActiveSupportedGenesisHashes,
+  setNetwork,
+} from "@dotli/config/network";
 import {
   isProtocolEnvelope,
   type ProtocolRequestEnvelope,
@@ -129,42 +131,24 @@ describe("isProtocolEnvelope", () => {
   });
 });
 
-describe("SUPPORTED_GENESIS_HASHES", () => {
-  it("contains the Paseo relay genesis hash", () => {
-    expect(SUPPORTED_GENESIS_HASHES.has(PASEO_RELAY_GENESIS)).toBe(true);
+describe("getActiveSupportedGenesisHashes", () => {
+  beforeEach(() => {
+    localStorage.clear();
   });
-
-  it("contains the Asset Hub Paseo genesis hash", () => {
-    expect(SUPPORTED_GENESIS_HASHES.has(ASSET_HUB_PASEO_GENESIS)).toBe(true);
-  });
-
-  it("contains the Bulletin Paseo genesis hash", () => {
-    expect(SUPPORTED_GENESIS_HASHES.has(BULLETIN_PASEO_GENESIS)).toBe(true);
-  });
-
-  it("contains the People Paseo genesis hash", () => {
-    expect(SUPPORTED_GENESIS_HASHES.has(PEOPLE_PASEO_GENESIS)).toBe(true);
+  afterEach(() => {
+    localStorage.clear();
   });
 
   it("does not contain arbitrary hashes", () => {
-    expect(SUPPORTED_GENESIS_HASHES.has("0xdeadbeef")).toBe(false);
-  });
-
-  it("has exactly 4 supported chains", () => {
-    expect(SUPPORTED_GENESIS_HASHES.size).toBe(4);
+    setNetwork(NetworkName.PASEO_NEXT_V1);
+    expect(getActiveSupportedGenesisHashes().has("0xdeadbeef")).toBe(false);
   });
 });
 
 describe("genesis hash constants", () => {
-  it("PASEO_RELAY is a 0x-prefixed hex string", () => {
-    expect(PASEO_RELAY_GENESIS).toMatch(/^0x[0-9a-f]{64}$/);
-  });
-
-  it("ASSET_HUB_PASEO is a 0x-prefixed hex string", () => {
-    expect(ASSET_HUB_PASEO_GENESIS).toMatch(/^0x[0-9a-f]{64}$/);
-  });
-
-  it("PASEO_RELAY and ASSET_HUB_PASEO are different", () => {
-    expect(PASEO_RELAY_GENESIS).not.toBe(ASSET_HUB_PASEO_GENESIS);
+  it("relay genesis is a 0x-prefixed hex string on every network", () => {
+    for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
+      expect(cfg.relay.genesis).toMatch(/^0x[0-9a-f]{64}$/);
+    }
   });
 });

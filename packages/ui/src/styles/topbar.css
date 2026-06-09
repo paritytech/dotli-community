@@ -1,4 +1,23 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
 /* dot.li — Top bar, URL pill, popovers, auth UI */
+
+/* Shared open/close transition for topbar popover menus. Each popover keeps
+   its existing `display: none ↔ block/flex` toggle on `.open`; the transition
+   uses `allow-discrete` so display animates too, and `@starting-style` rules
+   defined alongside each popover give the enter direction its initial frame.
+   The transform timing function overshoots slightly for a subtle bounce. */
+@media (prefers-reduced-motion: reduce) {
+  .more-popover,
+  .user-popover,
+  .mode-popover,
+  .permissions-popover,
+  .mode-popover-backdrop,
+  .permissions-popover-backdrop {
+    transition: none !important;
+  }
+}
 
 /* ── Top Bar ────────────────────────────── */
 #topbar {
@@ -6,51 +25,202 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
-  display: flex;
+  height: 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  background: #111;
-  border-bottom: 1px solid #222;
-  padding: 0 12px;
+  background: rgb(30, 30, 30);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0 14px;
   z-index: 1000;
 }
 .topbar-left {
   display: flex;
+  width: fit-content;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   text-decoration: none;
 }
 .topbar-logo svg {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   overflow: visible;
 }
 .topbar-brand {
   font-family: "DM Serif Display", serif;
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 400;
-  color: #fff;
+  color: rgba(255, 255, 255, 0.92);
   letter-spacing: 0.02em;
 }
 .topbar-beta {
   font-size: 0.55rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.7);
-  padding: 2px 5px;
-  border-radius: 3px;
+  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
   line-height: 1;
   align-self: center;
+}
+/* Narrow viewports: drop the brand wordmark so the URL pill and right-side
+   action buttons stay on-screen. Logo + Beta badge are small enough to keep.
+   Also collapse Permissions/Theme/Settings into a single "more" button that
+   opens a flyout proxying clicks to the original buttons (which stay in the
+   DOM, just hidden, so their popovers keep working unchanged). */
+.topbar-btn.topbar-more-btn {
+  display: none;
+}
+/* Hamburger icon that morphs to an X when the more-popover is open. The
+   sibling-`:has()` check keeps state in CSS so the button doesn't need a
+   separate `.open` toggle in JS. */
+.hamburger {
+  display: inline-block;
+  position: relative;
+  width: 20px;
+  height: 16px;
+}
+.hamburger-bar {
+  display: block;
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  transition:
+    top 0.22s ease,
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.12s ease;
+}
+.hamburger-bar:nth-child(1) {
+  top: 1px;
+}
+.hamburger-bar:nth-child(2) {
+  top: 7px;
+}
+.hamburger-bar:nth-child(3) {
+  top: 13px;
+}
+.topbar-more-btn:has(+ .more-popover.open) .hamburger-bar:nth-child(1) {
+  top: 7px;
+  transform: rotate(45deg);
+}
+.topbar-more-btn:has(+ .more-popover.open) .hamburger-bar:nth-child(2) {
+  opacity: 0;
+}
+.topbar-more-btn:has(+ .more-popover.open) .hamburger-bar:nth-child(3) {
+  top: 7px;
+  transform: rotate(-45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hamburger-bar {
+    transition: none;
+  }
+}
+.more-popover {
+  display: none;
+  /* Layout properties live on the base rule (not just `.open`) so they stay
+     applied during the close transition while `display: flex` is held by
+     `transition-behavior: allow-discrete`. Otherwise rows briefly stack
+     horizontally on the way out. */
+  flex-direction: column;
+  gap: 2px;
+  position: fixed;
+  top: 56px;
+  right: 12px;
+  min-width: 180px;
+  background: rgb(34, 34, 34);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: 6px;
+  z-index: 1500;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
+}
+.more-popover.open {
+  display: flex;
+  opacity: 1;
+  transform: scale(1);
+}
+/* Theme icons (main #theme-toggle and the more-row mirror): in dark mode
+   show moon (click to go light), in light mode show sun. CSS switches
+   purely on the `data-theme` attribute on <html>, which is set
+   synchronously by the inline boot script in index.html so both icons
+   never paint at once before JS attaches. */
+#theme-icon-sun,
+.more-row-icon-sun {
+  display: none;
+}
+[data-theme="light"] #theme-icon-sun,
+[data-theme="light"] .more-row-icon-sun {
+  display: block;
+}
+[data-theme="light"] #theme-icon-moon,
+[data-theme="light"] .more-row-icon-moon {
+  display: none;
+}
+@starting-style {
+  .more-popover.open {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.78);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.more-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+@media (max-width: 560px) {
+  .topbar-brand,
+  .topbar-beta {
+    display: none;
+  }
+  #topbar #permissions-button,
+  #topbar #theme-toggle,
+  #topbar #mode-button {
+    display: none;
+  }
+  #topbar .topbar-btn.topbar-more-btn {
+    display: inline-flex;
+  }
 }
 .topbar-url {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Flex items default to `min-width: auto` — without this, a long
+     nowrap pill pushes the right cluster off-screen past `max-width`. */
+  min-width: 0;
   max-width: 480px;
   margin: 0 12px;
 }
@@ -61,30 +231,32 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
-  padding: 0 12px;
-  background: #0a0a0a;
-  border: 1px solid #222;
-  border-radius: 13px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 20px;
   font-size: 0.75rem;
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
   letter-spacing: 0.01em;
   user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  transition: border-color 0.15s;
 }
-.topbar-url-pill:hover {
-  border-color: #444;
+/* Clip from the head so the TLD stays anchored, like a browser address bar. */
+.topbar-url-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
 }
 .topbar-url-pill .dot-domain {
-  color: #fff;
+  color: rgba(255, 255, 255, 0.95);
   font-weight: 500;
 }
 .topbar-url-pill .dot-tld {
-  color: #555;
+  color: rgba(255, 255, 255, 0.35);
   font-weight: 500;
 }
 .localhost-pill .dot-domain {
@@ -92,139 +264,81 @@
   font-size: 0.7rem;
 }
 .localhost-icon {
-  color: #a78bfa;
+  color: rgba(255, 255, 255, 0.55);
   flex-shrink: 0;
 }
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  justify-self: end;
+}
+@media (max-width: 560px) {
+  .topbar-url-pill {
+    height: 36px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.07);
+  }
 }
 .topbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 28px;
+  height: 36px;
+  min-width: 36px;
   padding: 0 10px;
   background: transparent;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #ccc;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.65);
   font-size: 0.75rem;
   font-family: inherit;
   cursor: pointer;
   transition:
-    background 0.15s,
-    border-color 0.15s;
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 .topbar-btn:hover {
-  background: #1a1a1a;
-  border-color: #444;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.topbar-btn:active {
+  background: rgba(255, 255, 255, 0.11);
+}
+.topbar-btn > svg {
+  width: 18px;
+  height: 18px;
 }
 
-/* ── Paseo variant (green topbar) ──────── */
-[data-site="paseo"] #topbar {
-  background: #00b171;
-  border-bottom-color: #009a62;
-}
-[data-site="paseo"] .topbar-url-pill {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-[data-site="paseo"] .topbar-url-pill .dot-domain {
-  color: #fff;
-}
-[data-site="paseo"] .topbar-url-pill .dot-tld {
-  color: rgba(255, 255, 255, 0.7);
-}
-[data-site="paseo"] .topbar-btn {
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
-}
-[data-site="paseo"] .topbar-btn:hover {
-  background: rgba(0, 0, 0, 0.2);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-[data-site="paseo"][data-theme="light"] #topbar {
-  background: #00b171;
-  border-bottom-color: #009a62;
-}
-[data-site="paseo"][data-theme="light"] .topbar-logo svg path {
-  fill: #fff;
-}
-[data-site="paseo"][data-theme="light"] .topbar-brand {
-  color: #fff;
-}
-[data-site="paseo"][data-theme="light"] .topbar-btn {
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
-}
-[data-site="paseo"][data-theme="light"] .topbar-btn:hover {
-  background: rgba(0, 0, 0, 0.2);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-[data-site="paseo"][data-theme="light"] .topbar-url-pill {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-[data-site="paseo"][data-theme="light"] .topbar-url-pill .dot-domain {
-  color: #fff;
-}
-[data-site="paseo"][data-theme="light"] .topbar-url-pill .dot-tld {
-  color: rgba(255, 255, 255, 0.5);
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  #topbar {
+    background: rgb(30, 30, 30);
+  }
+  .more-popover,
+  .user-popover,
+  .mode-popover,
+  .permissions-popover {
+    background: rgba(20, 20, 20, 0.97);
+  }
 }
 
-/* ── Local/other variant (yellow topbar) ── */
-[data-site="local"] #topbar {
-  background: #b8860b;
-  border-bottom-color: #9a7209;
-}
-[data-site="local"] .topbar-url-pill {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-[data-site="local"] .topbar-url-pill .dot-domain {
-  color: #fff;
-}
-[data-site="local"] .topbar-url-pill .dot-tld {
-  color: rgba(255, 255, 255, 0.7);
-}
-[data-site="local"] .topbar-btn {
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
-}
-[data-site="local"] .topbar-btn:hover {
-  background: rgba(0, 0, 0, 0.2);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-[data-site="local"][data-theme="light"] #topbar {
-  background: #b8860b;
-  border-bottom-color: #9a7209;
-}
-[data-site="local"][data-theme="light"] .topbar-logo svg path {
-  fill: #fff;
-}
-[data-site="local"][data-theme="light"] .topbar-brand {
-  color: #fff;
-}
-[data-site="local"][data-theme="light"] .topbar-btn {
-  border-color: rgba(255, 255, 255, 0.4);
-  color: #fff;
-}
-[data-site="local"][data-theme="light"] .topbar-btn:hover {
-  background: rgba(0, 0, 0, 0.2);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-[data-site="local"][data-theme="light"] .topbar-url-pill {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-[data-site="local"][data-theme="light"] .topbar-url-pill .dot-domain {
-  color: #fff;
-}
-[data-site="local"][data-theme="light"] .topbar-url-pill .dot-tld {
-  color: rgba(255, 255, 255, 0.5);
+@supports (backdrop-filter: blur(1px)) {
+  #topbar {
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+  .more-popover,
+  .user-popover,
+  .mode-popover,
+  .permissions-popover,
+  .permissions-popover-menu {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
 }
 
 /* ── Verification Shield ────────────────── */
@@ -233,11 +347,11 @@
   flex-shrink: 0;
   width: 14px;
   height: 14px;
-  color: #555;
-  transition: color 0.3s;
+  color: rgba(255, 255, 255, 0.32);
+  transition: color 0.3s ease;
 }
 .verification-shield.validating {
-  color: #eab308;
+  color: #ff8c00;
 }
 .verification-shield.verified {
   color: #4ade80;
@@ -246,105 +360,90 @@
   color: #f87171;
 }
 
-/* ── Domain Info Popover ────────────────── */
-.domain-popover {
-  display: none;
-  position: fixed;
-  top: 44px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 280px;
-  background: #171717;
-  border: 1px solid #333;
-  border-radius: 10px;
-  z-index: 1500;
-  padding: 14px 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-.domain-popover.open {
-  display: block;
-}
-.domain-popover-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.domain-popover-row:last-child {
-  margin-bottom: 0;
-}
-.domain-popover-label {
-  font-size: 0.68rem;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-  width: 48px;
-}
-.domain-popover-value {
-  font-size: 0.75rem;
-  color: #ccc;
-  font-family:
-    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-  word-break: break-all;
-  line-height: 1.4;
-}
-.domain-popover-value.loading {
-  color: #555;
-}
-.domain-popover-copy {
+/* Shield tooltip: hovering the verification shield (or the URL pill in
+   general) surfaces a quick explainer for the green/amber states. */
+.verification-shield-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  background: none;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #666;
-  cursor: pointer;
   flex-shrink: 0;
-  padding: 0;
-  margin-left: 4px;
-  transition:
-    color 0.15s,
-    border-color 0.15s;
-  vertical-align: middle;
 }
-.domain-popover-copy:hover {
-  color: #fff;
-  border-color: #555;
+.verification-shield-wrap .verification-shield {
+  cursor: help;
 }
-
-/* ── Honor Badge ────────────────────────── */
-.honor-badge {
-  display: inline-block;
-  font-size: 0.68rem;
+.verification-tooltip {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: -6px;
+  width: 268px;
+  padding: 12px 14px;
+  background: rgba(28, 28, 28, 0.96);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
   font-family: system-ui, sans-serif;
-  font-weight: 500;
-  padding: 1px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: left;
+  z-index: 1600;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity 0.15s ease-out 0.05s,
+    transform 0.15s ease-out 0.05s;
 }
-.honor-badge.unknown {
-  color: #777;
-  background: #222;
-  border: 1px solid #333;
+@supports (backdrop-filter: blur(1px)) {
+  .verification-tooltip {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
 }
-.honor-badge.neutral {
-  color: #a3a3a3;
-  background: #1a1a1a;
-  border: 1px solid #404040;
+.verification-shield-wrap:hover .verification-tooltip,
+.verification-shield-wrap:focus-within .verification-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 0.2s;
 }
-.honor-badge.positive {
-  color: #4ade80;
-  background: #0a1f0f;
-  border: 1px solid #16532a;
+.verification-tooltip-title {
+  font-size: 0.68rem;
+  display: block;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
 }
-.honor-badge.negative {
-  color: #f87171;
-  background: #1f0a0a;
-  border: 1px solid #531616;
+.verification-tooltip-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: start;
+  column-gap: 8px;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+.verification-tooltip-row:last-child {
+  margin-bottom: 0;
+}
+.verification-tooltip-row strong,
+.verification-tooltip-label {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+.verification-tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.verification-tooltip-dot.is-verified {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.45);
+}
+.verification-tooltip-dot.is-trusted {
+  background: #ff8c00;
+  box-shadow: 0 0 6px rgba(255, 140, 0, 0.45);
 }
 
 /* ── User Badge ─────────────────────────── */
@@ -352,13 +451,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
-  background: #000;
-  color: #fff;
+  background: #fafafa;
+  color: #0a0a0a;
   font-size: 8px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.12px;
   text-transform: uppercase;
 }
@@ -367,17 +466,34 @@
 .user-popover {
   display: none;
   position: fixed;
-  top: 44px;
+  top: 60px;
   right: 12px;
   width: 220px;
-  background: #171717;
-  border: 1px solid #404040;
+  background: rgba(18, 18, 18, 0.92);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 1500;
   overflow: hidden;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
 }
 .user-popover.open {
   display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .user-popover.open {
+    opacity: 0;
+    transform: scale(0.92);
+  }
 }
 .user-popover-name {
   padding: 12px 14px 8px;
@@ -393,7 +509,7 @@
   margin-top: 2px;
 }
 .user-popover-divider {
-  border-top: 1px solid #404040;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .user-popover-disconnect {
   display: flex;
@@ -403,14 +519,17 @@
   padding: 10px 14px;
   background: transparent;
   border: none;
-  color: #f87171;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 0.85rem;
   font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 .user-popover-disconnect:hover {
-  background: #262626;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
 }
 .user-popover-disconnect svg {
   width: 18px;
@@ -424,45 +543,65 @@
 #mode-button.gateway-mode::after {
   content: "";
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 5px;
+  right: 5px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #eab308;
+  background: #fafafa;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
 .mode-popover-backdrop {
   display: none;
   position: fixed;
-  top: 40px;
+  top: 56px;
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.4);
   z-index: 1400;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease-out,
+    display 0.18s allow-discrete;
 }
 .mode-popover-backdrop.open {
   display: block;
+  opacity: 1;
+}
+@starting-style {
+  .mode-popover-backdrop.open {
+    opacity: 0;
+  }
 }
 .mode-popover {
   display: none;
   position: fixed;
   /* Overlaps the bottom of the topbar by a few pixels so the popover
      visually attaches to the button instead of floating with a gap. */
-  top: 36px;
+  top: 56px;
   right: 12px;
   width: 620px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 60px);
   overflow-y: auto;
-  background: #171717;
-  border: 1px solid #404040;
+  background: rgba(20, 20, 20, 0.82);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 1500;
   /* Bottom padding lives on the popover itself so the gap between the
      last element (Save & Apply when clean, warning text when dirty) and
      the popover's bottom edge is visually identical in both states. */
   padding-bottom: 10px;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
 }
 .mode-popover-columns {
   display: grid;
@@ -473,6 +612,11 @@
 }
 .mode-popover-col {
   min-width: 0;
+  /* Flex column so the last action row (Clear all caches on the left,
+     Share/Debug links on the right) can stretch to the bottom and stay
+     visually aligned across columns regardless of section heights. */
+  display: flex;
+  flex-direction: column;
 }
 /* Collapse to single column on narrow viewports (matches the old
    single-column width). */
@@ -486,6 +630,14 @@
 }
 .mode-popover.open {
   display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .mode-popover.open {
+    opacity: 0;
+    transform: scale(0.92);
+  }
 }
 .mode-popover-header {
   padding: 10px 14px 6px;
@@ -501,7 +653,7 @@
 }
 .mode-popover-divider {
   height: 1px;
-  background: #2a2a2a;
+  background: rgba(255, 255, 255, 0.1);
   margin: 6px 14px;
 }
 .mode-endpoint-row {
@@ -522,6 +674,17 @@
 }
 .mode-endpoint-row.mode-info-row:hover {
   background: transparent;
+}
+/* Copyable diagnostic rows — restore hover affordance and signal interactivity. */
+.mode-endpoint-row.mode-info-row.mode-info-row-copyable {
+  cursor: pointer;
+}
+.mode-endpoint-row.mode-info-row.mode-info-row-copyable:hover {
+  background: #ffffff0d;
+}
+.mode-endpoint-row.mode-info-row.mode-info-row-copyable.copied
+  .mode-endpoint-value {
+  color: #fafafa;
 }
 .mode-endpoint-label {
   color: #888;
@@ -568,6 +731,7 @@
 }
 .mode-custom-endpoint-hint.invalid {
   color: #d46a6a;
+  font-weight: 500;
 }
 .mode-popover-section {
   padding: 4px 14px 2px;
@@ -586,7 +750,14 @@
   transition: background 0.1s;
 }
 .mode-radio-row:hover {
-  background: #222;
+  background: rgba(255, 255, 255, 0.05);
+}
+.mode-radio-row.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.mode-radio-row.disabled:hover {
+  background: transparent;
 }
 .mode-radio-input {
   position: absolute;
@@ -598,13 +769,13 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid #555;
+  border: 2px solid rgba(255, 255, 255, 0.32);
   margin-top: 1px;
   transition: border-color 0.15s;
   position: relative;
 }
 .mode-radio-row.selected .mode-radio-dot {
-  border-color: #4ade80;
+  border-color: #fafafa;
 }
 .mode-radio-row.selected .mode-radio-dot::after {
   content: "";
@@ -614,7 +785,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #4ade80;
+  background: #fafafa;
 }
 .mode-radio-text {
   display: flex;
@@ -643,50 +814,110 @@
   padding-bottom: 0;
 }
 /* "Clear all caches" button: give it breathing room after the last cache
-   toggle so it doesn't visually merge with the toggle row above. */
+   toggle so it doesn't visually merge with the toggle row above. Pushed to
+   the bottom of the left column so it aligns with the diagnostics action
+   row at the bottom of the right column. */
 .mode-clear-all-row {
   padding-top: 10px;
+  margin-top: auto;
+}
+/* Bottom-anchored action row in the Diagnostics column: hosts the
+   Share-diagnostic and Open-in-debug-mode buttons side by side. `margin-top:
+   auto` aligns it with `.mode-clear-all-row` in the sibling column. */
+.mode-diag-links-row {
+  margin-top: auto;
+  padding-top: 10px;
+  gap: 8px;
+}
+.mode-diag-links-row .mode-clear-btn {
+  flex: 1;
+  min-width: 0;
 }
 .mode-cache-label {
   font-size: 0.78rem;
   color: #e0e0e0;
 }
+/* Toggle switch (cache rows). Pure-CSS pill switch — track flips colour
+   and the knob translates from left to right when the button gains the
+   `.on` class. */
+.permissions-popover-toggle {
+  flex-shrink: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.permissions-toggle-track {
+  display: block;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  transition: background 0.15s;
+}
+.permissions-popover-toggle.on .permissions-toggle-track {
+  background: #fafafa;
+}
+.permissions-toggle-knob {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.permissions-popover-toggle.on .permissions-toggle-knob {
+  transform: translateX(12px);
+  background: #0a0a0a;
+}
 .mode-clear-btn {
   width: 100%;
   padding: 5px 0;
-  background: none;
-  border: 1px solid #333;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
-  color: #aaa;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 0.72rem;
+  font-weight: 500;
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    color 0.15s;
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 .mode-clear-btn:hover {
-  border-color: #555;
-  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
 }
 .mode-clear-btn:disabled {
   cursor: default;
   opacity: 0.4;
 }
 .mode-clear-btn:disabled:hover {
-  border-color: #333;
-  color: #aaa;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.7);
 }
 .mode-clear-btn.mode-apply-dirty {
-  border-color: #4ade80;
-  color: #4ade80;
+  background: #fafafa;
+  border-color: #fafafa;
+  color: #0a0a0a;
+  font-weight: 600;
 }
 .mode-clear-btn.mode-apply-dirty:hover {
-  border-color: #6ff39c;
-  color: #6ff39c;
+  background: #fff;
+  border-color: #fff;
+  color: #000;
 }
-/* Reset warning: hidden by default, fades in when the draft is dirty so
-   the popover isn't noisy in its idle state. Amber to flag "this action
-   has side effects" without screaming error red. */
 .mode-apply-warning {
   display: none;
   margin: 6px 14px 0;
@@ -694,6 +925,7 @@
   font-size: 0.7rem;
   line-height: 1.35;
   color: #f5c16c;
+  font-style: italic;
   text-align: center;
 }
 .mode-apply-warning.visible {
@@ -707,12 +939,13 @@
 #permissions-button.has-grants::after {
   content: "";
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 5px;
+  right: 5px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #4ade80;
+  background: #fafafa;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
 
 /* ── Permissions Popover ───────────────── */
@@ -721,34 +954,61 @@
 .permissions-popover-backdrop {
   display: none;
   position: fixed;
-  top: 40px;
+  top: 56px;
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.4);
   z-index: 1400;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease-out,
+    display 0.18s allow-discrete;
 }
 .permissions-popover-backdrop.open {
   display: block;
+  opacity: 1;
+}
+@starting-style {
+  .permissions-popover-backdrop.open {
+    opacity: 0;
+  }
 }
 .permissions-popover {
   display: none;
   position: fixed;
   /* Matches `.mode-popover` — overlaps the topbar bottom so the popover
      visually attaches to its trigger button. */
-  top: 36px;
+  top: 56px;
   right: 12px;
   width: 340px;
-  background: #171717;
-  border: 1px solid #404040;
+  background: rgba(20, 20, 20, 0.82);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 1500;
   /* `overflow: visible` lets the dropdown menus escape the popover's
      bounds; rows handle their own clipping via hover background. */
   overflow: visible;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
 }
 .permissions-popover.open {
   display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .permissions-popover.open {
+    opacity: 0;
+    transform: scale(0.92);
+  }
 }
 .permissions-popover-header {
   padding: 10px 14px 6px;
@@ -788,10 +1048,10 @@
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  background: #1f1f1f;
-  border: 1px solid #333;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  color: #e0e0e0;
+  color: rgba(255, 255, 255, 0.88);
   font-size: 0.72rem;
   cursor: pointer;
   transition:
@@ -799,24 +1059,25 @@
     border-color 0.1s;
 }
 .permissions-popover-select:hover {
-  background: #262626;
-  border-color: #444;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 .permissions-popover-select[aria-expanded="true"] {
-  background: #262626;
-  border-color: #555;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 .permissions-popover-select-caret {
   display: flex;
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 .permissions-popover-menu {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
   min-width: 140px;
-  background: #1f1f1f;
-  border: 1px solid #404040;
+  background: rgba(28, 28, 28, 0.92);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 4px;
   z-index: 1600;
@@ -833,20 +1094,20 @@
   background: none;
   border: none;
   border-radius: 4px;
-  color: #e0e0e0;
+  color: rgba(255, 255, 255, 0.88);
   font-size: 0.75rem;
   cursor: pointer;
   text-align: left;
 }
 .permissions-popover-menu-item:hover {
-  background: #2a2a2a;
+  background: rgba(255, 255, 255, 0.06);
 }
 .permissions-popover-menu-item.selected {
   color: #fff;
 }
 .permissions-popover-menu-check {
   display: flex;
-  color: #4ade80;
+  color: #fafafa;
 }
 /* Footer */
 .permissions-popover-footer {
@@ -870,9 +1131,9 @@
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  color: #e6007a;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 12px;
 }
 .permission-modal-notice {

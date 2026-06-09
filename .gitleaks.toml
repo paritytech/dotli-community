@@ -1,0 +1,16 @@
+# gitleaks configuration for dot.li
+#
+# Extends the built-in gitleaks ruleset and narrows the known false
+# positives so an enforced scan stays signal-rich. See the Secret Scan
+# workflow in .github/workflows/secret-scan.yml.
+
+title = "dot.li gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Chain-spec genesis files embed public SS58 account addresses (prefix 5...) that trip the generic-api-key heuristic but are not secrets."
+paths = [
+  '''packages/resolver/src/chain-specs/.*\.json$''',
+]

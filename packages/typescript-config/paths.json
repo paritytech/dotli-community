@@ -10,6 +10,7 @@
       "@dotli/sandbox-checker/*": ["../sandbox-checker/src/*"],
       "@dotli/shared/*": ["../shared/src/*"],
       "@dotli/storage/*": ["../storage/src/*"],
+      "@dotli/truapi-debug/*": ["../truapi-debug/src/*"],
       "@dotli/ui/*": ["../ui/src/*"]
     }
   }

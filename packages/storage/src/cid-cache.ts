@@ -1,4 +1,7 @@
-// dot.li — IndexedDB-backed label→CID cache
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li IndexedDB-backed cache mapping a label to its CID.
 //
 // Enables stale-while-revalidate: on repeat visits, render from
 // the cached CID instantly while smoldot validates in the background.
@@ -61,8 +64,9 @@ export async function getCachedCidResult(
 }
 
 /**
- * Legacy surface — `null` collapses cache miss and storage error. New
- * callers should use `getCachedCidResult` so storage failures can be
+ * Legacy surface where `null` collapses cache miss and storage error.
+ *
+ * New callers should use `getCachedCidResult` so storage failures can be
  * surfaced rather than silently treated as "no cache".
  */
 export async function getCachedCid(label: string): Promise<string | null> {
@@ -109,7 +113,7 @@ export function addRecentLabel(label: string): Promise<void> {
     );
     // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable / quota exceeded when appending to a UI-only "recent labels" list. Not worth a metric per page load; defaults keep working.
   } catch {
-    /* non-critical — recent list is UI decoration */
+    /* non-critical. The recent list is UI decoration */
   }
   return Promise.resolve();
 }
@@ -128,9 +132,76 @@ export async function setCachedCid(label: string, cid: string): Promise<void> {
     stop();
   } catch (err) {
     stop();
-    // Log + Sentry so operators can see when the cache is degrading; a
-    // silent swallow would let an IDB regression go unnoticed.
     log.error("[dot.li cid-cache] write error:", err);
     captureException(err, { kind: "cid_cache_write_error" });
   }
+}
+
+/**
+ * Clear every cached label-to-CID entry.
+ *
+ * Used when the user turns the dotNS cache off in settings. Awaits
+ * transaction completion so a reload right after won't abort the clear
+ * mid-flight. Best-effort: failures are logged.
+ */
+export async function clearCidCache(): Promise<void> {
+  const stop = m.timer(S.CACHE_WRITE_LATENCY);
+  try {
+    const db = await getDb();
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error("IDB clear error"));
+      };
+    });
+    stop();
+  } catch (err) {
+    stop();
+    log.error("[dot.li cid-cache] clear error:", err);
+    captureException(err, { kind: "cid_cache_clear_error" });
+  }
+}
+
+/** Remove a cached entry. Best-effort: failures are logged, not thrown. */
+export async function evictCachedCid(label: string): Promise<void> {
+  const stop = m.timer(S.CACHE_WRITE_LATENCY);
+  try {
+    const db = await getDb();
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(label);
+    stop();
+  } catch (err) {
+    stop();
+    log.error("[dot.li cid-cache] evict error:", err);
+    captureException(err, { kind: "cid_cache_evict_error" });
+  }
+}
+
+export type RevalidateOutcome =
+  | { kind: "match" }
+  | { kind: "update"; cid: string }
+  | { kind: "cleared" };
+
+/** Reconcile a freshly-resolved CID against the served one: write, evict, or noop. */
+export async function recordRevalidateOutcome(
+  label: string,
+  servedCid: string,
+  freshCid: string | null,
+): Promise<RevalidateOutcome> {
+  if (freshCid === null) {
+    await evictCachedCid(label);
+    m.count(S.CACHE_REVALIDATE_CLEARED);
+    return { kind: "cleared" };
+  }
+  await setCachedCid(label, freshCid);
+  if (freshCid === servedCid) {
+    m.count(S.CACHE_REVALIDATE_MATCH);
+    return { kind: "match" };
+  }
+  m.count(S.CACHE_REVALIDATE_UPDATE);
+  return { kind: "update", cid: freshCid };
 }

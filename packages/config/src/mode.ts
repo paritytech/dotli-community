@@ -1,311 +1,213 @@
-// dot.li — Resolution mode and cache settings
-//
-// Chain access and content fetch are two independent axes. The user picks
-// one of each; the legacy three-way `DotliMode` enum is now a *preset label*
-// computed from the two axes, kept for backwards compat (existing telemetry,
-// existing UI call sites, URL params older sandbox builds still emit).
-//
-//   ChainBackend      : how .dot → CID and dApp chainConnect work
-//   ContentBackend    : how CID → bytes works
-//
-// Presets:
-//   "p2p-shared-worker" = smoldot-shared-worker + p2p-helia
-//   "p2p-direct"        = smoldot-direct        + p2p-helia
-//   "gateway"           = rpc                   + ipfs-gateway
-//
-// Non-preset combinations are legal (useful for debugging: e.g. gateway
-// content with smoldot resolution to attribute which dependency broke).
-// When the user picks a non-preset combo, the derived `DotliMode` surfaces
-// as `"custom"` for display purposes only.
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
 
-export type ChainBackend = "smoldot-shared-worker" | "smoldot-direct" | "rpc";
-export type ContentBackend = "p2p-helia" | "ipfs-gateway";
-export type DotliMode =
-  | "p2p-shared-worker"
-  | "p2p-direct"
-  | "gateway"
-  | "custom";
+// Backend selection and cache settings.
+//
+//   smoldot-direct: smoldot runs in the protocol iframe. Chain access
+//                   uses smoldot, content fetch uses smoldot's
+//                   `bitswap_v1_get` against the Bulletin Chain.
+//   smoldot-shared-worker: same as above but smoldot lives in a SharedWorker,
+//                   so multiple tabs share one light client.
+//   rpc-gateway: chain access via WSS JSON-RPC to a trusted node, content
+//                fetch via HTTPS IPFS gateway. No smoldot.
+
+export type Backend =
+  | "smoldot-direct"
+  | "smoldot-shared-worker"
+  | "rpc-gateway";
 
 export interface CacheSettings {
-  /** When true, skip CID cache reads — always resolve from chain/RPC */
+  /** When true, skip CID cache reads. Always resolve from chain/RPC. */
   skipCidCache: boolean;
-  /** When true, skip SW archive cache reads — always fetch content */
+  /** When true, skip SW archive cache reads. Always fetch content. */
   skipArchiveCache: boolean;
   /**
    * When true, the protocol iframe purges its persistent worker caches
    * (IndexedDB) before smoldot/broker init, so every cold start boots
-   * from scratch. Trades cold-start time for a deterministic baseline —
+   * from scratch. Trades cold-start time for a deterministic baseline,
    * useful for debugging "is the cache hiding the issue?" scenarios.
    */
   skipWorkerCache: boolean;
 }
 
-// ── Backend storage keys ─────────────────────────────────────
+export const BACKEND_KEY = "dotli:chain-backend";
+export const CACHE_KEY = "dotli:cache-settings";
 
-const MODE_KEY = "dotli:mode";
-const CHAIN_BACKEND_KEY = "dotli:chain-backend";
-const CONTENT_BACKEND_KEY = "dotli:content-backend";
+export function isSharedWorkerAvailable(): boolean {
+  return typeof SharedWorker !== "undefined";
+}
 
-const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set<ChainBackend>([
-  "smoldot-shared-worker",
+// Pre-collapse keys. `rpc` chain backend maps to `rpc-gateway`. Legacy
+// `dotli:mode` and `dotli:content-backend` carried the content axis that
+// no longer exists. Read once, migrate, delete.
+const LEGACY_MODE_KEY = "dotli:mode";
+const LEGACY_CONTENT_BACKEND_KEY = "dotli:content-backend";
+
+const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
   "smoldot-direct",
-  "rpc",
+  "smoldot-shared-worker",
+  "rpc-gateway",
 ]);
 
-const VALID_CONTENT_BACKENDS: ReadonlySet<string> = new Set<ContentBackend>([
-  "p2p-helia",
-  "ipfs-gateway",
-]);
+/**
+ * Synchronous storage adapter for mode preferences. Readers across the
+ * codebase (sandbox URL builder, diagnostics, etc.) are not async-
+ * friendly, so any cross-origin store must hydrate an in-memory cache
+ * during boot and serve sync reads from there.
+ */
+export interface ModeStorage {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+}
 
-// Preset → (chain, content) table. Single source of truth for both
-// derivation and migration from the legacy `dotli:mode` key.
-const PRESETS: Record<
-  Exclude<DotliMode, "custom">,
-  { chain: ChainBackend; content: ContentBackend }
-> = {
-  "p2p-shared-worker": { chain: "smoldot-shared-worker", content: "p2p-helia" },
-  "p2p-direct": { chain: "smoldot-direct", content: "p2p-helia" },
-  gateway: { chain: "rpc", content: "ipfs-gateway" },
+export const localStorageAdapter: ModeStorage = {
+  getItem: (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies); writers drop silently and readers fall back to defaults.
+    } catch {
+      /* localStorage unavailable */
+    }
+  },
+  removeItem: (key) => {
+    try {
+      localStorage.removeItem(key);
+      // eslint-disable-next-line no-restricted-syntax -- mirror cleanup; readers tolerate the stale value on the next boot.
+    } catch {
+      /* localStorage unavailable */
+    }
+  },
 };
 
-// ── Chain backend ────────────────────────────────────────────
+let storage: ModeStorage = localStorageAdapter;
 
-export function getChainBackend(): ChainBackend {
-  try {
-    const stored = localStorage.getItem(CHAIN_BACKEND_KEY);
-    if (stored !== null && VALID_CHAIN_BACKENDS.has(stored)) {
-      return stored as ChainBackend;
-    }
-    // Migration: derive from legacy `dotli:mode` when the split key is absent.
-    const legacy = readLegacyMode();
-    if (legacy !== null && legacy !== "custom") {
-      const chain = PRESETS[legacy].chain;
-      localStorage.setItem(CHAIN_BACKEND_KEY, chain);
-      return chain;
-    }
-    // Persist the computed default on first read so subsequent reads on
-    // the same device give the same answer (without persistence we'd
-    // re-derive via UA-sniff on every load, which can change between
-    // browsers / devices).
-    const computed = defaultChainBackend();
-    localStorage.setItem(CHAIN_BACKEND_KEY, computed);
-    return computed;
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
-  }
-  return defaultChainBackend();
+/**
+ * Replace the storage backend used by every accessor below. Call once
+ * during host shell boot, before any reader runs. Swapping at runtime is
+ * allowed but stale values already returned to callers are NOT
+ * invalidated. Readers see the new adapter only on their next call.
+ */
+export function configureModeStorage(adapter: ModeStorage): void {
+  storage = adapter;
 }
 
 /**
- * Default chain backend for first-load users (i.e. no persisted
- * preference + no legacy mode key).
- *
- * Paired with `p2p-helia` content this forms the `p2p-direct` preset —
- * smoldot runs per-tab instead of in a SharedWorker, trading shared
- * sync state across tabs for a simpler lifecycle that avoids
- * SharedWorker lifetime quirks on first-load. Users who want the
- * cross-tab shared-worker path or the fast gateway path switch via
- * the settings popover, and their choice is persisted in localStorage
- * so this function is not consulted again.
+ * Run the one-shot legacy-key migration against a given `ModeStorage`,
+ * writing the migrated backend back to `target[BACKEND_KEY]` so a
+ * subsequent reader picks it up at the canonical key. The shared-mode
+ * bootstrap calls this against per-origin `localStorage` *before* swapping
+ * the adapter, so legacy `dotli:mode` / `dotli:content-backend` values
+ * survive the swap to the cache-only adapter (which only sees the two
+ * SHARED_KEYS).
  */
-function defaultChainBackend(): ChainBackend {
-  return PRESETS["p2p-direct"].chain;
-}
-
-export function setChainBackend(backend: ChainBackend): void {
-  try {
-    localStorage.setItem(CHAIN_BACKEND_KEY, backend);
-    syncLegacyMode();
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
+export function migrateLegacyOn(target: ModeStorage): Backend | null {
+  const migrated = readAndClearLegacy(target);
+  if (migrated !== null) {
+    target.setItem(BACKEND_KEY, migrated);
   }
+  return migrated;
 }
 
-// ── Content backend ──────────────────────────────────────────
-
-export function getContentBackend(): ContentBackend {
-  try {
-    const stored = localStorage.getItem(CONTENT_BACKEND_KEY);
-    if (stored !== null && VALID_CONTENT_BACKENDS.has(stored)) {
-      return stored as ContentBackend;
+export function getBackend(): Backend {
+  const stored = storage.getItem(BACKEND_KEY);
+  if (stored !== null && VALID_BACKENDS.has(stored)) {
+    if (stored === "smoldot-shared-worker" && !isSharedWorkerAvailable()) {
+      storage.removeItem(BACKEND_KEY);
+      return "smoldot-direct";
     }
-    const legacy = readLegacyMode();
-    if (legacy !== null && legacy !== "custom") {
-      const content = PRESETS[legacy].content;
-      localStorage.setItem(CONTENT_BACKEND_KEY, content);
-      return content;
+    return stored as Backend;
+  }
+  const migrated = migrateLegacyOn(storage);
+  if (migrated !== null) {
+    if (migrated === "smoldot-shared-worker" && !isSharedWorkerAvailable()) {
+      storage.removeItem(BACKEND_KEY);
+      return "smoldot-direct";
     }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
+    return migrated;
   }
-  return PRESETS["p2p-direct"].content;
+  const computed = defaultBackend();
+  storage.setItem(BACKEND_KEY, computed);
+  return computed;
 }
 
-export function setContentBackend(backend: ContentBackend): void {
-  try {
-    localStorage.setItem(CONTENT_BACKEND_KEY, backend);
-    syncLegacyMode();
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
-  }
+export function setBackend(chainBackend: Backend): void {
+  storage.setItem(BACKEND_KEY, chainBackend);
 }
 
-// ── Legacy mode (derived, kept for display + backwards compat) ──
-
-const LEGACY_MODE_VALUES: ReadonlySet<string> = new Set<DotliMode>([
-  "p2p-shared-worker",
-  "p2p-direct",
-  "gateway",
-  "custom",
-]);
-
-function readLegacyMode(): DotliMode | null {
-  try {
-    const stored = localStorage.getItem(MODE_KEY);
-    if (stored !== null && LEGACY_MODE_VALUES.has(stored)) {
-      return stored as DotliMode;
-    }
-    // Pre-Phase-B values — map forward.
-    if (stored === "p2p") {
-      return "p2p-shared-worker";
-    }
-    if (stored === "centralized") {
-      return "gateway";
-    }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
-  }
-  return null;
-}
-
-function deriveMode(chain: ChainBackend, content: ContentBackend): DotliMode {
-  for (const [name, pair] of Object.entries(PRESETS) as [
-    Exclude<DotliMode, "custom">,
-    { chain: ChainBackend; content: ContentBackend },
-  ][]) {
-    if (pair.chain === chain && pair.content === content) {
-      return name;
-    }
-  }
-  return "custom";
-}
-
-function syncLegacyMode(): void {
-  try {
-    const mode = deriveMode(getChainBackend(), getContentBackend());
-    localStorage.setItem(MODE_KEY, mode);
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
-  }
-}
-
-/** The combined preset label (or `"custom"` for non-preset combinations). */
-export function getMode(): DotliMode {
-  return deriveMode(getChainBackend(), getContentBackend());
-}
-
-/** Directly set a preset. Convenience for existing call sites. */
-export function setMode(mode: DotliMode): void {
-  if (mode === "custom") {
-    // "custom" isn't a preset — ignore; caller should use setChainBackend /
-    // setContentBackend for non-preset combos.
-    return;
-  }
-  const preset = PRESETS[mode];
-  setChainBackend(preset.chain);
-  setContentBackend(preset.content);
+export function defaultBackend(): Backend {
+  return isSharedWorkerAvailable() ? "smoldot-shared-worker" : "smoldot-direct";
 }
 
 /**
- * Returns true when the chain backend is a smoldot variant (either
- * worker or direct).
- *
- * `mode` is ignored for the `"custom"` preset — "custom" is by
- * definition a free combination of `ChainBackend` + `ContentBackend`,
- * so the only authoritative source for its chain side is the persisted
- * `getChainBackend()`. For every non-custom preset we route through
- * the PRESETS table so a caller who just has a `DotliMode` in hand
- * gets a stable answer without re-reading storage.
- *
- * To avoid a silent argument mismatch, callers that aren't sure which
- * side of the chain/content split they have should use
- * `isP2pChainBackend(getChainBackend())` instead of passing a mode.
+ * Map any legacy stored value to a canonical `Backend`, clearing the
+ * legacy keys on success. Pre-collapse `dotli:mode` and
+ * `dotli:content-backend` carried the content axis that no longer
+ * exists. A stored `chain-backend = "rpc"` becomes `"rpc-gateway"`. The
+ * caller decides whether to write the result back at `BACKEND_KEY`.
  */
-export function isP2pMode(mode: DotliMode): boolean {
-  if (mode === "custom") {
-    return getChainBackend() !== "rpc";
+function readAndClearLegacy(target: ModeStorage): Backend | null {
+  const chain = target.getItem(BACKEND_KEY);
+  const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
+  const legacyMode = target.getItem(LEGACY_MODE_KEY);
+  let chosen: Backend | null = null;
+  if (chain === "rpc" || content === "ipfs-gateway") {
+    chosen = "rpc-gateway";
+  } else if (legacyMode === "p2p-shared-worker" || legacyMode === "p2p") {
+    chosen = "smoldot-shared-worker";
+  } else if (legacyMode === "p2p-direct") {
+    chosen = "smoldot-direct";
+  } else if (legacyMode === "gateway" || legacyMode === "centralized") {
+    chosen = "rpc-gateway";
   }
-  return PRESETS[mode].chain !== "rpc";
-}
-
-/**
- * Single-axis helper for callers that already have a `ChainBackend`
- * and shouldn't have to round-trip through `DotliMode`. Preferred for
- * internal routing decisions — `isP2pMode` stays for call sites that
- * only carry the legacy preset label.
- */
-export function isP2pChainBackend(backend: ChainBackend): boolean {
-  return backend !== "rpc";
+  if (chosen !== null) {
+    target.removeItem(LEGACY_MODE_KEY);
+    target.removeItem(LEGACY_CONTENT_BACKEND_KEY);
+  }
+  return chosen;
 }
 
 /**
  * Canonical trust-posture helper for user-facing shields and indicators.
  *
- * A session is "verified" only when BOTH axes are trustless — chain =
- * smoldot (shared-worker or direct) AND content = p2p-helia. If either
- * axis uses a trusted provider (chain = rpc OR content = ipfs-gateway),
- * the session is trusted, not verified, because part of the data path
- * relies on an operator the user has delegated trust to.
- *
- * This is the single source of truth for anything user-facing that
- * communicates verification state. Never re-derive the rule from raw
- * backend values at the call site — one place, one rule, one truth.
+ * A session is "verified" iff the backend uses smoldot end-to-end. The
+ * `rpc-gateway` backend delegates both chain access and content fetch to
+ * trusted operators, so it's "trusted" rather than "verified".
  */
-export function isVerifiedSession(
-  chain: ChainBackend,
-  content: ContentBackend,
-): boolean {
-  return chain !== "rpc" && content !== "ipfs-gateway";
+export function isVerifiedSession(chainBackend: Backend): boolean {
+  return chainBackend !== "rpc-gateway";
 }
 
-// ── Cache settings ───────────────────────────────────────────
-
-const CACHE_KEY = "dotli:cache-settings";
-
-// Fresh-install default: every cache off. The cached layers (dotNS CID
-// resolution, SW archive, protocol worker IDB) can mask real behavior
-// and confuse debugging — "did my code actually run, or did a stale
-// cache win?". Users who want the speed boost opt in through the
-// settings popover; existing users with a persisted preference keep
-// whatever they chose.
+// Fresh-install default. Persisted preferences override these.
 const DEFAULT_CACHE: CacheSettings = {
-  skipCidCache: true,
-  skipArchiveCache: true,
-  skipWorkerCache: true,
+  skipCidCache: false,
+  skipArchiveCache: false,
+  skipWorkerCache: false,
 };
 
 /**
  * Get the effective cache settings.
  *
- * Cache preferences are the user's to choose regardless of chain/content
- * backend. (Earlier versions coupled gateway mode to "no cache", which
- * meant the user couldn't say "I want gateway *and* keep the CID cache".
- * Cache flags are now honored as-set.)
+ * Cache preferences are the user's to choose regardless of backend.
+ * (Earlier versions coupled gateway mode to "no cache", which meant the
+ * user couldn't say "I want gateway *and* keep the CID cache". Cache
+ * flags are now honored as-set.)
  *
  * When a stored preference omits a field (older build wrote a partial
  * object), the missing field falls back to `DEFAULT_CACHE` so the new
  * all-off default applies instead of the structural zero-value `false`.
  */
 export function getCacheSettings(): CacheSettings {
-  try {
-    const stored = localStorage.getItem(CACHE_KEY);
-    if (stored !== null) {
+  const stored = storage.getItem(CACHE_KEY);
+  if (stored !== null) {
+    try {
       const parsed = JSON.parse(stored) as Partial<CacheSettings>;
       return {
         skipCidCache:
@@ -321,19 +223,14 @@ export function getCacheSettings(): CacheSettings {
             ? parsed.skipWorkerCache
             : DEFAULT_CACHE.skipWorkerCache,
       };
+      // eslint-disable-next-line no-restricted-syntax -- malformed JSON from an older build; defaults are the safe fallback.
+    } catch {
+      /* malformed JSON. Fall back to defaults. */
     }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable or contain invalid JSON from an older build; defaults are the safe fallback. No metric — not worth one per page load.
-  } catch {
-    /* localStorage unavailable or malformed JSON — fall back to defaults. */
   }
   return { ...DEFAULT_CACHE };
 }
 
 export function setCacheSettings(settings: CacheSettings): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(settings));
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, quota, disabled cookies). Non-fatal by design: readers fall back to defaults, writers drop silently. No metric — noisy on every page load.
-  } catch {
-    /* localStorage unavailable — intentionally non-fatal. */
-  }
+  storage.setItem(CACHE_KEY, JSON.stringify(settings));
 }

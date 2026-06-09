@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, it, expect } from "vitest";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
@@ -292,5 +295,37 @@ describe("normalizeUrl", () => {
 
   it("returns raw input for empty string", () => {
     expect(dotNsUrl.normalizeUrl("")).toBe("");
+  });
+});
+
+describe("isWebcontainerPreviewHost", () => {
+  it("matches local-credentialless webcontainer hosts", () => {
+    expect(
+      dotNsUrl.isWebcontainerPreviewHost(
+        "abc--3000--def.local-credentialless.webcontainer-api.io",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches enterprise local-corp webcontainer hosts", () => {
+    expect(
+      dotNsUrl.isWebcontainerPreviewHost(
+        "abc--3000--def.local-corp.webcontainer-api.io",
+      ),
+    ).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(dotNsUrl.isWebcontainerPreviewHost("ABC.WEBCONTAINER-API.IO")).toBe(
+      true,
+    );
+  });
+
+  it("rejects non-webcontainer hosts", () => {
+    expect(dotNsUrl.isWebcontainerPreviewHost("mytestapp.dot")).toBe(false);
+    expect(dotNsUrl.isWebcontainerPreviewHost("localhost:3000")).toBe(false);
+    expect(dotNsUrl.isWebcontainerPreviewHost("evil-webcontainer-api.io")).toBe(
+      false,
+    );
   });
 });

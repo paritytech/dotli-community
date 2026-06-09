@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Fetch fresh chain specs from live RPC nodes and merge into local specs.
+# Copyright 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Refresh the committed smoldot chain specs from their live chains.
 #
-# The Paseo relay chain spec gets a fresh lightSyncState checkpoint,
-# which reduces smoldot sync time from ~12s to ~1-3s on repeat builds.
+# Each spec's genesis.stateRootHash is set from the chain's block 0, so the spec keeps matching the
+# chain's genesis after a wipe; a stale genesis stops smoldot from syncing. Relay specs additionally
+# get a fresh lightSyncState checkpoint, which reduces smoldot sync time from ~12s to ~1-3s.
 #
-# Usage: npm run update-chain-specs
+# Usage: bash scripts/update-chain-specs.sh
 
 set -euo pipefail
 
@@ -12,42 +16,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SPECS_DIR="$PROJECT_DIR/packages/resolver/src/chain-specs"
 
-# RPC endpoints (fallback order)
-PASEO_RPCS=(
-  "https://paseo.dotters.network"
-  "https://paseo.rpc.amforc.com"
-  "https://rpc.ibp.network/paseo"
-)
+# Timeout (seconds) for all curl calls.
+TIMEOUT=30
 
-echo "Fetching fresh Paseo relay chain spec..."
-
-PASEO_RAW=""
-for rpc in "${PASEO_RPCS[@]}"; do
-  echo "  Trying $rpc ..."
-  PASEO_RAW=$(curl -s --max-time 15 \
-    -H "Content-Type: application/json" \
-    -d '{"id":1, "jsonrpc":"2.0", "method":"sync_state_genSyncSpec", "params":[true]}' \
-    "$rpc" 2>/dev/null || true)
-
-  if echo "$PASEO_RAW" | jq -e '.result.lightSyncState' >/dev/null 2>&1; then
-    echo "  Success from $rpc"
-    break
-  else
-    echo "  Failed or no lightSyncState from $rpc"
-    PASEO_RAW=""
-  fi
-done
-
-if [ -z "$PASEO_RAW" ]; then
-  echo "ERROR: Could not fetch Paseo chain spec from any RPC endpoint."
-  exit 1
-fi
-
-# Merge: take current local spec (compact genesis), update lightSyncState + bootNodes from fresh.
-# Tests each bootnode via TCP connect and only keeps healthy ones.
-# When SKIP_BOOTNODE_CHECK=true, bootnodes are preserved from the existing local file.
-# Note: PASEO_RAW is too large for a CLI argument, so we pipe it via stdin.
-echo "$PASEO_RAW" | bun -e '
+# Health-check the candidate bootNodes (env var BOOTNODES) and keep only the reachable ones.
+# Set env var SKIP_BOOTNODE_CHECK=true to leave them unchanged.
+BOOTNODES_JS='
 const fs = require("fs");
 const net = require("net");
 
@@ -91,51 +65,147 @@ function testBootnode(ma, timeoutMs = 5000) {
   });
 }
 
-let stdin = "";
-process.stdin.on("data", (chunk) => stdin += chunk);
-process.stdin.on("end", async () => {
-  const currentSpec = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  const freshResult = JSON.parse(stdin);
-  const freshSpec = freshResult.result || freshResult;
-
-  currentSpec.lightSyncState = freshSpec.lightSyncState;
+(async () => {
+  const specPath = process.argv[1];
+  const spec = JSON.parse(fs.readFileSync(specPath, "utf8"));
 
   if (skipBootnodeCheck) {
-    console.log("  Bootnode health check SKIPPED — keeping existing bootnodes.");
-    console.log("  Boot nodes (unchanged): " + currentSpec.bootNodes.length);
-  } else {
-    const bootNodes = freshSpec.bootNodes || [];
-    console.log("  Testing " + bootNodes.length + " bootnodes (5s timeout each)...");
-
-    const results = await Promise.all(bootNodes.map((bn) => testBootnode(bn)));
-    const healthy = [];
-    for (const r of results) {
-      const short = r.ma.length > 80 ? r.ma.substring(0, 77) + "..." : r.ma;
-      if (r.healthy) {
-        console.log("    ✓ " + short);
-        healthy.push(r.ma);
-      } else {
-        console.log("    ✗ " + short + " (" + r.reason + ")");
-      }
-    }
-
-    console.log("  Healthy: " + healthy.length + "/" + bootNodes.length);
-
-    if (healthy.length === 0) {
-      console.log("  WARNING: No healthy bootnodes found — keeping all original bootnodes.");
-      currentSpec.bootNodes = bootNodes;
-    } else {
-      currentSpec.bootNodes = healthy;
-    }
+    console.log("  Bootnode health check SKIPPED, keeping existing bootnodes.");
+    console.log("  Bootnodes (unchanged): " + spec.bootNodes.length);
+    return;
   }
 
-  fs.writeFileSync(process.argv[1], JSON.stringify(currentSpec));
-  const size = fs.statSync(process.argv[1]).size;
-  console.log("  Updated paseo.json: " + (size / 1024).toFixed(1) + " KB");
-  console.log("  Boot nodes: " + currentSpec.bootNodes.length);
-});
-' "$SPECS_DIR/paseo.json"
+  const candidates = JSON.parse(process.env.BOOTNODES);
+  console.log("  Testing " + candidates.length + " bootnodes (5s timeout each)...");
+  const results = await Promise.all(candidates.map((bn) => testBootnode(bn)));
+  const healthy = [];
+  for (const r of results) {
+    const short = r.ma.length > 80 ? r.ma.substring(0, 77) + "..." : r.ma;
+    if (r.healthy) {
+      console.log("    ✓ " + short);
+      healthy.push(r.ma);
+    } else {
+      console.log("    ✗ " + short + " (" + r.reason + ")");
+    }
+  }
+  console.log("  Healthy: " + healthy.length + "/" + candidates.length);
+  if (healthy.length === 0) {
+    console.log("  WARNING: No healthy bootnodes found, keeping original.");
+  } else {
+    spec.bootNodes = healthy;
+    fs.writeFileSync(specPath, JSON.stringify(spec));
+  }
+  console.log("  Bootnodes: " + spec.bootNodes.length);
+})();
+'
 
-echo ""
+# Fetch the genesis state root.
+fetch_state_root() {
+  local rpc="$1"
+  local block0
+  block0=$(curl -s --max-time "$TIMEOUT" -H "Content-Type: application/json" \
+    -d '{"id":1,"jsonrpc":"2.0","method":"chain_getBlockHash","params":[0]}' "$rpc" 2>/dev/null \
+    | jq -r '.result // empty' 2>/dev/null)
+  [ -z "$block0" ] && return 1
+  curl -s --max-time "$TIMEOUT" -H "Content-Type: application/json" \
+    -d "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"chain_getHeader\",\"params\":[\"$block0\"]}" "$rpc" 2>/dev/null \
+    | jq -r '.result.stateRoot // empty' 2>/dev/null
+}
+
+# Refresh a spec from its live chain.
+#
+# Always sets genesis.stateRootHash from the chain's block 0, so the spec keeps matching the chain's
+# genesis after a wipe. smoldot derives the block-announces protocol name from the genesis hash, so
+# a stale genesis yields a name no peer offers, the substream fails with ProtocolNotAvailable, and
+# smoldot can't sync the chain. sync_state_genSyncSpec is not used for the genesis, as it returns a
+# genesis that serializes extra storage keys, so its computed hash does not match the real block 0.
+#
+# For a relay it also fetches sync_state_genSyncSpec and writes a fresh lightSyncState checkpoint
+# for smoldot to warp-sync from (a relay has no parent to follow). A parachain follows its relay
+# instead, so any committed lightSyncState is dropped. If that response carries bootNodes, they are
+# health-checked and pruned to the reachable ones; otherwise existing bootNodes are preserved.
+#
+# Pass one or more RPC URLs; the first that serves block 0 is used.
+refresh_spec() {
+  local spec_file="$1"
+  local is_relay="$2"
+  shift 2
+
+  echo "Refreshing $spec_file..."
+
+  local fields="" rpc="" state_root=""
+  for candidate in "$@"; do
+    state_root=$(fetch_state_root "$candidate") || true
+    if [ -n "$state_root" ]; then
+      rpc="$candidate"
+      break
+    fi
+    echo "  No block 0 from $candidate"
+  done
+  if [ -z "$state_root" ]; then
+    echo "  ERROR: Could not fetch genesis state root for $spec_file from any RPC."
+    return 1
+  fi
+  fields+="genesis.stateRootHash"
+
+  # Relays read sync_state_genSyncSpec for their checkpoint; the same response also carries the
+  # bootNodes. Pull only those two fields; jq drops the multi-MB genesis the response also returns.
+  local light_sync_state="null" bootnodes="[]"
+  if [ "$is_relay" = "true" ]; then
+    local fresh
+    fresh=$(curl -s --max-time "$TIMEOUT" -H "Content-Type: application/json" \
+      -d '{"id":1,"jsonrpc":"2.0","method":"sync_state_genSyncSpec","params":[true]}' "$rpc" 2>/dev/null \
+      | jq -c '{lightSyncState: .result.lightSyncState, bootNodes: .result.bootNodes}' 2>/dev/null || echo "null")
+    light_sync_state=$(echo "$fresh" | jq -c '.lightSyncState // null')
+    bootnodes=$(echo "$fresh" | jq -c '.bootNodes // []')
+    # Without lightSyncState, smoldot can't sync a relay from a stateRootHash-only genesis, so fail.
+    if [ "$light_sync_state" = "null" ]; then
+      echo "  ERROR: Could not fetch lightSyncState from $rpc."
+      return 1
+    fi
+    fields+=" + lightSyncState"
+  fi
+
+  # lightSyncState can be hundreds of KB, so it goes via stdin; the small state root goes via env.
+  echo "$light_sync_state" | STATE_ROOT="$state_root" \
+    bun -e '
+      const fs = require("fs");
+      let stdin = "";
+      process.stdin.on("data", (chunk) => stdin += chunk);
+      process.stdin.on("end", () => {
+        const specPath = process.argv[1];
+        const spec = JSON.parse(fs.readFileSync(specPath, "utf8"));
+        spec.genesis = { stateRootHash: process.env.STATE_ROOT };
+        const lss = JSON.parse(stdin);
+        if (lss) spec.lightSyncState = lss;
+        else delete spec.lightSyncState;
+        fs.writeFileSync(specPath, JSON.stringify(spec));
+      });
+    ' "$SPECS_DIR/$spec_file"
+
+  # Health-check bootNodes only when the chain actually advertises some.
+  if [ "$(echo "$bootnodes" | jq 'length')" -gt 0 ]; then
+    BOOTNODES="$bootnodes" bun -e "$BOOTNODES_JS" "$SPECS_DIR/$spec_file"
+    fields+=" + bootNodes"
+  fi
+
+  echo "  Updated $spec_file: $fields"
+  echo ""
+}
+
+# Previewnet
+refresh_spec "previewnet.smol.json"                true  "https://previewnet.substrate.dev/relay/alice"
+refresh_spec "previewnet-asset-hub.smol.json"      false "https://previewnet.substrate.dev/asset-hub"
+refresh_spec "previewnet-bulletin-local.smol.json" false "https://previewnet.substrate.dev/bulletin"
+refresh_spec "previewnet-people.smol.json"         false "https://previewnet.substrate.dev/people"
+
+# Paseo Next v2
+refresh_spec "paseo.smol.json"                     true  "https://paseo.dotters.network" \
+                                                         "https://paseo.rpc.amforc.com" \
+                                                         "https://rpc.ibp.network/paseo"
+refresh_spec "paseo-asset-hub-next.smol.json"      false "https://paseo-asset-hub-next-rpc.polkadot.io"
+refresh_spec "paseo-bulletin-next.smol.json"       false "https://paseo-bulletin-next-rpc.polkadot.io"
+refresh_spec "paseo-people-next-system.smol.json"  false "https://paseo-people-next-system-rpc.polkadot.io"
+
 echo "Done. Chain specs updated in packages/resolver/src/chain-specs/"
 echo "Rebuild the app to use the new specs."

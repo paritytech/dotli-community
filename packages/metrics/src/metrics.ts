@@ -1,8 +1,11 @@
-// dot.li — Performance metrics for smoldot/protocol lifecycle
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Performance metrics for smoldot/protocol lifecycle.
 //
 // Controlled via VITE_METRICS env var:
-//   VITE_METRICS=true  → spans, measurements, and counters sent to Sentry
-//   VITE_METRICS unset  → all calls are no-ops (zero overhead)
+//   VITE_METRICS=true   spans, measurements, and counters sent to Sentry
+//   VITE_METRICS unset  all calls are no-ops (zero overhead)
 //
 // Usage:
 //   import { m } from "@dotli/metrics/metrics";
@@ -10,23 +13,36 @@
 //   m.measure("smoldot.sync_duration", 2356);
 //   m.count("protocol.mode", { mode: "shared-worker", outcome: "ok" });
 //
-// Approved attribute schema (`MetricAttrs`):
-//   - `mode`      — legacy DotliMode preset label ("p2p-shared-worker" etc.)
-//   - `provider`  — concrete provider name ("smoldot", "rpc", "helia", ...)
-//   - `chain`     — relay / parachain name ("relay", "asset-hub", ...)
-//   - `source`    — emitting module ("host", "worker", "sandbox", ...)
-//   - `env`       — deployment environment ("production", "staging", ...)
-//   - `outcome`   — "ok" | "error" | "timeout" | "miss" | "hit"
-//   - `reason`    — short error class tag when `outcome !== "ok"`
+// Approved attribute schema (`MetricAttributes`):
+//   - `mode`      legacy DotliMode preset label ("p2p-shared-worker" etc.)
+//   - `provider`  concrete provider name ("smoldot", "rpc", "helia", ...)
+//   - `chain`     relay or parachain name ("relay", "asset-hub", ...)
+//   - `source`    emitting module ("host", "worker", "sandbox", ...)
+//   - `env`       deployment environment ("production", "staging", ...)
+//   - `outcome`   "ok" | "error" | "timeout" | "miss" | "hit"
+//   - `reason`    short error class tag when `outcome !== "ok"`
 //
 // Unknown keys are still accepted (TypeScript `& Record<string,string>`) so
-// existing call sites compile, but the named keys are the ones dashboards
-// slice on — keep new attributes to the schema.
+// existing call sites compile. The named keys are the ones dashboards slice
+// on, so keep new attributes within the schema.
 
 /** Known metric attribute keys. Keep dashboards in sync with this list. */
-export type MetricOutcome = "ok" | "error" | "timeout" | "miss" | "hit";
+export type MetricOutcome =
+  | "ok"
+  | "error"
+  | "timeout"
+  | "miss"
+  | "hit"
+  | "pending"
+  // Bitswap
+  | "not-found"
+  | "invalid-cid"
+  | "aborted"
+  // Manifest reader
+  | "empty"
+  | "invalid";
 
-export type MetricAttrs = {
+export type MetricAttributes = {
   mode?: string;
   provider?: string;
   chain?: string;
@@ -44,7 +60,9 @@ interface MetricOptions {
 interface SentryLike {
   startSpan: <T>(
     opts: { op: string; name: string },
-    fn: (span: unknown) => T,
+    fn: (
+      span: { setAttribute: (key: string, value: string) => void } | undefined,
+    ) => T,
   ) => T;
   setMeasurement: (name: string, value: number, unit: string) => void;
   metrics: {
@@ -61,16 +79,14 @@ interface SentryLike {
   }) => void;
 }
 
-// ── Sentry lazy binding ────────────────────────────────────────
-// We resolve Sentry once at first use so the metrics package never
-// forces a Sentry import. The host app must initialize Sentry before
-// any metric calls fire.
+// Sentry resolves once at first use so the metrics package never forces a
+// Sentry import. The host app must initialize Sentry before any metric calls
+// fire.
 //
-// `sentry()` re-probes as long as `_sentry` is null — the old
-// behavior permanently memoized the first null result, meaning an
-// app that initialized Sentry AFTER the first metric call would
-// stay silent forever. Now a late `initSentry` / `m.bind` still
-// activates the pipeline the next time any metric fires.
+// `sentry()` re-probes as long as `_sentry` is null. Memoizing the first null
+// result would keep an app that initializes Sentry after the first metric call
+// silent forever, so a late `initSentry` or `m.bind` still activates the
+// pipeline the next time any metric fires.
 
 let _sentry: SentryLike | null = null;
 
@@ -85,7 +101,7 @@ function sentry(): SentryLike | null {
     }
     // eslint-disable-next-line no-restricted-syntax -- globalThis access can throw in restrictive contexts; we retry on next call instead of capturing (a capture would itself run through the metrics pipeline we're trying to probe).
   } catch {
-    /* probe failure — try again next time */
+    /* probe failure, try again next time */
   }
   if (_sentry === null) {
     warnUnboundOnce();
@@ -125,12 +141,8 @@ function bind(s: SentryLike): void {
   _unboundWarned = false;
 }
 
-// ── Enabled check ──────────────────────────────────────────────
-
 const ENABLED = (import.meta.env.VITE_METRICS as string | undefined) === "true";
 
-// ── Session-wide default attributes ────────────────────────────
-//
 // Apps register session-level context (e.g. `dotli_mode`) via `setDefaults()`.
 // Every metric emitted afterwards carries these attributes, so dashboards can
 // slice per-mode without touching each call site. Per-call attributes still
@@ -147,54 +159,41 @@ function mergeAttrs(
   return { ...defaultAttrs, ...attrs };
 }
 
-// ── Core API ───────────────────────────────────────────────────
-
 /**
  * Wrap a sync or async function in a Sentry performance span.
  * When metrics are disabled, the function runs without instrumentation.
- *
- * The span is auto-tagged with `outcome` by running `fn` inside a
- * try/catch: success → `outcome: "ok"`, exception → `outcome: "error"`
- * + `reason: <Error.name>`, and the same counter is emitted via
- * `count(name, ...)` so dashboards can chart one series per logical
- * event instead of juggling parallel `_SUCCESS` / `_FAILURE` constants.
- * The original exception re-throws unchanged.
+ * The wrapped function receives the active span so callers can attach
+ * attributes synchronously inside the body (e.g. `dotli.chain_backend`
+ * on a resolve span).
  */
-function span<T>(name: string, fn: () => T): T;
-function span<T>(name: string, fn: () => Promise<T>): Promise<T>;
-function span<T>(name: string, fn: () => T | Promise<T>): T | Promise<T> {
+function span<T>(
+  name: string,
+  fn: (
+    span: { setAttribute: (key: string, value: string) => void } | undefined,
+  ) => T,
+): T;
+function span<T>(
+  name: string,
+  fn: (
+    span: { setAttribute: (key: string, value: string) => void } | undefined,
+  ) => Promise<T>,
+): Promise<T>;
+function span<T>(
+  name: string,
+  fn: (
+    span: { setAttribute: (key: string, value: string) => void } | undefined,
+  ) => T | Promise<T>,
+): T | Promise<T> {
   if (!ENABLED) {
-    return fn();
+    return fn(undefined);
   }
   const s = sentry();
   if (s === null) {
-    return fn();
+    return fn(undefined);
   }
-  const emit = (outcome: MetricOutcome, reason?: string): void => {
-    count(name, reason === undefined ? { outcome } : { outcome, reason });
-  };
-  return s.startSpan({ op: "dotli", name: `dotli.${name}` }, () => {
-    try {
-      const result = fn();
-      if (result instanceof Promise) {
-        return result.then(
-          (value) => {
-            emit("ok");
-            return value;
-          },
-          (err: unknown) => {
-            emit("error", err instanceof Error ? err.name : "unknown");
-            throw err;
-          },
-        );
-      }
-      emit("ok");
-      return result;
-    } catch (err) {
-      emit("error", err instanceof Error ? err.name : "unknown");
-      throw err;
-    }
-  });
+  return s.startSpan({ op: "dotli", name: `dotli.${name}` }, (currentSpan) =>
+    fn(currentSpan),
+  );
 }
 
 /**
@@ -215,11 +214,11 @@ function measure(
 /**
  * Increment a counter metric. Counters track event frequency.
  *
- * `attributes` follows the approved `MetricAttrs` schema — prefer the
+ * `attributes` follows the approved `MetricAttributes` schema. Prefer the
  * named keys (`mode`, `provider`, `chain`, `source`, `outcome`,
  * `reason`) so dashboards can slice consistently.
  */
-function count(name: string, attributes?: MetricAttrs): void {
+function count(name: string, attributes?: MetricAttributes): void {
   if (!ENABLED) {
     return;
   }
@@ -235,7 +234,7 @@ function distribution(
   name: string,
   value: number,
   unit = "millisecond",
-  attributes?: MetricAttrs,
+  attributes?: MetricAttributes,
 ): void {
   if (!ENABLED) {
     return;
@@ -253,7 +252,7 @@ function gauge(
   name: string,
   value: number,
   unit = "none",
-  attributes?: MetricAttrs,
+  attributes?: MetricAttributes,
 ): void {
   if (!ENABLED) {
     return;
@@ -275,13 +274,13 @@ function tag(key: string, value: string): void {
 }
 
 /**
- * Register session-wide default attributes. Every `count` / `distribution` /
- * `gauge` emitted afterwards picks these up automatically — so `source`,
- * `mode`, or any similar slice from the canonical `MetricAttrs` schema
+ * Register session-wide default attributes. Every `count`, `distribution`,
+ * and `gauge` emitted afterwards picks these up automatically, so `source`,
+ * `mode`, or any similar slice from the canonical `MetricAttributes` schema
  * doesn't need to be threaded through every call site.
  *
  * Keys passed here MUST be bare schema keys (`source`, `mode`, `chain`,
- * `provider`, etc.) — the metrics layer owns the `dotli.`-prefix mirroring
+ * `provider`, etc.). The metrics layer owns the `dotli.`-prefix mirroring
  * to Sentry tags internally. Passing an already-prefixed key produces
  * `dotli.dotli_<name>` in Sentry and silently drifts from the schema.
  *
@@ -313,7 +312,7 @@ function setDefaults(attrs: Record<string, string>): void {
  *
  * When `keys` is omitted, every registered default is cleared. When
  * `keys` is supplied, only those attributes are removed (and their
- * Sentry tags reset to the empty string — Sentry has no `removeTag`).
+ * Sentry tags reset to the empty string, since Sentry has no `removeTag`).
  */
 function clearDefaults(keys?: readonly string[]): void {
   if (!ENABLED) {
@@ -323,7 +322,7 @@ function clearDefaults(keys?: readonly string[]): void {
     keys === undefined ? Object.keys(defaultAttrs) : [...keys];
   const s = sentry();
   for (const key of targets) {
-    // Clear the scope tag by setting it to an empty string; Sentry has
+    // Clear the scope tag by setting it to an empty string. Sentry has
     // no remove primitive, so dashboards filtering on a non-empty value
     // will stop picking up stale values.
     s?.setTag(`dotli.${key}`, "");
@@ -372,8 +371,6 @@ function timer(name: string): () => number {
     return ms;
   };
 }
-
-// ── Public singleton ───────────────────────────────────────────
 
 export const m = {
   /** Whether metrics collection is active */

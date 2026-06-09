@@ -1,18 +1,21 @@
-// dot.li — Debug logger
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li debug logger.
 //
 // Thin wrapper around console that respects the DEBUG flag for verbose
 // channels but ALWAYS routes warn/error to a registered side-channel
 // (typically Sentry breadcrumbs):
 // - `log.debug` is a no-op when DEBUG is false (verbose tracing only).
-// - `log.warn` / `log.error` ALWAYS reach the registered side-channel so
+// - `log.warn` and `log.error` ALWAYS reach the registered side-channel so
 //   handled failures leave a trace in production, regardless of DEBUG.
 // - `log.event` records a lifecycle marker (always-on side-channel).
 //
-// Side-channel registration is inverted to avoid a `shared → metrics`
-// dependency: `@dotli/metrics` calls `bindLogSink` on init.
+// Side-channel registration is inverted to avoid a dependency from
+// `shared` on `metrics`. `@dotli/metrics` calls `bindLogSink` on init.
 //
 // `log.child(scope)` creates a logger whose output prepends a tag and
-// merges scope attributes into the side-channel payload — wire it to
+// merges scope attributes into the side-channel payload. Wire it to
 // `metrics.setDefaults` so logs and metrics agree on which mode/provider
 // was active.
 
@@ -22,9 +25,9 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogSink {
   /**
-   * Called for every `log.warn` / `log.error` / `log.event` call. The sink
+   * Called for every `log.warn`, `log.error`, and `log.event` call. The sink
    * decides whether to forward to Sentry, console, etc. Sinks must not
-   * throw; failures here are silent.
+   * throw. Failures here are silent.
    */
   emit: (
     level: LogLevel,

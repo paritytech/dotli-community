@@ -1,10 +1,13 @@
-// dot.li — Password-based decryption for encrypted SPAs
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li password-based decryption for encrypted SPAs.
 //
 // Encrypted format (produced by external tooling):
-//   [10 bytes magic "DOTLI_ENC\x01"] [16 bytes salt] [12 bytes nonce] [ciphertext + Poly1305 tag]
+//   [10 bytes magic "DOTLI_ENC\x01"] [16 bytes salt] [12 bytes nonce] [ciphertext and Poly1305 tag]
 //
-// Key derivation: PBKDF2-SHA256 (100k iterations) from password + salt → 32-byte ChaCha20 key.
-// AEAD: ChaCha20-Poly1305 (via @noble/ciphers — Web Crypto does not support it natively).
+// Key derivation: PBKDF2-SHA256 (100k iterations) over password and salt yields a 32-byte ChaCha20 key.
+// AEAD: ChaCha20-Poly1305 via @noble/ciphers, since Web Crypto does not support it natively.
 
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
 
@@ -33,7 +36,7 @@ const PBKDF2_ITERATIONS = 100_000;
  */
 export function isEncrypted(data: Uint8Array): boolean {
   if (data.length < HEADER_LEN + TAG_LEN) {
-    // Too small for header + at least the Poly1305 tag
+    // Too small to hold the header and at least the Poly1305 tag.
     return false;
   }
   for (let i = 0; i < MAGIC.length; i++) {

@@ -1,4 +1,7 @@
-// dot.li — MIME type detection
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li MIME type detection.
 //
 // Shared between archive.ts (main thread) and sw.ts (Service Worker).
 //

@@ -1,8 +1,9 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, it, expect } from "vitest";
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { isEncrypted, decryptContent } from "@dotli/content/decrypt";
-
-// ── Helpers ──────────────────────────────────────────────────
 
 const MAGIC = new Uint8Array([
   0x44, 0x4f, 0x54, 0x4c, 0x49, 0x5f, 0x45, 0x4e, 0x43, 0x01,
@@ -53,8 +54,6 @@ async function encrypt(
   return result;
 }
 
-// ── isEncrypted ──────────────────────────────────────────────
-
 describe("isEncrypted", () => {
   it("returns false for empty buffer", () => {
     expect(isEncrypted(new Uint8Array(0))).toBe(false);
@@ -80,8 +79,6 @@ describe("isEncrypted", () => {
     expect(isEncrypted(encrypted)).toBe(true);
   });
 });
-
-// ── decryptContent ───────────────────────────────────────────
 
 describe("decryptContent", () => {
   it("round-trips encrypt → decrypt", async () => {

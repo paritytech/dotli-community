@@ -1,25 +1,31 @@
 [
   {
-    "relation": [
-      "delegate_permission/common.handle_all_urls"
-    ],
+    "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "me.custodio.polkadot",
+      "package_name": "io.pcf.polkadotapp",
       "sha256_cert_fingerprints": [
-        "60:A8:1C:72:AE:5D:D6:8C:44:C7:9F:8D:44:7C:84:A8:46:C4:95:AD:D6:87:2D:67:B7:19:CB:37:A4:D7:1E:68"
+        "7B:47:1D:1B:BC:16:F8:FD:81:1F:09:AC:E1:C0:54:1B:A4:62:E6:26:7A:2B:7B:6A:BB:EC:3F:6D:FB:EA:30:61"
       ]
     }
   },
   {
-    "relation": [
-      "delegate_permission/common.get_login_creds"
-    ],
+    "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "me.custodio.polkadot",
+      "package_name": "io.pcf.polkadotapp.debug",
       "sha256_cert_fingerprints": [
-        "60:A8:1C:72:AE:5D:D6:8C:44:C7:9F:8D:44:7C:84:A8:46:C4:95:AD:D6:87:2D:67:B7:19:CB:37:A4:D7:1E:68"
+        "11:23:C0:A1:B4:1D:18:76:40:A2:43:A8:34:81:31:E4:FD:98:6F:37:36:0A:78:33:CC:FA:F2:22:97:ED:09:B2"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.pcf.polkadotapp.nightly",
+      "sha256_cert_fingerprints": [
+        "11:23:C0:A1:B4:1D:18:76:40:A2:43:A8:34:81:31:E4:FD:98:6F:37:36:0A:78:33:CC:FA:F2:22:97:ED:09:B2"
       ]
     }
   }

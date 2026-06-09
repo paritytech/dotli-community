@@ -1,15 +1,16 @@
-// dot.li — IPFS gateway utilities
-//
-// Same API as polkadot-bulletin-chain/console-ui/src/lib/ipfs.ts
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { getActiveIpfsGateway } from "@dotli/config/endpoints";
+// IPFS gateway utilities.
+
+import { getActiveServicesConfig } from "@dotli/config/network";
 
 /**
  * Fetch content from IPFS by CID via HTTP gateway.
  */
 export async function fetchFromIpfs(
   cid: string,
-  gateway: string = getActiveIpfsGateway(),
+  gateway: string = getActiveServicesConfig().bulletin.ipfsGateways[0],
 ): Promise<{
   data: Uint8Array;
   contentType?: string;
@@ -39,7 +40,7 @@ export async function fetchFromIpfs(
  */
 export async function fetchCarFromIpfs(
   cid: string,
-  gateway: string = getActiveIpfsGateway(),
+  gateway: string = getActiveServicesConfig().bulletin.ipfsGateways[0],
 ): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 

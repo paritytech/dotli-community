@@ -1,4 +1,7 @@
-// dot.li — Preimage submit confirmation modal (vanilla DOM)
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Preimage submit confirmation modal (vanilla DOM)
 //
 // Shows a confirmation dialog when a product requests to store
 // preimage data on the Bulletin chain. Returns a Promise that

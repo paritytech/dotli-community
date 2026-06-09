@@ -1,7 +1,11 @@
-// dot.li — Host entry point
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Host entry point.
 //
-// Flow: parse URL → render direct preview/local target, or resolve .dot name
-// via smoldot → iframe to cid.app.dot.li.
+// Parses the URL, then either renders a direct preview or local target, or
+// resolves the `.dot` name via smoldot and iframes the sandbox at
+// `<label>.app.dot.li` with the resolved CID threaded through the URL contract.
 
 // Polyfill for Safari < 18.4 which lacks requestIdleCallback
 if (typeof globalThis.requestIdleCallback !== "function") {
@@ -11,7 +15,10 @@ if (typeof globalThis.requestIdleCallback !== "function") {
     }, 1) as unknown as number;
 }
 
+import "./pwa";
+import "./offline";
 import "@dotli/ui/styles.css";
+import * as Sentry from "@sentry/browser";
 import {
   initSentry,
   installGlobalErrorHandlers,
@@ -20,30 +27,57 @@ import {
 import {
   showStatus,
   showError,
+  showNoContentError,
   showLanding,
   initPhases,
   advancePhase,
   stopStatusTick,
   listenForSandboxStatus,
+  showGatewayEscape,
 } from "@dotli/ui/ui";
-import { initTopBar, openModePopover } from "@dotli/ui/topbar";
-import { getCachedCid, setCachedCid } from "@dotli/storage/cid-cache";
+import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
+import {
+  bitswapGet,
+  listenForSandboxBitswap,
+} from "@dotli/ui/bulletin-bitswap";
+import {
+  getCachedCid,
+  setCachedCid,
+  recordRevalidateOutcome,
+} from "@dotli/storage/cid-cache";
 import { dur, elapsed } from "@dotli/shared/perf";
-import { BASE_DOMAIN, SITE_ID } from "@dotli/config/config";
+import {
+  setActiveAppManifest,
+  setActiveRootManifest,
+} from "@dotli/shared/active-manifest";
+import type {
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+} from "@dotli/resolver/manifest";
+import { BASE_DOMAIN, DEBUG, isLocalhost, SITE_ID } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
-import { escapeHtml } from "@dotli/shared/html";
+import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
 import { showNotification } from "@dotli/ui/notification";
+import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
 import {
-  getMode,
-  isP2pMode,
+  BACKEND_KEY,
+  CACHE_KEY,
+  getBackend,
+  setBackend,
+  isSharedWorkerAvailable,
   isVerifiedSession,
   getCacheSettings,
-  getChainBackend,
-  setChainBackend,
-  getContentBackend,
-  type ChainBackend,
+  setCacheSettings,
+  type Backend,
 } from "@dotli/config/mode";
+import { NETWORK_KEY, getNetwork, setNetwork } from "@dotli/config/network";
+import {
+  parseSettingsFromSearch,
+  writeSettingsToSearch,
+} from "@dotli/config/url-settings";
+import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
 import { describeError } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
 
@@ -67,8 +101,7 @@ window.addEventListener("vite:preloadError", (event) => {
   });
 });
 
-// ── Desktop download banner ──────────────────────────────
-// Respect the user's dismissal unconditionally — once dismissed, never
+// Respect the user's dismissal unconditionally. Once dismissed, never
 // resurface unless the dismissal flag is cleared from localStorage.
 if (!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
   const dismissed = localStorage.getItem("desktop-banner-dismissed");
@@ -118,13 +151,20 @@ const T0 = performance.now();
 /**
  * Parse a localhost proxy URL from the path.
  *
- * Examples:
- *   "/localhost:5000"          → "http://localhost:5000"
- *   "/localhost:5000/foo/bar"  → "http://localhost:5000/foo/bar"
- *   "/localhost"               → "http://localhost"
- *   "/starter-template.dot"    → null (not a localhost URL)
+ * Local-dev-only affordance: a deployed origin (dot.li, paseo.li, ...) must
+ * never proxy a visitor's localhost services into the trusted host origin, so
+ * this returns null unless the host shell is itself served from a local origin.
+ *
+ * Examples (only when served from a localhost origin):
+ *   "/localhost:5000"          yields "http://localhost:5000"
+ *   "/localhost:5000/foo/bar"  yields "http://localhost:5000/foo/bar"
+ *   "/localhost"               yields "http://localhost"
+ *   "/starter-template.dot"    yields null (not a localhost URL)
  */
 function parseLocalhostUrl(): string | null {
+  if (!isLocalhost) {
+    return null;
+  }
   const path = window.location.pathname;
   const match = /^\/(localhost(?::\d+)?)(.*)$/.exec(path);
   if (match === null) {
@@ -132,46 +172,59 @@ function parseLocalhostUrl(): string | null {
   }
   const host = match[1];
   const rest = match[2] || "";
-  return `http://${host}${rest}${window.location.search}${window.location.hash}`;
+  // Strip every reserved host-URL param so they do not leak into the
+  // proxied product. Covers the settings axes and the sandbox contract's
+  // host-only signals (`fullReset`, `v`).
+  const productSearch = new URLSearchParams(window.location.search);
+  for (const k of RESERVED_HOST_PARAMS) {
+    productSearch.delete(k);
+  }
+  const query = productSearch.toString();
+  return `http://${host}${rest}${query ? `?${query}` : ""}${window.location.hash}`;
 }
 
+const RESERVED_HOST_PARAMS = [
+  "network",
+  "chainBackend",
+  "skipArchiveCache",
+  "skipCidCache",
+  "skipWorkerCache",
+  "fullReset",
+  "v",
+] as const;
+
 /**
- * Extract the .dot label from the current hostname.
+ * Extract the `.dot` label from the current hostname.
  *
- * Examples:
- *   "myapp.dot.li"            → "myapp"
- *   "myapp.localhost"          → "myapp"    (local dev)
- *   "dot.li"                  → null        (landing page)
- *   "localhost"                → null        (landing page)
- *   "cid.app.dot.li"          → null        (handled by app-main.ts)
- *   "cid.app.localhost"       → null        (handled by app-main.ts)
+ * Returns `"myapp"` for `myapp.dot.li` or `myapp.localhost`. Returns `null`
+ * for the bare landing pages (`dot.li`, `localhost`) and for sandbox origins
+ * (`*.app.dot.li`, `*.app.localhost`), which are handled by `app-main.ts`.
+ *
+ * The parsed label is validated against the closed `.dot` label charset as
+ * defense-in-depth before it is threaded into key derivation, origin
+ * construction (`<label>.app.<root>`), and host-shell sinks. A malformed
+ * label can never be a registered `.dot` name, so returning `null` (which
+ * routes to the landing/preview path) is the safe outcome.
  */
 function parseDotLabel(): string | null {
   const hostname = window.location.hostname;
 
-  // Production: name.{BASE_DOMAIN} (but NOT cid.app.{BASE_DOMAIN})
+  // Production: name.{BASE_DOMAIN} (but NOT *.app.{BASE_DOMAIN})
   if (hostname.endsWith(`.${BASE_DOMAIN}`)) {
     if (hostname.endsWith(`.app.${BASE_DOMAIN}`)) {
       return null;
     }
     const label = hostname.slice(0, -(BASE_DOMAIN.length + 1));
-    return label || null;
+    return isValidDotLabel(label) ? label : null;
   }
 
-  // Local dev: name.localhost (but NOT cid.app.localhost)
+  // Local dev: name.localhost (but NOT *.app.localhost)
   if (hostname.endsWith(".localhost")) {
     if (hostname.endsWith(".app.localhost")) {
       return null;
     }
     const label = hostname.slice(0, -".localhost".length);
-    return label || null;
-  }
-
-  // Path-based: /name.dot or /dotli/name.dot (GitHub Pages)
-  const path = window.location.pathname;
-  const match = /\/([^/]+)\.dot(?:\/|$)/.exec(path);
-  if (match !== null) {
-    return match[1] || null;
+    return isValidDotLabel(label) ? label : null;
   }
 
   return null;
@@ -179,8 +232,9 @@ function parseDotLabel(): string | null {
 
 /**
  * Set the verification shield state in the URL pill.
- *   "verified"   — green: P2P mode, data independently verified by light client
- *   "validating" — yellow: gateway mode, data from trusted source
+ *
+ *   "verified": green, P2P mode, data independently verified by light client.
+ *   "validating": yellow, gateway mode, data from trusted source.
  */
 let topbarHideTimer: ReturnType<typeof setTimeout> | null = null;
 let topbarHoverBound = false;
@@ -198,9 +252,12 @@ function setTopbarVisible(visible: boolean): void {
   const iframe = document.querySelector("iframe");
   topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
   if (iframe) {
-    iframe.style.top = visible ? "40px" : "0";
-    iframe.style.height = visible ? "calc(100vh - 40px)" : "100vh";
+    iframe.style.top = visible ? "56px" : "0";
+    iframe.style.height = visible ? "calc(100vh - 56px)" : "100vh";
   }
+  window.dispatchEvent(
+    new CustomEvent<boolean>("topbar:visibility", { detail: visible }),
+  );
 }
 
 function scheduleTopbarHide(): void {
@@ -232,7 +289,7 @@ function setupTopbarAutoHide(): void {
   if (!topbarHoverBound) {
     topbarHoverBound = true;
 
-    // Invisible trigger zone at the very top — catches hover even over the iframe
+    // Invisible trigger zone at the very top. Catches hover even over the iframe.
     const trigger = document.createElement("div");
     trigger.style.cssText =
       "position:fixed;top:0;left:0;right:0;height:6px;z-index:999;";
@@ -271,74 +328,484 @@ function setShieldState(state: "validating" | "verified"): void {
     );
   }
 
-  const labels: Record<string, string> = {
-    verified: "VERIFIED",
-    validating: "TRUSTED",
-  };
-  const colors: Record<string, string> = {
-    verified: "#4ade80",
-    validating: "#eab308",
-  };
-  const el = document.getElementById("domain-popover-verification");
-  if (el !== null) {
-    el.textContent = labels[state];
-    el.style.color = colors[state];
-  }
-
   shieldVerified = true;
   setupTopbarAutoHide();
 }
 
 /**
- * Fire-and-forget: populate the domain popover with owner info.
+ * Apply the product's branding from the root manifest at `<label>.dot`.
+ *
+ * Runs after the app iframe is rendered so a slow or absent manifest never
+ * blocks first paint. The manifest itself is read through the user's
+ * selected backend (smoldot or RPC). The icon bytes flow through the same
+ * backend via `bitswapGet`, which dispatches through the protocol bridge.
  */
-function populateOwner(
-  resolveOwner: (label: string) => Promise<string | null>,
+async function applyProductBranding(
   label: string,
-): void {
-  void resolveOwner(label)
-    .then((owner) => {
-      const el = document.getElementById("domain-popover-owner");
-      if (el === null) {
-        return;
-      }
-      if (owner !== null) {
-        el.classList.remove("loading");
-        el.innerHTML = `${escapeHtml(owner)}<button class="domain-popover-copy" title="Copy address"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
-        const copyBtn = el.querySelector(".domain-popover-copy");
-        copyBtn?.addEventListener("click", (e) => {
-          e.stopPropagation();
-          void navigator.clipboard.writeText(owner);
-          const btn = e.currentTarget as HTMLElement;
-          btn.style.color = "#4ade80";
-          btn.style.borderColor = "#4ade80";
-          setTimeout(() => {
-            btn.style.color = "";
-            btn.style.borderColor = "";
-          }, 1000);
-        });
-      } else {
-        el.textContent = "Unknown";
-        el.classList.remove("loading");
-      }
-    })
-    .catch((err: unknown) => {
-      // Capture the actual cause so failed owner lookups (timeout, RPC down,
-      // decode error) are observable instead of just rendering "Unavailable".
-      captureException(err, { surface: "host_owner_lookup" });
-      const el = document.getElementById("domain-popover-owner");
-      if (el === null) {
-        return;
-      }
-      el.textContent = "Unavailable";
-      el.classList.remove("loading");
+  chainBackend: Backend,
+): Promise<void> {
+  let rootResult: ManifestResult<RootManifest>;
+  let appResult: ManifestResult<ExecutableManifest>;
+  if (chainBackend === "rpc-gateway") {
+    const mod = await import("@dotli/resolver/rpc-resolve");
+    [rootResult, appResult] = await Promise.all([
+      mod.resolveRootManifestViaRpc(label),
+      mod.resolveExecutableManifestViaRpc(label, "app"),
+    ]);
+  } else {
+    const mod = await import("@dotli/protocol/client");
+    [rootResult, appResult] = await Promise.all([
+      mod.resolveRootManifestRemote(label),
+      mod.resolveExecutableManifestRemote(label, "app"),
+    ]);
+  }
+  if (rootResult.kind === "ok") {
+    const root = rootResult.value;
+    document.title = root.displayName;
+    setActiveRootManifest({
+      schemaVersion: root.$v,
+      displayName: root.displayName,
+      description: root.description,
+      icon: root.icon,
     });
+    try {
+      const bytes = await bitswapGet(root.icon.cid);
+      const blob = new Blob([new Uint8Array(bytes)], {
+        type: `image/${root.icon.format}`,
+      });
+      setFavicon(URL.createObjectURL(blob), root.icon.format);
+      // Favicon fetch is cosmetic. A failure must not affect the tab title or
+      // the loaded app, and is logged so it stays observable in diagnostics.
+    } catch (err: unknown) {
+      log.warn(
+        `[dot.li manifest] icon fetch failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  if (appResult.kind === "ok" && appResult.value.kind === "app") {
+    setActiveAppManifest({
+      schemaVersion: appResult.value.$v,
+      appVersion: appResult.value.appVersion,
+    });
+  }
+}
+
+function setFavicon(href: string, format: "jpeg" | "png"): void {
+  const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+  const link = existing ?? document.createElement("link");
+  link.rel = "icon";
+  link.type = `image/${format}`;
+  link.href = href;
+  if (existing === null) {
+    document.head.appendChild(link);
+  }
 }
 
 import type * as RenderModule from "@dotli/ui/bridge";
 type RenderChunk = typeof RenderModule;
 
-// ── Main ─────────────────────────────────────────────────────
+/**
+ * Resolve the TrUAPI debug panel mode for this page load.
+ *
+ *   - `enabled`: whether to mount the panel.
+ *   - `explicit`: whether the user opted in (URL or sessionStorage).
+ *     Drives the initial collapsed state. Explicit opt-ins start
+ *     expanded, dev-environment auto-enables start collapsed so the
+ *     panel doesn't cover content unsolicited.
+ *
+ * Precedence, from highest to lowest:
+ *   1. `?debug=true` / `?debug=off` in the URL. Persisted to
+ *      sessionStorage and stripped from `history` (so the param doesn't
+ *      leak into the sandbox iframe's strict URL validator).
+ *   2. Existing `sessionStorage["dotli:truapi-debug"]`. `"1"` enables,
+ *      `"0"` disables.
+ *   3. Build-time `DEBUG` (from `VITE_APP_DEBUG`). On in `dev-paseo` /
+ *      `dev-polkadot` / `bun run preview:debug`, off in staging / prod.
+ */
+function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
+  try {
+    const url = new URL(window.location.href);
+    const param = url.searchParams.get("debug");
+    if (param === "true" || param === "off") {
+      sessionStorage.setItem("dotli:truapi-debug", param === "off" ? "0" : "1");
+      url.searchParams.delete("debug");
+      const rewritten =
+        url.pathname +
+        (url.searchParams.toString() === ""
+          ? ""
+          : `?${url.searchParams.toString()}`) +
+        url.hash;
+      history.replaceState(null, "", rewritten);
+    }
+    const persisted = sessionStorage.getItem("dotli:truapi-debug");
+    if (persisted === "1") {
+      return { enabled: true, explicit: true };
+    }
+    if (persisted === "0") {
+      return { enabled: false, explicit: true };
+    }
+    return { enabled: DEBUG, explicit: false };
+    // eslint-disable-next-line no-restricted-syntax -- URL/sessionStorage may be unavailable in exotic environments (Safari private mode); fall through to the build-time default.
+  } catch {
+    /* ignore */
+  }
+  return { enabled: DEBUG, explicit: false };
+}
+
+// Tracks two things the system swimlane would otherwise miss.
+//
+//   1. Stalls. setInterval fires every TICK_MS. When the actual delta
+//      to the previous tick exceeds TICK_MS + STALL_THRESHOLD_MS the
+//      event loop was blocked for the excess. Emits
+//      `main:stall_detected` with the stall duration, one event
+//      per stall regardless of how long the thread was frozen.
+//
+//   2. Heartbeats. Every HEARTBEAT_INTERVAL_MS we emit a low-cost
+//      `main:heartbeat` marker so the swimlane shows a steady
+//      rhythm ("host is alive"). Gaps in the rhythm are visible
+//      even without the stall_detected event.
+//
+// Scope: only runs while debug is enabled, and only for the first
+// MAX_MONITOR_MS (120 s by default) or until the primary bridge
+// has exchanged traffic in both directions, whichever comes first.
+// After that the monitor emits `main:monitor_stopped` and clears
+// itself so it doesn't burn cycles for the rest of the session.
+type EmitFn = (e: DotliDebugEvent) => void;
+
+function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
+  const TICK_MS = 50;
+  const STALL_THRESHOLD_MS = 150; // alert when loop was blocked > 150ms extra
+  const HEARTBEAT_INTERVAL_MS = 2_000;
+  const MAX_MONITOR_MS = 120_000;
+
+  const startedAt = performance.now();
+  let lastTick = performance.now();
+  let lastHeartbeat = startedAt;
+
+  const handle = setInterval(() => {
+    const now = performance.now();
+    const delta = now - lastTick;
+    const lag = delta - TICK_MS;
+
+    if (lag > STALL_THRESHOLD_MS) {
+      emit({
+        layer: "main",
+        event: "stall_detected",
+        flowId,
+        timestamp: Date.now(),
+        payload: { durationMs: Math.round(lag) },
+      });
+    }
+
+    if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+      lastHeartbeat = now;
+      emit({
+        layer: "main",
+        event: "heartbeat",
+        flowId,
+        timestamp: Date.now(),
+        payload: {
+          uptimeSec: Math.round((now - startedAt) / 1000),
+        },
+      });
+    }
+
+    lastTick = now;
+
+    if (now - startedAt > MAX_MONITOR_MS) {
+      clearInterval(handle);
+      window.removeEventListener("dotli:debug:bridge-ready", onBridgeReady);
+      emit({
+        layer: "main",
+        event: "monitor_stopped",
+        flowId,
+        timestamp: Date.now(),
+        payload: { reason: "max_duration" },
+      });
+    }
+  }, TICK_MS);
+
+  // Stop once the primary bridge has fully handshaken. The bridge
+  // dispatches a window event from its first-outbound emit site.
+  const onBridgeReady = (): void => {
+    clearInterval(handle);
+    window.removeEventListener("dotli:debug:bridge-ready", onBridgeReady);
+    emit({
+      layer: "main",
+      event: "monitor_stopped",
+      flowId,
+      timestamp: Date.now(),
+      payload: { reason: "bridge_ready" },
+    });
+  };
+  window.addEventListener("dotli:debug:bridge-ready", onBridgeReady, {
+    once: true,
+  });
+}
+
+/**
+ * Accept `{ type: "dotli:debug-event", event: DotliDebugEvent }` from
+ * any child iframe (specifically the sandbox at `<label>.app.dot.li`) and
+ * push the payload into the local debug bus.
+ *
+ * The sandbox lives on a different origin and can't touch the host's
+ * `emitDotliDebugEvent` directly, so it posts messages instead. We
+ * validate the envelope (must be an object with a `sandbox` layer) and
+ * ignore anything else. This listener sees the full `window.message`
+ * stream, so non-debug TrUAPI and loading-status messages must pass
+ * through cleanly.
+ */
+function listenForSandboxDebugEvents(emit: EmitFn): void {
+  window.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as
+      | { type?: unknown; event?: unknown }
+      | null
+      | undefined;
+    if (
+      data === null ||
+      data === undefined ||
+      typeof data !== "object" ||
+      data.type !== "dotli:debug-event"
+    ) {
+      return;
+    }
+    const payload = data.event as
+      | (DotliDebugEvent & { layer?: unknown })
+      | null
+      | undefined;
+    if (
+      payload === null ||
+      payload === undefined ||
+      typeof payload !== "object" ||
+      payload.layer !== "sandbox"
+    ) {
+      return;
+    }
+    try {
+      emit(payload);
+      // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder; a malformed event from the sandbox must never break the host.
+    } catch {
+      /* ignore: a malformed event shouldn't kill the host */
+    }
+  });
+}
+
+/** SWR pass after fast-path render. Re-resolves, updates cache, surfaces a reload notice on change. */
+async function runBackgroundRevalidate(
+  label: string,
+  servedCid: string,
+  chainBackend: Backend,
+): Promise<void> {
+  const stopTimer = m.timer(S.CACHE_REVALIDATE_LATENCY);
+  try {
+    let freshCid: string | null;
+    if (chainBackend !== "rpc-gateway") {
+      const { resolveDotNameRemote } = await import("@dotli/protocol/client");
+      freshCid = await resolveDotNameRemote(label);
+    } else {
+      const { resolveDotNameViaRpc } =
+        await import("@dotli/resolver/rpc-resolve");
+      freshCid = await resolveDotNameViaRpc(label);
+    }
+    stopTimer();
+    const outcome = await recordRevalidateOutcome(label, servedCid, freshCid);
+    if (outcome.kind === "update") {
+      log.warn(
+        `[dot.li cid-cache] revalidate: ${label} updated ${servedCid} -> ${outcome.cid}`,
+      );
+      showNotification({
+        label: "New version available",
+        text: "This site has been updated. Reload to see the latest version.",
+        dismissMs: 0,
+        action: {
+          label: "Reload",
+          onClick: () => {
+            window.location.reload();
+          },
+        },
+      });
+    } else if (outcome.kind === "cleared") {
+      // Owner unset the pointer. Cache is already evicted, so reload to show the cold-path error.
+      log.warn(
+        `[dot.li cid-cache] revalidate: ${label} cleared on-chain, reloading`,
+      );
+      window.location.reload();
+    }
+  } catch (err) {
+    stopTimer();
+    m.count(S.CACHE_REVALIDATE_ERROR);
+    log.warn(`[dot.li cid-cache] revalidate failed for ${label}:`, err);
+    captureException(err, { kind: "cid_cache_revalidate_error" });
+  }
+}
+
+/** Best-effort `localStorage.getItem`, returning null on Safari-private-mode failure. */
+function readRawLocalStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reconcile URL > shared > localStorage > default per axis, persist back
+ * to URL, localStorage, and (for shared axes) the cross-subdomain store,
+ * then wipe and reload (matching the modal Save flow) when a URL value
+ * displaces a prior persisted choice.
+ */
+async function applyUrlSettings(): Promise<void> {
+  const search = new URLSearchParams(window.location.search);
+  const parsed = parseSettingsFromSearch(search);
+
+  // Snapshot raw localStorage before bootstrap (and before `getNetwork`/
+  // `getBackend`/`getCacheSettings` below). Those calls auto-seed defaults
+  // on first read, which would make every fresh-subdomain visit look like a
+  // "change" and trigger an unnecessary wipe.
+  const hadPriorPersisted =
+    readRawLocalStorage(NETWORK_KEY) !== null ||
+    readRawLocalStorage(BACKEND_KEY) !== null ||
+    readRawLocalStorage(CACHE_KEY) !== null;
+
+  const rawUrlBackend = search.get("chainBackend");
+  const rawPersistedBackend = readRawLocalStorage(BACKEND_KEY);
+  const sharedWorkerFallback =
+    !isSharedWorkerAvailable() &&
+    (rawUrlBackend === "smoldot-shared-worker" ||
+      rawPersistedBackend === "smoldot-shared-worker");
+
+  // Bootstrap shared mode BEFORE reading prior values, so `prior.chain` /
+  // `prior.cache` reflect the cross-subdomain shared store (production) or
+  // per-origin localStorage (localhost). The swapped adapter also mirrors
+  // any subsequent `setBackend` / `setCacheSettings` calls below to the
+  // shared store, so URL-driven changes propagate across subdomains.
+  try {
+    const { bootstrapSharedMode } = await import("@dotli/ui/shared-mode");
+    await bootstrapSharedMode();
+  } catch (err: unknown) {
+    log.warn(
+      "[dot.li perf] Shared mode bootstrap failed; continuing with per-origin localStorage:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  const prior = {
+    network: getNetwork(),
+    chain: getBackend(),
+    cache: getCacheSettings(),
+  };
+
+  const next = {
+    network: parsed.network ?? prior.network,
+    chain: parsed.chainBackend ?? prior.chain,
+    cache: {
+      skipArchiveCache: parsed.skipArchiveCache ?? prior.cache.skipArchiveCache,
+      skipCidCache: parsed.skipCidCache ?? prior.cache.skipCidCache,
+      skipWorkerCache: parsed.skipWorkerCache ?? prior.cache.skipWorkerCache,
+    },
+  };
+
+  setNetwork(next.network);
+  setBackend(next.chain);
+  setCacheSettings(next.cache);
+
+  if (
+    writeSettingsToSearch(
+      { network: next.network, chainBackend: next.chain, cache: next.cache },
+      search,
+    )
+  ) {
+    const query = search.toString();
+    const newUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", newUrl);
+  }
+
+  if (sharedWorkerFallback) {
+    showNotification({
+      label: "Light Client Shared unavailable",
+      text: "This browser doesn't support Light Client Shared. Falling back to Light Client Per-Tab.",
+      dismissMs: 5_000,
+    });
+  }
+
+  const changed =
+    next.network !== prior.network ||
+    next.chain !== prior.chain ||
+    next.cache.skipArchiveCache !== prior.cache.skipArchiveCache ||
+    next.cache.skipCidCache !== prior.cache.skipCidCache ||
+    next.cache.skipWorkerCache !== prior.cache.skipWorkerCache;
+
+  // On production, bootstrap loaded the protocol iframe with `prior.chain`
+  // before applyUrlSettings switched it to `next.chain`, so tear it down so
+  // the next `ensureProtocolFrame()` rebuilds it in the new sub-mode.
+  // (No-op on localhost, where the HTTP channel never loaded an iframe.)
+  if (prior.chain !== next.chain) {
+    const { resetProtocolFrame } = await import("@dotli/protocol/client");
+    resetProtocolFrame();
+  }
+
+  // Same logic for the trusted-RPC path's cached `chainHead_v1_follow`.
+  if (prior.chain !== next.chain || prior.network !== next.network) {
+    try {
+      const r = await import("@dotli/resolver/rpc-resolve");
+      r.destroyRpcClient();
+      // eslint-disable-next-line no-restricted-syntax -- defensive teardown: the rpc-resolve module may not have been imported yet on this boot, in which case there is nothing to destroy.
+    } catch {
+      /* not loaded yet */
+    }
+  }
+
+  // Fresh origins have nothing to be stale about, and no-op URLs (match
+  // localStorage) leave existing state intact.
+  if (!changed || !hadPriorPersisted) {
+    return;
+  }
+
+  // Wipe host origin and signal the other two origins to purge themselves
+  // on their next boot. wipeOriginState clears localStorage, so capture
+  // the theme and the just-written settings and re-persist them.
+  const theme = readRawLocalStorage("dotli-theme");
+  await wipeOriginState();
+  setNetwork(next.network);
+  setBackend(next.chain);
+  setCacheSettings(next.cache);
+  if (theme === "light" || theme === "dark") {
+    try {
+      localStorage.setItem("dotli-theme", theme);
+      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode; theme restore is best-effort.
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+  try {
+    sessionStorage.setItem("dotli:pending-reset:protocol", "1");
+    sessionStorage.setItem("dotli:pending-reset:sandbox", "1");
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); cross-origin purges are best-effort, reload below is unconditional.
+  } catch {
+    /* sessionStorage unavailable */
+  }
+  window.location.reload();
+}
+
+function switchBackendAndReload(nextBackend: Backend): void {
+  setBackend(nextBackend);
+  const search = new URLSearchParams(window.location.search);
+  if (
+    writeSettingsToSearch(
+      {
+        network: getNetwork(),
+        chainBackend: nextBackend,
+        cache: getCacheSettings(),
+      },
+      search,
+    )
+  ) {
+    const query = search.toString();
+    const newUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", newUrl);
+  }
+  window.location.reload();
+}
 
 async function main(): Promise<void> {
   const previewTargetUrl = parsePreviewTargetUrl(window.location);
@@ -352,30 +819,86 @@ async function main(): Promise<void> {
   performance.mark("dotli:main:start");
   log.warn(`[dot.li perf] main() started (${elapsed(T0)})`);
 
-  const mode = getMode();
-  const chainBackend = getChainBackend();
-  const contentBackend = getContentBackend();
+  // Runtime-gated: the panel ships in every build but the heavy chunk
+  // is only fetched when the user opts in via `?debug=true` (set by the
+  // "Open in debug mode" Settings button) or a persisted sessionStorage
+  // entry. When disabled, the bus stays in its null-stub state and
+  // every `emitDotliDebugEvent` call throughout main() early-exits.
+  //
+  // `?debug=off` and sessionStorage still let users silence the panel
+  // on a per-tab basis after enabling it.
+  const { emitDotliDebugEvent, enableDotliDebugBuffering } =
+    await import("@dotli/truapi-debug/dotli-debug-bus");
+  const debugMode = resolveTruapiDebugMode();
+  if (debugMode.enabled) {
+    enableDotliDebugBuffering();
+    void import("@dotli/truapi-debug/panel").then(
+      ({ setupTruapiDebugPanel }) => {
+        setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
+        log.warn(`[dot.li] TrUAPI debug panel enabled`);
+      },
+    );
+  }
+
+  // Per-tab boot flow id. Every boot/resolve/render/bridge event from
+  // this page load carries the same id so the debug panel can group
+  // them into one box.
+  const bootFlowId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
+
+  // Main-thread monitor. Polls at 50ms, and any delta > 200ms means the
+  // event loop was blocked for `durationMs - 50ms`. Heartbeats land
+  // every 2 seconds so the system swimlane shows "host still alive"
+  // even when nothing else is happening. The monitor stops once the
+  // bridge has exchanged traffic in both directions (first outbound
+  // response posted) or after MAX_MONITOR_MS, whichever comes
+  // first.
+  if (debugMode.enabled) {
+    startMainThreadMonitor(bootFlowId, emitDotliDebugEvent);
+    // Forward sandbox-origin debug events up to the host's debug bus so
+    // the "what is the product iframe doing?" window (SW register,
+    // cache lookup, archive fetch, decrypt, document.write) is visible
+    // in the same System swimlane as the host's own events.
+    listenForSandboxDebugEvents(emitDotliDebugEvent);
+  }
+
+  // Seed settings from URL params before any consumer reads them, so the
+  // protocol pre-warm and downstream getters see the resolved values.
+  // `applyUrlSettings` also runs the shared-mode bootstrap (so prior values
+  // pick up cross-subdomain state and URL writes mirror to the shared
+  // store). The await blocks if a URL-driven change forces a wipe and
+  // reload. The reload then replaces the page, so anything below it never
+  // runs.
+  await applyUrlSettings();
+
+  const chainBackend = getBackend();
   const cacheSettings = getCacheSettings();
-  log.warn(
-    `[dot.li perf] mode=${mode} chain=${chainBackend} content=${contentBackend}`,
-  );
-  // Registers the session's mode + backends + cache flags as default
-  // attributes so every subsequent metric carries them.
+  emitDotliDebugEvent({
+    layer: "boot",
+    event: "started",
+    flowId: bootFlowId,
+    timestamp: Date.now(),
+    payload: {
+      chainBackend,
+      skipCidCache: cacheSettings.skipCidCache,
+      skipArchiveCache: cacheSettings.skipArchiveCache,
+    },
+  });
+  log.warn(`[dot.li perf] chain=${chainBackend}`);
   m.setDefaults({
-    dotli_mode: mode,
     chain_backend: chainBackend,
-    content_backend: contentBackend,
     skip_cid_cache: String(cacheSettings.skipCidCache),
     skip_archive_cache: String(cacheSettings.skipArchiveCache),
   });
 
   // Pre-warm the protocol iframe for every chain backend so sandboxed apps
   // that call `chainConnect` have a handler waiting on the other side. The
-  // submode mapping is 1:1 with the chain backend; the content backend is
-  // orthogonal and doesn't affect protocol submode.
-  //   smoldot-shared-worker → "shared-worker"
-  //   smoldot-direct        → "direct"
-  //   rpc                   → "rpc"
+  // submode mapping is 1:1 with the chain backend.
+  //   smoldot-shared-worker maps to "shared-worker"
+  //   smoldot-direct        maps to "direct"
+  //   rpc-gateway           maps to "rpc"
   {
     const subMode: "shared-worker" | "direct" | "rpc" =
       chainBackend === "smoldot-shared-worker"
@@ -395,7 +918,7 @@ async function main(): Promise<void> {
       }
       // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); reset flag falls back to false which is the safe default.
     } catch {
-      /* sessionStorage unavailable — skip pending-reset pick up */
+      /* sessionStorage unavailable: skip pending-reset pick up */
     }
     const protocolChunkPromise = import("@dotli/protocol/client");
     void protocolChunkPromise.then(
@@ -408,12 +931,26 @@ async function main(): Promise<void> {
         void warmupProtocol();
       },
     );
+    emitDotliDebugEvent({
+      layer: "boot",
+      event: "protocol_warmup_started",
+      flowId: bootFlowId,
+      timestamp: Date.now(),
+      payload: { subMode },
+    });
   }
 
-  // Initialize top bar UI (auth is lazy-loaded inside topbar when needed)
+  // Initialize top bar UI.
   const t0 = performance.now();
   initTopBar();
   log.warn(`[dot.li perf] initTopBar() done (${dur(t0)})`);
+  emitDotliDebugEvent({
+    layer: "boot",
+    event: "topbar_ready",
+    flowId: bootFlowId,
+    timestamp: Date.now(),
+    payload: {},
+  });
 
   const label = parseDotLabel();
 
@@ -421,9 +958,11 @@ async function main(): Promise<void> {
     const host = new URL(previewTargetUrl).host;
     log.warn(`[dot.li perf] Preview route: ${host} (${elapsed(T0)})`);
 
+    initScheduledNotifications({ label: host });
+
     const urlBar = document.getElementById("topbar-url");
     if (urlBar !== null) {
-      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="dot-domain">${escapeHtml(host)}</span></div>`;
+      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
     const { renderIframe } = await import("@dotli/ui/bridge");
@@ -438,23 +977,46 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── Localhost proxy: render local dev server directly in iframe ──
   const localhostUrl = parseLocalhostUrl();
+  emitDotliDebugEvent({
+    layer: "boot",
+    event: "url_parsed",
+    flowId: bootFlowId,
+    timestamp: Date.now(),
+    payload: {
+      label,
+      localhostHost: localhostUrl === null ? null : new URL(localhostUrl).host,
+      deepPath: window.location.pathname + window.location.search,
+    },
+  });
   if (label === null && localhostUrl !== null) {
     const host = new URL(localhostUrl).host;
     log.warn(`[dot.li perf] Localhost proxy: ${host} (${elapsed(T0)})`);
 
+    initScheduledNotifications({ label: host });
+
     const urlBar = document.getElementById("topbar-url");
     if (urlBar !== null) {
-      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="dot-domain">${escapeHtml(host)}</span></div>`;
+      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
     const { renderIframe } = await import("@dotli/ui/bridge");
     await renderIframe(localhostUrl, host);
-    // Deep path was forwarded to the product iframe — strip it so the URL bar doesn't show a stale path
+    // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
     history.replaceState(null, "", "/" + host);
     document.title = `${host} — ${SITE_ID}`;
     performance.mark("dotli:main:end");
+    emitDotliDebugEvent({
+      layer: "boot",
+      event: "ready",
+      flowId: bootFlowId,
+      timestamp: Date.now(),
+      payload: {
+        label: null,
+        totalMs: performance.now() - T0,
+        path: "localhost",
+      },
+    });
     return;
   }
 
@@ -462,6 +1024,13 @@ async function main(): Promise<void> {
     log.warn(`[dot.li perf] Landing page — no subdomain (${elapsed(T0)})`);
     showLanding();
     performance.mark("dotli:main:end");
+    emitDotliDebugEvent({
+      layer: "boot",
+      event: "landing_page_shown",
+      flowId: bootFlowId,
+      timestamp: Date.now(),
+      payload: {},
+    });
     return;
   }
 
@@ -483,6 +1052,8 @@ async function main(): Promise<void> {
 
   log.warn(`[dot.li perf] Subdomain detected: "${label}" (${elapsed(T0)})`);
 
+  initScheduledNotifications({ label });
+
   // Pre-load render chunk in parallel (overlap with CID resolution)
   const renderChunkPromise: Promise<RenderChunk> = import("@dotli/ui/bridge");
   void renderChunkPromise.catch(() => {
@@ -491,7 +1062,7 @@ async function main(): Promise<void> {
 
   // The topbar DOM nodes are required-by-contract invariants of
   // `index.html`. Their absence is a build/deploy bug, not a recoverable
-  // runtime branch — fail loud so monitoring catches it instead of silently
+  // runtime branch, so fail loud so monitoring catches it instead of silently
   // leaving the page in its initial loading state.
   const urlBar = document.getElementById("topbar-url");
   if (urlBar === null) {
@@ -500,50 +1071,26 @@ async function main(): Promise<void> {
     showError("UI failed to initialise", err.message);
     return;
   }
-  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">.dot</span></span></div>`;
-
-  // Domain info popover toggle
-  const urlPill = document.getElementById("url-pill");
-  const domainPopover = document.getElementById("domain-popover");
-  if (urlPill === null || domainPopover === null) {
-    const err = new Error(
-      `Required DOM node missing: ${urlPill === null ? "#url-pill" : "#domain-popover"}`,
-    );
-    captureException(err, { surface: "host_main_dom_invariant" });
-    showError("UI failed to initialise", err.message);
-    return;
-  }
-  urlPill.addEventListener("click", (e) => {
-    e.stopPropagation();
-    domainPopover.classList.toggle("open");
-  });
-  document.addEventListener("click", (e) => {
-    if (!domainPopover.contains(e.target as Node)) {
-      domainPopover.classList.remove("open");
-    }
-  });
-  window.addEventListener("blur", () => {
-    domainPopover.classList.remove("open");
-  });
+  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">.dot</span></span></div>`;
 
   // Listen for status messages from the sandbox iframe so the loading
   // UI continues seamlessly from resolution into content fetching.
   listenForSandboxStatus();
 
-  // Shield is driven by the split backends, not the legacy preset. A mixed
-  // session (chain=smoldot + content=gateway, or chain=rpc + content=p2p)
-  // resolves to "validating" because part of the data path is delegated to
-  // a trusted provider — `isVerifiedSession` is the one rule that decides.
-  const shieldState: "verified" | "validating" = isVerifiedSession(
-    chainBackend,
-    contentBackend,
-  )
+  // Relay sandbox `bitswap_v1_get` requests to the protocol iframe's smoldot.
+  // The sandbox is on a different origin and can't postMessage the protocol
+  // iframe directly. The host bridges the two so a single warm Bulletin
+  // chain serves every sandbox load instead of cold-starting a second
+  // smoldot per page.
+  listenForSandboxBitswap();
+
+  const shieldState: "verified" | "validating" = isVerifiedSession(chainBackend)
     ? "verified"
     : "validating";
 
-  if (mode === "p2p-shared-worker") {
+  if (chainBackend === "smoldot-shared-worker") {
     initPhases(["Starting Worker", "Syncing", "Resolving"]);
-  } else if (mode === "p2p-direct") {
+  } else if (chainBackend === "smoldot-direct") {
     initPhases(["Starting", "Connecting", "Syncing", "Resolving"]);
   } else {
     initPhases(["Connecting", "Resolving"]);
@@ -552,125 +1099,188 @@ async function main(): Promise<void> {
   showStatus(`Resolving ${label}.dot`);
 
   try {
-    // ── Fast path: CID cache hit → render immediately ──
     const cachedCid = cacheSettings.skipCidCache
       ? null
       : await getCachedCid(label);
+    emitDotliDebugEvent({
+      layer: "boot",
+      event: "cid_cache_checked",
+      flowId: bootFlowId,
+      timestamp: Date.now(),
+      payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
+    });
     if (cachedCid !== null) {
       m.count(S.CACHE_HIT);
       log.warn(
-        `[dot.li resolve] path=cache (${mode}) (${elapsed(T0)}) -> ${cachedCid}`,
+        `[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`,
       );
-      setShieldState(shieldState);
-      const { renderAppSubdomain } = await renderChunkPromise;
-      await renderAppSubdomain(cachedCid, label);
-      history.replaceState(null, "", "/");
-
-      const totalMs = performance.now() - T0;
-      m.measure(S.E2E_FAST, totalMs);
-      m.distribution(S.E2E_FAST, totalMs);
+      // Wrap the warm-path render in a span so its duration is queryable
+      // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
+      await m.span(S.E2E_FAST, async () => {
+        setShieldState(shieldState);
+        const { renderAppSubdomain } = await renderChunkPromise;
+        await renderAppSubdomain(cachedCid, label);
+      });
+      void applyProductBranding(label, chainBackend).catch((err: unknown) => {
+        log.warn(
+          `[dot.li manifest] branding failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
       performance.mark("dotli:main:end");
       log.warn(`[dot.li perf] === TOTAL (fast path): ${dur(T0)} ===`);
+      emitDotliDebugEvent({
+        layer: "boot",
+        event: "ready",
+        flowId: bootFlowId,
+        timestamp: Date.now(),
+        payload: {
+          label,
+          totalMs: performance.now() - T0,
+          path: "fast",
+        },
+      });
+      // SWR: keep the cache honest across reloads without blocking the render.
+      requestIdleCallback(() => {
+        void runBackgroundRevalidate(label, cachedCid, chainBackend);
+      });
       return;
     }
     m.count(S.CACHE_MISS);
     log.warn(`[dot.li perf] CID cache MISS (${elapsed(T0)})`);
 
-    // ── Full resolution path (single mode, no racing) ──
+    // One event per cold resolve attempt, BEFORE anything that can fail.
+    Sentry.captureMessage("dotli.resolve_attempt", {
+      level: "info",
+      tags: {
+        surface: "host_main_resolve",
+        outcome: "pending",
+        chain_backend: chainBackend,
+      },
+    });
+
+    // Wall-clock cold-path duration, emitted as a trace_metric distribution
+    // after success. The previous m.span wrapper recorded garbage on the
+    // smoldot path (closure detachment across postMessage awaits).
+    const coldStartMs = performance.now();
     performance.mark("dotli:resolve:start");
     const resolveStart = performance.now();
-    const stopResolve = m.timer(S.RESOLVE_TOTAL);
-    let cid: string | null;
 
-    if (isP2pMode(mode)) {
+    const resolveFlowId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `resolve-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
+    const resolveSource: "smoldot" | "rpc-gateway" =
+      chainBackend !== "rpc-gateway" ? "smoldot" : "rpc-gateway";
+    emitDotliDebugEvent({
+      layer: "resolve",
+      event: "started",
+      flowId: resolveFlowId,
+      timestamp: Date.now(),
+      payload: { label, source: resolveSource },
+    });
+    const emitPhase = (msg: string, phaseName: string): void => {
+      emitDotliDebugEvent({
+        layer: "resolve",
+        event: "phase",
+        flowId: resolveFlowId,
+        timestamp: Date.now(),
+        payload: { label, phase: phaseName, message: msg },
+      });
+    };
+
+    /**
+     * Try the app subname first, fall back to the base label when the
+     * subname has no contenthash.
+     */
+    let cid: string | null;
+    if (chainBackend !== "rpc-gateway") {
       log.warn(
         `[dot.li resolve] path=smoldot (trustless light-client) (${elapsed(T0)})`,
       );
-
-      // After ~10s of slow sync, offer an explicit hand-off to the settings
-      // popover rather than silently switching modes. Mode changes must be
-      // active user choices — a button that rewrites localStorage and
-      // reloads would be silent substitution. Instead, open the popover
-      // with the current mode highlighted so the user picks.
-      // 10 s matches the slowest of the major P2P-path slow-hint thresholds
-      // that users actually hit (Resolving = 10 s, Adding Paseo relay chain
-      // = 10 s) so the "Change settings" button arrives together with the
-      // explanatory hint text instead of showing up 5 s before it.
-      const gatewayBtnTimer = setTimeout(() => {
-        const hint = document.getElementById("loading-hint");
-        if (hint !== null) {
-          const btn = document.createElement("button");
-          btn.className = "loading-gateway-btn";
-          btn.textContent = "Change settings";
-          btn.title = "Open settings to change resolution mode";
-          btn.addEventListener("click", (ev) => {
-            // Stop propagation — the document-level click handler in the
-            // topbar closes open popovers when the click target is outside
-            // them, which would slam our popover shut immediately after we
-            // opened it.
-            ev.stopPropagation();
-            openModePopover();
-          });
-          // Append *alongside* any existing hint text span (produced by
-          // `showStatus` at the same threshold) instead of wiping it — the
-          // button and the hint now co-exist in the same row.
-          hint.appendChild(btn);
-          hint.classList.add("visible");
-        }
-      }, 10000);
-
-      const { resolveDotNameRemote, resolveOwnerRemote } =
-        await import("@dotli/protocol/client");
-      const { statusToPhase } = await import("@dotli/resolver/resolve");
-      populateOwner(resolveOwnerRemote, label);
-      cid = await resolveDotNameRemote(label, (msg: string) => {
-        // Progress events arrive as opaque strings across the iframe
-        // boundary. The resolver package owns the authoritative
-        // mapping from status text → `ResolvePhase`; we defer to it
-        // instead of maintaining a parallel regex here.
-        const phase = statusToPhase(msg);
-        if (phase === "asset-hub-connecting") {
-          advancePhase(1);
-        } else if (
-          phase === "asset-hub-syncing" ||
-          phase === "asset-hub-ready"
-        ) {
-          advancePhase(2);
-        } else if (phase === "resolving-content") {
-          advancePhase(3);
-        }
-        showStatus(msg);
+      // After 10s of slow loading on the verified path, surface a one-click
+      // escape to the gateway backend. The user trades the light-client
+      // verification badge for a faster, trust-based load.
+      const cancelGatewayEscape = showGatewayEscape(() => {
+        m.count(S.GATEWAY_ESCAPE, { from_backend: chainBackend });
+        switchBackendAndReload("rpc-gateway");
       });
-      clearTimeout(gatewayBtnTimer);
+
+      try {
+        const { resolveDotNameRemote } = await import("@dotli/protocol/client");
+        const { statusToPhase } = await import("@dotli/resolver/resolve");
+        const onResolveProgress = (msg: string): void => {
+          // Progress events arrive as opaque strings across the iframe
+          // boundary. The resolver package owns the authoritative
+          // mapping from status text to ResolvePhase, so we defer to it
+          // instead of maintaining a parallel regex here.
+          const phase = statusToPhase(msg);
+          if (phase === "asset-hub-connecting") {
+            advancePhase(1);
+          } else if (
+            phase === "asset-hub-syncing" ||
+            phase === "asset-hub-ready"
+          ) {
+            advancePhase(2);
+          } else if (phase === "resolving-content") {
+            advancePhase(3);
+          }
+          emitPhase(msg, phase ?? "progress");
+          showStatus(msg);
+        };
+        cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
+        if (cid === null) {
+          cid = await resolveDotNameRemote(label, onResolveProgress);
+          log.warn(
+            `[dot.li resolve] fallback ${label}.dot contenthash -> ${cid ?? "null"}`,
+          );
+        }
+      } finally {
+        cancelGatewayEscape();
+      }
     } else {
       log.warn(
         `[dot.li resolve] path=json-rpc (gateway mode) (${elapsed(T0)})`,
       );
-      const { resolveDotNameViaRpc, resolveOwnerViaRpc } =
+      const { resolveDotNameViaRpc } =
         await import("@dotli/resolver/rpc-resolve");
-      populateOwner(resolveOwnerViaRpc, label);
-      cid = await resolveDotNameViaRpc(label, (msg: string) => {
+      const onResolveProgress = (msg: string): void => {
+        emitPhase(msg, "progress");
         showStatus(msg);
-      });
+      };
+      cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
+      if (cid === null) {
+        cid = await resolveDotNameViaRpc(label, onResolveProgress);
+        log.warn(
+          `[dot.li resolve] fallback ${label}.dot contenthash -> ${cid ?? "null"}`,
+        );
+      }
     }
 
+    emitDotliDebugEvent({
+      layer: "resolve",
+      event: "completed",
+      flowId: resolveFlowId,
+      timestamp: Date.now(),
+      payload: {
+        label,
+        source: resolveSource,
+        cid,
+        durationMs: performance.now() - resolveStart,
+      },
+    });
+
     stopStatusTick();
-    stopResolve();
     performance.mark("dotli:resolve:end");
     log.warn(
-      `[dot.li resolve] RESOLVED ${label}.dot via ${mode} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? "null"}`,
+      `[dot.li resolve] RESOLVED ${label}.dot via ${chainBackend} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? "null"}`,
     );
-    m.tag("resolve_source", mode);
 
     if (cid === null) {
-      showError(
-        `${label}.dot`,
-        "This domain has no content set. The owner needs to publish content to the Bulletin Chain and set the content hash.",
-      );
+      showNoContentError(label);
+      performance.mark("dotli:main:end");
       return;
     }
 
-    // When the user disabled the CID cache, do NOT write to it.
     if (!cacheSettings.skipCidCache) {
       requestIdleCallback(() => {
         void setCachedCid(label, cid);
@@ -679,35 +1289,63 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
-    // Render: iframe to cid.app.dot.li
     const { renderAppSubdomain } = await renderChunkPromise;
     await renderAppSubdomain(cid, label);
+    void applyProductBranding(label, chainBackend).catch((err: unknown) => {
+      log.warn(
+        `[dot.li manifest] branding failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 
-    const totalMs = performance.now() - T0;
-    m.measure(S.E2E_SLOW, totalMs);
-    m.distribution(S.E2E_SLOW, totalMs);
-    history.replaceState(null, "", "/");
+    m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, "millisecond", {
+      outcome: "ok",
+      chain_backend: chainBackend,
+    });
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
+    emitDotliDebugEvent({
+      layer: "boot",
+      event: "ready",
+      flowId: bootFlowId,
+      timestamp: Date.now(),
+      payload: {
+        label,
+        totalMs: performance.now() - T0,
+        path: "slow",
+      },
+    });
   } catch (err) {
     performance.mark("dotli:main:end");
     // Report before rendering so monitoring always sees the root cause, even
     // if `showError()` itself throws (e.g. a DOM node is missing). The global
-    // unhandled-rejection handler doesn't catch this — the try/catch here
-    // already has. Carry the active dependency as a tag so Sentry + the
+    // unhandled-rejection handler doesn't catch this, because the try/catch
+    // here already has. Carry the active dependency as a tag so Sentry and the
     // user-visible error both attribute the failure to the specific
     // dependency the chosen mode dialed.
-    const dependency = isP2pMode(mode) ? "smoldot" : "asset-hub-rpc";
+    const dependency =
+      chainBackend === "rpc-gateway" ? "asset-hub-rpc" : "smoldot";
     captureException(err, {
       surface: "host_main_resolve",
+      outcome: "error",
       dependency,
-      dotli_mode: mode,
+      chain_backend: chainBackend,
     });
     // Full cause chain to console for devs.
     log.error(
       `[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`,
     );
-    const error = describeError(err, isP2pMode(mode));
+    emitDotliDebugEvent({
+      layer: "boot",
+      event: "failed",
+      flowId: bootFlowId,
+      timestamp: Date.now(),
+      payload: {
+        label,
+        reason: err instanceof Error ? err.message : String(err),
+        dependency,
+      },
+    });
+    const error = describeError(err, chainBackend !== "rpc-gateway");
     if (error.recovery === "none") {
       showError("Domain can't be reached", error.message);
       return;
@@ -721,19 +1359,31 @@ async function main(): Promise<void> {
       });
       return;
     }
-    // Tiered failover: any smoldot → rpc; rpc → smoldot-shared-worker.
-    const currentChainBackend = getChainBackend();
-    const nextChainBackend: ChainBackend =
-      currentChainBackend === "rpc" ? "smoldot-shared-worker" : "rpc";
+    // Tiered failover: any smoldot becomes rpc-gateway, rpc-gateway becomes smoldot-shared-worker.
+    const nextBackend =
+      chainBackend === "rpc-gateway" ? "smoldot-shared-worker" : "rpc-gateway";
     const btnLabel =
-      nextChainBackend === "rpc"
-        ? "Try with RPC Node (trusted provider)"
-        : "Try Light Client (smoldot worker)";
+      nextBackend === "rpc-gateway"
+        ? "Try Trusted Providers"
+        : "Try Light Client Shared";
     showError("Domain can't be reached", error.message, {
       label: btnLabel,
       onClick: () => {
-        setChainBackend(nextChainBackend);
-        window.location.reload();
+        emitDotliDebugEvent({
+          layer: "failover",
+          event: "chain_backend",
+          flowId:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `fail-${String(Date.now())}`,
+          timestamp: Date.now(),
+          payload: {
+            from: chainBackend,
+            to: nextBackend,
+            reason: err instanceof Error ? err.message : "resolution failed",
+          },
+        });
+        switchBackendAndReload(nextBackend);
       },
     });
   }

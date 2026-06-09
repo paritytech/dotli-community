@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { describe, it, expect } from "vitest";
 import {
   namehash,
@@ -10,8 +13,6 @@ import {
   decodeBytesSlot,
   decodeIpfsContenthash,
 } from "@dotli/resolver/abi";
-
-// ── namehash (ENS EIP-137) ──────────────────────────────────
 
 describe("namehash", () => {
   it("returns 32 zero bytes for empty string", () => {
@@ -57,8 +58,6 @@ describe("namehash", () => {
   });
 });
 
-// ── computeMappingSlot ──────────────────────────────────────
-
 describe("computeMappingSlot", () => {
   it("returns a 32-byte hex key", () => {
     const key =
@@ -84,8 +83,6 @@ describe("computeMappingSlot", () => {
   });
 });
 
-// ── computeBytesDataSlot ────────────────────────────────────
-
 describe("computeBytesDataSlot", () => {
   it("returns a 32-byte hex key", () => {
     const slot =
@@ -101,8 +98,6 @@ describe("computeBytesDataSlot", () => {
     expect(result).not.toBe(slot);
   });
 });
-
-// ── addToSlot ───────────────────────────────────────────────
 
 describe("addToSlot", () => {
   it("returns same slot for offset 0", () => {
@@ -136,8 +131,6 @@ describe("addToSlot", () => {
   });
 });
 
-// ── wordToBigInt ────────────────────────────────────────────
-
 describe("wordToBigInt", () => {
   it("decodes zero", () => {
     expect(wordToBigInt(new Uint8Array(32))).toBe(0n);
@@ -155,8 +148,6 @@ describe("wordToBigInt", () => {
     expect(wordToBigInt(data)).toBe(256n);
   });
 });
-
-// ── extractAddress ──────────────────────────────────────────
 
 describe("extractAddress", () => {
   it("extracts address from right-aligned 32-byte word", () => {
@@ -178,8 +169,6 @@ describe("extractAddress", () => {
     );
   });
 });
-
-// ── decodeBytesSlot ─────────────────────────────────────────
 
 describe("decodeBytesSlot", () => {
   const dummySlot =
@@ -224,8 +213,6 @@ describe("decodeBytesSlot", () => {
     expect(decodeBytesSlot(data, dummySlot)).toBeNull();
   });
 });
-
-// ── decodeIpfsContenthash ──────────────────────────────────
 
 describe("decodeIpfsContenthash", () => {
   it("returns null for empty hex", () => {

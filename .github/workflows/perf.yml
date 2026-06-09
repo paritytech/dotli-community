@@ -15,14 +15,14 @@ permissions:
 jobs:
   perf:
     name: Continuous Integration
-    runs-on: parity-default
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.3.6"
 
@@ -30,28 +30,28 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: bunx --bun playwright install --with-deps chromium
 
       - name: Build
-        run: bun run build
+        run: bunx --bun turbo run build
 
       # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
         if: github.event_name == 'pull_request'
         id: baseline
-        uses: dawidd6/action-download-artifact@v20
+        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
         with:
           name: perf-baseline
           workflow: perf.yml
           branch: main
-          path: apps/host/tests/results
+          path: apps/host/tests/performance/results
           if_no_artifact_found: warn
 
       - name: Rename baseline
         if: github.event_name == 'pull_request'
         run: |
-          if [ -f apps/host/tests/results/last.json ]; then
-            mv apps/host/tests/results/last.json apps/host/tests/results/base.json
+          if [ -f apps/host/tests/performance/results/last.json ]; then
+            mv apps/host/tests/performance/results/last.json apps/host/tests/performance/results/base.json
             echo "HAVE_BASE=true" >> "$GITHUB_ENV"
           else
             echo "HAVE_BASE=false" >> "$GITHUB_ENV"
@@ -63,20 +63,29 @@ jobs:
       - name: Run perf tests (baseline)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: apps/host
-        run: bun run test:perf:base || true
+        env:
+          PERF_RUNS: "20"
+          PERF_SAVE_BASE: "1"
+          PERF_DOMAIN_A: explore
+          PERF_DOMAIN_B: host-playground
+        run: bunx --bun playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
 
       - name: Run perf tests (PR)
         if: github.event_name == 'pull_request'
         working-directory: apps/host
-        run: bun run test:perf || true
+        env:
+          PERF_RUNS: "10"
+          PERF_DOMAIN_A: explore
+          PERF_DOMAIN_B: host-playground
+        run: bunx --bun playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
 
       # ── main: upload baseline artifact ─────────────────────────
       - name: Upload baseline artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: perf-baseline
-          path: apps/host/tests/results/last.json
+          path: apps/host/tests/performance/results/last.json
           retention-days: 90
           overwrite: true
 
@@ -84,7 +93,7 @@ jobs:
       - name: Generate comparison
         if: github.event_name == 'pull_request' && env.HAVE_BASE == 'true'
         working-directory: apps/host
-        run: bun run test:perf:compare:md > /tmp/perf-comment.md || true
+        run: bun tests/performance/compare.ts --markdown > /tmp/perf-comment.md || true
 
       - name: Generate standalone report
         if: github.event_name == 'pull_request' && env.HAVE_BASE != 'true'
@@ -98,7 +107,7 @@ jobs:
 
       - name: Post or update PR comment
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');

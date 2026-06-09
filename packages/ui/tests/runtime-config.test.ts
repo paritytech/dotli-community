@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PEOPLE_PASEO_GENESIS } from "@dotli/config/config";
+import { getActiveServicesConfig } from "@dotli/config/network";
 import {
   createTruapiRuntimeConfig,
   labelToProductId,
@@ -61,7 +61,7 @@ describe("createTruapiRuntimeConfig", () => {
       productLabel: "acme",
       siteId: "dot.li",
       hostMetadataUrl: "https://host.dot.li/metadata.json",
-      peopleChainGenesisHash: PEOPLE_PASEO_GENESIS,
+      peopleChainGenesisHash: getActiveServicesConfig().people.genesis,
       pairingDeeplinkScheme: "polkadotapp",
     });
   });

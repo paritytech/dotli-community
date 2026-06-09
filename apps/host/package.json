@@ -1,16 +1,18 @@
 {
   "name": "@dotli/host",
   "private": true,
-  "version": "0.3.3",
+  "license": "AGPL-3.0-only",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "build": "tsc && bunx --bun vite build",
     "build:prod": "tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
-    "test:e2e": "playwright test tests/loading.spec.ts tests/resolution.spec.ts",
-    "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test tests/cold-start.spec.ts",
-    "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test tests/cold-start.spec.ts",
-    "test:perf:compare": "bun tests/compare.ts",
-    "test:perf:compare:md": "bun tests/compare.ts --markdown",
+    "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts",
+    "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
+    "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
+    "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
+    "test:perf:compare": "bun tests/performance/compare.ts",
+    "test:perf:compare:md": "bun tests/performance/compare.ts --markdown",
     "lint": "bunx eslint src/",
     "typecheck": "tsc --noEmit"
   },
@@ -19,13 +21,16 @@
     "@dotli/typescript-config": "workspace:*",
     "@playwright/test": "^1.59.1",
     "playwright": "^1.59.1",
-    "@types/node": "^25.6.0",
-    "eslint": "^10.2.1",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.1",
+    "jsqr": "^1.4.0",
     "prettier": "^3.8.3",
-    "simple-statistics": "^7.8.8",
+    "simple-statistics": "^7.9.0",
     "typescript": "~6.0.3",
-    "vite": "^8.0.10",
-    "vite-plugin-wasm": "^3.5.0"
+    "vite": "^8.0.16",
+    "vite-plugin-pwa": "^1.2.0",
+    "vite-plugin-wasm": "^3.5.0",
+    "workbox-window": "^7.4.0"
   },
   "dependencies": {
     "@dotli/config": "workspace:*",
@@ -34,8 +39,9 @@
     "@dotli/shared": "workspace:*",
     "@dotli/storage": "workspace:*",
     "@dotli/resolver": "workspace:*",
+    "@dotli/truapi-debug": "workspace:*",
     "@dotli/ui": "workspace:*",
-    "@sentry/browser": "^10.50.0",
+    "@sentry/browser": "^10.56.0",
     "@sentry/vite-plugin": "^5.2.0"
   }
 }

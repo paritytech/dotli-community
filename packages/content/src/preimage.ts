@@ -1,4 +1,7 @@
-// dot.li — Preimage hash and CID utilities
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li preimage hash and CID utilities.
 //
 // Provides Blake2b-256 hash computation and CID conversion for
 // the preimage Host API. Used by both submit (hash the data) and

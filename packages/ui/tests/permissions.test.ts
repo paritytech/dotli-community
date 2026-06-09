@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   ALL_PERMISSIONS,
@@ -118,7 +121,9 @@ describe("isDevicePermission", () => {
     expect(isDevicePermission("StatementSubmit")).toBe(false);
   });
 
-  it("rejects auto-granted device permissions absent from the policy map", () => {
+  it("rejects device permissions absent from the policy map", () => {
+    // Notifications is host-gated separately (see handleDevicePermission)
+    // but has no Permissions Policy directive. OpenUrl is auto-granted.
     expect(isDevicePermission("Notifications")).toBe(false);
     expect(isDevicePermission("OpenUrl")).toBe(false);
   });
@@ -133,6 +138,7 @@ describe("isEnforceableDevicePermission", () => {
     expect(isEnforceableDevicePermission("Notifications")).toBe(true);
     expect(isEnforceableDevicePermission("Camera")).toBe(true);
     expect(isEnforceableDevicePermission("Microphone")).toBe(true);
+    expect(isEnforceableDevicePermission("Notifications")).toBe(true);
   });
 });
 
@@ -161,7 +167,7 @@ describe("buildAllowAttribute", () => {
     setPermissionStatus("myapp", "Camera", "granted");
     setPermissionStatus("myapp", "Microphone", "granted");
 
-    // Order follows JSON insertion order; assert on the directive set.
+    // Order follows JSON insertion order, so assert on the directive set.
     const directives = buildAllowAttribute("myapp").split("; ").sort();
     expect(directives).toEqual(["camera", "clipboard-write", "microphone"]);
   });
@@ -188,6 +194,30 @@ describe("ALL_PERMISSIONS (data invariants)", () => {
     expect(names).toContain("UserId");
     expect(names).toContain("Notifications");
     expect(names).not.toContain("TransactionSubmit");
+  });
+
+  it("exposes the UserId gate with its display label", () => {
+    expect(ALL_PERMISSIONS).toContainEqual({
+      name: "UserId",
+      label: "Reveal Username",
+    });
+  });
+});
+
+describe("UserId permission (RFC-0015 username disclosure gate)", () => {
+  it("defaults to 'ask' and round-trips granted/denied", () => {
+    expect(getPermissionStatus("myapp", "UserId")).toBe("ask");
+    setPermissionStatus("myapp", "UserId", "granted");
+    expect(getPermissionStatus("myapp", "UserId")).toBe("granted");
+    setPermissionStatus("myapp", "UserId", "denied");
+    expect(getPermissionStatus("myapp", "UserId")).toBe("denied");
+  });
+
+  it("is not a device permission and never alters the iframe allow attribute", () => {
+    expect(isDevicePermission("UserId")).toBe(false);
+    setPermissionStatus("myapp", "UserId", "granted");
+    expect(getGrantedDevicePermissions("myapp")).toEqual([]);
+    expect(buildAllowAttribute("myapp")).toBe("clipboard-write");
   });
 });
 

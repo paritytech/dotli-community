@@ -1,29 +1,33 @@
-// dot.li — Error serialization helper
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li error serialization helper.
 //
 // Turn an unknown thrown/rejected value into a non-empty string suitable
 // for transmission over wire formats (protocol envelopes, JSON-RPC errors)
-// and display in logs / Sentry.
+// and display in logs and Sentry.
 //
 // Contract:
-// - Walk the entire `.cause` chain with an ACTIVE-PATH `WeakSet` cycle
-//   guard so deeply nested rewrap (fetch → helia → resolve) is preserved
-//   end-to-end. The guard is pushed on descent and popped on return, so a
-//   repeated reference across separate branches (e.g. an AggregateError
-//   whose `errors[]` share a common cause) is walked normally — only a
-//   true back-edge into the current recursion stack yields the `Cycle`
-//   marker. Previously a single session-wide set collapsed shared nodes
-//   and real cycles into the same synthetic node, losing real context.
+// - Walk the entire `.cause` chain with an active-path `WeakSet` cycle
+//   guard so deeply nested rewrap (fetch into helia into resolve) is
+//   preserved end-to-end. The guard is pushed on descent and popped on
+//   return, so a repeated reference across separate branches (e.g. an
+//   AggregateError whose `errors[]` share a common cause) is walked
+//   normally. Only a true back-edge into the current recursion stack
+//   yields the `Cycle` marker. A single session-wide set would collapse
+//   shared nodes and real cycles into the same synthetic node, losing
+//   real context.
 // - Do not truncate AggregateError branches. Racing across providers is
-//   forbidden in this codebase, so `errors[]` should be rare; when one
+//   forbidden in this codebase, so `errors[]` should be rare. When one
 //   fires we want every branch.
 // - Read `Error.stack` when explicitly requested via `serializeErrorDetail`.
 // - Never collapse to a generic `"Unknown error"` without tagging which
 //   branch produced it (so operators can spot the exact code path).
 //
 // Three public surfaces:
-//   `serializeError(value)`        → terse one-line string for log/UI
-//   `serializeErrorDetail(value)`  → multi-line string with stack frames
-//   `fullErrorChain(value)`        → structured object for Sentry / tests
+//   `serializeError(value)`        terse one-line string for log/UI
+//   `serializeErrorDetail(value)`  multi-line string with stack frames
+//   `fullErrorChain(value)`        structured object for Sentry and tests
 
 const UNKNOWN_PREFIX = "[serializeError:";
 
@@ -39,7 +43,8 @@ export interface ErrorChainNode {
 
 /**
  * Walk an unknown thrown/rejected value into a structured chain. Cycle-safe.
- * Use this when forwarding errors to Sentry / structured logs — the string
+ *
+ * Use this when forwarding errors to Sentry or structured logs. The string
  * helpers below derive their output from this representation.
  */
 export function fullErrorChain(value: unknown): ErrorChainNode {
@@ -47,10 +52,10 @@ export function fullErrorChain(value: unknown): ErrorChainNode {
 }
 
 function walk(value: unknown, onStack: WeakSet<object>): ErrorChainNode {
-  // Push on descent / pop on return so the guard tracks only the active
+  // Push on descent and pop on return so the guard tracks only the active
   // DFS path, not every object ever visited. A repeated reference in a
-  // separate branch is walked normally; a true back-edge (A → B → A)
-  // returns the `Cycle` node.
+  // separate branch is walked normally. A true back-edge (A references B
+  // references A) returns the `Cycle` node.
   const isObject = value !== null && typeof value === "object";
   if (isObject) {
     if (onStack.has(value)) {
@@ -84,7 +89,7 @@ function walk(value: unknown, onStack: WeakSet<object>): ErrorChainNode {
       return node;
     }
 
-    // Non-Error throws — preserve the raw value for downstream consumers
+    // Non-Error throws. Preserve the raw value for downstream consumers
     // (Sentry `extra`, structured logs).
     return {
       name: typeof value,
@@ -147,15 +152,15 @@ function describeNonError(value: unknown): string {
  * fields.
  *
  * Format:
- *   - primitive → its canonical string (`"null"`, `"42"`, `"false"`, ...)
- *   - `""`      → `"Unknown error"` (empty strings would violate the
- *                  non-empty invariant below)
- *   - `Error`   → `message` when present, otherwise `name`
- *     - with `cause`:           `<headline> (cause: <serialize(cause)>)`
+ *   - primitive becomes its canonical string (`"null"`, `"42"`, `"false"`, ...)
+ *   - `""` becomes `"Unknown error"` (empty strings would violate the
+ *     non-empty invariant below)
+ *   - `Error` uses `message` when present, otherwise `name`
+ *     - with `cause`: `<headline> (cause: <serialize(cause)>)`
  *     - with `errors` (Agg...): `<headline> [<e1>; <e2>; <e3>, ...]`,
- *                               capped at 3 with `, ...` when truncated
- *   - plain object with a non-empty `.message` string → the message
- *   - plain object otherwise → `JSON.stringify(value)`, falling back to
+ *       capped at 3 with `, ...` when truncated
+ *   - plain object with a non-empty `.message` string uses the message
+ *   - plain object otherwise uses `JSON.stringify(value)`, falling back to
  *     `"[object Object]"` for `{}`, cyclic structures, or anything JSON
  *     refuses to encode
  *
@@ -225,7 +230,7 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
       return headline;
     }
 
-    // Plain object — prefer a non-empty `.message` string, then JSON,
+    // Plain object: prefer a non-empty `.message` string, then JSON,
     // then the `[object Object]` fallback. Anything JSON refuses to
     // encode (cycles, typed arrays with circular hosts) also lands here.
     const obj = value as { message?: unknown };
@@ -242,9 +247,9 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
       ) {
         return json;
       }
-      // eslint-disable-next-line no-restricted-syntax -- JSON.stringify throws on cycles; that's exactly what we want to fold into the `[object Object]` fallback. No metric — the caller already saw a serialization fallback.
+      // eslint-disable-next-line no-restricted-syntax -- JSON.stringify throws on cycles; that's exactly what we want to fold into the `[object Object]` fallback. No metric, the caller already saw a serialization fallback.
     } catch {
-      /* cycle or unserializable — fall through to the fallback marker */
+      /* cycle or unserializable, fall through to the fallback marker */
     }
     return UNKNOWN_OBJECT;
   } finally {
@@ -254,8 +259,8 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
 
 /**
  * Like `serializeError` but appends each Error frame's stack when
- * present, across the full `.cause` / `errors[]` chain. Use for dev
- * tooling / console logs. Sentry should receive `fullErrorChain`
+ * present, across the full `.cause` and `errors[]` chain. Use for dev
+ * tooling and console logs. Sentry should receive `fullErrorChain`
  * instead so the structured chain is preserved.
  */
 export function serializeErrorDetail(value: unknown): string {

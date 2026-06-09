@@ -53,8 +53,8 @@ server {
     listen 443 ssl http2;
     server_name *.app.paseoli.dev;
 
-    ssl_certificate     /etc/letsencrypt/live/app.paseoli.dev/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/app.paseoli.dev/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/paseoli.dev/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/paseoli.dev/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
     set $csp_ancestors "paseoli.dev *.paseoli.dev *.app.paseoli.dev";

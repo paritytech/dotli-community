@@ -1,4 +1,7 @@
 <!doctype html>
+<!-- Copyright 2026 Parity Technologies (UK) Ltd. -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
@@ -14,13 +17,21 @@
             // before main.ts executes. Overlaps IDB open (~10-50ms) with
             // module loading. Picked up by src/db.ts via window.__dotliDb.
             window.__dotliDb = new Promise(function(resolve, reject) {
-                var req = indexedDB.open("dotli", 1);
+                var req = indexedDB.open("dotli", 2);
                 req.onupgradeneeded = function() {
                     var db = req.result;
                     if (!db.objectStoreNames.contains("cids"))
                         db.createObjectStore("cids", { keyPath: "label" });
                     if (!db.objectStoreNames.contains("chains"))
                         db.createObjectStore("chains", { keyPath: "chain" });
+                    // v2: scheduled notifications + per-product id counters.
+                    if (!db.objectStoreNames.contains("scheduled_notifications")) {
+                        var s = db.createObjectStore("scheduled_notifications", { keyPath: "hostId", autoIncrement: true });
+                        s.createIndex("byProductId", "productId", { unique: false });
+                        s.createIndex("byScheduledAt", "scheduledAt", { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains("notification_counters"))
+                        db.createObjectStore("notification_counters", { keyPath: "productId" });
                 };
                 req.onsuccess = function() { resolve(req.result); };
                 req.onerror = function() { reject(new Error("IDB open failed")); };
@@ -36,19 +47,17 @@
     </head>
     <body>
         <script>
-            // Detect environment and set site variant for topbar color
-            // dot.li = black, paseo.li = green, anything else = yellow
             (function() {
-                var h = location.hostname;
-                var isDot = h === "dot.li" || h.endsWith(".dot.li");
-                var isPaseo = h === "paseo.li" || h.endsWith(".paseo.li");
-                if (isDot) {
-                    document.documentElement.setAttribute("data-site", "dot");
-                } else if (isPaseo) {
-                    document.documentElement.setAttribute("data-site", "paseo");
-                } else {
-                    document.documentElement.setAttribute("data-site", "local");
-                }
+                var theme = "dark";
+                try {
+                    var stored = localStorage.getItem("dotli-theme");
+                    if (stored === "light" || stored === "dark") {
+                        theme = stored;
+                    } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+                        theme = "light";
+                    }
+                } catch (_) { /* localStorage unavailable — fall back to dark default */ }
+                document.documentElement.setAttribute("data-theme", theme);
             })();
         </script>
         <!-- Top Bar -->
@@ -96,6 +105,44 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
                 </button>
+                <button
+                    id="more-button"
+                    class="topbar-btn topbar-more-btn"
+                    title="More"
+                    aria-expanded="false"
+                    aria-controls="more-popover"
+                >
+                    <span class="hamburger" aria-hidden="true">
+                        <span class="hamburger-bar"></span>
+                        <span class="hamburger-bar"></span>
+                        <span class="hamburger-bar"></span>
+                    </span>
+                </button>
+                <div class="more-popover" id="more-popover">
+                    <button class="more-row" data-target="permissions-button">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        <span>Permissions</span>
+                    </button>
+                    <button class="more-row" data-target="theme-toggle">
+                        <svg class="more-row-icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        </svg>
+                        <svg class="more-row-icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                        <span>Theme</span>
+                    </button>
+                    <button class="more-row" data-target="mode-button">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        <span>Settings</span>
+                    </button>
+                </div>
                 <button
                     id="mode-button"
                     class="topbar-btn"
@@ -166,28 +213,6 @@
             <div class="permissions-popover-list" id="permissions-popover-list"></div>
         </div>
 
-        <!-- Domain Info Popover -->
-        <div class="domain-popover" id="domain-popover">
-            <div class="domain-popover-row">
-                <span class="domain-popover-label">Status</span>
-                <span class="domain-popover-value" id="domain-popover-verification">Pending</span>
-            </div>
-            <div class="domain-popover-row">
-                <span class="domain-popover-label">Owner</span>
-                <span
-                    class="domain-popover-value loading"
-                    id="domain-popover-owner"
-                    >Resolving...</span
-                >
-            </div>
-            <div class="domain-popover-row">
-                <span class="domain-popover-label">Honor</span>
-                <span class="domain-popover-value" id="domain-popover-honor"
-                    ><span class="honor-badge unknown">Unknown</span></span
-                >
-            </div>
-        </div>
-
         <!-- App Content -->
         <div id="app">
             <div class="loading">
@@ -208,7 +233,7 @@
                     <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
                 </div>
                 <div class="loading-text" id="loading-text">
-                    <p id="status">Reaching out</p>
+                    <p id="status" aria-live="polite">Reaching out</p>
                     <p class="loading-hint" id="loading-hint"></p>
                 </div>
             </div>

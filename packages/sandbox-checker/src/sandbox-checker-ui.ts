@@ -1,4 +1,7 @@
-// dot.li — Sandbox Checker UI
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li Sandbox Checker UI.
 //
 // Listens for DOTLI_API_VIOLATION messages from the dApp iframe and
 // displays them in a collapsible panel at the bottom of the viewport.
@@ -52,7 +55,7 @@ export function setupViolationPanel(iframe: HTMLIFrameElement): () => void {
     adjustIframe();
   });
 
-  // ── Drag-to-resize ──
+  // Drag-to-resize.
   let dragging = false;
 
   function onPointerDown(e: PointerEvent): void {
@@ -92,7 +95,7 @@ export function setupViolationPanel(iframe: HTMLIFrameElement): () => void {
   window.addEventListener("pointerup", onPointerUp);
 
   const hasTopbar = document.getElementById("topbar") !== null;
-  const topbarOffset = hasTopbar ? 40 : 0;
+  const topbarOffset = hasTopbar ? 56 : 0;
 
   function adjustIframe(): void {
     const panelHeight = collapsed ? 32 : panel.offsetHeight;
@@ -149,7 +152,7 @@ export function setupViolationPanel(iframe: HTMLIFrameElement): () => void {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     panel.remove();
-    iframe.style.height = hasTopbar ? "calc(100vh - 40px)" : "100vh";
+    iframe.style.height = hasTopbar ? "calc(100vh - 56px)" : "100vh";
   };
 }
 

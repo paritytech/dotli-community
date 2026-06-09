@@ -1,5 +1,8 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // Post-build script: generate .br and .gz pre-compressed files for dist/assets.
-// Uses Node's built-in zlib — no extra dependencies needed.
+// Uses Node's built-in zlib, so no extra dependencies are needed.
 // Run with: bun scripts/compress-dist.ts
 
 import { readdir, readFile, stat } from "node:fs/promises";

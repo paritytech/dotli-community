@@ -4,12 +4,12 @@
 // `container.handlePreimageLookupSubscribe` behaviour.
 
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
-import { concatBytes } from "@noble/hashes/utils.js";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
-import { getContentBackend } from "@dotli/config/mode";
+import { getBackend } from "@dotli/config/mode";
 import { submitPreimageRemote } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
+import { bitswapGet } from "../bulletin-bitswap";
 import { showPreimageSubmitModal } from "../preimage-modal";
 import { fromHexPrefixed, toHexPrefixed } from "./hex";
 import { createResultStream } from "./result-stream";
@@ -78,31 +78,15 @@ function createPreimageLookupSubscribe(
 
         const cid = hashToCid(key);
         const cidString = cid.toString();
-        const contentBackend = getContentBackend();
+        const backend = getBackend();
         try {
-          if (contentBackend === "p2p-helia") {
-            const { ensureHelia } = await import("@dotli/content/fetch");
-            const helia = await ensureHelia();
-            const chunks: Uint8Array[] = [];
-            const blockData = helia.blockstore.get(cid);
-            if (blockData instanceof Uint8Array) {
-              chunks.push(blockData);
-            } else if (
-              typeof blockData === "object" &&
-              Symbol.asyncIterator in Object(blockData)
-            ) {
-              for await (const chunk of blockData as AsyncIterable<Uint8Array>) {
-                chunks.push(chunk);
-              }
-            }
-            if (chunks.length > 0) {
-              const data = concatBytes(...chunks);
-              if (data.length > 0) {
-                preimageCache.set(key, data);
-                push(data);
-                stopPolling();
-                return;
-              }
+          if (backend !== "rpc-gateway") {
+            const data = await bitswapGet(cidString);
+            if (data.length > 0) {
+              preimageCache.set(key, data);
+              push(data);
+              stopPolling();
+              return;
             }
           } else {
             const result = await fetchFromIpfs(cidString);
@@ -115,7 +99,7 @@ function createPreimageLookupSubscribe(
           }
         } catch (err) {
           log.warn(
-            `[${label}] preimage lookup via ${contentBackend} failed:`,
+            `[${label}] preimage lookup via ${backend} failed:`,
             err,
           );
         }

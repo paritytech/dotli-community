@@ -1,3 +1,6 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
 /* dot.li — Transaction signing modals */
 
 .signing-modal-backdrop {
@@ -77,17 +80,18 @@
 }
 .signing-btn-sign {
   padding: 8px 20px;
-  background: #e6007a;
+  background: #fafafa;
   border: none;
   border-radius: 8px;
-  color: #fff;
+  color: #0a0a0a;
   font-size: 0.85rem;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background 0.15s ease;
 }
 .signing-btn-sign:hover {
-  opacity: 0.85;
+  background: #fff;
 }
 .signing-btn-sign:disabled {
   opacity: 0.5;

@@ -1,7 +1,8 @@
 {
   "name": "@dotli/ui",
   "private": true,
-  "version": "0.3.3",
+  "license": "AGPL-3.0-only",
+  "version": "0.5.0",
   "type": "module",
   "exports": {
     "./*": "./src/*"
@@ -15,11 +16,11 @@
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
     "@types/qrcode": "^1.5.6",
-    "eslint": "^10.2.1",
-    "happy-dom": "^20.9.0",
+    "eslint": "^10.4.1",
+    "happy-dom": "^20.10.1",
     "typescript": "~6.0.3",
-    "vite": "^8.0.10",
-    "vitest": "^4.1.5"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@dotli/config": "workspace:*",
@@ -28,11 +29,14 @@
     "@dotli/protocol": "workspace:*",
     "@dotli/sandbox-checker": "workspace:*",
     "@dotli/shared": "workspace:*",
+    "@dotli/storage": "workspace:*",
+    "@dotli/truapi-debug": "workspace:*",
     "@noble/hashes": "^2.2.0",
     "@parity/truapi": "file:../../../../js/packages/truapi",
     "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm",
+    "@polkadot-api/json-rpc-provider": "^0.2.0",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^2.1.0",
+    "polkadot-api": "^2.1.6",
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {

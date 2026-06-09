@@ -2,63 +2,70 @@ name: Tests
 on:
   pull_request:
     paths-ignore:
-      - '**.md'
+      - "**.md"
   push:
     branches:
       - main
 
 permissions:
   contents: read
+  pull-requests: write
+
+concurrency:
+  group: tests-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit:
-    name: Unit Tests
-    runs-on: parity-default
+    name: Unit
+    runs-on: ubuntu-latest
     if: ${{ github.event.sender.type != 'Bot' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "1.3.6"
+          bun-version: "1.3.13"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Run tests
-        run: bun run test
+        run: bunx --bun turbo run test
 
-  e2e:
-    name: E2E Tests
-    runs-on: parity-default
+  functional:
+    name: Functional
+    runs-on: ubuntu-latest
     needs: unit
     if: ${{ github.event.sender.type != 'Bot' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
+        with:
+          bun-version: "1.3.13"
 
       - name: Build
-        run: bun run build
+        run: bunx --bun turbo run build
 
-      - name: Run E2E tests
+      - name: Run functional tests
         working-directory: apps/host
-        run: bun run test:e2e || true
+        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts || true
 
-      - name: Apply E2E threshold
+      - name: Apply functional threshold
         working-directory: apps/host
         run: |
-          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/results.json)
+          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
           if [ "$TOTAL" -lt 9 ]; then
             echo "::error::expected at least 9 tests, got $TOTAL."
             exit 1
           fi
-          LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/results.json)
-          RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/results.json)
+          LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
           if [ "$LOADING_FAILED" -gt 0 ]; then
@@ -69,3 +76,137 @@ jobs:
             echo "::error::resolution.spec.ts: $RESOLUTION_FAILED failures (max 2 tolerated)"
             exit 1
           fi
+
+  # E2E run of host-playground product tests against the local preview server,
+  # with pairing handled by mission-control's signer bot (no Android emulator,
+  # no Maestro).
+  e2e-product:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: unit
+    # Headroom over Playwright's globalTimeout (30 min) so a stuck run is
+    # cut off by Playwright with diagnostics, not by GHA mid-stream.
+    timeout-minutes: 35
+    if: ${{ github.event.sender.type != 'Bot' }}
+    env:
+      SIGNER_BOT_BASE_URL: https://signing-bot-dev.novasama-tech.org/
+      # Must match the host's `defaultNetwork()` in
+      # `packages/config/src/network.ts`. Setting explicitly so a host
+      # network bump can't silently leave the bot on the wrong chain.
+      SIGNER_BOT_NETWORK: paseo-next-v2
+      SIGNER_BOT_SVC_TOKEN: ${{ secrets.SIGNER_BOT_SVC_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
+        with:
+          bun-version: "1.3.13"
+
+      - name: Build
+        run: bunx --bun turbo run build
+
+      # Exit code 99 from playwright = Nova bot unavailable (signal raised
+      # by apps/host/tests/e2e/global-setup.ts). Treat as soft-pass with a clear
+      # annotation: this is a Nova-side outage, not a dot.li test failure,
+      # and shouldn't block a PR.
+      - name: Run E2E
+        id: e2e
+        working-directory: apps/host
+        run: |
+          set +e
+          bunx --bun playwright test --config=tests/e2e/playwright.config.ts
+          code=$?
+          if [ "$code" -eq 99 ]; then
+            echo "::warning::Signer bot unavailable — E2E Product suite skipped (Nova-side outage, not a dot.li failure)."
+            echo "bot_unavailable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit $code
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-product-results
+          path: apps/host/tests/e2e/test-results/
+
+      # Build a punch list of failed tests + a one-line count summary from
+      # the json reporter output. We do this on failure() so the sticky
+      # comment below can include the actual test names instead of just
+      # "suite failed". jq escapes for safe interpolation into env vars
+      # consumed by the next step.
+      - name: Extract failed tests
+        if: failure() && github.event_name == 'pull_request'
+        id: failed
+        working-directory: apps/host
+        run: |
+          R=tests/e2e/test-results/results.json
+          if [ ! -f "$R" ]; then
+            echo "list=- (no results.json — suite likely crashed before any tests ran)" >> "$GITHUB_OUTPUT"
+            echo "summary=suite did not produce results" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # `.ok == true` is true for both passed AND skipped specs in
+          # Playwright's JSON; subtract the skipped count to get actual passes.
+          OK=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.ok == true)] | length' "$R")
+          FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.ok == false)] | length' "$R")
+          SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.tests[]?.results[]?.status == "skipped")] | length' "$R")
+          PASSED=$((OK - SKIPPED))
+          NAMES=$(jq -r '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.ok == false) | .title] | map("- " + .) | .[]' "$R")
+          {
+            echo "list<<EOF"
+            echo "$NAMES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "summary=$PASSED passed, $FAILED failed, $SKIPPED skipped" >> "$GITHUB_OUTPUT"
+
+      # Comment on the PR only when the suite fails. A green run leaves no
+      # noise; a red one drops a sticky note listing which tests failed so
+      # the reviewer doesn't have to scroll the job log. If a prior red run
+      # left a sticky note and this run is green, delete the stale note.
+      - name: Post failure note on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: e2e-product
+          message: |
+            ❌ **E2E Product suite failed** on `${{ github.event.pull_request.head.sha }}` — ${{ steps.failed.outputs.summary }}.
+
+            Failed tests:
+            ${{ steps.failed.outputs.list }}
+
+            Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Artifacts: `e2e-product-results` (uploaded above) — open the failed test's `trace.zip` with `npx playwright show-trace`.
+
+      - name: Clear stale failure note on PR (suite is green)
+        if: success() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: e2e-product
+          delete: true
+
+      # Bot-unavailable surfaces as a distinct sticky comment so the
+      # reviewer can tell at a glance that the suite didn't actually run.
+      # Separate header from the failure note so the two can coexist
+      # without overwriting each other across runs.
+      - name: Post bot-unavailable note on PR
+        if: steps.e2e.outputs.bot_unavailable == 'true' && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: e2e-product-bot-unavailable
+          message: |
+            ⚠️ **E2E Product suite skipped** — Nova signing bot is unavailable.
+
+            This is a Nova-side outage and **not a dot.li test failure**. Re-run
+            from the Actions tab once the bot recovers.
+
+            Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Clear stale bot-unavailable note on PR
+        if: success() && steps.e2e.outputs.bot_unavailable != 'true' && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: e2e-product-bot-unavailable
+          delete: true

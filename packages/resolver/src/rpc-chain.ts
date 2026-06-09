@@ -1,4 +1,7 @@
-// dot.li — WSS JSON-RPC chain provider (gateway mode)
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// dot.li WSS JSON-RPC chain provider (gateway mode).
 //
 // Produces a `JsonRpcProvider` backed by a public Polkadot RPC node instead
 // of smoldot. Used by the protocol host iframe when running in `rpc` submode
@@ -18,26 +21,24 @@
 // coverage.
 import { getWsProvider } from "polkadot-api/ws";
 import type { JsonRpcProvider } from "polkadot-api";
-import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config/config";
-import { getActiveAssetHubRpcEndpoints } from "@dotli/config/endpoints";
-
-const SUPPORTED_GENESIS = new Set<string>([
-  ASSET_HUB_PASEO_GENESIS.toLowerCase(),
-]);
+import { getActiveServicesConfig } from "@dotli/config/network";
 
 export function isRpcChainSupported(genesisHash: string): boolean {
-  return SUPPORTED_GENESIS.has(genesisHash.toLowerCase());
+  return (
+    genesisHash.toLowerCase() ===
+    getActiveServicesConfig().assethub.genesis.toLowerCase()
+  );
 }
 
 export function createRpcChainProvider(
   genesisHash: string,
 ): JsonRpcProvider | null {
-  const key = genesisHash.toLowerCase();
-  if (key === ASSET_HUB_PASEO_GENESIS.toLowerCase()) {
-    // Single active endpoint — no silent round-robin.
-    // Public RPC endpoints are occasionally tunnel-gated; the default 40s
+  const assethub = getActiveServicesConfig().assethub;
+  if (genesisHash.toLowerCase() === assethub.genesis.toLowerCase()) {
+    // Single active endpoint, no silent round-robin.
+    // Public RPC endpoints are occasionally tunnel-gated, so the default 40s
     // heartbeat is too tight. Match the timeout used in `./rpc-resolve.ts`.
-    return getWsProvider(getActiveAssetHubRpcEndpoints(), {
+    return getWsProvider([...assethub.rpcs], {
       heartbeatTimeout: 120_000,
     });
   }

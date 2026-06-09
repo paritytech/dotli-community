@@ -1,3 +1,6 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type {
   JsonRpcConnection,
   JsonRpcProvider,
@@ -8,8 +11,8 @@ import type {
  * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
  *
  * The postMessage relay ships `message` as a string, while the upstream
- * `JsonRpcConnection.send` now takes `JsonRpcRequest` objects — we keep the
- * string variant local so `connectRemote`'s signature matches the wire.
+ * `JsonRpcConnection.send` takes `JsonRpcRequest` objects. The local string
+ * variant keeps `connectRemote`'s signature matched to the wire.
  */
 export interface StringJsonRpcConnection {
   send: (message: string) => void;
@@ -77,14 +80,13 @@ interface CachedBlock {
 type WireMode = "string" | "object";
 
 // Wire mode is fixed at broker construction time. Auto-detecting from
-// message shape (the previous behavior) let a malformed first payload
-// silently flip the broker into the wrong encoding for every
-// subsequent message — a single corrupted request could desync every
-// downstream session. We pin the default to "string" because that's
-// what every first-party consumer in this repo emits today (sm-provider
-// `sendJsonRpc` is always a JSON string). If a future consumer needs
-// the object wire, expose a constructor flag rather than sniffing — an
-// explicit toggle preserves the "no silent fallbacks" contract.
+// message shape lets a malformed first payload silently flip the broker
+// into the wrong encoding for every subsequent message, so a single
+// corrupted request could desync every downstream session. The default is
+// "string" because every first-party consumer in this repo emits a JSON
+// string (sm-provider `sendJsonRpc`). A future consumer needing the object
+// wire should get a constructor flag rather than sniffing, keeping the
+// "no silent fallbacks" contract.
 const DEFAULT_WIRE_MODE: WireMode = "string";
 
 interface Session {
@@ -92,7 +94,7 @@ interface Session {
   onMessage: (message: unknown) => void;
   ownedTokens: Set<string>;
   connected: boolean;
-  /** Fixed at session creation — never inferred from message shape later. */
+  /** Fixed at session creation, never inferred from message shape later. */
   wireMode: WireMode;
 }
 
@@ -104,6 +106,7 @@ interface BrokerConnection {
 
 const TOKEN_METHODS = new Map<string, string>([
   ["transaction_v1_broadcast", "transaction_v1_stop"],
+  ["statement_subscribeStatement", "statement_unsubscribeStatement"],
 ]);
 
 function isJsonRpcObject(
@@ -145,11 +148,10 @@ function isSubscriptionMessage(value: unknown): value is SubscriptionMessage {
 
 /**
  * Parse an inbound message into a JS object without guessing wire mode.
- * The sender must match the broker's configured wire mode; a shape
- * mismatch is an error rather than a cue to flip the whole broker's
- * encoding. Strings are still parsed for the object wire since some
- * substrate clients serialize payloads inconsistently, but the result
- * is always returned as an object.
+ * The sender must match the broker's configured wire mode. Message shape
+ * never flips the whole broker's encoding. Strings are parsed for the
+ * object wire too, since some substrate clients serialize payloads
+ * inconsistently, but the result is always returned as an object.
  */
 function parseInbound(message: unknown): unknown {
   if (typeof message === "string") {
@@ -184,7 +186,6 @@ export interface ChainBrokerManager {
   disconnectAll(): void;
 }
 
-// ── Debug logging ───────────────────────────────────────────
 const BROKER_TAG = "[dot.li broker]";
 function brokerLog(...args: unknown[]): void {
   console.warn(BROKER_TAG, ...args);
@@ -257,6 +258,7 @@ class ChainBroker {
       this.disconnectSession(sessionId);
     }
     this.disconnectUpstream();
+    this.onEmpty();
   }
 
   private ensureUpstream(): void {
@@ -284,9 +286,9 @@ class ChainBroker {
     }
 
     // Parse the inbound payload against the broker's configured wire
-    // mode. We do NOT mutate `session.wireMode` based on the message
-    // shape — that would let a malformed first payload permanently
-    // flip the encoding for every subsequent message on the session.
+    // mode. Do NOT mutate `session.wireMode` based on the message shape.
+    // That would let a malformed first payload permanently flip the
+    // encoding for every subsequent message on the session.
     let parsed: unknown;
     try {
       parsed = parseInbound(message);
@@ -416,13 +418,13 @@ class ChainBroker {
   }
 
   private handleUpstreamMessage(message: unknown): void {
-    // `parseInbound` tolerates both objects (the provider's wire since
-    // 0.2.x) and strings (some test harnesses still feed serialized JSON).
+    // `parseInbound` tolerates both objects (the provider's wire) and
+    // strings (some test harnesses feed serialized JSON).
     let parsed: unknown;
     try {
       parsed = parseInbound(message);
     } catch (err: unknown) {
-      // An unparseable upstream message must NOT vanish silently — that
+      // An unparseable upstream message must NOT vanish silently. That
       // would leave any pending request waiting for a reply that never
       // arrives. Best-effort recover the JSON-RPC `id` from the raw text
       // so we can reject the matching pending request.
@@ -510,7 +512,7 @@ class ChainBroker {
     }
     this.pending.delete(String(response.id));
 
-    // Log response details — truncate large results
+    // Log response details, truncating large results.
     const hasError = "error" in response;
     const resultPreview = hasError
       ? `error=${JSON.stringify(response.error)}`
@@ -522,7 +524,7 @@ class ChainBroker {
     );
 
     // chainHead_v1_follow responses use the follow key (not a session ID)
-    // as pending.sessionId — handle before the session connectivity check.
+    // as pending.sessionId, so handle before the session connectivity check.
     if (
       pending.method === "chainHead_v1_follow" &&
       typeof response.result === "string"
@@ -695,11 +697,6 @@ class ChainBroker {
       if (followToken.sessionId === sessionId) {
         this.releaseLocalFollowToken(localToken);
       }
-    }
-
-    if (this.sessions.size === 0) {
-      this.disconnectUpstream();
-      this.onEmpty();
     }
   }
 

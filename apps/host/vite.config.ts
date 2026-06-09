@@ -1,19 +1,19 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import {
-  readFileSync,
-  readdirSync,
-  copyFileSync,
-  cpSync,
-  mkdirSync,
-} from "node:fs";
+import { cpSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
+import { VitePWA } from "vite-plugin-pwa";
+import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
-// git HEAD so Diagnostics shows a real commit identifier in dev too — "dev"
-// is only used when we're not in a git checkout at all (e.g. a tarball).
+// git HEAD so Diagnostics shows a real commit identifier in dev too. The
+// literal "dev" is only used when we're not in a git checkout at all (e.g. a
+// tarball).
 if (!process.env.VITE_COMMIT_SHA) {
   try {
     process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
@@ -23,7 +23,7 @@ if (!process.env.VITE_COMMIT_SHA) {
       .toString()
       .trim();
   } catch {
-    // Not a git checkout — leave unset; topbar.ts treats that as "dev".
+    // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
   }
 }
 
@@ -31,10 +31,10 @@ const OUT_DIR = "dist";
 
 /**
  * Walk every workspace member's `package.json` and collect its direct
- * `dependencies` entries (devDependencies + peerDependencies are ignored —
- * only what dot.li code actually imports should appear in Diagnostics).
- * Returns a map keyed by package name whose value is the set of workspace
- * directories that depend on it.
+ * `dependencies` entries. devDependencies and peerDependencies are ignored, so
+ * only what dot.li code actually imports appears in Diagnostics. Returns a map
+ * keyed by package name whose value is the set of workspace directories that
+ * depend on it.
  */
 function collectWorkspaceDependencies(): Map<string, Set<string>> {
   const deps = new Map<string, Set<string>>();
@@ -75,8 +75,8 @@ function collectWorkspaceDependencies(): Map<string, Set<string>> {
 /**
  * For every direct dependency whose name starts with `scope`, resolve the
  * actually-installed version via the depending workspace's own
- * `node_modules/<name>/package.json`. Ignores transitive dependencies (that's
- * what made the previous `.bun`-scan version lists explode to 80+ rows).
+ * `node_modules/<name>/package.json`. Ignores transitive dependencies, which
+ * would otherwise balloon the version list to 80+ rows.
  */
 function collectDirectScopedDeps(
   scope: string,
@@ -100,7 +100,7 @@ function collectDirectScopedDeps(
           break;
         }
       } catch {
-        // Not hoisted into this workspace's node_modules — try next one.
+        // Not hoisted into this workspace's node_modules, so try the next one.
       }
     }
   }
@@ -133,14 +133,13 @@ function readHostVersion(): string {
 /**
  * Look up the paritytech/smoldot commit SHA for the npm-published `smoldot`
  * version we bundle. Smoldot's git repo tags its JS releases with the
- * `light-js-deno-v<version>` prefix (verified via GitHub's refs API), and
- * the JS binding's published version tracks that tag directly — so the
- * commit behind `light-js-deno-v3.0.0` is the commit that produced
- * `smoldot@3.0.0` on npm.
+ * `light-js-deno-v<version>` prefix, and the JS binding's published version
+ * tracks that tag directly, so the commit behind `light-js-deno-v3.0.0` is the
+ * commit that produced `smoldot@3.0.0` on npm.
  *
- * Neither `bun.lock` nor smoldot's package.json carries a commit; the
+ * Neither `bun.lock` nor smoldot's package.json carries a commit. The
  * lockfile only stores the tarball integrity hash, so the GitHub API is
- * the only build-time source of truth. Failures are silent — if the build
+ * the only build-time source of truth. Failures are silent: if the build
  * host can't reach github.com (offline dev, locked-down CI), the
  * Diagnostics row degrades to just `<version>` instead of `<version>
  * (sha)` rather than failing the build.
@@ -206,8 +205,8 @@ function preconnectBootnodes(): Plugin {
         "../../packages/resolver/src/chain-specs",
       );
       const hosts = [
-        ...extractBootnodeHosts(resolve(specDir, "paseo.json")),
-        ...extractBootnodeHosts(resolve(specDir, "asset-hub-paseo.json")),
+        ...extractBootnodeHosts(resolve(specDir, "paseo.smol.json")),
+        ...extractBootnodeHosts(resolve(specDir, "paseo-asset-hub.smol.json")),
       ];
       const unique = [...new Set(hosts)];
       const links = unique
@@ -268,9 +267,9 @@ function preloadCriticalAssets(): Plugin {
           .join("");
         const script = [
           "(function(){",
-          "var h=location.hostname,p=location.pathname,l;",
+          "var h=location.hostname,l;",
           'if(h==="dot.li"||h==="localhost")return;',
-          'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost")&&!/\\/[^/]+\\.dot(?:\\/|$)/.test(p))return;',
+          'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
           fetchPreloads,
           preloadStatements,
           "})()",
@@ -289,18 +288,23 @@ function preloadCriticalAssets(): Plugin {
 }
 
 /**
- * GitHub Pages SPA fallback: copy index.html -> 404.html.
+ * Mirror nginx scoping: COEP/COOP/CORP only apply to /__preview, not the
+ * whole host build. Applying them server-wide breaks the legacy
+ * /localhost:<port> proxy iframe in browsers that enforce COEP, because
+ * arbitrary localhost dev servers don't ship CORP/COEP.
  */
-function githubPages404(): Plugin {
+function previewCoepHeaders(): Plugin {
   return {
-    name: "github-pages-404",
-    apply: "build",
-    writeBundle() {
-      const dist = resolve(import.meta.dirname, OUT_DIR);
-      copyFileSync(resolve(dist, "index.html"), resolve(dist, "404.html"));
-      console.log(
-        "Copied index.html -> 404.html (GitHub Pages SPA fallback)\n",
-      );
+    name: "preview-coep-headers",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.startsWith("/__preview")) {
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+          res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        }
+        next();
+      });
     },
   };
 }
@@ -330,10 +334,12 @@ function copyTruapiWasmWebBundle(): Plugin {
 }
 
 /**
- * Sentry plugin — only active when SENTRY_AUTH_TOKEN is set (CI deploys).
- * Skipped locally so source maps are preserved for debugging.
+ * Sentry sourcemap upload. Skipped on prod (runtime SDK is aliased to a
+ * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
+ * (preserves source maps for debugging).
  */
 function sentry(): Plugin | false {
+  if (process.env.VITE_APP_ENV === "production") return false;
   if (!process.env.SENTRY_AUTH_TOKEN) return false;
   return sentryVitePlugin({
     org: "paritytech",
@@ -357,12 +363,56 @@ export default defineConfig({
     wasm(),
     preconnectBootnodes(),
     preloadCriticalAssets(),
+    previewCoepHeaders(),
     copyTruapiWasmWebBundle(),
-    githubPages404(),
     sentry(),
+    // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
+    // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
+    // cross-origin and outside this SW's reach by design. Smoldot.wasm lives
+    // in the protocol build; browser HTTP cache (immutable, hashed filename)
+    // already prevents redownload on revisit, so the precache list excludes
+    // wasm entirely. `registerType: "prompt"` defers update activation to
+    // the user via workbox-window in src/pwa.ts.
+    VitePWA({
+      injectRegister: false,
+      registerType: "prompt",
+      filename: "host-sw.js",
+      manifest: {
+        name: "Polkadot Web",
+        short_name: "Polkadot Web",
+        description: "Decentralized web browser for Polkadot",
+        theme_color: "#000000",
+        background_color: "#000000",
+        display: "standalone",
+        start_url: "/",
+        icons: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+          {
+            src: "/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        cleanupOutdatedCaches: true,
+        // skipWaiting/clientsClaim stay false: prompt-style updates require
+        // the waiting SW to sit idle until the user opts in.
+        skipWaiting: false,
+        clientsClaim: false,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
+        // reach the browser.
+        navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/],
+      },
+    }),
   ],
   resolve: {
     alias: {
+      ...prodNoAnalyticsAliases(process.env.VITE_APP_ENV === "production"),
       "@dotli/config": resolve(PACKAGES, "config/src"),
       "@dotli/metrics": resolve(PACKAGES, "metrics/src"),
       "@dotli/shared": resolve(PACKAGES, "shared/src"),
@@ -376,7 +426,7 @@ export default defineConfig({
   },
   define: {
     __BUILD_TARGET__: JSON.stringify("host"),
-    // Baked once at build time — read lazily at declaration site so a
+    // Baked once at build time, read lazily at the declaration site so a
     // missing package (shouldn't happen given the monorepo overrides)
     // falls back to empty/"unknown" rather than failing the build.
     __DOTLI_VERSION__: JSON.stringify(readHostVersion()),
@@ -386,26 +436,32 @@ export default defineConfig({
     __POLKADOT_API_VERSIONS__: JSON.stringify(
       collectDirectScopedDeps("@polkadot-api/"),
     ),
+    __PARITY_TRUAPI_VERSIONS__: JSON.stringify(
+      collectDirectScopedDeps("@parity/truapi"),
+    ),
   },
   optimizeDeps: {
-    exclude: ["@polkadot-api/wasm-executor", "verifiablejs"],
+    exclude: ["@polkadot-api/wasm-executor"],
   },
   build: {
     target: "esnext",
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("@novasamatech/scale")) {
+            return "nova-scale";
+          }
+        },
+      },
+    },
   },
   server: {
-    fs: {
-      allow: [resolve(import.meta.dirname, "../.."), TRUAPI_REPO_ROOT],
-    },
     headers: {
       "Service-Worker-Allowed": "/",
       "Access-Control-Allow-Origin": "*",
-      "Cross-Origin-Resource-Policy": "cross-origin",
-      "Cross-Origin-Embedder-Policy": "credentialless",
-      "Cross-Origin-Opener-Policy": "same-origin",
     },
   },
 });

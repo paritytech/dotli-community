@@ -1,3 +1,6 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
 /* dot.li — Base styles: reset, layout, shared components */
 
 /* ── Reset ──────────────────────────────── */
@@ -33,8 +36,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100dvh - 40px);
-  margin-top: 40px;
+  min-height: calc(100dvh - 56px);
+  margin-top: 56px;
   text-align: center;
 }
 /* Scoped to `#app > .loading` because the bare `.loading` class is *also*
@@ -49,7 +52,7 @@ body {
   padding: 0 24px;
   position: relative;
   z-index: 10;
-  min-height: calc(100vh - 40px);
+  min-height: calc(100vh - 56px);
 }
 
 /* Loading logo spinner — rAF-driven via JS, CSS just sets transform-origin */
@@ -136,67 +139,65 @@ body {
 .loading-hint-text {
   display: block;
 }
-.loading-gateway-btn {
-  display: block;
-  margin: 20px auto 0;
-  padding: 6px 16px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: transparent;
-  color: #eab308;
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition:
-    border-color 0.2s,
-    background 0.2s;
-}
-.loading-gateway-btn:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.05);
-}
 
-/* Gateway button */
-.loading-gateway {
+.loading-gateway-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 18px;
-  border-radius: 9px;
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.4s ease;
+  gap: 10px;
+  margin: 20px auto 0;
+  padding: 10px 16px 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.92);
   font-family: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.15s ease;
 }
-.loading-gateway:hover {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+.loading-gateway-btn:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
 }
-.loading-gateway span {
+.loading-gateway-btn:active {
+  transform: translateY(1px);
+}
+.loading-gateway-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fafafa;
+  flex-shrink: 0;
+}
+.loading-gateway-btn-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.loading-gateway-btn-label {
   font-size: 12.5px;
-  font-weight: 400;
-  color: #fff;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  opacity: 0.2;
-  transition: opacity 0.4s ease;
 }
-.loading-gateway:hover span {
-  opacity: 0.5;
-}
-.loading-gateway svg {
-  color: #fff;
-  opacity: 0.12;
-  transition: all 0.35s ease;
-}
-.loading-gateway:hover svg {
-  opacity: 0.4;
-  transform: translateX(2px);
+.loading-gateway-btn-sub {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: -0.005em;
 }
 
 .accent {
-  color: #e6007a;
+  color: #fafafa;
+  font-weight: 600;
 }
 
 /* ── Attesting (login spinner) ──────────── */
@@ -214,7 +215,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100dvh - 40px);
+  min-height: calc(100dvh - 56px);
   font-family: system-ui, sans-serif;
 }
 .error-page-inner {
@@ -238,9 +239,11 @@ body {
   padding: 0;
   font-size: 0.9rem;
   font-family: system-ui, sans-serif;
-  color: #e6007a;
+  color: #fafafa;
   background: none;
   border: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
   transition: opacity 0.15s;
 }
@@ -250,15 +253,41 @@ body {
 .error-page-retry:active {
   opacity: 0.55;
 }
-.error-page-tags {
-  margin-top: 1.5rem;
-  display: inline-flex;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  color: #555;
+
+/* Chrome-style "site can't be reached" variant.
+   Wider canvas, leading glyph, domain rendered inline so the user
+   can scan for a typo without parsing prose. */
+.error-page-inner--unreached {
+  max-width: 560px;
 }
-.error-page-tag {
-  padding: 0.25rem 0.6rem;
-  border: 1px solid #222;
-  border-radius: 4px;
+.error-page-glyph {
+  color: rgba(255, 255, 255, 0.22);
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: center;
+}
+.error-page-inner--unreached .error-page-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.875rem;
+}
+.error-page-inner--unreached .error-page-detail {
+  color: #b0b0b0;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+.error-page-domain {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95em;
+  color: #fafafa;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.1em 0.45em;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.error-page-domain-tld {
+  color: rgba(250, 250, 250, 0.55);
 }
