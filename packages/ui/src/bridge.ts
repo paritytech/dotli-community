@@ -733,7 +733,7 @@ export async function renderIframe(
   const host = await createHost({
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
-    // TODO: Review sandbox default permissions
+    // Keep parity with the current dotli product sandbox permissions.
     sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
     label,
     productId: options.productId,

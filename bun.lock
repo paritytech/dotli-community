@@ -298,6 +298,7 @@
         "@parity/truapi": "file:../../../../js/packages/truapi",
         "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
+        "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
         "polkadot-api": "^2.1.6",
         "qrcode": "^1.5.4",
@@ -1730,7 +1731,7 @@
 
     "@commander-js/extra-typings/commander": ["commander@15.0.0", "", {}, "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg=="],
 
-    "@dotli/ui/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", { "dependencies": { "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^5.7" } }],
+    "@dotli/ui/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^6.0" } }],
 
     "@dotli/ui/@parity/truapi-host-wasm": ["@parity/truapi-host-wasm@file:../../js/packages/truapi-host-wasm", { "dependencies": { "@parity/truapi": "file:../truapi", "@parity/truapi-host": "file:../truapi-host" }, "devDependencies": { "typescript": "^5.7" } }],
 
@@ -1796,9 +1797,7 @@
 
     "@apideck/better-ajv-errors/ajv/json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 
-    "@dotli/ui/@parity/truapi/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", { "dependencies": { "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^5.7" } }],
+    "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", {}],
 
     "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi-host": ["@parity/truapi-host@file:../../js/packages/truapi-host", {}],
 

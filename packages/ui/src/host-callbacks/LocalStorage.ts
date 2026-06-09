@@ -1,16 +1,5 @@
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
-
-const BINARY_STRING_CHUNK_SIZE = 0x8000;
-
-function bytesToBase64(value: Uint8Array): string {
-  let binary = "";
-  for (let offset = 0; offset < value.length; offset += BINARY_STRING_CHUNK_SIZE) {
-    binary += String.fromCharCode(
-      ...value.subarray(offset, offset + BINARY_STRING_CHUNK_SIZE),
-    );
-  }
-  return btoa(binary);
-}
+import { base64 } from "@scure/base";
 
 export function createLocalStorageRead(
   storagePrefix: string,
@@ -21,9 +10,7 @@ export function createLocalStorageRead(
       if (raw === null) {
         return Promise.resolve(undefined);
       }
-      return Promise.resolve(
-        Uint8Array.from(atob(raw), (c) => c.charCodeAt(0)),
-      );
+      return Promise.resolve(base64.decode(raw));
     } catch (cause) {
       return Promise.reject(
         new Error("Failed to read from storage", { cause }),
@@ -37,7 +24,7 @@ export function createLocalStorageWrite(
 ): HostCallbacks["write"] {
   return (key, value) => {
     try {
-      localStorage.setItem(storagePrefix + key, bytesToBase64(value));
+      localStorage.setItem(storagePrefix + key, base64.encode(value));
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error("Failed to write to storage", { cause }));
