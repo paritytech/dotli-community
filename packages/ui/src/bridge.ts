@@ -27,10 +27,7 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
-import {
-  getBackend,
-  getCacheSettings,
-} from "@dotli/config/mode";
+import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
@@ -156,18 +153,48 @@ function applyIframeStyling(
  * doesn't reach the worker. The user must reload after toggling. */
 function isDebugEnabled(): boolean {
   try {
-    return window.localStorage.getItem("truapi:debug") === "1";
+    return (
+      window.sessionStorage.getItem("dotli:truapi-debug") === "1" ||
+      window.localStorage.getItem("truapi:debug") === "1"
+    );
   } catch {
     return false;
   }
 }
 
-function pipeProviders(product: Provider, core: Provider): () => void {
+function pipeProviders(
+  product: Provider,
+  core: Provider,
+  args: { flowId: string; label: string; productId: string },
+): () => void {
+  let sawInbound = false;
+  let sawOutbound = false;
   const unsubs = [
     product.subscribe((message) => {
+      if (!sawInbound) {
+        sawInbound = true;
+        emitDotliDebugEvent({
+          layer: "bridge",
+          event: "first_inbound",
+          flowId: args.flowId,
+          timestamp: Date.now(),
+          payload: { label: args.label, productId: args.productId },
+        });
+      }
       core.postMessage(message);
     }),
     core.subscribe((message) => {
+      if (!sawOutbound) {
+        sawOutbound = true;
+        emitDotliDebugEvent({
+          layer: "bridge",
+          event: "first_outbound",
+          flowId: args.flowId,
+          timestamp: Date.now(),
+          payload: { label: args.label, productId: args.productId },
+        });
+        window.dispatchEvent(new Event("dotli:debug:bridge-ready"));
+      }
       product.postMessage(message);
     }),
     product.subscribeClose?.(() => {
@@ -262,6 +289,7 @@ async function createHost(args: {
   sandbox: string;
   label: string;
   container: HTMLElement;
+  debugFlowId: string;
 }): Promise<ActiveHost> {
   const { createWebWorkerProvider, createIframeHost, HostWorker } =
     await runtimeChunkPromise;
@@ -287,7 +315,11 @@ async function createHost(args: {
     container: args.container,
     onPort: (port) => {
       productProvider = createMessagePortProvider(port);
-      disposePipe = pipeProviders(productProvider, coreProvider);
+      disposePipe = pipeProviders(productProvider, coreProvider, {
+        flowId: args.debugFlowId,
+        label: args.label,
+        productId: args.label,
+      });
     },
   });
   return {
@@ -332,6 +364,13 @@ export async function renderIframe(url: string, label: string): Promise<void> {
 
   const hasTopbar = document.getElementById("topbar") !== null;
   const iframeUrl = new URL(url, window.location.href);
+  emitDotliDebugEvent({
+    layer: "bridge",
+    event: "setup_begin",
+    flowId: bridgeFlowId,
+    timestamp: Date.now(),
+    payload: { label, productId: label },
+  });
   const host = await createHost({
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
@@ -339,6 +378,14 @@ export async function renderIframe(url: string, label: string): Promise<void> {
     sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
     label,
     container: app,
+    debugFlowId: bridgeFlowId,
+  });
+  emitDotliDebugEvent({
+    layer: "bridge",
+    event: "setup_ready",
+    flowId: bridgeFlowId,
+    timestamp: Date.now(),
+    payload: { label, productId: label },
   });
   applyIframeStyling(host.iframe, label, { topbarOffset: hasTopbar });
   currentHost = host;
@@ -401,9 +448,9 @@ export async function renderAppSubdomain(
   currentCid = cid;
   currentUrl = null;
 
-  // Propagate the current sandbox contract. The legacy `?mode=` preset param
-  // is no longer sent. Host and sandbox deploy together, and the sandbox
-  // validator rejects unknown params.
+  // Propagate the current sandbox contract. The `?mode=` preset param is no
+  // longer sent. Host and sandbox deploy together, and the sandbox validator
+  // rejects unknown params.
   const chainBackend = getBackend();
   const network = getNetwork();
   const cache = getCacheSettings();
@@ -462,6 +509,13 @@ export async function renderAppSubdomain(
 
   const iframeUrl = new URL(url);
   emitDotliDebugEvent({
+    layer: "bridge",
+    event: "setup_begin",
+    flowId: bridgeFlowId,
+    timestamp: Date.now(),
+    payload: { label, productId: label },
+  });
+  emitDotliDebugEvent({
     layer: "render",
     event: "iframe_begin",
     flowId: renderFlowId,
@@ -475,6 +529,14 @@ export async function renderAppSubdomain(
       "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
     label,
     container: app,
+    debugFlowId: bridgeFlowId,
+  });
+  emitDotliDebugEvent({
+    layer: "bridge",
+    event: "setup_ready",
+    flowId: bridgeFlowId,
+    timestamp: Date.now(),
+    payload: { label, productId: label },
   });
   applyIframeStyling(host.iframe, label, { topbarOffset: true });
   currentHost = host;

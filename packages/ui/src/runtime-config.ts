@@ -2,24 +2,23 @@ import { SITE_ID } from "@dotli/config/config";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import type { WasmRuntimeConfig } from "@parity/truapi-host-wasm";
 
-type RuntimeLocation = Pick<Location, "hostname" | "origin">;
+type RuntimeLocation = Pick<Location, "origin">;
 
 export function labelToProductId(label: string): string {
   return label.startsWith("localhost:") ? label : `${label}.dot`;
 }
 
-export function pairingMetadataUrl(location: RuntimeLocation): string {
-  if (
-    location.hostname === "localhost" ||
-    location.hostname === "127.0.0.1" ||
-    location.hostname.endsWith(".localhost")
-  ) {
-    const subdomain = location.hostname.endsWith(".localhost")
-      ? `${location.hostname.slice(0, -".localhost".length)}.`
-      : "";
-    return `https://${subdomain}dot.li/metadata.json`;
+function getPlatformType(userAgent: string = navigator.userAgent): string {
+  if (userAgent.includes("Win")) {
+    return "Windows";
   }
-  return `${location.origin}/metadata.json`;
+  if (userAgent.includes("Mac")) {
+    return "macOS";
+  }
+  if (userAgent.includes("Linux")) {
+    return "Linux";
+  }
+  return "Unknown";
 }
 
 export function createTruapiRuntimeConfig(
@@ -31,7 +30,11 @@ export function createTruapiRuntimeConfig(
     productId: labelToProductId(label),
     productLabel: label,
     siteId,
-    hostMetadataUrl: pairingMetadataUrl(location),
+    hostName: "Polkadot Web",
+    hostIcon: `${location.origin}/dotli.png`,
+    hostVersion: undefined,
+    platformType: getPlatformType(),
+    platformVersion: undefined,
     peopleChainGenesisHash: getActiveServicesConfig().people.genesis,
     pairingDeeplinkScheme: "polkadotapp",
   };

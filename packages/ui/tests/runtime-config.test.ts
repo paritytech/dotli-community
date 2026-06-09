@@ -3,7 +3,6 @@ import { getActiveServicesConfig } from "@dotli/config/network";
 import {
   createTruapiRuntimeConfig,
   labelToProductId,
-  pairingMetadataUrl,
 } from "@dotli/ui/runtime-config";
 
 describe("labelToProductId", () => {
@@ -13,35 +12,6 @@ describe("labelToProductId", () => {
 
   it("keeps localhost labels stable", () => {
     expect(labelToProductId("localhost:5174")).toBe("localhost:5174");
-  });
-});
-
-describe("pairingMetadataUrl", () => {
-  it("uses the current origin outside localhost", () => {
-    expect(
-      pairingMetadataUrl({
-        hostname: "app.paseo.li",
-        origin: "https://app.paseo.li",
-      } as Location),
-    ).toBe("https://app.paseo.li/metadata.json");
-  });
-
-  it("maps localhost to the public dot.li metadata", () => {
-    expect(
-      pairingMetadataUrl({
-        hostname: "localhost",
-        origin: "http://localhost:5173",
-      } as Location),
-    ).toBe("https://dot.li/metadata.json");
-  });
-
-  it("maps localhost subdomains to matching dot.li subdomains", () => {
-    expect(
-      pairingMetadataUrl({
-        hostname: "acme.localhost",
-        origin: "http://acme.localhost:5174",
-      } as Location),
-    ).toBe("https://acme.dot.li/metadata.json");
   });
 });
 
@@ -60,7 +30,11 @@ describe("createTruapiRuntimeConfig", () => {
       productId: "acme.dot",
       productLabel: "acme",
       siteId: "dot.li",
-      hostMetadataUrl: "https://host.dot.li/metadata.json",
+      hostName: "Polkadot Web",
+      hostIcon: "https://host.dot.li/dotli.png",
+      hostVersion: undefined,
+      platformType: expect.any(String),
+      platformVersion: undefined,
       peopleChainGenesisHash: getActiveServicesConfig().people.genesis,
       pairingDeeplinkScheme: "polkadotapp",
     });
