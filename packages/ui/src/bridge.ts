@@ -129,6 +129,10 @@ window.addEventListener("dotli:truapi-login-request", (event: Event) => {
     emitSsoPairingFailed(
       error instanceof Error ? error.message : String(error),
     );
+    if (isLoginRejected(error)) {
+      dispatchSessionState(false);
+      return;
+    }
     dispatchLoginError(error);
   });
 });
@@ -184,6 +188,34 @@ function dispatchLoginError(error: unknown): void {
         message: error instanceof Error ? error.message : String(error),
       },
     }),
+  );
+}
+
+function isLoginRejected(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "Rejected" || message === '"Rejected"') {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(message) as unknown;
+    return isRejectedValue(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function isRejectedValue(value: unknown): boolean {
+  if (value === "Rejected") {
+    return true;
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.tag === "Rejected" ||
+    record.value === "Rejected" ||
+    isRejectedValue(record.value)
   );
 }
 

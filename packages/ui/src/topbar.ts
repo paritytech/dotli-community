@@ -174,6 +174,11 @@ export function initTopBar(): void {
 
   window.addEventListener("dotli:truapi-login-error", (e: Event) => {
     const { message } = (e as CustomEvent<{ message: string }>).detail;
+    if (isAuthRejected(message)) {
+      closeModal({ skipTruapiCancel: true });
+      renderLoggedOut();
+      return;
+    }
     openModal(undefined, currentProductLabel ?? undefined);
     renderError(message);
   });
@@ -335,6 +340,18 @@ function friendlyAuthError(
     };
   }
   return null;
+}
+
+function isAuthRejected(message: string): boolean {
+  if (message === "Rejected" || message === '"Rejected"') {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(message) as unknown;
+    return parsed === "Rejected";
+  } catch {
+    return false;
+  }
 }
 
 function renderError(message: string): void {

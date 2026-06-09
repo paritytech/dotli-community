@@ -80,6 +80,66 @@ describe("topbar disconnect", () => {
   });
 });
 
+describe("topbar login cancellation", () => {
+  it("closes the auth modal for rejected login responses", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-pairing", {
+        detail: {
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+          cancel: vi.fn(),
+        },
+      }),
+    );
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-login-error", {
+        detail: { message: '"Rejected"' },
+      }),
+    );
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(false);
+    expect(document.getElementById("auth-modal-qr")?.textContent).not.toContain(
+      "Retry",
+    );
+  });
+
+  it("keeps the retry view for real login failures", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-login-error", {
+        detail: { message: "Host failure" },
+      }),
+    );
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+    expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
+      "Retry",
+    );
+  });
+});
+
 describe("settings dependency list", () => {
   it("lists current runtime packages without Novasama dependencies", async () => {
     installTopbarDom();
