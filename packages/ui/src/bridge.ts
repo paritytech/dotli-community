@@ -114,7 +114,8 @@ window.addEventListener("dotli:truapi-login-request", (event: Event) => {
   const detail = (event as CustomEvent<{ reason?: string }>).detail;
   void (async () => {
     const host = currentHost ?? (await getLandingAuthHost());
-    await host.requestLogin(detail.reason);
+    const result = await host.requestLogin(detail.reason);
+    dispatchSessionState(result === "Success" || result === "AlreadyConnected");
   })().catch((error: unknown) => {
     dispatchLoginError(error);
   });
@@ -170,6 +171,14 @@ function dispatchLoginError(error: unknown): void {
       detail: {
         message: error instanceof Error ? error.message : String(error),
       },
+    }),
+  );
+}
+
+function dispatchSessionState(connected: boolean): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:truapi-session-state", {
+      detail: { connected },
     }),
   );
 }
