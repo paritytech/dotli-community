@@ -49,14 +49,12 @@ vi.mock("@dotli/resolver/chain-specs", () => ({
 
 let getSmoldot: typeof import("@dotli/resolver/smoldot").getSmoldot;
 let getRelayChain: typeof import("@dotli/resolver/smoldot").getRelayChain;
-let getResolverAssetHubProvider: typeof import("@dotli/resolver/smoldot").getResolverAssetHubProvider;
 
 beforeEach(async () => {
   vi.resetModules();
   const mod = await import("@dotli/resolver/smoldot");
   getSmoldot = mod.getSmoldot;
   getRelayChain = mod.getRelayChain;
-  getResolverAssetHubProvider = mod.getResolverAssetHubProvider;
 });
 
 describe("getSmoldot", () => {
@@ -83,13 +81,5 @@ describe("getRelayChain", () => {
     const chain = await getRelayChain();
     expect(chain).toBeDefined();
     expect(typeof chain.sendJsonRpc).toBe("function");
-  });
-});
-
-describe("Asset Hub provider ownership", () => {
-  it("returns the same resolver provider on repeated calls", () => {
-    const a = getResolverAssetHubProvider();
-    const b = getResolverAssetHubProvider();
-    expect(a).toBe(b);
   });
 });

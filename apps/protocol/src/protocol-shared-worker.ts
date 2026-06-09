@@ -20,11 +20,7 @@ import {
   setNetworkOverride,
   getActiveServicesConfig,
 } from "@dotli/config/network";
-import {
-  createChainProvider,
-  isChainSupported,
-  isResolverAssetHubGenesis,
-} from "@dotli/resolver/chains";
+import { createChainProvider, isChainSupported } from "@dotli/resolver/chains";
 import {
   getTestSigner,
   submitPreimageTransaction,
@@ -39,10 +35,7 @@ import {
   setResolverAssetHubProvider,
   waitForAssetHubFinalized,
 } from "@dotli/resolver/resolve";
-import {
-  onSmoldotFatal,
-  releaseResolverAssetHubChain,
-} from "@dotli/resolver/smoldot";
+import { onSmoldotFatal } from "@dotli/resolver/smoldot";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
@@ -108,37 +101,6 @@ const connectionPorts = new Map<string, MessagePort>();
 const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
 let engineReady = false;
-let resolverChainReleased = false;
-
-// In-flight reads that depend on the resolver's Asset Hub chain (dotNS
-// resolution). The resolver chain must NOT be torn down while any are running:
-// `chain.remove()` stops the chainHead follow, which aborts the in-flight
-// storage read with `ChainHead disjointed` so the page never gets a CID. The
-// teardown (see the "First Asset Hub dApp connection" gate below) waits on
-// `resolverIdle` before calling `releaseResolverAssetHubChain()`.
-let pendingResolverReads = 0;
-let resolverIdle: Promise<void> = Promise.resolve();
-let signalResolverIdle: (() => void) | null = null;
-
-// Hard cap on how long the teardown waits for in-flight resolver reads before
-// freeing the chain anyway, so a wedged read can never leak the chain forever.
-const RESOLVER_RELEASE_MAX_WAIT_MS = 30_000;
-
-function trackResolverRead<T>(work: Promise<T>): Promise<T> {
-  if (pendingResolverReads === 0) {
-    resolverIdle = new Promise<void>((resolve) => {
-      signalResolverIdle = resolve;
-    });
-  }
-  pendingResolverReads++;
-  return work.finally(() => {
-    pendingResolverReads--;
-    if (pendingResolverReads === 0 && signalResolverIdle) {
-      signalResolverIdle();
-      signalResolverIdle = null;
-    }
-  });
-}
 
 const NETWORK_NAME_PREFIX = "dotli-protocol-";
 let networkInitFailure: string | null = null;
@@ -235,11 +197,11 @@ async function presync(): Promise<void> {
 
     // 3. Create the broker FIRST and route the resolver's Asset Hub reads
     // through it as a local session. This is the fix for the
-    // `ChainHead disjointed` load failure: the resolver no longer opens its
-    // own `chainHead_follow` on a separate (smoldot-deduplicated) Asset Hub
-    // chain, so a dApp Asset Hub connection can never stop the resolver's
-    // in-flight follow. There is exactly ONE multiplexed Asset Hub follow,
-    // shared by the resolver and every dApp session.
+    // `ChainHead disjointed` load failure: the resolver no longer owns a
+    // separate Asset Hub chain that the first dApp connection released
+    // (removed) mid-read, stopping the in-flight follow. There is now exactly
+    // ONE Asset Hub chain and follow, shared by the resolver and every dApp
+    // session, and it is never removed while the page is live.
     chainBrokerManager = createChainBrokerManager(createChainProvider);
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(
@@ -384,16 +346,14 @@ async function handleRequest(
     case "resolveDotName": {
       const payload = request.payload as ProtocolRequestMap["resolveDotName"];
       assertString(payload.label, "label");
-      const result = await trackResolverRead(
-        resolveDotName(payload.label, (message) => {
-          sendToPort(port, {
-            namespace: "dotli:protocol",
-            kind: "progress",
-            id: request.id,
-            message,
-          });
-        }),
-      );
+      const result = await resolveDotName(payload.label, (message) => {
+        sendToPort(port, {
+          namespace: "dotli:protocol",
+          kind: "progress",
+          id: request.id,
+          message,
+        });
+      });
       swLog(
         `Resolved "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
       );
@@ -410,7 +370,7 @@ async function handleRequest(
     case "resolveOwner": {
       const payload = request.payload as ProtocolRequestMap["resolveOwner"];
       assertString(payload.label, "label");
-      const result = await trackResolverRead(resolveOwner(payload.label));
+      const result = await resolveOwner(payload.label);
       swLog(
         `Owner "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
       );
@@ -481,42 +441,9 @@ async function handleRequest(
       if (!isChainSupported(payload.genesisHash)) {
         throw new Error(`Unsupported chain: ${payload.genesisHash}`);
       }
-      // Release the resolver's Asset Hub chain on the first dApp Asset-Hub
-      // connection. By this point the host has already resolved the CID.
-      // Releasing frees the chain so the dApp gets a FRESH chain with no
-      // "announced blocks" history (avoids smoldot's per-connection block
-      // deduplication). Gate this on the Asset-Hub genesis set the resolver
-      // knows about. Other bridged chains (e.g. People for the
-      // statement-store) must not trigger an Asset-Hub teardown, and the
-      // set lives next to the Asset-Hub provider factory so adding another
-      // network (e.g. Westend Asset Hub) is a single edit there.
-      if (
-        !resolverChainReleased &&
-        isResolverAssetHubGenesis(payload.genesisHash)
-      ) {
-        resolverChainReleased = true;
-        swLog(
-          "First Asset Hub dApp connection — waiting for in-flight resolution before release + connect",
-        );
-        // The resolver and dApp Asset Hub chains are deduplicated by smoldot
-        // (identical chainSpec/relay/db), so they share one underlying chain
-        // and its chainHead follows. Opening the dApp's follow while the
-        // resolver's read is in flight makes smoldot STOP the resolver's follow
-        // (`ChainHead disjointed`) — so it is NOT enough to defer the release;
-        // we must not open the dApp connection at all until the resolve
-        // settles. Wait for `resolverIdle`, THEN release the resolver chain,
-        // THEN fall through to connectRemote (which creates a fresh dApp
-        // chain). Bounded by RESOLVER_RELEASE_MAX_WAIT_MS so a wedged read
-        // can't block dApp connections forever.
-        await Promise.race([
-          resolverIdle,
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, RESOLVER_RELEASE_MAX_WAIT_MS);
-          }),
-        ]);
-        swLog("Releasing resolver Asset Hub chain");
-        releaseResolverAssetHubChain();
-      }
+      // The resolver and all dApp sessions share one Asset Hub chain via the
+      // broker, so there is no resolver chain to release here; connect
+      // directly.
       let chainMsgCount = 0;
       const connection = chainBrokerManager.connectRemote(
         payload.genesisHash,

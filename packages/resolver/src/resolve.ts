@@ -23,7 +23,6 @@ import { log } from "@dotli/shared/log";
 import {
   getSmoldot,
   getRelayChain,
-  getResolverAssetHubProvider,
   onConnectionIssue,
   onSmoldotFatal,
 } from "./smoldot";
@@ -54,22 +53,21 @@ let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
 let fatalUnsubscribe: (() => void) | null = null;
 
-// Optional override for the Asset Hub JSON-RPC provider used to read dotNS.
+// Factory for the Asset Hub JSON-RPC provider used to read dotNS.
 //
-// By default the resolver opens its OWN `chainHead_follow` on a dedicated
-// Asset Hub chain (`getResolverAssetHubProvider`). smoldot deduplicates that
-// chain with the dApp's Asset Hub chain, so opening a dApp follow stops the
-// resolver's follow mid-read (`ChainHead disjointed`). To avoid the second
-// follow entirely, the host injects a broker-backed provider here: the
-// resolver then joins the broker's single multiplexed Asset Hub follow as
-// just another session, exactly like dApp connections. Must be a STRING-wire
-// provider (polkadot-api's `createClient` is string-based).
-let resolverAssetHubProviderOverride: (() => JsonRpcProvider) | null = null;
+// The host injects a broker-backed provider here so the resolver joins the
+// broker's single multiplexed Asset Hub follow as just another session,
+// exactly like dApp connections. This avoids opening a second
+// `chainHead_follow` on a separate Asset Hub chain that the dApp handoff
+// would later remove mid-read (`ChainHead disjointed`). Must be a STRING-wire
+// provider (polkadot-api's `createClient` is string-based). Set during
+// engine/worker bootstrap before any resolution runs.
+let resolverAssetHubProvider: (() => JsonRpcProvider) | null = null;
 
 export function setResolverAssetHubProvider(
   factory: (() => JsonRpcProvider) | null,
 ): void {
-  resolverAssetHubProviderOverride = factory;
+  resolverAssetHubProvider = factory;
 }
 
 /**
@@ -171,9 +169,12 @@ async function doCreateClient(
 
     onPhase?.("asset-hub-connecting");
     onStatus?.("Connecting to Asset Hub Paseo...");
-    const provider = resolverAssetHubProviderOverride
-      ? resolverAssetHubProviderOverride()
-      : getResolverAssetHubProvider();
+    if (resolverAssetHubProvider === null) {
+      throw new Error(
+        "Resolver Asset Hub provider not set — call setResolverAssetHubProvider() during bootstrap",
+      );
+    }
+    const provider = resolverAssetHubProvider();
     log.warn("[dot.li resolve] Creating substrate-client + storage API...");
     const client = createClient(provider);
     const api = createRawApi(client);

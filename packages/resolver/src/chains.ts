@@ -31,20 +31,6 @@ export function isChainSupported(genesisHash: string): boolean {
 }
 
 /**
- * Returns `true` when `genesisHash` identifies a chain that the resolver
- * currently uses (or could use) as its Asset Hub for dotNS resolution.
- * Consumers gate "release the resolver's Asset Hub" logic on this so a
- * People-chain or relay chainConnect doesn't accidentally tear down the
- * resolver's Asset Hub.
- */
-export function isResolverAssetHubGenesis(genesisHash: string): boolean {
-  return (
-    genesisHash.toLowerCase() ===
-    getActiveServicesConfig().assethub.genesis.toLowerCase()
-  );
-}
-
-/**
  * Create a JsonRpcProvider for a given genesis hash.
  *
  * Reuses the resolver's shared chains. The ChainBroker provides session
@@ -59,9 +45,7 @@ export function createChainProvider(
   const cfg = getActiveServicesConfig();
 
   if (key === cfg.assethub.genesis.toLowerCase()) {
-    log.warn(
-      "[dot.li chains] Returning dApp Asset Hub provider (fresh chain, no shared history)",
-    );
+    log.warn("[dot.li chains] Returning shared Asset Hub provider");
     return getDappAssetHubProvider();
   }
 
