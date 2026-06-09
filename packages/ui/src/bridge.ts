@@ -121,6 +121,7 @@ let currentPanelDispose: (() => void) | null = null;
 let currentRenderMode: "iframe" | "subdomain" | null = null;
 let currentLabel: string | null = null;
 let currentUrl: string | null = null;
+let currentProductId: string | undefined;
 let currentCid: string | null = null;
 
 // Listen for device permission grants — reload the iframe so the
@@ -131,7 +132,9 @@ window.addEventListener("dotli:device-permission-changed", () => {
     currentUrl !== null &&
     currentLabel !== null
   ) {
-    void renderIframe(currentUrl, currentLabel);
+    void renderIframe(currentUrl, currentLabel, {
+      productId: currentProductId,
+    });
   } else if (
     currentRenderMode === "subdomain" &&
     currentCid !== null &&
@@ -575,10 +578,13 @@ async function createHost(args: {
   allowedOrigin: string;
   sandbox: string;
   label: string;
+  productId?: string;
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
-  const coreProvider = await createCoreProvider(args.label);
+  const coreProvider = await createCoreProvider(args.label, {
+    productId: args.productId,
+  });
   const { createIframeHost } = await runtimeChunkPromise;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
@@ -592,7 +598,7 @@ async function createHost(args: {
       disposePipe = pipeProviders(productProvider, coreProvider, {
         flowId: args.debugFlowId,
         label: args.label,
-        productId: args.label,
+        productId: args.productId ?? args.label,
       });
     },
   });
@@ -615,7 +621,11 @@ async function createHost(args: {
 
 async function createCoreProvider(
   label: string,
-  options: { pairingLabel?: string; pairingDotSuffix?: boolean } = {},
+  options: {
+    pairingLabel?: string;
+    pairingDotSuffix?: boolean;
+    productId?: string;
+  } = {},
 ): Promise<CoreProvider> {
   const { createWebWorkerProvider, HostWorker } = await runtimeChunkPromise;
   const provider = await createWebWorkerProvider(
@@ -630,10 +640,15 @@ async function createCoreProvider(
     ),
     {
       logLevel: readLogLevel(),
-      runtimeConfig: createTruapiRuntimeConfig(label),
+      runtimeConfig: createTruapiRuntimeConfig(
+        label,
+        window.location,
+        undefined,
+        options.productId,
+      ),
     },
   );
-  return wrapCoreProviderForDebug(provider, label);
+  return wrapCoreProviderForDebug(provider, options.productId ?? label);
 }
 
 async function getLandingAuthHost(): Promise<CoreHost> {
@@ -679,9 +694,14 @@ function disposeLandingAuthHost(): void {
 /**
  * Render a dApp iframe backed by the TrUAPI host bridge.
  */
-export async function renderIframe(url: string, label: string): Promise<void> {
+export async function renderIframe(
+  url: string,
+  label: string,
+  options: { productId?: string } = {},
+): Promise<void> {
   const renderFlowId = newFlowId("render");
   const bridgeFlowId = newFlowId("bridge");
+  const productId = options.productId ?? label;
   emitDotliDebugEvent({
     layer: "render",
     event: "iframe_begin",
@@ -696,6 +716,7 @@ export async function renderIframe(url: string, label: string): Promise<void> {
   currentRenderMode = "iframe";
   currentLabel = label;
   currentUrl = url;
+  currentProductId = options.productId;
   currentCid = null;
 
   app.innerHTML = "";
@@ -707,7 +728,7 @@ export async function renderIframe(url: string, label: string): Promise<void> {
     event: "setup_begin",
     flowId: bridgeFlowId,
     timestamp: Date.now(),
-    payload: { label, productId: label },
+    payload: { label, productId },
   });
   const host = await createHost({
     iframeUrl: iframeUrl.href,
@@ -715,6 +736,7 @@ export async function renderIframe(url: string, label: string): Promise<void> {
     // TODO: Review sandbox default permissions
     sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
     label,
+    productId: options.productId,
     container: app,
     debugFlowId: bridgeFlowId,
   });
@@ -723,7 +745,7 @@ export async function renderIframe(url: string, label: string): Promise<void> {
     event: "setup_ready",
     flowId: bridgeFlowId,
     timestamp: Date.now(),
-    payload: { label, productId: label },
+    payload: { label, productId },
   });
   applyIframeStyling(host.iframe, label, { topbarOffset: hasTopbar });
   currentHost = host;
@@ -735,7 +757,7 @@ export async function renderIframe(url: string, label: string): Promise<void> {
         event: "iframe_load",
         flowId: bridgeFlowId,
         timestamp: Date.now(),
-        payload: { label, productId: label, mode: "iframe" },
+        payload: { label, productId, mode: "iframe" },
       });
     },
     { once: true },
@@ -786,6 +808,7 @@ export async function renderAppSubdomain(
   currentLabel = label;
   currentCid = cid;
   currentUrl = null;
+  currentProductId = undefined;
 
   // Propagate the current sandbox contract. The `?mode=` preset param is no
   // longer sent. Host and sandbox deploy together, and the sandbox validator

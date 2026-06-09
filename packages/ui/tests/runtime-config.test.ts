@@ -16,6 +16,19 @@ describe("labelToProductId", () => {
 });
 
 describe("createTruapiRuntimeConfig", () => {
+  it("accepts an explicit product id for local previews", () => {
+    expect(
+      createTruapiRuntimeConfig(
+        "localhost:3000",
+        {
+          origin: "http://localhost:5173",
+        } as Location,
+        "local.li",
+        "truapi-playground.dot",
+      ).productId,
+    ).toBe("truapi-playground.dot");
+  });
+
   it("passes the full host runtime contract to the WASM core", () => {
     expect(
       createTruapiRuntimeConfig(
@@ -31,7 +44,7 @@ describe("createTruapiRuntimeConfig", () => {
       productLabel: "acme",
       siteId: "dot.li",
       hostName: "Polkadot Web",
-      hostIcon: "https://host.dot.li/dotli.png",
+      hostIcon: undefined,
       hostVersion: undefined,
       platformType: expect.any(String),
       platformVersion: undefined,
@@ -40,7 +53,7 @@ describe("createTruapiRuntimeConfig", () => {
     });
   });
 
-  it("uses an HTTPS icon when the host runs on localhost", () => {
+  it("leaves host icon unset when the host runs on localhost", () => {
     expect(
       createTruapiRuntimeConfig(
         "localhost:3000",
@@ -49,6 +62,6 @@ describe("createTruapiRuntimeConfig", () => {
         } as Location,
         "dot.li",
       ).hostIcon,
-    ).toBe("https://dot.li/dotli.png");
+    ).toBeUndefined();
   });
 });

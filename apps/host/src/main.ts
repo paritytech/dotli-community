@@ -58,6 +58,7 @@ import type {
 import { BASE_DOMAIN, DEBUG, isLocalhost, SITE_ID } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
+import { dotNsUrl } from "@dotli/shared/dotns-url";
 import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
 import { showNotification } from "@dotli/ui/notification";
 import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
@@ -147,6 +148,21 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 }
 
 const T0 = performance.now();
+const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
+
+function parseLocalProductIdOverride(): string | undefined {
+  if (!isLocalhost) {
+    return undefined;
+  }
+  const value = new URLSearchParams(window.location.search).get(
+    DOTLI_PRODUCT_ID_PARAM,
+  );
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+  const productId = value.trim();
+  return dotNsUrl.isProductIdentifier(productId) ? productId : undefined;
+}
 
 /**
  * Parse a localhost proxy URL from the path.
@@ -191,6 +207,7 @@ const RESERVED_HOST_PARAMS = [
   "skipWorkerCache",
   "fullReset",
   "v",
+  DOTLI_PRODUCT_ID_PARAM,
 ] as const;
 
 /**
@@ -957,6 +974,7 @@ async function main(): Promise<void> {
   });
 
   const label = parseDotLabel();
+  const productIdOverride = parseLocalProductIdOverride();
 
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;
@@ -970,12 +988,16 @@ async function main(): Promise<void> {
     }
 
     const { renderIframe } = await bridgeModulePromise;
-    await renderIframe(previewTargetUrl, host);
-    history.replaceState(
-      null,
-      "",
-      `/__preview?url=${encodeURIComponent(previewTargetUrl)}`,
-    );
+    await renderIframe(previewTargetUrl, host, {
+      productId: productIdOverride,
+    });
+    const nextSearch = new URLSearchParams({
+      url: previewTargetUrl,
+    });
+    if (productIdOverride !== undefined) {
+      nextSearch.set(DOTLI_PRODUCT_ID_PARAM, productIdOverride);
+    }
+    history.replaceState(null, "", `/__preview?${nextSearch.toString()}`);
     document.title = `${host} — ${SITE_ID}`;
     performance.mark("dotli:main:end");
     return;
@@ -1005,9 +1027,15 @@ async function main(): Promise<void> {
     }
 
     const { renderIframe } = await bridgeModulePromise;
-    await renderIframe(localhostUrl, host);
+    await renderIframe(localhostUrl, host, { productId: productIdOverride });
     // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
-    history.replaceState(null, "", "/" + host);
+    history.replaceState(
+      null,
+      "",
+      productIdOverride === undefined
+        ? "/" + host
+        : `/${host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
+    );
     document.title = `${host} — ${SITE_ID}`;
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({

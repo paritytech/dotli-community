@@ -27,10 +27,11 @@ export function createTruapiRuntimeConfig(
   label: string,
   location: RuntimeLocation = window.location,
   siteId: string = SITE_ID,
+  productId: string = labelToProductId(label),
 ): WasmRuntimeConfig {
   void location;
   return {
-    productId: labelToProductId(label),
+    productId,
     productLabel: label,
     siteId,
     hostName: "Polkadot Web",
