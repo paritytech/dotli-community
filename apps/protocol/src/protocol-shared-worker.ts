@@ -15,7 +15,11 @@ declare const self: SharedWorkerGlobalScope;
 
 import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
 import { MAX_CONNECTIONS_PER_ORIGIN } from "@dotli/config/config";
-import { isValidNetwork, setNetworkOverride } from "@dotli/config/network";
+import {
+  isValidNetwork,
+  setNetworkOverride,
+  getActiveServicesConfig,
+} from "@dotli/config/network";
 import {
   createChainProvider,
   isChainSupported,
@@ -32,6 +36,7 @@ import {
   resolveExecutableManifest,
   resolveOwner,
   resolveRootManifest,
+  setResolverAssetHubProvider,
   waitForAssetHubFinalized,
 } from "@dotli/resolver/resolve";
 import {
@@ -43,6 +48,7 @@ import * as S from "@dotli/metrics/spans";
 import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
 import { createChainBrokerManager } from "@dotli/protocol/broker";
 import { serializeError } from "@dotli/shared/errors";
+import type { JsonRpcProvider } from "@polkadot-api/json-rpc-provider";
 
 /** Bridge-boundary allowlist for executable-manifest kinds. */
 const EXECUTABLE_KINDS = new Set(["app", "widget", "worker"]);
@@ -104,6 +110,36 @@ const pendingPorts: MessagePort[] = [];
 let engineReady = false;
 let resolverChainReleased = false;
 
+// In-flight reads that depend on the resolver's Asset Hub chain (dotNS
+// resolution). The resolver chain must NOT be torn down while any are running:
+// `chain.remove()` stops the chainHead follow, which aborts the in-flight
+// storage read with `ChainHead disjointed` so the page never gets a CID. The
+// teardown (see the "First Asset Hub dApp connection" gate below) waits on
+// `resolverIdle` before calling `releaseResolverAssetHubChain()`.
+let pendingResolverReads = 0;
+let resolverIdle: Promise<void> = Promise.resolve();
+let signalResolverIdle: (() => void) | null = null;
+
+// Hard cap on how long the teardown waits for in-flight resolver reads before
+// freeing the chain anyway, so a wedged read can never leak the chain forever.
+const RESOLVER_RELEASE_MAX_WAIT_MS = 30_000;
+
+function trackResolverRead<T>(work: Promise<T>): Promise<T> {
+  if (pendingResolverReads === 0) {
+    resolverIdle = new Promise<void>((resolve) => {
+      signalResolverIdle = resolve;
+    });
+  }
+  pendingResolverReads++;
+  return work.finally(() => {
+    pendingResolverReads--;
+    if (pendingResolverReads === 0 && signalResolverIdle) {
+      signalResolverIdle();
+      signalResolverIdle = null;
+    }
+  });
+}
+
 const NETWORK_NAME_PREFIX = "dotli-protocol-";
 let networkInitFailure: string | null = null;
 const requestedNetwork = self.name.startsWith(NETWORK_NAME_PREFIX)
@@ -121,6 +157,20 @@ if (requestedNetwork === null) {
 
 // Placeholder broker manager until pre-sync creates the real one.
 let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
+
+// Resolve a broker-backed STRING-wire provider for a chain, or throw. Used to
+// route the resolver's Asset Hub reads through the broker's single follow.
+// polkadot-api's `createClient` is string-wire, so we request "string".
+function requireBrokerLocalProvider(
+  genesisHash: string,
+  label: string,
+): JsonRpcProvider {
+  const provider = chainBrokerManager.getLocalProvider(genesisHash, "string");
+  if (provider === null) {
+    throw new Error(`No broker provider available for ${label}`);
+  }
+  return provider;
+}
 
 // Smoldot panic broadcast. When smoldot's log callback detects a WASM
 // panic, relay a `fatal` envelope to every connected port so the host
@@ -183,9 +233,24 @@ async function presync(): Promise<void> {
       `Relay chain added (${String(Math.round(performance.now() - t0))}ms)`,
     );
 
-    // 3. Wait for Asset Hub to sync to a finalized block via the
+    // 3. Create the broker FIRST and route the resolver's Asset Hub reads
+    // through it as a local session. This is the fix for the
+    // `ChainHead disjointed` load failure: the resolver no longer opens its
+    // own `chainHead_follow` on a separate (smoldot-deduplicated) Asset Hub
+    // chain, so a dApp Asset Hub connection can never stop the resolver's
+    // in-flight follow. There is exactly ONE multiplexed Asset Hub follow,
+    // shared by the resolver and every dApp session.
+    chainBrokerManager = createChainBrokerManager(createChainProvider);
+    setResolverAssetHubProvider(() =>
+      requireBrokerLocalProvider(
+        getActiveServicesConfig().assethub.genesis,
+        "Asset Hub",
+      ),
+    );
+
+    // 4. Wait for Asset Hub to sync to a finalized block via the
     // explicit presync primitive (no more overloading `resolveDotName`
-    // with a sentinel label).
+    // with a sentinel label). This now syncs the broker's shared chain.
     swLog("Waiting for Asset Hub to reach finalized block...");
     await waitForAssetHubFinalized((msg) => {
       swLog(`Pre-sync status: ${msg}`);
@@ -194,11 +259,6 @@ async function presync(): Promise<void> {
     m.measure(S.SMOLDOT_PRESYNC, totalMs);
     m.distribution(S.SMOLDOT_PRESYNC, totalMs);
     swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
-
-    // 4. Create the broker. The resolver's Asset Hub chain is released
-    // lazily on the first dApp chainConnect (see handleRequest below),
-    // NOT here. The host still needs it for resolveDotName/resolveOwner.
-    chainBrokerManager = createChainBrokerManager(createChainProvider);
 
     // 5. Success: mark ready.
     swLog("Pre-sync complete, engine ready");
@@ -324,14 +384,16 @@ async function handleRequest(
     case "resolveDotName": {
       const payload = request.payload as ProtocolRequestMap["resolveDotName"];
       assertString(payload.label, "label");
-      const result = await resolveDotName(payload.label, (message) => {
-        sendToPort(port, {
-          namespace: "dotli:protocol",
-          kind: "progress",
-          id: request.id,
-          message,
-        });
-      });
+      const result = await trackResolverRead(
+        resolveDotName(payload.label, (message) => {
+          sendToPort(port, {
+            namespace: "dotli:protocol",
+            kind: "progress",
+            id: request.id,
+            message,
+          });
+        }),
+      );
       swLog(
         `Resolved "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
       );
@@ -348,7 +410,7 @@ async function handleRequest(
     case "resolveOwner": {
       const payload = request.payload as ProtocolRequestMap["resolveOwner"];
       assertString(payload.label, "label");
-      const result = await resolveOwner(payload.label);
+      const result = await trackResolverRead(resolveOwner(payload.label));
       swLog(
         `Owner "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
       );
@@ -434,8 +496,25 @@ async function handleRequest(
       ) {
         resolverChainReleased = true;
         swLog(
-          "First Asset Hub dApp connection — releasing resolver Asset Hub chain",
+          "First Asset Hub dApp connection — waiting for in-flight resolution before release + connect",
         );
+        // The resolver and dApp Asset Hub chains are deduplicated by smoldot
+        // (identical chainSpec/relay/db), so they share one underlying chain
+        // and its chainHead follows. Opening the dApp's follow while the
+        // resolver's read is in flight makes smoldot STOP the resolver's follow
+        // (`ChainHead disjointed`) — so it is NOT enough to defer the release;
+        // we must not open the dApp connection at all until the resolve
+        // settles. Wait for `resolverIdle`, THEN release the resolver chain,
+        // THEN fall through to connectRemote (which creates a fresh dApp
+        // chain). Bounded by RESOLVER_RELEASE_MAX_WAIT_MS so a wedged read
+        // can't block dApp connections forever.
+        await Promise.race([
+          resolverIdle,
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, RESOLVER_RELEASE_MAX_WAIT_MS);
+          }),
+        ]);
+        swLog("Releasing resolver Asset Hub chain");
         releaseResolverAssetHubChain();
       }
       let chainMsgCount = 0;
