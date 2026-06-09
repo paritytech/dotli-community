@@ -4,8 +4,8 @@
 /**
  * Single-slot FIFO queue serializing host-side wallet-flow modals.
  *
- * host-papp already serializes the SSO wire internally, but each call also
- * opens a host modal that must not stack with another wallet flow.
+ * The SSO flow serializes wire traffic internally, but each call also opens
+ * a host modal that must not stack with another wallet flow.
  */
 
 import { ResultAsync, type Result } from "neverthrow";

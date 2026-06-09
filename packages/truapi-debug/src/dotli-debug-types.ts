@@ -6,9 +6,8 @@
 // Events emitted by dotli host-side logic that is independent of the
 // TrUAPI transport: boot orchestration, resolver phases, render +
 // bridge-setup lifecycles, and backend failover decisions. These
-// complement the host-papp SSO/session events (which come from the
-// SDK) and the TrUAPI host-to-product message events (from
-// the legacy host-container bridge).
+// complement the TrUAPI host-to-product message events and Rust-core
+// SSO/session events.
 //
 // Events are point-in-time OR paired start/end. The consumer decides
 // rendering: multi-event flows (same `flowId`) become boxes, single-
@@ -416,17 +415,6 @@ export type BridgeEvent =
       payload: {
         label: string;
         productId: string;
-      };
-    }
-  | {
-      layer: "bridge";
-      event: "nested_detected";
-      flowId: string;
-      timestamp: number;
-      payload: {
-        label: string;
-        productId: string;
-        nestedIndex: number;
       };
     };
 

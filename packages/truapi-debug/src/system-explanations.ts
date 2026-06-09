@@ -143,16 +143,14 @@ The iframe's \`sandbox\` and \`allow\` attributes are configured here based on t
 
   "render:iframe_ready": {
     title: "Product iframe ready",
-    body: `The iframe element is in the DOM and has started navigating to its URL. The product itself has not executed yet — that happens asynchronously as the browser loads the iframe content. Next up is the container bridge setup, which runs in parallel.`,
+    body: `The iframe element is in the DOM and has started navigating to its URL. The product itself has not executed yet — that happens asynchronously as the browser loads the iframe content. Next up is the TrUAPI bridge setup, which runs in parallel.`,
   },
 
   // bridge
 
   "bridge:setup_begin": {
     title: "TrUAPI bridge wiring",
-    body: `Starting to wire the host-container postMessage bridge between the host and the product iframe. This bridge carries **all** TrUAPI traffic: account derivation, transaction signing, chain connections, scoped localStorage, statement-store subscriptions, preimage submission, permissions prompts, push notifications.
-
-A nested-bridge detector is also installed here — it watches for \`postMessage\` from windows other than the primary iframe and dynamically creates additional bridges for dApp-in-dApp compositions.`,
+    body: `Starting to wire the Rust-backed TrUAPI bridge between the host and the product iframe. This bridge carries **all** TrUAPI traffic: account derivation, transaction signing, chain connections, scoped localStorage, statement-store subscriptions, preimage submission, permissions prompts, push notifications.`,
   },
 
   "bridge:setup_ready": {
@@ -183,15 +181,6 @@ Gaps between \`setup_ready\` and \`first_inbound\` mean the product iframe wasn'
     body: `The host has just posted its first TrUAPI message **to** the product iframe. For the \`host_handshake_request\` loop, this is the handshake response and effectively "closes" the bridge flow — from here on, normal request/response traffic flows both directions.
 
 Gaps between \`first_inbound\` and \`first_outbound\` imply a host-side problem (the handler wasn't registered, or the main thread was blocked). Under normal conditions these two events land in the same millisecond.`,
-  },
-
-  "bridge:nested_detected": {
-    title: "Nested dApp detected",
-    body: `A product running inside the main iframe is itself embedding another product via a nested iframe. Because \`postMessage\` to \`window.top\` lets any descendant iframe reach the host, the host runs a nested-bridge detector that recognises these new sources and spins up a dedicated TrUAPI container for each.
-
-The inner product gets its own \`productId\` (\`parent:nested-N\`) and its own scoped storage prefix. Its traffic appears on the TrUAPI swimlane tagged with that productId.
-
-There's a cap (\`MAX_NESTED_BRIDGES\` in config) to prevent runaway iframe trees from exhausting resources.`,
   },
 
   // failover
@@ -310,13 +299,13 @@ This **must** complete before \`document.write\` for multi-file archives — oth
     body: `Something in the fetch / decrypt / store pipeline threw. The sandbox has captured the exception to Sentry with the relevant \`dependency\` tag (\`ipfs-gateway\` / \`helia-bulletin\` / \`unknown\`) and rendered its error UI with a retry button. \`reason\` is the error message from whichever stage threw.`,
   },
 
-  // SSO (host-papp)
+  // SSO
 
   "sso:pairing_started": {
     title: "Wallet pairing started",
-    body: `\`createPappAdapter().sso.authenticate()\` was called, usually because the user clicked the sign-in button. A fresh sr25519 session account is being derived from a generated mnemonic (it exists only for this session — the real wallet stays on the mobile device).
+    body: `The product requested SSO, usually because the user clicked the sign-in button. A fresh sr25519 session account is being derived for this session.
 
-\`metadata\` is the product-identity string the host passed when instantiating the PappAdapter; the mobile wallet will show this to the user as part of the consent screen.`,
+\`metadata\` is the product-identity string the host passes into the pairing flow; the mobile authenticator shows this to the user as part of the consent screen.`,
   },
 
   "sso:deeplink_generated": {
@@ -359,7 +348,7 @@ After this event, the product can obtain signed payloads, request ring-VRF alias
 The UI shows the error message and resets so the user can try again.`,
   },
 
-  // attestation (host-papp)
+  // attestation
 
   "attestation:started": {
     title: "Guest identity attestation started",
@@ -410,7 +399,7 @@ The call bundles the candidate signature, the ring-VRF key + proof, and a \`cons
 The parallel pairing flow is torn down too. No session is stored.`,
   },
 
-  // session (host-papp)
+  // session
 
   "session:opened": {
     title: "Session opened",

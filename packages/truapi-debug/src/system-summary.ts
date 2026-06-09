@@ -73,8 +73,6 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return `First message from product received (productId=${str(p.productId)}).`;
     case "bridge:first_outbound":
       return `First message sent to product — bridge traffic established (productId=${str(p.productId)}).`;
-    case "bridge:nested_detected":
-      return `Nested dApp #${str(p.nestedIndex)} detected (productId=${str(p.productId)}).`;
 
     // failover
     case "failover:chain_backend":
@@ -119,7 +117,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case "sandbox:failed":
       return `Sandbox failed: ${str(p.reason)}.`;
 
-    // SSO (host-papp)
+    // SSO
     case "sso:pairing_started":
       return `Wallet pairing started (product metadata=${str(p.metadata)}).`;
     case "sso:deeplink_generated":
@@ -133,7 +131,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case "sso:pairing_failed":
       return `Wallet pairing failed: ${str(p.reason)}.`;
 
-    // attestation (host-papp)
+    // attestation
     case "attestation:started":
       return `Starting guest identity attestation for candidate ${str(p.candidateAccountId)}.`;
     case "attestation:username_claimed":
@@ -149,7 +147,7 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case "attestation:failed":
       return `Attestation failed: ${str(p.reason)}.`;
 
-    // session (host-papp)
+    // session
     case "session:opened":
       return `Session ${str(p.sessionId)} opened.`;
     case "session:peer_action_received":

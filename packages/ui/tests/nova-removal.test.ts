@@ -7,9 +7,11 @@ const forbiddenPackages = [
   "@novasamatech/host-api",
   "@novasamatech/host-container",
   "@novasamatech/host-papp",
+  "@novasamatech/scale",
   "@novasamatech/sdk-statement",
   "@novasamatech/statement-store",
   "@novasamatech/storage-adapter",
+  "@novasamatech/substrate-slot-sr25519-wasm",
 ] as const;
 
 async function collectFiles(
@@ -49,6 +51,7 @@ describe("Nova host dependency removal", () => {
     const files = [
       ...manifestFiles,
       join(repoRoot, "bun.lock"),
+      join(repoRoot, "THIRD_PARTY_NOTICES.md"),
       ...sourceFiles,
     ];
 

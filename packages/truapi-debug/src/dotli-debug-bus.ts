@@ -4,11 +4,9 @@
 // dotli-internal debug event bus
 //
 // Module-global pub/sub for boot / resolve / render / bridge / failover
-// events. Mirrors the lazy-subscription pattern used by
-// `onHostApiDebugMessage` and `onHostPappDebugMessage` so emit cost
-// stays near zero when no listener is attached (the primary code path
-// checks `hasDotliDebugListeners()` before constructing expensive
-// payloads).
+// events. The emit path stays near zero-cost when no listener is attached
+// because the primary code path checks `hasDotliDebugListeners()` before
+// constructing expensive payloads.
 //
 // Runtime gate: the bus stays `null` until `enableDotliDebugBuffering()`
 // flips it on. That call is made by `resolveTruapiDebugMode()` in

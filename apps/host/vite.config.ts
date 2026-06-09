@@ -448,15 +448,6 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("@novasamatech/scale")) {
-            return "nova-scale";
-          }
-        },
-      },
-    },
   },
   server: {
     headers: {

@@ -123,9 +123,6 @@ export const SW_ARCHIVE_CACHE_MAX = 8;
 /** Max chain connections per origin on the protocol host. */
 export const MAX_CONNECTIONS_PER_ORIGIN = 10;
 
-/** Max nested container bridges per host shell. */
-export const MAX_NESTED_BRIDGES = 5;
-
 /** Drop scheduled notifications older than this many ms past `scheduledAt`. */
 export const SCHEDULED_NOTIFICATIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 

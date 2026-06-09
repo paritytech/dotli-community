@@ -1285,11 +1285,10 @@ function renderDiagnostics(parent: HTMLElement): void {
     polkadotApi.push(...__POLKADOT_API_VERSIONS__);
   }
 
-  const parityTruapi = (
+  const parityTruapi =
     typeof __PARITY_TRUAPI_VERSIONS__ === "undefined"
       ? []
-      : __PARITY_TRUAPI_VERSIONS__
-  );
+      : __PARITY_TRUAPI_VERSIONS__;
 
   if (polkadotApi.length > 0) {
     appendSectionHeader(parent, "@polkadot-api");
@@ -1372,7 +1371,7 @@ function isTruapiDebugEnabled(): boolean {
  *              so the snapshot matches what's actually live right now.
  *    3. Permissions: per-product, omitted on landing where we don't have
  *                    a scoped label to query.
- *    4. Packages: flat list of smoldot, polkadot-api, and novasamatech. The
+ *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi. The
  *                 live block heights from the @smoldot popover section
  *                 aren't included here because they're noise in a bug
  *                 report. The popover already shows them live. */
@@ -1380,7 +1379,7 @@ function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
   polkadotApi: { name: string; version: string }[],
-  novasamatech: { name: string; version: string }[],
+  parityTruapi: { name: string; version: string }[],
 ): string {
   const lines: string[] = [];
   for (const [k, v] of base) {
@@ -1412,7 +1411,7 @@ function formatDiagnosticsReport(
   for (const p of polkadotApi) {
     lines.push(`  ${p.name}: ${p.version}`);
   }
-  for (const p of novasamatech) {
+  for (const p of parityTruapi) {
     lines.push(`  ${p.name}: ${p.version}`);
   }
   return lines.join("\n");

@@ -1,8 +1,8 @@
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
-import type { Theme } from "@parity/truapi";
+import type { ThemeVariant } from "@parity/truapi";
 import { createResultStream } from "./result-stream";
 
-function currentTheme(): Theme {
+function currentTheme(): ThemeVariant {
   return document.documentElement.getAttribute("data-theme") === "light"
     ? "Light"
     : "Dark";
@@ -10,7 +10,7 @@ function currentTheme(): Theme {
 
 export function createThemeSubscribe(): HostCallbacks["subscribeTheme"] {
   return () =>
-    createResultStream<Theme>([currentTheme()], (push) => {
+    createResultStream<ThemeVariant>([currentTheme()], (push) => {
       const onThemeChanged = (): void => {
         push(currentTheme());
       };

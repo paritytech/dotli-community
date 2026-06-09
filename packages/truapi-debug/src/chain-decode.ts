@@ -9,14 +9,12 @@
 // `genesisHash`, `followSubscriptionId`, `operationId`, `blockHash`,
 // and (for follow receive events) the ChainHeadEvent variant tag.
 //
-// The legacy host-container debug hook delivered payloads in
-// already-decoded form (scale-ts conventions: Hex becomes a hex string,
-// Option becomes T|undefined, Nullable becomes T|null, Enum becomes
-// {tag, value}, Result becomes {success, value}), so this module is a
-// shape-matching walk, not a SCALE decode.
+// The debug stream delivers payloads in already-decoded form (Hex becomes
+// a hex string, Option becomes T|undefined, Nullable becomes T|null, Enum
+// becomes {tag, value}, Result becomes {success, value}), so this module
+// is a shape-matching walk, not a SCALE decode.
 //
-// Shapes mirror packages/host-api/src/protocol/v1/chainInteraction.ts
-// in the triangle-js-sdks repo.
+// Shapes mirror the TrUAPI chain callback payloads.
 
 /** High-level categorisation of a chain message. Direction (request vs
  *  response vs subscription start/receive) is already known from the
@@ -408,12 +406,10 @@ function extractErrorReason(v: unknown): string | undefined {
   if (o === undefined) {
     return undefined;
   }
-  // `Err()` from @novasamatech/scale wraps struct data in an Error
-  // instance whose payload holds the struct, so `.payload.reason` is the
-  // canonical location. Top-level `.reason` is kept as a fallback in
-  // case a future error shape skips the Error wrapper, and the Error's
-  // `.message` is the last resort so we never render "err: ?" when
-  // there's a usable string somewhere on the value.
+  // Error-shaped decoded values can carry structured details in
+  // `.payload.reason`. Top-level `.reason` is kept as a fallback, and the
+  // Error's `.message` is the last resort so we never render "err: ?"
+  // when there's a usable string somewhere on the value.
   const payload = asObj(o.payload);
   const reason = asString(payload?.reason) ?? asString(o.reason);
   if (reason !== undefined) {

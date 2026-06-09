@@ -28,6 +28,8 @@ function installTopbarDom(): void {
 
 beforeEach(() => {
   vi.resetModules();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   localStorage.clear();
   document.body.innerHTML = "";
 });
@@ -65,13 +67,58 @@ describe("topbar disconnect", () => {
     );
 
     document.getElementById("auth-button")?.click();
-    expect(document.getElementById("user-popover")?.classList.contains("open"))
-      .toBe(true);
+    expect(
+      document.getElementById("user-popover")?.classList.contains("open"),
+    ).toBe(true);
 
     document.getElementById("user-popover-disconnect")?.click();
 
     expect(requests).toBe(1);
-    expect(document.getElementById("user-popover")?.classList.contains("open"))
-      .toBe(false);
+    expect(
+      document.getElementById("user-popover")?.classList.contains("open"),
+    ).toBe(false);
+  });
+});
+
+describe("settings dependency list", () => {
+  it("lists current runtime packages without Novasama dependencies", async () => {
+    installTopbarDom();
+    vi.stubGlobal("__DOTLI_VERSION__", "0.5.0");
+    vi.stubGlobal("__SMOLDOT_VERSION__", "3.2.0");
+    vi.stubGlobal("__SMOLDOT_COMMIT__", "abcdef1234567890");
+    vi.stubGlobal("__POLKADOT_API_VERSION__", "2.1.6");
+    vi.stubGlobal("__POLKADOT_API_VERSIONS__", [
+      { name: "@polkadot-api/json-rpc-provider", version: "0.2.0" },
+    ]);
+    vi.stubGlobal("__PARITY_TRUAPI_VERSIONS__", [
+      { name: "@parity/truapi", version: "0.3.0" },
+      { name: "@parity/truapi-host-wasm", version: "0.1.0" },
+    ]);
+
+    const opened: string[] = [];
+    vi.spyOn(window, "open").mockImplementation((url?: string | URL) => {
+      opened.push(String(url));
+      return null;
+    });
+
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    document.getElementById("mode-button")?.click();
+
+    const content = document.getElementById("mode-popover-content");
+    expect(content?.textContent).toContain("@parity/truapi");
+    expect(content?.textContent).toContain("@parity/truapi-host-wasm");
+    expect(content?.textContent).not.toContain("@novasamatech");
+
+    Array.from(document.querySelectorAll("button"))
+      .find((button) => button.textContent === "Share diagnostic")
+      ?.click();
+
+    expect(opened).toHaveLength(1);
+    const body = new URL(opened[0]!).searchParams.get("body") ?? "";
+    expect(body).toContain("@parity/truapi");
+    expect(body).toContain("@parity/truapi-host-wasm");
+    expect(body).not.toContain("@novasamatech");
   });
 });
