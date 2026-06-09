@@ -1,5 +1,5 @@
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
-import { toHexPrefixed } from "./hex";
+import { toHexPrefixed } from "@dotli/shared/hex";
 
 interface ConfirmationCopy {
   title: string;

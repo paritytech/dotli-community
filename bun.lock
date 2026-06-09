@@ -232,6 +232,7 @@
       "version": "0.5.0",
       "dependencies": {
         "@dotli/config": "workspace:*",
+        "@noble/hashes": "^2.2.0",
       },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",
@@ -1797,7 +1798,7 @@
 
     "@dotli/ui/@parity/truapi/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
-    "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", {}],
+    "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", { "dependencies": { "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^5.7" } }],
 
     "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi-host": ["@parity/truapi-host@file:../../js/packages/truapi-host", {}],
 

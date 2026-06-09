@@ -11,7 +11,7 @@ import { submitPreimageRemote } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
 import { bitswapGet } from "../bulletin-bitswap";
 import { showPreimageSubmitModal } from "../preimage-modal";
-import { fromHexPrefixed, toHexPrefixed } from "./hex";
+import { fromHexPrefixed, toHexPrefixed } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 
 const POLL_INTERVAL_MS = 10_000;
