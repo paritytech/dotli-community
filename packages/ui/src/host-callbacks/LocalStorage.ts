@@ -1,7 +1,16 @@
-// Mirrors the legacy `container.handleLocalStorage*` bodies: base64
-// round-trip into `window.localStorage[storagePrefix + key]`.
-
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
+
+const BINARY_STRING_CHUNK_SIZE = 0x8000;
+
+function bytesToBase64(value: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < value.length; offset += BINARY_STRING_CHUNK_SIZE) {
+    binary += String.fromCharCode(
+      ...value.subarray(offset, offset + BINARY_STRING_CHUNK_SIZE),
+    );
+  }
+  return btoa(binary);
+}
 
 export function createLocalStorageRead(
   storagePrefix: string,
@@ -28,8 +37,7 @@ export function createLocalStorageWrite(
 ): HostCallbacks["write"] {
   return (key, value) => {
     try {
-      const b64 = btoa(String.fromCharCode(...value));
-      localStorage.setItem(storagePrefix + key, b64);
+      localStorage.setItem(storagePrefix + key, bytesToBase64(value));
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error("Failed to write to storage", { cause }));
