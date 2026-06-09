@@ -422,7 +422,7 @@
 }
 .td-row {
   display: grid;
-  grid-template-columns: 72px 16px 90px 58px 1fr;
+  grid-template-columns: 72px 16px 90px 58px minmax(0, 1fr);
   align-items: baseline;
   gap: 8px;
   padding: 3px 10px;
@@ -431,6 +431,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.td-row > * {
+  min-width: 0;
+}
+.td-row.system {
+  grid-template-columns: 72px max-content 90px minmax(0, 1fr);
 }
 .td-rid {
   font-size: 10.5px;
@@ -483,7 +489,7 @@
   text-overflow: ellipsis;
 }
 .td-row.system .td-tag-and-summary {
-  grid-column: 4 / -1;
+  grid-column: auto;
 }
 .td-tag {
   color: #e0e0e0;
