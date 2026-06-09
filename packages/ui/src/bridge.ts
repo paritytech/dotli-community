@@ -24,6 +24,7 @@ import {
 } from "@parity/truapi";
 import type { ResultPayload } from "@parity/truapi/scale";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
+import * as WireTable from "@parity/truapi/wire-table";
 import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
@@ -78,6 +79,36 @@ interface CoreHost {
   dispose: () => void;
 }
 
+type CoreProvider = Provider & { disconnect: () => Promise<void> };
+
+const WIRE_ID_KINDS = [
+  "request",
+  "response",
+  "start",
+  "stop",
+  "interrupt",
+  "receive",
+] as const;
+
+const WIRE_TAG_BY_ID = (() => {
+  const map = new Map<number, string>();
+  for (const [name, value] of Object.entries(WireTable)) {
+    if (typeof value !== "object" || value === null) {
+      continue;
+    }
+    const ids = value as Partial<
+      Record<(typeof WIRE_ID_KINDS)[number], unknown>
+    >;
+    for (const kind of WIRE_ID_KINDS) {
+      const id = ids[kind];
+      if (typeof id === "number") {
+        map.set(id, `${name.toLowerCase()}_${kind}`);
+      }
+    }
+  }
+  return map;
+})();
+
 const LANDING_AUTH_LABEL = "dotli";
 const LANDING_AUTH_DISPLAY_LABEL = "Polkadot Web";
 
@@ -110,32 +141,70 @@ window.addEventListener("dotli:device-permission-changed", () => {
   }
 });
 
-window.addEventListener("dotli:truapi-disconnect-request", () => {
-  void (currentHost ?? landingAuthHost)?.disconnect();
-});
+let bridgeEventListenersInitialized = false;
 
-window.addEventListener("dotli:truapi-login-request", (event: Event) => {
-  const detail = (event as CustomEvent<{ reason?: string }>).detail;
-  void (async () => {
-    const host = currentHost ?? (await getLandingAuthHost());
-    const result = await host.requestLogin(detail.reason);
-    if (result === "Success" || result === "AlreadyConnected") {
-      emitSsoSessionEstablished(result);
-    } else {
-      emitSsoPairingFailed(result);
-    }
-    dispatchSessionState(result === "Success" || result === "AlreadyConnected");
-  })().catch((error: unknown) => {
-    emitSsoPairingFailed(
-      error instanceof Error ? error.message : String(error),
-    );
-    if (isLoginRejected(error)) {
-      dispatchSessionState(false);
-      return;
-    }
-    dispatchLoginError(error);
+export function initBridgeEventListeners(): void {
+  if (bridgeEventListenersInitialized) {
+    return;
+  }
+  bridgeEventListenersInitialized = true;
+  (
+    window as typeof window & { __dotliTruapiBridgeReady?: boolean }
+  ).__dotliTruapiBridgeReady = true;
+  emitDotliDebugEvent({
+    layer: "bridge",
+    event: "sso_listeners_ready",
+    flowId: "bridge-sso-listeners",
+    timestamp: Date.now(),
+    payload: {},
   });
-});
+
+  window.addEventListener("dotli:truapi-disconnect-request", () => {
+    void (currentHost ?? landingAuthHost)?.disconnect();
+  });
+
+  window.addEventListener("dotli:truapi-login-request", (event: Event) => {
+    const detail = (event as CustomEvent<{ reason?: string }>).detail;
+    const flowId = newFlowId("login");
+    emitDotliDebugEvent({
+      layer: "sso",
+      event: "login_event_received",
+      flowId,
+      timestamp: Date.now(),
+      payload: {},
+    });
+    void (async () => {
+      const host = currentHost ?? (await getLandingAuthHost());
+      emitDotliDebugEvent({
+        layer: "sso",
+        event: "login_host_ready",
+        flowId,
+        timestamp: Date.now(),
+        payload: { host: currentHost === null ? "landing" : "product" },
+      });
+      const result = await host.requestLogin(detail.reason);
+      if (result === "Success" || result === "AlreadyConnected") {
+        emitSsoSessionEstablished(result);
+      } else {
+        emitSsoPairingFailed(result);
+      }
+      dispatchSessionState(
+        result === "Success" || result === "AlreadyConnected",
+      );
+    })().catch((error: unknown) => {
+      emitSsoPairingFailed(
+        error instanceof Error ? error.message : String(error),
+      );
+      if (isLoginRejected(error)) {
+        dispatchSessionState(false);
+        return;
+      }
+      dispatchLoginError(error);
+    });
+  });
+}
+
+initBridgeEventListeners();
 
 /**
  * Capture deep link path (pathname + search + hash) to forward into the iframe.
@@ -168,17 +237,38 @@ function applyIframeStyling(
   document.body.style.overflow = "hidden";
 }
 
-/** Read once at boot — flipping the flag while a runtime is alive
- * doesn't reach the worker. The user must reload after toggling. */
-function isDebugEnabled(): boolean {
+type CoreLogLevel = "off" | "error" | "warn" | "info" | "debug" | "trace";
+
+const CORE_LOG_LEVELS: readonly CoreLogLevel[] = [
+  "off",
+  "error",
+  "warn",
+  "info",
+  "debug",
+  "trace",
+];
+
+/** Read once at boot — changing the level while a runtime is alive doesn't
+ * reach the worker, so the user must reload after setting it (or call
+ * `window.__truapi.setLogLevel(...)` to retune live). `truapi:logLevel`
+ * selects the level; the legacy `truapi:debug`/`dotli:truapi-debug` "1"
+ * flags map to `debug`. */
+function readLogLevel(): CoreLogLevel {
   try {
-    return (
+    const level = window.localStorage.getItem("truapi:logLevel");
+    if (level && (CORE_LOG_LEVELS as readonly string[]).includes(level)) {
+      return level as CoreLogLevel;
+    }
+    if (
       window.sessionStorage.getItem("dotli:truapi-debug") === "1" ||
       window.localStorage.getItem("truapi:debug") === "1"
-    );
+    ) {
+      return "debug";
+    }
   } catch {
-    return false;
+    // ignore storage access errors
   }
+  return "off";
 }
 
 function dispatchLoginError(error: unknown): void {
@@ -215,7 +305,9 @@ function isRejectedValue(value: unknown): boolean {
   return (
     record.tag === "Rejected" ||
     record.value === "Rejected" ||
-    isRejectedValue(record.value)
+    record.reason === "Rejected" ||
+    isRejectedValue(record.value) ||
+    isRejectedValue(record.reason)
   );
 }
 
@@ -282,6 +374,78 @@ function pipeProviders(
   };
 }
 
+function emitWireFrameDebug(
+  direction: "incoming" | "outgoing",
+  productId: string,
+  message: Uint8Array,
+): void {
+  const decoded = decodeWireMessage(message);
+  if (decoded.isErr()) {
+    return;
+  }
+  const wireId = decoded.value.payload.id;
+  emitDotliDebugEvent({
+    direction,
+    productId,
+    requestId: decoded.value.requestId,
+    payload: {
+      tag: WIRE_TAG_BY_ID.get(wireId) ?? `wire_${String(wireId)}`,
+      value: {
+        wireId,
+        bytes: decoded.value.payload.value,
+      },
+    },
+  });
+}
+
+function wrapCoreProviderForDebug(
+  provider: CoreProvider,
+  productId: string,
+): CoreProvider {
+  const listeners = new Set<(message: Uint8Array) => void>();
+  let disposed = false;
+  const unsubscribeCore = provider.subscribe((message) => {
+    if (disposed) {
+      return;
+    }
+    emitWireFrameDebug("outgoing", productId, message);
+    for (const listener of [...listeners]) {
+      listener(message);
+    }
+  });
+
+  return {
+    postMessage(message: Uint8Array): void {
+      if (disposed) {
+        return;
+      }
+      emitWireFrameDebug("incoming", productId, message);
+      provider.postMessage(message);
+    },
+    subscribe(callback) {
+      listeners.add(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    },
+    subscribeClose(callback) {
+      return provider.subscribeClose?.(callback) ?? (() => {});
+    },
+    async disconnect() {
+      await provider.disconnect();
+    },
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      unsubscribeCore();
+      listeners.clear();
+      provider.dispose();
+    },
+  };
+}
+
 let topbarLoginRequestSeq = 0;
 
 function requestCoreLogin(
@@ -289,6 +453,14 @@ function requestCoreLogin(
   reason?: string,
 ): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
+  const flowId = newFlowId("login");
+  emitDotliDebugEvent({
+    layer: "sso",
+    event: "login_request_start",
+    flowId,
+    timestamp: Date.now(),
+    payload: { requestId },
+  });
   const responseCodec = scale.Result(
     VersionedHostRequestLoginResponse,
     scale.CallError(VersionedHostRequestLoginError),
@@ -304,6 +476,13 @@ function requestCoreLogin(
     },
   });
   if (frame.isErr()) {
+    emitDotliDebugEvent({
+      layer: "sso",
+      event: "login_request_encode_failed",
+      flowId,
+      timestamp: Date.now(),
+      payload: { requestId, reason: frame.error.message },
+    });
     return Promise.reject(frame.error);
   }
 
@@ -329,11 +508,35 @@ function requestCoreLogin(
           LoginErrorEnvelope
         >;
         if (result.success) {
+          emitDotliDebugEvent({
+            layer: "sso",
+            event: "login_request_response",
+            flowId,
+            timestamp: Date.now(),
+            payload: { requestId, result: result.value.value },
+          });
           resolve(result.value.value);
         } else {
+          emitDotliDebugEvent({
+            layer: "sso",
+            event: "login_request_failed",
+            flowId,
+            timestamp: Date.now(),
+            payload: { requestId },
+          });
           reject(new Error(JSON.stringify(result.value)));
         }
       } catch (error) {
+        emitDotliDebugEvent({
+          layer: "sso",
+          event: "login_request_decode_failed",
+          flowId,
+          timestamp: Date.now(),
+          payload: {
+            requestId,
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        });
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
@@ -343,8 +546,25 @@ function requestCoreLogin(
 
     try {
       core.postMessage(frame.value);
+      emitDotliDebugEvent({
+        layer: "sso",
+        event: "login_request_sent",
+        flowId,
+        timestamp: Date.now(),
+        payload: { requestId },
+      });
     } catch (error) {
       cleanup();
+      emitDotliDebugEvent({
+        layer: "sso",
+        event: "login_request_send_failed",
+        flowId,
+        timestamp: Date.now(),
+        payload: {
+          requestId,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+      });
       reject(error instanceof Error ? error : new Error(String(error)));
     }
   });
@@ -396,9 +616,9 @@ async function createHost(args: {
 async function createCoreProvider(
   label: string,
   options: { pairingLabel?: string; pairingDotSuffix?: boolean } = {},
-): Promise<Provider & { disconnect: () => Promise<void> }> {
+): Promise<CoreProvider> {
   const { createWebWorkerProvider, HostWorker } = await runtimeChunkPromise;
-  return createWebWorkerProvider(
+  const provider = await createWebWorkerProvider(
     new HostWorker(),
     createWasmRawCallbacks(
       createHostCallbacks({
@@ -409,10 +629,11 @@ async function createCoreProvider(
       }),
     ),
     {
-      debug: isDebugEnabled(),
+      logLevel: readLogLevel(),
       runtimeConfig: createTruapiRuntimeConfig(label),
     },
   );
+  return wrapCoreProviderForDebug(provider, label);
 }
 
 async function getLandingAuthHost(): Promise<CoreHost> {

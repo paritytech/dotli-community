@@ -82,6 +82,15 @@ let currentQrPayload: string | null = null;
 let activeTruapiPairingCancel: (() => void) | null = null;
 let truapiSessionConnected = false;
 
+interface TruapiSessionUiState {
+  connected: boolean;
+  publicKey?: string;
+  identityAccountId?: string;
+  liteUsername?: string;
+  fullUsername?: string;
+  primaryUsername?: string;
+}
+
 function getStoredTheme(): "light" | "dark" {
   const stored = localStorage.getItem("dotli-theme");
   if (stored === "light" || stored === "dark") {
@@ -161,12 +170,13 @@ export function initTopBar(): void {
   });
 
   window.addEventListener("dotli:truapi-session-state", (e: Event) => {
-    const { connected } = (e as CustomEvent<{ connected: boolean }>).detail;
+    const detail = (e as CustomEvent<TruapiSessionUiState>).detail;
+    const { connected } = detail;
     truapiSessionConnected = connected;
     activeTruapiPairingCancel = null;
     closeModal({ skipTruapiCancel: true });
     if (connected) {
-      renderTruapiLoggedIn();
+      renderTruapiLoggedIn(detail);
     } else {
       renderLoggedOut();
     }
@@ -282,11 +292,45 @@ function renderLoggedOut(): void {
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
 
-function renderTruapiLoggedIn(): void {
-  authButton.innerHTML = `<div class="user-badge">TU</div>`;
+function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
+  authButton.innerHTML = `<div class="user-badge">${escapeHtml(
+    shortenTruapiSessionName(state),
+  )}</div>`;
   authButton.title = "Account";
-  userPopoverUsername.textContent = "Connected with Polkadot Mobile";
+  userPopoverUsername.textContent =
+    state.primaryUsername ??
+    state.fullUsername ??
+    state.liteUsername ??
+    shortenAccount(state.identityAccountId ?? state.publicKey) ??
+    "Connected with Polkadot Mobile";
   window.dispatchEvent(new Event("dotli:authenticated"));
+}
+
+function shortenTruapiSessionName(state: TruapiSessionUiState): string {
+  const fullName = state.fullUsername;
+  if (fullName !== undefined && fullName.length > 0) {
+    const parts = fullName.split(" ").filter((part) => part.length > 0);
+    if (parts.length === 1) {
+      return parts[0]!.slice(0, 2).toUpperCase();
+    }
+    return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
+  }
+  const liteName = state.liteUsername;
+  if (liteName !== undefined && liteName.length > 0) {
+    return liteName.slice(0, 2).toUpperCase();
+  }
+  const account = state.identityAccountId ?? state.publicKey;
+  if (account !== undefined && account.length >= 4) {
+    return account.slice(2, 4).toUpperCase();
+  }
+  return "??";
+}
+
+function shortenAccount(account: string | undefined): string | undefined {
+  if (account === undefined || account.length < 12) {
+    return undefined;
+  }
+  return `${account.slice(0, 8)}...${account.slice(-4)}`;
 }
 
 function renderPairing(payload: string): void {
@@ -348,10 +392,27 @@ function isAuthRejected(message: string): boolean {
   }
   try {
     const parsed = JSON.parse(message) as unknown;
-    return parsed === "Rejected";
+    return isRejectedValue(parsed);
   } catch {
     return false;
   }
+}
+
+function isRejectedValue(value: unknown): boolean {
+  if (value === "Rejected") {
+    return true;
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.tag === "Rejected" ||
+    record.value === "Rejected" ||
+    record.reason === "Rejected" ||
+    isRejectedValue(record.value) ||
+    isRejectedValue(record.reason)
+  );
 }
 
 function renderError(message: string): void {
@@ -385,6 +446,7 @@ function renderError(message: string): void {
   retry.className = "auth-modal-retry";
   retry.textContent = "Retry";
   retry.addEventListener("click", () => {
+    openModal(undefined, currentProductLabel ?? undefined);
     requestTruapiLogin();
   });
   container.appendChild(retry);
@@ -397,6 +459,7 @@ function handleAuthButtonClick(): void {
   if (truapiSessionConnected) {
     userPopover.classList.toggle("open");
   } else {
+    openModal(undefined, currentProductLabel ?? undefined);
     requestTruapiLogin();
   }
 }
@@ -1868,6 +1931,8 @@ function openModal(
 
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
+  currentQrPayload = null;
+  modalQr.innerHTML = "";
 
   if (opts.skipTruapiCancel !== true) {
     activeTruapiPairingCancel?.();

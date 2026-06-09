@@ -160,7 +160,11 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   const unsubscribeStore = store.subscribe(scheduleRender);
   const unsubscribeDotli = onDotliDebugEvent((ev) => {
-    store.insertDotli(ev);
+    if ("layer" in ev) {
+      store.insertDotli(ev);
+    } else {
+      store.insertTruapi(ev);
+    }
   });
 
   // Initial render + iframe adjustment.

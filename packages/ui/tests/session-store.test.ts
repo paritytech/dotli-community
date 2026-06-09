@@ -1,82 +1,92 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildSharedAuthStorageKey,
+  SHARED_CORE_SESSION_KEY,
+} from "@dotli/protocol/auth-storage";
 import { SITE_ID } from "@dotli/config/config";
-import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import { createSessionStoreAdapters } from "@dotli/ui/host-callbacks/SessionStore";
 
-interface StorageChange {
-  siteId: string;
-  key: string;
-  value: string | null;
+const STORAGE_KEY = buildSharedAuthStorageKey(SITE_ID, SHARED_CORE_SESSION_KEY);
+
+const enc = new TextEncoder();
+
+function compactLength(length: number): number[] {
+  if (length < 64) {
+    return [length << 2];
+  }
+  throw new Error("test helper only supports compact single-byte lengths");
 }
 
-const protocol = vi.hoisted(() => {
-  const listeners = new Set<(change: StorageChange) => void>();
-  return {
-    value: null as string | null,
-    listeners,
-    readSharedAuthStorage: vi.fn(async () => protocol.value),
-    writeSharedAuthStorage: vi.fn(async (_siteId, _key, value: string) => {
-      protocol.value = value;
-    }),
-    clearSharedAuthStorage: vi.fn(async () => {
-      protocol.value = null;
-    }),
-    subscribeSharedAuthStorage: vi.fn(
-      (listener: (change: StorageChange) => void) => {
-        listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
-        };
-      },
-    ),
-    emit(change: StorageChange) {
-      for (const listener of listeners) {
-        listener(change);
-      }
-    },
-  };
-});
+function optionString(value: string | undefined): number[] {
+  if (value === undefined) {
+    return [0];
+  }
+  const bytes = Array.from(enc.encode(value));
+  return [1, ...compactLength(bytes.length), ...bytes];
+}
 
-vi.mock("@dotli/protocol/client", () => ({
-  readSharedAuthStorage: protocol.readSharedAuthStorage,
-  writeSharedAuthStorage: protocol.writeSharedAuthStorage,
-  clearSharedAuthStorage: protocol.clearSharedAuthStorage,
-  subscribeSharedAuthStorage: protocol.subscribeSharedAuthStorage,
-}));
+function optionFixed(value: number[] | undefined): number[] {
+  return value === undefined ? [0] : [1, ...value];
+}
+
+function sessionBlobV3(): Uint8Array {
+  const publicKey = Array.from({ length: 32 }, (_, i) => i);
+  const identityAccountId = Array.from({ length: 32 }, (_, i) => 0xa0 + i);
+  return new Uint8Array([
+    3,
+    ...publicKey,
+    0,
+    ...optionFixed(undefined),
+    ...optionFixed(identityAccountId),
+    ...optionString("pgherveou.04"),
+    ...optionString(undefined),
+  ]);
+}
 
 describe("session-store host callbacks", () => {
   beforeEach(() => {
-    protocol.value = null;
-    protocol.listeners.clear();
-    protocol.readSharedAuthStorage.mockClear();
-    protocol.writeSharedAuthStorage.mockClear();
-    protocol.clearSharedAuthStorage.mockClear();
-    protocol.subscribeSharedAuthStorage.mockClear();
+    localStorage.clear();
+    vi.restoreAllMocks();
   });
 
-  it("round-trips the shared core session blob", async () => {
+  it("round-trips the host core session blob", async () => {
     const { readSession, writeSession, clearSession } =
       createSessionStoreAdapters();
 
     expect(await readSession()).toBeUndefined();
 
     await writeSession(new Uint8Array([1, 2, 3]));
-    expect(protocol.writeSharedAuthStorage).toHaveBeenCalledWith(
-      SITE_ID,
-      SHARED_CORE_SESSION_KEY,
-      "0x010203",
-    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("0x010203");
     expect(Array.from((await readSession()) ?? [])).toEqual([1, 2, 3]);
 
     await clearSession();
-    expect(protocol.clearSharedAuthStorage).toHaveBeenCalledWith(
-      SITE_ID,
-      SHARED_CORE_SESSION_KEY,
-    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(await readSession()).toBeUndefined();
   });
 
-  it("emits current, local, and matching remote change ticks", async () => {
+  it("emits decoded connected session identity details", async () => {
+    const { writeSession } = createSessionStoreAdapters();
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-session-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    await writeSession(sessionBlobV3());
+
+    expect(events).toEqual([
+      {
+        connected: true,
+        publicKey:
+          "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        identityAccountId:
+          "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        liteUsername: "pgherveou.04",
+        primaryUsername: "pgherveou.04",
+      },
+    ]);
+  });
+
+  it("emits current, local, and matching storage change ticks", async () => {
     const { subscribeSessionStore, writeSession } =
       createSessionStoreAdapters();
     const iterator = subscribeSessionStore()[Symbol.asyncIterator]();
@@ -92,16 +102,11 @@ describe("session-store host callbacks", () => {
     expect(localTick.value.isOk()).toBe(true);
 
     const remote = iterator.next();
-    protocol.emit({
-      siteId: SITE_ID,
-      key: SHARED_CORE_SESSION_KEY,
-      value: null,
-    });
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
     const remoteTick = await remote;
     expect(remoteTick.done).toBe(false);
     expect(remoteTick.value.isOk()).toBe(true);
 
     await iterator.return?.();
-    expect(protocol.listeners.size).toBe(0);
   });
 });

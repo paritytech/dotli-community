@@ -78,6 +78,29 @@ describe("topbar disconnect", () => {
       document.getElementById("user-popover")?.classList.contains("open"),
     ).toBe(false);
   });
+
+  it("renders the connected username from the Rust-core session state", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-session-state", {
+        detail: {
+          connected: true,
+          publicKey:
+            "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          liteUsername: "pgherveou.04",
+          primaryUsername: "pgherveou.04",
+        },
+      }),
+    );
+
+    expect(document.getElementById("auth-button")?.textContent).toBe("PG");
+    expect(document.getElementById("user-popover-username")?.textContent).toBe(
+      "pgherveou.04",
+    );
+  });
 });
 
 describe("topbar login cancellation", () => {
@@ -116,6 +139,43 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.textContent).not.toContain(
       "Retry",
     );
+    expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
+  });
+
+  it("closes the auth modal for nested rejected login responses", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-pairing", {
+        detail: {
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+          cancel: vi.fn(),
+        },
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-login-error", {
+        detail: {
+          message: JSON.stringify({
+            tag: "Generic",
+            value: {
+              reason: "Rejected",
+            },
+          }),
+        },
+      }),
+    );
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(false);
+    expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
   });
 
   it("keeps the retry view for real login failures", async () => {

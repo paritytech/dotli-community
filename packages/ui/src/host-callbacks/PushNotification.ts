@@ -3,55 +3,79 @@
 
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { log } from "@dotli/shared/log";
+import {
+  cancelNotification,
+  scheduleNotification,
+} from "../scheduled-notifications";
 import { showNotification } from "../notification";
-
-let nextNotificationId = 0;
+import { getPermissionStatus, setPermissionStatus } from "../permissions";
+import { showPermissionRequestModal } from "../permission-modal";
 
 export function createNotificationAdapters(
   label: string,
 ): Pick<HostCallbacks, "pushNotification" | "cancelNotification"> {
-  const timers = new Map<number, ReturnType<typeof setTimeout>>();
-  const pushNotification: HostCallbacks["pushNotification"] = ({
+  const pushNotification: HostCallbacks["pushNotification"] = async ({
     text,
     deeplink,
     scheduledAt,
   }) => {
-    const id = ++nextNotificationId;
     log.warn(`[${label}] Push notification:`, {
-      id,
       text,
       deeplink,
       scheduledAt,
     });
-    const fire = (): void => {
+
+    const granted = await requestNotificationPermission(label);
+    if (!granted) {
+      throw new Error("Notifications permission denied");
+    }
+
+    const result = await scheduleNotification({
+      productId: label,
+      title: label,
+      text,
+      deeplink: deeplink ?? null,
+      scheduledAt: scheduledAt === undefined ? null : Number(scheduledAt),
+    });
+    if (!result.ok) {
+      throw new Error("ScheduleLimitReached");
+    }
+
+    if (result.immediate) {
       showNotification({ text, deeplink, label });
-    };
-    const scheduledMs =
-      scheduledAt === undefined ? undefined : Number(scheduledAt);
-    const delay =
-      scheduledMs === undefined ? 0 : Math.max(0, scheduledMs - Date.now());
-    if (delay === 0) {
-      fire();
-    } else {
-      timers.set(
-        id,
-        setTimeout(() => {
-          timers.delete(id);
-          fire();
-        }, delay),
-      );
     }
-    return Promise.resolve({ id });
+    return { id: result.id };
   };
 
-  const cancelNotification: HostCallbacks["cancelNotification"] = (id) => {
-    const timer = timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.delete(id);
-    }
-    return Promise.resolve(undefined);
+  const cancelPushNotification: HostCallbacks["cancelNotification"] = async (
+    id,
+  ) => {
+    await cancelNotification(label, id);
   };
 
-  return { pushNotification, cancelNotification };
+  return { pushNotification, cancelNotification: cancelPushNotification };
+}
+
+async function requestNotificationPermission(label: string): Promise<boolean> {
+  const status = getPermissionStatus(label, "Notifications");
+  if (status === "granted") {
+    return true;
+  }
+  if (status === "denied") {
+    return false;
+  }
+  try {
+    await showPermissionRequestModal(label, "Notifications");
+    setPermissionStatus(label, "Notifications", "granted");
+    window.dispatchEvent(
+      new CustomEvent("dotli:permission-changed", { detail: { label } }),
+    );
+    return true;
+  } catch {
+    setPermissionStatus(label, "Notifications", "denied");
+    window.dispatchEvent(
+      new CustomEvent("dotli:permission-changed", { detail: { label } }),
+    );
+    return false;
+  }
 }

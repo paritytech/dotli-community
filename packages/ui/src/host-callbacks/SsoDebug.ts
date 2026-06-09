@@ -80,6 +80,8 @@ export function emitSsoStatementStoreResponse(args: {
   requestId?: string;
   requestKind: string;
   remoteSubscriptionId?: string;
+  frameKind?: string;
+  eventName?: string;
   statementCount?: number;
   remaining?: number;
   error?: string;

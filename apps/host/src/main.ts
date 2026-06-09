@@ -940,6 +940,10 @@ async function main(): Promise<void> {
     });
   }
 
+  const bridgeModulePromise = import("@dotli/ui/bridge");
+  const bridgeModule = await bridgeModulePromise;
+  bridgeModule.initBridgeEventListeners();
+
   // Initialize top bar UI.
   const t0 = performance.now();
   initTopBar();
@@ -965,7 +969,7 @@ async function main(): Promise<void> {
       urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
-    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { renderIframe } = await bridgeModulePromise;
     await renderIframe(previewTargetUrl, host);
     history.replaceState(
       null,
@@ -1000,7 +1004,7 @@ async function main(): Promise<void> {
       urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
-    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { renderIframe } = await bridgeModulePromise;
     await renderIframe(localhostUrl, host);
     // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
     history.replaceState(null, "", "/" + host);
@@ -1022,7 +1026,6 @@ async function main(): Promise<void> {
 
   if (label === null) {
     log.warn(`[dot.li perf] Landing page — no subdomain (${elapsed(T0)})`);
-    await import("@dotli/ui/bridge");
     showLanding();
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({

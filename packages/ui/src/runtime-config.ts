@@ -4,7 +4,7 @@ import type { WasmRuntimeConfig } from "@parity/truapi-host-wasm";
 
 type RuntimeLocation = Pick<Location, "origin">;
 
-const DOTLI_ICON_URL = "https://dot.li/dotli.png";
+declare const __DOTLI_VERSION__: string | undefined;
 
 export function labelToProductId(label: string): string {
   return label.startsWith("localhost:") ? label : `${label}.dot`;
@@ -23,27 +23,20 @@ function getPlatformType(userAgent: string = navigator.userAgent): string {
   return "Unknown";
 }
 
-function getHostIcon(location: RuntimeLocation): string {
-  try {
-    const icon = new URL("/dotli.png", location.origin);
-    return icon.protocol === "https:" ? icon.href : DOTLI_ICON_URL;
-  } catch {
-    return DOTLI_ICON_URL;
-  }
-}
-
 export function createTruapiRuntimeConfig(
   label: string,
   location: RuntimeLocation = window.location,
   siteId: string = SITE_ID,
 ): WasmRuntimeConfig {
+  void location;
   return {
     productId: labelToProductId(label),
     productLabel: label,
     siteId,
     hostName: "Polkadot Web",
-    hostIcon: getHostIcon(location),
-    hostVersion: undefined,
+    hostIcon: undefined,
+    hostVersion:
+      typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : undefined,
     platformType: getPlatformType(),
     platformVersion: undefined,
     peopleChainGenesisHash: getActiveServicesConfig().people.genesis,

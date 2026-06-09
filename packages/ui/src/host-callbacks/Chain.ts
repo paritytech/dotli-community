@@ -19,7 +19,9 @@ import type {
   HostCallbacks,
   PlatformJsonRpcConnection,
 } from "@parity/truapi-host-wasm";
+import { SS_USE_SMOLDOT } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";
+import { getActiveServicesConfig } from "@dotli/config/network";
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -38,6 +40,7 @@ import {
 } from "./SsoDebug";
 
 const PAIRING_REQUEST_ID_PREFIX = "truapi:sso-pairing:";
+const PAIRING_LIVE_REQUEST_ID = "truapi:sso-pairing:1";
 const STATEMENT_SUBSCRIBE_METHOD = "statement_subscribeStatement";
 const STATEMENT_UNSUBSCRIBE_METHOD = "statement_unsubscribeStatement";
 
@@ -66,11 +69,175 @@ function toConnection(
   const queue: string[] = [];
   let wake: (() => void) | null = null;
   let stopped = false;
+  let hostQueryTimer: ReturnType<typeof setInterval> | null = null;
+  let hostQueryCounter = 0;
+  let pairingLiveRemoteId: string | null = null;
+  const hostQueryRemoteIds = new Map<string, string>();
+  const hostQueryCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const hostQueryUnsubscribeIds = new Set<string>();
   const conn = provider((message: unknown) => {
+    handleProviderMessage(message);
+  });
+
+  const stopHostPairingQueries = (): void => {
+    if (hostQueryTimer !== null) {
+      clearInterval(hostQueryTimer);
+      hostQueryTimer = null;
+    }
+    for (const timer of hostQueryCleanupTimers.values()) {
+      clearTimeout(timer);
+    }
+    hostQueryCleanupTimers.clear();
+    hostQueryRemoteIds.clear();
+    hostQueryUnsubscribeIds.clear();
+  };
+
+  const enqueueResponse = (message: unknown): void => {
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
-  });
+  };
+
+  const unsubscribeHostQuery = (
+    requestId: string,
+    remoteSubscriptionId: string,
+  ): void => {
+    const unsubscribeId = `${requestId}:unsubscribe`;
+    if (hostQueryUnsubscribeIds.has(unsubscribeId)) {
+      return;
+    }
+    hostQueryUnsubscribeIds.add(unsubscribeId);
+    conn.send({
+      jsonrpc: "2.0",
+      id: unsubscribeId,
+      method: STATEMENT_UNSUBSCRIBE_METHOD,
+      params: [remoteSubscriptionId],
+    });
+  };
+
+  const handleHostQueryAck = (
+    requestId: string,
+    remoteSubscriptionId: string,
+  ): void => {
+    hostQueryRemoteIds.set(remoteSubscriptionId, requestId);
+    const timer = setTimeout(() => {
+      hostQueryCleanupTimers.delete(remoteSubscriptionId);
+      hostQueryRemoteIds.delete(remoteSubscriptionId);
+      unsubscribeHostQuery(requestId, remoteSubscriptionId);
+    }, 5_000);
+    hostQueryCleanupTimers.set(remoteSubscriptionId, timer);
+  };
+
+  const handleHostQueryPage = (
+    message: Record<string, unknown>,
+    remoteSubscriptionId: string,
+  ): void => {
+    const requestId = hostQueryRemoteIds.get(remoteSubscriptionId);
+    if (!requestId) {
+      return;
+    }
+    const params =
+      typeof message.params === "object" && message.params !== null
+        ? (message.params as Record<string, unknown>)
+        : null;
+    const result =
+      typeof params?.result === "object" && params.result !== null
+        ? (params.result as Record<string, unknown>)
+        : null;
+    const data =
+      typeof result?.data === "object" && result.data !== null
+        ? (result.data as Record<string, unknown>)
+        : null;
+    const statements = Array.isArray(data?.statements) ? data.statements : [];
+    if (statements.length > 0 && pairingLiveRemoteId !== null) {
+      enqueueResponse({
+        ...message,
+        params: {
+          ...params,
+          subscription: pairingLiveRemoteId,
+        },
+      });
+    }
+    if (result?.event === "newStatements" && data?.remaining === 0) {
+      const timer = hostQueryCleanupTimers.get(remoteSubscriptionId);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        hostQueryCleanupTimers.delete(remoteSubscriptionId);
+      }
+      hostQueryRemoteIds.delete(remoteSubscriptionId);
+      unsubscribeHostQuery(requestId, remoteSubscriptionId);
+    }
+  };
+
+  const handleProviderMessage = (message: unknown): void => {
+    if (typeof message !== "object" || message === null) {
+      enqueueResponse(message);
+      return;
+    }
+    const rawResponse = JSON.stringify(message);
+    const record = message as Record<string, unknown>;
+    if (record.id === PAIRING_LIVE_REQUEST_ID && typeof record.result === "string") {
+      pairingLiveRemoteId = record.result;
+      enqueueResponse(message);
+      return;
+    }
+    if (
+      typeof record.id === "string" &&
+      record.id.startsWith(`${PAIRING_LIVE_REQUEST_ID}:query:host:`)
+    ) {
+      if (typeof record.result === "string") {
+        handleHostQueryAck(record.id, record.result);
+      }
+      emitPairingStatementStoreResponse(rawResponse);
+      return;
+    }
+    if (
+      typeof record.id === "string" &&
+      hostQueryUnsubscribeIds.has(record.id)
+    ) {
+      hostQueryUnsubscribeIds.delete(record.id);
+      emitPairingStatementStoreResponse(rawResponse);
+      return;
+    }
+    const params =
+      typeof record.params === "object" && record.params !== null
+        ? (record.params as Record<string, unknown>)
+        : null;
+    const remoteSubscriptionId =
+      typeof params?.subscription === "string" ? params.subscription : null;
+    if (remoteSubscriptionId !== null && hostQueryRemoteIds.has(remoteSubscriptionId)) {
+      emitPairingStatementStoreResponse(rawResponse);
+      handleHostQueryPage(record, remoteSubscriptionId);
+      return;
+    }
+    enqueueResponse(message);
+  };
+
+  const startHostPairingQueries = (request: JsonRpcRequest<unknown>): void => {
+    if (
+      request.method !== STATEMENT_SUBSCRIBE_METHOD ||
+      request.id !== PAIRING_LIVE_REQUEST_ID
+    ) {
+      return;
+    }
+    stopHostPairingQueries();
+    const params = request.params;
+    hostQueryTimer = setInterval(() => {
+      if (stopped) {
+        stopHostPairingQueries();
+        return;
+      }
+      hostQueryCounter += 1;
+      const query: JsonRpcRequest<unknown> = {
+        jsonrpc: "2.0",
+        id: `${PAIRING_LIVE_REQUEST_ID}:query:host:${String(hostQueryCounter)}`,
+        method: STATEMENT_SUBSCRIBE_METHOD,
+        params,
+      };
+      emitPairingStatementStoreRequest(query);
+      conn.send(query);
+    }, 2_000);
+  };
 
   return {
     send(request: string): void {
@@ -80,6 +247,14 @@ function toConnection(
       }
       emitPairingStatementStoreRequest(parsed);
       conn.send(parsed);
+      startHostPairingQueries(parsed);
+      if (
+        parsed.method === STATEMENT_UNSUBSCRIBE_METHOD &&
+        typeof parsed.id === "string" &&
+        parsed.id.startsWith(PAIRING_REQUEST_ID_PREFIX)
+      ) {
+        stopHostPairingQueries();
+      }
     },
     async *responses(): AsyncIterable<string> {
       try {
@@ -97,6 +272,7 @@ function toConnection(
         }
       } finally {
         stopped = true;
+        stopHostPairingQueries();
         conn.disconnect();
       }
     },
@@ -141,6 +317,7 @@ function emitPairingStatementStoreResponse(response: string): void {
       method: statementMethodFromRequestId(record.id),
       requestId: record.id,
       requestKind: requestKindFromId(record.id),
+      frameKind: error === undefined ? "ack" : "error",
       ...(typeof record.result === "string"
         ? { remoteSubscriptionId: record.result }
         : {}),
@@ -168,9 +345,11 @@ function emitPairingStatementStoreResponse(response: string): void {
   emitSsoStatementStoreResponse({
     method: STATEMENT_SUBSCRIBE_METHOD,
     requestKind: "page",
+    frameKind: result === null ? "malformed-page" : "page",
     ...(typeof params?.subscription === "string"
       ? { remoteSubscriptionId: params.subscription }
       : {}),
+    ...(typeof result?.event === "string" ? { eventName: result.event } : {}),
     statementCount: statements.length,
     ...(typeof data?.remaining === "number"
       ? { remaining: data.remaining }
@@ -208,7 +387,7 @@ function errorMessage(error: unknown): string | undefined {
 export function createChainConnect(): HostCallbacks["connect"] {
   return (genesisHashBytes) => {
     const genesisHash = bytesToHex(genesisHashBytes);
-    const backend = getBackend();
+    const backend = backendForChain(genesisHash);
     emitSsoStatementStoreConnecting({ backend, genesisHash });
     if (backend === "rpc-gateway") {
       if (!isRpcChainSupported(genesisHash)) {
@@ -251,4 +430,17 @@ export function createChainConnect(): HostCallbacks["connect"] {
       throw error;
     }
   };
+}
+
+function backendForChain(genesisHash: string): ReturnType<typeof getBackend> {
+  const backend = getBackend();
+  const peopleGenesis = getActiveServicesConfig().people.genesis.toLowerCase();
+  if (
+    !SS_USE_SMOLDOT &&
+    genesisHash.toLowerCase() === peopleGenesis &&
+    isRpcChainSupported(genesisHash)
+  ) {
+    return "rpc-gateway";
+  }
+  return backend;
 }

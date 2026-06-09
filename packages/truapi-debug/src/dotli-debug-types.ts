@@ -369,6 +369,13 @@ export type RenderEvent =
 export type BridgeEvent =
   | {
       layer: "bridge";
+      event: "sso_listeners_ready";
+      flowId: string;
+      timestamp: number;
+      payload: Record<string, never>;
+    }
+  | {
+      layer: "bridge";
       event: "setup_begin";
       flowId: string;
       timestamp: number;
@@ -421,6 +428,72 @@ export type BridgeEvent =
 
 /** SSO pairing lifecycle driven by host-owned login UI and Rust core. */
 export type SsoEvent =
+  | {
+      layer: "sso";
+      event: "login_event_received";
+      flowId: string;
+      timestamp: number;
+      payload: Record<string, never>;
+    }
+  | {
+      layer: "sso";
+      event: "login_host_ready";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        host: "landing" | "product";
+      };
+    }
+  | {
+      layer: "sso";
+      event: "login_request_start" | "login_request_sent";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event:
+        | "login_request_encode_failed"
+        | "login_request_send_failed"
+        | "login_request_decode_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+        reason: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "login_request_response";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+        result: "Success" | "AlreadyConnected" | "Rejected";
+      };
+    }
+  | {
+      layer: "sso";
+      event: "login_request_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "present_pairing_callback";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+      };
+    }
   | {
       layer: "sso";
       event: "pairing_started";
@@ -501,6 +574,8 @@ export type SsoEvent =
         requestId?: string;
         requestKind: string;
         remoteSubscriptionId?: string;
+        frameKind?: string;
+        eventName?: string;
         statementCount?: number;
         remaining?: number;
         error?: string;
