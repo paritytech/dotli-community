@@ -1022,6 +1022,7 @@ async function main(): Promise<void> {
 
   if (label === null) {
     log.warn(`[dot.li perf] Landing page — no subdomain (${elapsed(T0)})`);
+    await import("@dotli/ui/bridge");
     showLanding();
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({

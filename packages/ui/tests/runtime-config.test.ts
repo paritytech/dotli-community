@@ -39,4 +39,16 @@ describe("createTruapiRuntimeConfig", () => {
       pairingDeeplinkScheme: "polkadotapp",
     });
   });
+
+  it("uses an HTTPS icon when the host runs on localhost", () => {
+    expect(
+      createTruapiRuntimeConfig(
+        "localhost:3000",
+        {
+          origin: "http://localhost:5173",
+        } as Location,
+        "dot.li",
+      ).hostIcon,
+    ).toBe("https://dot.li/dotli.png");
+  });
 });

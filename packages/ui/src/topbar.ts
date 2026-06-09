@@ -151,11 +151,12 @@ export function initTopBar(): void {
   });
 
   window.addEventListener("dotli:truapi-pairing", (e: Event) => {
-    const { deeplink, label, cancel } = (e as CustomEvent<TrUApiPairingRequest>)
-      .detail;
+    const { deeplink, label, dotSuffix, cancel } = (
+      e as CustomEvent<TrUApiPairingRequest>
+    ).detail;
     activeTruapiPairingCancel?.();
     activeTruapiPairingCancel = cancel;
-    openModal(undefined, label);
+    openModal(undefined, label, { dotSuffix });
     renderPairing(deeplink);
   });
 
@@ -1816,7 +1817,11 @@ function renderCacheToggle(
   parent.appendChild(row);
 }
 
-function openModal(reason?: string, label?: string): void {
+function openModal(
+  reason?: string,
+  label?: string,
+  options: { dotSuffix?: boolean } = {},
+): void {
   modalQr.innerHTML = `<div class="spinner"></div>`;
   // A bare "localhost:<port>" label means dotli is in localhost-proxy
   // mode rendering a local dev server directly (apps/host/src/main.ts
@@ -1825,7 +1830,10 @@ function openModal(reason?: string, label?: string): void {
   // label and get the ".dot" suffix.
   let productLabel = "";
   if (label !== undefined && label.length > 0) {
-    productLabel = label.startsWith("localhost:") ? label : `${label}.dot`;
+    productLabel =
+      label.startsWith("localhost:") || options.dotSuffix === false
+        ? label
+        : `${label}.dot`;
   }
   modalTitle.innerHTML =
     productLabel.length > 0

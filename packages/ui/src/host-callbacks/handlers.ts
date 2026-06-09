@@ -26,13 +26,15 @@ import { createUserConfirmationAdapters } from "./UserConfirmation";
 
 export interface CreateHostCallbacksOptions {
   label: string;
+  pairingLabel?: string;
+  pairingDotSuffix?: boolean;
   storagePrefix: string;
 }
 
 export function createHostCallbacks(
   options: CreateHostCallbacksOptions,
 ): Partial<HostCallbacks> {
-  const { label, storagePrefix } = options;
+  const { label, pairingLabel, pairingDotSuffix, storagePrefix } = options;
   return {
     navigateTo: createNavigateTo(),
     ...createNotificationAdapters(label),
@@ -41,7 +43,9 @@ export function createHostCallbacks(
     read: createLocalStorageRead(storagePrefix),
     write: createLocalStorageWrite(storagePrefix),
     clear: createLocalStorageClear(storagePrefix),
-    presentPairing: createPresentPairing(label),
+    presentPairing: createPresentPairing(pairingLabel ?? label, {
+      dotSuffix: pairingDotSuffix,
+    }),
     ...createSessionStoreAdapters(),
     ...createUserConfirmationAdapters(label),
     ...createPreimageAdapters(label),

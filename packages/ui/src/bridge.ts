@@ -12,14 +12,17 @@
 import {
   decodeWireMessage,
   encodeWireMessage,
-  HostRequestLoginError,
-  HostRequestLoginResponse,
   scale,
+  VersionedHostRequestLoginError,
   VersionedHostRequestLoginRequest,
+  VersionedHostRequestLoginResponse,
+  type VersionedHostRequestLoginError as LoginErrorEnvelope,
   type HostRequestLoginResponse as LoginResponse,
   type Provider,
+  type VersionedHostRequestLoginResponse as LoginResponseEnvelope,
   createMessagePortProvider,
 } from "@parity/truapi";
+import type { ResultPayload } from "@parity/truapi/scale";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
@@ -65,7 +68,18 @@ interface ActiveHost {
   dispose: () => void;
 }
 
+interface CoreHost {
+  requestLogin: (reason?: string) => Promise<LoginResponse>;
+  disconnect: () => Promise<void>;
+  dispose: () => void;
+}
+
+const LANDING_AUTH_LABEL = "dotli";
+const LANDING_AUTH_DISPLAY_LABEL = "Polkadot Web";
+
 let currentHost: ActiveHost | null = null;
+let landingAuthHost: CoreHost | null = null;
+let landingAuthHostPromise: Promise<CoreHost> | null = null;
 let currentPanelDispose: (() => void) | null = null;
 
 // Track current product state for permission-grant reloads
@@ -93,28 +107,16 @@ window.addEventListener("dotli:device-permission-changed", () => {
 });
 
 window.addEventListener("dotli:truapi-disconnect-request", () => {
-  void currentHost?.disconnect();
+  void (currentHost ?? landingAuthHost)?.disconnect();
 });
 
 window.addEventListener("dotli:truapi-login-request", (event: Event) => {
   const detail = (event as CustomEvent<{ reason?: string }>).detail;
-  const host = currentHost;
-  if (!host) {
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-login-error", {
-        detail: { message: "No active product runtime" },
-      }),
-    );
-    return;
-  }
-  void host.requestLogin(detail.reason).catch((error: unknown) => {
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-login-error", {
-        detail: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      }),
-    );
+  void (async () => {
+    const host = currentHost ?? (await getLandingAuthHost());
+    await host.requestLogin(detail.reason);
+  })().catch((error: unknown) => {
+    dispatchLoginError(error);
   });
 });
 
@@ -160,6 +162,16 @@ function isDebugEnabled(): boolean {
   } catch {
     return false;
   }
+}
+
+function dispatchLoginError(error: unknown): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:truapi-login-error", {
+      detail: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    }),
+  );
 }
 
 function pipeProviders(
@@ -224,12 +236,10 @@ function requestCoreLogin(
   reason?: string,
 ): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(HostRequestLoginResponse, HostRequestLoginError),
-    ] as const,
-  });
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
@@ -260,9 +270,13 @@ function requestCoreLogin(
       }
       cleanup();
       try {
-        const result = responseCodec.dec(decoded.value.payload.value).value;
+        const result = responseCodec.dec(decoded.value.payload.value)
+          .value as unknown as ResultPayload<
+          LoginResponseEnvelope,
+          LoginErrorEnvelope
+        >;
         if (result.success) {
-          resolve(result.value);
+          resolve(result.value.value);
         } else {
           reject(new Error(JSON.stringify(result.value)));
         }
@@ -291,21 +305,8 @@ async function createHost(args: {
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
-  const { createWebWorkerProvider, createIframeHost, HostWorker } =
-    await runtimeChunkPromise;
-  const coreProvider = await createWebWorkerProvider(
-    new HostWorker(),
-    createWasmRawCallbacks(
-      createHostCallbacks({
-        label: args.label,
-        storagePrefix: `dotli:${args.label}:`,
-      }),
-    ),
-    {
-      debug: isDebugEnabled(),
-      runtimeConfig: createTruapiRuntimeConfig(args.label),
-    },
-  );
+  const coreProvider = await createCoreProvider(args.label);
+  const { createIframeHost } = await runtimeChunkPromise;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   const host = createIframeHost({
@@ -339,6 +340,68 @@ async function createHost(args: {
   };
 }
 
+async function createCoreProvider(
+  label: string,
+  options: { pairingLabel?: string; pairingDotSuffix?: boolean } = {},
+): Promise<Provider & { disconnect: () => Promise<void> }> {
+  const { createWebWorkerProvider, HostWorker } = await runtimeChunkPromise;
+  return createWebWorkerProvider(
+    new HostWorker(),
+    createWasmRawCallbacks(
+      createHostCallbacks({
+        label,
+        pairingLabel: options.pairingLabel,
+        pairingDotSuffix: options.pairingDotSuffix,
+        storagePrefix: `dotli:${label}:`,
+      }),
+    ),
+    {
+      debug: isDebugEnabled(),
+      runtimeConfig: createTruapiRuntimeConfig(label),
+    },
+  );
+}
+
+async function getLandingAuthHost(): Promise<CoreHost> {
+  if (landingAuthHost !== null) {
+    return landingAuthHost;
+  }
+  landingAuthHostPromise ??= createLandingAuthHost()
+    .then((host) => {
+      landingAuthHost = host;
+      return host;
+    })
+    .catch((error: unknown) => {
+      landingAuthHostPromise = null;
+      throw error;
+    });
+  return landingAuthHostPromise;
+}
+
+async function createLandingAuthHost(): Promise<CoreHost> {
+  const coreProvider = await createCoreProvider(LANDING_AUTH_LABEL, {
+    pairingLabel: LANDING_AUTH_DISPLAY_LABEL,
+    pairingDotSuffix: false,
+  });
+  return {
+    requestLogin(reason) {
+      return requestCoreLogin(coreProvider, reason);
+    },
+    disconnect() {
+      return coreProvider.disconnect();
+    },
+    dispose() {
+      coreProvider.dispose();
+    },
+  };
+}
+
+function disposeLandingAuthHost(): void {
+  landingAuthHost?.dispose();
+  landingAuthHost = null;
+  landingAuthHostPromise = null;
+}
+
 /**
  * Render a dApp iframe backed by the TrUAPI host bridge.
  */
@@ -354,6 +417,7 @@ export async function renderIframe(url: string, label: string): Promise<void> {
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   cleanup();
+  disposeLandingAuthHost();
 
   currentRenderMode = "iframe";
   currentLabel = label;
@@ -442,6 +506,7 @@ export async function renderAppSubdomain(
   const bridgeFlowId = newFlowId("bridge");
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   cleanup();
+  disposeLandingAuthHost();
 
   currentRenderMode = "subdomain";
   currentLabel = label;
