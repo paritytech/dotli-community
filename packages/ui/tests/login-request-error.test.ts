@@ -35,4 +35,21 @@ describe("LoginRequestError", () => {
 
     expect(error.rejected).toBe(false);
   });
+
+  it("does not throw when the versioned error value is missing", () => {
+    const error = new LoginRequestError({
+      tag: "V1",
+    } as never);
+
+    expect(error.rejected).toBe(false);
+  });
+
+  it("does not throw when the domain error value is missing", () => {
+    const error = new LoginRequestError({
+      tag: "V1",
+      value: { tag: "Unknown" },
+    } as never);
+
+    expect(error.rejected).toBe(false);
+  });
 });

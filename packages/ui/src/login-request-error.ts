@@ -19,7 +19,19 @@ export class LoginRequestError extends Error {
 
   /** True when the core reported that the user rejected the login. */
   get rejected(): boolean {
-    const error = this.error.value;
-    return error.tag === "Unknown" && error.value.reason === "Rejected";
+    const error = asRecord(this.error).value;
+    if (!isRecord(error) || error.tag !== "Unknown") {
+      return false;
+    }
+    const value = asRecord(error).value;
+    return isRecord(value) && value.reason === "Rejected";
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
 }
