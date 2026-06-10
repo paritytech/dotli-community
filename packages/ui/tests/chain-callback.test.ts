@@ -78,4 +78,41 @@ describe("createChainConnect", () => {
     expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(assetHubGenesis);
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
+
+  it("passes core pairing snapshot-query traffic through untouched", async () => {
+    let onMessage: ((message: unknown) => void) | undefined;
+    const sent: unknown[] = [];
+    mocks.smoldotProvider.mockImplementation(
+      (handler: (message: unknown) => void) => {
+        onMessage = handler;
+        return {
+          send: (request: unknown) => {
+            sent.push(request);
+          },
+          disconnect: vi.fn(),
+        };
+      },
+    );
+    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
+    const query = {
+      jsonrpc: "2.0",
+      id: "truapi:sso-pairing:1:query:2",
+      method: "statement_subscribeStatement",
+      params: [{ matchAll: [] }],
+    };
+    connection.send(JSON.stringify(query));
+    expect(sent).toEqual([query]);
+
+    const ack = {
+      jsonrpc: "2.0",
+      id: "truapi:sso-pairing:1:query:2",
+      result: "remote-sub",
+    };
+    onMessage?.(ack);
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    expect(JSON.parse((await responses.next()).value)).toEqual(ack);
+    await responses.return?.();
+  });
 });

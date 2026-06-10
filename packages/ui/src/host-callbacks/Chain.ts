@@ -40,7 +40,6 @@ import {
 } from "./SsoDebug";
 
 const PAIRING_REQUEST_ID_PREFIX = "truapi:sso-pairing:";
-const PAIRING_LIVE_REQUEST_ID = "truapi:sso-pairing:1";
 const STATEMENT_SUBSCRIBE_METHOD = "statement_subscribeStatement";
 const STATEMENT_UNSUBSCRIBE_METHOD = "statement_unsubscribeStatement";
 
@@ -69,175 +68,11 @@ function toConnection(
   const queue: string[] = [];
   let wake: (() => void) | null = null;
   let stopped = false;
-  let hostQueryTimer: ReturnType<typeof setInterval> | null = null;
-  let hostQueryCounter = 0;
-  let pairingLiveRemoteId: string | null = null;
-  const hostQueryRemoteIds = new Map<string, string>();
-  const hostQueryCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const hostQueryUnsubscribeIds = new Set<string>();
   const conn = provider((message: unknown) => {
-    handleProviderMessage(message);
-  });
-
-  const stopHostPairingQueries = (): void => {
-    if (hostQueryTimer !== null) {
-      clearInterval(hostQueryTimer);
-      hostQueryTimer = null;
-    }
-    for (const timer of hostQueryCleanupTimers.values()) {
-      clearTimeout(timer);
-    }
-    hostQueryCleanupTimers.clear();
-    hostQueryRemoteIds.clear();
-    hostQueryUnsubscribeIds.clear();
-  };
-
-  const enqueueResponse = (message: unknown): void => {
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
-  };
-
-  const unsubscribeHostQuery = (
-    requestId: string,
-    remoteSubscriptionId: string,
-  ): void => {
-    const unsubscribeId = `${requestId}:unsubscribe`;
-    if (hostQueryUnsubscribeIds.has(unsubscribeId)) {
-      return;
-    }
-    hostQueryUnsubscribeIds.add(unsubscribeId);
-    conn.send({
-      jsonrpc: "2.0",
-      id: unsubscribeId,
-      method: STATEMENT_UNSUBSCRIBE_METHOD,
-      params: [remoteSubscriptionId],
-    });
-  };
-
-  const handleHostQueryAck = (
-    requestId: string,
-    remoteSubscriptionId: string,
-  ): void => {
-    hostQueryRemoteIds.set(remoteSubscriptionId, requestId);
-    const timer = setTimeout(() => {
-      hostQueryCleanupTimers.delete(remoteSubscriptionId);
-      hostQueryRemoteIds.delete(remoteSubscriptionId);
-      unsubscribeHostQuery(requestId, remoteSubscriptionId);
-    }, 5_000);
-    hostQueryCleanupTimers.set(remoteSubscriptionId, timer);
-  };
-
-  const handleHostQueryPage = (
-    message: Record<string, unknown>,
-    remoteSubscriptionId: string,
-  ): void => {
-    const requestId = hostQueryRemoteIds.get(remoteSubscriptionId);
-    if (!requestId) {
-      return;
-    }
-    const params =
-      typeof message.params === "object" && message.params !== null
-        ? (message.params as Record<string, unknown>)
-        : null;
-    const result =
-      typeof params?.result === "object" && params.result !== null
-        ? (params.result as Record<string, unknown>)
-        : null;
-    const data =
-      typeof result?.data === "object" && result.data !== null
-        ? (result.data as Record<string, unknown>)
-        : null;
-    const statements = Array.isArray(data?.statements) ? data.statements : [];
-    if (statements.length > 0 && pairingLiveRemoteId !== null) {
-      enqueueResponse({
-        ...message,
-        params: {
-          ...params,
-          subscription: pairingLiveRemoteId,
-        },
-      });
-    }
-    if (result?.event === "newStatements" && data?.remaining === 0) {
-      const timer = hostQueryCleanupTimers.get(remoteSubscriptionId);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        hostQueryCleanupTimers.delete(remoteSubscriptionId);
-      }
-      hostQueryRemoteIds.delete(remoteSubscriptionId);
-      unsubscribeHostQuery(requestId, remoteSubscriptionId);
-    }
-  };
-
-  const handleProviderMessage = (message: unknown): void => {
-    if (typeof message !== "object" || message === null) {
-      enqueueResponse(message);
-      return;
-    }
-    const rawResponse = JSON.stringify(message);
-    const record = message as Record<string, unknown>;
-    if (record.id === PAIRING_LIVE_REQUEST_ID && typeof record.result === "string") {
-      pairingLiveRemoteId = record.result;
-      enqueueResponse(message);
-      return;
-    }
-    if (
-      typeof record.id === "string" &&
-      record.id.startsWith(`${PAIRING_LIVE_REQUEST_ID}:query:host:`)
-    ) {
-      if (typeof record.result === "string") {
-        handleHostQueryAck(record.id, record.result);
-      }
-      emitPairingStatementStoreResponse(rawResponse);
-      return;
-    }
-    if (
-      typeof record.id === "string" &&
-      hostQueryUnsubscribeIds.has(record.id)
-    ) {
-      hostQueryUnsubscribeIds.delete(record.id);
-      emitPairingStatementStoreResponse(rawResponse);
-      return;
-    }
-    const params =
-      typeof record.params === "object" && record.params !== null
-        ? (record.params as Record<string, unknown>)
-        : null;
-    const remoteSubscriptionId =
-      typeof params?.subscription === "string" ? params.subscription : null;
-    if (remoteSubscriptionId !== null && hostQueryRemoteIds.has(remoteSubscriptionId)) {
-      emitPairingStatementStoreResponse(rawResponse);
-      handleHostQueryPage(record, remoteSubscriptionId);
-      return;
-    }
-    enqueueResponse(message);
-  };
-
-  const startHostPairingQueries = (request: JsonRpcRequest<unknown>): void => {
-    if (
-      request.method !== STATEMENT_SUBSCRIBE_METHOD ||
-      request.id !== PAIRING_LIVE_REQUEST_ID
-    ) {
-      return;
-    }
-    stopHostPairingQueries();
-    const params = request.params;
-    hostQueryTimer = setInterval(() => {
-      if (stopped) {
-        stopHostPairingQueries();
-        return;
-      }
-      hostQueryCounter += 1;
-      const query: JsonRpcRequest<unknown> = {
-        jsonrpc: "2.0",
-        id: `${PAIRING_LIVE_REQUEST_ID}:query:host:${String(hostQueryCounter)}`,
-        method: STATEMENT_SUBSCRIBE_METHOD,
-        params,
-      };
-      emitPairingStatementStoreRequest(query);
-      conn.send(query);
-    }, 2_000);
-  };
+  });
 
   return {
     send(request: string): void {
@@ -247,14 +82,6 @@ function toConnection(
       }
       emitPairingStatementStoreRequest(parsed);
       conn.send(parsed);
-      startHostPairingQueries(parsed);
-      if (
-        parsed.method === STATEMENT_UNSUBSCRIBE_METHOD &&
-        typeof parsed.id === "string" &&
-        parsed.id.startsWith(PAIRING_REQUEST_ID_PREFIX)
-      ) {
-        stopHostPairingQueries();
-      }
     },
     async *responses(): AsyncIterable<string> {
       try {
@@ -272,7 +99,6 @@ function toConnection(
         }
       } finally {
         stopped = true;
-        stopHostPairingQueries();
         conn.disconnect();
       }
     },
@@ -357,12 +183,17 @@ function emitPairingStatementStoreResponse(response: string): void {
   });
 }
 
+// Core request-id shapes:
+//   truapi:sso-pairing:1                                live subscribe
+//   truapi:sso-pairing:1:query:N                        snapshot query
+//   truapi:sso-pairing:1:query:N:unsubscribe            drained-query cleanup
+//   truapi:sso-pairing:1:query:N:timeout-unsubscribe    stale-query cleanup
 function requestKindFromId(requestId: string, method?: string): string {
+  if (requestId.endsWith("unsubscribe")) {
+    return "unsubscribe";
+  }
   if (requestId.includes(":query:")) {
     return "query";
-  }
-  if (requestId.endsWith(":unsubscribe")) {
-    return "unsubscribe";
   }
   if (method === STATEMENT_UNSUBSCRIBE_METHOD) {
     return "unsubscribe";
@@ -371,7 +202,7 @@ function requestKindFromId(requestId: string, method?: string): string {
 }
 
 function statementMethodFromRequestId(requestId: string): string {
-  return requestId.endsWith(":unsubscribe")
+  return requestId.endsWith("unsubscribe")
     ? STATEMENT_UNSUBSCRIBE_METHOD
     : STATEMENT_SUBSCRIBE_METHOD;
 }
