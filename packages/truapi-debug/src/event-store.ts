@@ -3,18 +3,15 @@
 
 // TrUAPI debug event store
 //
-// Ring buffer of debug events from dotli-internal boot/resolve/render/bridge/
-// failover sources.
-//
-// The store still understands TrUAPI-shaped events for the timeline renderer,
-// but this branch only inserts dotli system events until the Rust bridge emits
-// first-class wire debug messages.
+// Ring buffer of debug events from TrUAPI wire frames and dotli-internal
+// boot/resolve/render/bridge/failover/SSO sources.
 //
 // Events are never mutated after insertion.
 
 import type { DotliDebugEvent } from "./dotli-debug-types.ts";
 
 export interface TruapiDebugMessageEvent {
+  kind: "truapi";
   direction: "incoming" | "outgoing";
   productId?: string;
   requestId: string;

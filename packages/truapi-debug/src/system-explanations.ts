@@ -148,6 +148,11 @@ The iframe's \`sandbox\` and \`allow\` attributes are configured here based on t
 
   // bridge
 
+  "bridge:sso_listeners_ready": {
+    title: "SSO bridge listeners ready",
+    body: `The host has installed the window-level listeners that connect the topbar login/logout UI to the Rust-backed landing-auth core. After this point, a topbar login click can dispatch \`dotli:truapi-login-request\` and expect the bridge to create or reuse the host-global SSO core.`,
+  },
+
   "bridge:setup_begin": {
     title: "TrUAPI bridge wiring",
     body: `Starting to wire the Rust-backed TrUAPI bridge between the host and the product iframe. This bridge carries **all** TrUAPI traffic: account derivation, transaction signing, chain connections, scoped localStorage, statement-store subscriptions, preimage submission, permissions prompts, push notifications.`,
@@ -181,6 +186,108 @@ Gaps between \`setup_ready\` and \`first_inbound\` mean the product iframe wasn'
     body: `The host has just posted its first TrUAPI message **to** the product iframe. For the \`host_handshake_request\` loop, this is the handshake response and effectively "closes" the bridge flow — from here on, normal request/response traffic flows both directions.
 
 Gaps between \`first_inbound\` and \`first_outbound\` imply a host-side problem (the handler wasn't registered, or the main thread was blocked). Under normal conditions these two events land in the same millisecond.`,
+  },
+
+  // sso
+
+  "sso:login_event_received": {
+    title: "Topbar login requested",
+    body: `The topbar dispatched a host-global login request. The next step is to prepare the landing-auth Rust core, separate from any currently loaded product iframe, so pairing is scoped to the host SSO session rather than a product.`,
+  },
+
+  "sso:login_host_ready": {
+    title: "Landing auth core ready",
+    body: `The host-global SSO core is ready to receive the login request. This is an intermediate state, not a terminal event: the flow is still waiting for \`login_request_response\`, a failure event, or a later pairing/session event.`,
+  },
+
+  "sso:login_request_start": {
+    title: "Login request encoding started",
+    body: `The host is encoding an \`account.request_login\` frame for the Rust core. The request id in the payload is the correlation key for the request and response frames.`,
+  },
+
+  "sso:login_request_sent": {
+    title: "Login request sent",
+    body: `The encoded login request has been posted to the Rust core provider. From here the core may restore an existing session, present a QR pairing request, or fail while preparing the pairing transport.`,
+  },
+
+  "sso:login_request_response": {
+    title: "Login request completed",
+    body: `The Rust core returned a typed login result. \`Success\` and \`AlreadyConnected\` establish a connected session; \`Rejected\` is treated as user cancellation and should close the pending login state rather than showing a retry/error modal.`,
+  },
+
+  "sso:login_request_failed": {
+    title: "Login request rejected",
+    body: `The Rust core returned a typed domain error for the login request. This closes the request/response portion of the flow; the payload remains intentionally small because the typed error is also surfaced through the topbar login-error path.`,
+  },
+
+  "sso:login_request_encode_failed": {
+    title: "Login request encode failed",
+    body: `The host could not encode the login request frame. This is a host-side protocol bug or version mismatch and happens before anything is sent to the Rust core.`,
+  },
+
+  "sso:login_request_send_failed": {
+    title: "Login request send failed",
+    body: `The host encoded the request but failed while posting it to the core provider. Usual causes are a disposed provider, worker fault, or render/logout race that tore down the landing-auth core.`,
+  },
+
+  "sso:login_request_decode_failed": {
+    title: "Login response decode failed",
+    body: `A response arrived for the login request, but the host could not decode it as the expected \`account.request_login\` result. Treat this as a wire-version mismatch until proven otherwise.`,
+  },
+
+  "sso:present_pairing_callback": {
+    title: "Pairing QR requested",
+    body: `The Rust core asked the host to present a pairing deeplink. The topbar renders this as the Polkadot Mobile QR modal and receives a cancel callback that can abort the in-flight pairing request.`,
+  },
+
+  "sso:pairing_started": {
+    title: "SSO pairing started",
+    body: `A new SSO pairing attempt has started. The host has a deeplink label and is preparing the modal state; the core will subscribe to statement-store messages carrying the pairing response.`,
+  },
+
+  "sso:deeplink_generated": {
+    title: "Pairing deeplink generated",
+    body: `The QR/deeplink payload has been generated for Polkadot Mobile. Scanning it moves the flow to the mobile companion app; the desktop host waits for a matching statement-store response.`,
+  },
+
+  "sso:awaiting_response": {
+    title: "Waiting for mobile response",
+    body: `The QR is visible and the core is waiting for Polkadot Mobile to publish the SSO response statement. If this remains pending, inspect the nearby \`statement_store_*\` events to see whether subscription setup or query polling is failing.`,
+  },
+
+  "sso:statement_store_connecting": {
+    title: "Statement-store connecting",
+    body: `The host is opening the chain/RPC connection used by the Rust core's SSO statement-store transport. The backend and genesis hash identify which chain path is being used for pairing traffic.`,
+  },
+
+  "sso:statement_store_connected": {
+    title: "Statement-store connection ready",
+    body: `The statement-store transport wrapper is ready to accept JSON-RPC requests from the Rust core. Subsequent request/response events show the subscribe, query, and unsubscribe calls used by the pairing poller.`,
+  },
+
+  "sso:statement_store_connect_failed": {
+    title: "Statement-store connection failed",
+    body: `The host could not create the chain/RPC transport required for SSO pairing. Pairing cannot proceed until this path works; the reason field carries the thrown error text.`,
+  },
+
+  "sso:statement_store_request": {
+    title: "Statement-store request",
+    body: `The Rust core sent a statement-store JSON-RPC request through the host chain transport. Request ids ending in \`:query:N\` are snapshot polling probes; \`:unsubscribe\` ids close live or query subscriptions.`,
+  },
+
+  "sso:statement_store_response": {
+    title: "Statement-store response",
+    body: `The statement-store transport returned a response or subscription page to the Rust core. The payload classifies live subscribe acknowledgements, snapshot query pages, unsubscribe acknowledgements, errors, and statement counts when available.`,
+  },
+
+  "sso:session_established": {
+    title: "SSO session established",
+    body: `Pairing or session restore succeeded. The Rust core has persisted the session and emitted session UI state so the topbar can show the connected account/username.`,
+  },
+
+  "sso:pairing_failed": {
+    title: "SSO pairing failed",
+    body: `The SSO flow ended without a connected session. This may be a user cancellation, mobile rejection, expired pairing statement, statement-store failure, or worker/core fault; inspect the preceding events in the same flow for the concrete cause.`,
   },
 
   // failover

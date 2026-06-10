@@ -267,6 +267,7 @@
       "name": "@dotli/truapi-debug",
       "version": "0.5.0",
       "dependencies": {
+        "@dotli/config": "workspace:*",
         "@dotli/shared": "workspace:*",
         "nanoevents": "^9.1.0",
       },
@@ -276,6 +277,7 @@
         "eslint": "^10.4.1",
         "typescript": "~6.0.3",
         "vite": "^8.0.16",
+        "vitest": "^4.1.8",
       },
     },
     "packages/typescript-config": {
@@ -1797,7 +1799,9 @@
 
     "@apideck/better-ajv-errors/ajv/json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 
-    "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", {}],
+    "@dotli/ui/@parity/truapi/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi": ["@parity/truapi@file:../../js/packages/truapi", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" }, "devDependencies": { "typescript": "^6.0" } }],
 
     "@dotli/ui/@parity/truapi-host-wasm/@parity/truapi-host": ["@parity/truapi-host@file:../../js/packages/truapi-host", {}],
 

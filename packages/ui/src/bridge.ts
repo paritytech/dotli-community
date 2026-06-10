@@ -348,6 +348,7 @@ function emitWireFrameDebug(
   }
   const wireId = decoded.value.payload.id;
   emitDotliDebugEvent({
+    kind: "truapi",
     direction,
     productId,
     requestId: decoded.value.requestId,

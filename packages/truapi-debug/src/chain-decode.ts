@@ -4,15 +4,15 @@
 // TrUAPI chain message decoder
 //
 // Pure function that takes a TrUAPI payload tag (e.g.
-// `remote_chain_head_body_request`) plus its already-decoded value and
-// returns the JSON-RPC-level correlation keys the event carries:
-// `genesisHash`, `followSubscriptionId`, `operationId`, `blockHash`,
-// and (for follow receive events) the ChainHeadEvent variant tag.
+// `remote_chain_head_body_request`) plus an already-decoded value and returns
+// the JSON-RPC-level correlation keys the event carries: `genesisHash`,
+// `followSubscriptionId`, `operationId`, `blockHash`, and (for follow receive
+// events) the ChainHeadEvent variant tag.
 //
-// The debug stream delivers payloads in already-decoded form (Hex becomes
-// a hex string, Option becomes T|undefined, Nullable becomes T|null, Enum
-// becomes {tag, value}, Result becomes {success, value}), so this module
-// is a shape-matching walk, not a SCALE decode.
+// Current dotli producers emit wire metadata plus raw SCALE bytes:
+// `{ wireId, bytes }`. Those raw payloads intentionally return null here.
+// The shape-matching decoder below is retained for any producer that opts into
+// method-payload decoding before insertion.
 //
 // Shapes mirror the TrUAPI chain callback payloads.
 
@@ -103,6 +103,9 @@ export function decodeChainAnnotations(
   tag: string,
   rawPayload: unknown,
 ): ChainAnnotations | null {
+  if (isRawWirePayload(rawPayload)) {
+    return null;
+  }
   const payload = peelVersion(rawPayload);
   switch (tag) {
     // chainHead.follow subscription
@@ -249,6 +252,18 @@ export function decodeChainAnnotations(
     default:
       return null;
   }
+}
+
+function isRawWirePayload(payload: unknown): boolean {
+  const obj = asObj(payload);
+  return (
+    typeof obj?.wireId === "number" &&
+    (obj.bytes instanceof Uint8Array ||
+      (typeof obj.bytes === "object" &&
+        obj.bytes !== null &&
+        (obj.bytes as { constructor?: { name?: string } }).constructor?.name ===
+          "Uint8Array"))
+  );
 }
 
 /**

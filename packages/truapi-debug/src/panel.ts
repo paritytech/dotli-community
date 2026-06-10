@@ -28,6 +28,7 @@ import {
   type StoredTruapiEvent,
 } from "./event-store.ts";
 import { EventStore } from "./event-store.ts";
+import type { DotliDebugBusEvent } from "./dotli-debug-bus.ts";
 import {
   initialFilterState,
   matches,
@@ -49,6 +50,12 @@ const DOCK_STORAGE_KEY = "truapi-debug:dock";
 const DEBUG_SESSION_KEY = "dotli:truapi-debug";
 
 type DockPosition = "bottom" | "right";
+
+function isTruapiDebugEvent(
+  ev: DotliDebugBusEvent,
+): ev is Extract<DotliDebugBusEvent, { kind: "truapi" }> {
+  return "kind" in ev && ev.kind === "truapi";
+}
 
 function readStoredDock(): DockPosition {
   try {
@@ -160,10 +167,10 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   const unsubscribeStore = store.subscribe(scheduleRender);
   const unsubscribeDotli = onDotliDebugEvent((ev) => {
-    if ("layer" in ev) {
-      store.insertDotli(ev);
-    } else {
+    if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
+    } else {
+      store.insertDotli(ev);
     }
   });
 

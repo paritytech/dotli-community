@@ -7,7 +7,7 @@
 // TrUAPI transport: boot orchestration, resolver phases, render +
 // bridge-setup lifecycles, and backend failover decisions. These
 // complement the TrUAPI host-to-product message events and Rust-core
-// SSO/session events.
+// SSO events.
 //
 // Events are point-in-time OR paired start/end. The consumer decides
 // rendering: multi-event flows (same `flowId`) become boxes, single-
