@@ -60,6 +60,14 @@ routing that belongs inside the Rust core.
 "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm"
 ```
 
+> **TODO(packaging):** the `file:../../../../` links resolve only when dotli
+> lives at `hosts/dotli/` inside the TrUAPI monorepo. A standalone dotli
+> checkout (including dotli's own CI, which runs `bun install
+> --frozen-lockfile` without the parent repo) cannot install these packages.
+> Before this branch lands on dotli `main`, decide between publishing the
+> `@parity/truapi*` packages to a registry, vendoring tarballs, or retiring
+> dotli's standalone CI. Carry this note into the dotli PR description.
+
 The runtime manifests and source must not depend on or import:
 
 - `@novasamatech/host-api`
