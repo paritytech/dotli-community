@@ -3,11 +3,6 @@
 
 import type { VersionedHostRequestLoginError } from "@parity/truapi";
 
-/**
- * Login call failure carrying the typed core error envelope. The bridge is
- * the single place that classifies rejection; consumers branch on
- * `rejected` instead of string-matching serialized errors.
- */
 export class LoginRequestError extends Error {
   readonly error: VersionedHostRequestLoginError;
 
@@ -17,15 +12,29 @@ export class LoginRequestError extends Error {
     this.error = error;
   }
 
-  /** True when the core reported that the user rejected the login. */
   get rejected(): boolean {
-    const error = asRecord(this.error).value;
-    if (!isRecord(error) || error.tag !== "Unknown") {
-      return false;
-    }
-    const value = asRecord(error).value;
-    return isRecord(value) && value.reason === "Rejected";
+    return isLoginCancellation(this.error);
   }
+}
+
+export function isLoginCancellation(error: unknown): boolean {
+  if (error === "Rejected") {
+    return true;
+  }
+  if (error instanceof LoginRequestError) {
+    return isLoginCancellation(error.error);
+  }
+  if (error instanceof Error && error.message === "Rejected") {
+    return true;
+  }
+
+  const versioned = asRecord(error);
+  const domain = asRecord(versioned.value);
+  if (domain.tag !== "Unknown") {
+    return false;
+  }
+  const value = domain.value;
+  return value === "Rejected" || asRecord(value).reason === "Rejected";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

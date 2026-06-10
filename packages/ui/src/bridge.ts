@@ -39,7 +39,7 @@ import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { emitSessionConnectionState } from "./host-callbacks/SessionStore";
-import { LoginRequestError } from "./login-request-error";
+import { LoginRequestError, isLoginCancellation } from "./login-request-error";
 import {
   emitSsoPairingFailed,
   emitSsoSessionEstablished,
@@ -172,7 +172,7 @@ export function initBridgeEventListeners(): void {
       emitSsoPairingFailed(
         error instanceof Error ? error.message : String(error),
       );
-      if (error instanceof LoginRequestError && error.rejected) {
+      if (isLoginCancellation(error)) {
         emitSessionConnectionState(false);
         return;
       }
