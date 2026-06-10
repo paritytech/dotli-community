@@ -1,6 +1,8 @@
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { base64 } from "@scure/base";
 
+const SSO_DEVICE_IDENTITY_KEY = "truapi:sso-device-identity:v1";
+
 export function createLocalStorageRead(
   storagePrefix: string,
 ): HostCallbacks["read"] {
@@ -37,10 +39,23 @@ export function createLocalStorageClear(
 ): HostCallbacks["clear"] {
   return (key) => {
     try {
+      if (key === SSO_DEVICE_IDENTITY_KEY) {
+        clearSsoDeviceIdentities();
+      }
       localStorage.removeItem(storagePrefix + key);
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error("Failed to clear storage", { cause }));
     }
   };
+}
+
+function clearSsoDeviceIdentities(): void {
+  const suffix = `:${SSO_DEVICE_IDENTITY_KEY}`;
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const itemKey = localStorage.key(index);
+    if (itemKey?.startsWith("dotli:") === true && itemKey.endsWith(suffix)) {
+      localStorage.removeItem(itemKey);
+    }
+  }
 }
