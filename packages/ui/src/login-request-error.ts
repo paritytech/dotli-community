@@ -19,6 +19,7 @@ export class LoginRequestError extends Error {
 
   /** True when the core reported that the user rejected the login. */
   get rejected(): boolean {
-    return this.error.value.value.reason === "Rejected";
+    const error = this.error.value;
+    return error.tag === "Unknown" && error.value.reason === "Rejected";
   }
 }

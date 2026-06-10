@@ -183,7 +183,7 @@ export function initTopBar(): void {
   // emits a disconnected `dotli:truapi-session-state` instead.
   window.addEventListener("dotli:truapi-login-error", (e: Event) => {
     const { message } = (e as CustomEvent<{ message: string }>).detail;
-    openModal(undefined, currentProductLabel ?? undefined);
+    openModal();
     renderError(message);
   });
 

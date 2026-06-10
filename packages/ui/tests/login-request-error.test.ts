@@ -26,4 +26,13 @@ describe("LoginRequestError", () => {
       }),
     );
   });
+
+  it("does not throw for malformed error envelopes", () => {
+    const error = new LoginRequestError({
+      tag: "V1",
+      value: "Rejected",
+    } as never);
+
+    expect(error.rejected).toBe(false);
+  });
 });

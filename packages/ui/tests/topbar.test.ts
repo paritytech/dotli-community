@@ -236,11 +236,19 @@ describe("topbar login cancellation", () => {
     initTopBar();
 
     window.dispatchEvent(
+      new CustomEvent("dotli:product-loaded", {
+        detail: { label: "localhost:3000" },
+      }),
+    );
+    window.dispatchEvent(
       new CustomEvent("dotli:truapi-login-error", {
         detail: { message: "Host failure" },
       }),
     );
 
+    expect(document.getElementById("auth-modal-title")?.textContent).toBe(
+      "Login with Polkadot Mobile",
+    );
     expect(
       document
         .getElementById("auth-modal-backdrop")
