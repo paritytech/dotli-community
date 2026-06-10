@@ -19,6 +19,8 @@ describe("LoginRequestError", () => {
   it("classifies plain rejected values from cancellation paths", () => {
     expect(isLoginCancellation("Rejected")).toBe(true);
     expect(isLoginCancellation(new Error("Rejected"))).toBe(true);
+    expect(isLoginCancellation('"Rejected"')).toBe(true);
+    expect(isLoginCancellation(new Error('"Rejected"'))).toBe(true);
   });
 
   it("classifies rejected values inside malformed envelopes", () => {
@@ -46,14 +48,14 @@ describe("LoginRequestError", () => {
     );
   });
 
-  it("does not throw for malformed error envelopes", () => {
+  it("classifies malformed rejected envelopes as cancellation", () => {
     const error = new LoginRequestError({
       tag: "V1",
       value: "Rejected",
     } as never);
 
-    expect(error.rejected).toBe(false);
-    expect(isLoginCancellation(error)).toBe(false);
+    expect(error.rejected).toBe(true);
+    expect(isLoginCancellation(error)).toBe(true);
   });
 
   it("does not throw when the versioned error value is missing", () => {

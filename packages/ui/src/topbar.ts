@@ -27,6 +27,7 @@ import { clearCidCache } from "@dotli/storage/cid-cache";
 import { getNetwork, setNetwork, type Network } from "@dotli/config/network";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
+import { isLoginCancellation } from "./login-request-error";
 import {
   ALL_PERMISSIONS,
   getPermissionStatus,
@@ -183,6 +184,11 @@ export function initTopBar(): void {
   // emits a disconnected `dotli:truapi-session-state` instead.
   window.addEventListener("dotli:truapi-login-error", (e: Event) => {
     const { message } = (e as CustomEvent<{ message: string }>).detail;
+    if (isLoginCancellation(message)) {
+      closeModal({ skipTruapiCancel: true });
+      renderLoggedOut();
+      return;
+    }
     openModal();
     renderError(message);
   });

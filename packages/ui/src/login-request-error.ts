@@ -18,23 +18,26 @@ export class LoginRequestError extends Error {
 }
 
 export function isLoginCancellation(error: unknown): boolean {
-  if (error === "Rejected") {
+  if (isRejectedString(error)) {
     return true;
   }
   if (error instanceof LoginRequestError) {
     return isLoginCancellation(error.error);
   }
-  if (error instanceof Error && error.message === "Rejected") {
+  if (error instanceof Error && isRejectedString(error.message)) {
     return true;
   }
 
   const versioned = asRecord(error);
+  if (isRejectedString(versioned.value)) {
+    return true;
+  }
   const domain = asRecord(versioned.value);
   if (domain.tag !== "Unknown") {
     return false;
   }
   const value = domain.value;
-  return value === "Rejected" || asRecord(value).reason === "Rejected";
+  return isRejectedString(value) || isRejectedString(asRecord(value).reason);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,4 +46,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
+}
+
+function isRejectedString(value: unknown): boolean {
+  return value === "Rejected" || value === '"Rejected"';
 }

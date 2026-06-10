@@ -258,6 +258,36 @@ describe("topbar login cancellation", () => {
       "Retry",
     );
   });
+
+  it("does not render a retry view for rejected login errors", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-pairing", {
+        detail: {
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+          cancel: vi.fn(),
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-login-error", {
+        detail: { message: '"Rejected"' },
+      }),
+    );
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(false);
+    expect(document.getElementById("auth-modal-qr")?.textContent).not.toContain(
+      "Retry",
+    );
+  });
 });
 
 describe("topbar boot rehydration", () => {
