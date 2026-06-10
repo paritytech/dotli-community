@@ -120,14 +120,16 @@ if (requestedNetwork === null) {
 // Placeholder broker manager until pre-sync creates the real one.
 let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
 
-// Resolve a broker-backed STRING-wire provider for a chain, or throw. Used to
-// route the resolver's Asset Hub reads through the broker's single follow.
-// polkadot-api's `createClient` is string-wire, so we request "string".
+// Resolve a broker-backed provider for a chain, or throw. Used to route the
+// resolver's Asset Hub reads through the broker's single follow. The provider
+// is object-wire, matching polkadot-api's `getSmProvider`/`getSyncProvider`
+// boundary (onMessage receives parsed objects, send is called with objects) —
+// which is what the resolver's `createClient` is built against.
 function requireBrokerLocalProvider(
   genesisHash: string,
   label: string,
 ): JsonRpcProvider {
-  const provider = chainBrokerManager.getLocalProvider(genesisHash, "string");
+  const provider = chainBrokerManager.getLocalProvider(genesisHash);
   if (provider === null) {
     throw new Error(`No broker provider available for ${label}`);
   }

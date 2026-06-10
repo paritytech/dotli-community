@@ -705,14 +705,13 @@ async function initDirectMode(): Promise<void> {
     isChainSupported,
     onBrokerReady: (broker) => {
       // Route the resolver's Asset Hub reads through the broker's single
-      // multiplexed follow (string wire — polkadot-api's createClient is
-      // string-based), so the resolver never opens a second
-      // smoldot-deduplicated chainHead follow that a dApp connection could
-      // stop mid-read (`ChainHead disjointed`).
+      // multiplexed follow, so the resolver never owns a separate Asset Hub
+      // chain that a dApp handoff would remove mid-read (`ChainHead
+      // disjointed`). Object-wire, matching polkadot-api's getSmProvider
+      // boundary that the resolver's createClient is built against.
       setResolverAssetHubProvider(() => {
         const provider = broker.getLocalProvider(
           getActiveServicesConfig().assethub.genesis,
-          "string",
         );
         if (provider === null) {
           throw new Error("No broker provider available for Asset Hub");

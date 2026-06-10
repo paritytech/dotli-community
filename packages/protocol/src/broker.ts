@@ -182,10 +182,7 @@ export interface ChainBrokerManager {
     connectionId: string,
     onMessage: (message: string) => void,
   ): StringJsonRpcConnection | null;
-  getLocalProvider(
-    genesisHash: string,
-    wireMode?: WireMode,
-  ): JsonRpcProvider | null;
+  getLocalProvider(genesisHash: string): JsonRpcProvider | null;
   disconnectAll(): void;
 }
 
@@ -1086,7 +1083,7 @@ export function createChainBrokerManager(
         "string",
       );
     },
-    getLocalProvider(genesisHash, wireMode = "object") {
+    getLocalProvider(genesisHash) {
       const broker = getBroker(genesisHash);
       if (!broker) {
         return null;
@@ -1098,7 +1095,7 @@ export function createChainBrokerManager(
         return broker.connect(
           connectionId,
           onMessage as (message: unknown) => void,
-          wireMode,
+          "object",
         ) as JsonRpcConnection;
       };
     },
