@@ -233,25 +233,53 @@ body {
   line-height: 1.6;
 }
 .error-page-retry {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: fit-content;
+  min-width: 220px;
   margin: 1.25rem auto 0;
-  padding: 0;
+  padding: 11px 20px;
   font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   font-family: system-ui, sans-serif;
-  color: #fafafa;
-  background: none;
-  border: none;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: #0a0a0a;
+  background: #fafafa;
+  border: 1px solid #fafafa;
+  border-radius: 10px;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
 }
 .error-page-retry:hover {
-  opacity: 0.75;
+  background: #fff;
+  border-color: #fff;
 }
 .error-page-retry:active {
-  opacity: 0.55;
+  transform: translateY(1px);
+}
+.error-page-retry-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.error-page-retry-icon svg {
+  display: block;
+}
+.error-page-retry + .error-page-retry {
+  margin-top: 0.65rem;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.error-page-retry + .error-page-retry:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.32);
 }
 
 /* Chrome-style "site can't be reached" variant.
@@ -278,8 +306,7 @@ body {
   margin-bottom: 0.5rem;
 }
 .error-page-domain {
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.95em;
   color: #fafafa;
   background: rgba(255, 255, 255, 0.06);

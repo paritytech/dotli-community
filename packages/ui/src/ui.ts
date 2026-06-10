@@ -357,39 +357,53 @@ export function listenForSandboxStatus(): void {
 export interface ErrorAction {
   label: string;
   onClick: () => void;
+  // Inline SVG markup for a leading icon. Constant only, never user input.
+  icon?: string;
 }
 
 /**
- * Show an error state with an optional action link.
+ * Show an error state with optional action buttons.
  *
  * `detail` is an optional paragraph below the title. Omit it for a
  * title-only screen (e.g. the generic "Domain can't be reached" with a
- * backend switch). `action` renders a link with a trailing arrow. The
- * label is free-form so the same slot serves retry, reload, backend-switch, etc.
+ * backend switch). `action` renders one button per entry; pass an `icon` for a
+ * leading glyph, otherwise the label gets a trailing arrow. Pass an array to
+ * offer several choices; the first keeps `#error-retry-btn`.
  */
 export function showError(
   title: string,
   detail?: string,
-  action?: ErrorAction | (() => void),
+  action?: ErrorAction | ErrorAction[] | (() => void),
 ): void {
   if (typeof action === "function") {
     action = { label: "Retry", onClick: action };
   }
+  const actions =
+    action === undefined ? [] : Array.isArray(action) ? action : [action];
+  const idFor = (i: number): string =>
+    i === 0 ? "error-retry-btn" : `error-retry-btn-${String(i)}`;
+  const renderAction = (a: ErrorAction, i: number): string => {
+    const leading =
+      a.icon !== undefined
+        ? `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`
+        : "";
+    const trailing =
+      a.icon === undefined ? ` <span aria-hidden="true">→</span>` : "";
+    return `<button class="error-page-retry" id="${idFor(i)}">${leading}<span class="error-page-retry-label">${escapeHtml(a.label)}</span>${trailing}</button>`;
+  };
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner">
         <h1 class="error-page-title">${escapeHtml(title)}</h1>
         ${detail !== undefined ? `<p class="error-page-detail">${escapeHtml(detail)}</p>` : ""}
-        ${action !== undefined ? `<button class="error-page-retry" id="error-retry-btn">${escapeHtml(action.label)} <span aria-hidden="true">→</span></button>` : ""}
+        ${actions.map((a, i) => renderAction(a, i)).join("")}
       </div>
     </div>
   `;
 
-  if (action !== undefined) {
-    document
-      .getElementById("error-retry-btn")
-      ?.addEventListener("click", action.onClick);
-  }
+  actions.forEach((a, i) => {
+    document.getElementById(idFor(i))?.addEventListener("click", a.onClick);
+  });
 
   window.dispatchEvent(new CustomEvent("dotli:product-error"));
 }

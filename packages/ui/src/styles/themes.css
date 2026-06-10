@@ -136,7 +136,6 @@
   box-shadow: 0 0 6px rgba(255, 140, 0, 0.4);
 }
 
-
 [data-theme="light"] .auth-modal-backdrop {
   background: rgba(0, 0, 0, 0.3);
 }
@@ -276,7 +275,22 @@
   color: #666;
 }
 [data-theme="light"] .error-page-retry {
-  color: #0a0a0a;
+  color: #fafafa;
+  background: #1a1a1a;
+  border-color: #1a1a1a;
+}
+[data-theme="light"] .error-page-retry:hover {
+  background: #000;
+  border-color: #000;
+}
+[data-theme="light"] .error-page-retry + .error-page-retry {
+  color: #1a1a1a;
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+[data-theme="light"] .error-page-retry + .error-page-retry:hover {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: rgba(0, 0, 0, 0.32);
 }
 [data-theme="light"] .error-page-glyph {
   color: rgba(0, 0, 0, 0.22);
