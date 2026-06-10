@@ -137,7 +137,7 @@ export function initBridgeEventListeners(): void {
   });
 
   window.addEventListener("dotli:truapi-disconnect-request", () => {
-    void (currentHost ?? landingAuthHost)?.disconnect();
+    void disconnectTruapiHosts();
   });
 
   window.addEventListener("dotli:truapi-login-request", (event: Event) => {
@@ -182,6 +182,27 @@ export function initBridgeEventListeners(): void {
 }
 
 initBridgeEventListeners();
+
+async function disconnectTruapiHosts(): Promise<void> {
+  emitSessionConnectionState(false);
+
+  const hosts = new Set<CoreHost | ActiveHost>();
+  if (landingAuthHost !== null) {
+    hosts.add(landingAuthHost);
+  }
+  if (currentHost !== null) {
+    hosts.add(currentHost);
+  }
+  if (landingAuthHostPromise !== null && landingAuthHost === null) {
+    try {
+      hosts.add(await landingAuthHostPromise);
+    } catch {
+      /* a failed pending login host should not block product logout */
+    }
+  }
+
+  await Promise.allSettled([...hosts].map((host) => host.disconnect()));
+}
 
 /**
  * Capture deep link path (pathname + search + hash) to forward into the iframe.
