@@ -53,15 +53,9 @@ let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
 let fatalUnsubscribe: (() => void) | null = null;
 
-// Factory for the Asset Hub JSON-RPC provider used to read dotNS.
-//
-// The host injects a broker-backed provider here so the resolver joins the
-// broker's single multiplexed Asset Hub follow as just another session,
-// exactly like dApp connections. This avoids opening a second
-// `chainHead_follow` on a separate Asset Hub chain that the dApp handoff
-// would later remove mid-read (`ChainHead disjointed`). Must be a STRING-wire
-// provider (polkadot-api's `createClient` is string-based). Set during
-// engine/worker bootstrap before any resolution runs.
+// Asset Hub provider used to read dotNS. The host injects a broker-backed
+// provider during bootstrap so the resolver shares the broker's single Asset
+// Hub follow instead of opening its own (see protocol-shared-worker).
 let resolverAssetHubProvider: (() => JsonRpcProvider) | null = null;
 
 export function setResolverAssetHubProvider(

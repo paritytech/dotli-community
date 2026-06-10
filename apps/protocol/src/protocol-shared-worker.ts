@@ -120,11 +120,8 @@ if (requestedNetwork === null) {
 // Placeholder broker manager until pre-sync creates the real one.
 let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
 
-// Resolve a broker-backed provider for a chain, or throw. Used to route the
-// resolver's Asset Hub reads through the broker's single follow. The provider
-// is object-wire, matching polkadot-api's `getSmProvider`/`getSyncProvider`
-// boundary (onMessage receives parsed objects, send is called with objects) —
-// which is what the resolver's `createClient` is built against.
+// Broker-backed provider for a chain, or throw. Object-wire (the default),
+// matching polkadot-api's getSmProvider boundary the resolver expects.
 function requireBrokerLocalProvider(
   genesisHash: string,
   label: string,
@@ -198,12 +195,9 @@ async function presync(): Promise<void> {
     );
 
     // 3. Create the broker FIRST and route the resolver's Asset Hub reads
-    // through it as a local session. This is the fix for the
-    // `ChainHead disjointed` load failure: the resolver no longer owns a
-    // separate Asset Hub chain that the first dApp connection released
-    // (removed) mid-read, stopping the in-flight follow. There is now exactly
-    // ONE Asset Hub chain and follow, shared by the resolver and every dApp
-    // session, and it is never removed while the page is live.
+    // through it as a local session, so there is one shared Asset Hub follow
+    // (never removed mid-read) instead of a separate resolver chain the first
+    // dApp connection would release — the `ChainHead disjointed` load failure.
     chainBrokerManager = createChainBrokerManager(createChainProvider);
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(

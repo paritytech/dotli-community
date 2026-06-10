@@ -505,20 +505,16 @@ function createAssetHubChain(
     });
 }
 
-// The single Asset Hub chain. Both the resolver (as a broker local session)
-// and every dApp session multiplex over this one chain via the broker, so
-// there is exactly one `chainHead_follow` and the chain is never removed
-// out from under an in-flight read.
+// The single Asset Hub chain, shared by the resolver and all dApp sessions
+// via the broker (one follow, never removed mid-read).
 let dappAssetHubPromise: Promise<SmoldotChain> | null = null;
 
 /**
- * Get or create the shared Asset Hub chain used for all connections.
+ * Get or create the shared Asset Hub chain.
  *
- * The returned chain wraps `remove()` to clear the cached promise,
- * so the next call creates a fresh chain. This is necessary because
- * `getSmProvider` calls `chain.remove()` on disconnect. Without
- * cache invalidation, subsequent providers would reference a
- * destroyed chain.
+ * The wrapped `remove()` clears the cached promise so the next call creates a
+ * fresh chain — `getSmProvider` calls `chain.remove()` on disconnect, and
+ * without this subsequent providers would reference a destroyed chain.
  */
 export function getDappAssetHubChain(): Promise<SmoldotChain> {
   dappAssetHubPromise ??= createAssetHubChain(getRelayChain())

@@ -704,11 +704,8 @@ async function initDirectMode(): Promise<void> {
     createChainProvider,
     isChainSupported,
     onBrokerReady: (broker) => {
-      // Route the resolver's Asset Hub reads through the broker's single
-      // multiplexed follow, so the resolver never owns a separate Asset Hub
-      // chain that a dApp handoff would remove mid-read (`ChainHead
-      // disjointed`). Object-wire, matching polkadot-api's getSmProvider
-      // boundary that the resolver's createClient is built against.
+      // Route the resolver's Asset Hub reads through the broker's shared
+      // follow (object-wire — see protocol-shared-worker for the rationale).
       setResolverAssetHubProvider(() => {
         const provider = broker.getLocalProvider(
           getActiveServicesConfig().assethub.genesis,
@@ -1051,10 +1048,8 @@ interface EngineOptions {
   /** Called once at engine creation, e.g. to kick off smoldot pre-sync. */
   onInit?: () => void;
   /**
-   * Called once right after the broker is created, with the broker manager.
-   * Smoldot modes use this to route the resolver's Asset Hub reads through
-   * the broker's single multiplexed follow (avoiding a second
-   * `chainHead_follow` that smoldot would stop mid-read).
+   * Called once right after the broker is created. Smoldot modes use this to
+   * route the resolver's Asset Hub reads through the broker's shared follow.
    */
   onBrokerReady?: (broker: ChainBrokerManager) => void;
   /** Called at cleanup time after broker teardown. */
