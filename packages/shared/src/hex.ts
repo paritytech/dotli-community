@@ -10,6 +10,3 @@ export function fromHex(hex: string): Uint8Array {
   const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
   return hexToBytes(stripped);
 }
-
-export const toHexPrefixed = toHex;
-export const fromHexPrefixed = fromHex;

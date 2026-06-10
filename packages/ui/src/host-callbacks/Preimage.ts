@@ -10,7 +10,7 @@ import { submitPreimageRemote } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
 import { bitswapGet } from "../bulletin-bitswap";
 import { showPreimageSubmitModal } from "../preimage-modal";
-import { fromHexPrefixed, toHexPrefixed } from "@dotli/shared/hex";
+import { fromHex, toHex } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -33,7 +33,7 @@ function createPreimageSubmit(label: string): HostCallbacks["submitPreimage"] {
     await submitPreimageRemote(value);
     preimageCache.set(key, value);
     log.warn(`[${label}] Preimage stored, key: ${key}`);
-    return fromHexPrefixed(key);
+    return fromHex(key);
   };
 }
 
@@ -41,7 +41,7 @@ function createPreimageLookupSubscribe(
   label: string,
 ): HostCallbacks["lookupPreimage"] {
   return (request) => {
-    const key = toHexPrefixed(request);
+    const key = toHex(request);
     log.warn(`[${label}] Preimage lookup subscribe, key: ${key}`);
 
     const cached = preimageCache.get(key);

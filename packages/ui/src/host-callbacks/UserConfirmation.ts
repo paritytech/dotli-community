@@ -1,5 +1,5 @@
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
-import { toHexPrefixed } from "@dotli/shared/hex";
+import { toHex } from "@dotli/shared/hex";
 
 interface ConfirmationCopy {
   title: string;
@@ -45,7 +45,7 @@ function showConfirmationModal(
     reviewLabel.textContent = "Request";
     const reviewValue = document.createElement("div");
     reviewValue.className = "signing-field-value";
-    const hex = toHexPrefixed(review);
+    const hex = toHex(review);
     reviewValue.textContent = hex.length > 90 ? `${hex.slice(0, 90)}...` : hex;
     reviewField.append(reviewLabel, reviewValue);
     fields.appendChild(reviewField);
