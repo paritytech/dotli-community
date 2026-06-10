@@ -16,7 +16,7 @@ In default config, exactly one smoldot client runs per session, owned by the pro
 
 | Origin | Purpose | Triggered by |
 |---|---|---|
-| Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query → CID), bitswap content fetching, Bulletin Paseo preimage submission | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
+| Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), bitswap content fetching, Bulletin Paseo preimage submission | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
 | Host shell (user's destination domain, e.g. `foo.dot`) | None today, except an opt-in path: People chain auth when `VITE_SS_USE_SMOLDOT=true` | `packages/auth/src/auth.ts:210` (`getPeopleChainProvider()`, opt-in only) |
 
 The protocol-iframe smoldot is constructed via the singletons in `packages/resolver/src/smoldot.ts`. The opt-in People-chain path on the host shell still spins up a second smoldot at the user's origin, gated by the `VITE_SS_USE_SMOLDOT` env flag.
@@ -37,11 +37,11 @@ Five chain factories ship in `packages/resolver/src/smoldot.ts`.
 | Function | Chain | Purpose | Genesis hash |
 |---|---|---|---|
 | `getRelayChain()` | Paseo relay | Required parent for the parachains below | `PASEO_RELAY_GENESIS` (`config.ts:83`) |
-| `getResolverAssetHubChain()` / `getDappAssetHubChain()` | Asset Hub Paseo | Domain resolution and product queries | `ASSET_HUB_PASEO_GENESIS` (`config.ts:85`) |
+| `getDappAssetHubChain()` | Asset Hub Paseo | Domain resolution and product queries (single shared chain) | `ASSET_HUB_PASEO_GENESIS` (`config.ts:85`) |
 | `getBulletinChain()` | Bulletin Paseo | Preimage submission via `TransactionStorage.store` | `BULLETIN_PASEO_GENESIS` (`config.ts:87`) |
 | `getPeopleChain()` | People (chain spec selected by `SS_PEOPLE_CHAIN`, currently `next-people-paseo`) | Statement-store auth | not in `SUPPORTED_GENESIS_HASHES` |
 
-Asset Hub is split into two cached chains. The resolver's chain is released via `releaseResolverAssetHubChain()` (`smoldot.ts:400`) once the CID is cached, and a fresh product chain is created on demand to avoid smoldot's per-connection block deduplication.
+There is exactly one Asset Hub chain (`getDappAssetHubChain()`, `smoldot.ts:519`), shared by the resolver and every dApp session through the `ChainBroker`. The broker opens a single follow that is never removed mid-read. The resolver reads through a local broker session (`broker.getLocalProvider(genesis)`, object-wire), and dApp connections attach as remote sessions on the same follow. This replaced the earlier resolver/product chain split. In that split the resolver's chain was released once the CID was cached, so the first dApp connection releasing that follow mid-read produced the `ChainHead disjointed` load failure.
 
 `SUPPORTED_GENESIS_HASHES` (`config.ts:90`) contains relay, Asset Hub, and Bulletin. People chain is not in the set today, which is why the host shell still spins up its own smoldot for it under `VITE_SS_USE_SMOLDOT=true`.
 
@@ -93,10 +93,10 @@ Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's 
 
 These resolver-package exports are owner-only and must not be imported outside `apps/protocol/`:
 
-- `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getResolverAssetHubProvider`, `getDappAssetHubProvider`, `releaseResolverAssetHubChain`, `getPeopleChainProvider`
+- `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getDappAssetHubChain`, `getDappAssetHubProvider`, `makeNonRemovingChain`, `getPeopleChainProvider`
 - `bulletin.ts`: `ensureBulletinClient`, `submitPreimageTransaction`, `getTestSigner`
 - `chains.ts`: `createChainProvider`, `isChainSupported`
-- `resolve.ts` re-exports of `getSmoldot`, `getSmoldotDirect`, `getRelayChain`, `onConnectionIssue` plus the chain-touching helpers `resolveDotName`, `resolveOwner`, `waitForAssetHubFinalized`, `destroyResolverClient`
+- `resolve.ts` re-exports of `getSmoldot`, `getSmoldotDirect`, `getRelayChain`, `onConnectionIssue` plus the chain-touching helpers `resolveDotName`, `resolveOwner`, `waitForAssetHubFinalized`, `destroyResolverClient`, and `setResolverAssetHubProvider` (the bootstrap seam that points the resolver's Asset Hub reads at the broker's local session)
 
 Enforced by `packages/ui/tests/owner-boundary.contract.test.ts`, which currently bans `@dotli/resolver/bulletin` imports in `packages/ui/src/`, `packages/auth/src/`, and `apps/host/src/`. The remaining reach-in is `packages/auth/src/auth.ts:24` (`getPeopleChainProvider`), gated by `VITE_SS_USE_SMOLDOT` and out of scope for this change.
 
@@ -115,4 +115,4 @@ Steps 4 and 5 are what makes a chain reachable from the host shell across the po
 
 ## Related
 
-- [Resolution design](resolution-design.md). Cold-start latency distribution and the resolver/product Asset Hub chain split.
+- [Resolution design](resolution-design.md). Cold-start latency distribution and the shared Asset Hub follow via the broker.

@@ -186,6 +186,22 @@ export interface ChainBrokerManager {
   disconnectAll(): void;
 }
 
+// Broker-backed object-wire provider for a chain, or throw. Object-wire (the
+// default) matches the polkadot-api getSmProvider boundary the resolver
+// expects. Used to route the resolver's Asset Hub reads through the broker's
+// shared follow in both the direct and SharedWorker protocol entry points.
+export function requireBrokerLocalProvider(
+  manager: ChainBrokerManager,
+  genesisHash: string,
+  label: string,
+): JsonRpcProvider {
+  const provider = manager.getLocalProvider(genesisHash);
+  if (provider === null) {
+    throw new Error(`No broker provider available for ${label}`);
+  }
+  return provider;
+}
+
 const BROKER_TAG = "[dot.li broker]";
 function brokerLog(...args: unknown[]): void {
   console.warn(BROKER_TAG, ...args);

@@ -39,9 +39,11 @@ import { onSmoldotFatal } from "@dotli/resolver/smoldot";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
-import { createChainBrokerManager } from "@dotli/protocol/broker";
+import {
+  createChainBrokerManager,
+  requireBrokerLocalProvider,
+} from "@dotli/protocol/broker";
 import { serializeError } from "@dotli/shared/errors";
-import type { JsonRpcProvider } from "@polkadot-api/json-rpc-provider";
 
 /** Bridge-boundary allowlist for executable-manifest kinds. */
 const EXECUTABLE_KINDS = new Set(["app", "widget", "worker"]);
@@ -120,19 +122,6 @@ if (requestedNetwork === null) {
 // Placeholder broker manager until pre-sync creates the real one.
 let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
 
-// Broker-backed provider for a chain, or throw. Object-wire (the default),
-// matching polkadot-api's getSmProvider boundary the resolver expects.
-function requireBrokerLocalProvider(
-  genesisHash: string,
-  label: string,
-): JsonRpcProvider {
-  const provider = chainBrokerManager.getLocalProvider(genesisHash);
-  if (provider === null) {
-    throw new Error(`No broker provider available for ${label}`);
-  }
-  return provider;
-}
-
 // Smoldot panic broadcast. When smoldot's log callback detects a WASM
 // panic, relay a `fatal` envelope to every connected port so the host
 // client rejects every in-flight request immediately instead of waiting
@@ -201,6 +190,7 @@ async function presync(): Promise<void> {
     chainBrokerManager = createChainBrokerManager(createChainProvider);
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(
+        chainBrokerManager,
         getActiveServicesConfig().assethub.genesis,
         "Asset Hub",
       ),

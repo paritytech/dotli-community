@@ -75,6 +75,7 @@ import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import {
   createChainBrokerManager,
+  requireBrokerLocalProvider,
   type ChainBrokerManager,
 } from "@dotli/protocol/broker";
 import {
@@ -706,15 +707,13 @@ async function initDirectMode(): Promise<void> {
     onBrokerReady: (broker) => {
       // Route the resolver's Asset Hub reads through the broker's shared
       // follow (object-wire — see protocol-shared-worker for the rationale).
-      setResolverAssetHubProvider(() => {
-        const provider = broker.getLocalProvider(
+      setResolverAssetHubProvider(() =>
+        requireBrokerLocalProvider(
+          broker,
           getActiveServicesConfig().assethub.genesis,
-        );
-        if (provider === null) {
-          throw new Error("No broker provider available for Asset Hub");
-        }
-        return provider;
-      });
+          "Asset Hub",
+        ),
+      );
     },
     onInit: () => {
       getSmoldot();
