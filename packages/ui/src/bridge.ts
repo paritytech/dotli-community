@@ -411,7 +411,7 @@ function wrapCoreProviderForDebug(
 
 let topbarLoginRequestSeq = 0;
 
-function requestCoreLogin(
+export function requestCoreLogin(
   core: Provider,
   reason?: string,
 ): Promise<LoginResponse> {
@@ -465,8 +465,9 @@ function requestCoreLogin(
       }
       cleanup();
       try {
-        const result = responseCodec.dec(decoded.value.payload.value)
-          .value as unknown as ResultPayload<
+        const result = responseCodec.dec(
+          decoded.value.payload.value,
+        ) as unknown as ResultPayload<
           LoginResponseEnvelope,
           LoginErrorEnvelope
         >;

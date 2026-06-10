@@ -133,6 +133,7 @@ export function initTopBar(): void {
 
   // Auth button: opens modal (logged out) or popover (logged in)
   authButton.addEventListener("click", handleAuthButtonClick);
+  authButton.removeAttribute("disabled");
 
   // Modal close button
   modalClose.addEventListener("click", () => {

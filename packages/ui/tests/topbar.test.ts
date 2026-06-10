@@ -43,7 +43,7 @@ async function flushMicrotasks(): Promise<void> {
 function installTopbarDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
-    <button id="auth-button"></button>
+    <button id="auth-button" disabled></button>
     <div id="auth-modal-backdrop">
       <div id="auth-modal-title"></div>
       <div id="auth-modal-qr"></div>
@@ -166,6 +166,31 @@ describe("topbar login cancellation", () => {
       "Login with Polkadot Mobile",
     );
     expect(loginRequests).toEqual([{ reason: undefined }]);
+  });
+
+  it("emits a login request on the first auth button click", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const loginRequests: unknown[] = [];
+    window.addEventListener("dotli:truapi-login-request", (event) => {
+      loginRequests.push((event as CustomEvent).detail);
+    });
+    initTopBar();
+
+    (
+      window as typeof window & { __dotliTruapiBridgeReady?: boolean }
+    ).__dotliTruapiBridgeReady = true;
+    expect(
+      document.getElementById("auth-button")?.hasAttribute("disabled"),
+    ).toBe(false);
+    document.getElementById("auth-button")?.click();
+
+    expect(loginRequests).toEqual([{ reason: undefined }]);
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
   });
 
   it("keeps the first-click login modal open through the initial disconnected tick", async () => {
@@ -315,17 +340,13 @@ describe("topbar login cancellation", () => {
 describe("topbar boot rehydration", () => {
   it("renders the persisted session badge on idle after init", async () => {
     installTopbarDom();
-    vi.stubGlobal(
-      "requestIdleCallback",
-      (callback: () => void): number => {
-        callback();
-        return 0;
-      },
-    );
+    vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
+      callback();
+      return 0;
+    });
 
-    const { SHARED_CORE_SESSION_KEY } = await import(
-      "@dotli/protocol/auth-storage"
-    );
+    const { SHARED_CORE_SESSION_KEY } =
+      await import("@dotli/protocol/auth-storage");
     const { SITE_ID } = await import("@dotli/config/config");
     // Opaque session blob plus the JSON UI-state cache the core-driven
     // sessionUiChanged callback persists alongside it in shared auth storage.
@@ -353,13 +374,10 @@ describe("topbar boot rehydration", () => {
 
   it("stays logged out when no session is persisted", async () => {
     installTopbarDom();
-    vi.stubGlobal(
-      "requestIdleCallback",
-      (callback: () => void): number => {
-        callback();
-        return 0;
-      },
-    );
+    vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
+      callback();
+      return 0;
+    });
 
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
