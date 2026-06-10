@@ -2,29 +2,26 @@ import { SITE_ID } from "@dotli/config/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
 import type { HostCallbacks, SessionUiInfo } from "@parity/truapi-host-wasm";
 import {
-  buildSharedAuthStorageKey,
   hasStoredSharedAuthSession,
   SHARED_CORE_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
+import {
+  clearSharedAuthStorage,
+  readSharedAuthStorage,
+  subscribeSharedAuthStorage,
+  writeSharedAuthStorage,
+} from "@dotli/protocol/client";
 import { createResultStream } from "./result-stream";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
-const STORAGE_KEY = buildSharedAuthStorageKey(SITE_ID, SHARED_CORE_SESSION_KEY);
 // JSON cache of the last connected UI state the core reported via
-// `sessionUiChanged`. Lives next to the opaque session blob so boot-time
-// rehydration never has to decode the blob itself.
-const UI_STATE_CACHE_KEY = `${STORAGE_KEY}:ui-state`;
-const CHANNEL_NAME = `dotli:truapi-session-store:${SITE_ID}`;
+// `sessionUiChanged`. Lives in shared auth storage next to the opaque
+// root-domain session blob so boot-time rehydration never has to decode the
+// blob itself.
+const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 
 function emitLocalChange(): void {
   window.dispatchEvent(new Event(LOCAL_CHANGE_EVENT));
-  try {
-    const channel = new BroadcastChannel(CHANNEL_NAME);
-    channel.postMessage(undefined);
-    channel.close();
-  } catch {
-    /* BroadcastChannel unavailable: same-tab event and storage event still cover common cases. */
-  }
 }
 
 export interface TruapiSessionUiState {
@@ -91,22 +88,25 @@ function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   };
 }
 
-function writeUiStateCache(detail: TruapiSessionUiState): void {
+async function writeUiStateCache(detail: TruapiSessionUiState): Promise<void> {
   try {
     if (detail.connected) {
-      localStorage.setItem(UI_STATE_CACHE_KEY, JSON.stringify(detail));
+      await writeSharedAuthStorage(
+        SITE_ID,
+        UI_STATE_CACHE_KEY,
+        JSON.stringify(detail),
+      );
     } else {
-      localStorage.removeItem(UI_STATE_CACHE_KEY);
+      await clearSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY);
     }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable; the cache only speeds up boot rehydration and the core re-emits once it runs.
   } catch {
     /* cache write is best-effort */
   }
 }
 
-function readUiStateCache(): TruapiSessionUiState | null {
+async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
   try {
-    const raw = localStorage.getItem(UI_STATE_CACHE_KEY);
+    const raw = await readSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY);
     if (raw === null) {
       return null;
     }
@@ -131,16 +131,18 @@ function readUiStateCache(): TruapiSessionUiState | null {
  * without a cached state it degrades to a bare `connected: true`.
  */
 export function emitPersistedSessionUiState(): void {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+  void (async () => {
+    let raw: string | null;
+    try {
+      raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+    } catch {
+      return;
+    }
     if (raw === null || !hasStoredSharedAuthSession(raw)) {
       return;
     }
-    emitSessionUiState(readUiStateCache() ?? { connected: true });
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable; boot rehydration is best-effort and the core re-emits once it runs.
-  } catch {
-    /* no readable persisted session */
-  }
+    emitSessionUiState((await readUiStateCache()) ?? { connected: true });
+  })();
 }
 
 export function createSessionStoreAdapters(): Pick<
@@ -155,7 +157,7 @@ export function createSessionStoreAdapters(): Pick<
     async readSession() {
       let raw: string | null = null;
       try {
-        raw = localStorage.getItem(STORAGE_KEY);
+        raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
       } catch {
         raw = null;
       }
@@ -165,18 +167,22 @@ export function createSessionStoreAdapters(): Pick<
       return hexToBytes(raw);
     },
     async writeSession(value) {
-      localStorage.setItem(STORAGE_KEY, bytesToHex(value));
+      await writeSharedAuthStorage(
+        SITE_ID,
+        SHARED_CORE_SESSION_KEY,
+        bytesToHex(value),
+      );
       emitLocalChange();
     },
     async clearSession() {
-      localStorage.removeItem(STORAGE_KEY);
-      writeUiStateCache({ connected: false });
+      await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+      await writeUiStateCache({ connected: false });
       emitLocalChange();
       emitSessionUiState({ connected: false });
     },
     sessionUiChanged(info) {
       const detail = toSessionUiState(info);
-      writeUiStateCache(detail);
+      void writeUiStateCache(detail);
       emitSessionUiState(detail);
     },
     subscribeSessionStore() {
@@ -185,26 +191,17 @@ export function createSessionStoreAdapters(): Pick<
           push(undefined);
         };
         window.addEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
-        const onStorage = (event: StorageEvent): void => {
-          if (event.key === STORAGE_KEY) {
+        const unsubscribeShared = subscribeSharedAuthStorage((change) => {
+          if (
+            change.siteId === SITE_ID &&
+            change.key === SHARED_CORE_SESSION_KEY
+          ) {
             push(undefined);
           }
-        };
-        window.addEventListener("storage", onStorage);
-        let channel: BroadcastChannel | null = null;
-        try {
-          channel = new BroadcastChannel(CHANNEL_NAME);
-          channel.addEventListener("message", onLocalChange);
-        } catch {
-          channel = null;
-        }
+        });
         return () => {
           window.removeEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
-          window.removeEventListener("storage", onStorage);
-          if (channel !== null) {
-            channel.removeEventListener("message", onLocalChange);
-            channel.close();
-          }
+          unsubscribeShared();
         };
       });
     },

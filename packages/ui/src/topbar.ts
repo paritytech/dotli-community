@@ -155,12 +155,14 @@ export function initTopBar(): void {
   });
 
   window.addEventListener("dotli:truapi-pairing", (e: Event) => {
-    const { deeplink, label, dotSuffix, cancel } = (
+    const { deeplink, label, dotSuffix, hostGlobal, cancel } = (
       e as CustomEvent<TrUApiPairingRequest>
     ).detail;
     activeTruapiPairingCancel?.();
     activeTruapiPairingCancel = cancel;
-    openModal(undefined, label, { dotSuffix });
+    openModal(undefined, hostGlobal === true ? undefined : label, {
+      dotSuffix,
+    });
     renderPairing(deeplink);
   });
 
@@ -425,7 +427,7 @@ function renderError(message: string): void {
   retry.className = "auth-modal-retry";
   retry.textContent = "Retry";
   retry.addEventListener("click", () => {
-    openModal(undefined, currentProductLabel ?? undefined);
+    openModal();
     requestTruapiLogin();
   });
   container.appendChild(retry);
@@ -438,7 +440,7 @@ function handleAuthButtonClick(): void {
   if (truapiSessionConnected) {
     userPopover.classList.toggle("open");
   } else {
-    openModal(undefined, currentProductLabel ?? undefined);
+    openModal();
     requestTruapiLogin();
   }
 }
@@ -456,7 +458,6 @@ function requestTruapiLogin(reason?: string): void {
   window.dispatchEvent(
     new CustomEvent("dotli:truapi-login-request", {
       detail: {
-        label: currentProductLabel ?? undefined,
         reason,
       },
     }),

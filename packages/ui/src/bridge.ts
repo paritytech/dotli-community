@@ -151,13 +151,13 @@ export function initBridgeEventListeners(): void {
       payload: {},
     });
     void (async () => {
-      const host = currentHost ?? (await getLandingAuthHost());
+      const host = await getLandingAuthHost();
       emitDotliDebugEvent({
         layer: "sso",
         event: "login_host_ready",
         flowId,
         timestamp: Date.now(),
-        payload: { host: currentHost === null ? "landing" : "product" },
+        payload: { host: "landing" },
       });
       const result = await host.requestLogin(detail.reason);
       if (result === "Success" || result === "AlreadyConnected") {
@@ -560,6 +560,7 @@ async function createCoreProvider(
   options: {
     pairingLabel?: string;
     pairingDotSuffix?: boolean;
+    pairingHostGlobal?: boolean;
     productId?: string;
   } = {},
 ): Promise<CoreProvider> {
@@ -571,6 +572,7 @@ async function createCoreProvider(
         label,
         pairingLabel: options.pairingLabel,
         pairingDotSuffix: options.pairingDotSuffix,
+        pairingHostGlobal: options.pairingHostGlobal,
         storagePrefix: `dotli:${label}:`,
       }),
     ),
@@ -607,6 +609,7 @@ async function createLandingAuthHost(): Promise<CoreHost> {
   const coreProvider = await createCoreProvider(LANDING_AUTH_LABEL, {
     pairingLabel: LANDING_AUTH_DISPLAY_LABEL,
     pairingDotSuffix: false,
+    pairingHostGlobal: true,
   });
   return {
     requestLogin(reason) {

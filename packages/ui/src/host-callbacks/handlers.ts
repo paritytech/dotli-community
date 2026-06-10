@@ -28,13 +28,20 @@ export interface CreateHostCallbacksOptions {
   label: string;
   pairingLabel?: string;
   pairingDotSuffix?: boolean;
+  pairingHostGlobal?: boolean;
   storagePrefix: string;
 }
 
 export function createHostCallbacks(
   options: CreateHostCallbacksOptions,
 ): Partial<HostCallbacks> {
-  const { label, pairingLabel, pairingDotSuffix, storagePrefix } = options;
+  const {
+    label,
+    pairingLabel,
+    pairingDotSuffix,
+    pairingHostGlobal,
+    storagePrefix,
+  } = options;
   return {
     navigateTo: createNavigateTo(),
     ...createNotificationAdapters(label),
@@ -45,6 +52,7 @@ export function createHostCallbacks(
     clear: createLocalStorageClear(storagePrefix),
     presentPairing: createPresentPairing(pairingLabel ?? label, {
       dotSuffix: pairingDotSuffix,
+      hostGlobal: pairingHostGlobal,
     }),
     ...createSessionStoreAdapters(),
     ...createUserConfirmationAdapters(label),

@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  buildSharedAuthStorageKey,
-  SHARED_CORE_SESSION_KEY,
-} from "@dotli/protocol/auth-storage";
+import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import { SITE_ID } from "@dotli/config/config";
 import {
   createSessionStoreAdapters,
@@ -10,8 +7,48 @@ import {
   emitSessionConnectionState,
 } from "@dotli/ui/host-callbacks/SessionStore";
 
-const STORAGE_KEY = buildSharedAuthStorageKey(SITE_ID, SHARED_CORE_SESSION_KEY);
-const UI_STATE_CACHE_KEY = `${STORAGE_KEY}:ui-state`;
+const sharedAuth = vi.hoisted(() => ({
+  storage: new Map<string, string>(),
+  listeners: new Set<
+    (change: { siteId: string; key: string; value: string | null }) => void
+  >(),
+}));
+
+vi.mock("@dotli/protocol/client", () => ({
+  readSharedAuthStorage: async (siteId: string, key: string) => {
+    return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
+  },
+  writeSharedAuthStorage: async (
+    siteId: string,
+    key: string,
+    value: string,
+  ) => {
+    sharedAuth.storage.set(`${siteId}:${key}`, value);
+  },
+  clearSharedAuthStorage: async (siteId: string, key: string) => {
+    sharedAuth.storage.delete(`${siteId}:${key}`);
+  },
+  subscribeSharedAuthStorage: (
+    listener: (change: {
+      siteId: string;
+      key: string;
+      value: string | null;
+    }) => void,
+  ) => {
+    sharedAuth.listeners.add(listener);
+    return () => {
+      sharedAuth.listeners.delete(listener);
+    };
+  },
+}));
+
+const STORAGE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}`;
+const UI_STATE_CACHE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`;
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 function connectedSessionUiInfo() {
   return {
@@ -37,6 +74,8 @@ const CONNECTED_DETAIL = {
 describe("session-store host callbacks", () => {
   beforeEach(() => {
     localStorage.clear();
+    sharedAuth.storage.clear();
+    sharedAuth.listeners.clear();
     vi.restoreAllMocks();
     emitSessionConnectionState(false);
   });
@@ -48,11 +87,12 @@ describe("session-store host callbacks", () => {
     expect(await readSession()).toBeUndefined();
 
     await writeSession(new Uint8Array([1, 2, 3]));
-    expect(localStorage.getItem(STORAGE_KEY)).toBe("0x010203");
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe("0x010203");
+    expect(localStorage.length).toBe(0);
     expect(Array.from((await readSession()) ?? [])).toEqual([1, 2, 3]);
 
     await clearSession();
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
     expect(await readSession()).toBeUndefined();
   });
 
@@ -72,12 +112,13 @@ describe("session-store host callbacks", () => {
     const { sessionUiChanged, clearSession } = createSessionStoreAdapters();
 
     sessionUiChanged?.(connectedSessionUiInfo());
-    expect(JSON.parse(localStorage.getItem(UI_STATE_CACHE_KEY) ?? "")).toEqual(
+    await flushMicrotasks();
+    expect(JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? "")).toEqual(
       CONNECTED_DETAIL,
     );
 
     await clearSession();
-    expect(localStorage.getItem(UI_STATE_CACHE_KEY)).toBeNull();
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
   it("does not downgrade a richer connected state with a bare one", () => {
@@ -114,19 +155,22 @@ describe("session-store host callbacks", () => {
     });
 
     // Nothing persisted: nothing emitted, even with a stale cache entry.
-    localStorage.setItem(
+    sharedAuth.storage.set(
       UI_STATE_CACHE_KEY,
       JSON.stringify(CONNECTED_DETAIL),
     );
     emitPersistedSessionUiState();
+    await flushMicrotasks();
     expect(events).toEqual([]);
-    localStorage.removeItem(UI_STATE_CACHE_KEY);
+    sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
     await writeSession(new Uint8Array([1, 2, 3]));
     sessionUiChanged?.(connectedSessionUiInfo());
+    await flushMicrotasks();
     events.length = 0;
 
     emitPersistedSessionUiState();
+    await flushMicrotasks();
     expect(events).toEqual([CONNECTED_DETAIL]);
   });
 
@@ -139,6 +183,7 @@ describe("session-store host callbacks", () => {
 
     await writeSession(new Uint8Array([1, 2, 3]));
     emitPersistedSessionUiState();
+    await flushMicrotasks();
 
     expect(events).toEqual([{ connected: true }]);
   });
@@ -159,7 +204,13 @@ describe("session-store host callbacks", () => {
     expect(localTick.value.isOk()).toBe(true);
 
     const remote = iterator.next();
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
+    for (const listener of sharedAuth.listeners) {
+      listener({
+        siteId: SITE_ID,
+        key: SHARED_CORE_SESSION_KEY,
+        value: "0x09",
+      });
+    }
     const remoteTick = await remote;
     expect(remoteTick.done).toBe(false);
     expect(remoteTick.value.isOk()).toBe(true);

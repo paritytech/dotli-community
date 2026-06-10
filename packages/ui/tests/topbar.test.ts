@@ -1,5 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const sharedAuth = vi.hoisted(() => ({
+  storage: new Map<string, string>(),
+  listeners: new Set<
+    (change: { siteId: string; key: string; value: string | null }) => void
+  >(),
+}));
+
+vi.mock("@dotli/protocol/client", () => ({
+  readSharedAuthStorage: async (siteId: string, key: string) => {
+    return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
+  },
+  writeSharedAuthStorage: async (
+    siteId: string,
+    key: string,
+    value: string,
+  ) => {
+    sharedAuth.storage.set(`${siteId}:${key}`, value);
+  },
+  clearSharedAuthStorage: async (siteId: string, key: string) => {
+    sharedAuth.storage.delete(`${siteId}:${key}`);
+  },
+  subscribeSharedAuthStorage: (
+    listener: (change: {
+      siteId: string;
+      key: string;
+      value: string | null;
+    }) => void,
+  ) => {
+    sharedAuth.listeners.add(listener);
+    return () => {
+      sharedAuth.listeners.delete(listener);
+    };
+  },
+}));
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function installTopbarDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
@@ -31,6 +71,8 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
+  sharedAuth.storage.clear();
+  sharedAuth.listeners.clear();
   document.body.innerHTML = "";
 });
 
@@ -104,6 +146,50 @@ describe("topbar disconnect", () => {
 });
 
 describe("topbar login cancellation", () => {
+  it("opens host-global login from the topbar even when a product is loaded", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const loginRequests: unknown[] = [];
+    window.addEventListener("dotli:truapi-login-request", (event) => {
+      loginRequests.push((event as CustomEvent).detail);
+    });
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:product-loaded", {
+        detail: { label: "localhost:3000" },
+      }),
+    );
+    document.getElementById("auth-button")?.click();
+
+    expect(document.getElementById("auth-modal-title")?.textContent).toBe(
+      "Login with Polkadot Mobile",
+    );
+    expect(loginRequests).toEqual([{ reason: undefined }]);
+  });
+
+  it("keeps landing pairing presentation host-global", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-pairing", {
+        detail: {
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "Polkadot Web",
+          dotSuffix: false,
+          hostGlobal: true,
+          cancel: vi.fn(),
+        },
+      }),
+    );
+
+    expect(document.getElementById("auth-modal-title")?.textContent).toBe(
+      "Login with Polkadot Mobile",
+    );
+  });
+
   it("closes the auth modal when a rejected login disconnects the session", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
@@ -177,18 +263,15 @@ describe("topbar boot rehydration", () => {
       },
     );
 
-    const { buildSharedAuthStorageKey, SHARED_CORE_SESSION_KEY } =
-      await import("@dotli/protocol/auth-storage");
-    const { SITE_ID } = await import("@dotli/config/config");
-    const storageKey = buildSharedAuthStorageKey(
-      SITE_ID,
-      SHARED_CORE_SESSION_KEY,
+    const { SHARED_CORE_SESSION_KEY } = await import(
+      "@dotli/protocol/auth-storage"
     );
+    const { SITE_ID } = await import("@dotli/config/config");
     // Opaque session blob plus the JSON UI-state cache the core-driven
-    // sessionUiChanged callback persists alongside it.
-    localStorage.setItem(storageKey, "0x0102");
-    localStorage.setItem(
-      `${storageKey}:ui-state`,
+    // sessionUiChanged callback persists alongside it in shared auth storage.
+    sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, "0x0102");
+    sharedAuth.storage.set(
+      `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,
       JSON.stringify({
         connected: true,
         publicKey:
@@ -200,6 +283,7 @@ describe("topbar boot rehydration", () => {
 
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
+    await flushMicrotasks();
 
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
     expect(document.getElementById("user-popover-username")?.textContent).toBe(

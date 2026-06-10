@@ -6,12 +6,13 @@ export interface TrUApiPairingRequest {
   deeplink: string;
   label: string;
   dotSuffix?: boolean;
+  hostGlobal?: boolean;
   cancel: () => void;
 }
 
 export function createPresentPairing(
   label: string,
-  options: { dotSuffix?: boolean } = {},
+  options: { dotSuffix?: boolean; hostGlobal?: boolean } = {},
 ): HostCallbacks["presentPairing"] {
   return (deeplink) =>
     new Promise<void>((resolve) => {
@@ -29,6 +30,7 @@ export function createPresentPairing(
             deeplink,
             label,
             dotSuffix: options.dotSuffix,
+            hostGlobal: options.hostGlobal,
             cancel: resolve,
           },
         }),
