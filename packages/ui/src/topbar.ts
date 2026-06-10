@@ -85,6 +85,7 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
 let activeTruapiPairingCancel: (() => void) | null = null;
+let truapiLoginPending = false;
 let truapiSessionConnected = false;
 
 function getStoredTheme(): "light" | "dark" {
@@ -161,6 +162,7 @@ export function initTopBar(): void {
     ).detail;
     activeTruapiPairingCancel?.();
     activeTruapiPairingCancel = cancel;
+    truapiLoginPending = false;
     openModal(undefined, hostGlobal === true ? undefined : label, {
       dotSuffix,
     });
@@ -171,6 +173,16 @@ export function initTopBar(): void {
     const detail = (e as CustomEvent<TruapiSessionUiState>).detail;
     const { connected } = detail;
     truapiSessionConnected = connected;
+    if (
+      !connected &&
+      truapiLoginPending &&
+      activeTruapiPairingCancel === null &&
+      modalBackdrop.classList.contains("open")
+    ) {
+      renderLoggedOut();
+      return;
+    }
+    truapiLoginPending = false;
     activeTruapiPairingCancel = null;
     closeModal({ skipTruapiCancel: true });
     if (connected) {
@@ -184,6 +196,7 @@ export function initTopBar(): void {
   // emits a disconnected `dotli:truapi-session-state` instead.
   window.addEventListener("dotli:truapi-login-error", (e: Event) => {
     const { message } = (e as CustomEvent<{ message: string }>).detail;
+    truapiLoginPending = false;
     if (isLoginCancellation(message)) {
       closeModal({ skipTruapiCancel: true });
       renderLoggedOut();
@@ -461,6 +474,7 @@ export function requestTruapiDisconnect(): void {
 }
 
 function requestTruapiLogin(reason?: string): void {
+  truapiLoginPending = true;
   window.dispatchEvent(
     new CustomEvent("dotli:truapi-login-request", {
       detail: {
@@ -1917,6 +1931,7 @@ function openModal(
 
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
+  truapiLoginPending = false;
   currentQrPayload = null;
   modalQr.innerHTML = "";
 

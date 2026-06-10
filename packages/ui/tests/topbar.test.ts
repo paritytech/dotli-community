@@ -168,6 +168,28 @@ describe("topbar login cancellation", () => {
     expect(loginRequests).toEqual([{ reason: undefined }]);
   });
 
+  it("keeps the first-click login modal open through the initial disconnected tick", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    document.getElementById("auth-button")?.click();
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-session-state", {
+        detail: { connected: false },
+      }),
+    );
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+    expect(document.getElementById("auth-modal-qr")?.innerHTML).toContain(
+      "spinner",
+    );
+  });
+
   it("keeps landing pairing presentation host-global", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
