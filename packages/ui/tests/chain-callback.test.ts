@@ -10,6 +10,12 @@ const mocks = vi.hoisted(() => ({
   createRpcChainProvider: vi.fn(),
   isSmoldotChainSupported: vi.fn(),
   isRpcChainSupported: vi.fn(),
+  hasDotliDebugListeners: vi.fn(),
+  emitSsoStatementStoreConnected: vi.fn(),
+  emitSsoStatementStoreConnecting: vi.fn(),
+  emitSsoStatementStoreConnectFailed: vi.fn(),
+  emitSsoStatementStoreRequest: vi.fn(),
+  emitSsoStatementStoreResponse: vi.fn(),
 }));
 
 vi.mock("@dotli/config/config", async (importOriginal) => {
@@ -32,6 +38,18 @@ vi.mock("@dotli/resolver/chains", () => ({
 vi.mock("@dotli/resolver/rpc-chain", () => ({
   createRpcChainProvider: mocks.createRpcChainProvider,
   isRpcChainSupported: mocks.isRpcChainSupported,
+}));
+
+vi.mock("@dotli/truapi-debug/dotli-debug-bus", () => ({
+  hasDotliDebugListeners: mocks.hasDotliDebugListeners,
+}));
+
+vi.mock("@dotli/ui/host-callbacks/SsoDebug", () => ({
+  emitSsoStatementStoreConnected: mocks.emitSsoStatementStoreConnected,
+  emitSsoStatementStoreConnecting: mocks.emitSsoStatementStoreConnecting,
+  emitSsoStatementStoreConnectFailed: mocks.emitSsoStatementStoreConnectFailed,
+  emitSsoStatementStoreRequest: mocks.emitSsoStatementStoreRequest,
+  emitSsoStatementStoreResponse: mocks.emitSsoStatementStoreResponse,
 }));
 
 function hexBytes(hex: string): Uint8Array {
@@ -59,6 +77,7 @@ describe("createChainConnect", () => {
     mocks.createRpcChainProvider.mockReturnValue(mocks.rpcProvider);
     mocks.isSmoldotChainSupported.mockReturnValue(true);
     mocks.isRpcChainSupported.mockReturnValue(true);
+    mocks.hasDotliDebugListeners.mockReturnValue(false);
   });
 
   it("routes People-chain statement-store connections through RPC by default", async () => {
@@ -75,7 +94,9 @@ describe("createChainConnect", () => {
 
     await createChainConnect()(hexBytes(assetHubGenesis));
 
-    expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(assetHubGenesis);
+    expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(
+      assetHubGenesis,
+    );
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
 
@@ -114,5 +135,90 @@ describe("createChainConnect", () => {
     const responses = connection.responses()[Symbol.asyncIterator]();
     expect(JSON.parse((await responses.next()).value)).toEqual(ack);
     await responses.return?.();
+  });
+
+  it("skips pairing statement-store debug taxonomy when no debug listener is attached", async () => {
+    let onMessage: ((message: unknown) => void) | undefined;
+    const sent: unknown[] = [];
+    mocks.smoldotProvider.mockImplementation(
+      (handler: (message: unknown) => void) => {
+        onMessage = handler;
+        return {
+          send: (request: unknown) => {
+            sent.push(request);
+          },
+          disconnect: vi.fn(),
+        };
+      },
+    );
+    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
+
+    connection.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "truapi:sso-pairing:1",
+        method: "statement_subscribeStatement",
+        params: [{ matchAll: [] }],
+      }),
+    );
+    onMessage?.({
+      jsonrpc: "2.0",
+      id: "truapi:sso-pairing:1",
+      result: "remote-sub",
+    });
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    await responses.next();
+    await responses.return?.();
+
+    expect(sent).toHaveLength(1);
+    expect(mocks.emitSsoStatementStoreRequest).not.toHaveBeenCalled();
+    expect(mocks.emitSsoStatementStoreResponse).not.toHaveBeenCalled();
+  });
+
+  it("emits pairing statement-store debug taxonomy when a debug listener is attached", async () => {
+    mocks.hasDotliDebugListeners.mockReturnValue(true);
+    let onMessage: ((message: unknown) => void) | undefined;
+    mocks.smoldotProvider.mockImplementation(
+      (handler: (message: unknown) => void) => {
+        onMessage = handler;
+        return {
+          send: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      },
+    );
+    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
+
+    connection.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "truapi:sso-pairing:1",
+        method: "statement_subscribeStatement",
+        params: [{ matchAll: [] }],
+      }),
+    );
+    onMessage?.({
+      jsonrpc: "2.0",
+      id: "truapi:sso-pairing:1",
+      result: "remote-sub",
+    });
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    await responses.next();
+    await responses.return?.();
+
+    expect(mocks.emitSsoStatementStoreRequest).toHaveBeenCalledWith({
+      method: "statement_subscribeStatement",
+      requestId: "truapi:sso-pairing:1",
+      requestKind: "live-subscribe",
+    });
+    expect(mocks.emitSsoStatementStoreResponse).toHaveBeenCalledWith({
+      method: "statement_subscribeStatement",
+      requestId: "truapi:sso-pairing:1",
+      requestKind: "live-subscribe",
+      frameKind: "ack",
+      remoteSubscriptionId: "remote-sub",
+    });
   });
 });

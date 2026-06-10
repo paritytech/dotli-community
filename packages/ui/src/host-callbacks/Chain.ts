@@ -19,6 +19,7 @@ import type {
   HostCallbacks,
   PlatformJsonRpcConnection,
 } from "@parity/truapi-host-wasm";
+import { hasDotliDebugListeners } from "@dotli/truapi-debug/dotli-debug-bus";
 import { SS_USE_SMOLDOT } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";
 import { getActiveServicesConfig } from "@dotli/config/network";
@@ -106,6 +107,9 @@ function toConnection(
 }
 
 function emitPairingStatementStoreRequest(request: JsonRpcRequest<unknown>) {
+  if (!hasDotliDebugListeners()) {
+    return;
+  }
   const { method, id } = request;
   if (
     method !== STATEMENT_SUBSCRIBE_METHOD &&
@@ -124,6 +128,9 @@ function emitPairingStatementStoreRequest(request: JsonRpcRequest<unknown>) {
 }
 
 function emitPairingStatementStoreResponse(response: string): void {
+  if (!hasDotliDebugListeners()) {
+    return;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(response);

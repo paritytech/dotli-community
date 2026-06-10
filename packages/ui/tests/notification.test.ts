@@ -31,9 +31,8 @@ describe("notification host callbacks", () => {
   });
 
   it("prompts for notification permission, schedules, fires immediate notifications, and returns ids", async () => {
-    const { createNotificationAdapters } = await import(
-      "@dotli/ui/host-callbacks/PushNotification"
-    );
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");
 
     const response = await pushNotification({
@@ -66,9 +65,8 @@ describe("notification host callbacks", () => {
       "dotli:permissions:myapp",
       JSON.stringify({ Notifications: "granted" }),
     );
-    const { createNotificationAdapters } = await import(
-      "@dotli/ui/host-callbacks/PushNotification"
-    );
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification, cancelNotification } =
       createNotificationAdapters("myapp");
 
@@ -92,9 +90,8 @@ describe("notification host callbacks", () => {
 
   it("rejects when notification permission is denied", async () => {
     mocks.showPermissionRequestModal.mockRejectedValue(new Error("denied"));
-    const { createNotificationAdapters } = await import(
-      "@dotli/ui/host-callbacks/PushNotification"
-    );
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");
 
     await expect(
@@ -108,6 +105,30 @@ describe("notification host callbacks", () => {
     expect(mocks.scheduleNotification).not.toHaveBeenCalled();
     expect(localStorage.getItem("dotli:permissions:myapp")).toBe(
       '{"Notifications":"denied"}',
+    );
+  });
+
+  it("reuses the shared blocked-permission path for stored notification denials", async () => {
+    localStorage.setItem(
+      "dotli:permissions:myapp",
+      JSON.stringify({ Notifications: "denied" }),
+    );
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
+    const { pushNotification } = createNotificationAdapters("myapp");
+
+    await expect(
+      pushNotification({
+        text: "hello",
+        deeplink: undefined,
+        scheduledAt: undefined,
+      }),
+    ).rejects.toThrow("Notifications permission denied");
+
+    expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
+    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      "Notifications access is blocked. Use the permissions menu in the top bar to change this.",
     );
   });
 });

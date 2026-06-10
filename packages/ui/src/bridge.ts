@@ -35,7 +35,10 @@ import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
-import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
+import {
+  emitDotliDebugEvent,
+  hasDotliDebugListeners,
+} from "@dotli/truapi-debug/dotli-debug-bus";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { emitSessionConnectionState } from "./host-callbacks/SessionStore";
@@ -82,39 +85,39 @@ interface CoreHost {
 }
 
 type CoreProvider = Provider & { disconnect: () => Promise<void> };
+type CurrentProduct =
+  | {
+      mode: "iframe";
+      label: string;
+      url: string;
+      productId?: string;
+    }
+  | {
+      mode: "subdomain";
+      label: string;
+      cid: string;
+    };
 
 const LANDING_AUTH_LABEL = "dotli";
 const LANDING_AUTH_DISPLAY_LABEL = "Polkadot Web";
 
 let currentHost: ActiveHost | null = null;
-let landingAuthHost: CoreHost | null = null;
 let landingAuthHostPromise: Promise<CoreHost> | null = null;
+let landingAuthGeneration = 0;
 let currentPanelDispose: (() => void) | null = null;
-
-// Track current product state for permission-grant reloads
-let currentRenderMode: "iframe" | "subdomain" | null = null;
-let currentLabel: string | null = null;
-let currentUrl: string | null = null;
-let currentProductId: string | undefined;
-let currentCid: string | null = null;
+let currentProduct: CurrentProduct | null = null;
+let renderGeneration = 0;
 
 // Listen for device permission grants — reload the iframe so the
 // updated `allow` attribute takes effect.
 window.addEventListener("dotli:device-permission-changed", () => {
-  if (
-    currentRenderMode === "iframe" &&
-    currentUrl !== null &&
-    currentLabel !== null
-  ) {
-    void renderIframe(currentUrl, currentLabel, {
-      productId: currentProductId,
+  const product = currentProduct;
+  if (product?.mode === "iframe") {
+    void renderIframe(product.url, product.label, {
+      productId: product.productId,
     });
-  } else if (
-    currentRenderMode === "subdomain" &&
-    currentCid !== null &&
-    currentLabel !== null
-  ) {
-    void renderAppSubdomain(currentCid, currentLabel);
+  } else if (product?.mode === "subdomain") {
+    void renderAppSubdomain(product.cid, product.label);
   }
 });
 
@@ -187,13 +190,10 @@ async function disconnectTruapiHosts(): Promise<void> {
   emitSessionConnectionState(false);
 
   const hosts = new Set<CoreHost | ActiveHost>();
-  if (landingAuthHost !== null) {
-    hosts.add(landingAuthHost);
-  }
   if (currentHost !== null) {
     hosts.add(currentHost);
   }
-  if (landingAuthHostPromise !== null && landingAuthHost === null) {
+  if (landingAuthHostPromise !== null) {
     try {
       hosts.add(await landingAuthHostPromise);
     } catch {
@@ -339,6 +339,9 @@ function emitWireFrameDebug(
   productId: string,
   message: Uint8Array,
 ): void {
+  if (!hasDotliDebugListeners()) {
+    return;
+  }
   const decoded = decodeWireMessage(message);
   if (decoded.isErr()) {
     return;
@@ -611,19 +614,31 @@ async function createCoreProvider(
 }
 
 async function getLandingAuthHost(): Promise<CoreHost> {
-  if (landingAuthHost !== null) {
-    return landingAuthHost;
+  if (landingAuthHostPromise !== null) {
+    return landingAuthHostPromise;
   }
-  landingAuthHostPromise ??= createLandingAuthHost()
+  const generation = landingAuthGeneration;
+  const promise = createLandingAuthHost()
     .then((host) => {
-      landingAuthHost = host;
+      if (
+        generation !== landingAuthGeneration ||
+        landingAuthHostPromise !== promise
+      ) {
+        host.dispose();
+        throw new Error(
+          "Landing auth host was disposed before it became ready",
+        );
+      }
       return host;
     })
     .catch((error: unknown) => {
-      landingAuthHostPromise = null;
+      if (landingAuthHostPromise === promise) {
+        landingAuthHostPromise = null;
+      }
       throw error;
     });
-  return landingAuthHostPromise;
+  landingAuthHostPromise = promise;
+  return promise;
 }
 
 async function createLandingAuthHost(): Promise<CoreHost> {
@@ -646,9 +661,17 @@ async function createLandingAuthHost(): Promise<CoreHost> {
 }
 
 function disposeLandingAuthHost(): void {
-  landingAuthHost?.dispose();
-  landingAuthHost = null;
+  landingAuthGeneration++;
+  const pending = landingAuthHostPromise;
   landingAuthHostPromise = null;
+  void pending?.then(
+    (host) => {
+      host.dispose();
+    },
+    () => {
+      /* failed pending host has nothing to dispose */
+    },
+  );
 }
 
 /**
@@ -659,6 +682,7 @@ export async function renderIframe(
   label: string,
   options: { productId?: string } = {},
 ): Promise<void> {
+  const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId("render");
   const bridgeFlowId = newFlowId("bridge");
   const productId = options.productId ?? label;
@@ -673,11 +697,12 @@ export async function renderIframe(
   cleanup();
   disposeLandingAuthHost();
 
-  currentRenderMode = "iframe";
-  currentLabel = label;
-  currentUrl = url;
-  currentProductId = options.productId;
-  currentCid = null;
+  currentProduct = {
+    mode: "iframe",
+    label,
+    url,
+    productId: options.productId,
+  };
 
   app.innerHTML = "";
 
@@ -700,6 +725,11 @@ export async function renderIframe(
     container: app,
     debugFlowId: bridgeFlowId,
   });
+  if (myRenderGeneration !== renderGeneration) {
+    host.dispose();
+    stopSetup();
+    return;
+  }
   emitDotliDebugEvent({
     layer: "bridge",
     event: "setup_ready",
@@ -728,6 +758,10 @@ export async function renderIframe(
   ) {
     const { setupViolationPanel } =
       await import("@dotli/sandbox-checker/sandbox-checker-ui");
+    if (myRenderGeneration !== renderGeneration) {
+      stopSetup();
+      return;
+    }
     currentPanelDispose = setupViolationPanel(host.iframe);
   }
 
@@ -758,17 +792,18 @@ export async function renderAppSubdomain(
   cid: string,
   label: string,
 ): Promise<void> {
+  const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId("render");
   const bridgeFlowId = newFlowId("bridge");
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   cleanup();
   disposeLandingAuthHost();
 
-  currentRenderMode = "subdomain";
-  currentLabel = label;
-  currentCid = cid;
-  currentUrl = null;
-  currentProductId = undefined;
+  currentProduct = {
+    mode: "subdomain",
+    label,
+    cid,
+  };
 
   // Propagate the current sandbox contract. The `?mode=` preset param is no
   // longer sent. Host and sandbox deploy together, and the sandbox validator
@@ -853,6 +888,11 @@ export async function renderAppSubdomain(
     container: app,
     debugFlowId: bridgeFlowId,
   });
+  if (myRenderGeneration !== renderGeneration) {
+    host.dispose();
+    stopSetup();
+    return;
+  }
   emitDotliDebugEvent({
     layer: "bridge",
     event: "setup_ready",
@@ -881,6 +921,10 @@ export async function renderAppSubdomain(
   ) {
     const { setupViolationPanel } =
       await import("@dotli/sandbox-checker/sandbox-checker-ui");
+    if (myRenderGeneration !== renderGeneration) {
+      stopSetup();
+      return;
+    }
     currentPanelDispose = setupViolationPanel(host.iframe);
   }
 

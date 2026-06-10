@@ -8,12 +8,13 @@ import {
   scheduleNotification,
 } from "../scheduled-notifications";
 import { showNotification } from "../notification";
-import { getPermissionStatus, setPermissionStatus } from "../permissions";
-import { showPermissionRequestModal } from "../permission-modal";
+import { decidePromptPermission } from "./PromptPermission";
+import { createSubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
 ): Pick<HostCallbacks, "pushNotification" | "cancelNotification"> {
+  const limiter = createSubmitRateLimiter();
   const pushNotification: HostCallbacks["pushNotification"] = async ({
     text,
     deeplink,
@@ -25,7 +26,10 @@ export function createNotificationAdapters(
       scheduledAt,
     });
 
-    const granted = await requestNotificationPermission(label);
+    const granted = await decidePromptPermission(label, "Notifications", {
+      kind: "Device",
+      limiter,
+    });
     if (!granted) {
       throw new Error("Notifications permission denied");
     }
@@ -54,28 +58,4 @@ export function createNotificationAdapters(
   };
 
   return { pushNotification, cancelNotification: cancelPushNotification };
-}
-
-async function requestNotificationPermission(label: string): Promise<boolean> {
-  const status = getPermissionStatus(label, "Notifications");
-  if (status === "granted") {
-    return true;
-  }
-  if (status === "denied") {
-    return false;
-  }
-  try {
-    await showPermissionRequestModal(label, "Notifications");
-    setPermissionStatus(label, "Notifications", "granted");
-    window.dispatchEvent(
-      new CustomEvent("dotli:permission-changed", { detail: { label } }),
-    );
-    return true;
-  } catch {
-    setPermissionStatus(label, "Notifications", "denied");
-    window.dispatchEvent(
-      new CustomEvent("dotli:permission-changed", { detail: { label } }),
-    );
-    return false;
-  }
 }

@@ -45,7 +45,13 @@ export function createPromptPermission(
     if (!isEnforceableDevicePermission(tag)) {
       return { granted: true };
     }
-    return { granted: await decide(label, tag, "Device", limiter) };
+    return {
+      granted: await decidePromptPermission(label, tag, {
+        kind: "Device",
+        limiter,
+        reloadOnGrant: true,
+      }),
+    };
   };
 
   const remotePermission: HostCallbacks["remotePermission"] = async (
@@ -55,18 +61,27 @@ export function createPromptPermission(
     if (name === null) {
       return { granted: true };
     }
-    return { granted: await decide(label, name, "Remote", limiter) };
+    return {
+      granted: await decidePromptPermission(label, name, {
+        kind: "Remote",
+        limiter,
+      }),
+    };
   };
 
   return { devicePermission, remotePermission };
 }
 
-async function decide(
+export async function decidePromptPermission(
   label: string,
   name: EnforceablePermissionName,
-  kind: "Device" | "Remote",
-  limiter: { allow: () => boolean },
+  options: {
+    kind: "Device" | "Remote";
+    limiter: { allow: () => boolean };
+    reloadOnGrant?: boolean;
+  },
 ): Promise<boolean> {
+  const { kind, limiter, reloadOnGrant = false } = options;
   const status = getPermissionStatus(label, name);
   if (status === "granted") {
     return true;
@@ -94,7 +109,7 @@ async function decide(
     return false;
   }
   setPermissionStatus(label, name, "granted");
-  if (kind === "Device") {
+  if (kind === "Device" && reloadOnGrant) {
     // Device permissions are also gated by the iframe `allow` attribute,
     // which is fixed at iframe load time. Reload so the next attempt sees
     // the updated attribute. Defer to the next tick so the prompt response
