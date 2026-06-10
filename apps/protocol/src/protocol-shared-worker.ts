@@ -26,6 +26,7 @@ import {
   submitPreimageTransaction,
 } from "@dotli/resolver/bulletin";
 import {
+  destroyResolverClient,
   getRelayChain,
   getSmoldotDirect,
   resolveDotName,
@@ -436,6 +437,7 @@ async function handleRequest(
         swLog(
           "First Asset Hub dApp connection — releasing resolver Asset Hub chain",
         );
+        destroyResolverClient();
         releaseResolverAssetHubChain();
       }
       let chainMsgCount = 0;

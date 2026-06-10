@@ -177,7 +177,9 @@ export function tapChain(chain: SmoldotChainLike): ChainDbTap {
   const pendingExternal: ExternalWaiter[] = [];
   const bufferedResponses: string[] = [];
   const pendingDbRequests = new Map<string, (s: string | null) => void>();
-  let stopped = false;
+
+  let persistenceStopped = false;
+  let chainDead = false;
 
   function drainExternal(err: unknown): void {
     while (pendingExternal.length > 0) {
@@ -188,26 +190,31 @@ export function tapChain(chain: SmoldotChainLike): ChainDbTap {
     }
   }
 
-  function teardown(reason: string): void {
-    if (stopped) {
-      return;
-    }
-    stopped = true;
-    drainExternal(new Error(reason));
+  function stopPersistence(): void {
+    persistenceStopped = true;
     for (const [id, resolver] of pendingDbRequests) {
       pendingDbRequests.delete(id);
       resolver(null);
     }
   }
 
+  function teardown(reason: string): void {
+    if (chainDead) {
+      return;
+    }
+    chainDead = true;
+    drainExternal(new Error(reason));
+    stopPersistence();
+  }
+
   async function pump(): Promise<void> {
-    while (!stopped) {
+    while (!chainDead) {
       let raw: string;
       try {
         raw = await originalNext();
       } catch (err: unknown) {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- mutated externally; flow analysis cannot see the cross-await change.
-        if (!stopped) {
+        if (!chainDead) {
           drainExternal(err);
         }
         return;
@@ -265,7 +272,7 @@ export function tapChain(chain: SmoldotChainLike): ChainDbTap {
   };
 
   async function extractDb(): Promise<string | null> {
-    if (stopped) {
+    if (persistenceStopped) {
       return null;
     }
     reqCounter += 1;
@@ -304,13 +311,13 @@ export function tapChain(chain: SmoldotChainLike): ChainDbTap {
   }
 
   function stop(): void {
-    teardown("chain tap stopped");
+    stopPersistence();
   }
 
   return {
     chain,
     extractDb,
     stop,
-    isStopped: () => stopped,
+    isStopped: () => persistenceStopped,
   };
 }

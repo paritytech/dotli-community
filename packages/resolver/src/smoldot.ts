@@ -477,14 +477,21 @@ export function getPeopleChain(): Promise<SmoldotChain> {
 let resolverAssetHubPromise: Promise<SmoldotChain> | null = null;
 let assetHubProvider: JsonRpcProvider | null = null;
 
+/**
+ * Add an Asset Hub chain that persists its DB snapshots under `persistKey`.
+ *
+ * The resolver and dApp Asset Hub chains can be alive at the same time,
+ * so each caller persists under its own key.
+ */
 function createAssetHubChain(
   relay: Promise<SmoldotChain>,
+  persistKey: string,
 ): Promise<SmoldotChain> {
   const t0 = performance.now();
   return Promise.all([
     relay,
     getAssetHubPaseoChainSpec(),
-    loadChainDb(dbKeyFor("asset-hub")),
+    loadChainDb(dbKeyFor(persistKey)),
   ])
     .then(([relayChain, chainSpec, databaseContent]) => {
       const warm = databaseContent !== null;
@@ -498,7 +505,7 @@ function createAssetHubChain(
         ...(databaseContent !== null ? { databaseContent } : {}),
       });
     })
-    .then((chain) => attachPersistence("asset-hub", chain))
+    .then((chain) => attachPersistence(persistKey, chain))
     .then((chain) => {
       m.measure(S.SMOLDOT_ASSET_HUB, performance.now() - t0);
       m.distribution(S.SMOLDOT_ASSET_HUB, performance.now() - t0);
@@ -511,12 +518,13 @@ function createAssetHubChain(
 }
 
 function getResolverAssetHubChain(): Promise<SmoldotChain> {
-  resolverAssetHubPromise ??= createAssetHubChain(getRelayChain()).catch(
-    (error: unknown) => {
-      resolverAssetHubPromise = null;
-      throw error;
-    },
-  );
+  resolverAssetHubPromise ??= createAssetHubChain(
+    getRelayChain(),
+    "asset-hub",
+  ).catch((error: unknown) => {
+    resolverAssetHubPromise = null;
+    throw error;
+  });
   return resolverAssetHubPromise;
 }
 
@@ -568,14 +576,14 @@ export function releaseResolverAssetHubChain(): void {
  * destroyed chain.
  */
 export function getDappAssetHubChain(): Promise<SmoldotChain> {
-  dappAssetHubPromise ??= createAssetHubChain(getRelayChain())
+  dappAssetHubPromise ??= createAssetHubChain(getRelayChain(), "asset-hub-dapp")
     .then((chain) => ({
       sendJsonRpc: chain.sendJsonRpc.bind(chain),
       nextJsonRpcResponse: chain.nextJsonRpcResponse.bind(chain),
       jsonRpcResponses: chain.jsonRpcResponses,
       remove() {
         dappAssetHubPromise = null;
-        teardownPersistence("asset-hub");
+        teardownPersistence("asset-hub-dapp");
         chain.remove();
       },
     }))

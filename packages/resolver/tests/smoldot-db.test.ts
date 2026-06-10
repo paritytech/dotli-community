@@ -186,15 +186,27 @@ describe("tapChain demux", () => {
     }
   });
 
-  it("stop() rejects pending external waiters and flips isStopped", async () => {
+  it("stop() ends persistence but keeps forwarding to external consumers", async () => {
     const fake = makeFakeChain();
     const tap = tapChain(fake);
 
+    const dbPending = tap.extractDb();
     const external = tap.chain.nextJsonRpcResponse();
     tap.stop();
 
     expect(tap.isStopped()).toBe(true);
-    await expect(external).rejects.toThrow("chain tap stopped");
+    expect(await dbPending).toBeNull();
+
+    // The chain is still alive, so responses must keep flowing through.
+    const msg = JSON.stringify({ jsonrpc: "2.0", id: 7, result: "ok" });
+    fake.emit(msg);
+    await flush();
+    expect(await external).toBe(msg);
+
+    const later = JSON.stringify({ jsonrpc: "2.0", id: 8, result: "later" });
+    fake.emit(later);
+    await flush();
+    expect(await tap.chain.nextJsonRpcResponse()).toBe(later);
   });
 
   it("remove() tears down the underlying chain and resolves pending DB requests", async () => {
