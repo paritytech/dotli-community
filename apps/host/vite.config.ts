@@ -3,9 +3,9 @@
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import { cpSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
@@ -320,10 +320,7 @@ function copyTruapiWasmWebBundle(): Plugin {
     name: "copy-truapi-wasm-web-bundle",
     apply: "build",
     writeBundle() {
-      const source = resolve(
-        TRUAPI_REPO_ROOT,
-        "js/packages/truapi-host-wasm/dist/wasm/web",
-      );
+      const source = findTruapiWasmWebBundle();
       const targetParent = resolve(import.meta.dirname, OUT_DIR, "assets/wasm");
       const target = resolve(targetParent, "web");
       mkdirSync(targetParent, { recursive: true });
@@ -331,6 +328,29 @@ function copyTruapiWasmWebBundle(): Plugin {
       console.log("Copied TrUAPI WASM web bundle -> assets/wasm/web/\n");
     },
   };
+}
+
+function findTruapiWasmWebBundle(): string {
+  const packageRelative = "node_modules/@parity/truapi-host-wasm/dist/wasm/web";
+  const checked: string[] = [];
+  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
+    const candidate = resolve(dir, packageRelative);
+    checked.push(candidate);
+    if (existsSync(resolve(candidate, "truapi_server.js"))) {
+      return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+  }
+  throw new Error(
+    [
+      "Missing TrUAPI WASM web bundle.",
+      "Run `make wasm` from the TrUAPI repo root before building dotli.",
+      `Checked: ${checked.join(", ")}`,
+    ].join(" "),
+  );
 }
 
 /**
@@ -353,7 +373,6 @@ function sentry(): Plugin | false {
 
 const PACKAGES = resolve(import.meta.dirname, "../../packages");
 const SANDBOX_CHECKER_SRC = resolve(PACKAGES, "sandbox-checker/src");
-const TRUAPI_REPO_ROOT = resolve(import.meta.dirname, "../../../..");
 
 export default defineConfig({
   base: process.env.VITE_APP_URL

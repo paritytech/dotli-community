@@ -68,17 +68,14 @@ routing that belongs inside the Rust core.
 > `@parity/truapi*` packages to a registry, vendoring tarballs, or retiring
 > dotli's standalone CI. Carry this note into the dotli PR description.
 
-The runtime manifests and source must not depend on or import:
-
-- `@novasamatech/host-api`
-- `@novasamatech/host-container`
-- `@novasamatech/host-papp`
-- `@novasamatech/sdk-statement`
-- `@novasamatech/statement-store`
-- `@novasamatech/storage-adapter`
+The runtime manifests and source must not depend on or import the removed
+`@novasamatech/*` runtime packages. The canonical forbidden-package list lives
+in `packages/ui/tests/nova-removal.test.ts`; keep that guard broad rather than
+duplicating a package list in this document.
 
 `packages/ui/tests/nova-removal.test.ts` guards this invariant across dotli
-manifests, `bun.lock`, `apps/*/src`, and `packages/*/src`.
+manifests, `bun.lock`, `THIRD_PARTY_NOTICES.md`, `apps/*/src`, and
+`packages/*/src`.
 
 ## Nested dApps
 
