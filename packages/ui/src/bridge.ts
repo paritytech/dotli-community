@@ -11,6 +11,7 @@
 
 import {
   decodeWireMessage,
+  describeWireId,
   encodeWireMessage,
   scale,
   VersionedHostRequestLoginError,
@@ -24,7 +25,6 @@ import {
 } from "@parity/truapi";
 import type { ResultPayload } from "@parity/truapi/scale";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import * as WireTable from "@parity/truapi/wire-table";
 import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
@@ -38,6 +38,8 @@ import * as S from "@dotli/metrics/spans";
 import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
+import { emitSessionConnectionState } from "./host-callbacks/SessionStore";
+import { LoginRequestError } from "./login-request-error";
 import {
   emitSsoPairingFailed,
   emitSsoSessionEstablished,
@@ -80,34 +82,6 @@ interface CoreHost {
 }
 
 type CoreProvider = Provider & { disconnect: () => Promise<void> };
-
-const WIRE_ID_KINDS = [
-  "request",
-  "response",
-  "start",
-  "stop",
-  "interrupt",
-  "receive",
-] as const;
-
-const WIRE_TAG_BY_ID = (() => {
-  const map = new Map<number, string>();
-  for (const [name, value] of Object.entries(WireTable)) {
-    if (typeof value !== "object" || value === null) {
-      continue;
-    }
-    const ids = value as Partial<
-      Record<(typeof WIRE_ID_KINDS)[number], unknown>
-    >;
-    for (const kind of WIRE_ID_KINDS) {
-      const id = ids[kind];
-      if (typeof id === "number") {
-        map.set(id, `${name.toLowerCase()}_${kind}`);
-      }
-    }
-  }
-  return map;
-})();
 
 const LANDING_AUTH_LABEL = "dotli";
 const LANDING_AUTH_DISPLAY_LABEL = "Polkadot Web";
@@ -191,15 +165,15 @@ export function initBridgeEventListeners(): void {
       } else {
         emitSsoPairingFailed(result);
       }
-      dispatchSessionState(
+      emitSessionConnectionState(
         result === "Success" || result === "AlreadyConnected",
       );
     })().catch((error: unknown) => {
       emitSsoPairingFailed(
         error instanceof Error ? error.message : String(error),
       );
-      if (isLoginRejected(error)) {
-        dispatchSessionState(false);
+      if (error instanceof LoginRequestError && error.rejected) {
+        emitSessionConnectionState(false);
         return;
       }
       dispatchLoginError(error);
@@ -284,44 +258,6 @@ function dispatchLoginError(error: unknown): void {
   );
 }
 
-function isLoginRejected(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message === "Rejected" || message === '"Rejected"') {
-    return true;
-  }
-  try {
-    const parsed = JSON.parse(message) as unknown;
-    return isRejectedValue(parsed);
-  } catch {
-    return false;
-  }
-}
-
-function isRejectedValue(value: unknown): boolean {
-  if (value === "Rejected") {
-    return true;
-  }
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    record.tag === "Rejected" ||
-    record.value === "Rejected" ||
-    record.reason === "Rejected" ||
-    isRejectedValue(record.value) ||
-    isRejectedValue(record.reason)
-  );
-}
-
-function dispatchSessionState(connected: boolean): void {
-  window.dispatchEvent(
-    new CustomEvent("dotli:truapi-session-state", {
-      detail: { connected },
-    }),
-  );
-}
-
 function pipeProviders(
   product: Provider,
   core: Provider,
@@ -392,7 +328,7 @@ function emitWireFrameDebug(
     productId,
     requestId: decoded.value.requestId,
     payload: {
-      tag: WIRE_TAG_BY_ID.get(wireId) ?? `wire_${String(wireId)}`,
+      tag: describeWireId(wireId),
       value: {
         wireId,
         bytes: decoded.value.payload.value,
@@ -527,7 +463,7 @@ function requestCoreLogin(
             timestamp: Date.now(),
             payload: { requestId },
           });
-          reject(new Error(JSON.stringify(result.value)));
+          reject(new LoginRequestError(result.value));
         }
       } catch (error) {
         emitDotliDebugEvent({

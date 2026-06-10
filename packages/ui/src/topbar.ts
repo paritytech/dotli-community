@@ -37,6 +37,10 @@ import {
   type PermissionStatus,
 } from "./permissions";
 import type { TrUApiPairingRequest } from "./host-callbacks/Pairing";
+import {
+  emitPersistedSessionUiState,
+  type TruapiSessionUiState,
+} from "./host-callbacks/SessionStore";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -81,15 +85,6 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 let currentQrPayload: string | null = null;
 let activeTruapiPairingCancel: (() => void) | null = null;
 let truapiSessionConnected = false;
-
-interface TruapiSessionUiState {
-  connected: boolean;
-  publicKey?: string;
-  identityAccountId?: string;
-  liteUsername?: string;
-  fullUsername?: string;
-  primaryUsername?: string;
-}
 
 function getStoredTheme(): "light" | "dark" {
   const stored = localStorage.getItem("dotli-theme");
@@ -182,13 +177,10 @@ export function initTopBar(): void {
     }
   });
 
+  // Rejected logins never reach this event: the bridge classifies them and
+  // emits a disconnected `dotli:truapi-session-state` instead.
   window.addEventListener("dotli:truapi-login-error", (e: Event) => {
     const { message } = (e as CustomEvent<{ message: string }>).detail;
-    if (isAuthRejected(message)) {
-      closeModal({ skipTruapiCancel: true });
-      renderLoggedOut();
-      return;
-    }
     openModal(undefined, currentProductLabel ?? undefined);
     renderError(message);
   });
@@ -284,6 +276,22 @@ export function initTopBar(): void {
 
   // Show default logged-out state
   renderLoggedOut();
+
+  // Rehydrate the persisted same-origin session on idle so a reload shows
+  // the logged-in badge before any core instance boots.
+  scheduleIdle(() => {
+    emitPersistedSessionUiState();
+  });
+}
+
+function scheduleIdle(callback: () => void): void {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => {
+      callback();
+    });
+  } else {
+    window.setTimeout(callback, 0);
+  }
 }
 
 function renderLoggedOut(): void {
@@ -384,35 +392,6 @@ function friendlyAuthError(
     };
   }
   return null;
-}
-
-function isAuthRejected(message: string): boolean {
-  if (message === "Rejected" || message === '"Rejected"') {
-    return true;
-  }
-  try {
-    const parsed = JSON.parse(message) as unknown;
-    return isRejectedValue(parsed);
-  } catch {
-    return false;
-  }
-}
-
-function isRejectedValue(value: unknown): boolean {
-  if (value === "Rejected") {
-    return true;
-  }
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    record.tag === "Rejected" ||
-    record.value === "Rejected" ||
-    record.reason === "Rejected" ||
-    isRejectedValue(record.value) ||
-    isRejectedValue(record.reason)
-  );
 }
 
 function renderError(message: string): void {

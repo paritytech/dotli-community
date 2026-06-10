@@ -104,7 +104,7 @@ describe("topbar disconnect", () => {
 });
 
 describe("topbar login cancellation", () => {
-  it("closes the auth modal for rejected login responses", async () => {
+  it("closes the auth modal when a rejected login disconnects the session", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
@@ -125,9 +125,11 @@ describe("topbar login cancellation", () => {
         ?.classList.contains("open"),
     ).toBe(true);
 
+    // The bridge classifies rejected logins and emits a disconnected
+    // session state instead of a login error.
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-login-error", {
-        detail: { message: '"Rejected"' },
+      new CustomEvent("dotli:truapi-session-state", {
+        detail: { connected: false },
       }),
     );
 
@@ -139,42 +141,6 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.textContent).not.toContain(
       "Retry",
     );
-    expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
-  });
-
-  it("closes the auth modal for nested rejected login responses", async () => {
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-pairing", {
-        detail: {
-          deeplink: "polkadotapp://pair?handshake=test",
-          label: "localhost:3000",
-          cancel: vi.fn(),
-        },
-      }),
-    );
-
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-login-error", {
-        detail: {
-          message: JSON.stringify({
-            tag: "Generic",
-            value: {
-              reason: "Rejected",
-            },
-          }),
-        },
-      }),
-    );
-
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(false);
     expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
   });
 
@@ -197,6 +163,66 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
       "Retry",
     );
+  });
+});
+
+describe("topbar boot rehydration", () => {
+  it("renders the persisted session badge on idle after init", async () => {
+    installTopbarDom();
+    vi.stubGlobal(
+      "requestIdleCallback",
+      (callback: () => void): number => {
+        callback();
+        return 0;
+      },
+    );
+
+    const { buildSharedAuthStorageKey, SHARED_CORE_SESSION_KEY } =
+      await import("@dotli/protocol/auth-storage");
+    const { SITE_ID } = await import("@dotli/config/config");
+    const storageKey = buildSharedAuthStorageKey(
+      SITE_ID,
+      SHARED_CORE_SESSION_KEY,
+    );
+    // Opaque session blob plus the JSON UI-state cache the core-driven
+    // sessionUiChanged callback persists alongside it.
+    localStorage.setItem(storageKey, "0x0102");
+    localStorage.setItem(
+      `${storageKey}:ui-state`,
+      JSON.stringify({
+        connected: true,
+        publicKey:
+          "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        liteUsername: "pgherveou.04",
+        primaryUsername: "pgherveou.04",
+      }),
+    );
+
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    expect(document.getElementById("auth-button")?.textContent).toBe("PG");
+    expect(document.getElementById("user-popover-username")?.textContent).toBe(
+      "pgherveou.04",
+    );
+  });
+
+  it("stays logged out when no session is persisted", async () => {
+    installTopbarDom();
+    vi.stubGlobal(
+      "requestIdleCallback",
+      (callback: () => void): number => {
+        callback();
+        return 0;
+      },
+    );
+
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    expect(
+      document.getElementById("auth-button")?.querySelector(".user-badge"),
+    ).toBeNull();
   });
 });
 
