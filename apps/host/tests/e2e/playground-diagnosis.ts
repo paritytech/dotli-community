@@ -21,6 +21,7 @@ const dotliRoot = resolve(hostAppRoot, "../..");
 const repoRoot = resolve(dotliRoot, "../..");
 const playgroundRoot = resolve(repoRoot, "playground");
 const outputDir = resolve(dotliRoot, "test-results/e2e-dotli");
+const screenshotsDir = resolve(outputDir, "screenshots");
 
 const hostPort = process.env.E2E_DOTLI_HOST_PORT ?? process.env.PORT ?? "5173";
 const playgroundPort = process.env.E2E_DOTLI_PLAYGROUND_PORT ?? "3000";
@@ -37,6 +38,7 @@ const botNetwork = process.env.SIGNER_BOT_NETWORK ?? defaultBotNetwork;
 const serverProcesses: ChildProcess[] = [];
 const pageErrors: string[] = [];
 const browserLogs: string[] = [];
+let screenshotSeq = 0;
 
 declare global {
   interface Window {
@@ -138,6 +140,22 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function captureStep(page: Page, name: string): Promise<void> {
+  const safeName = name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
+  const filename = `${String(++screenshotSeq).padStart(2, "0")}-${safeName}.png`;
+  const path = resolve(screenshotsDir, filename);
+  mkdirSync(screenshotsDir, { recursive: true });
+  await page
+    .screenshot({ path, fullPage: true })
+    .then(() => {
+      console.log(`[e2e-dotli] screenshot: ${path}`);
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[e2e-dotli] screenshot failed (${name}): ${message}`);
+    });
+}
+
 async function assertPortsFree(): Promise<void> {
   await Promise.all([
     assertPortFree(Number(hostPort), "dotli preview"),
@@ -196,6 +214,7 @@ async function openLoginQr(page: Page): Promise<string> {
 
   const qr = page.locator("#auth-modal-qr canvas");
   await qr.waitFor({ state: "visible", timeout: 30_000 });
+  await captureStep(page, "login-qr");
   return await extractQrPayload(page, "#auth-modal-qr canvas");
 }
 
@@ -210,6 +229,7 @@ async function signInWithBot(page: Page): Promise<PairResult> {
     network,
   });
   await waitForSignedIn(page, result);
+  await captureStep(page, "signed-in");
   return result;
 }
 
@@ -332,29 +352,54 @@ async function writeAuthDebug(
 
 function startHostModalClicker(page: Page): () => void {
   let stopped = false;
-  const labels = ["Allow", "Sign"];
   void (async () => {
     while (!stopped) {
-      for (const label of labels) {
-        const button = page.getByRole("button", { name: label, exact: true });
-        const visible = await button
-          .first()
-          .isVisible({ timeout: 100 })
-          .catch(() => false);
-        if (visible) {
-          console.log(`[e2e-dotli] accepting host modal: ${label}`);
-          await button
-            .first()
-            .click({ timeout: 2_000 })
-            .catch(() => {});
-        }
-      }
+      await acceptVisibleHostModal(page);
       await page.waitForTimeout(250).catch(() => {});
     }
   })();
   return () => {
     stopped = true;
   };
+}
+
+async function drainHostModals(page: Page, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (
+      !(await page
+        .locator(".signing-modal-backdrop")
+        .isVisible()
+        .catch(() => false))
+    ) {
+      return;
+    }
+    if (!(await acceptVisibleHostModal(page))) {
+      await page.waitForTimeout(250);
+    }
+  }
+}
+
+async function acceptVisibleHostModal(page: Page): Promise<boolean> {
+  const allowedLabels = new Set(["Allow", "Sign"]);
+  const buttons = page.locator(".signing-modal-backdrop button");
+  const count = await buttons.count().catch(() => 0);
+  for (let index = 0; index < count; index++) {
+    const button = buttons.nth(index);
+    const visible = await button.isVisible({ timeout: 100 }).catch(() => false);
+    const enabled = await button.isEnabled({ timeout: 100 }).catch(() => false);
+    if (!visible || !enabled) {
+      continue;
+    }
+    const label = (await button.innerText().catch(() => "")).trim();
+    if (!allowedLabels.has(label)) {
+      continue;
+    }
+    console.log(`[e2e-dotli] accepting host modal: ${label}`);
+    await button.click({ timeout: 2_000 }).catch(() => {});
+    return true;
+  }
+  return false;
 }
 
 async function findPlaygroundFrame(page: Page) {
@@ -383,9 +428,32 @@ async function runDiagnosis(page: Page): Promise<{
   summary: string;
   report: string;
 }> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await runDiagnosisOnce(page);
+    } catch (error) {
+      if (attempt === 2 || !isFrameDetachedError(error)) {
+        throw error;
+      }
+      console.warn(
+        "[e2e-dotli] playground iframe detached during diagnosis; retrying once",
+      );
+      await captureStep(page, `diagnosis-frame-detached-attempt-${attempt}`);
+      await page.waitForTimeout(1_000);
+    }
+  }
+  throw new Error("diagnosis retry exhausted");
+}
+
+async function runDiagnosisOnce(page: Page): Promise<{
+  summary: string;
+  report: string;
+}> {
   const frame = await findPlaygroundFrame(page);
+  await captureStep(page, "diagnosis-ready");
   await frame.locator('[data-testid="diagnosis-entry"]').click();
   await frame.locator('[data-testid="diagnosis-run"]').click();
+  await captureStep(page, "diagnosis-running");
 
   await frame
     .locator('[data-testid="diagnosis-copy-report"]')
@@ -394,13 +462,21 @@ async function runDiagnosis(page: Page): Promise<{
   const summary = await frame
     .locator('[data-testid="diagnosis-summary"]')
     .innerText({ timeout: 5_000 });
+  await drainHostModals(page, 5_000);
+  await captureStep(page, "diagnosis-report-ready");
   await frame.locator('[data-testid="diagnosis-copy-report"]').click();
   const report = await page.evaluate(() => navigator.clipboard.readText());
   return { summary, report };
 }
 
+function isFrameDetachedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Frame was detached");
+}
+
 async function main(): Promise<void> {
   mkdirSync(outputDir, { recursive: true });
+  mkdirSync(screenshotsDir, { recursive: true });
   if (!smokeOnly) {
     const { base, network } = requireBotEnv();
     console.log(`[e2e-dotli] bot=${base} network=${network}`);
@@ -415,6 +491,7 @@ async function main(): Promise<void> {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let context: BrowserContext | undefined;
   let pairResult: PairResult | undefined;
+  let page: Page | undefined;
   try {
     await startLocalStack();
 
@@ -431,7 +508,7 @@ async function main(): Promise<void> {
       serviceWorkers: "block",
       permissions: ["clipboard-read", "clipboard-write"],
     });
-    const page = await context.newPage();
+    page = await context.newPage();
     page.on("pageerror", (error) => {
       const message = error.stack ?? error.message;
       pageErrors.push(message);
@@ -470,6 +547,7 @@ async function main(): Promise<void> {
 
     const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?debug=truapi&e2e=${Date.now()}`;
     await page.goto(url, { timeout: 60_000, waitUntil: "domcontentloaded" });
+    await captureStep(page, "loaded");
     await signOutIfNeeded(page);
     if (smokeOnly) {
       const handshake = await openLoginQr(page);
@@ -524,6 +602,11 @@ async function main(): Promise<void> {
     } finally {
       stopClicker();
     }
+  } catch (error) {
+    if (page) {
+      await captureStep(page, "failure");
+    }
+    throw error;
   } finally {
     if (pairResult) {
       const { token, base } = requireBotEnv();
