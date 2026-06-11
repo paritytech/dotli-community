@@ -5,10 +5,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const TRANSIENT = new Set([502, 503, 504]);
 
-// Per-attempt request timeout. The bot side rarely needs more than a few
-// seconds, even for pair (attestation and handshake). Without a client-side
-// cap, a hung response would silently extend the whole suite.
-const PAIR_REQUEST_TIMEOUT_MS = 30_000;
+// Per-attempt request timeout. First-time pair can include user creation and
+// People-chain attestation, so give the one-shot handshake room to finish
+// instead of aborting and retrying the same QR payload.
+const PAIR_REQUEST_TIMEOUT_MS = 120_000;
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000;
 
 async function fetchWithTimeout(

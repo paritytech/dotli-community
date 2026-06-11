@@ -38,6 +38,12 @@ const serverProcesses: ChildProcess[] = [];
 const pageErrors: string[] = [];
 const browserLogs: string[] = [];
 
+declare global {
+  interface Window {
+    __dotliE2eAuthStates?: unknown[];
+  }
+}
+
 function readEnv(name: string): string | undefined {
   const value = process.env[name];
   if (!value && !smokeOnly) {
@@ -203,10 +209,125 @@ async function signInWithBot(page: Page): Promise<PairResult> {
     username,
     network,
   });
-  await page
-    .locator("#auth-button .user-badge")
-    .waitFor({ state: "visible", timeout: 90_000 });
+  await waitForSignedIn(page, result);
   return result;
+}
+
+async function waitForSignedIn(page: Page, result: PairResult): Promise<void> {
+  try {
+    const existingFailure = await latestLoginFailureReason(page);
+    if (existingFailure !== null) {
+      throw new Error(`Login failed: ${existingFailure}`);
+    }
+    await Promise.race([
+      page
+        .locator("#auth-button .user-badge")
+        .waitFor({ state: "visible", timeout: 90_000 }),
+      page.evaluate(
+        () =>
+          new Promise<never>((_, reject) => {
+            const listener = (event: Event): void => {
+              const state = (
+                event as CustomEvent<
+                  { tag?: string; reason?: string } | undefined
+                >
+              ).detail;
+              if (state?.tag !== "LoginFailed") {
+                return;
+              }
+              window.removeEventListener("dotli:truapi-auth-state", listener);
+              reject(new Error(`Login failed: ${state.reason ?? "unknown"}`));
+            };
+            window.addEventListener("dotli:truapi-auth-state", listener);
+          }),
+      ),
+    ]);
+  } catch (error) {
+    await writeAuthDebug(page, {
+      stage: "post-pair-user-badge",
+      pairResult: redactedPairResult(result),
+    });
+    throw error;
+  }
+}
+
+async function latestLoginFailureReason(page: Page): Promise<string | null> {
+  return await page.evaluate(() => {
+    const states = window.__dotliE2eAuthStates ?? [];
+    for (let i = states.length - 1; i >= 0; i--) {
+      const candidate = states[i] as {
+        detail?: { tag?: string; reason?: string };
+      };
+      if (candidate.detail?.tag === "LoginFailed") {
+        return candidate.detail.reason ?? "unknown";
+      }
+    }
+    return null;
+  });
+}
+
+function redactedPairResult(result: PairResult): PairResult {
+  return {
+    sessionId: result.sessionId,
+    user: {
+      username: result.user.username,
+      network: result.user.network,
+      address: result.user.address,
+      publicKeyHex: result.user.publicKeyHex,
+      attested: result.user.attested,
+    },
+  };
+}
+
+async function writeAuthDebug(
+  page: Page,
+  extra: Record<string, unknown>,
+): Promise<void> {
+  const debug = await page.evaluate(() => {
+    const safeStorageValue = (key: string, value: string): string => {
+      if (
+        key === "dotli:mode" ||
+        key === "dotli:network" ||
+        key === "dotli:chain-backend" ||
+        key === "dotli:content-backend" ||
+        key === "truapi:logLevel" ||
+        key === "dotli:truapi-debug"
+      ) {
+        return value;
+      }
+      return "[redacted]";
+    };
+    const readStorage = (storage: Storage): Record<string, string> => {
+      const values: Record<string, string> = {};
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (key !== null && /dotli|truapi/i.test(key)) {
+          values[key] = safeStorageValue(key, storage.getItem(key) ?? "");
+        }
+      }
+      return values;
+    };
+
+    const authButton = document.querySelector("#auth-button");
+    const modal = document.querySelector("#auth-modal-backdrop");
+    const modalReason = document.querySelector("#auth-modal-reason");
+    return {
+      url: location.href,
+      authStates: window.__dotliE2eAuthStates ?? [],
+      authButtonHtml: authButton?.outerHTML ?? null,
+      authButtonText: authButton?.textContent ?? null,
+      modalClass: modal?.getAttribute("class") ?? null,
+      modalReasonText: modalReason?.textContent ?? null,
+      localStorage: readStorage(localStorage),
+      sessionStorage: readStorage(sessionStorage),
+    };
+  });
+  const metadataPath = resolve(outputDir, "auth-debug.json");
+  writeFileSync(
+    metadataPath,
+    `${JSON.stringify({ ...debug, ...extra }, null, 2)}\n`,
+  );
+  console.error(`[e2e-dotli] auth debug: ${metadataPath}`);
 }
 
 function startHostModalClicker(page: Page): () => void {
@@ -335,6 +456,13 @@ async function main(): Promise<void> {
         localStorage.setItem("dotli:content-backend", "ipfs-gateway");
         sessionStorage.setItem("dotli:truapi-debug", "1");
         localStorage.setItem("truapi:logLevel", "debug");
+        window.__dotliE2eAuthStates = [];
+        window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
+          window.__dotliE2eAuthStates?.push({
+            timestamp: Date.now(),
+            detail: (event as CustomEvent<unknown>).detail,
+          });
+        });
       } catch {
         /* ignore */
       }
