@@ -177,7 +177,7 @@ async function assertPortFree(port: number, label: string): Promise<void> {
 
 async function startLocalStack(): Promise<void> {
   await assertPortsFree();
-  startServer("dotli", "bun", ["run", "preview:debug"], dotliRoot, {
+  startServer("dotli", "bun", ["run", "preview"], dotliRoot, {
     PORT: hostPort,
   });
   startServer("playground", "yarn", ["dev"], playgroundRoot, {
@@ -381,7 +381,7 @@ async function drainHostModals(page: Page, timeoutMs: number): Promise<void> {
 }
 
 async function acceptVisibleHostModal(page: Page): Promise<boolean> {
-  const allowedLabels = new Set(["Allow", "Sign"]);
+  const allowedLabels = new Set(["Allow", "Create", "Sign"]);
   const buttons = page.locator(".signing-modal-backdrop button");
   const count = await buttons.count().catch(() => 0);
   for (let index = 0; index < count; index++) {
@@ -464,8 +464,13 @@ async function runDiagnosisOnce(page: Page): Promise<{
     .innerText({ timeout: 5_000 });
   await drainHostModals(page, 5_000);
   await captureStep(page, "diagnosis-report-ready");
-  await frame.locator('[data-testid="diagnosis-copy-report"]').click();
-  const report = await page.evaluate(() => navigator.clipboard.readText());
+  const report =
+    (await frame
+      .locator('[data-testid="diagnosis-report-markdown"]')
+      .textContent({ timeout: 5_000 })) ?? "";
+  if (report.trim().length === 0) {
+    throw new Error("diagnosis report markdown is empty");
+  }
   return { summary, report };
 }
 
@@ -531,7 +536,8 @@ async function main(): Promise<void> {
         localStorage.setItem("dotli:mode", "gateway");
         localStorage.setItem("dotli:chain-backend", "rpc");
         localStorage.setItem("dotli:content-backend", "ipfs-gateway");
-        sessionStorage.setItem("dotli:truapi-debug", "1");
+        localStorage.setItem("desktop-banner-dismissed", "1");
+        sessionStorage.removeItem("dotli:truapi-debug");
         localStorage.setItem("truapi:logLevel", "debug");
         window.__dotliE2eAuthStates = [];
         window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
@@ -545,7 +551,7 @@ async function main(): Promise<void> {
       }
     });
 
-    const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?debug=truapi&e2e=${Date.now()}`;
+    const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?e2e=${Date.now()}`;
     await page.goto(url, { timeout: 60_000, waitUntil: "domcontentloaded" });
     await captureStep(page, "loaded");
     await signOutIfNeeded(page);
@@ -585,7 +591,7 @@ async function main(): Promise<void> {
           {
             summary,
             reportPath,
-            user: pairResult.user,
+            user: redactedPairResult(pairResult).user,
             pageErrors,
             browserLogs,
             timestamp: new Date().toISOString(),
