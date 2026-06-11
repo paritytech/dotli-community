@@ -511,7 +511,7 @@ async function main(): Promise<void> {
     });
     context = await browser.newContext({
       serviceWorkers: "block",
-      permissions: ["clipboard-read", "clipboard-write"],
+      permissions: ["camera", "clipboard-read", "clipboard-write"],
     });
     page = await context.newPage();
     page.on("pageerror", (error) => {
@@ -531,25 +531,33 @@ async function main(): Promise<void> {
       }
     });
 
-    await page.addInitScript(() => {
-      try {
-        localStorage.setItem("dotli:mode", "gateway");
-        localStorage.setItem("dotli:chain-backend", "rpc");
-        localStorage.setItem("dotli:content-backend", "ipfs-gateway");
-        localStorage.setItem("desktop-banner-dismissed", "1");
-        sessionStorage.removeItem("dotli:truapi-debug");
-        localStorage.setItem("truapi:logLevel", "debug");
-        window.__dotliE2eAuthStates = [];
-        window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
-          window.__dotliE2eAuthStates?.push({
-            timestamp: Date.now(),
-            detail: (event as CustomEvent<unknown>).detail,
+    await page.addInitScript(
+      ({ playgroundPort }) => {
+        try {
+          const playgroundLabel = `localhost:${playgroundPort}`;
+          localStorage.setItem("dotli:mode", "gateway");
+          localStorage.setItem("dotli:chain-backend", "rpc");
+          localStorage.setItem("dotli:content-backend", "ipfs-gateway");
+          localStorage.setItem(
+            `dotli:permissions:${playgroundLabel}`,
+            JSON.stringify({ Camera: "granted" }),
+          );
+          localStorage.setItem("desktop-banner-dismissed", "1");
+          sessionStorage.removeItem("dotli:truapi-debug");
+          localStorage.setItem("truapi:logLevel", "debug");
+          window.__dotliE2eAuthStates = [];
+          window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
+            window.__dotliE2eAuthStates?.push({
+              timestamp: Date.now(),
+              detail: (event as CustomEvent<unknown>).detail,
+            });
           });
-        });
-      } catch {
-        /* ignore */
-      }
-    });
+        } catch {
+          /* ignore */
+        }
+      },
+      { playgroundPort },
+    );
 
     const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?e2e=${Date.now()}`;
     await page.goto(url, { timeout: 60_000, waitUntil: "domcontentloaded" });
