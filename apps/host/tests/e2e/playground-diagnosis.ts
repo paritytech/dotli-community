@@ -38,6 +38,7 @@ const botNetwork = process.env.SIGNER_BOT_NETWORK ?? defaultBotNetwork;
 const serverProcesses: ChildProcess[] = [];
 const pageErrors: string[] = [];
 const browserLogs: string[] = [];
+const screenshots: string[] = [];
 let screenshotSeq = 0;
 
 declare global {
@@ -148,6 +149,7 @@ async function captureStep(page: Page, name: string): Promise<void> {
   await page
     .screenshot({ path, fullPage: true })
     .then(() => {
+      screenshots.push(path);
       console.log(`[e2e-dotli] screenshot: ${path}`);
     })
     .catch((error: unknown) => {
@@ -427,6 +429,7 @@ async function findPlaygroundFrame(page: Page) {
 async function runDiagnosis(page: Page): Promise<{
   summary: string;
   report: string;
+  copyReportClicked: boolean;
 }> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -448,6 +451,7 @@ async function runDiagnosis(page: Page): Promise<{
 async function runDiagnosisOnce(page: Page): Promise<{
   summary: string;
   report: string;
+  copyReportClicked: boolean;
 }> {
   const frame = await findPlaygroundFrame(page);
   await captureStep(page, "diagnosis-ready");
@@ -471,7 +475,10 @@ async function runDiagnosisOnce(page: Page): Promise<{
   if (report.trim().length === 0) {
     throw new Error("diagnosis report markdown is empty");
   }
-  return { summary, report };
+
+  await frame.locator('[data-testid="diagnosis-copy-report"]').click();
+
+  return { summary, report, copyReportClicked: true };
 }
 
 function isFrameDetachedError(error: unknown): boolean {
@@ -589,7 +596,7 @@ async function main(): Promise<void> {
     pairResult = await signInWithBot(page);
     const stopClicker = startHostModalClicker(page);
     try {
-      const { summary, report } = await runDiagnosis(page);
+      const { summary, report, copyReportClicked } = await runDiagnosis(page);
       const reportPath = resolve(outputDir, "diagnosis-report.md");
       const metadataPath = resolve(outputDir, "diagnosis-run.json");
       writeFileSync(reportPath, report);
@@ -599,6 +606,8 @@ async function main(): Promise<void> {
           {
             summary,
             reportPath,
+            copyReportClicked,
+            screenshots,
             user: redactedPairResult(pairResult).user,
             pageErrors,
             browserLogs,
