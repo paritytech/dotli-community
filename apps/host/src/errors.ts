@@ -13,14 +13,21 @@ export const HOST_ERRORS = {
     "The light client couldn't sync in time on the shared worker.",
   SW_TIMED_OUT: "The light client timed out during startup.",
   AH_SYNC_TIMEOUT:
-    "Light client timed out syncing to Asset Hub — no peers found.",
-  LIGHT_CLIENT_TIMEOUT: "Light client timed out — no peers found.",
+    "Light client timed out syncing to Asset Hub - no connection with peers.",
+  LIGHT_CLIENT_TIMEOUT: "Light client timed out - no connection with peers.",
   RPC_TIMEOUT: "The RPC endpoint didn't respond in time.",
   MODULE_FETCH_FAILED: "Couldn't load app resources — reload to retry.",
   CHAIN_SPEC_REJECTED:
     "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
 } as const;
+
+export const FAILOVER_BTN_LABELS = {
+  "rpc-gateway": "Use Trusted Provider",
+  "smoldot-shared-worker": "Try Light Client Shared",
+} as const;
+
+export const REFRESH_BTN_LABEL = "Refresh";
 
 export type Recovery = "switch-backend" | "reload" | "none";
 

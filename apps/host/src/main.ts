@@ -78,7 +78,11 @@ import {
   writeSettingsToSearch,
 } from "@dotli/config/url-settings";
 import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
-import { describeError } from "./errors";
+import {
+  describeError,
+  FAILOVER_BTN_LABELS,
+  REFRESH_BTN_LABEL,
+} from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
 
 // Surface chunk-load failures explicitly: capture the original cause to
@@ -1442,10 +1446,7 @@ async function main(): Promise<void> {
     // Tiered failover: any smoldot becomes rpc-gateway, rpc-gateway becomes smoldot-shared-worker.
     const nextBackend =
       chainBackend === "rpc-gateway" ? "smoldot-shared-worker" : "rpc-gateway";
-    const btnLabel =
-      nextBackend === "rpc-gateway"
-        ? "Use Trusted Provider"
-        : "Try Light Client Shared";
+    const btnLabel = FAILOVER_BTN_LABELS[nextBackend];
     const svg = (paths: string): string =>
       `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
     const refreshIcon = svg(
@@ -1457,7 +1458,7 @@ async function main(): Promise<void> {
         : svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
     showError("Domain can't be reached", error.message, [
       {
-        label: "Refresh",
+        label: REFRESH_BTN_LABEL,
         icon: refreshIcon,
         onClick: () => {
           window.location.reload();
