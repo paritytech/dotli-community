@@ -27,10 +27,12 @@ const playgroundPort = process.env.E2E_DOTLI_PLAYGROUND_PORT ?? "3000";
 const headless = process.env.HEADED === "1" ? false : true;
 const slowMo = process.env.SLOWMO ? Number(process.env.SLOWMO) : 0;
 const smokeOnly = process.env.E2E_DOTLI_SMOKE === "1";
+const defaultBotBase = "https://signing-bot-dev.novasama-tech.org/";
+const defaultBotNetwork = "paseo-next-v2";
 
 const botToken = readEnv("SIGNER_BOT_SVC_TOKEN");
-const botBase = readEnv("SIGNER_BOT_BASE_URL");
-const botNetwork = readEnv("SIGNER_BOT_NETWORK");
+const botBase = process.env.SIGNER_BOT_BASE_URL ?? defaultBotBase;
+const botNetwork = process.env.SIGNER_BOT_NETWORK ?? defaultBotNetwork;
 
 const serverProcesses: ChildProcess[] = [];
 const pageErrors: string[] = [];
@@ -52,13 +54,9 @@ function requireBotEnv(): {
   base: string;
   network: string;
 } {
-  if (
-    botToken === undefined ||
-    botBase === undefined ||
-    botNetwork === undefined
-  ) {
+  if (botToken === undefined) {
     throw new Error(
-      "SIGNER_BOT_SVC_TOKEN, SIGNER_BOT_BASE_URL, and SIGNER_BOT_NETWORK are required outside E2E_DOTLI_SMOKE=1.",
+      "SIGNER_BOT_SVC_TOKEN is required outside E2E_DOTLI_SMOKE=1.",
     );
   }
   return { token: botToken, base: botBase, network: botNetwork };
