@@ -26,24 +26,42 @@ const hostPort = process.env.E2E_DOTLI_HOST_PORT ?? process.env.PORT ?? "5173";
 const playgroundPort = process.env.E2E_DOTLI_PLAYGROUND_PORT ?? "3000";
 const headless = process.env.HEADED === "1" ? false : true;
 const slowMo = process.env.SLOWMO ? Number(process.env.SLOWMO) : 0;
+const smokeOnly = process.env.E2E_DOTLI_SMOKE === "1";
 
-const botToken = requiredEnv("SIGNER_BOT_SVC_TOKEN");
-const botBase = requiredEnv("SIGNER_BOT_BASE_URL");
-const botNetwork = requiredEnv("SIGNER_BOT_NETWORK");
+const botToken = readEnv("SIGNER_BOT_SVC_TOKEN");
+const botBase = readEnv("SIGNER_BOT_BASE_URL");
+const botNetwork = readEnv("SIGNER_BOT_NETWORK");
 
 const serverProcesses: ChildProcess[] = [];
 const pageErrors: string[] = [];
 const browserLogs: string[] = [];
 
-function requiredEnv(name: string): string {
+function readEnv(name: string): string | undefined {
   const value = process.env[name];
-  if (!value) {
+  if (!value && !smokeOnly) {
     throw new Error(
       `${name} is required for fully automated e2e-dotli. ` +
         "This suite pairs through signer-bot; without it, a human phone scan is required.",
     );
   }
   return value;
+}
+
+function requireBotEnv(): {
+  token: string;
+  base: string;
+  network: string;
+} {
+  if (
+    botToken === undefined ||
+    botBase === undefined ||
+    botNetwork === undefined
+  ) {
+    throw new Error(
+      "SIGNER_BOT_SVC_TOKEN, SIGNER_BOT_BASE_URL, and SIGNER_BOT_NETWORK are required outside E2E_DOTLI_SMOKE=1.",
+    );
+  }
+  return { token: botToken, base: botBase, network: botNetwork };
 }
 
 function startServer(
@@ -162,7 +180,7 @@ async function signOutIfNeeded(page: Page): Promise<void> {
   await badge.waitFor({ state: "hidden", timeout: 20_000 });
 }
 
-async function signInWithBot(page: Page): Promise<PairResult> {
+async function openLoginQr(page: Page): Promise<string> {
   const auth = page.locator("#auth-button");
   await auth.waitFor({ state: "visible", timeout: 30_000 });
   await page.waitForFunction(
@@ -174,13 +192,18 @@ async function signInWithBot(page: Page): Promise<PairResult> {
 
   const qr = page.locator("#auth-modal-qr canvas");
   await qr.waitFor({ state: "visible", timeout: 30_000 });
-  const handshake = await extractQrPayload(page, "#auth-modal-qr canvas");
+  return await extractQrPayload(page, "#auth-modal-qr canvas");
+}
+
+async function signInWithBot(page: Page): Promise<PairResult> {
+  const { token, base, network } = requireBotEnv();
+  const handshake = await openLoginQr(page);
   const username = generateUsername();
   console.log(`[e2e-dotli] pairing signer-bot user ${username}`);
-  const result = await pair(botBase, botToken, {
+  const result = await pair(base, token, {
     handshake,
     username,
-    network: botNetwork,
+    network,
   });
   await page
     .locator("#auth-button .user-badge")
@@ -259,26 +282,32 @@ async function runDiagnosis(page: Page): Promise<{
 
 async function main(): Promise<void> {
   mkdirSync(outputDir, { recursive: true });
-  console.log(`[e2e-dotli] bot=${botBase} network=${botNetwork}`);
-  const probe = await health(botBase);
-  if (!probe.ok) {
-    throw new Error(`signer-bot unavailable: ${probe.error ?? probe.status}`);
+  if (!smokeOnly) {
+    const { base, network } = requireBotEnv();
+    console.log(`[e2e-dotli] bot=${base} network=${network}`);
+    const probe = await health(base);
+    if (!probe.ok) {
+      throw new Error(`signer-bot unavailable: ${probe.error ?? probe.status}`);
+    }
+  } else {
+    console.log("[e2e-dotli] smoke mode: validating local stack and QR only");
   }
 
-  await startLocalStack();
-
-  const executablePath = existsSync("/usr/bin/chromium")
-    ? "/usr/bin/chromium"
-    : undefined;
-  const browser = await chromium.launch({
-    headless,
-    slowMo,
-    executablePath,
-    args: ["--no-sandbox"],
-  });
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let context: BrowserContext | undefined;
   let pairResult: PairResult | undefined;
   try {
+    await startLocalStack();
+
+    const executablePath = existsSync("/usr/bin/chromium")
+      ? "/usr/bin/chromium"
+      : undefined;
+    browser = await chromium.launch({
+      headless,
+      slowMo,
+      executablePath,
+      args: ["--no-sandbox"],
+    });
     context = await browser.newContext({
       serviceWorkers: "block",
       permissions: ["clipboard-read", "clipboard-write"],
@@ -316,6 +345,29 @@ async function main(): Promise<void> {
     const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?debug=truapi&e2e=${Date.now()}`;
     await page.goto(url, { timeout: 60_000, waitUntil: "domcontentloaded" });
     await signOutIfNeeded(page);
+    if (smokeOnly) {
+      const handshake = await openLoginQr(page);
+      const metadataPath = resolve(outputDir, "smoke-run.json");
+      writeFileSync(
+        metadataPath,
+        `${JSON.stringify(
+          {
+            mode: "smoke",
+            handshakePrefix: handshake.slice(0, 32),
+            pageErrors,
+            browserLogs,
+            timestamp: new Date().toISOString(),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      console.log(`[e2e-dotli] smoke complete: ${metadataPath}`);
+      if (pageErrors.length > 0) {
+        throw new Error(`browser page errors occurred: ${pageErrors.length}`);
+      }
+      return;
+    }
     pairResult = await signInWithBot(page);
     const stopClicker = startHostModalClicker(page);
     try {
@@ -348,10 +400,11 @@ async function main(): Promise<void> {
     }
   } finally {
     if (pairResult) {
-      await disconnect(botBase, botToken, pairResult.sessionId);
+      const { token, base } = requireBotEnv();
+      await disconnect(base, token, pairResult.sessionId);
     }
     await context?.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await browser?.close().catch(() => {});
     for (const child of serverProcesses) {
       child.kill("SIGTERM");
     }

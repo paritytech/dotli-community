@@ -360,6 +360,7 @@ function renderPairing(payload: string): void {
 
   // Render QR code (lazy-load qrcode lib, guard against stale appends)
   const canvas = document.createElement("canvas");
+  canvas.dataset.qrPayload = payload;
   const capturedPayload = payload;
   void import("qrcode")
     .then((QRCode) =>

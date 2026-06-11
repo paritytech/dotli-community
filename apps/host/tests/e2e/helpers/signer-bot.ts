@@ -90,8 +90,8 @@ export interface PairResult {
  * SSO handshake, (d) starts auto-signing future SignRequests for that
  * session. No separate provisioning / poll step needed.
  *
- * `network` should be `paseo-next` for dot.li (Paseo People Next, matching
- * `next-people-paseo` chain spec in packages/config).
+ * `network` should match dot.li's default network (`paseo-next-v2` at time
+ * of writing). The bot's `/api/networks` endpoint lists supported IDs.
  */
 export async function pair(
   base: string,
