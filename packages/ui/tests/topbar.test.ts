@@ -103,8 +103,8 @@ describe("topbar disconnect", () => {
 
     initTopBar();
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-session-state", {
-        detail: { connected: true },
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: { tag: "Connected", session: { connected: true } },
       }),
     );
 
@@ -121,19 +121,22 @@ describe("topbar disconnect", () => {
     ).toBe(false);
   });
 
-  it("renders the connected username from the Rust-core session state", async () => {
+  it("renders the connected username from the Rust-core auth state", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-session-state", {
+      new CustomEvent("dotli:truapi-auth-state", {
         detail: {
-          connected: true,
-          publicKey:
-            "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-          liteUsername: "pgherveou.04",
-          primaryUsername: "pgherveou.04",
+          tag: "Connected",
+          session: {
+            connected: true,
+            publicKey:
+              "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            liteUsername: "pgherveou.04",
+            primaryUsername: "pgherveou.04",
+          },
         },
       }),
     );
@@ -193,15 +196,27 @@ describe("topbar login cancellation", () => {
     ).toBe(true);
   });
 
-  it("keeps the first-click login modal open through the initial disconnected tick", async () => {
+  it("keeps the pairing modal open through an unrelated disconnected state", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
-    document.getElementById("auth-button")?.click();
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-session-state", {
-        detail: { connected: false },
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "Polkadot Web",
+          dotSuffix: false,
+          hostGlobal: true,
+        },
+      }),
+    );
+    // A bare disconnected state (e.g. a product core clearing its session)
+    // must only update the badge, never tear down the pairing modal.
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: { tag: "Disconnected" },
       }),
     );
 
@@ -210,9 +225,6 @@ describe("topbar login cancellation", () => {
         .getElementById("auth-modal-backdrop")
         ?.classList.contains("open"),
     ).toBe(true);
-    expect(document.getElementById("auth-modal-qr")?.innerHTML).toContain(
-      "spinner",
-    );
   });
 
   it("keeps landing pairing presentation host-global", async () => {
@@ -221,13 +233,13 @@ describe("topbar login cancellation", () => {
     initTopBar();
 
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-pairing", {
+      new CustomEvent("dotli:truapi-auth-state", {
         detail: {
+          tag: "Pairing",
           deeplink: "polkadotapp://pair?handshake=test",
           label: "Polkadot Web",
           dotSuffix: false,
           hostGlobal: true,
-          cancel: vi.fn(),
         },
       }),
     );
@@ -237,17 +249,58 @@ describe("topbar login cancellation", () => {
     );
   });
 
-  it("closes the auth modal when a rejected login disconnects the session", async () => {
+  it("cancels the in-flight login when the user closes the pairing modal", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
+    let cancels = 0;
+    window.addEventListener("dotli:truapi-cancel-login", () => {
+      cancels += 1;
+    });
 
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-pairing", {
+      new CustomEvent("dotli:truapi-auth-state", {
         detail: {
+          tag: "Pairing",
           deeplink: "polkadotapp://pair?handshake=test",
           label: "localhost:3000",
-          cancel: vi.fn(),
+        },
+      }),
+    );
+    document.getElementById("auth-modal-close")?.click();
+
+    expect(cancels).toBe(1);
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(false);
+    expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
+  });
+
+  it("closes the pairing modal when the session connects", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    let cancels = 0;
+    window.addEventListener("dotli:truapi-cancel-login", () => {
+      cancels += 1;
+    });
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Connected",
+          session: { connected: true, liteUsername: "pgherveou.04" },
         },
       }),
     );
@@ -256,28 +309,12 @@ describe("topbar login cancellation", () => {
       document
         .getElementById("auth-modal-backdrop")
         ?.classList.contains("open"),
-    ).toBe(true);
-
-    // The bridge classifies rejected logins and emits a disconnected
-    // session state instead of a login error.
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-session-state", {
-        detail: { connected: false },
-      }),
-    );
-
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
     ).toBe(false);
-    expect(document.getElementById("auth-modal-qr")?.textContent).not.toContain(
-      "Retry",
-    );
-    expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
+    expect(cancels).toBe(0);
+    expect(document.getElementById("auth-button")?.textContent).toBe("PG");
   });
 
-  it("keeps the retry view for real login failures", async () => {
+  it("keeps the retry view for login failures", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
@@ -288,8 +325,8 @@ describe("topbar login cancellation", () => {
       }),
     );
     window.dispatchEvent(
-      new CustomEvent("dotli:truapi-login-error", {
-        detail: { message: "Host failure" },
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: { tag: "LoginFailed", reason: "Host failure" },
       }),
     );
 
@@ -302,36 +339,6 @@ describe("topbar login cancellation", () => {
         ?.classList.contains("open"),
     ).toBe(true);
     expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
-      "Retry",
-    );
-  });
-
-  it("does not render a retry view for rejected login errors", async () => {
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-pairing", {
-        detail: {
-          deeplink: "polkadotapp://pair?handshake=test",
-          label: "localhost:3000",
-          cancel: vi.fn(),
-        },
-      }),
-    );
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-login-error", {
-        detail: { message: '"Rejected"' },
-      }),
-    );
-
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(false);
-    expect(document.getElementById("auth-modal-qr")?.textContent).not.toContain(
       "Retry",
     );
   });
@@ -349,7 +356,7 @@ describe("topbar boot rehydration", () => {
       await import("@dotli/protocol/auth-storage");
     const { SITE_ID } = await import("@dotli/config/config");
     // Opaque session blob plus the JSON UI-state cache the core-driven
-    // sessionUiChanged callback persists alongside it in shared auth storage.
+    // authStateChanged callback persists alongside it in shared auth storage.
     sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, "0x0102");
     sharedAuth.storage.set(
       `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,

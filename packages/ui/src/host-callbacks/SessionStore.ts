@@ -12,10 +12,11 @@ import {
   writeSharedAuthStorage,
 } from "@dotli/protocol/client";
 import { createResultStream } from "./result-stream";
+import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
 // JSON cache of the last connected UI state the core reported via
-// `sessionUiChanged`. Lives in shared auth storage next to the opaque
+// `authStateChanged`. Lives in shared auth storage next to the opaque
 // root-domain session blob so boot-time rehydration never has to decode the
 // blob itself.
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
@@ -33,42 +34,9 @@ export interface TruapiSessionUiState {
   primaryUsername?: string;
 }
 
-// True once a connected state carrying identity details has been emitted.
-// Bare connection events must not downgrade it (e.g. the bridge's post-login
-// dispatch racing the richer sessionUiChanged emission).
-let richConnectedStateEmitted = false;
-
-function isRichConnectedState(detail: TruapiSessionUiState): boolean {
-  return (
-    detail.connected &&
-    (detail.publicKey !== undefined ||
-      detail.identityAccountId !== undefined ||
-      detail.liteUsername !== undefined ||
-      detail.fullUsername !== undefined ||
-      detail.primaryUsername !== undefined)
-  );
-}
-
-function emitSessionUiState(detail: TruapiSessionUiState): void {
-  richConnectedStateEmitted = isRichConnectedState(detail);
-  window.dispatchEvent(
-    new CustomEvent("dotli:truapi-session-state", { detail }),
-  );
-}
-
-/**
- * Emit a bare connected/disconnected UI state. A bare `connected: true` is
- * dropped when a richer connected state (username/account) was already
- * emitted, so it can never downgrade the topbar badge.
- */
-export function emitSessionConnectionState(connected: boolean): void {
-  if (connected && richConnectedStateEmitted) {
-    return;
-  }
-  emitSessionUiState({ connected });
-}
-
-function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
+/** Convert the core's decoded session fields into the rendering-friendly
+ * shape (hex-encoded keys) the topbar and UI-state cache use. */
+export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   const primaryUsername = info.fullUsername ?? info.liteUsername;
   return {
     connected: info.connected,
@@ -88,7 +56,11 @@ function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   };
 }
 
-async function writeUiStateCache(detail: TruapiSessionUiState): Promise<void> {
+/** Persist (or clear, when disconnected) the boot-rehydration UI-state
+ * cache next to the opaque session blob. Best-effort. */
+export async function writeUiStateCache(
+  detail: TruapiSessionUiState,
+): Promise<void> {
   try {
     if (detail.connected) {
       await writeSharedAuthStorage(
@@ -141,17 +113,16 @@ export function emitPersistedSessionUiState(): void {
     if (raw === null || !hasStoredSharedAuthSession(raw)) {
       return;
     }
-    emitSessionUiState((await readUiStateCache()) ?? { connected: true });
+    dispatchAuthState({
+      tag: "Connected",
+      session: (await readUiStateCache()) ?? { connected: true },
+    });
   })();
 }
 
 export function createSessionStoreAdapters(): Pick<
   HostCallbacks,
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "subscribeSessionStore"
-  | "sessionUiChanged"
+  "readSession" | "writeSession" | "clearSession" | "subscribeSessionStore"
 > {
   return {
     async readSession() {
@@ -178,12 +149,6 @@ export function createSessionStoreAdapters(): Pick<
       await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
       await writeUiStateCache({ connected: false });
       emitLocalChange();
-      emitSessionUiState({ connected: false });
-    },
-    sessionUiChanged(info) {
-      const detail = toSessionUiState(info);
-      void writeUiStateCache(detail);
-      emitSessionUiState(detail);
     },
     subscribeSessionStore() {
       return createResultStream<undefined>([undefined], (push) => {

@@ -20,7 +20,7 @@ import { createPreimageAdapters } from "./Preimage";
 import { createChainConnect } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
 import { createThemeSubscribe } from "./Theme";
-import { createPresentPairing } from "./Pairing";
+import { createAuthStateChanged } from "./AuthState";
 import { createSessionStoreAdapters } from "./SessionStore";
 import { createUserConfirmationAdapters } from "./UserConfirmation";
 
@@ -50,7 +50,7 @@ export function createHostCallbacks(
     read: createLocalStorageRead(storagePrefix),
     write: createLocalStorageWrite(storagePrefix),
     clear: createLocalStorageClear(storagePrefix),
-    presentPairing: createPresentPairing(pairingLabel ?? label, {
+    authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
       dotSuffix: pairingDotSuffix,
       hostGlobal: pairingHostGlobal,
     }),

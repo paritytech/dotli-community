@@ -27,7 +27,6 @@ import { clearCidCache } from "@dotli/storage/cid-cache";
 import { getNetwork, setNetwork, type Network } from "@dotli/config/network";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
-import { isLoginCancellation } from "./login-request-error";
 import {
   ALL_PERMISSIONS,
   getPermissionStatus,
@@ -37,7 +36,7 @@ import {
   setPermissionStatus,
   type PermissionStatus,
 } from "./permissions";
-import type { TrUApiPairingRequest } from "./host-callbacks/Pairing";
+import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
   type TruapiSessionUiState,
@@ -84,8 +83,6 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
-let activeTruapiPairingCancel: (() => void) | null = null;
-let truapiLoginPending = false;
 let truapiSessionConnected = false;
 
 function getStoredTheme(): "light" | "dark" {
@@ -157,54 +154,12 @@ export function initTopBar(): void {
     requestTruapiLogin(detail.reason);
   });
 
-  window.addEventListener("dotli:truapi-pairing", (e: Event) => {
-    const { deeplink, label, dotSuffix, hostGlobal, cancel } = (
-      e as CustomEvent<TrUApiPairingRequest>
-    ).detail;
-    activeTruapiPairingCancel?.();
-    activeTruapiPairingCancel = cancel;
-    truapiLoginPending = false;
-    openModal(undefined, hostGlobal === true ? undefined : label, {
-      dotSuffix,
-    });
-    renderPairing(deeplink);
-  });
-
-  window.addEventListener("dotli:truapi-session-state", (e: Event) => {
-    const detail = (e as CustomEvent<TruapiSessionUiState>).detail;
-    const { connected } = detail;
-    truapiSessionConnected = connected;
-    if (
-      !connected &&
-      truapiLoginPending &&
-      activeTruapiPairingCancel === null &&
-      modalBackdrop.classList.contains("open")
-    ) {
-      renderLoggedOut();
-      return;
-    }
-    truapiLoginPending = false;
-    activeTruapiPairingCancel = null;
-    closeModal({ skipTruapiCancel: true });
-    if (connected) {
-      renderTruapiLoggedIn(detail);
-    } else {
-      renderLoggedOut();
-    }
-  });
-
-  // Rejected logins never reach this event: the bridge classifies them and
-  // emits a disconnected `dotli:truapi-session-state` instead.
-  window.addEventListener("dotli:truapi-login-error", (e: Event) => {
-    const { message } = (e as CustomEvent<{ message: string }>).detail;
-    truapiLoginPending = false;
-    if (isLoginCancellation(message)) {
-      closeModal({ skipTruapiCancel: true });
-      renderLoggedOut();
-      return;
-    }
-    openModal();
-    renderError(message);
+  // Single ordered auth-state stream owned by the Rust core (plus the boot
+  // rehydration and bridge transport-failure synthetics). The modal closes
+  // only on `Connected` or explicit user action; a `Disconnected` can never
+  // tear down an in-flight pairing presentation.
+  window.addEventListener("dotli:truapi-auth-state", (e: Event) => {
+    renderAuthState((e as CustomEvent<DotliAuthState>).detail);
   });
 
   // Mobile-only "more" menu: collapses Permissions / Theme / Settings into a
@@ -313,6 +268,37 @@ function scheduleIdle(callback: () => void): void {
     });
   } else {
     window.setTimeout(callback, 0);
+  }
+}
+
+/**
+ * Render one auth state. The modal lifecycle is state-driven: `Pairing`
+ * opens it with the QR, `Connected` closes it, `LoginFailed` shows a
+ * retryable error, and `Disconnected` only updates the badge so an
+ * unrelated disconnect signal can never close an active pairing modal.
+ */
+function renderAuthState(state: DotliAuthState): void {
+  truapiSessionConnected = state.tag === "Connected";
+  switch (state.tag) {
+    case "Disconnected":
+      renderLoggedOut();
+      break;
+    case "Pairing":
+      openModal(
+        undefined,
+        state.hostGlobal === true ? undefined : state.label,
+        { dotSuffix: state.dotSuffix },
+      );
+      renderPairing(state.deeplink);
+      break;
+    case "Connected":
+      closeModal({ skipTruapiCancel: true });
+      renderTruapiLoggedIn(state.session);
+      break;
+    case "LoginFailed":
+      openModal();
+      renderError(state.reason);
+      break;
   }
 }
 
@@ -475,7 +461,6 @@ export function requestTruapiDisconnect(): void {
 }
 
 function requestTruapiLogin(reason?: string): void {
-  truapiLoginPending = true;
   window.dispatchEvent(
     new CustomEvent("dotli:truapi-login-request", {
       detail: {
@@ -1932,12 +1917,12 @@ function openModal(
 
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
-  truapiLoginPending = false;
   currentQrPayload = null;
   modalQr.innerHTML = "";
 
   if (opts.skipTruapiCancel !== true) {
-    activeTruapiPairingCancel?.();
-    activeTruapiPairingCancel = null;
+    // User-initiated close: cancel any in-flight login in the core so the
+    // pairing flow stops polling and resolves as Rejected.
+    window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
   }
 }

@@ -4,8 +4,8 @@ import { SITE_ID } from "@dotli/config/config";
 import {
   createSessionStoreAdapters,
   emitPersistedSessionUiState,
-  emitSessionConnectionState,
 } from "@dotli/ui/host-callbacks/SessionStore";
+import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -77,7 +77,6 @@ describe("session-store host callbacks", () => {
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
     vi.restoreAllMocks();
-    emitSessionConnectionState(false);
   });
 
   it("round-trips the host core session blob", async () => {
@@ -96,22 +95,55 @@ describe("session-store host callbacks", () => {
     expect(await readSession()).toBeUndefined();
   });
 
-  it("emits the typed session identity details from sessionUiChanged", () => {
-    const { sessionUiChanged } = createSessionStoreAdapters();
+  it("emits the typed session identity details from a connected auth state", () => {
+    const authStateChanged = createAuthStateChanged("Polkadot Web");
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-session-state", (event) => {
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
       events.push((event as CustomEvent).detail);
     });
 
-    sessionUiChanged?.(connectedSessionUiInfo());
+    authStateChanged?.({
+      tag: "Connected",
+      value: connectedSessionUiInfo(),
+    });
 
-    expect(events).toEqual([CONNECTED_DETAIL]);
+    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+  });
+
+  it("dispatches the pairing presentation with its host context", () => {
+    const authStateChanged = createAuthStateChanged("Polkadot Web", {
+      dotSuffix: false,
+      hostGlobal: true,
+    });
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    authStateChanged?.({
+      tag: "Pairing",
+      value: { deeplink: "polkadotapp://pair?handshake=test" },
+    });
+
+    expect(events).toEqual([
+      {
+        tag: "Pairing",
+        deeplink: "polkadotapp://pair?handshake=test",
+        label: "Polkadot Web",
+        dotSuffix: false,
+        hostGlobal: true,
+      },
+    ]);
   });
 
   it("caches the connected UI state and clears it with the session", async () => {
-    const { sessionUiChanged, clearSession } = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const { clearSession } = createSessionStoreAdapters();
 
-    sessionUiChanged?.(connectedSessionUiInfo());
+    authStateChanged?.({
+      tag: "Connected",
+      value: connectedSessionUiInfo(),
+    });
     await flushMicrotasks();
     expect(JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? "")).toEqual(
       CONNECTED_DETAIL,
@@ -121,36 +153,26 @@ describe("session-store host callbacks", () => {
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
-  it("does not downgrade a richer connected state with a bare one", () => {
-    const { sessionUiChanged } = createSessionStoreAdapters();
-    const events: { connected: boolean; liteUsername?: string }[] = [];
-    window.addEventListener("dotli:truapi-session-state", (event) => {
-      events.push(
-        (event as CustomEvent<{ connected: boolean; liteUsername?: string }>)
-          .detail,
-      );
-    });
+  it("clears the cached UI state on a disconnected auth state", async () => {
+    const authStateChanged = createAuthStateChanged("Polkadot Web");
 
-    // The core emits the rich state, then the bridge's post-login bare
-    // dispatch must not clobber it.
-    sessionUiChanged?.(connectedSessionUiInfo());
-    emitSessionConnectionState(true);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      connected: true,
-      liteUsername: "pgherveou.04",
+    authStateChanged?.({
+      tag: "Connected",
+      value: connectedSessionUiInfo(),
     });
+    await flushMicrotasks();
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeDefined();
 
-    // Disconnect resets the guard, after which bare events flow again.
-    emitSessionConnectionState(false);
-    emitSessionConnectionState(true);
-    expect(events.slice(1)).toEqual([{ connected: false }, { connected: true }]);
+    authStateChanged?.({ tag: "Disconnected" });
+    await flushMicrotasks();
+    expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
   it("rehydrates the cached session UI state", async () => {
-    const { writeSession, sessionUiChanged } = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const { writeSession } = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-session-state", (event) => {
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
       events.push((event as CustomEvent).detail);
     });
 
@@ -165,19 +187,22 @@ describe("session-store host callbacks", () => {
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
     await writeSession(new Uint8Array([1, 2, 3]));
-    sessionUiChanged?.(connectedSessionUiInfo());
+    authStateChanged?.({
+      tag: "Connected",
+      value: connectedSessionUiInfo(),
+    });
     await flushMicrotasks();
     events.length = 0;
 
     emitPersistedSessionUiState();
     await flushMicrotasks();
-    expect(events).toEqual([CONNECTED_DETAIL]);
+    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
   });
 
   it("rehydrates a bare connected state when no cache exists", async () => {
     const { writeSession } = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-session-state", (event) => {
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
       events.push((event as CustomEvent).detail);
     });
 
@@ -185,7 +210,9 @@ describe("session-store host callbacks", () => {
     emitPersistedSessionUiState();
     await flushMicrotasks();
 
-    expect(events).toEqual([{ connected: true }]);
+    expect(events).toEqual([
+      { tag: "Connected", session: { connected: true } },
+    ]);
   });
 
   it("emits current, local, and matching storage change ticks", async () => {

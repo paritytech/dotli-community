@@ -41,8 +41,8 @@ import {
 } from "@dotli/truapi-debug/dotli-debug-bus";
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
-import { emitSessionConnectionState } from "./host-callbacks/SessionStore";
-import { LoginRequestError, isLoginCancellation } from "./login-request-error";
+import { dispatchAuthState } from "./host-callbacks/AuthState";
+import { LoginRequestError } from "./login-request-error";
 import {
   emitSsoPairingFailed,
   emitSsoSessionEstablished,
@@ -80,11 +80,15 @@ interface ActiveHost {
 
 interface CoreHost {
   requestLogin: (reason?: string) => Promise<LoginResponse>;
+  cancelLogin: () => void;
   disconnect: () => Promise<void>;
   dispose: () => void;
 }
 
-type CoreProvider = Provider & { disconnect: () => Promise<void> };
+type CoreProvider = Provider & {
+  disconnect: () => Promise<void>;
+  cancelLogin: () => void;
+};
 type CurrentProduct =
   | {
       mode: "iframe";
@@ -143,6 +147,19 @@ export function initBridgeEventListeners(): void {
     void disconnectTruapiHosts();
   });
 
+  // User closed the pairing modal: cancel the in-flight login on the auth
+  // host. Only an already-booted host can have a login in flight.
+  window.addEventListener("dotli:truapi-cancel-login", () => {
+    void landingAuthHostPromise?.then(
+      (host) => {
+        host.cancelLogin();
+      },
+      () => {
+        /* a failed pending host has no login to cancel */
+      },
+    );
+  });
+
   window.addEventListener("dotli:truapi-login-request", (event: Event) => {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
     const flowId = newFlowId("login");
@@ -163,23 +180,23 @@ export function initBridgeEventListeners(): void {
         payload: { host: "landing" },
       });
       const result = await host.requestLogin(detail.reason);
+      // Topbar rendering is driven by the core's auth-state emissions; the
+      // call result only feeds the debug stream here.
       if (result === "Success" || result === "AlreadyConnected") {
         emitSsoSessionEstablished(result);
       } else {
         emitSsoPairingFailed(result);
       }
-      emitSessionConnectionState(
-        result === "Success" || result === "AlreadyConnected",
-      );
     })().catch((error: unknown) => {
-      emitSsoPairingFailed(
-        error instanceof Error ? error.message : String(error),
-      );
-      if (isLoginCancellation(error)) {
-        emitSessionConnectionState(false);
-        return;
+      const message = error instanceof Error ? error.message : String(error);
+      emitSsoPairingFailed(message);
+      // A `LoginRequestError` came back over the wire, so the core already
+      // rendered its own `LoginFailed` (or deliberately stayed silent, e.g.
+      // a second login while one is pairing). Synthesize a state only for
+      // failures the core never saw: host boot, encode, transport errors.
+      if (!(error instanceof LoginRequestError)) {
+        dispatchAuthState({ tag: "LoginFailed", reason: message });
       }
-      dispatchLoginError(error);
     });
   });
 }
@@ -187,8 +204,6 @@ export function initBridgeEventListeners(): void {
 initBridgeEventListeners();
 
 async function disconnectTruapiHosts(): Promise<void> {
-  emitSessionConnectionState(false);
-
   const hosts = new Set<CoreHost | ActiveHost>();
   if (currentHost !== null) {
     hosts.add(currentHost);
@@ -201,6 +216,12 @@ async function disconnectTruapiHosts(): Promise<void> {
     }
   }
 
+  if (hosts.size === 0) {
+    // No live core to emit `Disconnected` (e.g. a boot-rehydrated badge with
+    // no booted host): render the logged-out state directly.
+    dispatchAuthState({ tag: "Disconnected" });
+    return;
+  }
   await Promise.allSettled([...hosts].map((host) => host.disconnect()));
 }
 
@@ -267,16 +288,6 @@ function readLogLevel(): CoreLogLevel {
     // ignore storage access errors
   }
   return "off";
-}
-
-function dispatchLoginError(error: unknown): void {
-  window.dispatchEvent(
-    new CustomEvent("dotli:truapi-login-error", {
-      detail: {
-        message: error instanceof Error ? error.message : String(error),
-      },
-    }),
-  );
 }
 
 function pipeProviders(
@@ -397,6 +408,9 @@ function wrapCoreProviderForDebug(
     },
     async disconnect() {
       await provider.disconnect();
+    },
+    cancelLogin() {
+      provider.cancelLogin();
     },
     dispose() {
       if (disposed) {
@@ -652,6 +666,9 @@ async function createLandingAuthHost(): Promise<CoreHost> {
   return {
     requestLogin(reason) {
       return requestCoreLogin(coreProvider, reason);
+    },
+    cancelLogin() {
+      coreProvider.cancelLogin();
     },
     disconnect() {
       return coreProvider.disconnect();
