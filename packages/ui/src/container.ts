@@ -58,6 +58,7 @@ import { queueWalletFlow } from "./wallet-queue";
 
 import type { UserSession } from "@novasamatech/host-papp";
 import {
+  getAllowanceService,
   getAuthState,
   getStatementStore,
   onAuthStateChange,
@@ -86,7 +87,7 @@ import { log } from "@dotli/shared/log";
 import { getBackend } from "@dotli/config/mode";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
-import { submitPreimageRemote } from "@dotli/protocol/client";
+import { submitPreimageAsUser } from "./preimage-submit";
 import { showNotification } from "./notification";
 import {
   cancelNotification,
@@ -1067,8 +1068,9 @@ function wireContainerHandlers(
       .map((signed) => mapSdkProof(signed.proof));
   });
 
-  // Submit stores data on Bulletin Paseo via TransactionStorage.store()
-  // using smoldot, returns the Blake2b-256 hash key.
+  // Submit stores data on Bulletin via TransactionStorage.store(), signed
+  // with the user's wallet-authorized allowance slot account, and returns
+  // the Blake2b-256 hash key.
   // Lookup retrieves data by hash via Helia P2P (IPFS gateway fallback).
 
   const preimageCache = new Map<string, Uint8Array>();
@@ -1083,8 +1085,24 @@ function wireContainerHandlers(
         e instanceof Error ? e.message : "User denied preimage submit",
       )
         .andThen(() => {
+          const session = getSession();
+          if (!session) {
+            return errAsync("No active session");
+          }
+          const allowance = getAllowanceService();
+          if (!allowance) {
+            return errAsync("Allowance service not initialized");
+          }
+          // Slot-account keys are cached per (session, product, resource) in
+          // host-papp's AllowanceRepository, so only the first submit
+          // round-trips to the wallet.
+          return allowance
+            .getBulletinSigner(session.id, labelToProductIdentifier(label))
+            .mapErr((e) => e.message);
+        })
+        .andThen((signer) => {
           const key = computePreimageKey(value);
-          return fromPromise(submitPreimageRemote(value), (e) =>
+          return fromPromise(submitPreimageAsUser(value, signer), (e) =>
             e instanceof Error ? e.message : String(e),
           ).map(() => {
             preimageCache.set(key, value);

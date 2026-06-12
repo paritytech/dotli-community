@@ -8,6 +8,7 @@
 
 import {
   createPappAdapter,
+  type AllowanceService,
   type PappAdapter,
   type PairingStatus,
   type Identity,
@@ -70,6 +71,10 @@ export function onAuthStateChange(fn: AuthListener): () => void {
 
 export function getStatementStore(): StatementStoreAdapter | null {
   return statementStoreInstance;
+}
+
+export function getAllowanceService(): AllowanceService | null {
+  return adapter?.allowance ?? null;
 }
 
 export function onStatementStoreReady(): Promise<StatementStoreAdapter> {
