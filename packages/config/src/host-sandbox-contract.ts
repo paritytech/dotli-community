@@ -78,13 +78,21 @@ export interface SandboxParams {
 
 export type SandboxParamsResult =
   | { ok: true; params: SandboxParams }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; recoverable?: boolean };
 
 /**
  * Validate a sandbox URL against the host-to-sandbox contract.
  *
  * Returns a discriminated result. The caller is expected to render the
  * failure reason in the UI and stop. Never substitute defaults silently.
+ *
+ * `recoverable: true` marks failures where a required param is absent
+ * entirely. The sandbox strips contract params from its URL after a
+ * successful boot, so an absent param is the signature of a reload of an
+ * already-booted sandbox window, and the host can recover by re-rendering
+ * the iframe with a fresh contract URL. A param that is present but
+ * invalid means the host build itself is broken. Re-rendering would
+ * produce the same bad value, so those stay fatal.
  */
 export function validateSandboxParams(
   search: URLSearchParams,
@@ -108,6 +116,7 @@ export function validateSandboxParams(
   if (cid === null || cid === "") {
     return {
       ok: false,
+      recoverable: cid === null,
       reason:
         "Missing required URL param `cid`. The host did not propagate the resolved content id. Reload from dot.li.",
     };
@@ -123,6 +132,7 @@ export function validateSandboxParams(
   if (chainBackend === null) {
     return {
       ok: false,
+      recoverable: true,
       reason:
         "Missing required URL param `chainBackend`. The host did not specify a backend — reload from dot.li.",
     };
@@ -138,6 +148,7 @@ export function validateSandboxParams(
   if (network === null) {
     return {
       ok: false,
+      recoverable: true,
       reason:
         "Missing required URL param `network`. The host did not propagate the active network — reload from dot.li.",
     };

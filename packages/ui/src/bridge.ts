@@ -67,6 +67,42 @@ window.addEventListener("dotli:device-permission-changed", () => {
   }
 });
 
+// The sandbox strips its contract params after a successful boot, so a
+// reload of the sandbox window (a dApp calling `location.reload()`, a
+// browser restoring a crashed frame) boots without `?cid=` and cannot
+// recover on its own. It posts a recover request and the host rebuilds
+// the iframe from the tracked product state. The origin gate restricts
+// the request to the product currently rendered. The interval guard stops
+// a reload-looping product from pinning the host in endless re-renders.
+// A rate-limited sandbox shows its own contract error once its
+// `TIMEOUTS.SANDBOX_RECOVER` grace expires.
+const RECOVER_MIN_INTERVAL_MS = 5_000;
+let lastRecoverAt = 0;
+window.addEventListener("message", (event: MessageEvent) => {
+  const data = event.data as Record<string, unknown> | null;
+  if (
+    data === null ||
+    typeof data !== "object" ||
+    data.type !== "dotli:sandbox-recover"
+  ) {
+    return;
+  }
+  if (
+    currentRenderMode !== "subdomain" ||
+    currentCid === null ||
+    currentLabel === null ||
+    event.origin !== getAppOrigin(currentLabel)
+  ) {
+    return;
+  }
+  const now = Date.now();
+  if (now - lastRecoverAt < RECOVER_MIN_INTERVAL_MS) {
+    return;
+  }
+  lastRecoverAt = now;
+  void renderAppSubdomain(currentCid, currentLabel);
+});
+
 /**
  * Capture deep link path (pathname + search + hash) to forward into the iframe.
  */

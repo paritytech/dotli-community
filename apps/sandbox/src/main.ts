@@ -86,6 +86,26 @@ function stripContractParamsFromUrl(): void {
 }
 
 /**
+ * Ask the host shell to rebuild this iframe with a fresh contract URL.
+ *
+ * `stripContractParamsFromUrl` removes the contract params once boot
+ * succeeds, so a later reload of this window (a dApp calling
+ * `location.reload()`, a browser restoring a crashed frame) boots with no
+ * `?cid=`. The host still tracks the rendered label and resolved CID and
+ * can re-render the iframe with the exact params it last threaded. If the
+ * host does not tear this iframe down within the timeout (it no longer
+ * tracks a product, or its rate guard tripped) fall back to the hard
+ * contract error this path showed before recovery existed.
+ */
+function requestHostRerender(reason: string): void {
+  showStatus("Restoring app...");
+  window.parent.postMessage({ type: "dotli:sandbox-recover" }, "*");
+  window.setTimeout(() => {
+    failLoading("Invalid sandbox URL", reason);
+  }, TIMEOUTS.SANDBOX_RECOVER);
+}
+
+/**
  * Render the sandbox-local error page AND tell the host shell its loading
  * overlay is finished. Without the parent notify, the host's `.loading`
  * stays visible (the host keeps it around as a sibling of the sandbox
@@ -594,7 +614,11 @@ async function main(): Promise<void> {
   const urlParams = new URL(window.location.href).searchParams;
   const parsed = validateSandboxParams(urlParams);
   if (!parsed.ok) {
-    failLoading("Invalid sandbox URL", parsed.reason);
+    if (parsed.recoverable === true) {
+      requestHostRerender(parsed.reason);
+    } else {
+      failLoading("Invalid sandbox URL", parsed.reason);
+    }
     stopApp();
     return;
   }

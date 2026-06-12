@@ -44,27 +44,36 @@ describe("validateSandboxParams: v3 cid contract", () => {
     }
   });
 
-  it("As the sandbox, I reject a contract that omits the cid", () => {
-    // Given a contract with no cid param.
+  it("As the sandbox, I reject a contract that omits the cid, but flag it recoverable so the host can re-render me", () => {
+    // Given a contract with no cid param (the post-boot strip leaves
+    // exactly this shape behind, so a reload of a booted sandbox lands here).
     const params = search({ [SANDBOX_CONTRACT_PARAMS.cid]: null });
 
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails with a reason that names the missing key.
+    // Then it fails with a reason that names the missing key, and marks
+    // the failure recoverable so the boot path asks the host for a fresh
+    // contract URL instead of dying on a dead-end error page.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/cid/i);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/cid/i);
+      expect(result.recoverable).toBe(true);
+    }
   });
 
-  it("As the sandbox, I reject a contract whose cid is the empty string", () => {
+  it("As the sandbox, I reject a contract whose cid is the empty string as fatal, since the host explicitly sent a broken value", () => {
     // Given a contract with an empty cid.
     const params = search({ [SANDBOX_CONTRACT_PARAMS.cid]: "" });
 
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (an empty cid is treated the same as a missing one).
+    // Then it fails, and is NOT recoverable: an empty value cannot come
+    // from the post-boot param strip, so re-rendering from the same host
+    // would produce the same empty cid again.
     expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.recoverable).not.toBe(true);
   });
 
   it("As the sandbox, I reject a contract whose cid contains non-alphanumeric characters", () => {
@@ -127,5 +136,21 @@ describe("validateSandboxParams: v3 cid contract", () => {
 
     // Then it fails (network is still required after the v3 bump).
     expect(result.ok).toBe(false);
+  });
+
+  it("As a user whose dApp reloads itself after the param strip, the contract failure is recoverable so the host can restore my session", () => {
+    // Given a URL with no contract params at all, which is what a booted
+    // sandbox window looks like after stripContractParamsFromUrl: a dApp
+    // calling location.reload() re-enters the boot with this exact shape.
+    const params = new URLSearchParams({ theme: "dark" });
+
+    // When the sandbox validates it.
+    const result = validateSandboxParams(params);
+
+    // Then the failure is recoverable: the host still tracks the rendered
+    // label and CID, so it can rebuild the iframe instead of stranding the
+    // user on a full-viewport "Invalid sandbox URL" error.
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.recoverable).toBe(true);
   });
 });
