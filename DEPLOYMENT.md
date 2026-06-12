@@ -22,7 +22,7 @@ works for the first boot and for later top-ups.
 
 ### Local machine
 
-- `make`, `ssh`, `rsync`, and [Bun](https://bun.sh) 1.3+ with Node 22+ (the build runs on this machine, not the remote).
+- `make`, `ssh`, `rsync`, and [Bun](https://bun.sh) 1.3+.
 - SSH agent loaded with the key the remote accepts (`ssh-add`).
 - This repo checked out and on the branch/commit you want to deploy.
 
