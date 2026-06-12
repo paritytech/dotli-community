@@ -27,7 +27,6 @@ function gatedRemotePermissionName(
     case "ChainSubmit":
     case "PreimageSubmit":
     case "StatementSubmit":
-    case "UserId":
       return tag;
     case "Remote":
     case "WebRtc":

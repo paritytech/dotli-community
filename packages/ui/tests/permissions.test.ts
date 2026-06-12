@@ -191,33 +191,8 @@ describe("ALL_PERMISSIONS (data invariants)", () => {
     expect(names).toContain("ChainSubmit");
     expect(names).toContain("PreimageSubmit");
     expect(names).toContain("StatementSubmit");
-    expect(names).toContain("UserId");
     expect(names).toContain("Notifications");
     expect(names).not.toContain("TransactionSubmit");
-  });
-
-  it("exposes the UserId gate with its display label", () => {
-    expect(ALL_PERMISSIONS).toContainEqual({
-      name: "UserId",
-      label: "Reveal Username",
-    });
-  });
-});
-
-describe("UserId permission (RFC-0015 username disclosure gate)", () => {
-  it("defaults to 'ask' and round-trips granted/denied", () => {
-    expect(getPermissionStatus("myapp", "UserId")).toBe("ask");
-    setPermissionStatus("myapp", "UserId", "granted");
-    expect(getPermissionStatus("myapp", "UserId")).toBe("granted");
-    setPermissionStatus("myapp", "UserId", "denied");
-    expect(getPermissionStatus("myapp", "UserId")).toBe("denied");
-  });
-
-  it("is not a device permission and never alters the iframe allow attribute", () => {
-    expect(isDevicePermission("UserId")).toBe(false);
-    setPermissionStatus("myapp", "UserId", "granted");
-    expect(getGrantedDevicePermissions("myapp")).toEqual([]);
-    expect(buildAllowAttribute("myapp")).toBe("clipboard-write");
   });
 });
 

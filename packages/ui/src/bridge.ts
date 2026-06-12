@@ -11,7 +11,6 @@
 
 import {
   decodeWireMessage,
-  describeWireId,
   encodeWireMessage,
   scale,
   VersionedHostRequestLoginError,
@@ -363,7 +362,7 @@ function emitWireFrameDebug(
     productId,
     requestId: decoded.value.requestId,
     payload: {
-      tag: describeWireId(wireId),
+      tag: `wire_${wireId}`,
       value: {
         wireId,
         bytes: decoded.value.payload.value,
