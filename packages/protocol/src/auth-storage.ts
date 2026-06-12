@@ -15,7 +15,7 @@ export type SharedModeRequestMethod =
   | "modeStorageWrite"
   | "modeStorageClear";
 
-export const SHARED_AUTH_SESSION_KEY = "SsoSessionsV2";
+export const SHARED_AUTH_SESSION_KEY = "SsoSessionsV3";
 
 // SCALE-encoded empty `Vec<Session>` from `@novasamatech/host-papp`, a single
 // length byte of 0. If host-papp ever changes the session list encoding (e.g.
