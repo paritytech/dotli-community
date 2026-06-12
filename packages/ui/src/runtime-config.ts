@@ -1,4 +1,3 @@
-import { SITE_ID } from "@dotli/config/config";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import type { WasmRuntimeConfig } from "@parity/truapi-host-wasm";
 
@@ -26,14 +25,11 @@ function getPlatformType(userAgent: string = navigator.userAgent): string {
 export function createTruapiRuntimeConfig(
   label: string,
   location: RuntimeLocation = window.location,
-  siteId: string = SITE_ID,
   productId: string = labelToProductId(label),
 ): WasmRuntimeConfig {
   void location;
   return {
     productId,
-    productLabel: label,
-    siteId,
     hostName: "Polkadot Web",
     hostIcon: undefined,
     hostVersion:

@@ -52,7 +52,6 @@ async function flushMicrotasks(): Promise<void> {
 
 function connectedSessionUiInfo() {
   return {
-    connected: true,
     publicKey: new Uint8Array(Array.from({ length: 32 }, (_, i) => i)),
     identityAccountId: new Uint8Array(
       Array.from({ length: 32 }, (_, i) => 0xa0 + i),

@@ -39,10 +39,8 @@ export interface TruapiSessionUiState {
 export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   const primaryUsername = info.fullUsername ?? info.liteUsername;
   return {
-    connected: info.connected,
-    ...(info.publicKey !== undefined
-      ? { publicKey: bytesToHex(info.publicKey) }
-      : {}),
+    connected: true,
+    publicKey: bytesToHex(info.publicKey),
     ...(info.identityAccountId !== undefined
       ? { identityAccountId: bytesToHex(info.identityAccountId) }
       : {}),

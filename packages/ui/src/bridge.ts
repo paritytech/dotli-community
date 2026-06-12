@@ -25,7 +25,6 @@ import {
 } from "@parity/truapi";
 import type { ResultPayload } from "@parity/truapi/scale";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import { createWasmRawCallbacks } from "@parity/truapi-host-wasm";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
   SANDBOX_CONTRACT_PARAMS,
@@ -607,21 +606,18 @@ async function createCoreProvider(
   const { createWebWorkerProvider, HostWorker } = await runtimeChunkPromise;
   const provider = await createWebWorkerProvider(
     new HostWorker(),
-    createWasmRawCallbacks(
-      createHostCallbacks({
-        label,
-        pairingLabel: options.pairingLabel,
-        pairingDotSuffix: options.pairingDotSuffix,
-        pairingHostGlobal: options.pairingHostGlobal,
-        storagePrefix: `dotli:${label}:`,
-      }),
-    ),
+    createHostCallbacks({
+      label,
+      pairingLabel: options.pairingLabel,
+      pairingDotSuffix: options.pairingDotSuffix,
+      pairingHostGlobal: options.pairingHostGlobal,
+      storagePrefix: `dotli:${label}:`,
+    }),
     {
       logLevel: readLogLevel(),
       runtimeConfig: createTruapiRuntimeConfig(
         label,
         window.location,
-        undefined,
         options.productId,
       ),
     },

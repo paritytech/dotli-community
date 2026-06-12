@@ -23,7 +23,6 @@ describe("createTruapiRuntimeConfig", () => {
         {
           origin: "http://localhost:5173",
         } as Location,
-        "local.li",
         "truapi-playground.dot",
       ).productId,
     ).toBe("truapi-playground.dot");
@@ -37,12 +36,9 @@ describe("createTruapiRuntimeConfig", () => {
           hostname: "host.dot.li",
           origin: "https://host.dot.li",
         } as Location,
-        "dot.li",
       ),
     ).toEqual({
       productId: "acme.dot",
-      productLabel: "acme",
-      siteId: "dot.li",
       hostName: "Polkadot Web",
       hostIcon: undefined,
       hostVersion: undefined,
@@ -60,7 +56,6 @@ describe("createTruapiRuntimeConfig", () => {
         {
           origin: "http://localhost:5173",
         } as Location,
-        "dot.li",
       ).hostIcon,
     ).toBeUndefined();
   });
