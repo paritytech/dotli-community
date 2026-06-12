@@ -57,16 +57,11 @@ ENV ?= polkadot
 
 # Packages required on a fresh Ubuntu 22.04+ box. The brotli module is split
 # across two packages on noble (filter + static) and both ship a drop-in in
-# /etc/nginx/modules-enabled/ so they auto-load. unzip is needed by bun's
-# installer; curl/ca-certificates by both bun and certbot interactions.
-APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw unzip curl ca-certificates
+# /etc/nginx/modules-enabled/ so they auto-load. curl and ca-certificates
+# back certbot's API calls.
+APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-# Remote working dir where source is rsynced and built. Outside DEPLOY_PATH
-# so a failed build never affects the live site; node_modules and dist are
-# preserved across runs for incremental rebuilds.
-REMOTE_BUILD_PATH := /tmp/dotli-build
-
-.PHONY: build provision provision-prereqs provision-firewall provision-bun provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx _require-env
+.PHONY: build provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx _require-env
 
 build:
 	bun run build
@@ -83,7 +78,7 @@ build:
 # a brand-new box. ADMIN_EMAIL is the Let's Encrypt contact; the Cloudflare
 # token needs DNS edit permission on the zone being certified.
 # ====================================================================
-provision: provision-prereqs provision-firewall provision-bun provision-cloudflare-creds provision-cert provision-renewal deploy deploy-nginx
+provision: provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy deploy-nginx
 	@echo
 	@echo "Provisioning complete for ENV=$(ENV)."
 
@@ -119,50 +114,16 @@ provision-renewal: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	ssh $(REMOTE_TARGET) 'sudo systemctl enable --now certbot.timer'
 
-# Installs bun for the SSH user only if missing, then symlinks the binaries
-# into /usr/local/bin so any user (including root, for systemd timers) can
-# invoke them. To force an upgrade later, ssh in and run `bun upgrade`.
-provision-bun: _require-env
-	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
-	ssh $(REMOTE_TARGET) 'set -euo pipefail; \
-		if ! command -v bun >/dev/null 2>&1; then \
-			curl -fsSL https://bun.sh/install | bash; \
-			sudo ln -sf "$$HOME/.bun/bin/bun" /usr/local/bin/bun; \
-			sudo ln -sf "$$HOME/.bun/bin/bunx" /usr/local/bin/bunx; \
-		fi; \
-		bun --version'
-
 # ====================================================================
-# Remote-build deploy. Source is rsynced to $(REMOTE_BUILD_PATH), bun
-# installs deps and runs the workspace build on the remote, then the
-# resulting dist directories are rsynced (still on the remote) into the
-# nginx-served paths. node_modules and turbo cache live under the build
-# path and persist across runs for incremental rebuilds.
+# Local-build deploy. The turbo build runs on this machine.
+# then only the resulting dist directories
+# are rsynced into the nginx-served paths on the remote.
 # ====================================================================
-deploy: _require-env provision-bun
+deploy: _require-env build
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval REMOTE_PATH   := $(DEPLOY_PATH_$(ENV)))
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_BUILD_PATH) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'
-	rsync -avz --delete \
-		--exclude='.git/' \
-		--exclude='node_modules/' \
-		--exclude='.turbo/' \
-		--exclude='apps/*/dist/' \
-		--exclude='packages/*/dist/' \
-		--exclude='test-results/' \
-		--exclude='.vite/' \
-		--exclude='.cache/' \
-		--exclude='coverage/' \
-		--exclude='.env' \
-		--exclude='.env.*' \
-		--exclude='.DS_Store' \
-		--exclude='*.log' \
-		./ $(REMOTE_TARGET):$(REMOTE_BUILD_PATH)/
-	ssh $(REMOTE_TARGET) 'set -euo pipefail; cd $(REMOTE_BUILD_PATH) && bun install --frozen-lockfile && bun run build'
-	ssh $(REMOTE_TARGET) "set -euo pipefail; \
-		rsync -av --delete --filter='P /assets/' $(REMOTE_BUILD_PATH)/apps/host/dist/     $(REMOTE_PATH)/host/; \
-		rsync -av --delete --filter='P /assets/' $(REMOTE_BUILD_PATH)/apps/sandbox/dist/  $(REMOTE_PATH)/app/; \
-		rsync -av --delete --filter='P /assets/' $(REMOTE_BUILD_PATH)/apps/protocol/dist/ $(REMOTE_PATH)/protocol/"
+	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'
+	$(call _rsync_dist,$(REMOTE_TARGET),$(REMOTE_PATH))
 
 deploy-nginx: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
