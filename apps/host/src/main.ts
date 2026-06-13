@@ -320,6 +320,23 @@ function setupTopbarAutoHide(): void {
   }
 }
 
+// Wire auth-state changes to topbar auto-hide. Login starts the hide timer
+// once the shield is verified, logout pins the topbar visible.
+function bindTopbarAutoHide(): void {
+  window.addEventListener("dotli:authenticated", () => {
+    if (shieldVerified) {
+      setupTopbarAutoHide();
+    }
+  });
+  window.addEventListener("dotli:logged-out", () => {
+    if (topbarHideTimer !== null) {
+      clearTimeout(topbarHideTimer);
+      topbarHideTimer = null;
+    }
+    setTopbarVisible(true);
+  });
+}
+
 function setShieldState(state: "validating" | "verified"): void {
   const shield = document.getElementById("verification-shield");
   if (shield !== null) {
@@ -1086,6 +1103,11 @@ async function main(): Promise<void> {
 
     const { renderIframe } = await import("@dotli/ui/bridge");
     await renderIframe(localhostUrl, host);
+
+    shieldVerified = true;
+    bindTopbarAutoHide();
+    setupTopbarAutoHide();
+
     // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
     history.replaceState(null, "", "/" + host);
     document.title = `${host} — ${SITE_ID}`;
@@ -1118,21 +1140,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // If the user logs in after the shield is already verified, start auto-hide
-  window.addEventListener("dotli:authenticated", () => {
-    if (shieldVerified) {
-      setupTopbarAutoHide();
-    }
-  });
-
-  // If the user logs out, cancel auto-hide and keep the topbar visible
-  window.addEventListener("dotli:logged-out", () => {
-    if (topbarHideTimer !== null) {
-      clearTimeout(topbarHideTimer);
-      topbarHideTimer = null;
-    }
-    setTopbarVisible(true);
-  });
+  bindTopbarAutoHide();
 
   log.warn(`[dot.li perf] Subdomain detected: "${label}" (${elapsed(T0)})`);
 
