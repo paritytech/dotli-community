@@ -31,7 +31,13 @@ import {
   type CacheSettings,
 } from "@dotli/config/mode";
 import { clearCidCache } from "@dotli/storage/cid-cache";
-import { getNetwork, setNetwork, type Network } from "@dotli/config/network";
+import {
+  getEnabledNetworks,
+  getNetwork,
+  setNetwork,
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  type Network,
+} from "@dotli/config/network";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
 import {
@@ -887,33 +893,38 @@ function renderModePopover(): void {
   rightCol.className = "mode-popover-col";
   columns.appendChild(rightCol);
 
-  appendSectionHeader(leftCol, "Network");
-  const networkChoices: [Network, string, string][] = [
-    ["paseo-next-v2", "Paseo Next V2", "Upgraded Paseo Next system chains"],
-    ["previewnet", "Previewnet", "Product Preview Network"],
-  ];
-  const networkGroup = document.createElement("div");
-  leftCol.appendChild(networkGroup);
-  const rerenderNetwork = (): void => {
-    networkGroup.innerHTML = "";
-    for (const [value, label, desc] of networkChoices) {
-      renderNetworkRadio(
-        networkGroup,
-        value,
-        label,
-        desc,
-        draft.network,
-        (next) => {
-          draft.network = next;
-          rerenderNetwork();
-          syncApply();
-        },
-      );
-    }
-  };
-  rerenderNetwork();
+  const enabledNetworks = getEnabledNetworks();
+  if (enabledNetworks.length > 1) {
+    appendSectionHeader(leftCol, "Network");
+    const networkChoices: [Network, string, string][] = enabledNetworks.map(
+      (n) => {
+        const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
+        return [n, cfg.label, cfg.description];
+      },
+    );
+    const networkGroup = document.createElement("div");
+    leftCol.appendChild(networkGroup);
+    const rerenderNetwork = (): void => {
+      networkGroup.innerHTML = "";
+      for (const [value, label, desc] of networkChoices) {
+        renderNetworkRadio(
+          networkGroup,
+          value,
+          label,
+          desc,
+          draft.network,
+          (next) => {
+            draft.network = next;
+            rerenderNetwork();
+            syncApply();
+          },
+        );
+      }
+    };
+    rerenderNetwork();
+    appendDivider(leftCol);
+  }
 
-  appendDivider(leftCol);
   appendSectionHeader(leftCol, "Backend");
   const chainChoices: [Backend, string, string][] = [
     [
@@ -1526,7 +1537,7 @@ function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     // (`hackme3.dot.li`).
     ["Site", window.location.host],
     ["Build", `${version} (${shortSha(sha)})`],
-    ["Network", networkLabel(network)],
+    ["Network", NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
     ["Backend", backendLabel(backend)],
   ];
 
@@ -1579,17 +1590,6 @@ function backendLabel(b: Backend): string {
       return "Light Client Per-Tab";
     case "rpc-gateway":
       return "Trusted Providers";
-  }
-}
-
-function networkLabel(n: Network): string {
-  switch (n) {
-    case "paseo-next-v1":
-      return "Paseo Next V1";
-    case "paseo-next-v2":
-      return "Paseo Next V2";
-    case "previewnet":
-      return "Previewnet";
   }
 }
 

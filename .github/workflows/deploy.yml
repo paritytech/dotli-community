@@ -12,7 +12,7 @@ on:
       ref:
         required: false
         type: string
-        default: ''
+        default: ""
 
 jobs:
   quality-gate:
@@ -64,6 +64,8 @@ jobs:
           VITE_COMMIT_SHA: ${{ github.sha }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
+          # Required. Must match NetworkName in packages/config/src/network.ts, comma separated.
+          VITE_NETWORKS: ${{ vars.NETWORKS }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       # Regression guard for paritytech/dotli#463: fails the deploy if any

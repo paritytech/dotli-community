@@ -35,6 +35,8 @@ export interface BulletinService extends ChainService {
 }
 
 export interface ServicesConfig {
+  readonly label: string;
+  readonly description: string;
   readonly relay: ChainService;
   readonly assethub: ChainService;
   readonly bulletin: BulletinService;
@@ -47,6 +49,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
   ServicesConfig
 > = {
   [NetworkName.PASEO_NEXT_V1]: {
+    label: "Paseo Next V1",
+    description: "Legacy Paseo Next system chains",
     relay: {
       genesis:
         "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
@@ -85,6 +89,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     },
   },
   [NetworkName.PASEO_NEXT_V2]: {
+    label: "Paseo Next V2",
+    description: "Upgraded Paseo Next system chains",
     relay: {
       genesis:
         "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
@@ -118,6 +124,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     },
   },
   [NetworkName.PREVIEW_NET]: {
+    label: "Previewnet",
+    description: "Product Preview Network",
     relay: {
       genesis:
         "0x946053e2be0d883a5ae3de0394a683c63e3b1b3b98848feb721b1b127bd4aaf4",
@@ -158,8 +166,47 @@ const VALID_NETWORKS: ReadonlySet<string> = new Set<Network>([
   NetworkName.PREVIEW_NET,
 ]);
 
+/**
+ * Networks this deployment supports, set at build time via the required
+ * `VITE_NETWORKS` env var.
+ */
+export function getEnabledNetworks(): Network[] {
+  const raw = (import.meta as { env?: Record<string, string | undefined> }).env
+    ?.VITE_NETWORKS;
+  if (raw === undefined || raw.trim() === "") {
+    throw new Error(
+      'VITE_NETWORKS is not set. The deployment must declare a comma-separated list of networks (e.g. "paseo-next-v2,previewnet").',
+    );
+  }
+  const seen = new Set<Network>();
+  const parsed: Network[] = [];
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim();
+    if (trimmed === "") {
+      continue;
+    }
+    if (!isValidNetwork(trimmed)) {
+      throw new Error(
+        `VITE_NETWORKS contains an unknown network "${trimmed}". Valid values: ${[
+          ...VALID_NETWORKS,
+        ].join(", ")}.`,
+      );
+    }
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      parsed.push(trimmed);
+    }
+  }
+  if (parsed.length === 0) {
+    throw new Error(
+      "VITE_NETWORKS is empty after parsing. Provide at least one valid network.",
+    );
+  }
+  return parsed;
+}
+
 export function defaultNetwork(): Network {
-  return NetworkName.PASEO_NEXT_V2;
+  return getEnabledNetworks()[0];
 }
 let networkOverride: Network | null = null;
 
@@ -175,15 +222,21 @@ export function getNetwork(): Network {
   if (networkOverride !== null) {
     return networkOverride;
   }
+  const enabled = getEnabledNetworks();
   try {
     const stored = localStorage.getItem(NETWORK_KEY);
-    if (stored !== null && VALID_NETWORKS.has(stored)) {
+    if (stored !== null && isValidNetwork(stored)) {
       // Migrate previously-selected V1 to V2 while V1 is disabled in the UI.
-      if (stored === NetworkName.PASEO_NEXT_V1) {
-        localStorage.setItem(NETWORK_KEY, NetworkName.PASEO_NEXT_V2);
-        return NetworkName.PASEO_NEXT_V2;
+      const migrated =
+        stored === NetworkName.PASEO_NEXT_V1
+          ? NetworkName.PASEO_NEXT_V2
+          : stored;
+      if (enabled.includes(migrated)) {
+        if (migrated !== stored) {
+          localStorage.setItem(NETWORK_KEY, migrated);
+        }
+        return migrated;
       }
-      return stored as Network;
     }
     const computed = defaultNetwork();
     localStorage.setItem(NETWORK_KEY, computed);

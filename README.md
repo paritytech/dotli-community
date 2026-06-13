@@ -202,14 +202,14 @@ The violation panel appears at the bottom of the viewport when the first violati
 
 ## Network configuration
 
-The app targets **Paseo testnet** out of the box, via the `PASEO_NEXT_V2` network (the default returned by `defaultNetwork()`):
+A build offers the networks listed in the required `VITE_NETWORKS` env var, set at deploy time (see `packages/config/src/network.ts`). The first entry is the default returned by `defaultNetwork()`.
 
 - **dotNS Registry**: `0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc`
 - **dotNS ContentResolver**: `0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64`
 - **Bulletin Chain RPC**: `wss://paseo-bulletin-next-rpc.polkadot.io` (WebSocket)
 - **IPFS gateway**: `https://paseo-bulletin-next-ipfs.polkadot.io`
 
-All addresses and endpoints live in `packages/config/src/network.ts` (`NETWORK_NAME_TO_SERVICES_CONFIG`).
+All addresses, endpoints, and selector labels live in `packages/config/src/network.ts` (`NETWORK_NAME_TO_SERVICES_CONFIG`).
 
 ## Security
 
