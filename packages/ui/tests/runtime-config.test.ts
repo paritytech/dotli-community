@@ -30,33 +30,35 @@ describe("createTruapiRuntimeConfig", () => {
 
   it("passes the full host runtime contract to the WASM core", () => {
     expect(
-      createTruapiRuntimeConfig(
-        "acme",
-        {
-          hostname: "host.dot.li",
-          origin: "https://host.dot.li",
-        } as Location,
-      ),
+      createTruapiRuntimeConfig("acme", {
+        hostname: "host.dot.li",
+        origin: "https://host.dot.li",
+      } as Location),
     ).toEqual({
       productId: "acme.dot",
-      hostName: "Polkadot Web",
-      hostIcon: undefined,
-      hostVersion: undefined,
-      platformType: expect.any(String),
-      platformVersion: undefined,
-      peopleChainGenesisHash: getActiveServicesConfig().people.genesis,
-      pairingDeeplinkScheme: "polkadotapp",
+      host: {
+        name: "Polkadot Web",
+        icon: undefined,
+        version: undefined,
+      },
+      platform: {
+        type: expect.any(String),
+        version: undefined,
+      },
+      people: {
+        genesisHash: getActiveServicesConfig().people.genesis,
+      },
+      pairing: {
+        deeplinkScheme: "polkadotapp",
+      },
     });
   });
 
   it("leaves host icon unset when the host runs on localhost", () => {
     expect(
-      createTruapiRuntimeConfig(
-        "localhost:3000",
-        {
-          origin: "http://localhost:5173",
-        } as Location,
-      ).hostIcon,
+      createTruapiRuntimeConfig("localhost:3000", {
+        origin: "http://localhost:5173",
+      } as Location).host.icon,
     ).toBeUndefined();
   });
 });

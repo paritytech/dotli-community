@@ -1,5 +1,5 @@
 import { getActiveServicesConfig } from "@dotli/config/network";
-import type { WasmRuntimeConfig } from "@parity/truapi-host-wasm";
+import type { HostCoreRuntimeConfig } from "@parity/truapi-host-wasm";
 
 type RuntimeLocation = Pick<Location, "origin">;
 
@@ -26,17 +26,25 @@ export function createTruapiRuntimeConfig(
   label: string,
   location: RuntimeLocation = window.location,
   productId: string = labelToProductId(label),
-): WasmRuntimeConfig {
+): HostCoreRuntimeConfig {
   void location;
   return {
     productId,
-    hostName: "Polkadot Web",
-    hostIcon: undefined,
-    hostVersion:
-      typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : undefined,
-    platformType: getPlatformType(),
-    platformVersion: undefined,
-    peopleChainGenesisHash: getActiveServicesConfig().people.genesis,
-    pairingDeeplinkScheme: "polkadotapp",
+    host: {
+      name: "Polkadot Web",
+      icon: undefined,
+      version:
+        typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : undefined,
+    },
+    platform: {
+      type: getPlatformType(),
+      version: undefined,
+    },
+    people: {
+      genesisHash: getActiveServicesConfig().people.genesis,
+    },
+    pairing: {
+      deeplinkScheme: "polkadotapp",
+    },
   };
 }

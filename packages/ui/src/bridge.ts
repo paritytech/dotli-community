@@ -84,8 +84,8 @@ interface CoreHost {
 }
 
 type CoreProvider = Provider & {
-  disconnect: () => Promise<void>;
-  cancelLogin: () => void;
+  disconnectSession: () => Promise<void>;
+  cancelPairing: () => void;
 };
 type CurrentProduct =
   | {
@@ -404,11 +404,11 @@ function wrapCoreProviderForDebug(
     subscribeClose(callback) {
       return provider.subscribeClose?.(callback) ?? (() => {});
     },
-    async disconnect() {
-      await provider.disconnect();
+    async disconnectSession() {
+      await provider.disconnectSession();
     },
-    cancelLogin() {
-      provider.cancelLogin();
+    cancelPairing() {
+      provider.cancelPairing();
     },
     dispose() {
       if (disposed) {
@@ -582,7 +582,7 @@ async function createHost(args: {
       return requestCoreLogin(coreProvider, reason);
     },
     disconnect() {
-      return coreProvider.disconnect();
+      return coreProvider.disconnectSession();
     },
     dispose() {
       disposePipe?.();
@@ -663,10 +663,10 @@ async function createLandingAuthHost(): Promise<CoreHost> {
       return requestCoreLogin(coreProvider, reason);
     },
     cancelLogin() {
-      coreProvider.cancelLogin();
+      coreProvider.cancelPairing();
     },
     disconnect() {
-      return coreProvider.disconnect();
+      return coreProvider.disconnectSession();
     },
     dispose() {
       coreProvider.dispose();

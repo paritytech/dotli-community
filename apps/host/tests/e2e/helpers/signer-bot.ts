@@ -124,7 +124,15 @@ export async function disconnect(
   svcToken: string,
   sessionId: string,
 ): Promise<void> {
-  await fetchWithTimeout(
+  await disconnectStrict(base, svcToken, sessionId).catch(() => {});
+}
+
+export async function disconnectStrict(
+  base: string,
+  svcToken: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
     `${base.replace(/\/$/, "")}/api/disconnect`,
     {
       method: "POST",
@@ -135,7 +143,14 @@ export async function disconnect(
       body: JSON.stringify({ sessionId }),
     },
     PAIR_REQUEST_TIMEOUT_MS,
-  ).catch(() => {});
+  );
+  if (!response.ok) {
+    throw new Error(`disconnect ${response.status}: ${await response.text()}`);
+  }
+  const body = (await response.json()) as { disconnected?: boolean };
+  if (body.disconnected !== true) {
+    throw new Error(`disconnect did not find session ${sessionId}`);
+  }
 }
 
 export interface BotHealth {

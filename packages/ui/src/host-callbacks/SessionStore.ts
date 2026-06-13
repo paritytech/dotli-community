@@ -120,10 +120,13 @@ export function emitPersistedSessionUiState(): void {
 
 export function createSessionStoreAdapters(): Pick<
   HostCallbacks,
-  "readSession" | "writeSession" | "clearSession" | "subscribeSessionStore"
+  | "readStoredSession"
+  | "writeStoredSession"
+  | "clearStoredSession"
+  | "subscribeStoredSession"
 > {
   return {
-    async readSession() {
+    async readStoredSession() {
       let raw: string | null = null;
       try {
         raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
@@ -135,7 +138,7 @@ export function createSessionStoreAdapters(): Pick<
       }
       return hexToBytes(raw);
     },
-    async writeSession(value) {
+    async writeStoredSession(value) {
       await writeSharedAuthStorage(
         SITE_ID,
         SHARED_CORE_SESSION_KEY,
@@ -143,12 +146,12 @@ export function createSessionStoreAdapters(): Pick<
       );
       emitLocalChange();
     },
-    async clearSession() {
+    async clearStoredSession() {
       await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
       await writeUiStateCache({ connected: false });
       emitLocalChange();
     },
-    subscribeSessionStore() {
+    subscribeStoredSession() {
       return createResultStream<undefined>([undefined], (push) => {
         const onLocalChange = (): void => {
           push(undefined);

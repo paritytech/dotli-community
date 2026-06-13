@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { extractQrPayload } from "./helpers/extract-qr-payload";
 import {
   disconnect,
+  disconnectStrict,
   generateUsername,
   health,
   pair,
@@ -41,9 +42,22 @@ const browserLogs: string[] = [];
 const screenshots: string[] = [];
 let screenshotSeq = 0;
 
+type AccountStatus = "Connected" | "Disconnected";
+type PlaygroundE2E = {
+  startAccountConnectionStatusProbe(): AccountStatus[];
+  accountConnectionStatuses(): AccountStatus[];
+  waitForAccountConnectionStatus(
+    status: AccountStatus,
+    timeoutMs?: number,
+  ): Promise<AccountStatus[]>;
+  stopAccountConnectionStatusProbe(): void;
+};
+
 declare global {
   interface Window {
     __dotliE2eAuthStates?: unknown[];
+    __truapiPlaygroundE2E?: PlaygroundE2E;
+    __TRUAPI_PLAYGROUND_E2E__?: boolean;
   }
 }
 
@@ -230,8 +244,13 @@ async function signInWithBot(page: Page): Promise<PairResult> {
     username,
     network,
   });
-  await waitForSignedIn(page, result);
-  await captureStep(page, "signed-in");
+  try {
+    await waitForSignedIn(page, result);
+    await captureStep(page, "signed-in");
+  } catch (error) {
+    await disconnect(base, token, result.sessionId);
+    throw error;
+  }
   return result;
 }
 
@@ -426,6 +445,94 @@ async function findPlaygroundFrame(page: Page) {
   throw new Error("playground iframe did not become ready");
 }
 
+async function waitForPlaygroundE2EHook(page: Page): Promise<void> {
+  const frame = await findPlaygroundFrame(page);
+  await frame.waitForFunction(() => Boolean(window.__truapiPlaygroundE2E), {
+    timeout: 15_000,
+  });
+}
+
+async function startAccountStatusProbe(page: Page): Promise<AccountStatus[]> {
+  await waitForPlaygroundE2EHook(page);
+  const frame = await findPlaygroundFrame(page);
+  return await frame.evaluate(() => {
+    const hook = window.__truapiPlaygroundE2E;
+    if (!hook) {
+      throw new Error("TrUAPI playground e2e hook missing");
+    }
+    return hook.startAccountConnectionStatusProbe();
+  });
+}
+
+async function waitForAccountStatus(
+  page: Page,
+  status: AccountStatus,
+  timeoutMs: number,
+): Promise<AccountStatus[]> {
+  const frame = await findPlaygroundFrame(page);
+  return await frame.evaluate(
+    ({ expected, timeout }) => {
+      const hook = window.__truapiPlaygroundE2E;
+      if (!hook) {
+        throw new Error("TrUAPI playground e2e hook missing");
+      }
+      return hook.waitForAccountConnectionStatus(expected, timeout);
+    },
+    { expected: status, timeout: timeoutMs },
+  );
+}
+
+async function stopAccountStatusProbe(page: Page): Promise<void> {
+  const frame = await findPlaygroundFrame(page).catch(() => null);
+  await frame
+    ?.evaluate(() => {
+      window.__truapiPlaygroundE2E?.stopAccountConnectionStatusProbe();
+    })
+    .catch(() => {});
+}
+
+async function assertSignerDisconnectAndReconnectUpdatesSession(
+  page: Page,
+  pairResult: PairResult,
+): Promise<PairResult> {
+  const { token, base } = requireBotEnv();
+  console.log("[e2e-dotli] validating account connection status disconnect");
+  await startAccountStatusProbe(page);
+  try {
+    const connected = await waitForAccountStatus(page, "Connected", 15_000);
+    console.log(
+      `[e2e-dotli] account statuses before disconnect: ${connected.join(",")}`,
+    );
+
+    await disconnectStrict(base, token, pairResult.sessionId);
+
+    const disconnected = await waitForAccountStatus(
+      page,
+      "Disconnected",
+      60_000,
+    );
+    console.log(
+      `[e2e-dotli] account statuses after disconnect: ${disconnected.join(",")}`,
+    );
+    await page
+      .locator("#auth-button .user-badge")
+      .waitFor({ state: "hidden", timeout: 15_000 });
+    await captureStep(page, "signed-out");
+
+    console.log("[e2e-dotli] validating account connection status reconnect");
+    await stopAccountStatusProbe(page);
+    await startAccountStatusProbe(page);
+    const reconnectResult = await signInWithBot(page);
+    const reconnected = await waitForAccountStatus(page, "Connected", 60_000);
+    console.log(
+      `[e2e-dotli] account statuses after reconnect: ${reconnected.join(",")}`,
+    );
+    return reconnectResult;
+  } finally {
+    await stopAccountStatusProbe(page);
+  }
+}
+
 async function runDiagnosis(page: Page): Promise<{
   summary: string;
   report: string;
@@ -552,6 +659,8 @@ async function main(): Promise<void> {
           localStorage.setItem("desktop-banner-dismissed", "1");
           sessionStorage.removeItem("dotli:truapi-debug");
           localStorage.setItem("truapi:logLevel", "debug");
+          localStorage.setItem("truapi:playground:e2e", "1");
+          window.__TRUAPI_PLAYGROUND_E2E__ = true;
           window.__dotliE2eAuthStates = [];
           window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
             window.__dotliE2eAuthStates?.push({
@@ -597,6 +706,10 @@ async function main(): Promise<void> {
     const stopClicker = startHostModalClicker(page);
     try {
       const { summary, report, copyReportClicked } = await runDiagnosis(page);
+      pairResult = await assertSignerDisconnectAndReconnectUpdatesSession(
+        page,
+        pairResult,
+      );
       const reportPath = resolve(outputDir, "diagnosis-report.md");
       const metadataPath = resolve(outputDir, "diagnosis-run.json");
       writeFileSync(reportPath, report);
@@ -609,6 +722,7 @@ async function main(): Promise<void> {
             copyReportClicked,
             screenshots,
             user: redactedPairResult(pairResult).user,
+            sessionLifecycle: "signer-disconnect-reconnect-updated-status",
             pageErrors,
             browserLogs,
             timestamp: new Date().toISOString(),
