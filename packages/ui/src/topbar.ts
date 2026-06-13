@@ -862,6 +862,25 @@ function renderModePopover(): void {
   const parent = modePopoverContent;
   parent.innerHTML = "";
 
+  // Mobile-only sheet header. On phones the popover becomes a full-screen
+  // sheet (CSS), which has no tappable backdrop to dismiss it, so it needs an
+  // explicit title and close control. Hidden on desktop, where the backdrop
+  // still handles dismissal.
+  const sheetHeader = document.createElement("div");
+  sheetHeader.className = "mode-popover-sheet-header";
+  const sheetTitle = document.createElement("span");
+  sheetTitle.className = "mode-popover-sheet-title";
+  sheetTitle.textContent = "Settings";
+  const sheetClose = document.createElement("button");
+  sheetClose.className = "mode-popover-sheet-close";
+  sheetClose.setAttribute("aria-label", "Close settings");
+  sheetClose.textContent = "✕";
+  sheetClose.addEventListener("click", () => {
+    setModePopoverOpen(false);
+  });
+  sheetHeader.append(sheetTitle, sheetClose);
+  parent.appendChild(sheetHeader);
+
   const persisted: ModeDraft = {
     chain: getBackend(),
     network: getNetwork(),
@@ -1022,13 +1041,20 @@ function renderModePopover(): void {
   appendSectionHeader(rightCol, "Diagnostics");
   renderDiagnostics(rightCol);
 
-  appendDivider();
+  // Footer wraps the divider, Save & Apply, and the warning as one unit so it
+  // can pin to the bottom of the full-screen sheet on mobile (CSS), keeping
+  // the primary action reachable. On desktop it is plain in-flow content.
+  const footer = document.createElement("div");
+  footer.className = "mode-apply-footer";
+  parent.appendChild(footer);
+
+  appendDivider(footer);
   const applyRow = document.createElement("div");
   applyRow.className = "mode-cache-row mode-apply-row";
   const applyBtn = document.createElement("button");
   applyBtn.className = "mode-clear-btn";
   applyRow.appendChild(applyBtn);
-  parent.appendChild(applyRow);
+  footer.appendChild(applyRow);
 
   // Warning text: applying reloads the app. Backend/network changes keep
   // caches warm; only caches the user turns off get cleared. Shown only
@@ -1037,7 +1063,7 @@ function renderModePopover(): void {
   resetWarning.className = "mode-apply-warning";
   resetWarning.textContent =
     "Applying reloads the app. Caches you turn off are cleared.";
-  parent.appendChild(resetWarning);
+  footer.appendChild(resetWarning);
 
   syncApply = (): void => {
     const dirty =
