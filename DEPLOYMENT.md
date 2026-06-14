@@ -33,7 +33,7 @@ works for the first boot and for later top-ups.
 ### Inputs you pass to the command
 
 | Variable               | Required | Notes                                                                                                                                                                                               |
-|------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ENV`                  | no       | One of `paseo`, `dev-paseo`, `dev-test`, `westend`, `dev-westend`, `dev-polkadot`. Defaults to `paseo`.                                                                                             |
 | `ADMIN_EMAIL`          | yes      | Let's Encrypt contact email.                                                                                                                                                                        |
 | `CLOUDFLARE_API_TOKEN` | yes      | Cloudflare token with DNS edit on the zone.                                                                                                                                                         |
