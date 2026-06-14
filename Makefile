@@ -13,7 +13,6 @@ REMOTE_PRD ?=
 REMOTE_STG ?=
 
 # env tag → site filename in /etc/nginx/sites-available/
-SITE_polkadot      := dot.li
 SITE_dev-polkadot  := dotli.dev
 SITE_paseo         := paseo.li
 SITE_dev-paseo     := paseoli.dev
@@ -21,8 +20,7 @@ SITE_dev-test      := testnet.li
 SITE_westend       := westend.li
 SITE_dev-westend   := westendli.dev
 
-# env tag → remote (only polkadot is prod; the rest share the staging box)
-REMOTE_FOR_polkadot      := $(REMOTE_PRD)
+# env tag → remote (every env currently shares the staging box)
 REMOTE_FOR_dev-polkadot  := $(REMOTE_STG)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
@@ -30,8 +28,7 @@ REMOTE_FOR_dev-test      := $(REMOTE_STG)
 REMOTE_FOR_westend       := $(REMOTE_STG)
 REMOTE_FOR_dev-westend   := $(REMOTE_STG)
 
-# env tag → web root on the remote (matches the `root` directive in nginx.<env>)
-DEPLOY_PATH_polkadot      := /var/www/dotli
+# env tag → web root on the remote (rendered into the `root` directive)
 DEPLOY_PATH_dev-polkadot  := /var/www/dotlidev
 DEPLOY_PATH_paseo         := /var/www/paseoli
 DEPLOY_PATH_dev-paseo     := /var/www/paseolidev
@@ -40,9 +37,8 @@ DEPLOY_PATH_westend       := /var/www/westendli
 DEPLOY_PATH_dev-westend   := /var/www/westendlidev
 
 # One cert per env covering <base>, *.<base>, and *.app.<base>. The cert
-# lands at /etc/letsencrypt/live/<base>/, matching ssl_certificate paths in
-# every server block of nginx.<env>. host.<base> is covered by *.<base>.
-CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
+# lands at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths
+# rendered into every server block. host.<base> is covered by *.<base>.
 CERT_DOMAINS_dev-polkadot := dotli.dev *.dotli.dev *.app.dotli.dev
 CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
 CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
@@ -50,10 +46,14 @@ CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 CERT_DOMAINS_westend      := westend.li *.westend.li *.app.westend.li
 CERT_DOMAINS_dev-westend  := westendli.dev *.westendli.dev *.app.westendli.dev
 
-VALID_ENVS := polkadot dev-polkadot paseo dev-paseo dev-test westend dev-westend
+VALID_ENVS := dev-polkadot paseo dev-paseo dev-test westend dev-westend
+
+# Production domains (env tags) that get nginx rate-limiting in the rendered
+# config; every other env renders with rate-limiting commented out.
+RATE_LIMITED_ENVS := paseo dev-test
 
 # Default env when none is passed on the command line.
-ENV ?= polkadot
+ENV ?= paseo
 
 # Packages required on a fresh Ubuntu 22.04+ box. The brotli module is split
 # across two packages on noble (filter + static) and both ship a drop-in in
@@ -61,7 +61,7 @@ ENV ?= polkadot
 # back certbot's API calls.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-.PHONY: build provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx _require-env
+.PHONY: build provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
 build:
 	bun run build
@@ -125,11 +125,26 @@ deploy: _require-env build
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 -o $$(whoami) -g $$(id -gn) $(REMOTE_PATH) $(REMOTE_PATH)/host $(REMOTE_PATH)/app $(REMOTE_PATH)/protocol'
 	$(call _rsync_dist,$(REMOTE_TARGET),$(REMOTE_PATH))
 
+# env tag → envsubst tokens for nginx/nginx.conf.template. ZONE is a unique
+# per-domain limit_req zone name; RL is "" (rate-limiting on) for the
+# RATE_LIMITED_ENVS and "#" (commented out) for everything else.
+_nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
+	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
+	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,\#)' \
+	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL' < nginx/nginx.conf.template
+
+# Preview the rendered nginx config for ENV on stdout (no remote changes).
+render-nginx: _require-env-name
+	@command -v envsubst >/dev/null || { echo "render-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
+	@$(_nginx_render)
+
 deploy-nginx: _require-env
+	@command -v envsubst >/dev/null || { echo "deploy-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
+	$(_nginx_render) > /tmp/$(SITE).nginx
 	rsync -avz --delete nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
-	scp nginx/nginx.$(ENV) $(REMOTE_TARGET):/tmp/$(SITE).nginx
+	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
 define _rsync_dist
@@ -146,7 +161,11 @@ ci-deploy:
 	$(call _rsync_dist,$(DEPLOY_USER)@$(DEPLOY_HOST),$(DEPLOY_PATH))
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'find $(DEPLOY_PATH)/*/assets/ -type f -mtime +7 -delete 2>/dev/null || true'
 
-_require-env:
+# Validates ENV is a known tag. No remote required, so render-nginx can use it.
+_require-env-name:
 	@test -n "$(ENV)" || (echo "ENV not set. Use ENV=<$(subst $() ,|,$(VALID_ENVS))>"; exit 1)
 	@test -n "$(DEPLOY_PATH_$(ENV))" || (echo "Unknown ENV: $(ENV). Valid: $(VALID_ENVS)"; exit 1)
+
+# Adds the remote-target requirement for targets that touch a box.
+_require-env: _require-env-name
 	@test -n "$(or $(REMOTE),$(REMOTE_FOR_$(ENV)))" || (echo "No deploy target for ENV=$(ENV). Set REMOTE_PRD/REMOTE_STG in deploy.env (copy deploy.env.example) or pass REMOTE=user@host."; exit 1)

@@ -68,8 +68,9 @@ Actions path reads `DEPLOY_HOST` / `DEPLOY_USER` from repository secrets via the
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
 6. `deploy` — runs `bun run build` on your machine
    `dist/` outputs into the env's web root.
-7. `deploy-nginx` — installs `nginx/snippets/` and `nginx/nginx.<env>` into
-   `/etc/nginx/`, runs `nginx -t`, and reloads nginx.
+7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst)
+   and installs it plus `nginx/snippets/` into `/etc/nginx/`, runs `nginx -t`,
+   and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
 
 ## Run it
 

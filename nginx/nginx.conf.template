@@ -1,11 +1,20 @@
-# westendli.dev NGINX Configuration
+# ${DOMAIN} NGINX configuration — DO NOT EDIT THE INSTALLED COPY.
+#
+# Rendered per-env from nginx/nginx.conf.template by `make deploy-nginx`
+# (envsubst). Substituted tokens: ${DOMAIN}, ${WEBROOT}, ${ZONE}, ${RL}.
+# ${RL} is "" to enable rate-limiting (paseo.li / testnet.li) or "#" to
+# comment it out (all other envs). nginx's own $variables are left intact.
 #
 # Three-build architecture:
-#   host.westendli.dev    → Shared protocol host (smoldot, shared chain cache)
-#   *.westendli.dev       → Host build (topbar, routing shell, bridge)
-#   *.app.westendli.dev   → App build  (CID from subdomain, P2P fetch, render)
+#   host.${DOMAIN}    → Shared protocol host (smoldot, shared chain cache)
+#   *.${DOMAIN}       → Host build (topbar, routing shell, bridge)
+#   *.app.${DOMAIN}   → App build  (CID from subdomain, P2P fetch, render)
 #
-# SSL cert covers: westendli.dev (separate cert for *.app.westendli.dev).
+# SSL cert covers ${DOMAIN}, *.${DOMAIN}, *.app.${DOMAIN} (single multi-SAN
+# cert at /etc/letsencrypt/live/${DOMAIN}/). Web roots live under ${WEBROOT}/*.
+
+# Rate-limiting zone (only enabled on the production domains).
+${RL}limit_req_zone $binary_remote_addr zone=${ZONE}:10m rate=15r/s;
 
 # ────────────────────────────────────────────────────────────
 # HTTP → HTTPS redirect
@@ -13,23 +22,23 @@
 
 server {
     listen 80;
-    server_name westendli.dev *.westendli.dev host.westendli.dev *.app.westendli.dev;
+    server_name ${DOMAIN} *.${DOMAIN} host.${DOMAIN} *.app.${DOMAIN};
     return 301 https://$host$request_uri;
 }
 
 # ────────────────────────────────────────────────────────────
-# Root domain: westendli.dev — Landing page
+# Root domain: ${DOMAIN} — Landing page
 # ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;
-    server_name westendli.dev;
+    server_name ${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/westendli.dev/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/westendli.dev/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    root /var/www/westendlidev/host;
+    root ${WEBROOT}/host;
     index index.html;
 
     include /etc/nginx/snippets/sentry-tunnel.conf;
@@ -46,22 +55,23 @@ server {
 }
 
 # ────────────────────────────────────────────────────────────
-# App build: *.app.westendli.dev — CID content fetching & rendering
+# App build: *.app.${DOMAIN} — CID content fetching & rendering
 # ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;
-    server_name *.app.westendli.dev;
+    server_name *.app.${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/westendli.dev/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/westendli.dev/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    set $csp_ancestors "westendli.dev *.westendli.dev *.app.westendli.dev";
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
+    set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN}";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    root /var/www/westendlidev/app;
+    root ${WEBROOT}/app;
     index index.html;
 
     include /etc/nginx/snippets/sentry-tunnel.conf;
@@ -74,22 +84,23 @@ server {
 }
 
 # ────────────────────────────────────────────────────────────
-# Shared protocol build: host.westendli.dev — smoldot / shared cache origin
+# Shared protocol build: host.${DOMAIN} — smoldot / shared cache origin
 # ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;
-    server_name host.westendli.dev;
+    server_name host.${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/westendli.dev/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/westendli.dev/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    set $csp_ancestors "westendli.dev *.westendli.dev *.app.westendli.dev revx.dev stg.revx.dev http://localhost:*";
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
+    set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN} revx.dev stg.revx.dev http://localhost:*";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    root /var/www/westendlidev/protocol;
+    root ${WEBROOT}/protocol;
     index index.html;
 
     include /etc/nginx/snippets/sentry-tunnel.conf;
@@ -101,21 +112,22 @@ server {
 }
 
 # ────────────────────────────────────────────────────────────
-# Host build: *.westendli.dev — Shell with topbar, routing, bridge
+# Host build: *.${DOMAIN} — Shell with topbar, routing, bridge
 # ────────────────────────────────────────────────────────────
 
 server {
     listen 443 ssl http2;
-    server_name *.westendli.dev;
+    server_name *.${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/westendli.dev/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/westendli.dev/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
     include /etc/nginx/snippets/dotli-headers-host.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
-    root /var/www/westendlidev/host;
+    root ${WEBROOT}/host;
 
     include /etc/nginx/snippets/sentry-tunnel.conf;
     include /etc/nginx/snippets/dotli-assets-host.conf;
