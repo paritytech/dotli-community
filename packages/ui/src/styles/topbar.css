@@ -36,6 +36,7 @@
   z-index: 1000;
 }
 .topbar-left {
+  grid-column: 1;
   display: flex;
   width: fit-content;
   align-items: center;
@@ -214,7 +215,7 @@
   }
 }
 .topbar-url {
-  flex: 1;
+  grid-column: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -268,6 +269,7 @@
   flex-shrink: 0;
 }
 .topbar-right {
+  grid-column: 3;
   display: flex;
   align-items: center;
   gap: 4px;
