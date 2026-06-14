@@ -18,6 +18,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "typecheck": "turbo run typecheck",
+    "set-version": "bun scripts/set-version.ts",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
   },
   "devDependencies": {
