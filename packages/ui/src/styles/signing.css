@@ -48,8 +48,8 @@
 }
 .signing-field-value.mono {
   font-family:
-    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
-    Consolas, "DejaVu Sans Mono", monospace;
+    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
+    "DejaVu Sans Mono", monospace;
   font-size: 0.75rem;
   color: #aaa;
   background: #0d0d0d;
@@ -64,6 +64,132 @@
   color: #e0e0e0;
   line-height: 1.5;
   list-style: none;
+}
+/* Smart-contract allowance — info icon + signing-account tooltip */
+.allocation-info-wrap {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.allocation-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  cursor: help;
+  border-radius: 50%;
+}
+.allocation-info-icon:hover,
+.allocation-info-wrap:focus-within .allocation-info-icon {
+  color: #ccc;
+}
+.allocation-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: 14px;
+  background: rgba(28, 28, 28, 0.98);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  text-align: left;
+  z-index: 3100;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.allocation-info-wrap.is-open .allocation-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.allocation-tooltip-title {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 12px;
+}
+.allocation-account-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.15s ease;
+}
+.allocation-account-summary::-webkit-details-marker {
+  display: none;
+}
+.allocation-account-summary:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.allocation-account-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+.allocation-account-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.45);
+  transition: transform 0.15s ease;
+}
+.allocation-account[open] .allocation-account-chevron {
+  transform: rotate(180deg);
+}
+.allocation-account-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+.allocation-account-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.allocation-account-copy:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+.allocation-account-copy.copied {
+  color: #4ade80;
+}
+.allocation-account-address {
+  flex: 1;
+  min-width: 0;
+  font-family:
+    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
+    "DejaVu Sans Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  word-break: break-all;
 }
 .signing-modal-footer {
   display: flex;

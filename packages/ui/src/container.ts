@@ -685,34 +685,51 @@ function wireContainerHandlers(
       }
 
       return fromPromise(
-        showAllocationRequestModal(label, resources, async () => {
-          const outcomes = await session
-            .requestResourceAllocation({
-              callingProductId: labelToProductIdentifier(label),
-              // The product-facing host-api protocol spells this variant
-              // `BulletinAllowance`, but papp's host-to-mobile resource
-              // allocation codec still uses the legacy `BulletInAllowance`.
-              // Translate on the way in so the scale codec finds the variant.
-              resources: resources.map((r) =>
-                r.tag === "BulletinAllowance"
-                  ? { tag: "BulletInAllowance" as const, value: undefined }
-                  : r,
-              ),
-              onExisting: "Increase",
-            })
-            .match(
-              (o) => o,
-              (e) => {
-                throw e;
-              },
+        showAllocationRequestModal(
+          label,
+          resources,
+          async () => {
+            const outcomes = await session
+              .requestResourceAllocation({
+                callingProductId: labelToProductIdentifier(label),
+                // The product-facing host-api protocol spells this variant
+                // `BulletinAllowance`, but papp's host-to-mobile resource
+                // allocation codec still uses the legacy `BulletInAllowance`.
+                // Translate on the way in so the scale codec finds the variant.
+                resources: resources.map((r) =>
+                  r.tag === "BulletinAllowance"
+                    ? { tag: "BulletInAllowance" as const, value: undefined }
+                    : r,
+                ),
+                onExisting: "Increase",
+              })
+              .match(
+                (o) => o,
+                (e) => {
+                  throw e;
+                },
+              );
+            // Strip secret payload from Allocated outcomes before returning to product.
+            return outcomes.map((o) =>
+              o.tag === "Allocated"
+                ? ({ tag: "Allocated", value: undefined } as const)
+                : o,
             );
-          // Strip secret payload from Allocated outcomes before returning to product.
-          return outcomes.map((o) =>
-            o.tag === "Allocated"
-              ? ({ tag: "Allocated", value: undefined } as const)
-              : o,
-          );
-        }),
+          },
+          {
+            // `SmartContractAllowance.value` is the app account's derivation
+            // index; derive its SS58 address for the tooltip, mirroring the
+            // legacy-signing handlers above.
+            resolveContractAccount: (index) =>
+              productPublicKeyToAddress(
+                deriveProductPublicKey(
+                  session.rootAccountId,
+                  labelToProductIdentifier(label),
+                  index,
+                ),
+              ),
+          },
+        ),
         (e) =>
           new ResourceAllocationErr.Unknown({
             reason: e instanceof Error ? e.message : String(e),

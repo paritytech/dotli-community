@@ -51,9 +51,47 @@ describe("showAllocationRequestModal", () => {
     expect(items).toEqual([
       "Post statements on your behalf",
       "Publish bulletin posts on your behalf",
-      "Sign up to 5 smart-contract calls automatically",
+      "Sign smart-contract calls automatically",
       "Sign transactions automatically",
     ]);
+  });
+
+  it("adds a signing-account tooltip for smart-contract allowances when a resolver is given", () => {
+    const resources: AllocatableResourceValue[] = [
+      { tag: "SmartContractAllowance", value: 0 },
+    ];
+
+    void showAllocationRequestModal("myapp", resources, async () => allowed, {
+      resolveContractAccount: (index) => `5Addr${String(index)}`,
+    });
+
+    const modal = findModal();
+    expect(modal.querySelector(".allocation-tooltip-title")?.textContent).toBe(
+      "Following accounts will sign contract calls automatically:",
+    );
+
+    // The account label is the disclosure summary; the SS58 address is tucked
+    // inside the collapsible <details>.
+    const summary = modal.querySelector("summary.allocation-account-summary");
+    expect(
+      summary?.querySelector(".allocation-account-label")?.textContent,
+    ).toBe("App account with index 0");
+
+    const details = modal.querySelector("details.allocation-account");
+    expect(details).not.toBeNull();
+    expect(
+      details?.querySelector(".allocation-account-address")?.textContent,
+    ).toBe("5Addr0");
+  });
+
+  it("omits the tooltip when no resolver is provided", () => {
+    const resources: AllocatableResourceValue[] = [
+      { tag: "SmartContractAllowance", value: 0 },
+    ];
+
+    void showAllocationRequestModal("myapp", resources, async () => allowed);
+
+    expect(findModal().querySelector(".allocation-tooltip")).toBeNull();
   });
 
   it("resolves with the wallet outcomes on Allow", async () => {
