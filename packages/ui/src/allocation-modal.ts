@@ -24,7 +24,7 @@ function describeResource(resource: AllocatableResourceValue): string {
     case "BulletinAllowance":
       return "Publish bulletin posts on your behalf";
     case "SmartContractAllowance":
-      return `Sign up to ${String(resource.value)} smart-contract calls automatically`;
+      return "Sign smart-contract calls automatically";
     case "AutoSigning":
       return "Sign transactions automatically";
     default: {

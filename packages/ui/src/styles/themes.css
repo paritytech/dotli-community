@@ -256,6 +256,9 @@
 [data-theme="light"] .signing-field-value {
   color: #333;
 }
+[data-theme="light"] .allocation-modal-list {
+  color: #333;
+}
 [data-theme="light"] .signing-field-value.mono {
   background: #f5f5f5;
   border-color: #ddd;

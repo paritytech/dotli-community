@@ -59,6 +59,12 @@
   max-height: 120px;
   overflow-y: auto;
 }
+.allocation-modal-list {
+  font-size: 0.85rem;
+  color: #e0e0e0;
+  line-height: 1.5;
+  list-style: none;
+}
 .signing-modal-footer {
   display: flex;
   gap: 8px;
