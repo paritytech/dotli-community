@@ -85,9 +85,9 @@
   color: #ccc;
 }
 .allocation-tooltip {
+  /* Positioned by JS (`place()`) on each reveal, so it can escape the
+     `.signing-fields` overflow clip — no static top/left needed. */
   position: fixed;
-  top: 0;
-  left: 0;
   width: 320px;
   max-width: calc(100vw - 16px);
   padding: 14px;

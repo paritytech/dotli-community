@@ -41,6 +41,31 @@ const CHEVRON_ICON_SVG =
 let tooltipSeq = 0;
 
 /**
+ * A `setTimeout` wrapper whose `schedule()` (re)starts the timer, replacing any
+ * pending run, and `cancel()` clears it — keeps the clear-then-set bookkeeping
+ * in one place.
+ */
+function resettableTimeout(
+  action: () => void,
+  delayMs: number,
+): { schedule: () => void; cancel: () => void } {
+  let id: ReturnType<typeof setTimeout> | undefined;
+  const cancel = (): void => {
+    if (id !== undefined) {
+      clearTimeout(id);
+      id = undefined;
+    }
+  };
+  return {
+    cancel,
+    schedule: () => {
+      cancel();
+      id = setTimeout(action, delayMs);
+    },
+  };
+}
+
+/**
  * Build the info icon + hover/focus tooltip naming the app account that will
  * auto-sign smart-contract calls. The tooltip is `position: fixed` (placed via
  * JS on reveal) so it escapes the `.signing-fields` overflow clip.
@@ -106,21 +131,17 @@ function buildContractAccountInfo(index: number, address: string): HTMLElement {
   copyBtn.title = "Copy address";
   copyBtn.setAttribute("aria-label", "Copy address");
   copyBtn.innerHTML = COPY_ICON_SVG;
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  const resetCopied = resettableTimeout(() => {
+    copyBtn.classList.remove("copied");
+    copyBtn.innerHTML = COPY_ICON_SVG;
+  }, 1000);
   copyBtn.addEventListener("click", (e) => {
     // Don't let the click bubble to the backdrop (which dismisses the modal).
     e.stopPropagation();
     void navigator.clipboard.writeText(address).then(() => {
       copyBtn.classList.add("copied");
       copyBtn.innerHTML = CHECK_ICON_SVG;
-      if (copiedTimer !== undefined) {
-        clearTimeout(copiedTimer);
-      }
-      copiedTimer = setTimeout(() => {
-        copyBtn.classList.remove("copied");
-        copyBtn.innerHTML = COPY_ICON_SVG;
-        copiedTimer = undefined;
-      }, 1000);
+      resetCopied.schedule();
     });
   });
   body.appendChild(copyBtn);
@@ -153,28 +174,18 @@ function buildContractAccountInfo(index: number, address: string): HTMLElement {
   // leaves. Otherwise crossing the gap between the icon and the fixed tooltip
   // drops `:hover` and hides it before the user can reach it to expand.
   const CLOSE_DELAY_MS = 300;
-  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  const closeTooltip = resettableTimeout(() => {
+    wrap.classList.remove("is-open");
+  }, CLOSE_DELAY_MS);
   const open = (): void => {
-    if (closeTimer !== undefined) {
-      clearTimeout(closeTimer);
-      closeTimer = undefined;
-    }
+    closeTooltip.cancel();
     wrap.classList.add("is-open");
     place();
   };
-  const scheduleClose = (): void => {
-    if (closeTimer !== undefined) {
-      clearTimeout(closeTimer);
-    }
-    closeTimer = setTimeout(() => {
-      wrap.classList.remove("is-open");
-      closeTimer = undefined;
-    }, CLOSE_DELAY_MS);
-  };
   wrap.addEventListener("mouseenter", open);
-  wrap.addEventListener("mouseleave", scheduleClose);
+  wrap.addEventListener("mouseleave", closeTooltip.schedule);
   wrap.addEventListener("focusin", open);
-  wrap.addEventListener("focusout", scheduleClose);
+  wrap.addEventListener("focusout", closeTooltip.schedule);
   // Expanding/collapsing changes the tooltip height — re-anchor so it doesn't
   // spill off-screen.
   details.addEventListener("toggle", place);
