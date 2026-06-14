@@ -21,5 +21,8 @@ export default defineConfig({
   define: {
     "import.meta.env.DEV": "false",
     "import.meta.env.VITE_APP_DEBUG": '"true"',
+    // getEnabledNetworks() requires VITE_NETWORKS (no default by design); the
+    // test build supplies it the same way a deployment does.
+    "import.meta.env.VITE_NETWORKS": '"paseo-next-v2,previewnet"',
   },
 });
