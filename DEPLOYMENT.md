@@ -8,13 +8,17 @@ works for the first boot and for later top-ups.
 
 ### Remote server
 
-- Ubuntu 24.04+ (Noble) with `sudo` for the SSH user.
+- Ubuntu 24.04+ (Noble).
+- The SSH user must have **passwordless `sudo`** — the provisioning steps run
+  `sudo` non-interactively over SSH (no TTY), so a password prompt makes them
+  fail. Either grant the user `NOPASSWD` sudo (e.g. a drop-in in
+  `/etc/sudoers.d/`), or connect as `root` directly (`REMOTE=root@<ip>`).
 - Reachable over SSH from your machine without a password (key-based auth).
 - Public IP with ports `22`, `80`, and `443` open (the firewall step opens these via `ufw`).
 
 ### DNS
 
-- The zone for the env's base domain (e.g. `dot.li`) managed in Cloudflare.
+- The zone for the env's base domain (e.g. `paseo.li`) managed in Cloudflare.
 - `A` / `AAAA` records pointing to the box for the apex.
 - A Cloudflare API token scoped to **Zone → DNS → Edit** on that zone.
 
@@ -29,8 +33,8 @@ works for the first boot and for later top-ups.
 ### Inputs you pass to the command
 
 | Variable               | Required | Notes                                                                                                                                                                                               |
-| ---------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENV`                  | no       | One of `polkadot`, `dev-polkadot`, `paseo`, `dev-paseo`, `dev-test`, `westend`, `dev-westend`. Defaults to `polkadot`                                                                               |
+|------------------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ENV`                  | no       | One of `paseo`, `dev-paseo`, `dev-test`, `westend`, `dev-westend`, `dev-polkadot`. Defaults to `paseo`.                                                                                             |
 | `ADMIN_EMAIL`          | yes      | Let's Encrypt contact email.                                                                                                                                                                        |
 | `CLOUDFLARE_API_TOKEN` | yes      | Cloudflare token with DNS edit on the zone.                                                                                                                                                         |
 | `REMOTE`               | no       | `user@host` override. When unset, the target resolves from `REMOTE_PRD` / `REMOTE_STG` (see [Configure deploy targets](#configure-deploy-targets)). Pass this to deploy a box not covered by those. |
@@ -76,7 +80,7 @@ Actions path reads `DEPLOY_HOST` / `DEPLOY_USER` from repository secrets via the
 
 ```sh
 make provision \
-  ENV=polkadot \
+  ENV=paseo \
   REMOTE=ubuntu@ip.for.machine \
   ADMIN_EMAIL=ops@example.com \
   CLOUDFLARE_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxx

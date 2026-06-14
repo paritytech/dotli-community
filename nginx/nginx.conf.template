@@ -41,8 +41,6 @@ server {
     root ${WEBROOT}/host;
     index index.html;
 
-    include /etc/nginx/snippets/sentry-tunnel.conf;
-
     location = /__preview {
         set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
@@ -74,7 +72,6 @@ server {
     root ${WEBROOT}/app;
     index index.html;
 
-    include /etc/nginx/snippets/sentry-tunnel.conf;
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
@@ -103,7 +100,6 @@ server {
     root ${WEBROOT}/protocol;
     index index.html;
 
-    include /etc/nginx/snippets/sentry-tunnel.conf;
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
     location / {
@@ -129,7 +125,6 @@ server {
 
     root ${WEBROOT}/host;
 
-    include /etc/nginx/snippets/sentry-tunnel.conf;
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
 
