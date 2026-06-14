@@ -13,6 +13,7 @@ REMOTE_PRD ?=
 REMOTE_STG ?=
 
 # env tag → site filename in /etc/nginx/sites-available/
+SITE_polkadot      := dot.li
 SITE_dev-polkadot  := dotli.dev
 SITE_paseo         := paseo.li
 SITE_dev-paseo     := paseoli.dev
@@ -20,7 +21,8 @@ SITE_dev-test      := testnet.li
 SITE_westend       := westend.li
 SITE_dev-westend   := westendli.dev
 
-# env tag → remote (every env currently shares the staging box)
+# env tag → remote (only polkadot is prod; the rest share the staging box)
+REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_dev-polkadot  := $(REMOTE_STG)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
@@ -29,6 +31,7 @@ REMOTE_FOR_westend       := $(REMOTE_STG)
 REMOTE_FOR_dev-westend   := $(REMOTE_STG)
 
 # env tag → web root on the remote (rendered into the `root` directive)
+DEPLOY_PATH_polkadot      := /var/www/dotli
 DEPLOY_PATH_dev-polkadot  := /var/www/dotlidev
 DEPLOY_PATH_paseo         := /var/www/paseoli
 DEPLOY_PATH_dev-paseo     := /var/www/paseolidev
@@ -39,6 +42,7 @@ DEPLOY_PATH_dev-westend   := /var/www/westendlidev
 # One cert per env covering <base>, *.<base>, and *.app.<base>. The cert
 # lands at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths
 # rendered into every server block. host.<base> is covered by *.<base>.
+CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
 CERT_DOMAINS_dev-polkadot := dotli.dev *.dotli.dev *.app.dotli.dev
 CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
 CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
@@ -46,7 +50,7 @@ CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 CERT_DOMAINS_westend      := westend.li *.westend.li *.app.westend.li
 CERT_DOMAINS_dev-westend  := westendli.dev *.westendli.dev *.app.westendli.dev
 
-VALID_ENVS := dev-polkadot paseo dev-paseo dev-test westend dev-westend
+VALID_ENVS := polkadot dev-polkadot paseo dev-paseo dev-test westend dev-westend
 
 # Production domains (env tags) that get nginx rate-limiting in the rendered
 # config; every other env renders with rate-limiting commented out.
