@@ -1,0 +1,392 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 1bd2a09bfc584e7368da35215a6ed12dbae54bd9..381d2cb6f2b271712a4367b57cbb34434afa99b4 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -9,6 +9,6 @@ export { AllowanceError } from './sso/allowance/index.js';
+ export type { UserSession } from './sso/sessionManager/userSession.js';
+ export type { StoredUserSession } from './sso/userSessionRepository.js';
+ export type { Identity } from './identity/types.js';
+-export type { SigningPayloadRequest, SigningPayloadResponse, SigningRawRequest, SigningRequest, } from './sso/sessionManager/scale/signing.js';
++export type { SignRawLegacyRequest, SignRawLegacyResponse, SigningPayloadRequest, SigningPayloadResponse, SigningRawRequest, SigningRequest, } from './sso/sessionManager/scale/signing.js';
+ export type { RingVrfAliasRequest, RingVrfAliasResponse } from './sso/sessionManager/scale/ringVrf.js';
+-export type { CreateTransactionRequest, CreateTransactionResponse, } from './sso/sessionManager/scale/createTransaction.js';
++export type { CreateTransactionLegacyRequest, CreateTransactionRequest, CreateTransactionResponse, } from './sso/sessionManager/scale/createTransaction.js';
+diff --git a/dist/sso/auth/attestationService.d.ts b/dist/sso/auth/attestationService.d.ts
+index e9abeb9879cce07e48074cd30a1e99186e642b7c..904a20834db5f5e5e74a344938f6b9b5a46aa4c3 100644
+--- a/dist/sso/auth/attestationService.d.ts
++++ b/dist/sso/auth/attestationService.d.ts
+@@ -3,7 +3,7 @@ import type { ResultAsync } from 'neverthrow';
+ import type { DerivedSr25519Account } from '../../crypto.js';
+ export declare function createSudoAliceVerifier(): DerivedSr25519Account;
+ export declare function withRetry<T>(fn: () => Promise<T>, maxRetries?: number): Promise<T>;
+-export declare const createAttestationService: (lazyClient: LazyClient) => {
++export declare const createAttestationService: (lazyClient: LazyClient, debugFlowId?: string) => {
+     claimUsername(): string;
+     grantVerifierAllowance(verifier: DerivedSr25519Account): ResultAsync<void, Error>;
+     getRingRfKey(candidate: DerivedSr25519Account): Uint8Array<ArrayBufferLike>;
+diff --git a/dist/sso/auth/attestationService.js b/dist/sso/auth/attestationService.js
+index 08b81aa0865019a94cf67ea29db2b6de1f3dba97..ea19c3cad34148cb0ecb3ac3e78d5fc078c1c674 100644
+--- a/dist/sso/auth/attestationService.js
++++ b/dist/sso/auth/attestationService.js
+@@ -9,6 +9,7 @@ import { mergeUint8 } from 'polkadot-api/utils';
+ import { Bytes, Option, Tuple, str } from 'scale-ts';
+ import { member_from_entropy, sign } from 'verifiablejs/bundler';
+ import { deriveSr25519Account, getEncrPub, stringToBytes } from '../../crypto.js';
++import { emitHostPappDebugMessage } from '../../debugBus.js';
+ import { toError } from '../../helpers/utils.js';
+ const accountId = AccountId();
+ export function createSudoAliceVerifier() {
+@@ -22,11 +23,21 @@ export function withRetry(fn, maxRetries = 1) {
+         throw error;
+     });
+ }
+-export const createAttestationService = (lazyClient) => {
++export const createAttestationService = (lazyClient, debugFlowId) => {
+     const service = {
+         claimUsername() {
+             const nameSuffixFactory = customAlphabet('abcdefghijklmnopqrstuvwxyz', 4);
+-            return `guest${nameSuffixFactory()}.${createNumericSuffix(4)}`;
++            const username = `guest${nameSuffixFactory()}.${createNumericSuffix(4)}`;
++            if (debugFlowId !== undefined) {
++                emitHostPappDebugMessage({
++                    layer: 'attestation',
++                    event: 'username_claimed',
++                    flowId: debugFlowId,
++                    timestamp: Date.now(),
++                    payload: { username },
++                });
++            }
++            return username;
+         },
+         grantVerifierAllowance(verifier) {
+             const client = lazyClient.getClient();
+@@ -46,7 +57,19 @@ export const createAttestationService = (lazyClient) => {
+                 });
+                 return withRetry(() => sudoCall.signAndSubmit(createPeopleSigner(verifier)).then(() => undefined));
+             }, toError);
+-            return verifierAllowance.andThen(verifierAllowance => (verifierAllowance > 0 ? okAsync() : getAllowance()));
++            return verifierAllowance
++                .andThen(verifierAllowance => (verifierAllowance > 0 ? okAsync() : getAllowance()))
++                .andTee(() => {
++                if (debugFlowId !== undefined) {
++                    emitHostPappDebugMessage({
++                        layer: 'attestation',
++                        event: 'allowance_granted',
++                        flowId: debugFlowId,
++                        timestamp: Date.now(),
++                        payload: { verifierAccountId: verifierAddress },
++                    });
++                }
++            });
+         },
+         getRingRfKey(candidate) {
+             const verifiableEntropy = blake2b256(candidate.entropy);
+@@ -65,6 +88,15 @@ export const createAttestationService = (lazyClient) => {
+             const usernameWithoutDigits = username.split('.')[0] ?? username;
+             const candidateSignature = candidate.sign(message);
+             const proofOfOwnership = sign(verifiableEntropy, message);
++            if (debugFlowId !== undefined) {
++                emitHostPappDebugMessage({
++                    layer: 'attestation',
++                    event: 'vrf_proof_generated',
++                    flowId: debugFlowId,
++                    timestamp: Date.now(),
++                    payload: { candidateAccountId: accountId.dec(candidate.publicKey) },
++                });
++            }
+             const ResourceSignatureCodec = Tuple(
+             // candidate PublicKey (32 bytes)
+             Bytes(32), 
+@@ -141,7 +173,21 @@ export const createAttestationService = (lazyClient) => {
+                 });
+                 return fromPromise(withRetry(submitAttestation), toError).map(() => undefined);
+             })
+-                .andTee(() => console.log(`Attestation for ${accountId.dec(candidate.publicKey)} successfully passed.`));
++                .andTee(() => {
++                console.log(`Attestation for ${accountId.dec(candidate.publicKey)} successfully passed.`);
++                if (debugFlowId !== undefined) {
++                    emitHostPappDebugMessage({
++                        layer: 'attestation',
++                        event: 'person_registered',
++                        flowId: debugFlowId,
++                        timestamp: Date.now(),
++                        payload: {
++                            username,
++                            candidateAccountId: accountId.dec(candidate.publicKey),
++                        },
++                    });
++                }
++            });
+         },
+     };
+     return service;
+diff --git a/dist/sso/sessionManager/scale/createTransaction.d.ts b/dist/sso/sessionManager/scale/createTransaction.d.ts
+index 9ba4944c703dca63598dceeedc8e25cd9bb0dd04..4bb23cab1e60cf675de3d01d04bdee54c09b7610 100644
+--- a/dist/sso/sessionManager/scale/createTransaction.d.ts
++++ b/dist/sso/sessionManager/scale/createTransaction.d.ts
+@@ -16,6 +16,23 @@ export declare const CreateTransactionRequestCodec: import("scale-ts").Codec<{
+         };
+     };
+ }>;
++export type CreateTransactionLegacyRequest = CodecType<typeof CreateTransactionLegacyRequestCodec>;
++export declare const CreateTransactionLegacyRequestCodec: import("scale-ts").Codec<{
++    payload: {
++        tag: "v1";
++        value: {
++            signer: Uint8Array<ArrayBufferLike>;
++            genesisHash: Uint8Array<ArrayBufferLike>;
++            callData: Uint8Array<ArrayBufferLike>;
++            extensions: {
++                id: string;
++                extra: Uint8Array<ArrayBufferLike>;
++                additionalSigned: Uint8Array<ArrayBufferLike>;
++            }[];
++            txExtVersion: number;
++        };
++    };
++}>;
+ export type CreateTransactionResponse = CodecType<typeof CreateTransactionResponseCodec>;
+ export declare const CreateTransactionResponseCodec: import("scale-ts").Codec<{
+     respondingTo: string;
+diff --git a/dist/sso/sessionManager/scale/createTransaction.js b/dist/sso/sessionManager/scale/createTransaction.js
+index 2098c0a47b417bae549f99f65c2344de8bc82233..1d3796771fca3ac0f94c09cc052509bf18de5a6a 100644
+--- a/dist/sso/sessionManager/scale/createTransaction.js
++++ b/dist/sso/sessionManager/scale/createTransaction.js
+@@ -1,4 +1,4 @@
+-import { ProductAccountTransaction } from '@novasamatech/host-api';
++import { LegacyTransaction, ProductAccountTransaction } from '@novasamatech/host-api';
+ import { Enum } from '@novasamatech/scale';
+ import { Bytes, Result, Struct, str } from 'scale-ts';
+ export const CreateTransactionRequestCodec = Struct({
+@@ -6,6 +6,11 @@ export const CreateTransactionRequestCodec = Struct({
+         v1: ProductAccountTransaction,
+     }),
+ });
++export const CreateTransactionLegacyRequestCodec = Struct({
++    payload: Enum({
++        v1: LegacyTransaction,
++    }),
++});
+ export const CreateTransactionResponseCodec = Struct({
+     // referencing to RemoteMessage.messageId
+     respondingTo: str,
+diff --git a/dist/sso/sessionManager/scale/remoteMessage.d.ts b/dist/sso/sessionManager/scale/remoteMessage.d.ts
+index 545a5ae4b66e54277f1509b781cffcf25719a469..e651b3047460e4e41b3577ae9acbff7b0a5441ed 100644
+--- a/dist/sso/sessionManager/scale/remoteMessage.d.ts
++++ b/dist/sso/sessionManager/scale/remoteMessage.d.ts
+@@ -143,6 +143,42 @@ export declare const RemoteMessageCodec: import("scale-ts").Codec<{
+                 respondingTo: string;
+                 signedTransaction: import("scale-ts").ResultPayload<Uint8Array<ArrayBufferLike>, string>;
+             };
++        } | {
++            tag: "CreateTransactionLegacyRequest";
++            value: {
++                payload: {
++                    tag: "v1";
++                    value: {
++                        signer: Uint8Array<ArrayBufferLike>;
++                        genesisHash: Uint8Array<ArrayBufferLike>;
++                        callData: Uint8Array<ArrayBufferLike>;
++                        extensions: {
++                            id: string;
++                            extra: Uint8Array<ArrayBufferLike>;
++                            additionalSigned: Uint8Array<ArrayBufferLike>;
++                        }[];
++                        txExtVersion: number;
++                    };
++                };
++            };
++        } | {
++            tag: "SignRawLegacyRequest";
++            value: {
++                account: Uint8Array<ArrayBufferLike>;
++                data: {
++                    tag: "Bytes";
++                    value: Uint8Array<ArrayBufferLike>;
++                } | {
++                    tag: "Payload";
++                    value: string;
++                };
++            };
++        } | {
++            tag: "SignRawLegacyResponse";
++            value: {
++                respondingTo: string;
++                signature: import("scale-ts").ResultPayload<Uint8Array<ArrayBufferLike>, string>;
++            };
+         };
+     };
+ }>;
+diff --git a/dist/sso/sessionManager/scale/remoteMessage.js b/dist/sso/sessionManager/scale/remoteMessage.js
+index e89bb16e7a2e939be3548c724bbafca8ae42df58..8fccd1a378afd9f065eae94aa8fd44ccf351513b 100644
+--- a/dist/sso/sessionManager/scale/remoteMessage.js
++++ b/dist/sso/sessionManager/scale/remoteMessage.js
+@@ -1,8 +1,8 @@
+ import { Enum, Struct, _void, str } from 'scale-ts';
+-import { CreateTransactionRequestCodec, CreateTransactionResponseCodec } from './createTransaction.js';
++import { CreateTransactionLegacyRequestCodec, CreateTransactionRequestCodec, CreateTransactionResponseCodec, } from './createTransaction.js';
+ import { ResourceAllocationRequestCodec, ResourceAllocationResponseCodec } from './resourceAllocation.js';
+ import { RingVrfAliasRequestCodec, RingVrfAliasResponseCodec } from './ringVrf.js';
+-import { SigningRequestCodec, SigningResponseCodec } from './signing.js';
++import { SignRawLegacyRequestCodec, SignRawLegacyResponseCodec, SigningRequestCodec, SigningResponseCodec, } from './signing.js';
+ export const RemoteMessageCodec = Struct({
+     messageId: str,
+     data: Enum({
+@@ -16,6 +16,9 @@ export const RemoteMessageCodec = Struct({
+             ResourceAllocationResponse: ResourceAllocationResponseCodec,
+             CreateTransactionRequest: CreateTransactionRequestCodec,
+             CreateTransactionResponse: CreateTransactionResponseCodec,
++            CreateTransactionLegacyRequest: CreateTransactionLegacyRequestCodec,
++            SignRawLegacyRequest: SignRawLegacyRequestCodec,
++            SignRawLegacyResponse: SignRawLegacyResponseCodec,
+         }),
+     }),
+ });
+diff --git a/dist/sso/sessionManager/scale/signing.d.ts b/dist/sso/sessionManager/scale/signing.d.ts
+index b2787476cd2afed4a3914304425470fa10d730b9..b8f0f220835b6e50ec24107e7f6e6d18412564ff 100644
+--- a/dist/sso/sessionManager/scale/signing.d.ts
++++ b/dist/sso/sessionManager/scale/signing.d.ts
+@@ -29,6 +29,22 @@ export declare const SigningRawRequestCodec: import("scale-ts").Codec<{
+         value: string;
+     };
+ }>;
++export type SignRawLegacyRequest = CodecType<typeof SignRawLegacyRequestCodec>;
++export declare const SignRawLegacyRequestCodec: import("scale-ts").Codec<{
++    account: Uint8Array<ArrayBufferLike>;
++    data: {
++        tag: "Bytes";
++        value: Uint8Array<ArrayBufferLike>;
++    } | {
++        tag: "Payload";
++        value: string;
++    };
++}>;
++export type SignRawLegacyResponse = CodecType<typeof SignRawLegacyResponseCodec>;
++export declare const SignRawLegacyResponseCodec: import("scale-ts").Codec<{
++    respondingTo: string;
++    signature: import("scale-ts").ResultPayload<Uint8Array<ArrayBufferLike>, string>;
++}>;
+ export type SigningRequest = CodecType<typeof SigningRequestCodec>;
+ export declare const SigningRequestCodec: import("scale-ts").Codec<{
+     tag: "Payload";
+diff --git a/dist/sso/sessionManager/scale/signing.js b/dist/sso/sessionManager/scale/signing.js
+index 80726670653efc6df6e3a0fe50ef83d45b296456..81e9ef7010e7ab53720cc76796b012666effbd6b 100644
+--- a/dist/sso/sessionManager/scale/signing.js
++++ b/dist/sso/sessionManager/scale/signing.js
+@@ -1,4 +1,4 @@
+-import { ProductAccountId } from '@novasamatech/host-api';
++import { AccountId, ProductAccountId } from '@novasamatech/host-api';
+ import { Enum, Hex, OptionBool } from '@novasamatech/scale';
+ import { Bytes, Option, Result, Struct, Vector, str, u32 } from 'scale-ts';
+ export const SigningPayloadRequestCodec = Struct({
+@@ -26,6 +26,18 @@ export const SigningRawRequestCodec = Struct({
+         Payload: str,
+     }),
+ });
++export const SignRawLegacyRequestCodec = Struct({
++    account: AccountId,
++    data: Enum({
++        Bytes: Bytes(),
++        Payload: str,
++    }),
++});
++export const SignRawLegacyResponseCodec = Struct({
++    // referencing to RemoteMessage.messageId
++    respondingTo: str,
++    signature: Result(Bytes(), str),
++});
+ export const SigningRequestCodec = Enum({
+     Payload: SigningPayloadRequestCodec,
+     Raw: SigningRawRequestCodec,
+diff --git a/dist/sso/sessionManager/userSession.d.ts b/dist/sso/sessionManager/userSession.d.ts
+index 15deafd950d7296ed96e6e67501f9d067bbfaf95..ecfbafebb1e92ba972ba4fff71064795ee6ab498 100644
+--- a/dist/sso/sessionManager/userSession.d.ts
++++ b/dist/sso/sessionManager/userSession.d.ts
+@@ -5,16 +5,18 @@ import { ResultAsync } from 'neverthrow';
+ import type { CodecType } from 'scale-ts';
+ import type { Callback } from '../../types.js';
+ import type { StoredUserSession } from '../userSessionRepository.js';
+-import type { CreateTransactionRequest } from './scale/createTransaction.js';
++import type { CreateTransactionLegacyRequest, CreateTransactionRequest } from './scale/createTransaction.js';
+ import { RemoteMessageCodec } from './scale/remoteMessage.js';
+ import type { ApAllocationOutcome, ResourceAllocationRequest } from './scale/resourceAllocation.js';
+-import type { SigningPayloadRequest, SigningPayloadResponseData, SigningRawRequest } from './scale/signing.js';
++import type { SignRawLegacyRequest, SigningPayloadRequest, SigningPayloadResponseData, SigningRawRequest } from './scale/signing.js';
+ export type UserSession = StoredUserSession & {
+     sendDisconnectMessage(): ResultAsync<void, Error>;
+     abortPendingRequests(): ResultAsync<void, Error>;
+     signPayload(payload: SigningPayloadRequest): ResultAsync<SigningPayloadResponseData, Error>;
+     signRaw(payload: SigningRawRequest): ResultAsync<SigningPayloadResponseData, Error>;
++    signRawLegacy(payload: SignRawLegacyRequest): ResultAsync<Uint8Array, Error>;
+     createTransaction(payload: CreateTransactionRequest): ResultAsync<Uint8Array, Error>;
++    createTransactionLegacy(payload: CreateTransactionLegacyRequest): ResultAsync<Uint8Array, Error>;
+     getRingVrfAlias(productAccountId: CodecType<typeof ProductAccountId>, productId: string): ResultAsync<CodecType<typeof ContextualAlias>, Error>;
+     requestResourceAllocation(request: ResourceAllocationRequest): ResultAsync<ApAllocationOutcome[], Error>;
+     subscribe(callback: Callback<CodecType<typeof RemoteMessageCodec>, ResultAsync<boolean, Error>>): VoidFunction;
+diff --git a/dist/sso/sessionManager/userSession.js b/dist/sso/sessionManager/userSession.js
+index e75b6a664f828b82e1e32c1d59443ee72779ed32..3de5815e5ea13a318c1be1364405ac00f3d902a6 100644
+--- a/dist/sso/sessionManager/userSession.js
++++ b/dist/sso/sessionManager/userSession.js
+@@ -162,6 +162,31 @@ export function createUserSession({ userSession, statementStore, encryption, sto
+                 return withHostActionTrace(withQueueTimeout(inner, 'signRaw'), messageId, userSession.id);
+             });
+         },
++        signRawLegacy(payload) {
++            return enqueue(() => {
++                const messageId = nanoid();
++                const data = enumValue('v1', enumValue('SignRawLegacyRequest', payload));
++                emitHostAction(messageId, actionKindFromMessageData(data), userSession.id);
++                const responseFilter = (message) => {
++                    if (message.data.tag === 'v1' &&
++                        message.data.value.tag === 'SignRawLegacyResponse' &&
++                        message.data.value.value.respondingTo === messageId) {
++                        return message.data.value.value.signature;
++                    }
++                };
++                const request = session.request(RemoteMessageCodec, { messageId, data });
++                const reply = session.waitForRequestMessage(RemoteMessageCodec, responseFilter);
++                const inner = awaitReplyOrAckFailure(request, reply).andThen(message => {
++                    if (message.success) {
++                        return ok(message.value);
++                    }
++                    else {
++                        return err(new Error(message.value));
++                    }
++                });
++                return withHostActionTrace(withQueueTimeout(inner, 'signRawLegacy'), messageId, userSession.id);
++            });
++        },
+         createTransaction(payload) {
+             return enqueue(() => {
+                 const messageId = nanoid();
+@@ -186,6 +211,30 @@ export function createUserSession({ userSession, statementStore, encryption, sto
+                 return withQueueTimeout(inner, 'createTransaction');
+             });
+         },
++        createTransactionLegacy(payload) {
++            return enqueue(() => {
++                const messageId = nanoid();
++                const data = enumValue('v1', enumValue('CreateTransactionLegacyRequest', payload));
++                const responseFilter = (message) => {
++                    if (message.data.tag === 'v1' &&
++                        message.data.value.tag === 'CreateTransactionResponse' &&
++                        message.data.value.value.respondingTo === messageId) {
++                        return message.data.value.value.signedTransaction;
++                    }
++                };
++                const request = session.request(RemoteMessageCodec, { messageId, data });
++                const reply = session.waitForRequestMessage(RemoteMessageCodec, responseFilter);
++                const inner = awaitReplyOrAckFailure(request, reply).andThen(message => {
++                    if (message.success) {
++                        return ok(message.value);
++                    }
++                    else {
++                        return err(new Error(message.value));
++                    }
++                });
++                return withQueueTimeout(inner, 'createTransactionLegacy');
++            });
++        },
+         getRingVrfAlias(productAccountId, productId) {
+             return enqueue(() => {
+                 const messageId = nanoid();
