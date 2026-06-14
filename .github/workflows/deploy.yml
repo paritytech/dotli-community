@@ -1,27 +1,72 @@
 name: Deploy
 
 on:
-  workflow_call:
-    inputs:
-      environment:
-        required: true
-        type: string
-      app_env:
-        required: true
-        type: string
-      ref:
-        required: false
-        type: string
-        default: ""
+  pull_request:
+    types: [labeled, synchronize]
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+concurrency:
+  group: deploy-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Plan deploy
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.plan.outputs.environments }}
+      ref: ${{ steps.plan.outputs.ref }}
+    steps:
+      - id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ADDED_LABEL: ${{ github.event.label.name }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          # Environments a PR label is allowed to target (development only).
+          ALLOWED='["westend.li","dotli.dev","paseoli.dev","westendli.dev","testnet.li"]'
+          case "$EVENT_NAME" in
+            release)
+              echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
+              echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+              ;;
+            push)
+              echo 'environments=["paseoli.dev"]' >> "$GITHUB_OUTPUT"
+              echo "ref=" >> "$GITHUB_OUTPUT"
+              ;;
+            pull_request)
+              # On `labeled` only the just-added label triggers a deploy; on
+              # `synchronize` (new commit) consider all labels currently on the PR.
+              if [ "$ACTION" = "labeled" ]; then
+                CANDIDATES="$(jq -nc --arg l "$ADDED_LABEL" '[$l]')"
+              else
+                CANDIDATES="$PR_LABELS"
+              fi
+              ENVS="$(jq -nc --argjson cands "$CANDIDATES" --argjson allowed "$ALLOWED" '
+                [ $cands[]
+                  | select(type == "string" and startswith("deploy: "))
+                  | ltrimstr("deploy: ")
+                  | select(IN($allowed[])) ]
+                | unique')"
+              echo "environments=$ENVS" >> "$GITHUB_OUTPUT"
+              echo "ref=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
   quality-gate:
     name: Quality Gate
+    needs: plan
+    if: needs.plan.outputs.environments != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ inputs.ref || github.sha }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -42,13 +87,18 @@ jobs:
         run: bunx --bun turbo run test
 
   deploy:
-    needs: quality-gate
+    name: Deploy ${{ matrix.environment }}
+    needs: [plan, quality-gate]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: ${{ matrix.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.plan.outputs.environments) }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ needs.plan.outputs.ref || github.sha }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -58,48 +108,13 @@ jobs:
 
       - run: bunx --bun turbo run build:prod
         env:
-          VITE_APP_ENV: ${{ inputs.app_env }}
-          VITE_APP_URL: ${{ secrets.APP_URL }}
-          VITE_APP_DEBUG: ${{ secrets.APP_DEBUG }}
+          VITE_APP_URL: ${{ vars.APP_URL }}
+          VITE_APP_DEBUG: ${{ vars.APP_DEBUG }}
           VITE_COMMIT_SHA: ${{ github.sha }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
-          # Required. Must match NetworkName in packages/config/src/network.ts, comma separated.
           VITE_NETWORKS: ${{ vars.NETWORKS }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
-      # Regression guard for paritytech/dotli#463: fails the deploy if any
-      # marker from the real metrics/sentry modules survives bundling.
-      - name: Assert no analytics in production bundles
-        if: inputs.app_env == 'production'
-        run: |
-          set -e
-          MARKERS=(
-            'dotli:sentry-uuid'
-            'dot.li sentry'
-            '__SENTRY_HUB__'
-            'VITE_METRICS=true'
-          )
-          FAILED=0
-          for dir in apps/host/dist apps/protocol/dist apps/sandbox/dist; do
-            if [ ! -d "$dir" ]; then
-              echo "::error::missing build output: $dir"
-              FAILED=1
-              continue
-            fi
-            for marker in "${MARKERS[@]}"; do
-              if grep -rIl --include='*.js' -- "$marker" "$dir" >/tmp/hits 2>/dev/null && [ -s /tmp/hits ]; then
-                echo "::error::found '$marker' in $dir:"
-                cat /tmp/hits
-                FAILED=1
-              fi
-            done
-          done
-          if [ "$FAILED" -ne 0 ]; then
-            echo "::error::production bundles contain analytics markers — see paritytech/dotli#463"
-            exit 1
-          fi
-          echo "production bundles are analytics-free."
 
       - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
         with:

@@ -310,12 +310,12 @@ function previewCoepHeaders(): Plugin {
 }
 
 /**
- * Sentry sourcemap upload. Skipped on prod (runtime SDK is aliased to a
+ * Sentry sourcemap upload. Skipped when metrics are off (runtime SDK is aliased to a
  * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
  * (preserves source maps for debugging).
  */
 function sentry(): Plugin | false {
-  if (process.env.VITE_APP_ENV === "production") return false;
+  if (process.env.VITE_METRICS !== "true") return false;
   if (!process.env.SENTRY_AUTH_TOKEN) return false;
   return sentryVitePlugin({
     org: "paritytech",
@@ -387,7 +387,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      ...prodNoAnalyticsAliases(process.env.VITE_APP_ENV === "production"),
+      ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),
       "@dotli/config": resolve(PACKAGES, "config/src"),
       "@dotli/metrics": resolve(PACKAGES, "metrics/src"),
       "@dotli/shared": resolve(PACKAGES, "shared/src"),

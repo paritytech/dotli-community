@@ -90,6 +90,20 @@ function tagSmoldotEvents<E extends SmoldotEventLike>(event: E): E {
   return event;
 }
 
+/** Sentry `environment` is the deploy domain (e.g. "paseo.li"), derived from
+ *  VITE_APP_URL; falls back to "development" when unset or unparseable. */
+function sentryEnvironment(): string {
+  const appUrl = import.meta.env.VITE_APP_URL as string | undefined;
+  if (appUrl === undefined || appUrl === "") {
+    return "development";
+  }
+  try {
+    return new URL(appUrl).hostname;
+  } catch {
+    return "development";
+  }
+}
+
 /**
  * Initialize Sentry with the dot.li-standard config for the given source
  * and bind it to `@dotli/metrics` so spans/counters flow through. Safe to
@@ -98,8 +112,7 @@ function tagSmoldotEvents<E extends SmoldotEventLike>(event: E): E {
  */
 export function initSentry(source: SentrySource): void {
   const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
-  const env =
-    (import.meta.env.VITE_APP_ENV as string | undefined) ?? "development";
+  const env = sentryEnvironment();
   const integrations =
     source === "worker"
       ? []
