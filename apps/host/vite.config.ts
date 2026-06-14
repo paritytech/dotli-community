@@ -331,6 +331,7 @@ const PACKAGES = resolve(import.meta.dirname, "../../packages");
 const SANDBOX_CHECKER_SRC = resolve(PACKAGES, "sandbox-checker/src");
 
 export default defineConfig({
+  envDir: resolve(import.meta.dirname, "../.."),
   base: process.env.VITE_APP_URL
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",

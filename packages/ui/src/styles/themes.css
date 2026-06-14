@@ -454,10 +454,15 @@
 [data-theme="light"] .permissions-popover-menu-check {
   color: #0a0a0a;
 }
-[data-theme="light"] .mode-popover-sheet-header,
-[data-theme="light"] .mode-apply-footer {
+[data-theme="light"] .mode-popover-sheet-header {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(0, 0, 0, 0.08);
+}
+@media (max-width: 560px) {
+  [data-theme="light"] .mode-apply-footer {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(0, 0, 0, 0.08);
+  }
 }
 [data-theme="light"] .mode-popover-sheet-title {
   color: #111;
