@@ -55,7 +55,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-import { BASE_DOMAIN, DEBUG, isLocalhost, SITE_ID } from "@dotli/config/config";
+import { BASE_DOMAIN, DEBUG, SITE_ID } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
@@ -155,18 +155,21 @@ const T0 = performance.now();
 /**
  * Parse a localhost proxy URL from the path.
  *
- * Local-dev-only affordance: a deployed origin (dot.li, paseo.li, ...) must
- * never proxy a visitor's localhost services into the trusted host origin, so
- * this returns null unless the host shell is itself served from a local origin.
+ * Debug-build-only affordance: proxying a visitor's localhost services into the
+ * trusted host origin is dangerous on a production deploy, so it is gated behind
+ * the build-time `VITE_APP_DEBUG` flag (`DEBUG`). Production builds (flag unset)
+ * always return null; only debug builds — local `bun run preview:debug` and the
+ * `*.dev` staging deploys — honour a `/localhost:<port>` path. The flag is a
+ * compile-time constant, so production never even ships this code path.
  *
- * Examples (only when served from a localhost origin):
+ * Examples (only in debug builds):
  *   "/localhost:5000"          yields "http://localhost:5000"
  *   "/localhost:5000/foo/bar"  yields "http://localhost:5000/foo/bar"
  *   "/localhost"               yields "http://localhost"
  *   "/starter-template.dot"    yields null (not a localhost URL)
  */
 function parseLocalhostUrl(): string | null {
-  if (!isLocalhost) {
+  if (!DEBUG) {
     return null;
   }
   const path = window.location.pathname;
