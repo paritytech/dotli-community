@@ -15,9 +15,13 @@ export async function fetchFromIpfs(
   data: Uint8Array;
   contentType?: string;
 }> {
-  const url = `${gateway}/ipfs/${cid}`;
+  // Request the raw block: a bare GET lets the gateway content-negotiate and
+  // mutate the body (e.g. serve it as text/html), breaking CID verification.
+  const url = `${gateway}/ipfs/${cid}?format=raw`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { Accept: "application/vnd.ipld.raw" },
+  });
 
   if (!response.ok) {
     throw new Error(
