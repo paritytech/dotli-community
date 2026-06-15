@@ -3,7 +3,6 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  DOT_NODE,
   TIMEOUTS,
   SW_ARCHIVE_CACHE_MAX,
   BASE_DOMAIN,
@@ -38,12 +37,6 @@ describe("config constants", () => {
     it("V1 and V2 contract addresses differ (separate deployments)", () => {
       expect(v1.DOTNS_REGISTRY).not.toBe(v2.DOTNS_REGISTRY);
       expect(v1.DOTNS_CONTENT_RESOLVER).not.toBe(v2.DOTNS_CONTENT_RESOLVER);
-    });
-  });
-
-  describe("DOT_NODE", () => {
-    it("is a valid bytes32 hex string", () => {
-      expect(DOT_NODE).toMatch(/^0x[0-9a-f]{64}$/);
     });
   });
 
