@@ -430,7 +430,7 @@ describe("createChainBrokerManager", () => {
     ]);
   });
 
-  it("forwards a duplicate upstream unpin when two sessions unpin the same shared block", () => {
+  it("forwards exactly one upstream unpin when two sessions unpin the same shared block", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
     const messagesA: string[] = [];
@@ -478,8 +478,18 @@ describe("createChainBrokerManager", () => {
       .result;
     expect(localTokenA).not.toBe(localTokenB);
 
-    // Both tabs see the same block (events fan out per-session) and both
-    // independently unpin it.
+    // The upstream reports a block; it fans out to both sessions, so both now
+    // hold a pin on it.
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "chainHead_v1_followEvent",
+      params: {
+        subscription: "up-a",
+        result: { event: "newBlock", blockHash: "0xblock" },
+      },
+    });
+
+    // First tab unpins: still held by the second tab, so nothing forwarded.
     connectionA?.send(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -488,6 +498,19 @@ describe("createChainBrokerManager", () => {
         params: [localTokenA, "0xblock"],
       }),
     );
+    expect(
+      harness.sent.filter(
+        (message) => (message as JsonRpcRequest).method === "chainHead_v1_unpin",
+      ),
+    ).toHaveLength(0);
+    // ...but the tab still gets a success response immediately.
+    expect(JSON.parse(messagesA.at(-1) ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      id: 10,
+      result: null,
+    });
+
+    // Second (last) tab unpins: now no session holds the block -> forward once.
     connectionB?.send(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -498,18 +521,88 @@ describe("createChainBrokerManager", () => {
     );
 
     const unpins = harness.sent.filter(
-      (message) =>
-        (message as JsonRpcRequest).method === "chainHead_v1_unpin",
+      (message) => (message as JsonRpcRequest).method === "chainHead_v1_unpin",
+    );
+    expect(unpins).toHaveLength(1);
+    expect((unpins[0]?.params as unknown[])[0]).toBe("up-a");
+    expect((unpins[0]?.params as unknown[])[1]).toBe("0xblock");
+    expect(JSON.parse(messagesB.at(-1) ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      id: 11,
+      result: null,
+    });
+  });
+
+  it("unpins a block upstream when its last holder disconnects (other sessions remain)", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote("asset-hub", "conn-a", (m) =>
+      messagesA.push(m),
+    );
+    const connectionB = manager.connectRemote("asset-hub", "conn-b", (m) =>
+      messagesB.push(m),
     );
 
-    // BUG: two unpins reach the single shared upstream follow for the same
-    // block. A ref-counted broker would forward exactly ONE upstream unpin.
-    expect(unpins).toHaveLength(2);
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "chainHead_v1_follow",
+        params: [true],
+      }),
+    );
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "chainHead_v1_follow",
+        params: [true],
+      }),
+    );
+    harness.emit({
+      jsonrpc: "2.0",
+      id: (harness.sent[0] as { id: string }).id,
+      result: "up-a",
+    });
+    const localTokenB = (JSON.parse(messagesB[0] ?? "{}") as { result: string })
+      .result;
+
+    // Both sessions hold the block.
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "chainHead_v1_followEvent",
+      params: {
+        subscription: "up-a",
+        result: { event: "newBlock", blockHash: "0xblock" },
+      },
+    });
+
+    // Session B unpins via its own token; A is still a holder -> no forward.
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 5,
+        method: "chainHead_v1_unpin",
+        params: [localTokenB, "0xblock"],
+      }),
+    );
     expect(
-      unpins.every((u) => (u.params as unknown[])[0] === "up-a"),
-    ).toBe(true);
-    expect(
-      unpins.every((u) => (u.params as unknown[])[1] === "0xblock"),
-    ).toBe(true);
+      harness.sent.filter(
+        (m) => (m as JsonRpcRequest).method === "chainHead_v1_unpin",
+      ),
+    ).toHaveLength(0);
+
+    // A is now the sole holder. A disconnects while B is still following, so
+    // the block is orphaned and the broker unpins it upstream exactly once.
+    connectionA?.disconnect();
+
+    const unpins = harness.sent.filter(
+      (m) => (m as JsonRpcRequest).method === "chainHead_v1_unpin",
+    );
+    expect(unpins).toHaveLength(1);
+    expect((unpins[0]?.params as unknown[])[0]).toBe("up-a");
+    expect((unpins[0]?.params as unknown[])[1]).toBe("0xblock");
   });
 });

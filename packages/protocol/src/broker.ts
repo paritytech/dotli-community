@@ -70,6 +70,8 @@ interface SharedFollow {
   finalizedBlockRuntime: unknown;
   bestBlockHash: string | null;
   blocks: Map<string, CachedBlock>;
+  /** Block hash -> local follow tokens still holding a pin on it. */
+  pins: Map<string, Set<string>>;
 }
 
 interface CachedBlock {
@@ -163,6 +165,17 @@ function parseInbound(message: unknown): unknown {
 /** Encode a JS object into the given wire format. */
 function encode(value: unknown, mode: WireMode): unknown {
   return mode === "string" ? JSON.stringify(value) : value;
+}
+
+/** `chainHead_v1_unpin` takes its hash arg as a string or an array; normalize to an array. */
+function normalizeUnpinHashes(param: unknown): string[] {
+  if (typeof param === "string") {
+    return [param];
+  }
+  if (Array.isArray(param)) {
+    return param.filter((hash): hash is string => typeof hash === "string");
+  }
+  return [];
 }
 
 function cloneWithRewrittenFirstParam(
@@ -352,31 +365,170 @@ class ChainBroker {
       return;
     }
 
-    const rewritten = this.rewriteOwnedToken(session, parsed);
+    if ((parsed.method as string) === "chainHead_v1_unpin") {
+      this.handleLocalUnpinRequest(session, parsed);
+      return;
+    }
+
+    this.routeGenericRequest(session, parsed);
+  }
+
+  /** Rewrite a session-owned token to its upstream token and forward. */
+  private routeGenericRequest(
+    session: Session,
+    request: JsonRpcRequest,
+  ): void {
+    const rewritten = this.rewriteOwnedToken(session, request);
     if (rewritten === null) {
       brokerLog(
-        `sendFromSession: unknown token for session ${sessionId}, method=${parsed.method as string}`,
+        `routeGenericRequest: unknown token for session ${session.id}, method=${request.method as string}`,
       );
       this.sendToSession(
         session,
-        buildJsonRpcError(parsed.id ?? null, "Unknown subscription/token"),
+        buildJsonRpcError(request.id ?? null, "Unknown subscription/token"),
       );
       return;
     }
 
-    if (parsed.id === undefined) {
+    if (request.id === undefined) {
       this.sendUpstream(rewritten);
       return;
     }
 
-    const upstreamId = `broker:${this.requestCounter.toString(36)}:${sessionId}`;
+    const upstreamId = `broker:${this.requestCounter.toString(36)}:${session.id}`;
     this.requestCounter += 1;
     this.pending.set(upstreamId, {
-      sessionId,
-      clientId: parsed.id ?? null,
-      method: parsed.method as string,
+      sessionId: session.id,
+      clientId: request.id ?? null,
+      method: request.method as string,
     });
     this.sendUpstream({ ...rewritten, id: upstreamId });
+  }
+
+  /**
+   * Ref-counted `chainHead_v1_unpin`: drop this session's hold on each block
+   * and forward the upstream unpin only when no other session still holds it,
+   * so sessions sharing one follow can't double-unpin. Replies success (`null`)
+   * locally rather than waiting on the upstream.
+   */
+  private handleLocalUnpinRequest(
+    session: Session,
+    request: JsonRpcRequest,
+  ): void {
+    const params = Array.isArray(request.params) ? request.params : [];
+    const token = typeof params[0] === "string" ? params[0] : null;
+    const followToken =
+      token !== null ? this.localFollowTokens.get(token) : undefined;
+
+    // Non-follow tokens: fall back to the unchanged passthrough.
+    if (!followToken || token === null || followToken.sessionId !== session.id) {
+      this.routeGenericRequest(session, request);
+      return;
+    }
+
+    const sharedFollow = this.sharedFollows.get(followToken.followKey);
+    if (
+      sharedFollow?.upstreamToken === undefined ||
+      sharedFollow.upstreamToken === null
+    ) {
+      this.sendToSession(
+        session,
+        buildJsonRpcError(request.id ?? null, "Unknown subscription/token"),
+      );
+      return;
+    }
+
+    const orphaned = this.releasePins(
+      sharedFollow,
+      token,
+      normalizeUnpinHashes(params[1]),
+    );
+    if (orphaned.length > 0) {
+      this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
+    }
+
+    if (request.id !== undefined) {
+      this.sendToSession(session, buildJsonRpcResult(request.id ?? null, null));
+    }
+  }
+
+  /** Record that `localToken` holds a pin on `hash` for this shared follow. */
+  private registerPin(
+    sharedFollow: SharedFollow,
+    localToken: string,
+    hash: string,
+  ): void {
+    let holders = sharedFollow.pins.get(hash);
+    if (!holders) {
+      holders = new Set<string>();
+      sharedFollow.pins.set(hash, holders);
+    }
+    holders.add(localToken);
+  }
+
+  /** Pin the blocks a follow event implies: `initialized` finalized blocks and `newBlock`. */
+  private registerPinsFromEvent(
+    sharedFollow: SharedFollow,
+    localToken: string,
+    eventResult: unknown,
+  ): void {
+    if (!isJsonRpcObject(eventResult)) {
+      return;
+    }
+    if (eventResult.event === "initialized") {
+      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
+        ? eventResult.finalizedBlockHashes
+        : [];
+      for (const hash of hashes) {
+        if (typeof hash === "string") {
+          this.registerPin(sharedFollow, localToken, hash);
+        }
+      }
+      return;
+    }
+    if (
+      eventResult.event === "newBlock" &&
+      typeof eventResult.blockHash === "string"
+    ) {
+      this.registerPin(sharedFollow, localToken, eventResult.blockHash);
+    }
+  }
+
+  /**
+   * Drop `localToken`'s hold on the given hashes (or all of them when null) and
+   * return the hashes no session holds anymore — the ones to unpin upstream.
+   */
+  private releasePins(
+    sharedFollow: SharedFollow,
+    localToken: string,
+    hashes: string[] | null,
+  ): string[] {
+    const orphaned: string[] = [];
+    const entries = hashes ?? [...sharedFollow.pins.keys()];
+    for (const hash of entries) {
+      const holders = sharedFollow.pins.get(hash);
+      if (!holders) {
+        continue;
+      }
+      if (!holders.delete(localToken)) {
+        continue;
+      }
+      if (holders.size === 0) {
+        sharedFollow.pins.delete(hash);
+        orphaned.push(hash);
+      }
+    }
+    return orphaned;
+  }
+
+  private sendUpstreamUnpin(upstreamToken: string, hashes: string[]): void {
+    this.sendUpstream({
+      jsonrpc: "2.0",
+      id: `broker-release:${this.requestCounter.toString(36)}`,
+      method: "chainHead_v1_unpin",
+      params: [upstreamToken, hashes.length === 1 ? hashes[0] : hashes],
+    });
+    this.requestCounter += 1;
   }
 
   private rewriteOwnedToken(
@@ -626,6 +778,7 @@ class ChainBroker {
           continue;
         }
         const eventResult = message.params?.result;
+        this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
         const eventType = isJsonRpcObject(eventResult)
           ? typeof eventResult.event === "string"
             ? eventResult.event
@@ -780,6 +933,7 @@ class ChainBroker {
         finalizedBlockRuntime: null,
         bestBlockHash: null,
         blocks: new Map<string, CachedBlock>(),
+        pins: new Map<string, Set<string>>(),
       };
       this.sharedFollows.set(followKey, sharedFollow);
     }
@@ -902,7 +1056,17 @@ class ChainBroker {
     sharedFollow.pendingLocals = sharedFollow.pendingLocals.filter(
       (pendingLocal) => pendingLocal.localToken !== localToken,
     );
-    if (sharedFollow.localTokens.size > 0 || sharedFollow.requestInFlight) {
+
+    const followStaysAlive =
+      sharedFollow.localTokens.size > 0 || sharedFollow.requestInFlight;
+
+    // Drop this token's pins. If the follow stays alive, unpin orphaned blocks
+    // upstream; if it's the last token, the unfollow below releases them all.
+    const orphaned = this.releasePins(sharedFollow, localToken, null);
+    if (followStaysAlive) {
+      if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
+        this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
+      }
       return;
     }
 
@@ -994,6 +1158,9 @@ class ChainBroker {
     sharedFollow: SharedFollow,
   ): void {
     if (sharedFollow.finalizedBlockHashes.length > 0) {
+      for (const hash of sharedFollow.finalizedBlockHashes) {
+        this.registerPin(sharedFollow, localToken, hash);
+      }
       this.sendToSession(session, {
         jsonrpc: "2.0",
         method: "chainHead_v1_followEvent",
@@ -1029,6 +1196,7 @@ class ChainBroker {
 
     replayBlocks.reverse();
     for (const result of replayBlocks) {
+      this.registerPinsFromEvent(sharedFollow, localToken, result);
       this.sendToSession(session, {
         jsonrpc: "2.0",
         method: "chainHead_v1_followEvent",
