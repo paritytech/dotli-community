@@ -29,6 +29,7 @@ import {
   resolveOwner,
   resolveRootManifest,
   setResolverAssetHubProvider,
+  setResolverPeopleProvider,
   waitForAssetHubFinalized,
   waitForPeopleFinalized,
 } from "@dotli/resolver/resolve";
@@ -190,6 +191,17 @@ async function presync(): Promise<void> {
         chainBrokerManager,
         getActiveServicesConfig().assethub.genesis,
         "Asset Hub",
+      ),
+    );
+    // The People warm-keep must share this same broker follow. A separate
+    // getSmProvider on the People chain would race the broker's follow (one
+    // shared smoldot JSON-RPC queue) and have its events misrouted, so the
+    // broker drops People follow events as "unknown token" and reads hang.
+    setResolverPeopleProvider(() =>
+      requireBrokerLocalProvider(
+        chainBrokerManager,
+        getActiveServicesConfig().people.genesis,
+        "People",
       ),
     );
 

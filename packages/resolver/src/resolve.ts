@@ -20,12 +20,9 @@ import {
 } from "./errors";
 import { dur } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
-import { getSmProvider } from "polkadot-api/sm-provider";
 import {
   getSmoldot,
   getRelayChain,
-  getPeopleChain,
-  makeNonRemovingChain,
   onConnectionIssue,
   onSmoldotFatal,
 } from "./smoldot";
@@ -65,6 +62,22 @@ export function setResolverAssetHubProvider(
   factory: (() => JsonRpcProvider) | null,
 ): void {
   resolverAssetHubProvider = factory;
+}
+
+// People-chain provider for the legacy-account auth warm-keep. Like Asset Hub,
+// the host injects a broker-backed provider during bootstrap so the warm-keep
+// shares the broker's single People follow. Opening a separate `getSmProvider`
+// here would race the broker's follow on the same smoldot chain — a smoldot
+// chain has one shared `nextJsonRpcResponse` queue, so subscription events get
+// delivered to the wrong consumer and the broker drops People follow events as
+// "unknown token", leaving reads to hang (see
+// docs/people-chain-legacy-sign-hang.md §"People chain never syncs").
+let resolverPeopleProvider: (() => JsonRpcProvider) | null = null;
+
+export function setResolverPeopleProvider(
+  factory: (() => JsonRpcProvider) | null,
+): void {
+  resolverPeopleProvider = factory;
 }
 
 /**
@@ -297,15 +310,22 @@ export async function waitForPeopleFinalized(
   if (peopleApiInstance) {
     return;
   }
+  // Must go through the broker's shared People follow. Without the injected
+  // provider we'd have to open our own `getSmProvider` on the shared chain —
+  // the dual-follow race this warm-keep was rewritten to avoid — so skip
+  // instead. People still resolves on demand via the broker (cold on first
+  // use) rather than corrupting the broker's follow stream.
+  const peopleProvider = resolverPeopleProvider;
+  if (peopleProvider === null) {
+    log.warn(
+      "[dot.li resolve] People provider not set — skipping warm-keep (resolves on demand via broker)",
+    );
+    return;
+  }
   peoplePromise ??= (async () => {
     const initStart = performance.now();
     onStatus?.("Warming People chain...");
-    // `makeNonRemovingChain` so a `getSmProvider` disconnect on this warm
-    // follow does not remove the shared smoldot chain out from under the
-    // dApp follows that connect through the broker.
-    const provider = getSmProvider(() =>
-      getPeopleChain().then((chain) => makeNonRemovingChain(chain)),
-    );
+    const provider = peopleProvider();
     const client = createClient(provider);
     const api = createRawApi(client);
     try {
