@@ -500,7 +500,8 @@ describe("createChainBrokerManager", () => {
     );
     expect(
       harness.sent.filter(
-        (message) => (message as JsonRpcRequest).method === "chainHead_v1_unpin",
+        (message) =>
+          (message as JsonRpcRequest).method === "chainHead_v1_unpin",
       ),
     ).toHaveLength(0);
     // ...but the tab still gets a success response immediately.

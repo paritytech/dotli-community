@@ -374,10 +374,7 @@ class ChainBroker {
   }
 
   /** Rewrite a session-owned token to its upstream token and forward. */
-  private routeGenericRequest(
-    session: Session,
-    request: JsonRpcRequest,
-  ): void {
+  private routeGenericRequest(session: Session, request: JsonRpcRequest): void {
     const rewritten = this.rewriteOwnedToken(session, request);
     if (rewritten === null) {
       brokerLog(
@@ -421,7 +418,11 @@ class ChainBroker {
       token !== null ? this.localFollowTokens.get(token) : undefined;
 
     // Non-follow tokens: fall back to the unchanged passthrough.
-    if (!followToken || token === null || followToken.sessionId !== session.id) {
+    if (
+      !followToken ||
+      token === null ||
+      followToken.sessionId !== session.id
+    ) {
       this.routeGenericRequest(session, request);
       return;
     }
