@@ -21,20 +21,21 @@
  */
 import { getWsProvider } from "polkadot-api/ws";
 import type { JsonRpcProvider } from "polkadot-api";
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { getActiveGatewayChains } from "@dotli/config/network";
 import type { ChainService } from "@dotli/config/network";
 
-/** Resolve a genesis hash to its active-network chain, or `null` when gateway mode cannot reach it. */
+/**
+ * Resolve a genesis hash to its active-network chain, or `null` when gateway
+ * mode cannot reach it. Backed by `getActiveGatewayChains()` so the set of
+ * gateway-served chains stays identical to what the host advertises via
+ * `isRemoteChainSupported`.
+ */
 function gatewayChain(genesisHash: string): ChainService | null {
-  const cfg = getActiveServicesConfig();
   const key = genesisHash.toLowerCase();
-  const chain = [cfg.relay, cfg.assethub, cfg.people].find(
-    (c) => c.genesis.toLowerCase() === key,
+  return (
+    getActiveGatewayChains().find((c) => c.genesis.toLowerCase() === key) ??
+    null
   );
-  if (chain === undefined || chain.rpcs.length === 0) {
-    return null;
-  }
-  return chain;
 }
 
 /** Whether gateway mode can serve chain calls for `genesisHash`. */
