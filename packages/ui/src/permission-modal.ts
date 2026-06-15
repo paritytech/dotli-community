@@ -11,7 +11,7 @@ import {
 // Shows a confirmation dialog when a product requests a permission the
 // host can actually gate: the Permissions-Policy-backed device
 // variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
-// Biometrics, Notifications) and the internal submit gates (ChainSubmit,
+// Biometrics, Notifications) and the internal submitted gates (ChainSubmit,
 // PreimageSubmit, StatementSubmit). `OpenUrl` is auto-granted at the
 // container level and never reaches this modal.
 // Returns a Promise that resolves on "Allow" and rejects on "Deny".

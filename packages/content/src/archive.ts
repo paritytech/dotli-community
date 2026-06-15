@@ -3,7 +3,7 @@
 
 // CAR archive parsing and MIME type detection.
 //
-// Parses IPFS CAR (Content Addressable aRchive) files into a file map.
+// Parses IPFS CAR (Content-Addressable aRchive) files into a file map.
 
 import { CarReader } from "@ipld/car";
 import * as dagPb from "@ipld/dag-pb";
@@ -234,7 +234,7 @@ export async function walkUnixFsDag(
  * Parse a CAR archive into a file map.
  *
  * When `expectedRoot` is supplied (untrusted gateway transport), the CAR's
- * declared root is asserted to match it and every block is hash-verified
+ * declared root is asserted to match it, and every block is hash-verified
  * against the CID that addressed it, so a malicious gateway cannot inject
  * content. Omit it only when the bytes are already trusted to address
  * themselves correctly (e.g. a CAR re-packed under a smoldot-verified CID).
@@ -274,7 +274,7 @@ export async function parseCarFile(
  * otherwise treat the raw bytes as a single index.html.
  *
  * `expectedRoot`, when supplied, binds the response to the requested CID:
- * the CAR root must match and every block is hash-verified (or, for a
+ * the CAR root must match, and every block is hash-verified (or, for a
  * non-CAR single block, the bytes themselves are hash-verified).
  */
 export async function parseIpfsResponse(
@@ -297,7 +297,7 @@ export interface PackedArchive {
 
 /**
  * Pack all archive files into a single ArrayBuffer with an offset index.
- * Transfers 1 Transferable instead of N, reducing structured clone overhead
+ * Transfers 1 Transferable instead of N, reducing the structured clone overhead
  * from O(n_files) to O(1) when sending to the Service Worker.
  */
 export function packArchive(files: ArchiveFiles): PackedArchive {

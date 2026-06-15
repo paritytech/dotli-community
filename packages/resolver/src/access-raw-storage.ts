@@ -102,17 +102,6 @@ async function pinContract(
   return { hash, trieId };
 }
 
-export async function readStorageSlot(
-  api: Api,
-  contractAddress: string,
-  slotKey: `0x${string}`,
-): Promise<Uint8Array | null> {
-  // Single-slot path. Multi-slot callers (`readMappingBytes`,
-  // `readNestedMappingString`) pin hash and trie_id themselves via
-  // `pinContract` and pass them through `readSlot` to avoid torn reads.
-  return api.readSlot(contractAddress, slotKey);
-}
-
 export async function readMappingBytes(
   api: Api,
   contractAddress: string,
@@ -150,7 +139,7 @@ export async function readMappingBytes(
       pin.hash,
       pin.trieId,
     );
-    // If any slot read returns null mid-way, throw. Silently zero-padding
+    // If any slot read returns null midway, throw. Silently zero-padding
     // the gap would return a corrupted contenthash that reads upstream as
     // "name not found", masking the actual RPC failure.
     if (slotData === null) {

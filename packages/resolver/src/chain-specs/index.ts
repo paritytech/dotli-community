@@ -15,9 +15,9 @@
 // system parachains diverge. The active getter routes to the right URL
 // based on the user-selected `Network` from `@dotli/config/mode`.
 //
-// NO silent retry. A rejected fetch is cached as a rejected promise so
+// NO silent retry. A rejected fetch is cached as a rejected promise, so
 // every subsequent call sees the same failure. Use `resetChainSpecCaches()`
-// to opt in to a retry (e.g. from a user-driven "Retry" UI affordance).
+// to opt in to a retry (e.g., from a user-driven "Retry" UI affordance).
 // Fetches also explicitly check `r.ok` so a 404/500 HTML body cannot be
 // fed to smoldot's chain-spec parser as if it were valid JSON.
 //
@@ -49,7 +49,7 @@ const allChainSpecs = import.meta.glob<string>("./*.json", {
 });
 
 // Paseo-next V1 and V2 share the Paseo relay. Previewnet runs its own Paseo
-// Local relay. Exhaustive so any new network must declare its relay rather
+// Local relay. Exhaustive, so any new network must declare its relay rather
 // than silently inheriting Paseo.
 function relayUrlFor(network: Network): string {
   switch (network) {
@@ -169,17 +169,4 @@ export function getCustomRelayChainSpec(): Promise<string> {
     customRelayPromise = fetchChainSpec(url);
   }
   return customRelayPromise;
-}
-
-/**
- * Clear all cached chain-spec promises so the next getter call performs a
- * fresh fetch. Call this from explicit user-driven retry paths only, never
- * from automatic recovery code.
- */
-export function resetChainSpecCaches(): void {
-  paseoPromise = null;
-  assetHubPromise = null;
-  bulletinPaseoPromise = null;
-  peopleChainSpecPromise = null;
-  customRelayPromise = null;
 }

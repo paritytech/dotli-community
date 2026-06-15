@@ -125,14 +125,3 @@ export function getDb(): Promise<IDBDatabase> {
 
   return dbPromise;
 }
-
-/**
- * Current DB handle generation.
- *
- * Callers holding a cached handle across an async boundary can snapshot
- * this before the boundary and compare after. If it changed, the handle
- * is stale and the operation should be retried via a fresh `getDb()`.
- */
-export function getDbGeneration(): number {
-  return dbGeneration;
-}

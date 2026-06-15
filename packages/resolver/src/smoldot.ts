@@ -58,8 +58,8 @@ export function onConnectionIssue(cb: ConnectionIssueCallback): () => void {
   };
 }
 
-// Smoldot's WASM can panic (e.g. the "Option::unwrap() on a None value"
-// crash during relay-chain sync). A panic leaves every chain dead and any
+// Smoldot's WASM can panic (e.g., the "Option::unwrap() on a None value"
+// crash during relay-chain sync). A panic leaves every chain dead, and any
 // in-flight request would hang forever. The log callback catches the
 // panic line so the surrounding layers can broadcast a fatal signal out
 // to the host client and reject pending requests immediately instead of

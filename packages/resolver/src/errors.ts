@@ -5,7 +5,7 @@
 //
 // One class per failure mode. Each class extends `ResolverError` so a
 // caller can catch on the base type when it does not care about the
-// specific reason. The `name` field is a string literal so a switch on
+// specific reason. The `name` field is a string literal, so a switch on
 // `error.name` narrows the type with no extra runtime cost.
 //
 // Use `instanceof` for branching. Use `error.cause` when wrapping a
@@ -27,17 +27,12 @@ export type ResolverErrorName =
 /**
  * Base type for every error the resolver package throws.
  *
- * Catch on this to handle any resolver failure without enumerating every
+ * Catch on this to handle any resolver failure without listing every
  * subclass. Subclasses pin `name` to a `ResolverErrorName` literal, which
  * lets a switch on `error.name` discriminate without `instanceof`.
  */
 export abstract class ResolverError extends Error {
   abstract override readonly name: ResolverErrorName;
-}
-
-/** Type guard for any error from the resolver package. */
-export function isResolverError(value: unknown): value is ResolverError {
-  return value instanceof ResolverError;
 }
 
 /**

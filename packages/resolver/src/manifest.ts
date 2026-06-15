@@ -7,7 +7,7 @@
 // at `<id>.dot` under the `manifest` key. Each executable manifest sits at
 // `<kind>.<id>.dot` under the `executable` key. The JSON is parsed and
 // validated against `./manifest-types.ts`. These calls are read-only and
-// never sign or write.
+// never signed or written.
 //
 // The entry points take an `Api` rather than reaching for the
 // resolver's cached client, so both the smoldot and gateway paths can
@@ -34,7 +34,7 @@ export const EXECUTABLE_MANIFEST_KEY = "executable";
 /**
  * Discriminated result so callers can tell "no manifest set" apart from
  * "manifest exists but malformed". Same shape as `decodeIpfsContenthashResult`
- * uses for legacy contenthash reads.
+ *  used for legacy contenthash reads.
  */
 export type ManifestResult<T> =
   | { kind: "ok"; value: T }

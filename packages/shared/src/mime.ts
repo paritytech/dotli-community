@@ -10,9 +10,6 @@
 // - Differentiate `no-ext` from `unknown-ext` from `mime-default` outcomes
 //   via the discriminated `getMimeTypeResult` helper, so callers can log
 //   which branch fired without parsing the response string.
-
-export const MIME_TABLE_VERSION = 1;
-
 const MIME_TYPES: Record<string, string> = {
   html: "text/html",
   htm: "text/html",

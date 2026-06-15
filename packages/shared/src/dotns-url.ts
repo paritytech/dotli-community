@@ -67,7 +67,7 @@ function parseUrl(url: string): URL | null {
  *
  * Callers must opt in explicitly via `assumeHttps`. Prepending `https://`
  * on any parse failure would be a hidden fallback, so when the prefix is
- * applied the call site is responsible for documenting the reason (e.g.
+ *  applied, the call site is responsible for documenting the reason (e.g.,
  * the user typed a bare hostname).
  */
 function parseUrlWithExplicitHttps(

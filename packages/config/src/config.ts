@@ -6,14 +6,14 @@
 // The shell is deployed across several root domains (dot.li, paseo.li,
 // paseoli.dev, ephemeral previews). `BASE_DOMAIN` derives the
 // registrable root from the current hostname and never silently
-// defaults to "dot.li", because the cross-origin allow-list (shared
+// defaults to "dot.li", because the cross-origin allowlist (shared
 // auth, protocol iframe, SITE_ID) is keyed on this string.
 //
 // Localhost is a legal dev environment and keeps its explicit
-// `"dot.li"` fallback so local runs match the production allow-list.
+// `"dot.li"` fallback so local runs match the production allowlist.
 // Anything else that doesn't parse as a two-segment hostname is a
-// deploy misconfiguration and aborts boot rather than opening the
-// allow-list to the wrong origin.
+// deployment misconfiguration and aborts boot rather than opening the
+// allowlist to the wrong origin.
 const hostname = self.location.hostname;
 const segments = hostname.split(".");
 const isLocalEnv =
@@ -73,49 +73,15 @@ export function isSandboxOrigin(origin: string): boolean {
   }
 }
 
-/**
- * Use the smoldot light client for the statement store chain.
- *
- * Set VITE_SS_USE_SMOLDOT=true to enable. Defaults to false until
- * smoldot statement store support is production-ready, but can be
- * enabled in development for testing and feedback.
- */
-export const SS_USE_SMOLDOT =
-  (import.meta.env.VITE_SS_USE_SMOLDOT as string | undefined) === "true";
-
 /** Optional relay chain spec override for the statement store people chain.
  *  Value is the chain-spec file name without `.json`, e.g. "westend-local".
  *  When unset, the default Paseo relay chain is reused. */
 export const SS_RELAY_CHAIN: string | undefined =
   (import.meta.env.VITE_SS_RELAY_CHAIN as string | undefined) ?? undefined;
 
-// Allow-list polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
-// A negative check such as `!== "false"` would let a typo like "flase",
-// "0", or "off" silently enable debug in production builds and flood
-// real sessions with debug logs.
+// Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
 export const DEBUG =
   (import.meta.env.VITE_APP_DEBUG as string | undefined) === "true";
-
-// The `.dot` TLD namehash node
-export const DOT_NODE =
-  "0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce" as const;
-
-// Derived from the dotNS contracts using OpenZeppelin v5 namespaced storage.
-// OZ v5 stores Initializable/OwnableUpgradeable/ERC165 state at hash-derived
-// locations, so the contract's own variables start at slot 0.
-//
-// DotnsRegistry layout (own variables only):
-//   slot 0: records  mapping(bytes32 => Record{address owner, address resolver, bool exists})
-//   slot 1: registrarController
-//   slot 2: dotnsRegistrar
-//   slot 3: reverseResolver
-//   slot 4: storeFactory
-//
-// DotnsContentResolver layout (own variables only):
-//   slot 0: registry (address)
-//   slot 1: contenthashes  mapping(bytes32 => bytes)
-//   slot 2: textRecords
-//   slot 3: operators
 
 /** Max number of domain archives kept in the SW in-memory LRU cache. */
 export const SW_ARCHIVE_CACHE_MAX = 8;
@@ -139,6 +105,6 @@ export const SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS = 1_000;
  *  a visible tab in the same origin first crack at the lock. */
 export const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 
-// Re-exported from the pure-constants `timeouts` sub-module so existing
+// Re-exported from the pure-constants `timeouts` submodule, so existing
 // `@dotli/config/config` callers keep working unchanged.
 export { TIMEOUTS } from "./timeouts";

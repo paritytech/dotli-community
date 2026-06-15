@@ -21,6 +21,11 @@ import {
 } from "@dotli/shared/active-manifest";
 import { SITE_ID } from "@dotli/config/config";
 import {
+  createRemoteChainProvider,
+  hasSharedAuthSession,
+  isRemoteChainSupported,
+} from "@dotli/protocol/client";
+import {
   getCacheSettings,
   setCacheSettings,
   getBackend,
@@ -299,7 +304,6 @@ export function initTopBar(): void {
   requestIdleCallback(() => {
     void (async () => {
       try {
-        const { hasSharedAuthSession } = await import("@dotli/protocol/client");
         if (await hasSharedAuthSession(SITE_ID)) {
           await ensureAuth();
         }
@@ -825,30 +829,6 @@ function setPermissionsPopoverOpen(open: boolean): void {
 }
 
 /**
- * Open the resolution-mode popover programmatically, e.g. from a slow-path
- * "Adjust mode" affordance instead of silently swapping modes behind the
- * user's back. Safe to call before `initTopBar()`. Falls through silently
- * if the DOM isn't ready yet.
- */
-export function openModePopover(): void {
-  try {
-    const popover = document.getElementById("mode-popover");
-    if (popover === null) {
-      return;
-    }
-    if (!popover.classList.contains("open")) {
-      popover.classList.add("open");
-      const backdrop = document.getElementById("mode-popover-backdrop");
-      backdrop?.classList.add("open");
-      renderModePopover();
-    }
-    // eslint-disable-next-line no-restricted-syntax -- DOM not available (SSR / test harness); caller is just asking to open a popover, there's nothing to do.
-  } catch {
-    /* no DOM: nothing to open */
-  }
-}
-
-/**
  * Draft of everything the popover can change. Controls mutate this. Nothing
  * touches localStorage or reloads the page until the user clicks Save &
  * Apply. Closing the popover throws the draft away. The next open re-reads
@@ -862,7 +842,7 @@ interface ModeDraft {
 
 function renderModePopover(): void {
   // Two-column grid. Left: backend / cache. Right: endpoints / diagnostics.
-  // Save & Apply and the footer span both columns at the bottom. Collapses
+  // Save & Apply and the footer spans both columns at the bottom. Collapses
   // to a single column on narrow viewports (CSS media query on
   // `.mode-popover-columns`).
   const parent = modePopoverContent;
@@ -1647,24 +1627,22 @@ function buildSmoldotVersionLabel(): string {
  *
  * Returns `null` if the chain isn't supported by the active backend (e.g.
  * asking for relay in rpc mode, which only supports Asset Hub) or if the
- * query doesn't resolve within the timeout. All imports are dynamic so
- * opening the popover is cheap when the user doesn't care about blocks.
+ * query doesn't resolve within the timeout. The heavy `polkadot-api` import
+ * stays dynamic so opening the popover is cheap when the user doesn't care
+ * about blocks.
  */
 async function queryFinalizedBlock(
   genesisHash: string,
 ): Promise<number | null> {
   try {
-    const [protocolClient, papi] = await Promise.all([
-      import("@dotli/protocol/client"),
-      import("polkadot-api"),
-    ]);
-    if (!protocolClient.isRemoteChainSupported(genesisHash)) {
+    if (!isRemoteChainSupported(genesisHash)) {
       return null;
     }
-    const provider = protocolClient.createRemoteChainProvider(genesisHash);
+    const provider = createRemoteChainProvider(genesisHash);
     if (provider === null) {
       return null;
     }
+    const papi = await import("polkadot-api");
     const client = papi.createClient(provider);
     try {
       const block = await Promise.race([
