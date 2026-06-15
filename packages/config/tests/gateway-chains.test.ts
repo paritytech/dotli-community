@@ -16,8 +16,7 @@ const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V2];
 // The gateway set drives the host's chain-support advertisement in
 // rpc-gateway mode (`isRemoteChainSupported`). It must match what the gateway
 // backend can actually serve (`createRpcChainProvider`), or a dApp commits to
-// a connection that never completes. See
-// docs/people-chain-legacy-sign-hang.md §7.
+// a connection that never completes.
 describe("gateway-supported chains (rpc-gateway mode)", () => {
   beforeEach(() => {
     setNetworkOverride(NetworkName.PASEO_NEXT_V2);
