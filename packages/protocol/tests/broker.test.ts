@@ -429,4 +429,87 @@ describe("createChainBrokerManager", () => {
       }),
     ]);
   });
+
+  it("forwards a duplicate upstream unpin when two sessions unpin the same shared block", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote(
+      "asset-hub",
+      "conn-a",
+      (message) => {
+        messagesA.push(message);
+      },
+    );
+    const connectionB = manager.connectRemote(
+      "asset-hub",
+      "conn-b",
+      (message) => {
+        messagesB.push(message);
+      },
+    );
+
+    // Both tabs follow with identical params -> coalesced to ONE upstream follow.
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "chainHead_v1_follow",
+        params: [true],
+      }),
+    );
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "chainHead_v1_follow",
+        params: [true],
+      }),
+    );
+
+    expect(harness.sent).toHaveLength(1);
+    const upstream = harness.sent[0] as { id: string };
+    harness.emit({ jsonrpc: "2.0", id: upstream.id, result: "up-a" });
+
+    const localTokenA = (JSON.parse(messagesA[0] ?? "{}") as { result: string })
+      .result;
+    const localTokenB = (JSON.parse(messagesB[0] ?? "{}") as { result: string })
+      .result;
+    expect(localTokenA).not.toBe(localTokenB);
+
+    // Both tabs see the same block (events fan out per-session) and both
+    // independently unpin it.
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 10,
+        method: "chainHead_v1_unpin",
+        params: [localTokenA, "0xblock"],
+      }),
+    );
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 11,
+        method: "chainHead_v1_unpin",
+        params: [localTokenB, "0xblock"],
+      }),
+    );
+
+    const unpins = harness.sent.filter(
+      (message) =>
+        (message as JsonRpcRequest).method === "chainHead_v1_unpin",
+    );
+
+    // BUG: two unpins reach the single shared upstream follow for the same
+    // block. A ref-counted broker would forward exactly ONE upstream unpin.
+    expect(unpins).toHaveLength(2);
+    expect(
+      unpins.every((u) => (u.params as unknown[])[0] === "up-a"),
+    ).toBe(true);
+    expect(
+      unpins.every((u) => (u.params as unknown[])[1] === "0xblock"),
+    ).toBe(true);
+  });
 });
