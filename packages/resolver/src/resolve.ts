@@ -20,9 +20,12 @@ import {
 } from "./errors";
 import { dur } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
+import { getSmProvider } from "polkadot-api/sm-provider";
 import {
   getSmoldot,
   getRelayChain,
+  getPeopleChain,
+  makeNonRemovingChain,
   onConnectionIssue,
   onSmoldotFatal,
 } from "./smoldot";
@@ -264,6 +267,88 @@ export async function waitForAssetHubFinalized(
   onPhase?: PhaseCallback,
 ): Promise<void> {
   await ensureClient(onStatus, onPhase);
+}
+
+// People chain warm-keep for legacy-account auth.
+//
+// Auth reads the username -> account map on the People chain. On a cold start
+// that read races the parachain warp sync, which is the source of the
+// intermittent "People read sometimes fails" reports. This mirrors the Asset
+// Hub bootstrap above (open a follow, drive it to a finalized block with a
+// bounded wait, invalidate on stop, keep the client alive) so the chain is
+// already synced when auth connects. The one difference from Asset Hub: this is
+// meant to run in the background and must NOT gate the ready signal, because
+// resolution does not need People.
+let peopleClientInstance: SubstrateClient | null = null;
+let peopleApiInstance: Api | null = null;
+let peoplePromise: Promise<Api> | null = null;
+
+function destroyPeopleClient(): void {
+  peopleApiInstance?.destroy();
+  peopleClientInstance?.destroy();
+  peopleApiInstance = null;
+  peopleClientInstance = null;
+  peoplePromise = null;
+}
+
+export async function waitForPeopleFinalized(
+  onStatus?: StatusCallback,
+): Promise<void> {
+  if (peopleApiInstance) {
+    return;
+  }
+  peoplePromise ??= (async () => {
+    const initStart = performance.now();
+    onStatus?.("Warming People chain...");
+    // `makeNonRemovingChain` so a `getSmProvider` disconnect on this warm
+    // follow does not remove the shared smoldot chain out from under the
+    // dApp follows that connect through the broker.
+    const provider = getSmProvider(() =>
+      getPeopleChain().then((chain) => makeNonRemovingChain(chain)),
+    );
+    const client = createClient(provider);
+    const api = createRawApi(client);
+    try {
+      await Promise.race([
+        api.whenReady(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(
+              new NetworkSyncTimeoutError(
+                "People Paseo",
+                TIMEOUTS.PEOPLE_FINALIZED_SYNC,
+              ),
+            );
+          }, TIMEOUTS.PEOPLE_FINALIZED_SYNC);
+        }),
+      ]);
+    } catch (err) {
+      try {
+        api.destroy();
+        client.destroy();
+        // eslint-disable-next-line no-restricted-syntax -- best-effort teardown of a never-fully-initialised client; the real cause is rethrown on the next line.
+      } catch {
+        /* already dead, real cause rethrown below */
+      }
+      peoplePromise = null;
+      throw err;
+    }
+
+    // If the follow dies, invalidate so the next warm rebuilds against a fresh
+    // smoldot chain instead of reusing a dead one.
+    api.onStop(() => {
+      log.warn(
+        "[dot.li resolve] People chainHead follow stopped, invalidating warm client",
+      );
+      destroyPeopleClient();
+    });
+
+    peopleClientInstance = client;
+    peopleApiInstance = api;
+    log.warn(`[dot.li resolve] People chain warmed (${dur(initStart)})`);
+    return api;
+  })();
+  await peoplePromise;
 }
 
 export async function resolveDotName(

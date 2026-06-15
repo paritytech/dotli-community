@@ -675,6 +675,7 @@ async function initDirectMode(): Promise<void> {
     resolveOwner,
     resolveRootManifest,
     setResolverAssetHubProvider,
+    waitForPeopleFinalized,
   } = resolve;
   const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
 
@@ -718,6 +719,13 @@ async function initDirectMode(): Promise<void> {
     onWarmup: async () => {
       getSmoldot();
       await getRelayChain();
+      // Warm People in the background so legacy-account auth reads do not race
+      // a cold parachain warp sync. Not needed for resolution, so do not await.
+      void waitForPeopleFinalized().catch((err: unknown) => {
+        log.warn(
+          `[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`,
+        );
+      });
     },
     resolveDotName,
     resolveOwner,
