@@ -701,8 +701,11 @@ async function initDirectMode(): Promise<void> {
     createChainProvider,
     isChainSupported,
     onBrokerReady: (broker) => {
-      // Route the resolver's Asset Hub reads through the broker's shared
-      // follow (object-wire — see protocol-shared-worker for the rationale).
+      // Route the resolver's Asset Hub reads AND the People warm-keep through
+      // the broker's shared follows (object-wire — see protocol-shared-worker
+      // for the rationale). A separate getSmProvider on either chain would race
+      // the broker's follow on the same smoldot chain and get its events
+      // misrouted (the broker then drops them as "unknown token").
       setResolverAssetHubProvider(() =>
         requireBrokerLocalProvider(
           broker,
@@ -710,8 +713,6 @@ async function initDirectMode(): Promise<void> {
           "Asset Hub",
         ),
       );
-      // Same for People: the warm-up shares the broker's single People follow
-      // instead of opening its own competing smoldot follow.
       setResolverPeopleProvider(() =>
         requireBrokerLocalProvider(
           broker,
