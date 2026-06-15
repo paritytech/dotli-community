@@ -1365,7 +1365,7 @@ function renderDiagnostics(parent: HTMLElement): void {
   // keep only the smoldot version so the dependency is still visible.
   const smoldotInfo: SmoldotInfo = {
     version: buildSmoldotVersionLabel(),
-    blocks: { relay: "…", assetHub: "…" },
+    blocks: { relay: "…", assetHub: "…", people: "…" },
   };
   const smoldotActive = getBackend() !== "rpc-gateway";
   appendSectionHeader(parent, "@smoldot");
@@ -1373,8 +1373,9 @@ function renderDiagnostics(parent: HTMLElement): void {
   if (smoldotActive) {
     const relayRow = renderInfoRow(parent, "Relay Chain", "…");
     const assetHubRow = renderInfoRow(parent, "Asset Hub", "…");
+    const peopleRow = renderInfoRow(parent, "People Chain", "…");
 
-    // Fire both queries. They update their own rows and the shared snapshot
+    // Fire all queries. They update their own rows and the shared snapshot
     // (so the "Share diagnostic" button captures whatever resolved in time).
     const cfg = getActiveServicesConfig();
     void queryFinalizedBlock(cfg.relay.genesis).then((n) => {
@@ -1387,11 +1388,17 @@ function renderDiagnostics(parent: HTMLElement): void {
       assetHubRow.update(v);
       smoldotInfo.blocks.assetHub = v;
     });
+    void queryFinalizedBlock(cfg.people.genesis).then((n) => {
+      const v = formatBlock(n);
+      peopleRow.update(v);
+      smoldotInfo.blocks.people = v;
+    });
   } else {
     // Keep the snapshot tagged as n/a so the Share-diagnostic report is
     // coherent: smoldot wasn't consulted, don't claim a block height.
     smoldotInfo.blocks.relay = "n/a";
     smoldotInfo.blocks.assetHub = "n/a";
+    smoldotInfo.blocks.people = "n/a";
   }
 
   // The unscoped `polkadot-api` package lives in the same visual section as
@@ -1623,7 +1630,7 @@ interface SmoldotInfo {
   /** Human-facing version label, e.g. "3.0.0 (c33c647)". */
   version: string;
   /** Mutable block readouts for the share report. */
-  blocks: { relay: string; assetHub: string };
+  blocks: { relay: string; assetHub: string; people: string };
 }
 
 function buildSmoldotVersionLabel(): string {
