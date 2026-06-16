@@ -113,7 +113,9 @@ if (!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
     showNotification({
       label: "Get Polkadot Desktop",
       text: "Full experience with native performance",
-      deeplink: "https://polkadot.com/get-started/polkadot-for-desktop",
+      deeplink:
+        import.meta.env.VITE_DESKTOP_DOWNLOAD_URL ??
+        "https://polkadot.com/get-started/polkadot-for-desktop",
       icon:
         '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>' +
