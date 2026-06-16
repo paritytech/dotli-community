@@ -59,6 +59,7 @@ import { BASE_DOMAIN, DEBUG, SITE_ID } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
+import { isMobileDevice } from "@dotli/shared/device";
 import { showNotification } from "@dotli/ui/notification";
 import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
 import {
@@ -107,7 +108,7 @@ window.addEventListener("vite:preloadError", (event) => {
 
 // Respect the user's dismissal unconditionally. Once dismissed, never
 // resurface unless the dismissal flag is cleared from localStorage.
-if (!/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+if (!isMobileDevice()) {
   const dismissed = localStorage.getItem("desktop-banner-dismissed");
   if (dismissed === null) {
     showNotification({
@@ -283,6 +284,10 @@ function scheduleTopbarHide(): void {
 }
 
 function setupTopbarAutoHide(): void {
+  // No hover on touch devices to bring the bar back, so keep it pinned.
+  if (isMobileDevice()) {
+    return;
+  }
   const topbar = document.getElementById("topbar");
   if (!topbar) {
     return;
