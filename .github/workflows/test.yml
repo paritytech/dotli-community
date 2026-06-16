@@ -50,6 +50,12 @@ jobs:
           bun-version: "1.3.13"
 
       - name: Build
+        env:
+          # Required build-time config (see packages/config/src/network.ts).
+          # Without it the host shell throws on boot and never mounts the
+          # protocol/app iframes, so every test times out. deploy.yml supplies
+          # this from repo vars; the test build needs its own value.
+          VITE_NETWORKS: paseo-next-v2,previewnet
         run: bunx --bun turbo run build
 
       - name: Run functional tests
@@ -105,6 +111,12 @@ jobs:
           bun-version: "1.3.13"
 
       - name: Build
+        env:
+          # Required build-time config (see packages/config/src/network.ts).
+          # Without it the host shell throws on boot and never mounts the
+          # protocol/app iframes, so every test times out. deploy.yml supplies
+          # this from repo vars; the test build needs its own value.
+          VITE_NETWORKS: paseo-next-v2,previewnet
         run: bunx --bun turbo run build
 
       # Exit code 99 from playwright = Nova bot unavailable (signal raised

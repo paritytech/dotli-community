@@ -20,12 +20,9 @@ import {
 } from "./errors";
 import { dur } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
-import { getSmProvider } from "polkadot-api/sm-provider";
 import {
   getSmoldot,
   getRelayChain,
-  getPeopleChain,
-  makeNonRemovingChain,
   onConnectionIssue,
   onSmoldotFatal,
 } from "./smoldot";
@@ -65,6 +62,20 @@ export function setResolverAssetHubProvider(
   factory: (() => JsonRpcProvider) | null,
 ): void {
   resolverAssetHubProvider = factory;
+}
+
+// People provider, same broker-backed pattern as Asset Hub. The host injects a
+// broker-backed provider during bootstrap so the People warm-up shares the
+// broker's single People follow instead of opening its own competing smoldot
+// follow — two follows on one chain stole events off the single
+// `jsonRpcResponses` stream, so the broker dropped dApp followEvents as
+// "unknown token" and the dApp People client went silent.
+let resolverPeopleProvider: (() => JsonRpcProvider) | null = null;
+
+export function setResolverPeopleProvider(
+  factory: (() => JsonRpcProvider) | null,
+): void {
+  resolverPeopleProvider = factory;
 }
 
 /**
@@ -300,12 +311,15 @@ export async function waitForPeopleFinalized(
   peoplePromise ??= (async () => {
     const initStart = performance.now();
     onStatus?.("Warming People chain...");
-    // `makeNonRemovingChain` so a `getSmProvider` disconnect on this warm
-    // follow does not remove the shared smoldot chain out from under the
-    // dApp follows that connect through the broker.
-    const provider = getSmProvider(() =>
-      getPeopleChain().then((chain) => makeNonRemovingChain(chain)),
-    );
+    if (resolverPeopleProvider === null) {
+      throw new Error(
+        "Resolver People provider not set — call setResolverPeopleProvider() during bootstrap",
+      );
+    }
+    // Broker-backed (mirrors Asset Hub): shares the broker's single People
+    // follow so this warm-up doesn't open a second smoldot follow competing for
+    // People's single jsonRpcResponses stream.
+    const provider = resolverPeopleProvider();
     const client = createClient(provider);
     const api = createRawApi(client);
     try {

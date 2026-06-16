@@ -675,6 +675,7 @@ async function initDirectMode(): Promise<void> {
     resolveOwner,
     resolveRootManifest,
     setResolverAssetHubProvider,
+    setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
   const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
@@ -707,6 +708,15 @@ async function initDirectMode(): Promise<void> {
           broker,
           getActiveServicesConfig().assethub.genesis,
           "Asset Hub",
+        ),
+      );
+      // Same for People: the warm-up shares the broker's single People follow
+      // instead of opening its own competing smoldot follow.
+      setResolverPeopleProvider(() =>
+        requireBrokerLocalProvider(
+          broker,
+          getActiveServicesConfig().people.genesis,
+          "People",
         ),
       );
     },
