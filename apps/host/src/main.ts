@@ -35,6 +35,7 @@ import {
   listenForSandboxStatus,
   showGatewayEscape,
 } from "@dotli/ui/ui";
+import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
 import {
   bitswapGet,
@@ -1185,12 +1186,31 @@ async function main(): Promise<void> {
     ? "verified"
     : "validating";
 
+  // Band width and `expectedMs` are grounded in Sentry span percentiles over
+  const smoldotPhases = (startLabel: string): LoadingPhase[] => [
+    { label: startLabel, base: 2, target: 6, expectedMs: 300 },
+    { label: "Adding relay chain", base: 6, target: 10, expectedMs: 300 },
+    {
+      label: "Connecting to Asset Hub",
+      base: 10,
+      target: 15,
+      expectedMs: 500,
+    },
+    { label: "Syncing Asset Hub", base: 15, target: 86, expectedMs: 9500 },
+    { label: "Resolving", base: 86, target: 93, expectedMs: 700 },
+  ];
   if (chainBackend === "smoldot-shared-worker") {
-    initPhases(["Starting Worker", "Syncing", "Resolving"]);
+    initPhases(smoldotPhases("Starting Worker"));
   } else if (chainBackend === "smoldot-direct") {
-    initPhases(["Starting", "Connecting", "Syncing", "Resolving"]);
+    initPhases(smoldotPhases("Starting"));
   } else {
-    initPhases(["Connecting", "Resolving"]);
+    // Gateway path resolves over RPC with no smoldot sync. The dominant cost
+    // is the storage read (~0.5s p50), so one wide crawl band paced to that
+    // beats a stalled jump. It never advances past phase 0.
+    initPhases([
+      { label: "Connecting", base: 5, target: 80, expectedMs: 1200 },
+      { label: "Resolving", base: 80, target: 93, expectedMs: 700 },
+    ]);
   }
   advancePhase(0);
   showStatus(`Resolving ${label}.dot`);
@@ -1311,15 +1331,17 @@ async function main(): Promise<void> {
           // mapping from status text to ResolvePhase, so we defer to it
           // instead of maintaining a parallel regex here.
           const phase = statusToPhase(msg);
-          if (phase === "asset-hub-connecting") {
+          if (phase === "relay-chain-adding") {
             advancePhase(1);
+          } else if (phase === "asset-hub-connecting") {
+            advancePhase(2);
           } else if (
             phase === "asset-hub-syncing" ||
             phase === "asset-hub-ready"
           ) {
-            advancePhase(2);
-          } else if (phase === "resolving-content") {
             advancePhase(3);
+          } else if (phase === "resolving-content") {
+            advancePhase(4);
           }
           emitPhase(msg, phase ?? "progress");
           showStatus(msg);

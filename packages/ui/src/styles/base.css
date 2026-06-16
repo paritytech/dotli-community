@@ -85,11 +85,36 @@ body {
   overflow: hidden;
 }
 .loading-progress-fill {
+  position: relative;
   height: 100%;
   width: 0%;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 1px;
   transition: width 0.4s ease-out;
+  overflow: hidden;
+}
+/* Continuous sheen sweeping the filled portion. The simulated crawl can sit
+   near a band's top during a long sync with no real progress to report. The
+   sheen keeps visible motion so the bar never reads as frozen. */
+@media (prefers-reduced-motion: no-preference) {
+  .loading-progress-fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.9) 50%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: loading-progress-sheen 1.4s ease-in-out infinite;
+  }
+}
+@keyframes loading-progress-sheen {
+  to {
+    transform: translateX(100%);
+  }
 }
 .loading-progress-pct {
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;

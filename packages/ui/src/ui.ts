@@ -22,7 +22,25 @@ function dotUrl(label: string): string {
 }
 
 // Phase-based loading indicator.
-let phaseLabels: string[] = [];
+//
+// Each phase owns a `[base, target]` band of the bar plus an `expectedMs`:
+// how long that step typically takes. Two things follow from `expectedMs`,
+// and together they make the bar track real work instead of an arbitrary
+// easing curve (the Asset Hub finalized-block sync dwarfs every other step,
+// so callers size their bands and durations accordingly):
+//   - Band WIDTH is sized to the step's share of total load time, so the
+//     one dominant sync step owns most of the bar.
+//   - Crawl SPEED is paced so the band is crossed in roughly `expectedMs`,
+//     advancing steadily across the whole step rather than decelerating and
+//     parking near the top (the old asymptotic crawl barely moved during a
+//     30s sync, which is exactly the symptom we are fixing).
+export interface LoadingPhase {
+  label: string;
+  base: number;
+  target: number;
+  expectedMs: number;
+}
+let phases: LoadingPhase[] = [];
 let currentPhase = -1;
 
 // Progress bar state
@@ -30,16 +48,10 @@ let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
+let crawlStep = 0;
 let progressInterval: ReturnType<typeof setInterval> | null = null;
 
-// Simulated percentage ranges per phase: [base, target].
-// The bar jumps to `base` on phase entry, then crawls toward `target`.
-const PHASE_PROGRESS: [number, number][] = [
-  [2, 15], // Starting
-  [18, 35], // Connecting
-  [38, 68], // Syncing
-  [72, 92], // Resolving
-];
+const CRAWL_TICK_MS = 200;
 
 function setProgress(pct: number): void {
   currentProgress = pct;
@@ -55,11 +67,9 @@ function startProgressCrawl(): void {
   stopProgressCrawl();
   progressInterval = setInterval(() => {
     if (currentProgress < targetProgress) {
-      const remaining = targetProgress - currentProgress;
-      const increment = Math.max(0.1, remaining * 0.04);
-      setProgress(Math.min(currentProgress + increment, targetProgress));
+      setProgress(Math.min(currentProgress + crawlStep, targetProgress));
     }
-  }, 200);
+  }, CRAWL_TICK_MS);
 }
 
 function stopProgressCrawl(): void {
@@ -82,9 +92,11 @@ export function completeProgress(): void {
  * Initialize the loading progress bar.
  * Call once before resolution/fetching begins.
  */
-export function initPhases(labels: string[]): void {
-  phaseLabels = labels;
+export function initPhases(phaseList: LoadingPhase[]): void {
+  phases = phaseList;
   currentPhase = -1;
+  currentProgress = 0;
+  targetProgress = 0;
 
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
@@ -97,28 +109,29 @@ export function initPhases(labels: string[]): void {
  * No-ops if the phase is already active or past.
  */
 export function advancePhase(index: number): void {
-  if (
-    index <= currentPhase ||
-    index >= phaseLabels.length ||
-    index >= PHASE_PROGRESS.length
-  ) {
+  if (index <= currentPhase || index >= phases.length) {
     return;
   }
   currentPhase = index;
 
   // Update progress bar
-  const range = PHASE_PROGRESS[index];
-  const [base, target] = range;
+  const { base, target, label, expectedMs } = phases[index];
   if (base > currentProgress) {
     setProgress(base);
   }
   targetProgress = target;
+  // Pace the crawl so the band is traversed over the step's typical
+  // duration: each tick advances a constant slice sized to cross from
+  // `base` to `target` in `expectedMs`. This is what makes the bar move
+  // steadily through a long sync instead of stalling near the top.
+  crawlStep =
+    ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
   startProgressCrawl();
 
   // Update headline
   const status = document.getElementById("status");
   if (status !== null) {
-    status.textContent = phaseLabels[index] ?? "Loading...";
+    status.textContent = label;
   }
 }
 
