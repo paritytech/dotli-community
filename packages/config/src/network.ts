@@ -277,3 +277,24 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
     ].map((h) => h.toLowerCase()),
   );
 }
+
+/**
+ * Chains a sandboxed dApp can reach in **RPC-gateway** mode: the curated
+ * system chains that have configured WSS RPC endpoints. The Bulletin chain is
+ * intentionally excluded even when it has an RPC - its content is served
+ * through IPFS gateways, not a chain RPC connection - so gateway mode never
+ * advertises it as a connectable dApp chain.
+ *
+ * Single source of truth shared by the host's chain-support advertisement
+ * (`isRemoteChainSupported`) and the gateway provider factory
+ * (`createRpcChainProvider`).
+ */
+export function getActiveGatewayChains(): ChainService[] {
+  const cfg = getActiveServicesConfig();
+  return [cfg.relay, cfg.assethub, cfg.people].filter((c) => c.rpcs.length > 0);
+}
+
+/** Genesis hashes (lowercased) a dApp can reach in RPC-gateway mode. */
+export function getActiveGatewaySupportedGenesisHashes(): Set<string> {
+  return new Set(getActiveGatewayChains().map((c) => c.genesis.toLowerCase()));
+}

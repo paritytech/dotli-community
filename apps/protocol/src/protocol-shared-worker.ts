@@ -193,6 +193,17 @@ async function presync(): Promise<void> {
         "Asset Hub",
       ),
     );
+    // The People warm-keep must share this same broker follow. A separate
+    // getSmProvider on the People chain would race the broker's follow (one
+    // shared smoldot JSON-RPC queue) and have its events misrouted, so the
+    // broker drops People follow events as "unknown token" and reads hang.
+    setResolverPeopleProvider(() =>
+      requireBrokerLocalProvider(
+        chainBrokerManager,
+        getActiveServicesConfig().people.genesis,
+        "People",
+      ),
+    );
 
     // 4. Wait for Asset Hub to sync to a finalized block via the
     // explicit presync primitive (no more overloading `resolveDotName`

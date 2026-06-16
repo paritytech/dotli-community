@@ -15,6 +15,7 @@ import type {
 } from "@dotli/resolver/manifest";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
+  getActiveGatewaySupportedGenesisHashes,
   getActiveSupportedGenesisHashes,
   getNetwork,
 } from "@dotli/config/network";
@@ -689,7 +690,14 @@ export function subscribeSharedAuthStorage(
 }
 
 export function isRemoteChainSupported(genesisHash: string): boolean {
-  return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
+  // Advertise only what the *active* backend can actually serve. Gateway mode
+  // bridges a curated RPC subset (no Bulletin chain — its content goes via
+  // IPFS gateways), while smoldot can run any configured chain.
+  const supported =
+    getBackend() === "rpc-gateway"
+      ? getActiveGatewaySupportedGenesisHashes()
+      : getActiveSupportedGenesisHashes();
+  return supported.has(genesisHash.toLowerCase());
 }
 
 /**

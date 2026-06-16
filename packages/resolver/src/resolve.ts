@@ -64,12 +64,13 @@ export function setResolverAssetHubProvider(
   resolverAssetHubProvider = factory;
 }
 
-// People provider, same broker-backed pattern as Asset Hub. The host injects a
-// broker-backed provider during bootstrap so the People warm-up shares the
-// broker's single People follow instead of opening its own competing smoldot
-// follow — two follows on one chain stole events off the single
-// `jsonRpcResponses` stream, so the broker dropped dApp followEvents as
-// "unknown token" and the dApp People client went silent.
+// People-chain provider for the legacy-account auth warm-keep. Like Asset Hub,
+// the host injects a broker-backed provider during bootstrap so the warm-keep
+// shares the broker's single People follow. Opening a separate `getSmProvider`
+// here would race the broker's follow on the same smoldot chain — a smoldot
+// chain has one shared `nextJsonRpcResponse` queue, so subscription events get
+// delivered to the wrong consumer and the broker drops People follow events as
+// "unknown token", leaving reads to hang.
 let resolverPeopleProvider: (() => JsonRpcProvider) | null = null;
 
 export function setResolverPeopleProvider(
@@ -308,18 +309,22 @@ export async function waitForPeopleFinalized(
   if (peopleApiInstance) {
     return;
   }
+  // Must go through the broker's shared People follow. Without the injected
+  // provider we'd have to open our own `getSmProvider` on the shared chain —
+  // the dual-follow race this warm-keep was rewritten to avoid — so skip
+  // instead. People still resolves on demand via the broker (cold on first
+  // use) rather than corrupting the broker's follow stream.
+  const peopleProvider = resolverPeopleProvider;
+  if (peopleProvider === null) {
+    log.warn(
+      "[dot.li resolve] People provider not set — skipping warm-keep (resolves on demand via broker)",
+    );
+    return;
+  }
   peoplePromise ??= (async () => {
     const initStart = performance.now();
     onStatus?.("Warming People chain...");
-    if (resolverPeopleProvider === null) {
-      throw new Error(
-        "Resolver People provider not set — call setResolverPeopleProvider() during bootstrap",
-      );
-    }
-    // Broker-backed (mirrors Asset Hub): shares the broker's single People
-    // follow so this warm-up doesn't open a second smoldot follow competing for
-    // People's single jsonRpcResponses stream.
-    const provider = resolverPeopleProvider();
+    const provider = peopleProvider();
     const client = createClient(provider);
     const api = createRawApi(client);
     try {

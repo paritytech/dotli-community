@@ -53,6 +53,9 @@ if (process.env.CI !== "true") {
 export default defineConfig({
   ...baseConfig,
   testDir: ".",
+  // Co-locate traces with results.json (configDir-relative). The default is
+  // packageJsonDir/test-results, which the CI upload step doesn't cover.
+  outputDir: "test-results",
   timeout: 60_000,
   retries: 1,
   workers: 1,
