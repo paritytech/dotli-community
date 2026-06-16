@@ -65,6 +65,7 @@ let modalBackdrop: HTMLElement;
 let modalTitle: HTMLElement;
 let modalQr: HTMLElement;
 let modalReason: HTMLElement;
+let modalHint: HTMLElement;
 let modalClose: HTMLElement;
 let userPopover: HTMLElement;
 let userPopoverUsername: HTMLElement;
@@ -91,6 +92,13 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
+
+// On phones/tablets the user can't scan their own screen, so the pairing
+// deeplink is only useful as a tap target there. Same UA test the desktop
+// banner in apps/host/src/main.ts uses, kept in sync deliberately.
+function isMobileDevice(): boolean {
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
 
 interface AuthModule {
   initAuth: () => Promise<void>;
@@ -157,6 +165,7 @@ export function initTopBar(): void {
   modalTitle = getElement("auth-modal-title");
   modalQr = getElement("auth-modal-qr");
   modalReason = getElement("auth-modal-reason");
+  modalHint = getElement("auth-modal-hint");
   modalClose = getElement("auth-modal-close");
   userPopover = getElement("user-popover");
   userPopoverUsername = getElement("user-popover-username");
@@ -389,7 +398,28 @@ function renderPairing(payload: string): void {
         return;
       }
       modalQr.innerHTML = "";
-      modalQr.appendChild(canvas);
+
+      if (isMobileDevice()) {
+        // No second device to scan with: make the QR and a button tap the
+        // `polkadotapp://pair?handshake=…` deeplink so it opens the Polkadot
+        // app on this phone directly.
+        modalQr.classList.add("auth-modal-qr-mobile");
+
+        const qrLink = document.createElement("a");
+        qrLink.href = payload;
+        qrLink.className = "auth-modal-qr-link";
+        qrLink.appendChild(canvas);
+        modalQr.appendChild(qrLink);
+
+        const openApp = document.createElement("a");
+        openApp.href = payload;
+        openApp.className = "auth-modal-open-app";
+        openApp.textContent = "Open Polkadot App";
+        modalQr.appendChild(openApp);
+      } else {
+        modalQr.classList.remove("auth-modal-qr-mobile");
+        modalQr.appendChild(canvas);
+      }
     })
     .catch((err: unknown) => {
       log.error("[dot.li] QR render failed:", err);
@@ -1939,6 +1969,11 @@ function renderCacheToggle(
 
 function openModal(reason?: string, label?: string): void {
   modalQr.innerHTML = `<div class="spinner"></div>`;
+  // On a phone there's no second device to scan with, so the QR doubles as a
+  // tappable deeplink. Reflect that in the hint copy.
+  modalHint.textContent = isMobileDevice()
+    ? "Tap the code or button to open the Polkadot app"
+    : "Scan with Polkadot Mobile to connect";
   // A bare "localhost:<port>" label means dotli is in localhost-proxy
   // mode rendering a local dev server directly (apps/host/src/main.ts
   // localhost-proxy branch). Show it as-is. Deployed dotNs products

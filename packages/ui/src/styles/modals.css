@@ -96,6 +96,30 @@
 .auth-modal-qr canvas {
   border-radius: 8px;
 }
+/* Mobile: stack the tappable QR and the "Open Polkadot App" button. */
+.auth-modal-qr-mobile {
+  flex-direction: column;
+  gap: 16px;
+}
+.auth-modal-qr-link {
+  display: inline-flex;
+  line-height: 0;
+  border-radius: 8px;
+}
+.auth-modal-open-app {
+  display: inline-block;
+  padding: 8px 20px;
+  background: #fafafa;
+  border-radius: 6px;
+  color: #0a0a0a;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.auth-modal-open-app:hover {
+  background: #fff;
+}
 .auth-modal-close {
   margin-top: 16px;
   padding: 6px 16px;
