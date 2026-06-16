@@ -70,8 +70,7 @@ export function setResolverAssetHubProvider(
 // here would race the broker's follow on the same smoldot chain — a smoldot
 // chain has one shared `nextJsonRpcResponse` queue, so subscription events get
 // delivered to the wrong consumer and the broker drops People follow events as
-// "unknown token", leaving reads to hang (see
-// docs/people-chain-legacy-sign-hang.md §"People chain never syncs").
+// "unknown token", leaving reads to hang.
 let resolverPeopleProvider: (() => JsonRpcProvider) | null = null;
 
 export function setResolverPeopleProvider(
