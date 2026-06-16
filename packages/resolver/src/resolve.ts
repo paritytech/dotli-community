@@ -64,6 +64,20 @@ export function setResolverAssetHubProvider(
   resolverAssetHubProvider = factory;
 }
 
+// People provider, same broker-backed pattern as Asset Hub. The host injects a
+// broker-backed provider during bootstrap so the People warm-up shares the
+// broker's single People follow instead of opening its own competing smoldot
+// follow — two follows on one chain stole events off the single
+// `jsonRpcResponses` stream, so the broker dropped dApp followEvents as
+// "unknown token" and the dApp People client went silent.
+let resolverPeopleProvider: (() => JsonRpcProvider) | null = null;
+
+export function setResolverPeopleProvider(
+  factory: (() => JsonRpcProvider) | null,
+): void {
+  resolverPeopleProvider = factory;
+}
+
 /**
  * Tear down the cached resolver client. Callers that hold a reference to
  * `apiInstance` must discard it. Every subsequent `.` resolution will
@@ -264,6 +278,91 @@ export async function waitForAssetHubFinalized(
   onPhase?: PhaseCallback,
 ): Promise<void> {
   await ensureClient(onStatus, onPhase);
+}
+
+// People chain warm-keep for legacy-account auth.
+//
+// Auth reads the username -> account map on the People chain. On a cold start
+// that read races the parachain warp sync, which is the source of the
+// intermittent "People read sometimes fails" reports. This mirrors the Asset
+// Hub bootstrap above (open a follow, drive it to a finalized block with a
+// bounded wait, invalidate on stop, keep the client alive) so the chain is
+// already synced when auth connects. The one difference from Asset Hub: this is
+// meant to run in the background and must NOT gate the ready signal, because
+// resolution does not need People.
+let peopleClientInstance: SubstrateClient | null = null;
+let peopleApiInstance: Api | null = null;
+let peoplePromise: Promise<Api> | null = null;
+
+function destroyPeopleClient(): void {
+  peopleApiInstance?.destroy();
+  peopleClientInstance?.destroy();
+  peopleApiInstance = null;
+  peopleClientInstance = null;
+  peoplePromise = null;
+}
+
+export async function waitForPeopleFinalized(
+  onStatus?: StatusCallback,
+): Promise<void> {
+  if (peopleApiInstance) {
+    return;
+  }
+  peoplePromise ??= (async () => {
+    const initStart = performance.now();
+    onStatus?.("Warming People chain...");
+    if (resolverPeopleProvider === null) {
+      throw new Error(
+        "Resolver People provider not set — call setResolverPeopleProvider() during bootstrap",
+      );
+    }
+    // Broker-backed (mirrors Asset Hub): shares the broker's single People
+    // follow so this warm-up doesn't open a second smoldot follow competing for
+    // People's single jsonRpcResponses stream.
+    const provider = resolverPeopleProvider();
+    const client = createClient(provider);
+    const api = createRawApi(client);
+    try {
+      await Promise.race([
+        api.whenReady(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(
+              new NetworkSyncTimeoutError(
+                "People Paseo",
+                TIMEOUTS.PEOPLE_FINALIZED_SYNC,
+              ),
+            );
+          }, TIMEOUTS.PEOPLE_FINALIZED_SYNC);
+        }),
+      ]);
+    } catch (err) {
+      try {
+        api.destroy();
+        client.destroy();
+        // eslint-disable-next-line no-restricted-syntax -- best-effort teardown of a never-fully-initialised client; the real cause is rethrown on the next line.
+      } catch {
+        /* already dead, real cause rethrown below */
+      }
+      peoplePromise = null;
+      throw err;
+    }
+
+    // If the follow dies, invalidate so the next warm rebuilds against a fresh
+    // smoldot chain instead of reusing a dead one.
+    api.onStop(() => {
+      log.warn(
+        "[dot.li resolve] People chainHead follow stopped, invalidating warm client",
+      );
+      destroyPeopleClient();
+    });
+
+    peopleClientInstance = client;
+    peopleApiInstance = api;
+    log.warn(`[dot.li resolve] People chain warmed (${dur(initStart)})`);
+    return api;
+  })();
+  await peoplePromise;
 }
 
 export async function resolveDotName(

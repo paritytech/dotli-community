@@ -19,6 +19,7 @@ import {
 } from "@novasamatech/host-api";
 import { log } from "@dotli/shared/log";
 import type { UserSession } from "@novasamatech/host-papp";
+import { productPublicKeyToAddress } from "./account";
 
 export interface SigningResult {
   signature: `0x${string}`;
@@ -55,6 +56,20 @@ export interface ContainerSignRawRequest {
 
 export interface ContainerCreateTransactionPayload {
   signer: [string, number];
+  genesisHash: Uint8Array;
+  callData: Uint8Array;
+  extensions: { id: string; extra: Uint8Array; additionalSigned: Uint8Array }[];
+  txExtVersion: number;
+}
+
+/**
+ * Legacy-account variant of `ContainerCreateTransactionPayload`. The signer is
+ * a raw 32-byte public key (host-api `AccountId = Bytes(32)`) rather than the
+ * `[dotNsIdentifier, derivationIndex]` product tuple, matching host-papp's
+ * `LegacyTransaction = GenericTxPayloadV1(AccountId)`.
+ */
+export interface ContainerCreateTransactionLegacyPayload {
+  signer: Uint8Array;
   genesisHash: Uint8Array;
   callData: Uint8Array;
   extensions: { id: string; extra: Uint8Array; additionalSigned: Uint8Array }[];
@@ -428,6 +443,216 @@ export function showCreateTransactionModal(
           removeModal(backdrop);
           const msg = e instanceof Error ? e.message : "Request timed out";
           reject(new CreateTransactionErr.Unknown({ reason: msg }));
+        },
+      );
+    });
+  });
+}
+
+/**
+ * Sign-raw modal for a true legacy (imported) account.
+ *
+ * Unlike `showSignRawModal`, the wallet is asked to sign with a concrete
+ * account public key (`signRawLegacy`) rather than deriving a product key from
+ * a `[dotNsIdentifier, index]` tuple. host-papp's `signRawLegacy` returns the
+ * raw signature only (no signed transaction).
+ */
+export function showSignRawLegacyModal(
+  session: UserSession,
+  data: ContainerSignRawRequest["payload"],
+  appLabel: string,
+  account: Uint8Array,
+): Promise<SigningResult> {
+  return new Promise((resolve, reject) => {
+    const signerLabel = productPublicKeyToAddress(account);
+    const message = data.tag === "Payload" ? data.value : toHex(data.value);
+
+    const fields: { label: string; value: string; mono?: boolean }[] = [
+      { label: "App", value: appLabel },
+      { label: "Signer", value: signerLabel, mono: true },
+      { label: "Message", value: message, mono: true },
+    ];
+
+    const { backdrop, signBtn, cancelBtn } = createModalDOM(
+      "Sign Message",
+      fields,
+    );
+
+    cancelBtn.addEventListener("click", () => {
+      removeModal(backdrop);
+      reject(new SigningErr.Rejected());
+    });
+
+    signBtn.addEventListener("click", () => {
+      signBtn.disabled = true;
+      signBtn.textContent = "Signing...";
+
+      void withTimeout(
+        session.signRawLegacy({ account, data }),
+        SIGN_TIMEOUT_MS,
+      ).then(
+        (result) => {
+          result.match(
+            (signature) => {
+              removeModal(backdrop);
+              resolve({ signature: toHex(signature) });
+            },
+            (e) => {
+              log.error("[dot.li signing] signRawLegacy FAILED:", e.message, e);
+              removeModal(backdrop);
+              reject(new SigningErr.Unknown({ reason: e.message }));
+            },
+          );
+        },
+        (e: unknown) => {
+          log.error("[dot.li signing] signRawLegacy timed out:", e);
+          removeModal(backdrop);
+          const msg = e instanceof Error ? e.message : "Request timed out";
+          reject(new SigningErr.Unknown({ reason: msg }));
+        },
+      );
+    });
+  });
+}
+
+/**
+ * Create-transaction modal for a true legacy (imported) account. Mirrors
+ * `showCreateTransactionModal` but routes through host-papp's
+ * `createTransactionLegacy`, which carries the signer as a raw public key.
+ */
+export function showCreateTransactionLegacyModal(
+  session: UserSession,
+  payload: ContainerCreateTransactionLegacyPayload,
+  appLabel: string,
+): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const signerLabel = productPublicKeyToAddress(payload.signer);
+    const genesisHashHex = toHex(payload.genesisHash);
+    const callDataHex = toHex(payload.callData);
+    const callDataPreview =
+      callDataHex.length > 80 ? `${callDataHex.slice(0, 80)}...` : callDataHex;
+
+    const fields: { label: string; value: string; mono?: boolean }[] = [
+      { label: "App", value: appLabel },
+      { label: "Signer", value: signerLabel, mono: true },
+      { label: "Genesis Hash", value: genesisHashHex, mono: true },
+      { label: "Call Data", value: callDataPreview, mono: true },
+      { label: "Tx Ext Version", value: String(payload.txExtVersion) },
+    ];
+
+    const { backdrop, signBtn, cancelBtn } = createModalDOM(
+      "Sign Transaction",
+      fields,
+    );
+
+    cancelBtn.addEventListener("click", () => {
+      removeModal(backdrop);
+      reject(new CreateTransactionErr.Rejected());
+    });
+
+    signBtn.addEventListener("click", () => {
+      signBtn.disabled = true;
+      signBtn.textContent = "Signing...";
+
+      void withTimeout(
+        session.createTransactionLegacy({
+          payload: enumValue("v1", payload),
+        }),
+        SIGN_TIMEOUT_MS,
+      ).then(
+        (result) => {
+          result.match(
+            (signedTransaction) => {
+              removeModal(backdrop);
+              resolve(signedTransaction);
+            },
+            (e) => {
+              log.error(
+                "[dot.li signing] createTransactionLegacy FAILED:",
+                e.message,
+                e,
+              );
+              removeModal(backdrop);
+              reject(new CreateTransactionErr.Unknown({ reason: e.message }));
+            },
+          );
+        },
+        (e: unknown) => {
+          log.error("[dot.li signing] createTransactionLegacy timed out:", e);
+          removeModal(backdrop);
+          const msg = e instanceof Error ? e.message : "Request timed out";
+          reject(new CreateTransactionErr.Unknown({ reason: msg }));
+        },
+      );
+    });
+  });
+}
+
+/**
+ * Sign-payload modal for a true legacy (imported) account. host-papp has no
+ * `signPayloadLegacy`, so the JSON-encoded payload is signed through
+ * `signRawLegacy` (Payload variant), mirroring polkadot-desktop. Returns the
+ * raw signature only (no signed transaction).
+ */
+export function showSignPayloadLegacyModal(
+  session: UserSession,
+  payload: ContainerSignPayloadRequest["payload"],
+  appLabel: string,
+  account: Uint8Array,
+): Promise<SigningResult> {
+  return new Promise((resolve, reject) => {
+    const signerLabel = productPublicKeyToAddress(account);
+
+    const fields: { label: string; value: string; mono?: boolean }[] = [
+      { label: "App", value: appLabel },
+      { label: "Signer", value: signerLabel, mono: true },
+      { label: "Genesis Hash", value: payload.genesisHash, mono: true },
+      { label: "Call Data", value: payload.method, mono: true },
+    ];
+
+    const { backdrop, signBtn, cancelBtn } = createModalDOM(
+      "Sign Transaction",
+      fields,
+    );
+
+    cancelBtn.addEventListener("click", () => {
+      removeModal(backdrop);
+      reject(new SigningErr.Rejected());
+    });
+
+    signBtn.addEventListener("click", () => {
+      signBtn.disabled = true;
+      signBtn.textContent = "Signing...";
+
+      void withTimeout(
+        session.signRawLegacy({
+          account,
+          data: { tag: "Payload", value: JSON.stringify(payload) },
+        }),
+        SIGN_TIMEOUT_MS,
+      ).then(
+        (result) => {
+          result.match(
+            (signature) => {
+              removeModal(backdrop);
+              resolve({ signature: toHex(signature) });
+            },
+            (e) => {
+              log.error(
+                "[dot.li signing] signPayloadLegacy FAILED:",
+                e.message,
+                e,
+              );
+              removeModal(backdrop);
+              reject(new SigningErr.Unknown({ reason: e.message }));
+            },
+          );
+        },
+        (e: unknown) => {
+          log.error("[dot.li signing] signPayloadLegacy timed out:", e);
+          removeModal(backdrop);
+          const msg = e instanceof Error ? e.message : "Request timed out";
+          reject(new SigningErr.Unknown({ reason: msg }));
         },
       );
     });

@@ -19,6 +19,11 @@ runs:
       run: bun install --frozen-lockfile
       shell: bash
 
+    # Run from apps/host so bunx resolves the workspace-pinned playwright
+    # (@playwright/test in apps/host) instead of fetching the latest from the
+    # registry. A version mismatch installs the wrong browser build and the
+    # tests fail at launch with "Executable doesn't exist".
     - name: Install Playwright browsers
+      working-directory: apps/host
       run: bunx --bun playwright install --with-deps chromium
       shell: bash

@@ -35,6 +35,7 @@
     "smoldot": "3.2.0"
   },
   "overrides": {
-    "smoldot": "3.2.0"
+    "smoldot": "3.2.0",
+    "esbuild": "^0.28.1"
   }
 }

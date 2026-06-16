@@ -52,6 +52,15 @@ const ss58Codec = AccountId();
 export const productPublicKeyToAddress = (publicKey: Uint8Array): string =>
   ss58Codec.dec(publicKey);
 
+/**
+ * Inverse of `productPublicKeyToAddress`: decode an SS58 address string back to
+ * its 32-byte public key. Used to turn a legacy account's `signer` address
+ * (the wire format products send) into the `AccountId` bytes host-papp's
+ * `signRawLegacy` expects. Throws on a malformed address.
+ */
+export const productAddressToPublicKey = (address: string): Uint8Array =>
+  ss58Codec.enc(address);
+
 // NOTE: Uncomment when derived product accounts get their own network
 // allowance (quota) on People Chain. Currently only the root session account
 // has allowance, so createProof signs with the root ssSecret directly.

@@ -675,6 +675,8 @@ async function initDirectMode(): Promise<void> {
     resolveOwner,
     resolveRootManifest,
     setResolverAssetHubProvider,
+    setResolverPeopleProvider,
+    waitForPeopleFinalized,
   } = resolve;
   const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
 
@@ -708,6 +710,15 @@ async function initDirectMode(): Promise<void> {
           "Asset Hub",
         ),
       );
+      // Same for People: the warm-up shares the broker's single People follow
+      // instead of opening its own competing smoldot follow.
+      setResolverPeopleProvider(() =>
+        requireBrokerLocalProvider(
+          broker,
+          getActiveServicesConfig().people.genesis,
+          "People",
+        ),
+      );
     },
     onInit: () => {
       getSmoldot();
@@ -718,6 +729,13 @@ async function initDirectMode(): Promise<void> {
     onWarmup: async () => {
       getSmoldot();
       await getRelayChain();
+      // Warm People in the background so legacy-account auth reads do not race
+      // a cold parachain warp sync. Not needed for resolution, so do not await.
+      void waitForPeopleFinalized().catch((err: unknown) => {
+        log.warn(
+          `[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`,
+        );
+      });
     },
     resolveDotName,
     resolveOwner,

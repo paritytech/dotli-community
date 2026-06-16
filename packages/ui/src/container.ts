@@ -68,13 +68,17 @@ import {
   type AuthState,
 } from "@dotli/auth/auth";
 import {
+  showCreateTransactionLegacyModal,
   showCreateTransactionModal,
+  showSignPayloadLegacyModal,
   showSignPayloadModal,
+  showSignRawLegacyModal,
   showSignRawModal,
-  type ContainerCreateTransactionPayload,
+  type ContainerCreateTransactionLegacyPayload,
 } from "@dotli/auth/signing";
 import {
   deriveProductPublicKey,
+  productAddressToPublicKey,
   productPublicKeyToAddress,
 } from "@dotli/auth/account";
 import {
@@ -465,11 +469,14 @@ function wireContainerHandlers(
     }),
   );
 
-  // Legacy-account signing wires. Re-derive the same `(session, identifier, 0)`
-  // public key, SS58-encode it, and require it equals the product-supplied
-  // `signer: string` before opening the regular signing modal with a synthetic
-  // `[identifier, 0]` tuple. Mirrors the desktop host's wire-up at
-  // browser/src/widgets/ProductContainerBinding/integrations/signing.tsx.
+  // Legacy-account signing wires. A `*WithLegacyAccount` request always targets
+  // a genuine imported account, so decode the supplied signer to its raw
+  // AccountId and relay to the wallet via host-papp's legacy SDK calls. The
+  // non-legacy handlers above own the product-account (derived) path. Mirrors
+  // polkadot-desktop#632.
+  //
+  // host-papp has no `signPayloadLegacy`, so signPayload is signed through
+  // `signRawLegacy` (Payload variant) — see `showSignPayloadLegacyModal`.
   container.handleSignPayloadWithLegacyAccount((payload, { ok, err }) =>
     queueWalletFlow(() => {
       log.warn(`[${label}] handleSignPayloadWithLegacyAccount invoked:`, {
@@ -486,21 +493,12 @@ function wireContainerHandlers(
         return errAsync(new SigningErr.Rejected(undefined));
       }
 
-      const identifier = labelToProductIdentifier(label);
-      const derivedPk = deriveProductPublicKey(
-        session.rootAccountId,
-        identifier,
-        0,
-      );
-      const derivedAddress = productPublicKeyToAddress(derivedPk);
-      if (derivedAddress !== payload.signer) {
-        log.warn(
-          `[${label}] handleSignPayloadWithLegacyAccount — signer mismatch (expected ${derivedAddress}, got ${payload.signer})`,
-        );
+      let account: Uint8Array;
+      try {
+        account = productAddressToPublicKey(payload.signer);
+      } catch {
         return errAsync(
-          new SigningErr.Unknown({
-            reason: "Account can't be derived from product account id",
-          }),
+          new SigningErr.Unknown({ reason: "Invalid legacy signer address" }),
         );
       }
 
@@ -513,28 +511,21 @@ function wireContainerHandlers(
             return err(new SigningErr.PermissionDenied(undefined));
           }
           return fromPromise(
-            showSignPayloadModal(session, payload.payload, label, [
-              identifier,
-              0,
-            ]),
+            showSignPayloadLegacyModal(
+              session,
+              payload.payload,
+              label,
+              account,
+            ),
             (e) => e as never,
           )
-            .andThen((result) => {
-              log.warn(
-                `[${label}] handleSignPayloadWithLegacyAccount — resolved OK`,
-              );
-              return ok({
+            .andThen((result) =>
+              ok({
                 signature: result.signature,
                 signedTransaction: result.signedTransaction,
-              });
-            })
-            .orElse((e) => {
-              log.warn(
-                `[${label}] handleSignPayloadWithLegacyAccount — rejected:`,
-                e,
-              );
-              return err(e);
-            });
+              }),
+            )
+            .orElse((e) => err(e));
         },
       );
     }),
@@ -555,47 +546,31 @@ function wireContainerHandlers(
         return errAsync(new SigningErr.Rejected(undefined));
       }
 
-      const identifier = labelToProductIdentifier(label);
-      const derivedPk = deriveProductPublicKey(
-        session.rootAccountId,
-        identifier,
-        0,
-      );
-      const derivedAddress = productPublicKeyToAddress(derivedPk);
-      if (derivedAddress !== payload.signer) {
-        log.warn(
-          `[${label}] handleSignRawWithLegacyAccount — signer mismatch (expected ${derivedAddress}, got ${payload.signer})`,
-        );
+      let account: Uint8Array;
+      try {
+        account = productAddressToPublicKey(payload.signer);
+      } catch {
         return errAsync(
-          new SigningErr.Unknown({
-            reason: "Account can't be derived from product account id",
-          }),
+          new SigningErr.Unknown({ reason: "Invalid legacy signer address" }),
         );
       }
 
       return fromPromise(
-        showSignRawModal(session, payload.payload, label, [identifier, 0]),
+        showSignRawLegacyModal(session, payload.payload, label, account),
         (e) => e as never,
       )
-        .andThen((result) => {
-          log.warn(`[${label}] handleSignRawWithLegacyAccount — resolved OK`);
-          return ok({
+        .andThen((result) =>
+          ok({
             signature: result.signature,
             signedTransaction: result.signedTransaction,
-          });
-        })
-        .orElse((e) => {
-          log.warn(`[${label}] handleSignRawWithLegacyAccount — rejected:`, e);
-          return err(e);
-        });
+          }),
+        )
+        .orElse((e) => err(e));
     }),
   );
 
-  // Legacy-account create-transaction. The host-papp SSO message only carries
-  // the product-account flavor, so we re-route the request through the same
-  // wallet flow using a synthetic `[identifier, 0]` tuple. Mirrors the trust
-  // model of `handleSignPayloadWithLegacyAccount` above. `payload.signer` is
-  // the raw 32-byte public key (codec is `AccountId = Bytes(32)`).
+  // Legacy-account create-transaction: relay the raw 32-byte signer
+  // (`AccountId = Bytes(32)`) to the wallet via createTransactionLegacy.
   container.handleCreateTransactionWithLegacyAccount((payload, { ok, err }) =>
     queueWalletFlow(() => {
       log.warn(`[${label}] handleCreateTransactionWithLegacyAccount invoked:`, {
@@ -614,23 +589,6 @@ function wireContainerHandlers(
         return errAsync(new CreateTransactionErr.Rejected());
       }
 
-      const identifier = labelToProductIdentifier(label);
-      const derivedPk = deriveProductPublicKey(
-        session.rootAccountId,
-        identifier,
-        0,
-      );
-      if (toHex(derivedPk) !== toHex(payload.signer)) {
-        log.warn(
-          `[${label}] handleCreateTransactionWithLegacyAccount — signer mismatch (expected ${productPublicKeyToAddress(derivedPk)}, got pk=${toHex(payload.signer)})`,
-        );
-        return errAsync(
-          new CreateTransactionErr.Unknown({
-            reason: "Account can't be derived from product account id",
-          }),
-        );
-      }
-
       return promptCachedSubmitPermission(label, "ChainSubmit").andThen(
         (granted) => {
           if (!granted) {
@@ -639,30 +597,19 @@ function wireContainerHandlers(
             );
             return err(new CreateTransactionErr.PermissionDenied());
           }
-          const productPayload: ContainerCreateTransactionPayload = {
-            signer: [identifier, 0],
+          const legacyPayload: ContainerCreateTransactionLegacyPayload = {
+            signer: payload.signer,
             genesisHash: payload.genesisHash,
             callData: payload.callData,
             extensions: payload.extensions,
             txExtVersion: payload.txExtVersion,
           };
           return fromPromise(
-            showCreateTransactionModal(session, productPayload, label),
+            showCreateTransactionLegacyModal(session, legacyPayload, label),
             (e) => e as never,
           )
-            .andThen((signedTx) => {
-              log.warn(
-                `[${label}] handleCreateTransactionWithLegacyAccount — resolved OK`,
-              );
-              return ok(signedTx);
-            })
-            .orElse((e) => {
-              log.warn(
-                `[${label}] handleCreateTransactionWithLegacyAccount — rejected:`,
-                e,
-              );
-              return err(e);
-            });
+            .andThen((signedTx) => ok(signedTx))
+            .orElse((e) => err(e));
         },
       );
     }),

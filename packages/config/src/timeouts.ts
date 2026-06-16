@@ -18,4 +18,6 @@ export const TIMEOUTS = {
   SHARED_WORKER_READY: 210_000,
   /** Upper bound on `getFinalizedBlock()` while bootstrapping smoldot. */
   ASSET_HUB_FINALIZED_SYNC: 180_000,
+  /** Upper bound on the background People-chain warm for legacy-account auth. */
+  PEOPLE_FINALIZED_SYNC: 180_000,
 } as const;

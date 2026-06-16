@@ -29,7 +29,9 @@ import {
   resolveOwner,
   resolveRootManifest,
   setResolverAssetHubProvider,
+  setResolverPeopleProvider,
   waitForAssetHubFinalized,
+  waitForPeopleFinalized,
 } from "@dotli/resolver/resolve";
 import { onSmoldotFatal } from "@dotli/resolver/smoldot";
 import { m } from "@dotli/metrics/metrics";
@@ -214,6 +216,33 @@ async function presync(): Promise<void> {
       port.postMessage(readyMsg);
     }
     pendingPorts.length = 0;
+
+    // Warm the People chain in the background. Legacy-account auth reads the
+    // username -> account map on People, and on a cold start that read races
+    // the parachain warp sync (the source of the intermittent failures). Start
+    // syncing it now so it is ready by the time auth runs. People is not needed
+    // for resolution, so this must not gate the ready signal above.
+    swLog("Warming People chain in background...");
+    // Route the People warm-up through the broker's shared follow (mirrors
+    // Asset Hub above) so it doesn't open a second competing smoldot follow.
+    setResolverPeopleProvider(() =>
+      requireBrokerLocalProvider(
+        chainBrokerManager,
+        getActiveServicesConfig().people.genesis,
+        "People",
+      ),
+    );
+    void waitForPeopleFinalized((msg) => {
+      swLog(`People warm status: ${msg}`);
+    })
+      .then(() => {
+        swLog("People chain warmed");
+      })
+      .catch((err: unknown) => {
+        swLog(
+          `People chain warm failed (retried on demand): ${serializeError(err)}`,
+        );
+      });
   } catch (err: unknown) {
     const msg = serializeError(err);
     swError(`Pre-sync failed: ${msg}`);
