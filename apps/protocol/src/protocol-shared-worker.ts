@@ -29,6 +29,7 @@ import {
   resolveOwner,
   resolveRootManifest,
   setResolverAssetHubProvider,
+  setResolverPeopleProvider,
   waitForAssetHubFinalized,
   waitForPeopleFinalized,
 } from "@dotli/resolver/resolve";
@@ -222,6 +223,15 @@ async function presync(): Promise<void> {
     // syncing it now so it is ready by the time auth runs. People is not needed
     // for resolution, so this must not gate the ready signal above.
     swLog("Warming People chain in background...");
+    // Route the People warm-up through the broker's shared follow (mirrors
+    // Asset Hub above) so it doesn't open a second competing smoldot follow.
+    setResolverPeopleProvider(() =>
+      requireBrokerLocalProvider(
+        chainBrokerManager,
+        getActiveServicesConfig().people.genesis,
+        "People",
+      ),
+    );
     void waitForPeopleFinalized((msg) => {
       swLog(`People warm status: ${msg}`);
     })
