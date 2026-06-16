@@ -642,6 +642,25 @@ class ChainBroker {
           },
         });
       }
+
+      // A `stop` kills this shared follow. Clear its dead upstream token and
+      // snapshot so a session's re-follow takes the fresh-follow path instead
+      // of binding to the dead token (which reads null and hangs). The `stop`
+      // already reached every session above, which papi needs before it
+      // re-issues `chainHead_v1_follow`.
+      const eventResult = message.params?.result;
+      if (isJsonRpcObject(eventResult) && eventResult.event === "stop") {
+        brokerLog(
+          `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
+        );
+        this.upstreamFollowTokens.delete(upstreamToken);
+        sharedFollow.upstreamToken = null;
+        sharedFollow.requestInFlight = false;
+        sharedFollow.finalizedBlockHashes = [];
+        sharedFollow.finalizedBlockRuntime = null;
+        sharedFollow.bestBlockHash = null;
+        sharedFollow.blocks.clear();
+      }
       return;
     }
 
