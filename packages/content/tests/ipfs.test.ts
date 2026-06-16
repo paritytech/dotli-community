@@ -19,16 +19,17 @@ afterEach(() => {
 });
 
 describe("fetchFromIpfs", () => {
-  // Regression guard: a bare GET lets a gateway content-negotiate and mutate
-  // the body (e.g. Cloudflare rewriting text/html), so the bytes no longer
-  // hash to the CID. We must request the raw block as a binary type.
-  it("requests the raw block with ?format=raw and the raw Accept header", async () => {
+  it("As the gateway fetcher, I fetch a raw block requesting format=raw with the ipld.raw Accept header so a content-negotiating gateway cannot mutate it", async () => {
+    // Given a gateway that returns some block bytes
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
     );
 
+    // When it fetches the block
     await fetchFromIpfs(CID, GATEWAY);
 
+    // Then it asks for the raw binary block, not a content-negotiable GET
+    // (a bare GET lets the gateway serve it as text/html and rewrite the body)
     expect(fetchMock).toHaveBeenCalledWith(
       `${GATEWAY}/ipfs/${CID}?format=raw`,
       expect.objectContaining({
@@ -37,7 +38,8 @@ describe("fetchFromIpfs", () => {
     );
   });
 
-  it("returns the response bytes and content type", async () => {
+  it("As the gateway fetcher, I fetch a raw block and return its bytes and content type", async () => {
+    // Given a gateway that returns raw bytes with a content type
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
         status: 200,
@@ -45,29 +47,36 @@ describe("fetchFromIpfs", () => {
       }),
     );
 
+    // When it fetches the block
     const { data, contentType } = await fetchFromIpfs(CID, GATEWAY);
 
+    // Then it gets the response bytes and content type back
     expect(Array.from(data)).toEqual([0xde, 0xad, 0xbe, 0xef]);
     expect(contentType).toBe("application/vnd.ipld.raw");
   });
 
-  it("throws on a non-ok response", async () => {
+  it("As the gateway fetcher, I fetch a raw block and a non-ok gateway response fails loudly", async () => {
+    // Given a gateway that returns an error status
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
+    // When it fetches the block
+    // Then it rejects rather than returning a bad body
     await expect(fetchFromIpfs(CID, GATEWAY)).rejects.toThrow(/502/);
   });
 });
 
 describe("fetchCarFromIpfs", () => {
-  // CAR is also a binary type, so it is likewise immune to gateway text/html
-  // rewriting — this asserts the request stays binary.
-  it("requests the CAR archive with ?format=car and the CAR Accept header", async () => {
+  it("As the gateway fetcher, I fetch a dag-pb archive requesting format=car with the ipld.car Accept header", async () => {
+    // Given a gateway that returns some archive bytes
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
     );
 
+    // When it fetches the archive
     await fetchCarFromIpfs(CID, GATEWAY);
 
+    // Then it asks for the CAR archive as a binary type (immune to gateway
+    // text/html rewriting, same discipline as the raw block path)
     expect(fetchMock).toHaveBeenCalledWith(
       `${GATEWAY}/ipfs/${CID}?format=car`,
       expect.objectContaining({
@@ -76,19 +85,25 @@ describe("fetchCarFromIpfs", () => {
     );
   });
 
-  it("returns the response bytes", async () => {
+  it("As the gateway fetcher, I fetch a CAR archive and return its raw bytes", async () => {
+    // Given a gateway that returns CAR bytes
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([0xca, 0xfe]), { status: 200 }),
     );
 
+    // When it fetches the archive
     const data = await fetchCarFromIpfs(CID, GATEWAY);
 
+    // Then it gets the response bytes back
     expect(Array.from(data)).toEqual([0xca, 0xfe]);
   });
 
-  it("throws on a non-ok response", async () => {
+  it("As the gateway fetcher, I fetch a CAR archive and a non-ok gateway response fails loudly", async () => {
+    // Given a gateway that returns an error status
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
+    // When it fetches the archive
+    // Then it rejects rather than returning a bad body
     await expect(fetchCarFromIpfs(CID, GATEWAY)).rejects.toThrow(/502/);
   });
 });
