@@ -402,7 +402,6 @@ export async function resolveDotName(
   const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
   switch (decoded.kind) {
     case "ok":
-      onStatus?.(`Resolved "${domain}" → ${decoded.cid}`);
       return decoded.cid;
     case "empty":
       onStatus?.(`Domain "${domain}" not found or no content set`);

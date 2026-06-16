@@ -602,8 +602,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  showStatus("Loading content...");
-
   // The sandbox lives on `<label>.app.dot.li` and cannot read the host's
   // localStorage, so every user-chosen axis (and the resolved CID) must
   // arrive via URL param. The validator in
