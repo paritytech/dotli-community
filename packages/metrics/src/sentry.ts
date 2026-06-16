@@ -119,6 +119,7 @@ export function initSentry(source: SentrySource): void {
       : [Sentry.browserTracingIntegration({ idleTimeout: 120000 })];
   Sentry.init({
     dsn,
+    tunnel: "/t",
     environment: env,
     release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
     sendDefaultPii: false,
