@@ -526,7 +526,7 @@ describe("createChainBrokerManager", () => {
     );
     expect(unpins).toHaveLength(1);
     expect((unpins[0]?.params as unknown[])[0]).toBe("up-a");
-    expect((unpins[0]?.params as unknown[])[1]).toBe("0xblock");
+    expect((unpins[0]?.params as unknown[])[1]).toEqual(["0xblock"]);
     expect(JSON.parse(messagesB.at(-1) ?? "{}")).toEqual({
       jsonrpc: "2.0",
       id: 11,
@@ -604,6 +604,6 @@ describe("createChainBrokerManager", () => {
     );
     expect(unpins).toHaveLength(1);
     expect((unpins[0]?.params as unknown[])[0]).toBe("up-a");
-    expect((unpins[0]?.params as unknown[])[1]).toBe("0xblock");
+    expect((unpins[0]?.params as unknown[])[1]).toEqual(["0xblock"]);
   });
 });
