@@ -48,7 +48,11 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "request-login");
     });
 
-    test("Get User Identity", async ({ productFrame }) => {
+    test("Get User Identity", async ({ pairedPage, productFrame }) => {
+      test.setTimeout(120_000);
+      const badge = pairedPage.locator(".user-badge");
+      await expect(badge).toBeVisible({ timeout: 30_000 });
+      await expect(badge).not.toHaveText("??", { timeout: 60_000 });
       await runTestExpectSuccess(productFrame, "get-user-id");
     });
   });

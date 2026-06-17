@@ -50,6 +50,7 @@ let sharedStorage: ReturnType<typeof createSharedAuthStorageAdapter> | null =
 let statementStoreInstance: StatementStoreAdapter | null = null;
 let storeReadyResolvers: ((store: StatementStoreAdapter) => void)[] = [];
 let currentState: AuthState = { status: "idle" };
+let identitySub: { unsubscribe: () => void } | null = null;
 const listeners = new Set<AuthListener>();
 
 function setState(state: AuthState): void {
@@ -321,7 +322,7 @@ export async function initAuth(): Promise<void> {
   const stopRestore = m.timer(S.AUTH_SESSION_RESTORE);
   const sessions = adapter.sessions.sessions.read();
   if (sessions.length > 0) {
-    void resolveIdentityAndSetAuth(sessions[0]);
+    resolveIdentityAndSetAuth(sessions[0]);
   }
   stopRestore();
   m.breadcrumb("Auth module loaded");
@@ -332,12 +333,14 @@ export async function initAuth(): Promise<void> {
   // paths reset identically.
   adapter.sessions.sessions.subscribe((sessions: UserSession[]) => {
     if (sessions.length > 0 && currentState.status !== "authenticated") {
-      void resolveIdentityAndSetAuth(sessions[0]);
+      resolveIdentityAndSetAuth(sessions[0]);
     } else if (
       sessions.length === 0 &&
       currentState.status === "authenticated"
     ) {
       const { session } = currentState;
+      identitySub?.unsubscribe();
+      identitySub = null;
       setState({ status: "idle" });
       void teardownAfterDisconnect(session);
     }
@@ -355,27 +358,36 @@ async function teardownAfterDisconnect(session: UserSession): Promise<void> {
   adapter?.sso.abortAuthentication();
 }
 
-async function resolveIdentityAndSetAuth(session: UserSession): Promise<void> {
+function resolveIdentityAndSetAuth(session: UserSession): void {
   if (!adapter) {
     return;
   }
 
-  // Set authenticated immediately with null identity, then resolve identity in background
+  // Drop any previous watch so a stale subscription can't write into a new
+  // session's state.
+  identitySub?.unsubscribe();
+  identitySub = null;
+
   setState({ status: "authenticated", session, identity: null });
 
-  try {
-    const accountId = Array.from(session.remoteAccount.accountId)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+  const accountId = Array.from(session.remoteAccount.accountId)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
-    const result = await adapter.identity.getIdentity(`0x${accountId}`);
-
-    if (result.isOk() && result.value) {
-      setState({ status: "authenticated", session, identity: result.value });
-    }
-  } catch (err) {
-    log.warn("[dot.li] Failed to resolve identity:", err);
-  }
+  identitySub = adapter.identity.watchIdentity(`0x${accountId}`).subscribe({
+    next: (identity) => {
+      if (
+        identity &&
+        currentState.status === "authenticated" &&
+        currentState.session.id === session.id
+      ) {
+        setState({ status: "authenticated", session, identity });
+      }
+    },
+    error: (err: unknown) => {
+      log.warn("[dot.li] Failed to resolve identity:", err);
+    },
+  });
 }
 
 /**
@@ -392,7 +404,7 @@ function pickUpSession(): void {
 
   const sessions = adapter.sessions.sessions.read();
   if (sessions.length > 0) {
-    void resolveIdentityAndSetAuth(sessions[0]);
+    resolveIdentityAndSetAuth(sessions[0]);
   }
 }
 
