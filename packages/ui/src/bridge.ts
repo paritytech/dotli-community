@@ -160,6 +160,10 @@ export async function renderIframe(url: string, label: string): Promise<void> {
     "allow-same-origin",
     "allow-forms",
     "allow-pointer-lock",
+    "allow-popups",
+    "allow-popups-to-escape-sandbox",
+    "allow-top-navigation-by-user-activation",
+    "allow-top-navigation-to-custom-protocols",
   );
   iframe.allow = `${buildAllowAttribute(label)}; cross-origin-isolated`;
   iframe.style.cssText = iframeStyle;
@@ -320,6 +324,9 @@ export async function renderAppSubdomain(
     "allow-forms",
     "allow-pointer-lock",
     "allow-popups",
+    "allow-popups-to-escape-sandbox",
+    "allow-top-navigation-by-user-activation",
+    "allow-top-navigation-to-custom-protocols",
   );
   iframe.allow = buildAllowAttribute(label);
   iframe.style.cssText =

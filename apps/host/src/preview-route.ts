@@ -21,16 +21,16 @@ export function parsePreviewTargetUrl(
     // A localhost preview target is only honoured in debug builds. Proxying a
     // visitor's localhost into the trusted host origin is gated behind the
     // build-time `VITE_APP_DEBUG` flag (`DEBUG`); production builds (flag unset)
-    // never honour a localhost target. Webcontainer preview hosts are always
-    // allowed — they are public https origins, not loopback.
+    // never honour a localhost target. Trusted preview hosts are always allowed
+    // — they are public https origins, not loopback.
     const targetIsAllowedLocalhost =
       DEBUG && dotNsUrl.parseLocalhostUrl(target.toString()) !== null;
-    const isWebContainer =
+    const isTrustedPreview =
       target.protocol === "https:" &&
-      dotNsUrl.isWebcontainerPreviewHost(target.hostname);
+      dotNsUrl.isTrustedPreviewHost(target.hostname);
 
     if (
-      (!targetIsAllowedLocalhost && !isWebContainer) ||
+      (!targetIsAllowedLocalhost && !isTrustedPreview) ||
       target.username ||
       target.password
     ) {

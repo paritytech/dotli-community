@@ -54,6 +54,14 @@ function isWebcontainerPreviewHost(host: string): boolean {
   return host.toLowerCase().endsWith(".webcontainer-api.io");
 }
 
+function isRevxPreviewHost(host: string): boolean {
+  return host.toLowerCase().endsWith(".preview.revx.dev");
+}
+
+function isTrustedPreviewHost(host: string): boolean {
+  return isWebcontainerPreviewHost(host) || isRevxPreviewHost(host);
+}
+
 function parseUrl(url: string): URL | null {
   try {
     return new URL(url);
@@ -223,6 +231,7 @@ export const dotNsUrl = {
   isDotDomain,
   isProductIdentifier,
   isWebcontainerPreviewHost,
+  isTrustedPreviewHost,
   parseDotNsDomain,
   parseLocalhostUrl,
   normalizeUrl,

@@ -120,20 +120,15 @@ function subscribeSession(
   });
 }
 
-// localhost proxy and webcontainer previews are developer affordances for
-// running a `.dot` app before it's deployed.
+// Dev preview labels cover localhost and trusted preview hosts.
 function isDevPreviewLabel(label: string): boolean {
-  return (
-    label.startsWith("localhost:") || dotNsUrl.isWebcontainerPreviewHost(label)
-  );
+  return label.startsWith("localhost:") || dotNsUrl.isTrustedPreviewHost(label);
 }
 
 /**
  * Derive the product-id from an iframe label.
  *
- * Dev previews (localhost proxy, webcontainer) keep the bare host label. dotNs
- * products get the `.dot` suffix appended. Same rule encoded in
- * `isProductAccountValid`.
+ * Dev preview labels stay bare; deployed products get `.dot`.
  */
 function labelToProductIdentifier(label: string): string {
   return isDevPreviewLabel(label) ? label : `${label}.dot`;
@@ -1410,7 +1405,7 @@ export function setupNestedBridgeDetector(
       return;
     }
 
-    // Validate origin: only allow *.dot.li and *.localhost origins
+    // Allow same-domain, localhost, and trusted preview origins.
     try {
       const url = new URL(event.origin);
       const h = url.hostname;
@@ -1418,7 +1413,8 @@ export function setupNestedBridgeDetector(
         h.endsWith(`.${BASE_DOMAIN}`) ||
         h === BASE_DOMAIN ||
         h === "localhost" ||
-        h.endsWith(".localhost");
+        h.endsWith(".localhost") ||
+        dotNsUrl.isTrustedPreviewHost(h);
       if (!allowed) {
         log.warn(
           `[dot.li] Rejected nested bridge from disallowed origin: ${event.origin}`,

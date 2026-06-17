@@ -404,12 +404,16 @@ function renderPairing(payload: string): void {
 
         const qrLink = document.createElement("a");
         qrLink.href = payload;
+        qrLink.target = "_top";
+        qrLink.rel = "noopener";
         qrLink.className = "auth-modal-qr-link";
         qrLink.appendChild(canvas);
         qrLink.hidden = true;
 
         const openApp = document.createElement("a");
         openApp.href = payload;
+        openApp.target = "_top";
+        openApp.rel = "noopener";
         openApp.className = "auth-modal-open-app";
         openApp.textContent = "Login With Polkadot App";
 

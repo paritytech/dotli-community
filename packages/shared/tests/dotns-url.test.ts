@@ -329,3 +329,34 @@ describe("isWebcontainerPreviewHost", () => {
     );
   });
 });
+
+describe("isTrustedPreviewHost", () => {
+  it("matches webcontainer preview hosts", () => {
+    expect(
+      dotNsUrl.isTrustedPreviewHost(
+        "abc--3000--def.local-credentialless.webcontainer-api.io",
+      ),
+    ).toBe(true);
+  });
+
+  it("matches RevX session preview subdomains", () => {
+    expect(dotNsUrl.isTrustedPreviewHost("test.preview.revx.dev")).toBe(true);
+    expect(
+      dotNsUrl.isTrustedPreviewHost("a1b2c3.sessions.preview.revx.dev"),
+    ).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(dotNsUrl.isTrustedPreviewHost("TEST.PREVIEW.REVX.DEV")).toBe(true);
+  });
+
+  it("rejects look-alike and untrusted hosts", () => {
+    expect(dotNsUrl.isTrustedPreviewHost("preview.revx.dev")).toBe(false);
+    expect(dotNsUrl.isTrustedPreviewHost("evil-preview.revx.dev")).toBe(false);
+    expect(
+      dotNsUrl.isTrustedPreviewHost("test.preview.revx.dev.attacker.com"),
+    ).toBe(false);
+    expect(dotNsUrl.isTrustedPreviewHost("mytestapp.dot")).toBe(false);
+    expect(dotNsUrl.isTrustedPreviewHost("localhost:3000")).toBe(false);
+  });
+});

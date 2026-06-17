@@ -168,7 +168,9 @@ Bun.serve({
       return handleModeSync(req, key);
     }
 
-    const isProtocol = url.hostname === "host.localhost";
+    // Protocol builds live on any `host.` subdomain, including wildcard domains
+    // used for mobile previews.
+    const isProtocol = url.hostname.startsWith("host.");
     const isApp = url.hostname.includes(".app.");
     const baseDir = isProtocol ? PROTOCOL_DIR : isApp ? APP_DIR : HOST_DIR;
     const fallback = "index.html";
