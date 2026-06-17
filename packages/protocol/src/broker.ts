@@ -527,7 +527,7 @@ class ChainBroker {
       jsonrpc: "2.0",
       id: `broker-release:${this.requestCounter.toString(36)}`,
       method: "chainHead_v1_unpin",
-      params: [upstreamToken, hashes.length === 1 ? hashes[0] : hashes],
+      params: [upstreamToken, hashes],
     });
     this.requestCounter += 1;
   }
