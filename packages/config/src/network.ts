@@ -225,18 +225,8 @@ export function getNetwork(): Network {
   const enabled = getEnabledNetworks();
   try {
     const stored = localStorage.getItem(NETWORK_KEY);
-    if (stored !== null && isValidNetwork(stored)) {
-      // Migrate previously-selected V1 to V2 while V1 is disabled in the UI.
-      const migrated =
-        stored === NetworkName.PASEO_NEXT_V1
-          ? NetworkName.PASEO_NEXT_V2
-          : stored;
-      if (enabled.includes(migrated)) {
-        if (migrated !== stored) {
-          localStorage.setItem(NETWORK_KEY, migrated);
-        }
-        return migrated;
-      }
+    if (stored !== null && isValidNetwork(stored) && enabled.includes(stored)) {
+      return stored;
     }
     const computed = defaultNetwork();
     localStorage.setItem(NETWORK_KEY, computed);
