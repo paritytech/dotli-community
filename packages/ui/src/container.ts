@@ -78,6 +78,7 @@ import {
 } from "@dotli/auth/signing";
 import {
   deriveProductPublicKey,
+  normalizeProductAccountId,
   productAddressToPublicKey,
   productPublicKeyToAddress,
 } from "@dotli/auth/account";
@@ -219,26 +220,27 @@ function wireContainerHandlers(
     return createRemoteChainProvider(genesisHash);
   });
 
-  container.handleAccountGet(
-    ([dotNsIdentifier, derivationIndex], { ok, err }) => {
-      const session = getSession();
-      if (!session) {
-        return err(new RequestCredentialsErr.NotConnected(undefined));
-      }
+  container.handleAccountGet((rawProductAccountId, { ok, err }) => {
+    const session = getSession();
+    if (!session) {
+      return err(new RequestCredentialsErr.NotConnected(undefined));
+    }
 
-      if (!labelAcceptsIdentifier(label, dotNsIdentifier)) {
-        return err(new RequestCredentialsErr.DomainNotValid(undefined));
-      }
+    const [dotNsIdentifier, derivationIndex] =
+      normalizeProductAccountId(rawProductAccountId);
 
-      const publicKey = deriveProductPublicKey(
-        session.rootAccountId,
-        dotNsIdentifier,
-        derivationIndex,
-      );
+    if (!labelAcceptsIdentifier(label, dotNsIdentifier)) {
+      return err(new RequestCredentialsErr.DomainNotValid(undefined));
+    }
 
-      return ok({ publicKey });
-    },
-  );
+    const publicKey = deriveProductPublicKey(
+      session.rootAccountId,
+      dotNsIdentifier,
+      derivationIndex,
+    );
+
+    return ok({ publicKey });
+  });
 
   // The web host has no user-imported accounts,
   // only HDKD-derived product accounts.
@@ -289,12 +291,15 @@ function wireContainerHandlers(
     });
   });
 
-  container.handleAccountGetAlias((productAccountId, { err }) =>
+  container.handleAccountGetAlias((rawProductAccountId, { err }) =>
     aliasLimiter.schedule(() => {
       const session = getSession();
       if (!session) {
         return err(new RequestCredentialsErr.NotConnected(undefined));
       }
+
+      // Derive the alias off the bare base name.
+      const productAccountId = normalizeProductAccountId(rawProductAccountId);
 
       if (!labelAcceptsIdentifier(label, productAccountId[0])) {
         return err(new RequestCredentialsErr.DomainNotValid(undefined));
@@ -328,15 +333,18 @@ function wireContainerHandlers(
 
   container.handleSignPayload((payload, { ok, err }) =>
     queueWalletFlow(() => {
+      // Normalize off the bare base name so the wallet signs with the same
+      // account handleAccountGet.
+      const account = normalizeProductAccountId(payload.account);
       log.warn(`[${label}] handleSignPayload invoked:`, {
-        account: payload.account,
+        account,
         genesisHash: payload.payload.genesisHash,
         method: payload.payload.method.slice(0, 40) + "...",
       });
 
-      if (!isProductAccountValid(label, payload.account[0])) {
+      if (!isProductAccountValid(label, account[0])) {
         log.warn(
-          `[${label}] handleSignPayload — invalid account[0]=${payload.account[0]}`,
+          `[${label}] handleSignPayload — invalid account[0]=${account[0]}`,
         );
         return errAsync(new SigningErr.PermissionDenied(undefined));
       }
@@ -354,12 +362,7 @@ function wireContainerHandlers(
           }
 
           return fromPromise(
-            showSignPayloadModal(
-              session,
-              payload.payload,
-              label,
-              payload.account,
-            ),
+            showSignPayloadModal(session, payload.payload, label, account),
             (e) => e as never,
           )
             .andThen((result) => {
@@ -380,15 +383,15 @@ function wireContainerHandlers(
 
   container.handleSignRaw((payload, { ok, err }) =>
     queueWalletFlow(() => {
+      // Normalize off the bare base name.
+      const account = normalizeProductAccountId(payload.account);
       log.warn(`[${label}] handleSignRaw invoked:`, {
-        account: payload.account,
+        account,
         dataTag: payload.payload.tag,
       });
 
-      if (!isProductAccountValid(label, payload.account[0])) {
-        log.warn(
-          `[${label}] handleSignRaw — invalid account[0]=${payload.account[0]}`,
-        );
+      if (!isProductAccountValid(label, account[0])) {
+        log.warn(`[${label}] handleSignRaw — invalid account[0]=${account[0]}`);
         return errAsync(new SigningErr.PermissionDenied(undefined));
       }
 
@@ -399,7 +402,7 @@ function wireContainerHandlers(
       }
 
       return fromPromise(
-        showSignRawModal(session, payload.payload, label, payload.account),
+        showSignRawModal(session, payload.payload, label, account),
         (e) => e as never,
       )
         .andThen((result) => {
@@ -421,17 +424,19 @@ function wireContainerHandlers(
   // mobile app and return the signed extrinsic bytes the wallet builds.
   container.handleCreateTransaction((payload, { ok, err }) =>
     queueWalletFlow(() => {
+      const signer = normalizeProductAccountId(payload.signer);
+      const normalizedPayload = { ...payload, signer };
       log.warn(`[${label}] handleCreateTransaction invoked:`, {
-        signer: payload.signer,
+        signer,
         genesisHash: toHex(payload.genesisHash),
         callDataLen: payload.callData.length,
         extensions: payload.extensions.map((e) => e.id),
         txExtVersion: payload.txExtVersion,
       });
 
-      if (!isProductAccountValid(label, payload.signer[0])) {
+      if (!isProductAccountValid(label, signer[0])) {
         log.warn(
-          `[${label}] handleCreateTransaction — invalid signer[0]=${payload.signer[0]}`,
+          `[${label}] handleCreateTransaction — invalid signer[0]=${signer[0]}`,
         );
         return errAsync(new CreateTransactionErr.PermissionDenied());
       }
@@ -453,7 +458,7 @@ function wireContainerHandlers(
           }
 
           return fromPromise(
-            showCreateTransactionModal(session, payload, label),
+            showCreateTransactionModal(session, normalizedPayload, label),
             (e) => e as never,
           )
             .andThen((signedTx) => {

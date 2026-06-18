@@ -42,9 +42,7 @@ import {
   requireBrokerLocalProvider,
 } from "@dotli/protocol/broker";
 import { serializeError } from "@dotli/shared/errors";
-
-/** Bridge-boundary allowlist for executable-manifest kinds. */
-const EXECUTABLE_KINDS = new Set(["app", "widget", "worker"]);
+import { isExecutableKind } from "@dotli/shared/executables";
 
 initSentry("worker");
 installGlobalErrorHandlers("worker");
@@ -411,10 +409,11 @@ async function handleRequest(
         request.payload as ProtocolRequestMap["resolveExecutableManifest"];
       assertString(payload.label, "label");
       // postMessage payloads are untrusted strings even though TS narrows
-      // `payload.kind` to the union. Widening through Set.has keeps the
+      // `payload.kind` to the union. Widening through a string local keeps the
       // runtime check intact under strict TS rules.
-      if (!(EXECUTABLE_KINDS as ReadonlySet<string>).has(payload.kind)) {
-        throw new Error(`Unsupported executable kind: ${payload.kind}`);
+      const kind: string = payload.kind;
+      if (!isExecutableKind(kind)) {
+        throw new Error(`Unsupported executable kind: ${kind}`);
       }
       const result = await resolveExecutableManifest(
         payload.label,

@@ -9,6 +9,8 @@
 
 import { HDKD } from "@scure/sr25519";
 import { blake2b } from "@noble/hashes/blake2.js";
+import type { CodecType, ProductAccountId } from "@novasamatech/host-api";
+import { EXECUTABLE_KINDS } from "@dotli/shared/executables";
 import { AccountId } from "polkadot-api";
 import { str, u64 } from "scale-ts";
 
@@ -39,6 +41,29 @@ export const deriveProductPublicKey = (
     return HDKD.publicSoft(publicKey, createChainCode(junction));
   }, rootPublicKey);
 };
+
+const EXECUTABLE_SUBNAME_PREFIX = new RegExp(
+  `^(?:${EXECUTABLE_KINDS.join("|")})\\.`,
+  "i",
+);
+
+export const stripExecutableSubname = (productId: string): string => {
+  const withoutSubname = productId.replace(EXECUTABLE_SUBNAME_PREFIX, "");
+  const isValidBaseName = withoutSubname.split(".").length >= 2;
+  return isValidBaseName ? withoutSubname : productId;
+};
+
+/**
+ * Normalize a `[productId, derivationIndex]` tuple by stripping the executable
+ * subname, so every executable of a product resolves to one derived account.
+ * Mirrors polkadot-desktop `productAccountService.normalizeProductAccountId`.
+ */
+export const normalizeProductAccountId = (
+  productAccountId: CodecType<typeof ProductAccountId>,
+): CodecType<typeof ProductAccountId> => [
+  stripExecutableSubname(productAccountId[0]),
+  productAccountId[1],
+];
 
 const ss58Codec = AccountId();
 

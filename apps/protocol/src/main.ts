@@ -47,9 +47,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-
-/** Bridge-boundary allowlist for executable-manifest kinds. */
-const EXECUTABLE_KINDS = new Set(["app", "widget", "worker"]);
+import { isExecutableKind } from "@dotli/shared/executables";
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
   SITE_ID,
@@ -1182,8 +1180,9 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         const payload =
           request.payload as ProtocolRequestMap["resolveExecutableManifest"];
         assertStr(payload.label, "label");
-        if (!(EXECUTABLE_KINDS as ReadonlySet<string>).has(payload.kind)) {
-          throw new Error(`Unsupported executable kind: ${payload.kind}`);
+        const kind: string = payload.kind;
+        if (!isExecutableKind(kind)) {
+          throw new Error(`Unsupported executable kind: ${kind}`);
         }
         const result = await options.resolveExecutableManifest(
           payload.label,
