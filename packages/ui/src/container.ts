@@ -154,6 +154,19 @@ function isProductAccountValid(label: string, accountId: string): boolean {
   return accountId === labelToProductIdentifier(label);
 }
 
+/**
+ * Resolve the product-account tuple a product is allowed to act as.
+ */
+function resolveProductAccountId(
+  label: string,
+  reported: Parameters<typeof normalizeProductAccountId>[0],
+): ReturnType<typeof normalizeProductAccountId> {
+  const normalized = normalizeProductAccountId(reported);
+  return isDevPreviewLabel(label)
+    ? normalized
+    : [labelToProductIdentifier(label), normalized[1]];
+}
+
 function wireContainerHandlers(
   container: Container,
   label: string,
@@ -226,8 +239,10 @@ function wireContainerHandlers(
       return err(new RequestCredentialsErr.NotConnected(undefined));
     }
 
-    const [dotNsIdentifier, derivationIndex] =
-      normalizeProductAccountId(rawProductAccountId);
+    const [dotNsIdentifier, derivationIndex] = resolveProductAccountId(
+      label,
+      rawProductAccountId,
+    );
 
     if (!labelAcceptsIdentifier(label, dotNsIdentifier)) {
       return err(new RequestCredentialsErr.DomainNotValid(undefined));
@@ -333,9 +348,9 @@ function wireContainerHandlers(
 
   container.handleSignPayload((payload, { ok, err }) =>
     queueWalletFlow(() => {
-      // Normalize off the bare base name so the wallet signs with the same
-      // account handleAccountGet.
-      const account = normalizeProductAccountId(payload.account);
+      // Resolve to the host's own product id so the wallet signs with the same
+      // account handleAccountGet returns, never the sandbox-reported one.
+      const account = resolveProductAccountId(label, payload.account);
       log.warn(`[${label}] handleSignPayload invoked:`, {
         account,
         genesisHash: payload.payload.genesisHash,
@@ -383,8 +398,8 @@ function wireContainerHandlers(
 
   container.handleSignRaw((payload, { ok, err }) =>
     queueWalletFlow(() => {
-      // Normalize off the bare base name.
-      const account = normalizeProductAccountId(payload.account);
+      // Resolve to the host's own product id (see handleAccountGet).
+      const account = resolveProductAccountId(label, payload.account);
       log.warn(`[${label}] handleSignRaw invoked:`, {
         account,
         dataTag: payload.payload.tag,
@@ -424,7 +439,8 @@ function wireContainerHandlers(
   // mobile app and return the signed extrinsic bytes the wallet builds.
   container.handleCreateTransaction((payload, { ok, err }) =>
     queueWalletFlow(() => {
-      const signer = normalizeProductAccountId(payload.signer);
+      // Resolve to the host's own product id (see handleAccountGet).
+      const signer = resolveProductAccountId(label, payload.signer);
       const normalizedPayload = { ...payload, signer };
       log.warn(`[${label}] handleCreateTransaction invoked:`, {
         signer,
