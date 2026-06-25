@@ -271,10 +271,14 @@ async function disconnectTruapiHosts(): Promise<void> {
   }
 
   if (hosts.size === 0) {
-    // No live core to emit `Disconnected` (e.g. a boot-rehydrated badge with
-    // no booted host): render the logged-out state directly.
-    dispatchAuthState({ tag: "Disconnected" });
-    return;
+    try {
+      hosts.add(await getLandingAuthHost());
+    } catch {
+      // If the auth runtime cannot boot, keep the UI responsive even though
+      // persisted core session state could not be cleared.
+      dispatchAuthState({ tag: "Disconnected" });
+      return;
+    }
   }
   await Promise.allSettled([...hosts].map((host) => host.disconnect()));
 }

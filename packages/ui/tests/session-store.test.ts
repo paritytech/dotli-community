@@ -45,6 +45,7 @@ vi.mock("@dotli/protocol/client", () => ({
 
 const STORAGE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}`;
 const UI_STATE_CACHE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`;
+const AUTH_SESSION_KEY = { tag: "AuthSession" as const };
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
@@ -80,19 +81,21 @@ describe("session-store host callbacks", () => {
   });
 
   it("round-trips the host core session blob", async () => {
-    const { readStoredSession, writeStoredSession, clearStoredSession } =
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
       createSessionStoreAdapters();
 
-    expect(await readStoredSession()).toBeUndefined();
+    expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
 
-    await writeStoredSession(new Uint8Array([1, 2, 3]));
+    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     expect(sharedAuth.storage.get(STORAGE_KEY)).toBe("0x010203");
     expect(localStorage.length).toBe(0);
-    expect(Array.from((await readStoredSession()) ?? [])).toEqual([1, 2, 3]);
+    expect(Array.from((await readCoreStorage(AUTH_SESSION_KEY)) ?? [])).toEqual(
+      [1, 2, 3],
+    );
 
-    await clearStoredSession();
+    await clearCoreStorage(AUTH_SESSION_KEY);
     expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
-    expect(await readStoredSession()).toBeUndefined();
+    expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
   });
 
   it("emits the typed session identity details from a connected auth state", () => {
@@ -138,7 +141,7 @@ describe("session-store host callbacks", () => {
 
   it("caches the connected UI state and clears it with the session", async () => {
     const authStateChanged = createAuthStateChanged("Polkadot Web");
-    const { clearStoredSession } = createSessionStoreAdapters();
+    const { clearCoreStorage } = createSessionStoreAdapters();
 
     authStateChanged?.({
       tag: "Connected",
@@ -149,7 +152,7 @@ describe("session-store host callbacks", () => {
       JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? ""),
     ).toEqual(CONNECTED_DETAIL);
 
-    await clearStoredSession();
+    await clearCoreStorage(AUTH_SESSION_KEY);
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
@@ -170,7 +173,7 @@ describe("session-store host callbacks", () => {
 
   it("rehydrates the cached session UI state", async () => {
     const authStateChanged = createAuthStateChanged("Polkadot Web");
-    const { writeStoredSession } = createSessionStoreAdapters();
+    const { writeCoreStorage } = createSessionStoreAdapters();
     const events: unknown[] = [];
     window.addEventListener("dotli:truapi-auth-state", (event) => {
       events.push((event as CustomEvent).detail);
@@ -186,7 +189,7 @@ describe("session-store host callbacks", () => {
     expect(events).toEqual([]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
-    await writeStoredSession(new Uint8Array([1, 2, 3]));
+    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     authStateChanged?.({
       tag: "Connected",
       value: connectedSessionUiInfo(),
@@ -200,13 +203,13 @@ describe("session-store host callbacks", () => {
   });
 
   it("rehydrates a bare connected state when no cache exists", async () => {
-    const { writeStoredSession } = createSessionStoreAdapters();
+    const { writeCoreStorage } = createSessionStoreAdapters();
     const events: unknown[] = [];
     window.addEventListener("dotli:truapi-auth-state", (event) => {
       events.push((event as CustomEvent).detail);
     });
 
-    await writeStoredSession(new Uint8Array([1, 2, 3]));
+    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     emitPersistedSessionUiState();
     await flushMicrotasks();
 
@@ -216,11 +219,11 @@ describe("session-store host callbacks", () => {
   });
 
   it("notifies local and matching storage changes", async () => {
-    const { writeStoredSession } = createSessionStoreAdapters();
+    const { writeCoreStorage } = createSessionStoreAdapters();
     const listener = vi.fn();
     const unsubscribe = onStoredSessionChanged(listener);
 
-    await writeStoredSession(new Uint8Array([9]));
+    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9]));
     expect(listener).toHaveBeenCalledTimes(1);
 
     for (const sharedListener of sharedAuth.listeners) {
@@ -233,7 +236,7 @@ describe("session-store host callbacks", () => {
     expect(listener).toHaveBeenCalledTimes(2);
 
     unsubscribe();
-    await writeStoredSession(new Uint8Array([8]));
+    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]));
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });

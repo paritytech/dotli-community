@@ -17,6 +17,9 @@ type MockProvider = {
   postMessage: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
   subscribeClose: ReturnType<typeof vi.fn>;
+  disconnectSession: ReturnType<typeof vi.fn>;
+  cancelPairing: ReturnType<typeof vi.fn>;
+  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
@@ -73,6 +76,9 @@ function makeProvider(): MockProvider {
     postMessage: vi.fn(),
     subscribe: vi.fn(() => () => {}),
     subscribeClose: vi.fn(() => () => {}),
+    disconnectSession: vi.fn(async () => {}),
+    cancelPairing: vi.fn(),
+    notifySessionStoreChanged: vi.fn(),
     disconnect: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
@@ -95,6 +101,9 @@ function makeLoginProvider(options: {
       };
     }),
     subscribeClose: vi.fn(() => () => {}),
+    disconnectSession: vi.fn(async () => {}),
+    cancelPairing: vi.fn(),
+    notifySessionStoreChanged: vi.fn(),
     disconnect: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
@@ -158,6 +167,19 @@ async function waitForProviderRequests(count: number): Promise<void> {
   throw new Error(`expected ${count} provider request(s)`);
 }
 
+async function waitForMockCalls(
+  mock: ReturnType<typeof vi.fn>,
+  count: number,
+): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    if (mock.mock.calls.length >= count) {
+      return;
+    }
+    await flushMicrotasks();
+  }
+  throw new Error(`expected ${count} mock call(s)`);
+}
+
 describe("bridge render lifecycle", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -215,6 +237,19 @@ describe("bridge render lifecycle", () => {
     expect(document.querySelector("iframe")?.dataset.src).toBe(
       "https://second.example/app",
     );
+  });
+
+  it("boots the landing auth core to disconnect a stored session without a product", async () => {
+    await import("@dotli/ui/bridge");
+
+    window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
+    await waitForProviderRequests(1);
+
+    const provider = makeProvider();
+    mocks.coreProviderDefers[0].resolve(provider);
+    await waitForMockCalls(provider.disconnectSession, 1);
+
+    expect(provider.disconnectSession).toHaveBeenCalledTimes(1);
   });
 });
 

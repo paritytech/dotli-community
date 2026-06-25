@@ -1,6 +1,10 @@
 import { SITE_ID } from "@dotli/config/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import type { HostCallbacks, SessionUiInfo } from "@parity/truapi-host/callbacks";
+import type {
+  CoreStorageKey,
+  HostCallbacks,
+  SessionUiInfo,
+} from "@parity/truapi-host/callbacks";
 import {
   hasStoredSharedAuthSession,
   SHARED_CORE_SESSION_KEY,
@@ -14,6 +18,7 @@ import {
 import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
+const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
 // JSON cache of the last connected UI state the core reported via
 // `authStateChanged`. Lives in shared auth storage next to the opaque
 // root-domain session blob so boot-time rehydration never has to decode the
@@ -119,37 +124,77 @@ export function emitPersistedSessionUiState(): void {
 
 export function createSessionStoreAdapters(): Pick<
   HostCallbacks,
-  | "readStoredSession"
-  | "writeStoredSession"
-  | "clearStoredSession"
+  | "readCoreStorage"
+  | "writeCoreStorage"
+  | "clearCoreStorage"
 > {
   return {
-    async readStoredSession() {
-      let raw: string | null = null;
-      try {
-        raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-      } catch {
-        raw = null;
-      }
-      if (raw === null || raw === "") {
-        return undefined;
-      }
-      return hexToBytes(raw);
+    async readCoreStorage(key) {
+      return readCoreStorageValue(key);
     },
-    async writeStoredSession(value) {
-      await writeSharedAuthStorage(
-        SITE_ID,
-        SHARED_CORE_SESSION_KEY,
-        bytesToHex(value),
-      );
-      emitLocalChange();
+    async writeCoreStorage(key, value) {
+      await writeCoreStorageValue(key, value);
     },
-    async clearStoredSession() {
-      await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-      await writeUiStateCache({ connected: false });
-      emitLocalChange();
+    async clearCoreStorage(key) {
+      await clearCoreStorageValue(key);
     },
   };
+}
+
+async function readCoreStorageValue(
+  key: CoreStorageKey,
+): Promise<Uint8Array | undefined> {
+  if (key.tag === "AuthSession") {
+    let raw: string | null = null;
+    try {
+      raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+    } catch {
+      raw = null;
+    }
+    if (raw === null || raw === "") {
+      return undefined;
+    }
+    return hexToBytes(raw);
+  }
+  const raw = localStorage.getItem(coreLocalStorageKey(key));
+  return raw === null ? undefined : hexToBytes(raw);
+}
+
+async function writeCoreStorageValue(
+  key: CoreStorageKey,
+  value: Uint8Array,
+): Promise<void> {
+  if (key.tag === "AuthSession") {
+    await writeSharedAuthStorage(
+      SITE_ID,
+      SHARED_CORE_SESSION_KEY,
+      bytesToHex(value),
+    );
+    emitLocalChange();
+    return;
+  }
+  localStorage.setItem(coreLocalStorageKey(key), bytesToHex(value));
+}
+
+async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
+  if (key.tag === "AuthSession") {
+    await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+    await writeUiStateCache({ connected: false });
+    emitLocalChange();
+    return;
+  }
+  localStorage.removeItem(coreLocalStorageKey(key));
+}
+
+function coreLocalStorageKey(key: CoreStorageKey): string {
+  switch (key.tag) {
+    case "PairingDeviceIdentity":
+      return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
+    case "PermissionDecision":
+      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${key.value.storageKey}`;
+    case "AuthSession":
+      return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
+  }
 }
 
 export function onStoredSessionChanged(listener: () => void): () => void {
