@@ -135,6 +135,7 @@ describe("isEnforceableDevicePermission", () => {
   });
 
   it("accepts gateable device permissions", () => {
+    expect(isEnforceableDevicePermission("Notifications")).toBe(true);
     expect(isEnforceableDevicePermission("Camera")).toBe(true);
     expect(isEnforceableDevicePermission("Microphone")).toBe(true);
     expect(isEnforceableDevicePermission("Notifications")).toBe(true);
@@ -190,31 +191,8 @@ describe("ALL_PERMISSIONS (data invariants)", () => {
     expect(names).toContain("ChainSubmit");
     expect(names).toContain("PreimageSubmit");
     expect(names).toContain("StatementSubmit");
+    expect(names).toContain("Notifications");
     expect(names).not.toContain("TransactionSubmit");
-  });
-
-  it("exposes the GetUserId gate with its display label", () => {
-    expect(ALL_PERMISSIONS).toContainEqual({
-      name: "GetUserId",
-      label: "Reveal Username",
-    });
-  });
-});
-
-describe("GetUserId permission (RFC-0015 username disclosure gate)", () => {
-  it("defaults to 'ask' and round-trips granted/denied", () => {
-    expect(getPermissionStatus("myapp", "GetUserId")).toBe("ask");
-    setPermissionStatus("myapp", "GetUserId", "granted");
-    expect(getPermissionStatus("myapp", "GetUserId")).toBe("granted");
-    setPermissionStatus("myapp", "GetUserId", "denied");
-    expect(getPermissionStatus("myapp", "GetUserId")).toBe("denied");
-  });
-
-  it("is not a device permission and never alters the iframe allow attribute", () => {
-    expect(isDevicePermission("GetUserId")).toBe(false);
-    setPermissionStatus("myapp", "GetUserId", "granted");
-    expect(getGrantedDevicePermissions("myapp")).toEqual([]);
-    expect(buildAllowAttribute("myapp")).toBe("clipboard-write");
   });
 });
 

@@ -308,6 +308,15 @@
   border-color: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
+.topbar-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.topbar-btn:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.65);
+}
 .topbar-btn:active {
   background: rgba(255, 255, 255, 0.11);
 }

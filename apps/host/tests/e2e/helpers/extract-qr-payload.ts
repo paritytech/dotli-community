@@ -11,6 +11,14 @@ export async function extractQrPayload(
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    const embedded = await page
+      .locator(canvasSelector)
+      .getAttribute("data-qr-payload", { timeout: 250 })
+      .catch(() => null);
+    if (embedded?.startsWith("polkadotapp://")) {
+      return embedded;
+    }
+
     const px = await page.evaluate((sel) => {
       const canvas = document.querySelector(sel) as HTMLCanvasElement | null;
       if (!canvas || canvas.width === 0) return null;

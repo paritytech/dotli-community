@@ -10,17 +10,15 @@
 //
 // Permission status: 'ask' (default), 'granted', or 'denied'.
 
-import type { CodecType } from "@novasamatech/host-api";
-import type { DevicePermission as DevicePermissionCodec } from "@novasamatech/host-api";
+import type { HostDevicePermissionRequest } from "@parity/truapi";
 
-export type DevicePermissionName = CodecType<typeof DevicePermissionCodec>;
+export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
   | DevicePermissionName
   | "ChainSubmit"
   | "PreimageSubmit"
-  | "StatementSubmit"
-  | "GetUserId";
+  | "StatementSubmit";
 
 /** Device permissions the host can't actually gate (see AUTO_GRANT_DEVICE_PERMISSIONS). */
 export type AutoGrantDevicePermission = "OpenUrl";
@@ -100,7 +98,6 @@ export const ALL_PERMISSIONS: readonly {
   { name: "ChainSubmit", label: "Sign Transactions" },
   { name: "PreimageSubmit", label: "Submit Preimages" },
   { name: "StatementSubmit", label: "Submit Statements" },
-  { name: "GetUserId", label: "Reveal Username" },
 ];
 
 /** Returns true if the permission name maps to an iframe `allow` directive. */

@@ -79,6 +79,16 @@ export function isSandboxOrigin(origin: string): boolean {
 export const SS_RELAY_CHAIN: string | undefined =
   (import.meta.env.VITE_SS_RELAY_CHAIN as string | undefined) ?? undefined;
 
+/**
+ * Use the smoldot light client for the statement store chain.
+ *
+ * Set VITE_SS_USE_SMOLDOT=true to enable. Defaults to false until
+ * smoldot statement store support is production-ready, but can be
+ * enabled in development for testing and feedback.
+ */
+export const SS_USE_SMOLDOT =
+  (import.meta.env.VITE_SS_USE_SMOLDOT as string | undefined) === "true";
+
 // Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
 export const DEBUG =
   (import.meta.env.VITE_APP_DEBUG as string | undefined) === "true";
@@ -88,9 +98,6 @@ export const SW_ARCHIVE_CACHE_MAX = 8;
 
 /** Max chain connections per origin on the protocol host. */
 export const MAX_CONNECTIONS_PER_ORIGIN = 10;
-
-/** Max nested container bridges per host shell. */
-export const MAX_NESTED_BRIDGES = 5;
 
 /** Drop scheduled notifications older than this many ms past `scheduledAt`. */
 export const SCHEDULED_NOTIFICATIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;

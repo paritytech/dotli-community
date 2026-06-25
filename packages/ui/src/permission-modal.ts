@@ -33,7 +33,6 @@ export const PERMISSION_DESCRIPTIONS: Record<
   ChainSubmit: "Sign and submit on-chain transactions on your behalf",
   PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
   StatementSubmit: "Submit signed statements to the statement store",
-  GetUserId: "Reveal your dotNS username to this app",
 };
 
 const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
@@ -87,10 +86,6 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<polyline points="14 2 14 8 20 8"/>' +
     '<line x1="8" y1="13" x2="16" y2="13"/>' +
     '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
-  GetUserId:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>' +
-    '<circle cx="12" cy="7" r="4"/></svg>',
 };
 
 /**

@@ -15,12 +15,13 @@ export type SharedModeRequestMethod =
   | "modeStorageWrite"
   | "modeStorageClear";
 
-export const SHARED_AUTH_SESSION_KEY = "SsoSessionsV3";
+export const SHARED_CORE_SESSION_KEY = "session";
+export const SHARED_AUTH_SESSION_KEY = SHARED_CORE_SESSION_KEY;
 
-// SCALE-encoded empty `Vec<Session>` from `@novasamatech/host-papp`, a single
-// length byte of 0. If host-papp ever changes the session list encoding (e.g.
-// wraps it in an `Option<>`), this sentinel must be updated or the probe will
-// return true for empty payloads and trigger `ensureAuth()` on every load.
+// Empty SCALE vec sentinel retained for older shared-auth probes. Rust core
+// persisted sessions use `SHARED_CORE_SESSION_KEY` and never encode an empty
+// session list, but this keeps the helper tolerant while the protocol method
+// remains in the wire surface.
 const EMPTY_SHARED_AUTH_SESSION_LIST = "0x00";
 
 // Both the shared-auth and shared-mode stores accept the same key shape, an
@@ -79,7 +80,10 @@ export function isValidSharedAuthKey(key: string): boolean {
 }
 
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
-  return `PAPP_${siteId}_${key}`;
+  if (key === SHARED_CORE_SESSION_KEY) {
+    return `TRUAPI_SESSION_${siteId}`;
+  }
+  return `TRUAPI_${siteId}_${key}`;
 }
 
 /**

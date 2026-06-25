@@ -3,10 +3,10 @@
 
 // Human-readable summary of a chain-protocol message
 //
-// Translates the decoded payload of a `remote_chain_*` TrUAPI message
-// into a single-sentence description. Used in the detail pane so a
-// reader doesn't have to parse the JSON to understand what a message
-// is doing.
+// Translates an already-decoded `remote_chain_*` TrUAPI payload into a
+// single-sentence description. Current dotli wire-frame events carry raw SCALE
+// bytes, so this helper is only used by producers that decode method payloads
+// before inserting debug events.
 //
 // Returns `null` for non-chain messages or unknown shapes. The caller
 // omits the summary section when null.

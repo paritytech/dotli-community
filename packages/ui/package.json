@@ -32,24 +32,18 @@
     "@dotli/storage": "workspace:*",
     "@dotli/truapi-debug": "workspace:*",
     "@noble/hashes": "^2.2.0",
-    "@novasamatech/host-api": "0.8.9",
-    "@novasamatech/host-container": "0.8.9",
-    "@novasamatech/host-papp": "0.8.9",
-    "@novasamatech/sdk-statement": "^0.6.0",
-    "@novasamatech/statement-store": "0.8.9",
+    "@parity/truapi": "file:../../../../js/packages/truapi",
+    "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
+    "@scure/base": "^2.2.0",
     "neverthrow": "^8.2.0",
     "polkadot-api": "^2.1.6",
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {
-    "@dotli/auth": "workspace:*",
     "@dotli/resolver": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@dotli/auth": {
-      "optional": true
-    },
     "@dotli/resolver": {
       "optional": true
     }

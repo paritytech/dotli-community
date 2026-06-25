@@ -118,7 +118,7 @@ export const test = base.extend<
         if (
           type === "error" ||
           type === "warning" ||
-          /\[dotli|\[dot\.li|host-papp|statement.store|signing/i.test(text)
+          /\[dotli|\[dot\.li|statement.store|signing/i.test(text)
         ) {
           const isFullText =
             type === "error" ||

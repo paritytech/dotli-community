@@ -5,10 +5,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const TRANSIENT = new Set([502, 503, 504]);
 
-// Per-attempt request timeout. The bot side rarely needs more than a few
-// seconds, even for pair (attestation and handshake). Without a client-side
-// cap, a hung response would silently extend the whole suite.
-const PAIR_REQUEST_TIMEOUT_MS = 30_000;
+// Per-attempt request timeout. First-time pair can include user creation and
+// People-chain attestation, so give the one-shot handshake room to finish
+// instead of aborting and retrying the same QR payload.
+const PAIR_REQUEST_TIMEOUT_MS = 120_000;
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000;
 
 async function fetchWithTimeout(
@@ -90,8 +90,8 @@ export interface PairResult {
  * SSO handshake, (d) starts auto-signing future SignRequests for that
  * session. No separate provisioning / poll step needed.
  *
- * `network` should be `paseo-next` for dot.li (Paseo People Next, matching
- * `next-people-paseo` chain spec in packages/config).
+ * `network` should match dot.li's default network (`paseo-next-v2` at time
+ * of writing). The bot's `/api/networks` endpoint lists supported IDs.
  */
 export async function pair(
   base: string,
@@ -124,7 +124,15 @@ export async function disconnect(
   svcToken: string,
   sessionId: string,
 ): Promise<void> {
-  await fetchWithTimeout(
+  await disconnectStrict(base, svcToken, sessionId).catch(() => {});
+}
+
+export async function disconnectStrict(
+  base: string,
+  svcToken: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
     `${base.replace(/\/$/, "")}/api/disconnect`,
     {
       method: "POST",
@@ -135,7 +143,14 @@ export async function disconnect(
       body: JSON.stringify({ sessionId }),
     },
     PAIR_REQUEST_TIMEOUT_MS,
-  ).catch(() => {});
+  );
+  if (!response.ok) {
+    throw new Error(`disconnect ${response.status}: ${await response.text()}`);
+  }
+  const body = (await response.json()) as { disconnected?: boolean };
+  if (body.disconnected !== true) {
+    throw new Error(`disconnect did not find session ${sessionId}`);
+  }
 }
 
 export interface BotHealth {

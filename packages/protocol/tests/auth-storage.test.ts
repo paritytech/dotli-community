@@ -10,6 +10,7 @@ import {
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isValidSharedAuthKey,
+  SHARED_CORE_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 
 describe("shared auth storage helpers", () => {
@@ -69,11 +70,14 @@ describe("shared auth storage helpers", () => {
   });
 
   it("builds stable storage keys and detects empty session payloads", () => {
-    expect(buildSharedAuthStorageKey("dot.li", "SsoSessions")).toBe(
-      "PAPP_dot.li_SsoSessions",
+    expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
+      "TRUAPI_SESSION_dot.li",
     );
-    expect(buildSharedAuthStorageKey("paseoli.dev", "SsoSessions")).toBe(
-      "PAPP_paseoli.dev_SsoSessions",
+    expect(
+      buildSharedAuthStorageKey("paseoli.dev", SHARED_CORE_SESSION_KEY),
+    ).toBe("TRUAPI_SESSION_paseoli.dev");
+    expect(buildSharedAuthStorageKey("dot.li", "UserSecrets")).toBe(
+      "TRUAPI_dot.li_UserSecrets",
     );
     expect(hasStoredSharedAuthSession(null)).toBe(false);
     expect(hasStoredSharedAuthSession("")).toBe(false);

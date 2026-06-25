@@ -1,0 +1,106 @@
+# dotli host layer migration to TrUAPI
+
+This document records the current dotli host cutover state. The old
+`@novasamatech/*` host-container path is no longer part of the runtime design:
+dotli launches products through the Rust-backed TrUAPI host bridge and keeps
+only its own `.dot` resolution/smoldot protocol outside that boundary.
+
+## Current integration
+
+dotli still has two protocol layers:
+
+1. Host-product API frames, handled by TrUAPI.
+2. dotli's internal host-smoldot protocol in `packages/protocol/`, which owns
+   `.dot` resolution and is not replaced by TrUAPI.
+
+The active launch path is `packages/ui/src/bridge.ts`:
+
+- imports `@parity/truapi-host-wasm/web` and
+  `@parity/truapi-host-wasm/worker-runtime?worker`;
+- starts a Web Worker that owns the `truapi-server` WASM core;
+- adapts typed dotli callbacks with `createWasmRawCallbacks(...)`;
+- calls `createWebWorkerProvider(new HostWorker(), rawCallbacks, { runtimeConfig })`;
+- supplies callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
+- calls `createIframeHost(...)` with the product URL, sandbox policy, allowed
+  origin, and the worker-backed provider.
+
+Product frames enter the Rust core through the iframe `MessageChannel`.
+Account, signing, statement-store, SSO pairing, restore, and logout are
+core-owned and do not cross the JS host callback boundary as Nova-specific
+routes.
+
+## dotli callback boundary
+
+dotli still supplies platform primitives that are host policy or browser UI:
+
+| Area                      | Files                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------- |
+| navigation                | `packages/ui/src/host-callbacks/OpenUrl.ts`                                            |
+| notifications             | `packages/ui/src/host-callbacks/PushNotification.ts`                                   |
+| device/remote permissions | `packages/ui/src/host-callbacks/PromptPermission.ts`, `packages/ui/src/permissions.ts` |
+| feature support           | `packages/ui/src/host-callbacks/FeatureSupported.ts`                                   |
+| product storage           | `packages/ui/src/host-callbacks/LocalStorage.ts`                                       |
+| session persistence       | `packages/ui/src/host-callbacks/SessionStore.ts`                                       |
+| pairing presentation      | `packages/ui/src/host-callbacks/Pairing.ts`                                            |
+| user confirmations        | `packages/ui/src/host-callbacks/UserConfirmation.ts`                                   |
+| preimage lookup UI        | `packages/ui/src/host-callbacks/Preimage.ts`                                           |
+| theme subscription        | `packages/ui/src/host-callbacks/Theme.ts`                                              |
+| chain backend connection  | `packages/ui/src/host-callbacks/Chain.ts`                                              |
+
+These callbacks must remain generic host primitives. They should not re-add
+Nova package imports, wallet-specific JS channels, or statement-store request
+routing that belongs inside the Rust core.
+
+## Dependencies
+
+`packages/ui/package.json` depends on the local TrUAPI packages:
+
+```jsonc
+"@parity/truapi": "file:../../../../js/packages/truapi",
+"@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm"
+```
+
+> **TODO(packaging):** the `file:../../../../` links resolve only when dotli
+> lives at `hosts/dotli/` inside the TrUAPI monorepo. A standalone dotli
+> checkout (including dotli's own CI, which runs `bun install
+> --frozen-lockfile` without the parent repo) cannot install these packages.
+> Before this branch lands on dotli `main`, decide between publishing the
+> `@parity/truapi*` packages to a registry, vendoring tarballs, or retiring
+> dotli's standalone CI. Carry this note into the dotli PR description.
+
+The runtime manifests and source must not depend on or import the removed
+`@novasamatech/*` runtime packages. The canonical forbidden-package list lives
+in `packages/ui/tests/nova-removal.test.ts`; keep that guard broad rather than
+duplicating a package list in this document.
+
+`packages/ui/tests/nova-removal.test.ts` guards this invariant across dotli
+manifests, `bun.lock`, `THIRD_PARTY_NOTICES.md`, `apps/*/src`, and
+`packages/*/src`.
+
+## Nested dApps
+
+The old `setupNestedBridgeDetector` path created extra JS bridges for nested
+iframe sources. TrUAPI v1 does not create separate nested Rust runtimes,
+sessions, product identities, or storage namespaces. If nested traffic is
+forwarded later, it must use the shared top-level Rust core/provider context.
+
+The future usefulness of independent nested-product semantics is tracked in the
+parent TrUAPI design note `docs/design/host-contract-and-core-impl/I -
+nested-dapps.md`.
+
+## Non-TrUAPI dotli layers
+
+These areas remain dotli-owned and are intentionally outside the host-product
+replacement:
+
+- `apps/host/src/main.ts`: landing shell, `.dot` resolution, iframe mounting.
+- `apps/sandbox/src/main.ts`: content renderer.
+- `packages/protocol/`: smoldot protocol client/broker/session plumbing.
+- `packages/resolver/`: `.dot` name resolution.
+- `packages/content/` and `packages/storage/`: archive fetch and cache.
+- `packages/config/`, `packages/metrics/`, and `packages/shared/`: support
+  libraries.
+
+When auditing the migration, treat Nova runtime imports/dependencies as a
+regression, but do not confuse dotli's internal `packages/protocol/` with the
+removed host-product protocol.

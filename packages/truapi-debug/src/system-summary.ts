@@ -73,8 +73,42 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return `First message from product received (productId=${str(p.productId)}).`;
     case "bridge:first_outbound":
       return `First message sent to product — bridge traffic established (productId=${str(p.productId)}).`;
-    case "bridge:nested_detected":
-      return `Nested dApp #${str(p.nestedIndex)} detected (productId=${str(p.productId)}).`;
+
+    // sso
+    case "sso:pairing_started":
+      return `SSO pairing started for ${str(p.label)}.`;
+    case "sso:deeplink_generated":
+      return `SSO deeplink generated (${str(p.scheme)}).`;
+    case "sso:awaiting_response":
+      return `Waiting for SSO pairing response for ${str(p.label)}.`;
+    case "sso:statement_store_connecting":
+      return `Connecting SSO statement-store channel (${str(p.backend)}, ${short(str(p.genesisHash))}).`;
+    case "sso:statement_store_connected":
+      return `SSO statement-store channel connected (${str(p.backend)}).`;
+    case "sso:statement_store_connect_failed":
+      return `SSO statement-store channel failed (${str(p.backend)}): ${str(p.reason)}.`;
+    case "sso:statement_store_request":
+      return `SSO statement-store ${str(p.requestKind)} request sent (${str(p.method)}, id=${str(p.requestId)}).`;
+    case "sso:statement_store_response": {
+      const count =
+        typeof p.statementCount === "number"
+          ? `, statements=${String(p.statementCount)}`
+          : "";
+      const remaining =
+        typeof p.remaining === "number"
+          ? `, remaining=${String(p.remaining)}`
+          : "";
+      const remote =
+        typeof p.remoteSubscriptionId === "string"
+          ? `, remote=${short(p.remoteSubscriptionId)}`
+          : "";
+      const error = typeof p.error === "string" ? `, error=${p.error}` : "";
+      return `SSO statement-store ${str(p.requestKind)} response (${str(p.method)}${remote}${count}${remaining}${error}).`;
+    }
+    case "sso:session_established":
+      return `SSO session established (${str(p.result)}).`;
+    case "sso:pairing_failed":
+      return `SSO pairing failed: ${str(p.reason)}.`;
 
     // failover
     case "failover:chain_backend":
@@ -119,54 +153,6 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case "sandbox:failed":
       return `Sandbox failed: ${str(p.reason)}.`;
 
-    // SSO (host-papp)
-    case "sso:pairing_started":
-      return `Wallet pairing started (product metadata=${str(p.metadata)}).`;
-    case "sso:deeplink_generated":
-      return `Pairing deeplink generated. QR ready for scan.`;
-    case "sso:awaiting_response":
-      return "Waiting for wallet response on handshake topic.";
-    case "sso:response_received":
-      return `Wallet response received (identity account).`;
-    case "sso:session_established":
-      return `Session ${str(p.sessionId)} established.`;
-    case "sso:pairing_failed":
-      return `Wallet pairing failed: ${str(p.reason)}.`;
-
-    // attestation (host-papp)
-    case "attestation:started":
-      return `Starting guest identity attestation for candidate ${str(p.candidateAccountId)}.`;
-    case "attestation:username_claimed":
-      return `Username claimed: ${str(p.username)}.`;
-    case "attestation:allowance_granted":
-      return `Verifier allowance granted (${str(p.verifierAccountId)}).`;
-    case "attestation:vrf_proof_generated":
-      return "VRF ring-proof generated for candidate.";
-    case "attestation:person_registered":
-      return `Registered ${str(p.username)} on People chain.`;
-    case "attestation:completed":
-      return `Attestation complete for ${str(p.username)}.`;
-    case "attestation:failed":
-      return `Attestation failed: ${str(p.reason)}.`;
-
-    // session (host-papp)
-    case "session:opened":
-      return `Session ${str(p.sessionId)} opened.`;
-    case "session:peer_action_received":
-      return `Peer action received: ${str(p.actionKind)} (msg=${str(p.messageId)}).`;
-    case "session:peer_action_processed":
-      return `Peer action processed (msg=${str(p.messageId)}).`;
-    case "session:peer_action_failed":
-      return `Peer action failed (msg=${str(p.messageId)}): ${str(p.reason)}.`;
-    case "session:host_action_sent":
-      return `Host sent ${str(p.actionKind)} to wallet (msg=${str(p.messageId)}).`;
-    case "session:host_action_response_received":
-      return `Wallet responded to ${str(p.messageId)} (success=${String(p.success)}).`;
-    case "session:host_action_failed":
-      return `Host action failed (msg=${str(p.messageId)}): ${str(p.reason)}.`;
-    case "session:terminated":
-      return `Session ${str(p.sessionId)} terminated.`;
-
     default:
       return `${ev.layer}:${ev.event}`;
   }
@@ -180,6 +166,10 @@ function str(v: unknown): string {
     return String(v);
   }
   return "?";
+}
+
+function short(v: string): string {
+  return v.length > 14 ? `${v.slice(0, 10)}...` : v;
 }
 
 function numMs(v: unknown): string {
