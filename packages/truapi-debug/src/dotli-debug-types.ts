@@ -6,9 +6,8 @@
 // Events emitted by dotli host-side logic that is independent of the
 // TrUAPI transport: boot orchestration, resolver phases, render +
 // bridge-setup lifecycles, and backend failover decisions. These
-// complement the host-papp SSO/session events (which come from the
-// SDK) and the TrUAPI host-to-product message events (from
-// `@novasamatech/host-container`).
+// complement the TrUAPI host-to-product message events and Rust-core
+// SSO events.
 //
 // Events are point-in-time OR paired start/end. The consumer decides
 // rendering: multi-event flows (same `flowId`) become boxes, single-
@@ -19,6 +18,7 @@ export type DotliDebugEvent =
   | ResolveEvent
   | RenderEvent
   | BridgeEvent
+  | SsoEvent
   | FailoverEvent
   | MainEvent
   | SandboxEvent;
@@ -369,6 +369,13 @@ export type RenderEvent =
 export type BridgeEvent =
   | {
       layer: "bridge";
+      event: "sso_listeners_ready";
+      flowId: string;
+      timestamp: number;
+      payload: Record<string, never>;
+    }
+  | {
+      layer: "bridge";
       event: "setup_begin";
       flowId: string;
       timestamp: number;
@@ -417,16 +424,179 @@ export type BridgeEvent =
         label: string;
         productId: string;
       };
+    };
+
+/** SSO pairing lifecycle driven by host-owned login UI and Rust core. */
+export type SsoEvent =
+  | {
+      layer: "sso";
+      event: "login_event_received";
+      flowId: string;
+      timestamp: number;
+      payload: Record<string, never>;
     }
   | {
-      layer: "bridge";
-      event: "nested_detected";
+      layer: "sso";
+      event: "login_host_ready";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        host: "landing" | "product";
+      };
+    }
+  | {
+      layer: "sso";
+      event: "login_request_start" | "login_request_sent";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event:
+        | "login_request_encode_failed"
+        | "login_request_send_failed"
+        | "login_request_decode_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+        reason: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "login_request_response";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+        result: "Success" | "AlreadyConnected" | "Rejected";
+      };
+    }
+  | {
+      layer: "sso";
+      event: "login_request_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        requestId: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "present_pairing_callback";
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
-        productId: string;
-        nestedIndex: number;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "pairing_started";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "deeplink_generated";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+        scheme: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "awaiting_response";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        label: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_connecting";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        backend: string;
+        genesisHash: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_connected";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        backend: string;
+        genesisHash: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_connect_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        backend: string;
+        genesisHash: string;
+        reason: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_request";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        method: string;
+        requestId: string;
+        requestKind: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "statement_store_response";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        method: string;
+        requestId?: string;
+        requestKind: string;
+        remoteSubscriptionId?: string;
+        frameKind?: string;
+        eventName?: string;
+        statementCount?: number;
+        remaining?: number;
+        error?: string;
+      };
+    }
+  | {
+      layer: "sso";
+      event: "session_established";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        result: "Success" | "AlreadyConnected";
+      };
+    }
+  | {
+      layer: "sso";
+      event: "pairing_failed";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        reason: string;
       };
     };
 

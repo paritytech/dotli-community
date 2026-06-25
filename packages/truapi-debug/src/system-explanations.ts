@@ -143,16 +143,19 @@ The iframe's \`sandbox\` and \`allow\` attributes are configured here based on t
 
   "render:iframe_ready": {
     title: "Product iframe ready",
-    body: `The iframe element is in the DOM and has started navigating to its URL. The product itself has not executed yet — that happens asynchronously as the browser loads the iframe content. Next up is the container bridge setup, which runs in parallel.`,
+    body: `The iframe element is in the DOM and has started navigating to its URL. The product itself has not executed yet — that happens asynchronously as the browser loads the iframe content. Next up is the TrUAPI bridge setup, which runs in parallel.`,
   },
 
   // bridge
 
+  "bridge:sso_listeners_ready": {
+    title: "SSO bridge listeners ready",
+    body: `The host has installed the window-level listeners that connect the topbar login/logout UI to the Rust-backed landing-auth core. After this point, a topbar login click can dispatch \`dotli:truapi-login-request\` and expect the bridge to create or reuse the host-global SSO core.`,
+  },
+
   "bridge:setup_begin": {
     title: "TrUAPI bridge wiring",
-    body: `Starting to wire the host-container postMessage bridge between the host and the product iframe. This bridge carries **all** TrUAPI traffic: account derivation, transaction signing, chain connections, scoped localStorage, statement-store subscriptions, preimage submission, permissions prompts, push notifications.
-
-A nested-bridge detector is also installed here — it watches for \`postMessage\` from windows other than the primary iframe and dynamically creates additional bridges for dApp-in-dApp compositions.`,
+    body: `Starting to wire the Rust-backed TrUAPI bridge between the host and the product iframe. This bridge carries **all** TrUAPI traffic: account derivation, transaction signing, chain connections, scoped localStorage, statement-store subscriptions, preimage submission, permissions prompts, push notifications.`,
   },
 
   "bridge:setup_ready": {
@@ -185,13 +188,106 @@ Gaps between \`setup_ready\` and \`first_inbound\` mean the product iframe wasn'
 Gaps between \`first_inbound\` and \`first_outbound\` imply a host-side problem (the handler wasn't registered, or the main thread was blocked). Under normal conditions these two events land in the same millisecond.`,
   },
 
-  "bridge:nested_detected": {
-    title: "Nested dApp detected",
-    body: `A product running inside the main iframe is itself embedding another product via a nested iframe. Because \`postMessage\` to \`window.top\` lets any descendant iframe reach the host, the host runs a nested-bridge detector that recognises these new sources and spins up a dedicated TrUAPI container for each.
+  // sso
 
-The inner product gets its own \`productId\` (\`parent:nested-N\`) and its own scoped storage prefix. Its traffic appears on the TrUAPI swimlane tagged with that productId.
+  "sso:login_event_received": {
+    title: "Topbar login requested",
+    body: `The topbar dispatched a host-global login request. The next step is to prepare the landing-auth Rust core, separate from any currently loaded product iframe, so pairing is scoped to the host SSO session rather than a product.`,
+  },
 
-There's a cap (\`MAX_NESTED_BRIDGES\` in config) to prevent runaway iframe trees from exhausting resources.`,
+  "sso:login_host_ready": {
+    title: "Landing auth core ready",
+    body: `The host-global SSO core is ready to receive the login request. This is an intermediate state, not a terminal event: the flow is still waiting for \`login_request_response\`, a failure event, or a later pairing/session event.`,
+  },
+
+  "sso:login_request_start": {
+    title: "Login request encoding started",
+    body: `The host is encoding an \`account.request_login\` frame for the Rust core. The request id in the payload is the correlation key for the request and response frames.`,
+  },
+
+  "sso:login_request_sent": {
+    title: "Login request sent",
+    body: `The encoded login request has been posted to the Rust core provider. From here the core may restore an existing session, present a QR pairing request, or fail while preparing the pairing transport.`,
+  },
+
+  "sso:login_request_response": {
+    title: "Login request completed",
+    body: `The Rust core returned a typed login result. \`Success\` and \`AlreadyConnected\` establish a connected session; \`Rejected\` is treated as user cancellation and should close the pending login state rather than showing a retry/error modal.`,
+  },
+
+  "sso:login_request_failed": {
+    title: "Login request rejected",
+    body: `The Rust core returned a typed domain error for the login request. This closes the request/response portion of the flow; the payload remains intentionally small because the typed error is also surfaced through the topbar login-error path.`,
+  },
+
+  "sso:login_request_encode_failed": {
+    title: "Login request encode failed",
+    body: `The host could not encode the login request frame. This is a host-side protocol bug or version mismatch and happens before anything is sent to the Rust core.`,
+  },
+
+  "sso:login_request_send_failed": {
+    title: "Login request send failed",
+    body: `The host encoded the request but failed while posting it to the core provider. Usual causes are a disposed provider, worker fault, or render/logout race that tore down the landing-auth core.`,
+  },
+
+  "sso:login_request_decode_failed": {
+    title: "Login response decode failed",
+    body: `A response arrived for the login request, but the host could not decode it as the expected \`account.request_login\` result. Treat this as a wire-version mismatch until proven otherwise.`,
+  },
+
+  "sso:present_pairing_callback": {
+    title: "Pairing QR requested",
+    body: `The Rust core asked the host to present a pairing deeplink. The topbar renders this as the Polkadot Mobile QR modal and receives a cancel callback that can abort the in-flight pairing request.`,
+  },
+
+  "sso:pairing_started": {
+    title: "SSO pairing started",
+    body: `A new SSO pairing attempt has started. The host has a deeplink label and is preparing the modal state; the core will subscribe to statement-store messages carrying the pairing response.`,
+  },
+
+  "sso:deeplink_generated": {
+    title: "Pairing deeplink generated",
+    body: `The QR/deeplink payload has been generated for Polkadot Mobile. Scanning it moves the flow to the mobile companion app; the desktop host waits for a matching statement-store response.`,
+  },
+
+  "sso:awaiting_response": {
+    title: "Waiting for mobile response",
+    body: `The QR is visible and the core is waiting for Polkadot Mobile to publish the SSO response statement. If this remains pending, inspect the nearby \`statement_store_*\` events to see whether subscription setup or query polling is failing.`,
+  },
+
+  "sso:statement_store_connecting": {
+    title: "Statement-store connecting",
+    body: `The host is opening the chain/RPC connection used by the Rust core's SSO statement-store transport. The backend and genesis hash identify which chain path is being used for pairing traffic.`,
+  },
+
+  "sso:statement_store_connected": {
+    title: "Statement-store connection ready",
+    body: `The statement-store transport wrapper is ready to accept JSON-RPC requests from the Rust core. Subsequent request/response events show the subscribe, query, and unsubscribe calls used by the pairing poller.`,
+  },
+
+  "sso:statement_store_connect_failed": {
+    title: "Statement-store connection failed",
+    body: `The host could not create the chain/RPC transport required for SSO pairing. Pairing cannot proceed until this path works; the reason field carries the thrown error text.`,
+  },
+
+  "sso:statement_store_request": {
+    title: "Statement-store request",
+    body: `The Rust core sent a statement-store JSON-RPC request through the host chain transport. Request ids ending in \`:query:N\` are snapshot polling probes; \`:unsubscribe\` ids close live or query subscriptions.`,
+  },
+
+  "sso:statement_store_response": {
+    title: "Statement-store response",
+    body: `The statement-store transport returned a response or subscription page to the Rust core. The payload classifies live subscribe acknowledgements, snapshot query pages, unsubscribe acknowledgements, errors, and statement counts when available.`,
+  },
+
+  "sso:session_established": {
+    title: "SSO session established",
+    body: `Pairing or session restore succeeded. The Rust core has persisted the session and emitted session UI state so the topbar can show the connected account/username.`,
+  },
+
+  "sso:pairing_failed": {
+    title: "SSO pairing failed",
+    body: `The SSO flow ended without a connected session. This may be a user cancellation, mobile rejection, expired pairing statement, statement-store failure, or worker/core fault; inspect the preceding events in the same flow for the concrete cause.`,
   },
 
   // failover
@@ -308,175 +404,6 @@ This **must** complete before \`document.write\` for multi-file archives — oth
   "sandbox:failed": {
     title: "Sandbox boot failed",
     body: `Something in the fetch / decrypt / store pipeline threw. The sandbox has captured the exception to Sentry with the relevant \`dependency\` tag (\`ipfs-gateway\` / \`helia-bulletin\` / \`unknown\`) and rendered its error UI with a retry button. \`reason\` is the error message from whichever stage threw.`,
-  },
-
-  // SSO (host-papp)
-
-  "sso:pairing_started": {
-    title: "Wallet pairing started",
-    body: `\`createPappAdapter().sso.authenticate()\` was called, usually because the user clicked the sign-in button. A fresh sr25519 session account is being derived from a generated mnemonic (it exists only for this session — the real wallet stays on the mobile device).
-
-\`metadata\` is the product-identity string the host passed when instantiating the PappAdapter; the mobile wallet will show this to the user as part of the consent screen.`,
-  },
-
-  "sso:deeplink_generated": {
-    title: "QR code ready",
-    body: `The host has built the handshake payload (session's sr25519 public key + encrypt public key + product metadata + host metadata) and base64-encoded it into a \`polkadotapp://pair?handshake=<hex>\` URL. This URL is rendered as a QR code in the browser.
-
-The \`handshakeTopic\` is a derived statement-store topic. When the wallet scans the QR, decrypts the payload, and responds, it will post its response statement on this specific topic. The host has already subscribed to it by the time this event fires.`,
-  },
-
-  "sso:awaiting_response": {
-    title: "Waiting for wallet scan",
-    body: `The host is now blocked on the statement-store subscription, waiting for a matching response statement to land on the \`handshakeTopic\`. There's no timeout at this layer — the user might scan the QR in 5 seconds or walk away for 20 minutes.
-
-If the user cancels the pairing dialog, an \`AbortError\` propagates and ends the flow with \`sso:pairing_failed\`.`,
-  },
-
-  "sso:response_received": {
-    title: "Wallet response received",
-    body: `The wallet posted its response statement on the handshake topic. The host has decrypted the response sensitive data (using the ECDH-derived shared secret), extracted the wallet's encrypt public key and account id, and instantiated a \`StoredUserSession\` bound to both parties.
-
-The session isn't saved yet — that happens after attestation completes, so a failed attestation doesn't leave an orphaned session.`,
-  },
-
-  "sso:session_established": {
-    title: "Session established",
-    body: `The session has been persisted: session secrets in the \`UserSecretRepository\`, the session itself in the \`UserSessionRepository\`. The session manager's subscriber will pick up the new entry and emit \`session:opened\`.
-
-After this event, the product can obtain signed payloads, request ring-VRF aliases, and receive disconnect signals via the session.`,
-  },
-
-  "sso:pairing_failed": {
-    title: "Wallet pairing failed",
-    body: `The pairing flow terminated without a session. Possible causes:
-
-• User cancelled (AbortError): explicit cancel button on the QR modal.
-• Subscription failure: statement-store could not deliver the response.
-• Decrypt failure: response payload did not decrypt with the expected key — indicates a mismatched protocol version or a malicious response.
-• Attestation parallel failure: the concurrent attestation flow failed, which also aborts pairing.
-
-The UI shows the error message and resets so the user can try again.`,
-  },
-
-  // attestation (host-papp)
-
-  "attestation:started": {
-    title: "Guest identity attestation started",
-    body: `Attestation runs in parallel with SSO pairing. Its job is to register the session's candidate account as a *lite person* on People chain, so the session has a verified guest identity rather than being fully anonymous.
-
-The candidate is a session-scoped sr25519 account — different from the wallet's own identity. The verifier is the Sudo Alice key (in the current testnet setup; production will use a proper registrar).`,
-  },
-
-  "attestation:username_claimed": {
-    title: "Username generated",
-    body: `A random guest username of the form \`guest<4 letters>.<4-digit suffix>\` has been generated client-side. It's not yet on-chain — registration happens at \`person_registered\`. The prefix is what the session presents publicly; the numeric suffix is a disambiguator.`,
-  },
-
-  "attestation:allowance_granted": {
-    title: "Verifier allowance granted",
-    body: `A Sudo-wrapped \`PeopleLite.increase_attestation_allowance\` extrinsic has been submitted and reached best-block confirmation. This gives the verifier credits to vouch for up to N new guest identities (current setting: 10).
-
-This step is idempotent — if the verifier already has sufficient allowance, the call is skipped and this event still fires.`,
-  },
-
-  "attestation:vrf_proof_generated": {
-    title: "VRF ring-proof generated",
-    body: `A ring-VRF proof of membership has been computed via \`verifiablejs\` for the candidate's entropy. This is the cryptographic evidence that the candidate is a legitimate member of the guest ring.
-
-Ring-VRF is zero-knowledge: the proof does not reveal which ring member the candidate corresponds to — only that they are one of them.`,
-  },
-
-  "attestation:person_registered": {
-    title: "Person registered on-chain",
-    body: `The \`PeopleLite.attest\` extrinsic has been submitted (signed by the verifier) and landed at best-block or finalization. The candidate's identity is now live on People chain.
-
-The call bundles the candidate signature, the ring-VRF key + proof, and a \`consumer_registration\` struct that records the username and identifier key. Any future interaction using this session's identity keys will be recognised on-chain.`,
-  },
-
-  "attestation:completed": {
-    title: "Attestation complete",
-    body: `All three on-chain steps (allowance grant, VRF proof, person register) succeeded. The guest identity is live. The parallel SSO pairing flow can now finalise into a saved session.`,
-  },
-
-  "attestation:failed": {
-    title: "Attestation failed",
-    body: `One of the attestation sub-steps threw. Most common causes:
-
-• Allowance extrinsic reverted — verifier out of allowance and sudo-increase failed.
-• VRF proof generation exception — verifiablejs WASM init failed or the entropy was malformed.
-• \`PeopleLite.attest\` rejected — dispatch-error (e.g. duplicate username, invalid signature).
-
-The parallel pairing flow is torn down too. No session is stored.`,
-  },
-
-  // session (host-papp)
-
-  "session:opened": {
-    title: "Session opened",
-    body: `A \`UserSession\` object has been instantiated for a stored session (either a freshly paired one or one restored from storage at host boot). The session is now subscribed to its statement-store channel for peer-originated actions (signing requests, alias responses, disconnect signals).
-
-The session persists across page reloads until explicitly terminated. Multiple sessions can be active simultaneously — each gets its own \`session:opened\` event with a unique \`sessionId\`.`,
-  },
-
-  "session:peer_action_received": {
-    title: "Wallet-originated action arrived",
-    body: `The wallet posted an action on the session's statement-store channel. \`actionKind\` identifies it: \`SignResponse\` (response to a signing request the host initiated), \`RingVrfAliasResponse\`, \`Disconnected\` (user chose to disconnect in the wallet UI), etc.
-
-The host hasn't processed the action yet — the handler will run and emit either \`peer_action_processed\` or \`peer_action_failed\`. Already-processed messages are deduplicated by \`messageId\`.`,
-  },
-
-  "session:peer_action_processed": {
-    title: "Peer action handled",
-    body: `The session's action handler completed.
-
-• \`processed=true\` — the handler recognised the action and acted on it (e.g. a \`Disconnected\` peer-action triggered session removal).
-• \`processed=false\` — the handler didn't match or chose to ignore; the action was accepted but had no effect.`,
-  },
-
-  "session:peer_action_failed": {
-    title: "Peer action handling failed",
-    body: `The action handler threw. Common causes: decrypt failure on the statement data, response came in for a messageId the host doesn't remember, malformed payload. The error is logged; the session continues.`,
-  },
-
-  "session:host_action_sent": {
-    title: "Host-originated action sent",
-    body: `The host is initiating an action to the wallet. Kinds:
-
-• \`SignPayload\` — the wallet needs to sign an extrinsic SignedPayload (a transaction the product wants to submit).
-• \`SignRaw\` — the wallet needs to sign arbitrary bytes (common for off-chain auth, not transactions).
-• \`RingVrfAliasRequest\` — the wallet should derive a product-scoped alias via ring-VRF.
-• \`Disconnect\` — the host is tearing down the session and informing the wallet.
-
-The action is encrypted and posted on the session's channel. The host is now waiting for a matching response statement.`,
-  },
-
-  "session:host_action_response_received": {
-    title: "Wallet responded to host action",
-    body: `The wallet posted its response on the session's channel and the host decrypted it.
-
-• \`success=true\` — the wallet approved; the response carries the signature or alias (payload-dependent).
-• \`success=false\` — the wallet declined or errored; the response carries a failure reason. The caller (product) will see an error.
-
-Distinct from \`host_action_failed\`, which is a transport-level failure (no response at all).`,
-  },
-
-  "session:host_action_failed": {
-    title: "Host action transport failure",
-    body: `The statement-store request/await machinery errored before a response could arrive. Possible causes: the peer took too long and the host gave up, the session's channel was torn down mid-request, or the response decrypt failed (wrong key or corrupted payload).
-
-Different from \`host_action_response_received\` with \`success=false\`, which is a business-level decline by the wallet.`,
-  },
-
-  "session:terminated": {
-    title: "Session terminated",
-    body: `A session has been removed from the repository. This happens on:
-
-• Explicit host disconnect — \`sessionManager.disconnect(session)\`, typically from a log-out click.
-• Explicit peer disconnect — the wallet posted a \`Disconnected\` peer-action (user logged out on their phone).
-• Global clear — all sessions wiped (e.g. on a "full reset" flow).
-
-After this event, no further peer-actions or host-actions are delivered on this \`sessionId\`.`,
   },
 };
 

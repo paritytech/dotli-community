@@ -22,6 +22,7 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
-    "@dotli/config": "workspace:*"
+    "@dotli/config": "workspace:*",
+    "@noble/hashes": "^2.2.0"
   }
 }

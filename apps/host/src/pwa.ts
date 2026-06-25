@@ -19,7 +19,7 @@ import { log } from "@dotli/shared/log";
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
-if ("serviceWorker" in navigator) {
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
   const wb = new Workbox("/host-sw.js");
 
   wb.addEventListener("waiting", () => {

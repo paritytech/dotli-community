@@ -492,6 +492,7 @@ const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   resolveOwner: 90_000,
   resolveExecutableManifest: 30_000,
   resolveRootManifest: 30_000,
+  bulletinSubmitPreimage: 150_000,
 };
 
 async function postRequest<M extends ProtocolRequestMethod>(
@@ -599,6 +600,10 @@ export async function resolveRootManifestRemote(
   return (await postRequest("resolveRootManifest", {
     label,
   })) as ManifestResult<RootManifest>;
+}
+
+export async function submitPreimageRemote(value: Uint8Array): Promise<void> {
+  await postRequest("bulletinSubmitPreimage", { value });
 }
 
 export async function hasSharedAuthSession(siteId: SiteId): Promise<boolean> {

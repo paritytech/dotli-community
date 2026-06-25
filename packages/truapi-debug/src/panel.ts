@@ -3,18 +3,14 @@
 
 // TrUAPI debug panel DOM and interaction.
 //
-// A docked, resizable panel that lists every host <-> product message
-// observed via the experimental `onHostApiDebugMessage` hook from
-// `@novasamatech/host-container`. Intended for host-side debugging only;
-// gated behind a feature flag in `apps/host`.
+// A docked, resizable panel that lists dotli-internal debug events. Intended
+// for host-side debugging only; gated behind a feature flag in `apps/host`.
 //
 // All DOM is created lazily on `setupTruapiDebugPanel()` and torn down
 // by the returned dispose function. Stylesheet is injected once per
 // document, keyed by id.
 
 import { escapeHtml } from "@dotli/shared/html";
-import { onHostApiDebugMessage } from "@novasamatech/host-container";
-import { onHostPappDebugMessage } from "@novasamatech/host-papp/debug";
 import {
   decodeChainAnnotations,
   formatChainLabel,
@@ -32,6 +28,7 @@ import {
   type StoredTruapiEvent,
 } from "./event-store.ts";
 import { EventStore } from "./event-store.ts";
+import type { DotliDebugBusEvent } from "./dotli-debug-bus.ts";
 import {
   initialFilterState,
   matches,
@@ -53,6 +50,12 @@ const DOCK_STORAGE_KEY = "truapi-debug:dock";
 const DEBUG_SESSION_KEY = "dotli:truapi-debug";
 
 type DockPosition = "bottom" | "right";
+
+function isTruapiDebugEvent(
+  ev: DotliDebugBusEvent,
+): ev is Extract<DotliDebugBusEvent, { kind: "truapi" }> {
+  return "kind" in ev && ev.kind === "truapi";
+}
 
 function readStoredDock(): DockPosition {
   try {
@@ -92,8 +95,8 @@ export interface SetupOptions {
  * Install the TrUAPI debug panel into the current document.
  *
  * Creates a single panel bound to the current page, subscribes once to
- * the global host-container debug bus, and returns a dispose function
- * that tears everything down (DOM + subscription).
+ * the dotli debug bus, and returns a dispose function that tears everything
+ * down (DOM + subscription).
  *
  * The panel mounts visible whenever debug mode is on. The header's `×`
  * button exits debug mode entirely (clears the session flag and
@@ -163,14 +166,12 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   };
 
   const unsubscribeStore = store.subscribe(scheduleRender);
-  const unsubscribeTruapi = onHostApiDebugMessage((ev) => {
-    store.insertTruapi(ev);
-  });
-  const unsubscribeHostPapp = onHostPappDebugMessage((ev) => {
-    store.insertHostPapp(ev);
-  });
   const unsubscribeDotli = onDotliDebugEvent((ev) => {
-    store.insertDotli(ev);
+    if (isTruapiDebugEvent(ev)) {
+      store.insertTruapi(ev);
+    } else {
+      store.insertDotli(ev);
+    }
   });
 
   // Initial render + iframe adjustment.
@@ -178,8 +179,6 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   adjustIframeForPanel(ui.panel, state);
 
   return () => {
-    unsubscribeTruapi();
-    unsubscribeHostPapp();
     unsubscribeDotli();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
@@ -195,7 +194,7 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     return;
   }
   const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? 40 : 0;
+  const topOffset = hasTopbar ? 56 : 0;
   if (state.dock === "right") {
     iframe.style.height = `calc(100vh - ${String(topOffset)}px)`;
     // When collapsed, the 32px header bar overlays the top-right corner

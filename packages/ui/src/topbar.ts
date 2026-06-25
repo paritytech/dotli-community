@@ -6,12 +6,6 @@
 // Manages the auth button, QR pairing modal, and user popover.
 // All plain DOM manipulation, no framework.
 //
-// Auth module is lazy-loaded. The heavy host-papp, statement-store, and
-// polkadot-api WS deps only load when a persisted session exists or the
-// user clicks the auth button.
-
-import type { AuthState } from "@dotli/auth/auth";
-import type { Identity } from "@novasamatech/host-papp";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
@@ -20,10 +14,8 @@ import {
   getActiveAppManifest,
   getActiveRootManifest,
 } from "@dotli/shared/active-manifest";
-import { SITE_ID } from "@dotli/config/config";
 import {
   createRemoteChainProvider,
-  hasSharedAuthSession,
   isRemoteChainSupported,
 } from "@dotli/protocol/client";
 import {
@@ -55,6 +47,11 @@ import {
   setPermissionStatus,
   type PermissionStatus,
 } from "./permissions";
+import type { DotliAuthState } from "./host-callbacks/AuthState";
+import {
+  emitPersistedSessionUiState,
+  type TruapiSessionUiState,
+} from "./host-callbacks/SessionStore";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -98,33 +95,7 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
-
-interface AuthModule {
-  initAuth: () => Promise<void>;
-  getAuthState: () => AuthState;
-  onAuthStateChange: (fn: (state: AuthState) => void) => () => void;
-  startPairing: () => void;
-  abortPairing: () => void;
-  disconnect: () => Promise<void>;
-  shortenName: (identity: Identity) => string;
-}
-
-let authMod: AuthModule | null = null;
-
-/**
- * Lazy-load and initialize the auth module. Subsequent calls return
- * the cached module immediately (initAuth is idempotent).
- */
-async function ensureAuth(): Promise<AuthModule> {
-  if (authMod) {
-    return authMod;
-  }
-  authMod = await import("@dotli/auth/auth");
-  await authMod.initAuth();
-  authMod.onAuthStateChange(renderAuthState);
-  renderAuthState(authMod.getAuthState());
-  return authMod;
-}
+let truapiSessionConnected = false;
 
 function getStoredTheme(): "light" | "dark" {
   const stored = localStorage.getItem("dotli-theme");
@@ -139,7 +110,7 @@ function getStoredTheme(): "light" | "dark" {
 
 function applyTheme(theme: "light" | "dark"): void {
   document.documentElement.setAttribute("data-theme", theme);
-  // Notify the container bridge (container.ts) to forward the new theme to the
+  // Notify the Rust bridge to forward the new theme to the
   // embedded dApp.
   window.dispatchEvent(new Event("dotli:theme-changed"));
 }
@@ -172,9 +143,12 @@ export function initTopBar(): void {
 
   // Auth button: opens modal (logged out) or popover (logged in)
   authButton.addEventListener("click", handleAuthButtonClick);
+  authButton.removeAttribute("disabled");
 
   // Modal close button
-  modalClose.addEventListener("click", closeModal);
+  modalClose.addEventListener("click", () => {
+    closeModal();
+  });
 
   // Clicking backdrop (outside modal) closes modal
   modalBackdrop.addEventListener("click", (e) => {
@@ -186,26 +160,19 @@ export function initTopBar(): void {
   // Disconnect button
   userPopoverDisconnect.addEventListener("click", handleDisconnect);
 
-  // Products can trigger the login flow via `handleRequestLogin`.
-  // `requestLogin()` in @dotli/auth dispatches this event after checking
-  // the already-connected fast path. The topbar owns the QR modal so we
-  // open it here and kick off pairing.
   window.addEventListener("dotli:request-login", (e: Event) => {
     const detail = (e as CustomEvent<{ reason?: string; label?: string }>)
       .detail;
     openModal(detail.reason, detail.label);
-    void ensureAuth().then(() => {
-      // Skip if the flow advanced between dispatch and here.
-      const state = authMod?.getAuthState();
-      if (
-        state &&
-        state.status !== "authenticated" &&
-        state.status !== "pairing" &&
-        state.status !== "attesting"
-      ) {
-        authMod?.startPairing();
-      }
-    });
+    requestTruapiLogin(detail.reason);
+  });
+
+  // Single ordered auth-state stream owned by the Rust core (plus the boot
+  // rehydration and bridge transport-failure synthetics). The modal closes
+  // only on `Connected` or explicit user action; a `Disconnected` can never
+  // tear down an in-flight pairing presentation.
+  window.addEventListener("dotli:truapi-auth-state", (e: Event) => {
+    renderAuthState((e as CustomEvent<DotliAuthState>).detail);
   });
 
   // Mobile-only "more" menu: collapses Permissions / Theme / Settings into a
@@ -300,40 +267,50 @@ export function initTopBar(): void {
   // Show default logged-out state
   renderLoggedOut();
 
-  // Probe the shared auth storage on host.dot.li. Sessions now live on the
-  // shared host origin so sibling host shells can rehydrate after a
-  // cross-subdomain navigation without eagerly loading the auth bundle for
-  // every visitor.
-  requestIdleCallback(() => {
-    void (async () => {
-      try {
-        if (await hasSharedAuthSession(SITE_ID)) {
-          await ensureAuth();
-        }
-      } catch (error) {
-        log.warn("[dot.li auth] Shared session probe failed:", error);
-      }
-    })();
+  // Rehydrate the persisted same-origin session on idle so a reload shows
+  // the logged-in badge before any core instance boots.
+  scheduleIdle(() => {
+    emitPersistedSessionUiState();
   });
 }
 
-function renderAuthState(state: AuthState): void {
-  switch (state.status) {
-    case "idle":
+function scheduleIdle(callback: () => void): void {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => {
+      callback();
+    });
+  } else {
+    window.setTimeout(callback, 0);
+  }
+}
+
+/**
+ * Render one auth state. The modal lifecycle is state-driven: `Pairing`
+ * opens it with the QR, `Connected` closes it, `LoginFailed` shows a
+ * retryable error, and `Disconnected` only updates the badge so an
+ * unrelated disconnect signal can never close an active pairing modal.
+ */
+function renderAuthState(state: DotliAuthState): void {
+  truapiSessionConnected = state.tag === "Connected";
+  switch (state.tag) {
+    case "Disconnected":
       renderLoggedOut();
       break;
-    case "pairing":
-      renderPairing(state.payload);
+    case "Pairing":
+      openModal(
+        undefined,
+        state.hostGlobal === true ? undefined : state.label,
+        { dotSuffix: state.dotSuffix },
+      );
+      renderPairing(state.deeplink);
       break;
-    case "attesting":
-      renderAttesting();
+    case "Connected":
+      closeModal({ skipTruapiCancel: true });
+      renderTruapiLoggedIn(state.session);
       break;
-    case "authenticated":
-      renderLoggedIn(state);
-      closeModal();
-      break;
-    case "error":
-      renderError(state.message);
+    case "LoginFailed":
+      openModal();
+      renderError(state.reason);
       break;
   }
 }
@@ -344,30 +321,45 @@ function renderLoggedOut(): void {
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
 
-function renderLoggedIn(state: AuthState & { status: "authenticated" }): void {
-  const initials =
-    state.identity && authMod ? authMod.shortenName(state.identity) : "??";
-  authButton.innerHTML = `<div class="user-badge">${escapeHtml(initials)}</div>`;
+function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
+  authButton.innerHTML = `<div class="user-badge">${escapeHtml(
+    shortenTruapiSessionName(state),
+  )}</div>`;
   authButton.title = "Account";
+  userPopoverUsername.textContent =
+    state.primaryUsername ??
+    state.fullUsername ??
+    state.liteUsername ??
+    shortenAccount(state.identityAccountId ?? state.publicKey) ??
+    "Connected with Polkadot Mobile";
   window.dispatchEvent(new Event("dotli:authenticated"));
+}
 
-  // Update popover with identity name or truncated account address
-  let username: string;
-  const fullName = state.identity?.fullUsername;
-  const liteName = state.identity?.liteUsername;
-  if (
-    (fullName !== undefined && fullName !== "") ||
-    (liteName !== undefined && liteName !== "")
-  ) {
-    username = fullName ?? liteName ?? "";
-  } else {
-    // Fallback to truncated account address
-    const id = Array.from(state.session.remoteAccount.accountId)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    username = `0x${id.slice(0, 6)}...${id.slice(-4)}`;
+function shortenTruapiSessionName(state: TruapiSessionUiState): string {
+  const fullName = state.fullUsername;
+  if (fullName !== undefined && fullName.length > 0) {
+    const parts = fullName.split(" ").filter((part) => part.length > 0);
+    if (parts.length === 1) {
+      return parts[0]!.slice(0, 2).toUpperCase();
+    }
+    return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
   }
-  userPopoverUsername.textContent = username;
+  const liteName = state.liteUsername;
+  if (liteName !== undefined && liteName.length > 0) {
+    return liteName.slice(0, 2).toUpperCase();
+  }
+  const account = state.identityAccountId ?? state.publicKey;
+  if (account !== undefined && account.length >= 4) {
+    return account.slice(2, 4).toUpperCase();
+  }
+  return "??";
+}
+
+function shortenAccount(account: string | undefined): string | undefined {
+  if (account === undefined || account.length < 12) {
+    return undefined;
+  }
+  return `${account.slice(0, 8)}...${account.slice(-4)}`;
 }
 
 function renderPairing(payload: string): void {
@@ -381,6 +373,7 @@ function renderPairing(payload: string): void {
 
   // Render QR code (lazy-load qrcode lib, guard against stale appends)
   const canvas = document.createElement("canvas");
+  canvas.dataset.qrPayload = payload;
   const capturedPayload = payload;
   void import("qrcode")
     .then((QRCode) =>
@@ -437,15 +430,6 @@ function renderPairing(payload: string): void {
     });
 }
 
-function renderAttesting(): void {
-  modalQr.innerHTML = `
-    <div class="attesting">
-      <div class="spinner"></div>
-      <p>Logging in...</p>
-    </div>
-  `;
-}
-
 // Clock glyph for the "account still being set up" state.
 const PENDING_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
@@ -497,7 +481,8 @@ function renderError(message: string): void {
   retry.className = "auth-modal-retry";
   retry.textContent = "Retry";
   retry.addEventListener("click", () => {
-    authMod?.startPairing();
+    openModal();
+    requestTruapiLogin();
   });
   container.appendChild(retry);
 
@@ -506,34 +491,31 @@ function renderError(message: string): void {
 }
 
 function handleAuthButtonClick(): void {
-  if (authMod) {
-    const state = authMod.getAuthState();
-
-    if (state.status === "authenticated") {
-      // Toggle user popover
-      userPopover.classList.toggle("open");
-    } else if (state.status === "attesting") {
-      // Attestation still running in background, just reshow the modal
-      modalBackdrop.classList.add("open");
-    } else {
-      // Open modal and start pairing
-      openModal();
-      authMod.startPairing();
-    }
+  if (truapiSessionConnected) {
+    userPopover.classList.toggle("open");
   } else {
-    // Auth not loaded yet, load it and start pairing
     openModal();
-    void ensureAuth().then(() => {
-      authMod?.startPairing();
-    });
+    requestTruapiLogin();
   }
 }
 
 function handleDisconnect(): void {
   userPopover.classList.remove("open");
-  if (authMod) {
-    void authMod.disconnect();
-  }
+  requestTruapiDisconnect();
+}
+
+export function requestTruapiDisconnect(): void {
+  window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
+}
+
+function requestTruapiLogin(reason?: string): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:truapi-login-request", {
+      detail: {
+        reason,
+      },
+    }),
+  );
 }
 
 const PERM_ICONS: Record<string, string> = {
@@ -560,8 +542,6 @@ const PERM_ICONS: Record<string, string> = {
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   StatementSubmit:
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>',
-  GetUserId:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
 };
 
 function initPermissions(): void {
@@ -1318,7 +1298,7 @@ declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__:
   | { name: string; version: string }[]
   | undefined;
-declare const __NOVASAMATECH_VERSIONS__:
+declare const __PARITY_TRUAPI_VERSIONS__:
   | { name: string; version: string }[]
   | undefined;
 
@@ -1432,19 +1412,10 @@ function renderDiagnostics(parent: HTMLElement): void {
     polkadotApi.push(...__POLKADOT_API_VERSIONS__);
   }
 
-  // @novasamatech/* versions move in lockstep, so showing every single
-  // package is noise. Keep only the two that are independently meaningful:
-  // host-api (the host runtime) and sdk-statement (the statement store
-  // client). Everything else in the scope tracks host-api's version.
-  const NOVASAMATECH_ALLOWLIST = new Set([
-    "@novasamatech/host-api",
-    "@novasamatech/sdk-statement",
-  ]);
-  const novasamatech = (
-    typeof __NOVASAMATECH_VERSIONS__ === "undefined"
+  const parityTruapi =
+    typeof __PARITY_TRUAPI_VERSIONS__ === "undefined"
       ? []
-      : __NOVASAMATECH_VERSIONS__
-  ).filter((p) => NOVASAMATECH_ALLOWLIST.has(p.name));
+      : __PARITY_TRUAPI_VERSIONS__;
 
   if (polkadotApi.length > 0) {
     appendSectionHeader(parent, "@polkadot-api");
@@ -1452,9 +1423,9 @@ function renderDiagnostics(parent: HTMLElement): void {
       renderInfoRow(parent, pkg.name, pkg.version);
     }
   }
-  if (novasamatech.length > 0) {
-    appendSectionHeader(parent, "@triangle-sdk");
-    for (const pkg of novasamatech) {
+  if (parityTruapi.length > 0) {
+    appendSectionHeader(parent, "@parity/truapi");
+    for (const pkg of parityTruapi) {
       renderInfoRow(parent, pkg.name, pkg.version);
     }
   }
@@ -1473,7 +1444,7 @@ function renderDiagnostics(parent: HTMLElement): void {
       base,
       smoldotInfo,
       polkadotApi,
-      novasamatech,
+      parityTruapi,
     );
     const body = [
       "<!-- Describe the issue above this line; the diagnostics below are auto-filled. -->",
@@ -1527,7 +1498,7 @@ function isTruapiDebugEnabled(): boolean {
  *              so the snapshot matches what's actually live right now.
  *    3. Permissions: per-product, omitted on landing where we don't have
  *                    a scoped label to query.
- *    4. Packages: flat list of smoldot, polkadot-api, and novasamatech. The
+ *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi. The
  *                 live block heights from the @smoldot popover section
  *                 aren't included here because they're noise in a bug
  *                 report. The popover already shows them live. */
@@ -1535,7 +1506,7 @@ function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
   polkadotApi: { name: string; version: string }[],
-  novasamatech: { name: string; version: string }[],
+  parityTruapi: { name: string; version: string }[],
 ): string {
   const lines: string[] = [];
   for (const [k, v] of base) {
@@ -1567,7 +1538,7 @@ function formatDiagnosticsReport(
   for (const p of polkadotApi) {
     lines.push(`  ${p.name}: ${p.version}`);
   }
-  for (const p of novasamatech) {
+  for (const p of parityTruapi) {
     lines.push(`  ${p.name}: ${p.version}`);
   }
   return lines.join("\n");
@@ -1959,7 +1930,11 @@ function renderCacheToggle(
   parent.appendChild(row);
 }
 
-function openModal(reason?: string, label?: string): void {
+function openModal(
+  reason?: string,
+  label?: string,
+  options: { dotSuffix?: boolean } = {},
+): void {
   modalQr.innerHTML = `<div class="spinner"></div>`;
   // Mobile leads with the deeplink button. The QR toggle swaps this copy later.
   modalHint.textContent = isMobileDevice()
@@ -1972,7 +1947,10 @@ function openModal(reason?: string, label?: string): void {
   // label and get the ".dot" suffix.
   let productLabel = "";
   if (label !== undefined && label.length > 0) {
-    productLabel = label.startsWith("localhost:") ? label : `${label}.dot`;
+    productLabel =
+      label.startsWith("localhost:") || options.dotSuffix === false
+        ? label
+        : `${label}.dot`;
   }
   modalTitle.innerHTML =
     productLabel.length > 0
@@ -1988,14 +1966,14 @@ function openModal(reason?: string, label?: string): void {
   modalBackdrop.classList.add("open");
 }
 
-function closeModal(): void {
+function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
+  currentQrPayload = null;
+  modalQr.innerHTML = "";
 
-  if (authMod) {
-    const state = authMod.getAuthState();
-    // Only abort during pairing or error. Let attestation continue in background
-    if (state.status === "pairing" || state.status === "error") {
-      authMod.abortPairing();
-    }
+  if (opts.skipTruapiCancel !== true) {
+    // User-initiated close: cancel any in-flight login in the core so the
+    // pairing flow stops polling and resolves as Rejected.
+    window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
   }
 }

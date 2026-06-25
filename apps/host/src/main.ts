@@ -65,9 +65,10 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-import { BASE_DOMAIN, DEBUG, SITE_ID } from "@dotli/config/config";
+import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
+import { dotNsUrl } from "@dotli/shared/dotns-url";
 import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
 import { showNotification } from "@dotli/ui/notification";
@@ -164,6 +165,21 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 }
 
 const T0 = performance.now();
+const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
+
+function parseLocalProductIdOverride(): string | undefined {
+  if (!isLocalhost) {
+    return undefined;
+  }
+  const value = new URLSearchParams(window.location.search).get(
+    DOTLI_PRODUCT_ID_PARAM,
+  );
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+  const productId = value.trim();
+  return dotNsUrl.isProductIdentifier(productId) ? productId : undefined;
+}
 
 /**
  * Parse a localhost proxy URL from the path.
@@ -193,8 +209,8 @@ function parseLocalhostUrl(): string | null {
   const host = match[1];
   const rest = match[2] || "";
   // Strip every reserved host-URL param so they do not leak into the
-  // proxied product. Covers the five settings axes, the sandbox contract's
-  // host-only signals (`fullReset`, `v`), and the Playwright auth hook.
+  // proxied product. Covers the settings axes and the sandbox contract's
+  // host-only signals (`fullReset`, `v`).
   const productSearch = new URLSearchParams(window.location.search);
   for (const k of RESERVED_HOST_PARAMS) {
     productSearch.delete(k);
@@ -211,7 +227,7 @@ const RESERVED_HOST_PARAMS = [
   "skipWorkerCache",
   "fullReset",
   "v",
-  "initAuthSubscribe",
+  DOTLI_PRODUCT_ID_PARAM,
 ] as const;
 
 /**
@@ -679,71 +695,6 @@ async function runBackgroundRevalidate(
   }
 }
 
-interface AuthSubscribeApi {
-  backend: string;
-  subscribeAll: (
-    topicsHex: string[],
-    timeoutMs: number,
-  ) => Promise<{ count: number; isComplete: boolean }>;
-  subscribeAny: (
-    topicsHex: string[],
-    timeoutMs: number,
-  ) => Promise<{ count: number; isComplete: boolean }>;
-}
-
-function hexToBytes(s: string): Uint8Array {
-  const h = s.startsWith("0x") ? s.slice(2) : s;
-  const bytes = new Uint8Array(h.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
-async function runAuthSubscribeHook(chainBackend: string): Promise<void> {
-  log.warn("[dot.li auth-subscribe] init auth + statement store");
-  const authMod = await import("@dotli/auth/auth");
-  await authMod.initAuth();
-  const store = await authMod.onStatementStoreReady();
-
-  type Filter = { matchAll: Uint8Array[] } | { matchAny: Uint8Array[] };
-
-  function subscribeFor(
-    filter: Filter,
-    timeoutMs: number,
-  ): Promise<{ count: number; isComplete: boolean }> {
-    return new Promise((resolve) => {
-      let count = 0;
-      let lastIsComplete = false;
-      const unsub = store.subscribeStatements(filter, (page) => {
-        count += page.statements.length;
-        lastIsComplete = page.isComplete;
-        return undefined;
-      });
-      setTimeout(() => {
-        unsub();
-        resolve({ count, isComplete: lastIsComplete });
-      }, timeoutMs);
-    });
-  }
-
-  const api: AuthSubscribeApi = {
-    backend: chainBackend,
-    subscribeAll: (topicsHex, timeoutMs) =>
-      subscribeFor({ matchAll: topicsHex.map(hexToBytes) }, timeoutMs),
-    subscribeAny: (topicsHex, timeoutMs) =>
-      subscribeFor({ matchAny: topicsHex.map(hexToBytes) }, timeoutMs),
-  };
-
-  (
-    window as unknown as { __dotliAuthSubscribe: AuthSubscribeApi }
-  ).__dotliAuthSubscribe = api;
-  log.warn(
-    `[dot.li auth-subscribe] window.__dotliAuthSubscribe ready (backend=${chainBackend})`,
-  );
-  document.title = "dotli-auth-subscribe-ready";
-}
-
 /** Best-effort `localStorage.getItem`, returning null on Safari-private-mode failure. */
 function readRawLocalStorage(key: string): string | null {
   try {
@@ -1038,21 +989,11 @@ async function main(): Promise<void> {
     });
   }
 
-  // Auth-subscribe hook: when `?initAuthSubscribe=1` is in the URL,
-  // initialize the auth module and statement-store, expose
-  // `window.__dotliAuthSubscribe` for the Playwright spec, then bail out
-  // before the normal landing/.dot flow runs. The protocol iframe
-  // pre-warm above is what makes `createRemoteChainProvider(...)` work
-  // for the smoldot statement-store path, so this branch sits AFTER the
-  // pre-warm.
-  if (
-    new URLSearchParams(window.location.search).get("initAuthSubscribe") === "1"
-  ) {
-    await runAuthSubscribeHook(chainBackend);
-    return;
-  }
+  const bridgeModulePromise = import("@dotli/ui/bridge");
+  const bridgeModule = await bridgeModulePromise;
+  bridgeModule.initBridgeEventListeners();
 
-  // Initialize top bar UI (auth is lazy-loaded inside topbar when needed)
+  // Initialize top bar UI.
   const t0 = performance.now();
   initTopBar();
   log.warn(`[dot.li perf] initTopBar() done (${dur(t0)})`);
@@ -1065,6 +1006,7 @@ async function main(): Promise<void> {
   });
 
   const label = parseDotLabel();
+  const productIdOverride = parseLocalProductIdOverride();
 
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;
@@ -1077,13 +1019,17 @@ async function main(): Promise<void> {
       urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
-    const { renderIframe } = await import("@dotli/ui/bridge");
-    await renderIframe(previewTargetUrl, host);
-    history.replaceState(
-      null,
-      "",
-      `/__preview?url=${encodeURIComponent(previewTargetUrl)}`,
-    );
+    const { renderIframe } = await bridgeModulePromise;
+    await renderIframe(previewTargetUrl, host, {
+      productId: productIdOverride,
+    });
+    const nextSearch = new URLSearchParams({
+      url: previewTargetUrl,
+    });
+    if (productIdOverride !== undefined) {
+      nextSearch.set(DOTLI_PRODUCT_ID_PARAM, productIdOverride);
+    }
+    history.replaceState(null, "", `/__preview?${nextSearch.toString()}`);
     document.title = `${host} — ${SITE_ID}`;
     performance.mark("dotli:main:end");
     return;
@@ -1112,15 +1058,21 @@ async function main(): Promise<void> {
       urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
-    const { renderIframe } = await import("@dotli/ui/bridge");
-    await renderIframe(localhostUrl, host);
+    const { renderIframe } = await bridgeModulePromise;
+    await renderIframe(localhostUrl, host, { productId: productIdOverride });
 
     shieldVerified = true;
     bindTopbarAutoHide();
     setupTopbarAutoHide();
 
     // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
-    history.replaceState(null, "", "/" + host);
+    history.replaceState(
+      null,
+      "",
+      productIdOverride === undefined
+        ? "/" + host
+        : `/${host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
+    );
     document.title = `${host} — ${SITE_ID}`;
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({

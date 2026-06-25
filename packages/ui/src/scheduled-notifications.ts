@@ -7,7 +7,7 @@
  * @dotli/storage/scheduled-notifications.
  *
  * Runs in the product origin's top frame (for example acme.dot.li).
- * A guest dapp schedules via host-api 0.7, the record lands in IDB, and
+ * A guest dapp schedules via TrUAPI, the record lands in IDB, and
  * any tab on this origin fires it once it is past due.
  *
  * Two mechanisms keep sibling same-origin tabs from firing the same
@@ -108,8 +108,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
 }
 
 /**
- * Schedule a notification, called by the host-api `handlePushNotification`
- * handler.
+ * Schedule a notification, called by the push-notification handler.
  *
  * An immediate fire (null or past `scheduledAt`) only bumps the counter to
  * allocate an id. Everything else is persisted to IDB.
@@ -149,8 +148,8 @@ export async function scheduleNotification(req: {
 }
 
 /**
- * Cancel a pending notification, called by the host-api
- * `handlePushNotificationCancel` handler.
+ * Cancel a pending notification, called by the push-notification cancel
+ * handler.
  *
  * Idempotent. Returns true if a pending record was removed, false if it
  * had already fired or never existed.

@@ -3,23 +3,20 @@
 
 // TrUAPI debug event store
 //
-// Ring buffer of debug events from three sources:
-//   - TrUAPI host-to-product messages (from @novasamatech/host-container).
-//   - Host-papp SSO/attestation/session events (from @novasamatech/host-papp).
-//   - dotli-internal boot/resolve/render/bridge/failover events (from
-//     @dotli/truapi-debug/dotli-debug-bus).
-//
-// All three sources store through the same ring and correlation index so
-// the panel treats them uniformly. A discriminated `kind` field keeps
-// the shape legible. `truapi` events carry a `requestId`, `system`
-// events (SDK plus dotli) carry a `flowId`. Both serve as the
-// correlation key used by `firstInGroup` and `eventsInGroup`.
+// Ring buffer of debug events from TrUAPI wire frames and dotli-internal
+// boot/resolve/render/bridge/failover/SSO sources.
 //
 // Events are never mutated after insertion.
 
-import type { HostApiDebugMessageEvent } from "@novasamatech/host-container";
-import type { HostPappDebugEvent } from "@novasamatech/host-papp/debug";
 import type { DotliDebugEvent } from "./dotli-debug-types.ts";
+
+export interface TruapiDebugMessageEvent {
+  kind: "truapi";
+  direction: "incoming" | "outgoing";
+  productId?: string;
+  requestId: string;
+  payload: { tag: string; value: unknown };
+}
 
 /** Monotonic sequence number assigned at insertion time. Stable, unique, and sortable. */
 export type EventSeq = number;
@@ -28,7 +25,7 @@ export interface StoredTruapiEvent {
   kind: "truapi";
   seq: EventSeq;
   receivedAt: number;
-  direction: HostApiDebugMessageEvent["direction"];
+  direction: TruapiDebugMessageEvent["direction"];
   productId: string | undefined;
   /** Correlation key for TrUAPI groups (request/response, subscription). */
   requestId: string;
@@ -40,8 +37,7 @@ export interface StoredSystemEvent {
   kind: "system";
   seq: EventSeq;
   receivedAt: number;
-  /** Which bus produced the event. `host-papp` for SDK-originated ones. */
-  source: "host-papp" | "dotli";
+  source: "dotli";
   layer: string;
   event: string;
   /** Correlation key for multi-event system flows (one flow = one box). */
@@ -102,11 +98,10 @@ export class EventStore {
   }
 
   /** Insert a TrUAPI host-to-product event. */
-  insertTruapi(ev: HostApiDebugMessageEvent): void {
+  insertTruapi(ev: TruapiDebugMessageEvent): void {
     if (this.paused) {
       return;
     }
-    const payload = ev.payload as { tag: string; value: unknown };
     const stored: StoredTruapiEvent = {
       kind: "truapi",
       seq: this.nextSeq++,
@@ -114,26 +109,8 @@ export class EventStore {
       direction: ev.direction,
       productId: ev.productId,
       requestId: ev.requestId,
-      tag: payload.tag,
-      payload: payload.value,
-    };
-    this.pushAndEvict(stored);
-  }
-
-  /** Insert a host-papp SDK-originated system event (SSO/session/attestation). */
-  insertHostPapp(ev: HostPappDebugEvent): void {
-    if (this.paused) {
-      return;
-    }
-    const stored: StoredSystemEvent = {
-      kind: "system",
-      seq: this.nextSeq++,
-      receivedAt: ev.timestamp,
-      source: "host-papp",
-      layer: ev.layer,
-      event: ev.event,
-      flowId: ev.flowId,
-      payload: ev.payload,
+      tag: ev.payload.tag,
+      payload: ev.payload.value,
     };
     this.pushAndEvict(stored);
   }
