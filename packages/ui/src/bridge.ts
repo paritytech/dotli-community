@@ -119,9 +119,7 @@ function ensureStoredSessionForwarder(): void {
     return;
   }
   unsubscribeSessionStoreChanges = onStoredSessionChanged(() => {
-    for (const provider of [...liveCoreProviders]) {
-      provider.notifySessionStoreChanged();
-    }
+    notifyLiveCoreProvidersSessionStoreChanged();
   });
 }
 
@@ -129,6 +127,11 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
   liveCoreProviders.add(provider);
   ensureStoredSessionForwarder();
   let disposed = false;
+  queueMicrotask(() => {
+    if (!disposed) {
+      provider.notifySessionStoreChanged();
+    }
+  });
   return {
     postMessage(message: Uint8Array): void {
       provider.postMessage(message);
@@ -164,6 +167,12 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
       provider.dispose();
     },
   };
+}
+
+function notifyLiveCoreProvidersSessionStoreChanged(): void {
+  for (const provider of [...liveCoreProviders]) {
+    provider.notifySessionStoreChanged();
+  }
 }
 
 // Listen for device permission grants — reload the iframe so the
@@ -272,6 +281,7 @@ export function initBridgeEventListeners(): void {
       // Topbar rendering is driven by the core's auth-state emissions; the
       // call result only feeds the debug stream here.
       if (result === "Success" || result === "AlreadyConnected") {
+        notifyLiveCoreProvidersSessionStoreChanged();
         emitSsoSessionEstablished(result);
       } else {
         emitSsoPairingFailed(result);

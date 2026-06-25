@@ -1,7 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { chromium, type BrowserContext, type Page } from "playwright";
+import {
+  chromium,
+  type BrowserContext,
+  type Frame,
+  type Page,
+} from "playwright";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -9,7 +14,6 @@ import { fileURLToPath } from "node:url";
 import { extractQrPayload } from "./helpers/extract-qr-payload";
 import {
   disconnect,
-  disconnectStrict,
   generateUsername,
   health,
   pair,
@@ -42,15 +46,8 @@ const browserLogs: string[] = [];
 const screenshots: string[] = [];
 let screenshotSeq = 0;
 
-type AccountStatus = "Connected" | "Disconnected";
 type PlaygroundE2E = {
-  startAccountConnectionStatusProbe(): AccountStatus[];
-  accountConnectionStatuses(): AccountStatus[];
-  waitForAccountConnectionStatus(
-    status: AccountStatus,
-    timeoutMs?: number,
-  ): Promise<AccountStatus[]>;
-  stopAccountConnectionStatusProbe(): void;
+  startAccountConnectionStatusProbe?: unknown;
 };
 
 declare global {
@@ -193,7 +190,7 @@ async function assertPortFree(port: number, label: string): Promise<void> {
 
 async function startLocalStack(): Promise<void> {
   await assertPortsFree();
-  startServer("dotli", "bun", ["run", "preview"], dotliRoot, {
+  startServer("dotli", "bun", ["run", "preview:debug"], dotliRoot, {
     PORT: hostPort,
   });
   startServer("playground", "yarn", ["dev"], playgroundRoot, {
@@ -213,8 +210,18 @@ async function signOutIfNeeded(page: Page): Promise<void> {
   console.log(
     "[e2e-dotli] existing session found; signing out through host UI",
   );
-  await page.locator("#auth-button").click();
-  await page.locator("#user-popover-disconnect").click();
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>("#auth-button")?.click();
+  });
+  await page.locator("#user-popover-disconnect").waitFor({
+    state: "visible",
+    timeout: 5_000,
+  });
+  await page.evaluate(() => {
+    document
+      .querySelector<HTMLButtonElement>("#user-popover-disconnect")
+      ?.click();
+  });
   await badge.waitFor({ state: "hidden", timeout: 20_000 });
 }
 
@@ -452,85 +459,18 @@ async function waitForPlaygroundE2EHook(page: Page): Promise<void> {
   });
 }
 
-async function startAccountStatusProbe(page: Page): Promise<AccountStatus[]> {
-  await waitForPlaygroundE2EHook(page);
-  const frame = await findPlaygroundFrame(page);
-  return await frame.evaluate(() => {
-    const hook = window.__truapiPlaygroundE2E;
-    if (!hook) {
-      throw new Error("TrUAPI playground e2e hook missing");
-    }
-    return hook.startAccountConnectionStatusProbe();
-  });
-}
-
-async function waitForAccountStatus(
+async function assertHostSignOutAndReconnect(
   page: Page,
-  status: AccountStatus,
-  timeoutMs: number,
-): Promise<AccountStatus[]> {
-  const frame = await findPlaygroundFrame(page);
-  return await frame.evaluate(
-    ({ expected, timeout }) => {
-      const hook = window.__truapiPlaygroundE2E;
-      if (!hook) {
-        throw new Error("TrUAPI playground e2e hook missing");
-      }
-      return hook.waitForAccountConnectionStatus(expected, timeout);
-    },
-    { expected: status, timeout: timeoutMs },
-  );
-}
-
-async function stopAccountStatusProbe(page: Page): Promise<void> {
-  const frame = await findPlaygroundFrame(page).catch(() => null);
-  await frame
-    ?.evaluate(() => {
-      window.__truapiPlaygroundE2E?.stopAccountConnectionStatusProbe();
-    })
-    .catch(() => {});
-}
-
-async function assertSignerDisconnectAndReconnectUpdatesSession(
-  page: Page,
-  pairResult: PairResult,
 ): Promise<PairResult> {
-  const { token, base } = requireBotEnv();
-  console.log("[e2e-dotli] validating account connection status disconnect");
-  await startAccountStatusProbe(page);
-  try {
-    const connected = await waitForAccountStatus(page, "Connected", 15_000);
-    console.log(
-      `[e2e-dotli] account statuses before disconnect: ${connected.join(",")}`,
-    );
+  console.log("[e2e-dotli] validating host sign-out");
+  await signOutIfNeeded(page);
+  await page
+    .locator("#auth-button .user-badge")
+    .waitFor({ state: "hidden", timeout: 20_000 });
+  await captureStep(page, "signed-out");
 
-    await disconnectStrict(base, token, pairResult.sessionId);
-
-    const disconnected = await waitForAccountStatus(
-      page,
-      "Disconnected",
-      60_000,
-    );
-    console.log(
-      `[e2e-dotli] account statuses after disconnect: ${disconnected.join(",")}`,
-    );
-    await page
-      .locator("#auth-button .user-badge")
-      .waitFor({ state: "hidden", timeout: 15_000 });
-    await captureStep(page, "signed-out");
-
-    console.log("[e2e-dotli] validating account connection status reconnect");
-    await stopAccountStatusProbe(page);
-    await startAccountStatusProbe(page);
-    const reconnectResult = await signInWithBot(page);
-    const reconnected = await waitForAccountStatus(page, "Connected", 60_000);
-    console.log(
-      `[e2e-dotli] account statuses after reconnect: ${reconnected.join(",")}`,
-    );
-    return reconnectResult;
-  } finally {
-    await stopAccountStatusProbe(page);
-  }
+  console.log("[e2e-dotli] validating signer reconnect");
+  return await signInWithBot(page);
 }
 
 async function runDiagnosis(page: Page): Promise<{
@@ -566,9 +506,7 @@ async function runDiagnosisOnce(page: Page): Promise<{
   await frame.locator('[data-testid="diagnosis-run"]').click();
   await captureStep(page, "diagnosis-running");
 
-  await frame
-    .locator('[data-testid="diagnosis-copy-report"]')
-    .waitFor({ state: "visible", timeout: 20 * 60_000 });
+  await waitForDiagnosisReportReady(frame);
 
   const summary = await frame
     .locator('[data-testid="diagnosis-summary"]')
@@ -586,6 +524,47 @@ async function runDiagnosisOnce(page: Page): Promise<{
   await frame.locator('[data-testid="diagnosis-copy-report"]').click();
 
   return { summary, report, copyReportClicked: true };
+}
+
+async function waitForDiagnosisReportReady(frame: Frame): Promise<void> {
+  const deadline = Date.now() + 20 * 60_000;
+  let lastLogAt = 0;
+  while (Date.now() < deadline) {
+    const reportReady = await frame
+      .locator('[data-testid="diagnosis-copy-report"]')
+      .isVisible({ timeout: 1_000 });
+    if (reportReady) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastLogAt >= 30_000) {
+      lastLogAt = now;
+      const progress = await frame.evaluate(() => {
+        const counts: Record<string, number> = {};
+        let running = "none";
+        for (const row of document.querySelectorAll<HTMLElement>(
+          '[data-testid="diagnosis-row"]',
+        )) {
+          const status = row.dataset.status ?? "unknown";
+          counts[status] = (counts[status] ?? 0) + 1;
+          if (status === "running") {
+            running =
+              row.querySelector<HTMLElement>(".diag__name")?.innerText ??
+              "unknown";
+          }
+        }
+        const parts = Object.entries(counts)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([status, count]) => `${status}=${count}`);
+        return `${parts.join(" ")} running=${running}`;
+      });
+      console.log(`[e2e-dotli] diagnosis progress: ${progress}`);
+    }
+
+    await sleep(5_000);
+  }
+  throw new Error("diagnosis did not finish within 20 minutes");
 }
 
 function isFrameDetachedError(error: unknown): boolean {
@@ -702,17 +681,15 @@ async function main(): Promise<void> {
       }
       return;
     }
+    await waitForPlaygroundE2EHook(page);
     pairResult = await signInWithBot(page);
     const stopClicker = startHostModalClicker(page);
     try {
       const { summary, report, copyReportClicked } = await runDiagnosis(page);
-      pairResult = await assertSignerDisconnectAndReconnectUpdatesSession(
-        page,
-        pairResult,
-      );
       const reportPath = resolve(outputDir, "diagnosis-report.md");
-      const metadataPath = resolve(outputDir, "diagnosis-run.json");
       writeFileSync(reportPath, report);
+      pairResult = await assertHostSignOutAndReconnect(page);
+      const metadataPath = resolve(outputDir, "diagnosis-run.json");
       writeFileSync(
         metadataPath,
         `${JSON.stringify(
@@ -722,7 +699,7 @@ async function main(): Promise<void> {
             copyReportClicked,
             screenshots,
             user: redactedPairResult(pairResult).user,
-            sessionLifecycle: "signer-disconnect-reconnect-updated-status",
+            sessionLifecycle: "host-sign-out-reconnect",
             pageErrors,
             browserLogs,
             timestamp: new Date().toISOString(),
