@@ -40,6 +40,7 @@ import {
 import { buildAllowAttribute } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
+import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import {
   emitSsoPairingFailed,
@@ -86,6 +87,7 @@ interface CoreHost {
 type CoreProvider = Provider & {
   disconnectSession: () => Promise<void>;
   cancelPairing: () => void;
+  notifySessionStoreChanged: () => void;
 };
 type CurrentProduct =
   | {
@@ -109,6 +111,60 @@ let landingAuthGeneration = 0;
 let currentPanelDispose: (() => void) | null = null;
 let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
+const liveCoreProviders = new Set<CoreProvider>();
+let unsubscribeSessionStoreChanges: (() => void) | null = null;
+
+function ensureStoredSessionForwarder(): void {
+  if (unsubscribeSessionStoreChanges !== null) {
+    return;
+  }
+  unsubscribeSessionStoreChanges = onStoredSessionChanged(() => {
+    for (const provider of [...liveCoreProviders]) {
+      provider.notifySessionStoreChanged();
+    }
+  });
+}
+
+function trackCoreProvider(provider: CoreProvider): CoreProvider {
+  liveCoreProviders.add(provider);
+  ensureStoredSessionForwarder();
+  let disposed = false;
+  return {
+    postMessage(message: Uint8Array): void {
+      provider.postMessage(message);
+    },
+    subscribe(callback) {
+      return provider.subscribe(callback);
+    },
+    subscribeClose(callback) {
+      return provider.subscribeClose?.(callback) ?? (() => {});
+    },
+    async disconnectSession() {
+      await provider.disconnectSession();
+    },
+    cancelPairing() {
+      provider.cancelPairing();
+    },
+    notifySessionStoreChanged() {
+      provider.notifySessionStoreChanged();
+    },
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      liveCoreProviders.delete(provider);
+      if (
+        liveCoreProviders.size === 0 &&
+        unsubscribeSessionStoreChanges !== null
+      ) {
+        unsubscribeSessionStoreChanges();
+        unsubscribeSessionStoreChanges = null;
+      }
+      provider.dispose();
+    },
+  };
+}
 
 // Listen for device permission grants — reload the iframe so the
 // updated `allow` attribute takes effect.
@@ -410,6 +466,9 @@ function wrapCoreProviderForDebug(
     cancelPairing() {
       provider.cancelPairing();
     },
+    notifySessionStoreChanged() {
+      provider.notifySessionStoreChanged();
+    },
     dispose() {
       if (disposed) {
         return;
@@ -621,7 +680,9 @@ async function createCoreProvider(
       ),
     },
   );
-  return wrapCoreProviderForDebug(provider, options.productId ?? label);
+  return trackCoreProvider(
+    wrapCoreProviderForDebug(provider, options.productId ?? label),
+  );
 }
 
 async function getLandingAuthHost(): Promise<CoreHost> {

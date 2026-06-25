@@ -1,4 +1,4 @@
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import { base64 } from "@scure/base";
 
 const SSO_DEVICE_IDENTITY_KEY = "truapi:sso-device-identity:v1";

@@ -5,7 +5,7 @@
 // the worker disappears and the response is dropped — the product on the
 // new iframe retries and reads the cached decision instead.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,

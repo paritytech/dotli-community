@@ -1,4 +1,4 @@
-import type { AuthState, HostCallbacks } from "@parity/truapi-host-wasm";
+import type { AuthState, HostCallbacks } from "@parity/truapi-host/callbacks";
 import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { emitSsoPairingPresented } from "./SsoDebug";
 import {

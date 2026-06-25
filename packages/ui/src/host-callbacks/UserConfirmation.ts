@@ -1,15 +1,19 @@
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
-import { toHex } from "@dotli/shared/hex";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
+import { showPreimageSubmitModal } from "../preimage-modal";
 
 interface ConfirmationCopy {
   title: string;
   action: string;
 }
 
+type UserConfirmationReview = Parameters<
+  NonNullable<HostCallbacks["confirmUserAction"]>
+>[0];
+
 function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
-  review: Uint8Array,
+  review: unknown,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
@@ -45,8 +49,9 @@ function showConfirmationModal(
     reviewLabel.textContent = "Request";
     const reviewValue = document.createElement("div");
     reviewValue.className = "signing-field-value";
-    const hex = toHex(review);
-    reviewValue.textContent = hex.length > 90 ? `${hex.slice(0, 90)}...` : hex;
+    const text = formatReview(review);
+    reviewValue.textContent =
+      text.length > 180 ? `${text.slice(0, 180)}...` : text;
     reviewField.append(reviewLabel, reviewValue);
     fields.appendChild(reviewField);
 
@@ -91,46 +96,61 @@ function showConfirmationModal(
   });
 }
 
+function formatReview(review: unknown): string {
+  return (
+    JSON.stringify(
+      review,
+      (_key: string, value: unknown): unknown => {
+        if (typeof value === "bigint") {
+          return value.toString();
+        }
+        if (value instanceof Uint8Array) {
+          return `0x${Array.from(value, (byte) =>
+            byte.toString(16).padStart(2, "0"),
+          ).join("")}`;
+        }
+        return value;
+      },
+      2,
+    ) ?? String(review)
+  );
+}
+
+function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
+  switch (review.tag) {
+    case "SignPayload":
+      return { title: "Sign Transaction", action: "Sign" };
+    case "SignRaw":
+      return { title: "Sign Message", action: "Sign" };
+    case "CreateTransaction":
+      return { title: "Create Transaction", action: "Create" };
+    case "AccountAlias":
+      return { title: "Alias Permission", action: "Allow" };
+    case "ResourceAllocation":
+      return { title: "Resource Allocation", action: "Allow" };
+    case "PreimageSubmit":
+      return { title: "Submit Preimage", action: "Allow" };
+  }
+}
+
+async function handlePreimageSubmitReview(
+  review: Extract<UserConfirmationReview, { tag: "PreimageSubmit" }>,
+): Promise<boolean> {
+  try {
+    await showPreimageSubmitModal(Number(review.value.size));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createUserConfirmationAdapters(
   label: string,
-): Pick<
-  HostCallbacks,
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-> {
+): Pick<HostCallbacks, "confirmUserAction"> {
   return {
-    confirmSignPayload: (review) =>
-      showConfirmationModal(
-        label,
-        { title: "Sign Transaction", action: "Sign" },
-        review,
-      ),
-    confirmSignRaw: (review) =>
-      showConfirmationModal(
-        label,
-        { title: "Sign Message", action: "Sign" },
-        review,
-      ),
-    confirmCreateTransaction: (review) =>
-      showConfirmationModal(
-        label,
-        { title: "Create Transaction", action: "Create" },
-        review,
-      ),
-    confirmAccountAlias: (review) =>
-      showConfirmationModal(
-        label,
-        { title: "Alias Permission", action: "Allow" },
-        review,
-      ),
-    confirmResourceAllocation: (review) =>
-      showConfirmationModal(
-        label,
-        { title: "Resource Allocation", action: "Allow" },
-        review,
-      ),
+    confirmUserAction: (review) =>
+      review.tag === "PreimageSubmit"
+        ? handlePreimageSubmitReview(review)
+        : showConfirmationModal(label, confirmationCopy(review), review),
   };
 }

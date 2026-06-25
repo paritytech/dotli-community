@@ -2,14 +2,13 @@
 // (Helia P2P or IPFS gateway) until the preimage is found or the
 // subscription is dropped.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getBackend } from "@dotli/config/mode";
 import { submitPreimageRemote } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
 import { bitswapGet } from "../bulletin-bitswap";
-import { showPreimageSubmitModal } from "../preimage-modal";
 import { fromHex, toHex } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 
@@ -19,12 +18,6 @@ const preimageCache = new Map<string, Uint8Array>();
 
 function noop(): void {
   return;
-}
-
-function createPreimageSubmitConfirm(): HostCallbacks["confirmPreimageSubmit"] {
-  return async (size) => {
-    await showPreimageSubmitModal(Number(size));
-  };
 }
 
 function createPreimageSubmit(label: string): HostCallbacks["submitPreimage"] {
@@ -119,12 +112,8 @@ function createPreimageLookupSubscribe(
 
 export function createPreimageAdapters(
   label: string,
-): Pick<
-  HostCallbacks,
-  "confirmPreimageSubmit" | "submitPreimage" | "lookupPreimage"
-> {
+): Pick<HostCallbacks, "submitPreimage" | "lookupPreimage"> {
   return {
-    confirmPreimageSubmit: createPreimageSubmitConfirm(),
     submitPreimage: createPreimageSubmit(label),
     lookupPreimage: createPreimageLookupSubscribe(label),
   };

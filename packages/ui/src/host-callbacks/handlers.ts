@@ -7,7 +7,7 @@
 //   storage keys, and sign modal titles.
 // - `storagePrefix` scopes `localStorage` per dApp.
 //
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
 import { createPromptPermission } from "./PromptPermission";

@@ -1,6 +1,6 @@
 import { SITE_ID } from "@dotli/config/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import type { HostCallbacks, SessionUiInfo } from "@parity/truapi-host-wasm";
+import type { HostCallbacks, SessionUiInfo } from "@parity/truapi-host/callbacks";
 import {
   hasStoredSharedAuthSession,
   SHARED_CORE_SESSION_KEY,
@@ -11,7 +11,6 @@ import {
   subscribeSharedAuthStorage,
   writeSharedAuthStorage,
 } from "@dotli/protocol/client";
-import { createResultStream } from "./result-stream";
 import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
@@ -123,7 +122,6 @@ export function createSessionStoreAdapters(): Pick<
   | "readStoredSession"
   | "writeStoredSession"
   | "clearStoredSession"
-  | "subscribeStoredSession"
 > {
   return {
     async readStoredSession() {
@@ -151,25 +149,21 @@ export function createSessionStoreAdapters(): Pick<
       await writeUiStateCache({ connected: false });
       emitLocalChange();
     },
-    subscribeStoredSession() {
-      return createResultStream<undefined>([undefined], (push) => {
-        const onLocalChange = (): void => {
-          push(undefined);
-        };
-        window.addEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
-        const unsubscribeShared = subscribeSharedAuthStorage((change) => {
-          if (
-            change.siteId === SITE_ID &&
-            change.key === SHARED_CORE_SESSION_KEY
-          ) {
-            push(undefined);
-          }
-        });
-        return () => {
-          window.removeEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
-          unsubscribeShared();
-        };
-      });
-    },
+  };
+}
+
+export function onStoredSessionChanged(listener: () => void): () => void {
+  const onLocalChange = (): void => {
+    listener();
+  };
+  window.addEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
+  const unsubscribeShared = subscribeSharedAuthStorage((change) => {
+    if (change.siteId === SITE_ID && change.key === SHARED_CORE_SESSION_KEY) {
+      listener();
+    }
+  });
+  return () => {
+    window.removeEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
+    unsubscribeShared();
   };
 }

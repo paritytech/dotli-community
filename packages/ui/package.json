@@ -33,6 +33,7 @@
     "@dotli/truapi-debug": "workspace:*",
     "@noble/hashes": "^2.2.0",
     "@parity/truapi": "file:../../../../js/packages/truapi",
+    "@parity/truapi-host": "file:../../../../js/packages/truapi-host",
     "@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@scure/base": "^2.2.0",

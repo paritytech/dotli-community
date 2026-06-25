@@ -1,4 +1,4 @@
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import type { ThemeVariant } from "@parity/truapi";
 import { createResultStream } from "./result-stream";
 

@@ -743,8 +743,11 @@ function initRpcMode(): void {
     // broker's `ensureUpstream` / `disconnectAll`.
     // No resolver: gateway-mode resolution doesn't go through this iframe.
     submitBulletinPreimage: async (value) => {
-      const bulletin = await import("@dotli/resolver/bulletin");
-      await bulletin.submitPreimageTransaction(value, bulletin.getTestSigner());
+      const bulletin = await import("@dotli/resolver/bulletin-rpc");
+      await bulletin.submitPreimageTransactionViaRpc(
+        value,
+        bulletin.getTestSigner(),
+      );
     },
   });
 

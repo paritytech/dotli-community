@@ -4,6 +4,7 @@ import { SITE_ID } from "@dotli/config/config";
 import {
   createSessionStoreAdapters,
   emitPersistedSessionUiState,
+  onStoredSessionChanged,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
 
@@ -214,33 +215,25 @@ describe("session-store host callbacks", () => {
     ]);
   });
 
-  it("emits current, local, and matching storage change ticks", async () => {
-    const { subscribeStoredSession, writeStoredSession } =
-      createSessionStoreAdapters();
-    const iterator = subscribeStoredSession()[Symbol.asyncIterator]();
+  it("notifies local and matching storage changes", async () => {
+    const { writeStoredSession } = createSessionStoreAdapters();
+    const listener = vi.fn();
+    const unsubscribe = onStoredSessionChanged(listener);
 
-    const initial = await iterator.next();
-    expect(initial.done).toBe(false);
-    expect(initial.value.isOk()).toBe(true);
-
-    const local = iterator.next();
     await writeStoredSession(new Uint8Array([9]));
-    const localTick = await local;
-    expect(localTick.done).toBe(false);
-    expect(localTick.value.isOk()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
 
-    const remote = iterator.next();
-    for (const listener of sharedAuth.listeners) {
-      listener({
+    for (const sharedListener of sharedAuth.listeners) {
+      sharedListener({
         siteId: SITE_ID,
         key: SHARED_CORE_SESSION_KEY,
         value: "0x09",
       });
     }
-    const remoteTick = await remote;
-    expect(remoteTick.done).toBe(false);
-    expect(remoteTick.value.isOk()).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(2);
 
-    await iterator.return?.();
+    unsubscribe();
+    await writeStoredSession(new Uint8Array([8]));
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

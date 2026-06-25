@@ -1,7 +1,7 @@
 // Push-notification callback. The Rust core passes the typed request, and
 // this adapter returns a stable host-side id for cancel support.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import { log } from "@dotli/shared/log";
 import {
   cancelNotification,
