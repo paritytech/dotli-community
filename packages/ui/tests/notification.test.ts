@@ -15,6 +15,29 @@ vi.mock("@dotli/ui/permission-modal", () => ({
   showPermissionRequestModal: mocks.showPermissionRequestModal,
 }));
 
+async function registerNotificationAuthorization(
+  initialStatus: "NotDetermined" | "Denied" | "Authorized" = "NotDetermined",
+): Promise<{ status: "NotDetermined" | "Denied" | "Authorized" }> {
+  const state = { status: initialStatus };
+  const { registerPermissionAuthorizationProvider } = await import(
+    "@dotli/ui/permissions"
+  );
+  registerPermissionAuthorizationProvider("myapp", {
+    async getPermissionAuthorizationStatus(request) {
+      if (request.tag === "Device" && request.value === "Notifications") {
+        return state.status;
+      }
+      return "NotDetermined";
+    },
+    async setPermissionAuthorizationStatus(request, status) {
+      if (request.tag === "Device" && request.value === "Notifications") {
+        state.status = status;
+      }
+    },
+  });
+  return state;
+}
+
 describe("notification host callbacks", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -61,10 +84,7 @@ describe("notification host callbacks", () => {
   });
 
   it("reuses granted permission and cancels through the shared scheduler", async () => {
-    localStorage.setItem(
-      "dotli:permissions:myapp",
-      JSON.stringify({ Notifications: "granted" }),
-    );
+    await registerNotificationAuthorization("Authorized");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification, cancelNotification } =
@@ -89,6 +109,7 @@ describe("notification host callbacks", () => {
   });
 
   it("rejects when notification permission is denied", async () => {
+    const authorization = await registerNotificationAuthorization();
     mocks.showPermissionRequestModal.mockRejectedValue(new Error("denied"));
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
@@ -103,16 +124,11 @@ describe("notification host callbacks", () => {
     ).rejects.toThrow("Notifications permission denied");
 
     expect(mocks.scheduleNotification).not.toHaveBeenCalled();
-    expect(localStorage.getItem("dotli:permissions:myapp")).toBe(
-      '{"Notifications":"denied"}',
-    );
+    expect(authorization.status).toBe("Denied");
   });
 
   it("reuses the shared blocked-permission path for stored notification denials", async () => {
-    localStorage.setItem(
-      "dotli:permissions:myapp",
-      JSON.stringify({ Notifications: "denied" }),
-    );
+    await registerNotificationAuthorization("Denied");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");

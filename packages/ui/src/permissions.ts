@@ -1,9 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Permission storage
+// dot.li Permission authorization
 //
-// Persists host-level permission decisions per product in localStorage.
+// Permission authorization is owned by the Rust core and persisted through
+// CoreStorage. Web dotli only maps authorized device permissions to browser
+// iframe policy directives.
 // Device permissions that map to a Permissions Policy directive also
 // gate the iframe `allow` attribute (granting or revoking reloads the
 // iframe). Variants without a directive are policy-only.
@@ -11,6 +13,11 @@
 // Permission status: 'ask' (default), 'granted', or 'denied'.
 
 import type { HostDevicePermissionRequest } from "@parity/truapi";
+import type {
+  PermissionAuthorizationRequest,
+  PermissionAuthorizationStatus,
+  TrUApiHostCoreProvider,
+} from "@parity/truapi-host-wasm";
 
 export type DevicePermissionName = HostDevicePermissionRequest;
 
@@ -40,9 +47,9 @@ export type PermissionStatus = "ask" | "granted" | "denied";
 /**
  * Map from Host API device permission names to Permissions Policy directives.
  *
- * Only variants with a browser-level enforcement point are listed. Granting
- * a variant absent from this map is still recorded in localStorage but
- * does not alter the iframe `allow` attribute.
+ * Only variants with a browser-level enforcement point are listed. Authorizing
+ * a variant absent from this map is still persisted by the core but does not
+ * alter the iframe `allow` attribute.
  */
 export const DEVICE_PERMISSION_POLICY: Partial<
   Record<DevicePermissionName, string>
@@ -105,72 +112,128 @@ export function isDevicePermission(name: string): boolean {
   return name in DEVICE_PERMISSION_POLICY;
 }
 
-const STORAGE_PREFIX = "dotli:permissions:";
+type PermissionAuthorizationProvider = Pick<
+  TrUApiHostCoreProvider,
+  "getPermissionAuthorizationStatus" | "setPermissionAuthorizationStatus"
+>;
 
-type StoredPermissions = Record<string, PermissionStatus>;
+const permissionProviders = new Map<string, PermissionAuthorizationProvider>();
 
-function storageKey(label: string): string {
-  return STORAGE_PREFIX + label;
+export function registerPermissionAuthorizationProvider(
+  label: string,
+  provider: PermissionAuthorizationProvider,
+): () => void {
+  permissionProviders.set(label, provider);
+  return () => {
+    if (permissionProviders.get(label) === provider) {
+      permissionProviders.delete(label);
+    }
+  };
 }
 
-function readStored(label: string): StoredPermissions {
-  try {
-    const raw = localStorage.getItem(storageKey(label));
-    if (raw === null) {
-      return {};
-    }
-    return JSON.parse(raw) as StoredPermissions;
-  } catch {
-    return {};
+function providerFor(label: string): PermissionAuthorizationProvider | null {
+  return permissionProviders.get(label) ?? null;
+}
+
+function authorizationRequest(
+  permission: PermissionName,
+): PermissionAuthorizationRequest {
+  if (
+    permission === "ChainSubmit" ||
+    permission === "PreimageSubmit" ||
+    permission === "StatementSubmit"
+  ) {
+    return {
+      tag: "Remote",
+      value: { permission: { tag: permission } },
+    };
+  }
+  return { tag: "Device", value: permission };
+}
+
+function fromAuthorizationStatus(
+  status: PermissionAuthorizationStatus,
+): PermissionStatus {
+  switch (status) {
+    case "Authorized":
+      return "granted";
+    case "Denied":
+      return "denied";
+    case "NotDetermined":
+      return "ask";
   }
 }
 
-function writeStored(label: string, data: StoredPermissions): void {
-  localStorage.setItem(storageKey(label), JSON.stringify(data));
+function toAuthorizationStatus(
+  status: PermissionStatus,
+): PermissionAuthorizationStatus {
+  switch (status) {
+    case "granted":
+      return "Authorized";
+    case "denied":
+      return "Denied";
+    case "ask":
+      return "NotDetermined";
+  }
 }
 
-export function getPermissionStatus(
+export async function getPermissionStatus(
   label: string,
   permission: PermissionName,
-): PermissionStatus {
-  return readStored(label)[permission] ?? "ask";
+): Promise<PermissionStatus> {
+  const provider = providerFor(label);
+  if (provider === null) {
+    return "ask";
+  }
+  const status = await provider.getPermissionAuthorizationStatus(
+    authorizationRequest(permission),
+  );
+  return fromAuthorizationStatus(status);
 }
 
-export function setPermissionStatus(
+export async function setPermissionStatus(
   label: string,
   permission: PermissionName,
   status: PermissionStatus,
-): void {
-  const data = readStored(label);
-  data[permission] = status;
-  writeStored(label, data);
+): Promise<void> {
+  const provider = providerFor(label);
+  if (provider === null) {
+    return;
+  }
+  await provider.setPermissionAuthorizationStatus(
+    authorizationRequest(permission),
+    toAuthorizationStatus(status),
+  );
 }
 
-export function resetPermission(
+export async function resetPermission(
   label: string,
   permission: PermissionName,
-): void {
-  const data = readStored(label);
-  const { [permission]: _, ...rest } = data;
-  writeStored(label, rest);
+): Promise<void> {
+  await setPermissionStatus(label, permission, "ask");
 }
 
 /** Returns the list of device permission names that have been granted. */
-export function getGrantedDevicePermissions(
+export async function getGrantedDevicePermissions(
   label: string,
-): DevicePermissionName[] {
-  const data = readStored(label);
-  return Object.entries(data)
-    .filter(
-      ([name, status]) => status === "granted" && isDevicePermission(name),
-    )
-    .map(([name]) => name as DevicePermissionName);
+): Promise<DevicePermissionName[]> {
+  const granted: DevicePermissionName[] = [];
+  for (const name of Object.keys(DEVICE_PERMISSION_POLICY) as DevicePermissionName[]) {
+    if ((await getPermissionStatus(label, name)) === "granted") {
+      granted.push(name);
+    }
+  }
+  return granted;
 }
 
 /** Returns true if any permission (device or remote) is granted. */
-export function hasAnyGrant(label: string): boolean {
-  const data = readStored(label);
-  return Object.values(data).some((status) => status === "granted");
+export async function hasAnyGrant(label: string): Promise<boolean> {
+  for (const { name } of ALL_PERMISSIONS) {
+    if ((await getPermissionStatus(label, name)) === "granted") {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -178,9 +241,9 @@ export function hasAnyGrant(label: string): boolean {
  * Always includes `clipboard-write`; adds Permissions Policy directives
  * for each granted device permission.
  */
-export function buildAllowAttribute(label: string): string {
+export async function buildAllowAttribute(label: string): Promise<string> {
   const policies = ["clipboard-write"];
-  for (const name of getGrantedDevicePermissions(label)) {
+  for (const name of await getGrantedDevicePermissions(label)) {
     const directive = DEVICE_PERMISSION_POLICY[name];
     if (directive !== undefined) {
       policies.push(directive);

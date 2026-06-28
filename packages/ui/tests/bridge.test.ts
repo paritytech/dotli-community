@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  HostRequestLoginResponse,
   VersionedHostRequestLoginError,
-  VersionedHostRequestLoginResponse,
   decodeWireMessage,
   encodeWireMessage,
+  scale,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 
@@ -20,6 +21,8 @@ type MockProvider = {
   disconnectSession: ReturnType<typeof vi.fn>;
   cancelPairing: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
+  getPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
+  setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
@@ -79,6 +82,8 @@ function makeProvider(): MockProvider {
     disconnectSession: vi.fn(async () => {}),
     cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
+    getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
+    setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
@@ -104,6 +109,8 @@ function makeLoginProvider(options: {
     disconnectSession: vi.fn(async () => {}),
     cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
+    getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
+    setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
@@ -116,21 +123,33 @@ function loginResponseFrame(
     | { success: true; value: "Success" | "AlreadyConnected" | "Rejected" }
     | { success: false; reason: string },
 ): Uint8Array {
-  const payload = result.success
-    ? VersionedHostRequestLoginResponse.enc({
-        tag: "V1",
-        value: result.value,
-      })
-    : VersionedHostRequestLoginError.enc({
-        tag: "V1",
-        value: { tag: "Unknown", value: { reason: result.reason } },
-      });
-  const value = new Uint8Array(payload.length + (result.success ? 1 : 2));
-  value[0] = result.success ? 0 : 1;
-  if (!result.success) {
-    value[1] = 0; // CallError::Domain
-  }
-  value.set(payload, result.success ? 1 : 2);
+  const responseCodec = scale.indexedTaggedUnion({
+    V1: [
+      0,
+      scale.Result(
+        HostRequestLoginResponse,
+        scale.CallError(VersionedHostRequestLoginError),
+      ),
+    ] as const,
+  });
+  const value = responseCodec.enc({
+    tag: "V1",
+    value: result.success
+      ? { success: true, value: result.value }
+      : {
+          success: false,
+          value: {
+            tag: "Domain",
+            value: {
+              tag: "V1",
+              value: {
+                tag: "Unknown",
+                value: { reason: result.reason },
+              },
+            },
+          },
+        },
+  });
   const frame = encodeWireMessage({
     requestId,
     payload: {

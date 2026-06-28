@@ -12,17 +12,15 @@
 import {
   decodeWireMessage,
   encodeWireMessage,
+  HostRequestLoginResponse,
   scale,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginRequest,
-  VersionedHostRequestLoginResponse,
-  type VersionedHostRequestLoginError as LoginErrorEnvelope,
   type HostRequestLoginResponse as LoginResponse,
   type WireProvider as Provider,
-  type VersionedHostRequestLoginResponse as LoginResponseEnvelope,
   createMessagePortProvider,
 } from "@parity/truapi";
-import type { ResultPayload } from "@parity/truapi/scale";
+import type { CallErrorValue, ResultPayload } from "@parity/truapi/scale";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
@@ -37,7 +35,11 @@ import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
 } from "@dotli/truapi-debug/dotli-debug-bus";
-import { buildAllowAttribute } from "./permissions";
+import type { TrUApiHostCoreProvider } from "@parity/truapi-host-wasm";
+import {
+  buildAllowAttribute,
+  registerPermissionAuthorizationProvider,
+} from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
@@ -84,11 +86,15 @@ interface CoreHost {
   dispose: () => void;
 }
 
-type CoreProvider = Provider & {
-  disconnectSession: () => Promise<void>;
-  cancelPairing: () => void;
-  notifySessionStoreChanged: () => void;
-};
+type CoreProvider = Provider &
+  Pick<
+    TrUApiHostCoreProvider,
+    | "disconnectSession"
+    | "cancelPairing"
+    | "notifySessionStoreChanged"
+    | "getPermissionAuthorizationStatus"
+    | "setPermissionAuthorizationStatus"
+  >;
 type CurrentProduct =
   | {
       mode: "iframe";
@@ -150,6 +156,12 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
     },
     notifySessionStoreChanged() {
       provider.notifySessionStoreChanged();
+    },
+    getPermissionAuthorizationStatus(request) {
+      return provider.getPermissionAuthorizationStatus(request);
+    },
+    setPermissionAuthorizationStatus(request, status) {
+      return provider.setPermissionAuthorizationStatus(request, status);
     },
     dispose() {
       if (disposed) {
@@ -348,49 +360,13 @@ function getDeepPath(): string {
 
 function applyIframeStyling(
   iframe: HTMLIFrameElement,
-  label: string,
   opts: { topbarOffset: boolean },
 ): void {
-  iframe.allow = `${buildAllowAttribute(label)}; cross-origin-isolated`;
   iframe.style.cssText = opts.topbarOffset
     ? "position:fixed;top:56px;left:0;width:100%;height:calc(100vh - 56px);border:none;margin:0;padding:0;"
     : "position:fixed;top:0;left:0;width:100%;height:100vh;border:none;margin:0;padding:0;";
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
-}
-
-type CoreLogLevel = "off" | "error" | "warn" | "info" | "debug" | "trace";
-
-const CORE_LOG_LEVELS: readonly CoreLogLevel[] = [
-  "off",
-  "error",
-  "warn",
-  "info",
-  "debug",
-  "trace",
-];
-
-/** Read once at boot — changing the level while a runtime is alive doesn't
- * reach the worker, so the user must reload after setting it (or call
- * `window.__truapi.setLogLevel(...)` to retune live). `truapi:logLevel`
- * selects the level; the legacy `truapi:debug`/`dotli:truapi-debug` "1"
- * flags map to `debug`. */
-function readLogLevel(): CoreLogLevel {
-  try {
-    const level = window.localStorage.getItem("truapi:logLevel");
-    if (level && (CORE_LOG_LEVELS as readonly string[]).includes(level)) {
-      return level as CoreLogLevel;
-    }
-    if (
-      window.sessionStorage.getItem("dotli:truapi-debug") === "1" ||
-      window.localStorage.getItem("truapi:debug") === "1"
-    ) {
-      return "debug";
-    }
-  } catch {
-    // ignore storage access errors
-  }
-  return "off";
 }
 
 function pipeProviders(
@@ -518,6 +494,12 @@ function wrapCoreProviderForDebug(
     notifySessionStoreChanged() {
       provider.notifySessionStoreChanged();
     },
+    getPermissionAuthorizationStatus(request) {
+      return provider.getPermissionAuthorizationStatus(request);
+    },
+    setPermissionAuthorizationStatus(request, status) {
+      return provider.setPermissionAuthorizationStatus(request, status);
+    },
     dispose() {
       if (disposed) {
         return;
@@ -545,10 +527,15 @@ export function requestCoreLogin(
     timestamp: Date.now(),
     payload: { requestId },
   });
-  const responseCodec = scale.Result(
-    VersionedHostRequestLoginResponse,
-    scale.CallError(VersionedHostRequestLoginError),
-  );
+  const responseCodec = scale.indexedTaggedUnion({
+    V1: [
+      0,
+      scale.Result(
+        HostRequestLoginResponse,
+        scale.CallError(VersionedHostRequestLoginError),
+      ),
+    ],
+  });
   const frame = encodeWireMessage({
     requestId,
     payload: {
@@ -586,21 +573,23 @@ export function requestCoreLogin(
       }
       cleanup();
       try {
-        const result = responseCodec.dec(
-          decoded.value.payload.value,
-        ) as unknown as ResultPayload<
-          LoginResponseEnvelope,
-          LoginErrorEnvelope
-        >;
+        const envelope = responseCodec.dec(decoded.value.payload.value) as {
+          tag: "V1";
+          value: ResultPayload<
+            LoginResponse,
+            CallErrorValue<VersionedHostRequestLoginError>
+          >;
+        };
+        const result = envelope.value;
         if (result.success) {
           emitDotliDebugEvent({
             layer: "sso",
             event: "login_request_response",
             flowId,
             timestamp: Date.now(),
-            payload: { requestId, result: result.value.value },
+            payload: { requestId, result: result.value },
           });
-          resolve(result.value.value);
+          resolve(result.value);
         } else {
           emitDotliDebugEvent({
             layer: "sso",
@@ -609,7 +598,11 @@ export function requestCoreLogin(
             timestamp: Date.now(),
             payload: { requestId },
           });
-          reject(new LoginRequestError(result.value));
+          if (result.value.tag === "Domain") {
+            reject(new LoginRequestError(result.value.value));
+          } else {
+            reject(new Error(JSON.stringify(result.value)));
+          }
         }
       } catch (error) {
         emitDotliDebugEvent({
@@ -667,38 +660,55 @@ async function createHost(args: {
   const coreProvider = await createCoreProvider(args.label, {
     productId: args.productId,
   });
+  const unregisterPermissions = registerPermissionAuthorizationProvider(
+    args.label,
+    coreProvider,
+  );
   const { createIframeHost } = await runtimeChunkPromise;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
-  const host = createIframeHost({
-    iframeUrl: args.iframeUrl,
-    allowedOrigin: args.allowedOrigin,
-    sandbox: args.sandbox,
-    container: args.container,
-    onPort: (port) => {
-      productProvider = createMessagePortProvider(port);
-      disposePipe = pipeProviders(productProvider, coreProvider, {
-        flowId: args.debugFlowId,
-        label: args.label,
-        productId: args.productId ?? args.label,
-      });
-    },
-  });
-  return {
-    iframe: host.iframe,
-    requestLogin(reason) {
-      return requestCoreLogin(coreProvider, reason);
-    },
-    disconnect() {
-      return coreProvider.disconnectSession();
-    },
-    dispose() {
-      disposePipe?.();
-      productProvider?.dispose();
-      coreProvider.dispose();
-      host.dispose();
-    },
+  const cleanupProductSide = (): void => {
+    disposePipe?.();
+    productProvider?.dispose();
   };
+  try {
+    const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
+    const host = createIframeHost({
+      iframeUrl: args.iframeUrl,
+      allowedOrigin: args.allowedOrigin,
+      allow,
+      sandbox: args.sandbox,
+      container: args.container,
+      onPort: (port) => {
+        productProvider = createMessagePortProvider(port);
+        disposePipe = pipeProviders(productProvider, coreProvider, {
+          flowId: args.debugFlowId,
+          label: args.label,
+          productId: args.productId ?? args.label,
+        });
+      },
+    });
+    return {
+      iframe: host.iframe,
+      requestLogin(reason) {
+        return requestCoreLogin(coreProvider, reason);
+      },
+      disconnect() {
+        return coreProvider.disconnectSession();
+      },
+      dispose() {
+        unregisterPermissions();
+        cleanupProductSide();
+        coreProvider.dispose();
+        host.dispose();
+      },
+    };
+  } catch (error) {
+    unregisterPermissions();
+    cleanupProductSide();
+    coreProvider.dispose();
+    throw error;
+  }
 }
 
 async function createCoreProvider(
@@ -721,7 +731,6 @@ async function createCoreProvider(
       storagePrefix: `dotli:${label}:`,
     }),
     {
-      logLevel: readLogLevel(),
       runtimeConfig: createTruapiRuntimeConfig(
         label,
         window.location,
@@ -861,7 +870,7 @@ export async function renderIframe(
     timestamp: Date.now(),
     payload: { label, productId },
   });
-  applyIframeStyling(host.iframe, label, { topbarOffset: hasTopbar });
+  applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
   currentHost = host;
   host.iframe.addEventListener(
     "load",
@@ -1024,7 +1033,7 @@ export async function renderAppSubdomain(
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
-  applyIframeStyling(host.iframe, label, { topbarOffset: true });
+  applyIframeStyling(host.iframe, { topbarOffset: true });
   currentHost = host;
   host.iframe.addEventListener(
     "load",

@@ -1,9 +1,7 @@
 // Permission prompt. The Rust core awaits the typed response before encoding
 // the product reply, so a slow modal blocks the product just as long as the
-// user takes to dismiss it. If the iframe
-// reloads while the promise is pending (device-permission grant path),
-// the worker disappears and the response is dropped — the product on the
-// new iframe retries and reads the cached decision instead.
+// user takes to dismiss it. Device grants also schedule an iframe reload so
+// the browser sees the refreshed Permissions Policy `allow` attribute.
 
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import type { RemotePermission } from "@parity/truapi";
@@ -81,7 +79,7 @@ export async function decidePromptPermission(
   },
 ): Promise<boolean> {
   const { kind, limiter, reloadOnGrant = false } = options;
-  const status = getPermissionStatus(label, name);
+  const status = await getPermissionStatus(label, name);
   if (status === "granted") {
     return true;
   }
@@ -104,17 +102,15 @@ export async function decidePromptPermission(
   try {
     await showPermissionRequestModal(label, name);
   } catch {
-    setPermissionStatus(label, name, "denied");
+    await setPermissionStatus(label, name, "denied");
     return false;
   }
-  setPermissionStatus(label, name, "granted");
+  await setPermissionStatus(label, name, "granted");
   if (kind === "Device" && reloadOnGrant) {
     // Device permissions are also gated by the iframe `allow` attribute,
     // which is fixed at iframe load time. Reload so the next attempt sees
     // the updated attribute. Defer to the next tick so the prompt response
-    // can flush before the iframe is disposed; return `false` because the
-    // current call dies with the iframe and the product will retry on the
-    // fresh one (which will short-circuit on the now-cached "granted").
+    // can flush before the iframe is disposed.
     setTimeout(() => {
       window.dispatchEvent(
         new CustomEvent("dotli:device-permission-changed", {
@@ -122,7 +118,7 @@ export async function decidePromptPermission(
         }),
       );
     }, 0);
-    return false;
+    return true;
   }
   // Remote permissions have no browser-level gate, so we can return the
   // actual grant. The event keeps the topbar in sync.

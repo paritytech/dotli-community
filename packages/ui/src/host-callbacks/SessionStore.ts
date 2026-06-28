@@ -190,7 +190,7 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
   switch (key.tag) {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
-    case "PermissionDecision":
+    case "PermissionAuthorization":
       return `${CORE_LOCAL_STORAGE_PREFIX}permission:${key.value.storageKey}`;
     case "AuthSession":
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;

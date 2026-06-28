@@ -605,14 +605,21 @@ function initPermissions(): void {
 
 /** Update the shield icon to reflect whether any permissions are active. */
 function updatePermissionsButtonState(): void {
-  if (currentProductLabel === null) {
+  const productLabel = currentProductLabel;
+  if (productLabel === null) {
     permissionsButton.classList.remove("has-grants");
     return;
   }
-  permissionsButton.classList.toggle(
-    "has-grants",
-    hasAnyGrant(currentProductLabel),
-  );
+  void (async () => {
+    const hasGrant = await hasAnyGrant(productLabel);
+    if (currentProductLabel === productLabel) {
+      permissionsButton.classList.toggle("has-grants", hasGrant);
+    }
+  })().catch(() => {
+    if (currentProductLabel === productLabel) {
+      permissionsButton.classList.remove("has-grants");
+    }
+  });
 }
 
 const STATUS_LABELS: Record<PermissionStatus, string> = {
@@ -624,6 +631,7 @@ const STATUS_LABELS: Record<PermissionStatus, string> = {
 const STATUS_ORDER: readonly PermissionStatus[] = ["ask", "granted", "denied"];
 
 let openDropdownCleanup: (() => void) | null = null;
+let permissionsRenderToken = 0;
 
 function closeOpenDropdown(): void {
   openDropdownCleanup?.();
@@ -631,10 +639,25 @@ function closeOpenDropdown(): void {
 }
 
 function renderPermissionsPopover(): void {
+  const token = ++permissionsRenderToken;
+  void renderPermissionsPopoverAsync(token).catch(() => {
+    if (token !== permissionsRenderToken) {
+      return;
+    }
+    permissionsPopoverList.innerHTML = "";
+    const hint = document.createElement("div");
+    hint.className = "permissions-popover-footer";
+    hint.textContent = "Permissions are unavailable for this app.";
+    permissionsPopoverList.appendChild(hint);
+  });
+}
+
+async function renderPermissionsPopoverAsync(token: number): Promise<void> {
   closeOpenDropdown();
   permissionsPopoverList.innerHTML = "";
 
-  if (currentProductLabel === null) {
+  const productLabel = currentProductLabel;
+  if (productLabel === null) {
     const hint = document.createElement("div");
     hint.className = "permissions-popover-footer";
     hint.textContent = productErrored
@@ -645,8 +668,10 @@ function renderPermissionsPopover(): void {
   }
 
   for (const perm of ALL_PERMISSIONS) {
-    const productLabel = currentProductLabel;
-    const status = getPermissionStatus(productLabel, perm.name);
+    const status = await getPermissionStatus(productLabel, perm.name);
+    if (token !== permissionsRenderToken || currentProductLabel !== productLabel) {
+      return;
+    }
 
     const row = document.createElement("div");
     row.className = "permissions-popover-row";
@@ -663,22 +688,26 @@ function renderPermissionsPopover(): void {
 
     row.appendChild(
       createPermissionDropdown(status, (next) => {
-        if (next === "ask") {
-          resetPermission(productLabel, perm.name);
-        } else {
-          setPermissionStatus(productLabel, perm.name, next);
-        }
-        // Device permissions need iframe reload (allow attribute changes).
-        // Non-device permissions just update the UI.
-        const event = isDevicePermission(perm.name)
-          ? "dotli:device-permission-changed"
-          : "dotli:permission-changed";
-        window.dispatchEvent(
-          new CustomEvent(event, {
-            detail: { label: productLabel, permission: perm.name },
-          }),
-        );
-        renderPermissionsPopover();
+        void (async () => {
+          if (next === "ask") {
+            await resetPermission(productLabel, perm.name);
+          } else {
+            await setPermissionStatus(productLabel, perm.name, next);
+          }
+          // Device permissions need iframe reload (allow attribute changes).
+          // Non-device permissions just update the UI.
+          const event = isDevicePermission(perm.name)
+            ? "dotli:device-permission-changed"
+            : "dotli:permission-changed";
+          window.dispatchEvent(
+            new CustomEvent(event, {
+              detail: { label: productLabel, permission: perm.name },
+            }),
+          );
+          renderPermissionsPopover();
+        })().catch(() => {
+          renderPermissionsPopover();
+        });
       }),
     );
 
@@ -1440,24 +1469,26 @@ function renderDiagnostics(parent: HTMLElement): void {
   shareBtn.title =
     "Open a new issue on paritytech/dotli pre-filled with these diagnostics";
   shareBtn.addEventListener("click", () => {
-    const report = formatDiagnosticsReport(
-      base,
-      smoldotInfo,
-      polkadotApi,
-      parityTruapi,
-    );
-    const body = [
-      "<!-- Describe the issue above this line; the diagnostics below are auto-filled. -->",
-      "",
-      "## Diagnostics",
-      "",
-      "```",
-      report,
-      "```",
-    ].join("\n");
-    const url = new URL("https://github.com/paritytech/dotli/issues/new");
-    url.searchParams.set("body", body);
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    void (async () => {
+      const report = await formatDiagnosticsReport(
+        base,
+        smoldotInfo,
+        polkadotApi,
+        parityTruapi,
+      );
+      const body = [
+        "<!-- Describe the issue above this line; the diagnostics below are auto-filled. -->",
+        "",
+        "## Diagnostics",
+        "",
+        "```",
+        report,
+        "```",
+      ].join("\n");
+      const url = new URL("https://github.com/paritytech/dotli/issues/new");
+      url.searchParams.set("body", body);
+      window.open(url.toString(), "_blank", "noopener,noreferrer");
+    })();
   });
 
   const debugOn = isTruapiDebugEnabled();
@@ -1502,12 +1533,12 @@ function isTruapiDebugEnabled(): boolean {
  *                 live block heights from the @smoldot popover section
  *                 aren't included here because they're noise in a bug
  *                 report. The popover already shows them live. */
-function formatDiagnosticsReport(
+async function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
   polkadotApi: { name: string; version: string }[],
   parityTruapi: { name: string; version: string }[],
-): string {
+): Promise<string> {
   const lines: string[] = [];
   for (const [k, v] of base) {
     lines.push(`${k}: ${v}`);
@@ -1524,10 +1555,11 @@ function formatDiagnosticsReport(
   );
 
   // Permissions, only when we know which product label to scope against.
-  if (currentProductLabel !== null) {
+  const productLabel = currentProductLabel;
+  if (productLabel !== null) {
     lines.push("", "Permissions:");
     for (const perm of ALL_PERMISSIONS) {
-      const status = getPermissionStatus(currentProductLabel, perm.name);
+      const status = await getPermissionStatus(productLabel, perm.name);
       lines.push(`  ${perm.label}: ${status === "granted" ? "on" : "off"}`);
     }
   }
