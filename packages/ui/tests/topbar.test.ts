@@ -48,6 +48,7 @@ function installTopbarDom(): void {
       <div id="auth-modal-title"></div>
       <div id="auth-modal-qr"></div>
       <div id="auth-modal-reason"></div>
+      <div id="auth-modal-hint"></div>
       <button id="auth-modal-close"></button>
     </div>
     <div id="user-popover">
@@ -429,6 +430,7 @@ describe("settings dependency list", () => {
     Array.from(document.querySelectorAll("button"))
       .find((button) => button.textContent === "Share diagnostic")
       ?.click();
+    await flushMicrotasks();
 
     expect(opened).toHaveLength(1);
     const body = new URL(opened[0]!).searchParams.get("body") ?? "";

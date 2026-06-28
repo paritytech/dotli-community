@@ -47,6 +47,10 @@ const screenshots: string[] = [];
 let screenshotSeq = 0;
 
 type PlaygroundE2E = {
+  waitForConnectionStatus?: (
+    status: "disconnected" | "connecting" | "connected",
+    timeoutMs?: number,
+  ) => Promise<string>;
   startAccountConnectionStatusProbe?: unknown;
 };
 
@@ -456,6 +460,13 @@ async function waitForPlaygroundE2EHook(page: Page): Promise<void> {
   const frame = await findPlaygroundFrame(page);
   await frame.waitForFunction(() => Boolean(window.__truapiPlaygroundE2E), {
     timeout: 15_000,
+  });
+  await frame.evaluate(async () => {
+    const hook = window.__truapiPlaygroundE2E;
+    if (!hook?.waitForConnectionStatus) {
+      throw new Error("playground e2e host connection hook is unavailable");
+    }
+    await hook.waitForConnectionStatus("connected", 30_000);
   });
 }
 
