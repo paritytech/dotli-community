@@ -8,7 +8,9 @@ function currentTheme(): ThemeVariant {
     : "Dark";
 }
 
-export function createThemeSubscribe(): HostCallbacks["subscribeTheme"] {
+export function createThemeSubscribe(): Required<
+  HostCallbacks
+>["subscribeTheme"] {
   return () =>
     createResultStream<ThemeVariant>([currentTheme()], (push) => {
       const onThemeChanged = (): void => {

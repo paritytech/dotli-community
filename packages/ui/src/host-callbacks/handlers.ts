@@ -34,7 +34,7 @@ export interface CreateHostCallbacksOptions {
 
 export function createHostCallbacks(
   options: CreateHostCallbacksOptions,
-): Partial<HostCallbacks> {
+): Required<HostCallbacks> {
   const {
     label,
     pairingLabel,

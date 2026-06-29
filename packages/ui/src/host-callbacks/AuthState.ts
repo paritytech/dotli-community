@@ -41,7 +41,7 @@ export function dispatchAuthState(state: DotliAuthState): void {
 export function createAuthStateChanged(
   label: string,
   options: { dotSuffix?: boolean; hostGlobal?: boolean } = {},
-): HostCallbacks["authStateChanged"] {
+): Required<HostCallbacks>["authStateChanged"] {
   return (state: AuthState) => {
     switch (state.tag) {
       case "Pairing": {

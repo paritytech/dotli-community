@@ -13,9 +13,9 @@ import { createSubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
-): Pick<HostCallbacks, "pushNotification" | "cancelNotification"> {
+): Pick<Required<HostCallbacks>, "pushNotification" | "cancelNotification"> {
   const limiter = createSubmitRateLimiter();
-  const pushNotification: HostCallbacks["pushNotification"] = async ({
+  const pushNotification: Required<HostCallbacks>["pushNotification"] = async ({
     text,
     deeplink,
     scheduledAt,
@@ -51,9 +51,9 @@ export function createNotificationAdapters(
     return { id: result.id };
   };
 
-  const cancelPushNotification: HostCallbacks["cancelNotification"] = async (
-    id,
-  ) => {
+  const cancelPushNotification: Required<
+    HostCallbacks
+  >["cancelNotification"] = async (id) => {
     await cancelNotification(label, id);
   };
 
