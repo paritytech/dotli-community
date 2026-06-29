@@ -7,7 +7,7 @@ interface ConfirmationCopy {
 }
 
 type UserConfirmationReview = Parameters<
-  NonNullable<HostCallbacks["confirmUserAction"]>
+  Required<HostCallbacks>["confirmUserAction"]
 >[0];
 
 function showConfirmationModal(
@@ -146,7 +146,7 @@ async function handlePreimageSubmitReview(
 
 export function createUserConfirmationAdapters(
   label: string,
-): Pick<HostCallbacks, "confirmUserAction"> {
+): Pick<Required<HostCallbacks>, "confirmUserAction"> {
   return {
     confirmUserAction: (review) =>
       review.tag === "PreimageSubmit"

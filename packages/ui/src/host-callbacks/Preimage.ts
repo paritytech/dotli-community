@@ -20,7 +20,9 @@ function noop(): void {
   return;
 }
 
-function createPreimageSubmit(label: string): HostCallbacks["submitPreimage"] {
+function createPreimageSubmit(
+  label: string,
+): Required<HostCallbacks>["submitPreimage"] {
   return async (value) => {
     const key = computePreimageKey(value);
     await submitPreimageRemote(value);
@@ -32,7 +34,7 @@ function createPreimageSubmit(label: string): HostCallbacks["submitPreimage"] {
 
 function createPreimageLookupSubscribe(
   label: string,
-): HostCallbacks["lookupPreimage"] {
+): Required<HostCallbacks>["lookupPreimage"] {
   return (request) => {
     const key = toHex(request);
     log.warn(`[${label}] Preimage lookup subscribe, key: ${key}`);
@@ -112,7 +114,7 @@ function createPreimageLookupSubscribe(
 
 export function createPreimageAdapters(
   label: string,
-): Pick<HostCallbacks, "submitPreimage" | "lookupPreimage"> {
+): Pick<Required<HostCallbacks>, "submitPreimage" | "lookupPreimage"> {
   return {
     submitPreimage: createPreimageSubmit(label),
     lookupPreimage: createPreimageLookupSubscribe(label),
