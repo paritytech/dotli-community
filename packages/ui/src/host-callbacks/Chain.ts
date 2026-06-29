@@ -58,6 +58,23 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   );
 }
 
+function normalizeProviderRequest(
+  request: JsonRpcRequest<unknown>,
+): JsonRpcRequest<unknown> {
+  if (request.method === "chainHead_v1_unpin") {
+    const params = Array.isArray(request.params) ? request.params : [];
+    if (typeof params[1] === "string") {
+      return { ...request, params: [params[0], [params[1]]] };
+    }
+  }
+
+  if (request.params === undefined) {
+    return { ...request, params: [] };
+  }
+
+  return request;
+}
+
 function toConnection(
   provider: JsonRpcProvider<unknown> | null,
 ): PlatformJsonRpcConnection {
@@ -80,7 +97,7 @@ function toConnection(
         throw new Error("Invalid JSON-RPC request");
       }
       emitPairingStatementStoreRequest(parsed);
-      conn.send(parsed);
+      conn.send(normalizeProviderRequest(parsed));
     },
     async *responses(): AsyncIterable<string> {
       try {
