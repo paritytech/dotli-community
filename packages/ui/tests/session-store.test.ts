@@ -7,6 +7,7 @@ import {
   onStoredSessionChanged,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
+import type { CoreStorageKey } from "@parity/truapi-host-wasm";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -96,6 +97,57 @@ describe("session-store host callbacks", () => {
     await clearCoreStorage(AUTH_SESSION_KEY);
     expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
     expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
+  });
+
+  it("round-trips permission authorization slots from typed core keys", async () => {
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const key = {
+      tag: "PermissionAuthorization",
+      value: {
+        productId: "My App",
+        request: { tag: "Device", value: "OpenUrl" },
+      },
+    } satisfies CoreStorageKey;
+
+    await writeCoreStorage(key, new Uint8Array([4]));
+
+    expect(localStorage.length).toBe(1);
+    const storageKey = localStorage.key(0);
+    expect(storageKey).toMatch(/^dotli:core:permission:[0-9a-f]+$/);
+    expect(storageKey).not.toContain("open-url");
+    expect(localStorage.getItem(storageKey ?? "")).toBe("0x04");
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([4]);
+
+    await clearCoreStorage(key);
+    expect(await readCoreStorage(key)).toBeUndefined();
+  });
+
+  it("keeps remote permission authorization keys opaque", async () => {
+    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const key = {
+      tag: "PermissionAuthorization",
+      value: {
+        productId: "myapp",
+        request: {
+          tag: "Remote",
+          value: {
+            permission: {
+              tag: "Remote",
+              value: { domains: ["B.example", "a.example", "b.example"] },
+            },
+          },
+        },
+      },
+    } satisfies CoreStorageKey;
+
+    await writeCoreStorage(key, new Uint8Array([7]));
+
+    const storageKey = localStorage.key(0);
+    expect(storageKey).toMatch(/^dotli:core:permission:[0-9a-f]+$/);
+    expect(storageKey).not.toContain("example");
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([7]);
+    expect(localStorage.length).toBe(1);
   });
 
   it("emits the typed session identity details from a connected auth state", () => {

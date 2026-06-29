@@ -47,7 +47,7 @@ export function createNavigateTo(): HostCallbacks["navigateTo"] {
       return Promise.resolve(undefined);
     }
 
-    window.open(dotNsUrl.normalizeUrl(url), "_blank");
+    window.open(url, "_blank");
     return Promise.resolve(undefined);
   };
 }

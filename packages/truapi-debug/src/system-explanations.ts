@@ -262,7 +262,7 @@ Gaps between \`first_inbound\` and \`first_outbound\` imply a host-side problem 
 
   "sso:statement_store_connected": {
     title: "Statement-store connection ready",
-    body: `The statement-store transport wrapper is ready to accept JSON-RPC requests from the Rust core. Subsequent request/response events show the subscribe, query, and unsubscribe calls used by the pairing poller.`,
+    body: `The statement-store transport wrapper is ready to accept JSON-RPC requests from the Rust core. Subsequent request/response events show the submit, subscribe, and unsubscribe calls moving through the host chain transport.`,
   },
 
   "sso:statement_store_connect_failed": {
@@ -272,12 +272,12 @@ Gaps between \`first_inbound\` and \`first_outbound\` imply a host-side problem 
 
   "sso:statement_store_request": {
     title: "Statement-store request",
-    body: `The Rust core sent a statement-store JSON-RPC request through the host chain transport. Request ids ending in \`:query:N\` are snapshot polling probes; \`:unsubscribe\` ids close live or query subscriptions.`,
+    body: `The Rust core sent a statement-store JSON-RPC request through the host chain transport. The request id is an opaque JSON-RPC correlation key; the request kind comes from the method the host forwarded.`,
   },
 
   "sso:statement_store_response": {
     title: "Statement-store response",
-    body: `The statement-store transport returned a response or subscription page to the Rust core. The payload classifies live subscribe acknowledgements, snapshot query pages, unsubscribe acknowledgements, errors, and statement counts when available.`,
+    body: `The statement-store transport returned a response or subscription page to the Rust core. The payload classifies submit, subscribe, unsubscribe, errors, and statement counts when available.`,
   },
 
   "sso:session_established": {
