@@ -100,7 +100,7 @@ describe("createChainConnect", () => {
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
 
-  it("passes core pairing snapshot-query traffic through untouched", async () => {
+  it("passes statement-store traffic through untouched", async () => {
     let onMessage: ((message: unknown) => void) | undefined;
     const sent: unknown[] = [];
     mocks.smoldotProvider.mockImplementation(
@@ -119,7 +119,7 @@ describe("createChainConnect", () => {
     const connection = await createChainConnect()(hexBytes(assetHubGenesis));
     const query = {
       jsonrpc: "2.0",
-      id: "truapi:sso-pairing:1:query:2",
+      id: "opaque-query-request",
       method: "statement_subscribeStatement",
       params: [{ matchAll: [] }],
     };
@@ -128,7 +128,7 @@ describe("createChainConnect", () => {
 
     const ack = {
       jsonrpc: "2.0",
-      id: "truapi:sso-pairing:1:query:2",
+      id: "opaque-query-request",
       result: "remote-sub",
     };
     onMessage?.(ack);
@@ -137,7 +137,7 @@ describe("createChainConnect", () => {
     await responses.return?.();
   });
 
-  it("skips pairing statement-store debug taxonomy when no debug listener is attached", async () => {
+  it("skips statement-store debug events when no debug listener is attached", async () => {
     let onMessage: ((message: unknown) => void) | undefined;
     const sent: unknown[] = [];
     mocks.smoldotProvider.mockImplementation(
@@ -157,14 +157,14 @@ describe("createChainConnect", () => {
     connection.send(
       JSON.stringify({
         jsonrpc: "2.0",
-        id: "truapi:sso-pairing:1",
+        id: "opaque-subscribe",
         method: "statement_subscribeStatement",
         params: [{ matchAll: [] }],
       }),
     );
     onMessage?.({
       jsonrpc: "2.0",
-      id: "truapi:sso-pairing:1",
+      id: "opaque-subscribe",
       result: "remote-sub",
     });
     const responses = connection.responses()[Symbol.asyncIterator]();
@@ -176,7 +176,7 @@ describe("createChainConnect", () => {
     expect(mocks.emitSsoStatementStoreResponse).not.toHaveBeenCalled();
   });
 
-  it("emits pairing statement-store debug taxonomy when a debug listener is attached", async () => {
+  it("emits statement-store debug events by correlating opaque request ids", async () => {
     mocks.hasDotliDebugListeners.mockReturnValue(true);
     let onMessage: ((message: unknown) => void) | undefined;
     mocks.smoldotProvider.mockImplementation(
@@ -194,14 +194,14 @@ describe("createChainConnect", () => {
     connection.send(
       JSON.stringify({
         jsonrpc: "2.0",
-        id: "truapi:sso-pairing:1",
+        id: "opaque-subscribe",
         method: "statement_subscribeStatement",
         params: [{ matchAll: [] }],
       }),
     );
     onMessage?.({
       jsonrpc: "2.0",
-      id: "truapi:sso-pairing:1",
+      id: "opaque-subscribe",
       result: "remote-sub",
     });
     const responses = connection.responses()[Symbol.asyncIterator]();
@@ -210,15 +210,60 @@ describe("createChainConnect", () => {
 
     expect(mocks.emitSsoStatementStoreRequest).toHaveBeenCalledWith({
       method: "statement_subscribeStatement",
-      requestId: "truapi:sso-pairing:1",
-      requestKind: "live-subscribe",
+      requestId: "opaque-subscribe",
+      requestKind: "subscribe",
     });
     expect(mocks.emitSsoStatementStoreResponse).toHaveBeenCalledWith({
       method: "statement_subscribeStatement",
-      requestId: "truapi:sso-pairing:1",
-      requestKind: "live-subscribe",
+      requestId: "opaque-subscribe",
+      requestKind: "subscribe",
       frameKind: "ack",
       remoteSubscriptionId: "remote-sub",
+    });
+  });
+
+  it("uses the outgoing request map for unsubscribe response metadata", async () => {
+    mocks.hasDotliDebugListeners.mockReturnValue(true);
+    let onMessage: ((message: unknown) => void) | undefined;
+    mocks.smoldotProvider.mockImplementation(
+      (handler: (message: unknown) => void) => {
+        onMessage = handler;
+        return {
+          send: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      },
+    );
+    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
+
+    connection.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: "opaque-cleanup",
+        method: "statement_unsubscribeStatement",
+        params: ["remote-sub"],
+      }),
+    );
+    onMessage?.({
+      jsonrpc: "2.0",
+      id: "opaque-cleanup",
+      result: true,
+    });
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    await responses.next();
+    await responses.return?.();
+
+    expect(mocks.emitSsoStatementStoreRequest).toHaveBeenCalledWith({
+      method: "statement_unsubscribeStatement",
+      requestId: "opaque-cleanup",
+      requestKind: "unsubscribe",
+    });
+    expect(mocks.emitSsoStatementStoreResponse).toHaveBeenCalledWith({
+      method: "statement_unsubscribeStatement",
+      requestId: "opaque-cleanup",
+      requestKind: "unsubscribe",
+      frameKind: "ack",
     });
   });
 });

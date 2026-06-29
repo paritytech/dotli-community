@@ -38,9 +38,14 @@ import {
   emitSsoStatementStoreResponse,
 } from "./SsoDebug";
 
-const PAIRING_REQUEST_ID_PREFIX = "truapi:sso-pairing:";
+const STATEMENT_SUBMIT_METHOD = "statement_submit";
 const STATEMENT_SUBSCRIBE_METHOD = "statement_subscribeStatement";
 const STATEMENT_UNSUBSCRIBE_METHOD = "statement_unsubscribeStatement";
+
+interface StatementStoreDebugRequest {
+  method: string;
+  requestKind: string;
+}
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== "object" || value === null) {
@@ -82,13 +87,28 @@ function toConnection(
     throw new Error("Chain provider unavailable");
   }
   const queue: string[] = [];
+  const debugRequests = new Map<string, StatementStoreDebugRequest>();
   let wake: (() => void) | null = null;
   let stopped = false;
+  let closed = false;
   const conn = provider((message: unknown) => {
+    if (closed) {
+      return;
+    }
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
   });
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+    stopped = true;
+    closed = true;
+    conn.disconnect();
+    wake?.();
+    wake = null;
+  };
 
   return {
     send(request: string): void {
@@ -96,7 +116,7 @@ function toConnection(
       if (!isJsonRpcRequest(parsed)) {
         throw new Error("Invalid JSON-RPC request");
       }
-      emitPairingStatementStoreRequest(parsed);
+      emitStatementStoreRequest(parsed, debugRequests);
       conn.send(normalizeProviderRequest(parsed));
     },
     async *responses(): AsyncIterable<string> {
@@ -105,7 +125,7 @@ function toConnection(
           while (queue.length > 0) {
             const response = queue.shift();
             if (response !== undefined) {
-              emitPairingStatementStoreResponse(response);
+              emitStatementStoreResponse(response, debugRequests);
               yield response;
             }
           }
@@ -114,35 +134,41 @@ function toConnection(
           });
         }
       } finally {
-        stopped = true;
-        conn.disconnect();
+        close();
       }
     },
+    close,
   };
 }
 
-function emitPairingStatementStoreRequest(request: JsonRpcRequest<unknown>) {
+function emitStatementStoreRequest(
+  request: JsonRpcRequest<unknown>,
+  debugRequests: Map<string, StatementStoreDebugRequest>,
+) {
   if (!hasDotliDebugListeners()) {
     return;
   }
   const { method, id } = request;
-  if (
-    method !== STATEMENT_SUBSCRIBE_METHOD &&
-    method !== STATEMENT_UNSUBSCRIBE_METHOD
-  ) {
+  const requestKind = statementRequestKind(method);
+  if (requestKind === null) {
     return;
   }
-  if (typeof id !== "string" || !id.startsWith(PAIRING_REQUEST_ID_PREFIX)) {
+  if (id === undefined || id === null) {
     return;
   }
+  const requestId = String(id);
+  debugRequests.set(requestId, { method, requestKind });
   emitSsoStatementStoreRequest({
     method,
-    requestId: id,
-    requestKind: requestKindFromId(id, method),
+    requestId,
+    requestKind,
   });
 }
 
-function emitPairingStatementStoreResponse(response: string): void {
+function emitStatementStoreResponse(
+  response: string,
+  debugRequests: Map<string, StatementStoreDebugRequest>,
+): void {
   if (!hasDotliDebugListeners()) {
     return;
   }
@@ -156,15 +182,18 @@ function emitPairingStatementStoreResponse(response: string): void {
     return;
   }
   const record = parsed as Record<string, unknown>;
-  if (typeof record.id === "string") {
-    if (!record.id.startsWith(PAIRING_REQUEST_ID_PREFIX)) {
+  const responseId = jsonRpcId(record.id);
+  if (responseId !== null) {
+    const request = debugRequests.get(responseId);
+    if (request === undefined) {
       return;
     }
+    debugRequests.delete(responseId);
     const error = errorMessage(record.error);
     emitSsoStatementStoreResponse({
-      method: statementMethodFromRequestId(record.id),
-      requestId: record.id,
-      requestKind: requestKindFromId(record.id),
+      method: request.method,
+      requestId: responseId,
+      requestKind: request.requestKind,
       frameKind: error === undefined ? "ack" : "error",
       ...(typeof record.result === "string"
         ? { remoteSubscriptionId: record.result }
@@ -205,28 +234,24 @@ function emitPairingStatementStoreResponse(response: string): void {
   });
 }
 
-// Core request-id shapes:
-//   truapi:sso-pairing:1                                live subscribe
-//   truapi:sso-pairing:1:query:N                        snapshot query
-//   truapi:sso-pairing:1:query:N:unsubscribe            drained-query cleanup
-//   truapi:sso-pairing:1:query:N:timeout-unsubscribe    stale-query cleanup
-function requestKindFromId(requestId: string, method?: string): string {
-  if (requestId.endsWith("unsubscribe")) {
-    return "unsubscribe";
+function statementRequestKind(method: string): string | null {
+  switch (method) {
+    case STATEMENT_SUBMIT_METHOD:
+      return "submit";
+    case STATEMENT_SUBSCRIBE_METHOD:
+      return "subscribe";
+    case STATEMENT_UNSUBSCRIBE_METHOD:
+      return "unsubscribe";
+    default:
+      return null;
   }
-  if (requestId.includes(":query:")) {
-    return "query";
-  }
-  if (method === STATEMENT_UNSUBSCRIBE_METHOD) {
-    return "unsubscribe";
-  }
-  return "live-subscribe";
 }
 
-function statementMethodFromRequestId(requestId: string): string {
-  return requestId.endsWith("unsubscribe")
-    ? STATEMENT_UNSUBSCRIBE_METHOD
-    : STATEMENT_SUBSCRIBE_METHOD;
+function jsonRpcId(value: unknown): string | null {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  return null;
 }
 
 function errorMessage(error: unknown): string | undefined {

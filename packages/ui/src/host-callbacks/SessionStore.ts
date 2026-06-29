@@ -1,14 +1,9 @@
 import { SITE_ID } from "@dotli/config/config";
-import { RemotePermissionRequest as RemotePermissionRequestCodec } from "@parity/truapi";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import type {
-  HostDevicePermissionRequest,
-  RemotePermissionRequest,
-} from "@parity/truapi";
+import { encodeCoreStorageKey } from "@parity/truapi-host-wasm";
 import type {
   CoreStorageKey,
   HostCallbacks,
-  PermissionAuthorizationRequest,
   SessionUiInfo,
 } from "@parity/truapi-host-wasm";
 import {
@@ -25,23 +20,6 @@ import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
 const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
-const PERMISSION_KEY_PREFIX = "truapi:permissions:";
-const textEncoder = new TextEncoder();
-
-const DEVICE_PERMISSION_STORAGE_SLUG: Record<
-  HostDevicePermissionRequest,
-  string
-> = {
-  Notifications: "notifications",
-  Camera: "camera",
-  Microphone: "microphone",
-  Bluetooth: "bluetooth",
-  NFC: "nfc",
-  Location: "location",
-  Clipboard: "clipboard",
-  OpenUrl: "open-url",
-  Biometrics: "biometrics",
-};
 
 // JSON cache of the last connected UI state the core reported via
 // `authStateChanged`. Lives in shared auth storage next to the opaque
@@ -213,52 +191,15 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
     case "PermissionAuthorization":
-      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${permissionStorageKey(
-        key.value.productId,
-        key.value.request,
+      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${hexNoPrefix(
+        encodeCoreStorageKey(key),
       )}`;
     case "AuthSession":
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
   }
 }
 
-function permissionStorageKey(
-  productId: string,
-  request: PermissionAuthorizationRequest,
-): string {
-  const product = productScope(productId);
-  switch (request.tag) {
-    case "Device":
-      return `${PERMISSION_KEY_PREFIX}product:${product}:device:${DEVICE_PERMISSION_STORAGE_SLUG[request.value]}`;
-    case "Remote":
-      return `${PERMISSION_KEY_PREFIX}product:${product}:remote:${hexWithoutPrefix(
-        RemotePermissionRequestCodec.enc(
-          canonicalRemotePermissionRequest(request.value),
-        ),
-      )}`;
-  }
-}
-
-function canonicalRemotePermissionRequest(
-  request: RemotePermissionRequest,
-): RemotePermissionRequest {
-  if (request.permission.tag !== "Remote") {
-    return request;
-  }
-  const domains = request.permission.value.domains
-    .map((domain) => domain.toLowerCase())
-    .sort()
-    .filter(
-      (domain, index, values) => index === 0 || values[index - 1] !== domain,
-    );
-  return { permission: { tag: "Remote", value: { domains } } };
-}
-
-function productScope(productId: string): string {
-  return hexWithoutPrefix(textEncoder.encode(productId));
-}
-
-function hexWithoutPrefix(bytes: Uint8Array): string {
+function hexNoPrefix(bytes: Uint8Array): string {
   return bytesToHex(bytes).slice(2);
 }
 
