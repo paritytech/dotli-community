@@ -49,6 +49,11 @@ import {
   emitSsoSessionEstablished,
 } from "./host-callbacks/SsoDebug";
 import { createTruapiRuntimeConfig } from "./runtime-config";
+import { createWindowMessageProvider } from "./legacy-host-bridge";
+
+// DEPRECATED: enables the legacy Nova host-api transport shim for products that
+// have not yet migrated to `@parity/truapi`. Remove once they have.
+const ENABLE_LEGACY_HOST_API_BRIDGE: boolean = true;
 
 // Eagerly load the iframe host chunk + worker constructor so they're ready
 // by the time we need them. The wasm core lives inside the worker; the host
@@ -667,9 +672,17 @@ async function createHost(args: {
   const { createIframeHost } = await runtimeChunkPromise;
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
+  let legacyProbeCleanup: (() => void) | null = null;
+  const pipeArgs = {
+    flowId: args.debugFlowId,
+    label: args.label,
+    productId: args.productId ?? args.label,
+  };
   const cleanupProductSide = (): void => {
     disposePipe?.();
     productProvider?.dispose();
+    disposePipe = null;
+    productProvider = null;
   };
   try {
     const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
@@ -681,13 +694,49 @@ async function createHost(args: {
       container: args.container,
       onPort: (port) => {
         productProvider = createMessagePortProvider(port);
-        disposePipe = pipeProviders(productProvider, coreProvider, {
-          flowId: args.debugFlowId,
-          label: args.label,
-          productId: args.productId ?? args.label,
-        });
+        disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
       },
     });
+
+    // DEPRECATED legacy host-API support. Modern products announce themselves
+    // with `{type:"truapi-ready"}` and use the MessagePort wired above. Products
+    // still on the Nova host-api SDK instead post raw SCALE frames (Uint8Array)
+    // to `window.parent`. Detect that first frame and re-pipe the core over a
+    // window-postMessage provider. Remove once products migrate.
+    if (ENABLE_LEGACY_HOST_API_BRIDGE) {
+      let probeMode: "pending" | "modern" | "legacy" = "pending";
+      const onProbe = (event: MessageEvent): void => {
+        if (probeMode !== "pending") {
+          return;
+        }
+        const targetWindow = host.iframe.contentWindow;
+        if (!targetWindow || event.source !== targetWindow) {
+          return;
+        }
+        if (event.data instanceof Uint8Array) {
+          probeMode = "legacy";
+          legacyProbeCleanup?.();
+          // Drop the unused modern MessagePort pipe before rewiring.
+          cleanupProductSide();
+          const legacyProvider = createWindowMessageProvider(targetWindow);
+          productProvider = legacyProvider;
+          disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
+          // Replay the handshake frame the probe just consumed.
+          legacyProvider.injectInbound(event.data);
+        } else if (
+          (event.data as { type?: unknown } | null)?.type === "truapi-ready"
+        ) {
+          probeMode = "modern";
+          legacyProbeCleanup?.();
+        }
+      };
+      window.addEventListener("message", onProbe);
+      legacyProbeCleanup = () => {
+        window.removeEventListener("message", onProbe);
+        legacyProbeCleanup = null;
+      };
+    }
+
     return {
       iframe: host.iframe,
       requestLogin(reason) {
@@ -698,6 +747,7 @@ async function createHost(args: {
       },
       dispose() {
         unregisterPermissions();
+        legacyProbeCleanup?.();
         cleanupProductSide();
         coreProvider.dispose();
         host.dispose();
@@ -705,6 +755,7 @@ async function createHost(args: {
     };
   } catch (error) {
     unregisterPermissions();
+    legacyProbeCleanup?.();
     cleanupProductSide();
     coreProvider.dispose();
     throw error;
