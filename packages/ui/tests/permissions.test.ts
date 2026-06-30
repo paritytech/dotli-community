@@ -8,6 +8,7 @@ import {
   DEVICE_PERMISSION_POLICY,
   buildAllowAttribute,
   getGrantedDevicePermissions,
+  getPermissionStatuses,
   getPermissionStatus,
   hasAnyGrant,
   isDevicePermission,
@@ -25,9 +26,11 @@ type Store = Map<string, PermissionAuthorizationStatus>;
 
 let unregisterMyapp: (() => void) | null = null;
 let myappStore: Store;
+let myappBatchReads = 0;
 
 beforeEach(() => {
   myappStore = new Map();
+  myappBatchReads = 0;
   unregisterMyapp = registerTestProvider("myapp", myappStore);
 });
 
@@ -38,8 +41,13 @@ afterEach(() => {
 
 function registerTestProvider(label: string, store: Store): () => void {
   return registerPermissionAuthorizationProvider(label, {
-    async getPermissionAuthorizationStatus(request) {
-      return store.get(requestKey(request)) ?? "NotDetermined";
+    async getPermissionAuthorizationStatuses(requests) {
+      if (label === "myapp") {
+        myappBatchReads += 1;
+      }
+      return requests.map(
+        (request) => store.get(requestKey(request)) ?? "NotDetermined",
+      );
     },
     async setPermissionAuthorizationStatus(request, status) {
       const key = requestKey(request);
@@ -89,6 +97,17 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     );
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
     expect(await getPermissionStatus("myapp", "Camera")).toBe("denied");
+  });
+
+  it("reads multiple statuses in one provider call", async () => {
+    await setPermissionStatus("myapp", "ChainSubmit", "granted");
+    await setPermissionStatus("myapp", "Camera", "denied");
+    const callsBeforeRead = myappBatchReads;
+
+    await expect(
+      getPermissionStatuses("myapp", ["ChainSubmit", "Camera", "Microphone"]),
+    ).resolves.toEqual(["granted", "denied", "ask"]);
+    expect(myappBatchReads - callsBeforeRead).toBe(1);
   });
 
   it("isolates grants per product label", async () => {

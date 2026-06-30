@@ -19,15 +19,15 @@ async function registerNotificationAuthorization(
   initialStatus: "NotDetermined" | "Denied" | "Authorized" = "NotDetermined",
 ): Promise<{ status: "NotDetermined" | "Denied" | "Authorized" }> {
   const state = { status: initialStatus };
-  const { registerPermissionAuthorizationProvider } = await import(
-    "@dotli/ui/permissions"
-  );
+  const { registerPermissionAuthorizationProvider } =
+    await import("@dotli/ui/permissions");
   registerPermissionAuthorizationProvider("myapp", {
-    async getPermissionAuthorizationStatus(request) {
-      if (request.tag === "Device" && request.value === "Notifications") {
-        return state.status;
-      }
-      return "NotDetermined";
+    async getPermissionAuthorizationStatuses(requests) {
+      return requests.map((request) =>
+        request.tag === "Device" && request.value === "Notifications"
+          ? state.status
+          : "NotDetermined",
+      );
     },
     async setPermissionAuthorizationStatus(request, status) {
       if (request.tag === "Device" && request.value === "Notifications") {

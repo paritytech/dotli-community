@@ -22,6 +22,7 @@ type MockProvider = {
   cancelPairing: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
+  getPermissionAuthorizationStatuses: ReturnType<typeof vi.fn>;
   setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
@@ -83,6 +84,9 @@ function makeProvider(): MockProvider {
     cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
+    getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
+      requests.map(() => "NotDetermined"),
+    ),
     setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     dispose: vi.fn(),
@@ -110,6 +114,9 @@ function makeLoginProvider(options: {
     cancelPairing: vi.fn(),
     notifySessionStoreChanged: vi.fn(),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
+    getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
+      requests.map(() => "NotDetermined"),
+    ),
     setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     dispose: vi.fn(),

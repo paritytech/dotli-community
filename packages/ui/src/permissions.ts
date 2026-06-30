@@ -114,7 +114,7 @@ export function isDevicePermission(name: string): boolean {
 
 type PermissionAuthorizationProvider = Pick<
   TrUApiHostCoreProvider,
-  "getPermissionAuthorizationStatus" | "setPermissionAuthorizationStatus"
+  "getPermissionAuthorizationStatuses" | "setPermissionAuthorizationStatus"
 >;
 
 const permissionProviders = new Map<string, PermissionAuthorizationProvider>();
@@ -181,14 +181,22 @@ export async function getPermissionStatus(
   label: string,
   permission: PermissionName,
 ): Promise<PermissionStatus> {
+  const [status] = await getPermissionStatuses(label, [permission]);
+  return status;
+}
+
+export async function getPermissionStatuses(
+  label: string,
+  permissions: readonly PermissionName[],
+): Promise<PermissionStatus[]> {
   const provider = providerFor(label);
   if (provider === null) {
-    return "ask";
+    return permissions.map(() => "ask");
   }
-  const status = await provider.getPermissionAuthorizationStatus(
-    authorizationRequest(permission),
+  const statuses = await provider.getPermissionAuthorizationStatuses(
+    permissions.map(authorizationRequest),
   );
-  return fromAuthorizationStatus(status);
+  return statuses.map(fromAuthorizationStatus);
 }
 
 export async function setPermissionStatus(
@@ -218,8 +226,10 @@ export async function getGrantedDevicePermissions(
   label: string,
 ): Promise<DevicePermissionName[]> {
   const granted: DevicePermissionName[] = [];
-  for (const name of Object.keys(DEVICE_PERMISSION_POLICY) as DevicePermissionName[]) {
-    if ((await getPermissionStatus(label, name)) === "granted") {
+  const names = Object.keys(DEVICE_PERMISSION_POLICY) as DevicePermissionName[];
+  const statuses = await getPermissionStatuses(label, names);
+  for (const [index, name] of names.entries()) {
+    if (statuses[index] === "granted") {
       granted.push(name);
     }
   }
@@ -228,12 +238,11 @@ export async function getGrantedDevicePermissions(
 
 /** Returns true if any permission (device or remote) is granted. */
 export async function hasAnyGrant(label: string): Promise<boolean> {
-  for (const { name } of ALL_PERMISSIONS) {
-    if ((await getPermissionStatus(label, name)) === "granted") {
-      return true;
-    }
-  }
-  return false;
+  const statuses = await getPermissionStatuses(
+    label,
+    ALL_PERMISSIONS.map(({ name }) => name),
+  );
+  return statuses.some((status) => status === "granted");
 }
 
 /**

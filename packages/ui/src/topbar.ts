@@ -40,7 +40,7 @@ import { getActiveServicesConfig } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
 import {
   ALL_PERMISSIONS,
-  getPermissionStatus,
+  getPermissionStatuses,
   hasAnyGrant,
   isDevicePermission,
   resetPermission,
@@ -667,9 +667,17 @@ async function renderPermissionsPopoverAsync(token: number): Promise<void> {
     return;
   }
 
-  for (const perm of ALL_PERMISSIONS) {
-    const status = await getPermissionStatus(productLabel, perm.name);
-    if (token !== permissionsRenderToken || currentProductLabel !== productLabel) {
+  const statuses = await getPermissionStatuses(
+    productLabel,
+    ALL_PERMISSIONS.map(({ name }) => name),
+  );
+
+  for (const [index, perm] of ALL_PERMISSIONS.entries()) {
+    const status = statuses[index] ?? "ask";
+    if (
+      token !== permissionsRenderToken ||
+      currentProductLabel !== productLabel
+    ) {
       return;
     }
 
@@ -1558,8 +1566,12 @@ async function formatDiagnosticsReport(
   const productLabel = currentProductLabel;
   if (productLabel !== null) {
     lines.push("", "Permissions:");
-    for (const perm of ALL_PERMISSIONS) {
-      const status = await getPermissionStatus(productLabel, perm.name);
+    const statuses = await getPermissionStatuses(
+      productLabel,
+      ALL_PERMISSIONS.map(({ name }) => name),
+    );
+    for (const [index, perm] of ALL_PERMISSIONS.entries()) {
+      const status = statuses[index] ?? "ask";
       lines.push(`  ${perm.label}: ${status === "granted" ? "on" : "off"}`);
     }
   }
