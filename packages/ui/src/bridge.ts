@@ -98,6 +98,7 @@ type CoreProvider = Provider &
     | "cancelPairing"
     | "notifySessionStoreChanged"
     | "getPermissionAuthorizationStatus"
+    | "getPermissionAuthorizationStatuses"
     | "setPermissionAuthorizationStatus"
   >;
 type CurrentProduct =
@@ -164,6 +165,9 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
+    },
+    getPermissionAuthorizationStatuses(requests) {
+      return provider.getPermissionAuthorizationStatuses(requests);
     },
     setPermissionAuthorizationStatus(request, status) {
       return provider.setPermissionAuthorizationStatus(request, status);
@@ -501,6 +505,9 @@ function wrapCoreProviderForDebug(
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
+    },
+    getPermissionAuthorizationStatuses(requests) {
+      return provider.getPermissionAuthorizationStatuses(requests);
     },
     setPermissionAuthorizationStatus(request, status) {
       return provider.setPermissionAuthorizationStatus(request, status);
