@@ -97,22 +97,20 @@ function showConfirmationModal(
 }
 
 function formatReview(review: unknown): string {
-  return (
-    JSON.stringify(
-      review,
-      (_key: string, value: unknown): unknown => {
-        if (typeof value === "bigint") {
-          return value.toString();
-        }
-        if (value instanceof Uint8Array) {
-          return `0x${Array.from(value, (byte) =>
-            byte.toString(16).padStart(2, "0"),
-          ).join("")}`;
-        }
-        return value;
-      },
-      2,
-    ) ?? String(review)
+  return JSON.stringify(
+    review,
+    (_key: string, value: unknown): unknown => {
+      if (typeof value === "bigint") {
+        return value.toString();
+      }
+      if (value instanceof Uint8Array) {
+        return `0x${Array.from(value, (byte) =>
+          byte.toString(16).padStart(2, "0"),
+        ).join("")}`;
+      }
+      return value;
+    },
+    2,
   );
 }
 

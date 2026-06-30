@@ -20,7 +20,6 @@ import {
   type WireProvider as Provider,
   createMessagePortProvider,
 } from "@parity/truapi";
-import type { CallErrorValue, ResultPayload } from "@parity/truapi/scale";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 import { BASE_DOMAIN } from "@dotli/config/config";
 import {
@@ -31,6 +30,7 @@ import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import { log } from "@dotli/shared/log";
 import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
@@ -53,7 +53,7 @@ import { createWindowMessageProvider } from "./legacy-host-bridge";
 
 // DEPRECATED: enables the legacy Nova host-api transport shim for products that
 // have not yet migrated to `@parity/truapi`. Remove once they have.
-const ENABLE_LEGACY_HOST_API_BRIDGE: boolean = true;
+const noop = (): void => undefined;
 
 // Eagerly load the iframe host chunk + worker constructor so they're ready
 // by the time we need them. The wasm core lives inside the worker; the host
@@ -152,7 +152,7 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
       return provider.subscribe(callback);
     },
     subscribeClose(callback) {
-      return provider.subscribeClose?.(callback) ?? (() => {});
+      return provider.subscribeClose?.(callback) ?? noop;
     },
     async disconnectSession() {
       await provider.disconnectSession();
@@ -331,8 +331,8 @@ async function disconnectTruapiHosts(): Promise<void> {
   if (landingAuthHostPromise !== null) {
     try {
       hosts.add(await landingAuthHostPromise);
-    } catch {
-      /* a failed pending login host should not block product logout */
+    } catch (err) {
+      log.warn("[dot.li] pending login host cleanup failed:", err);
     }
   }
 
@@ -452,7 +452,7 @@ function emitWireFrameDebug(
     productId,
     requestId: decoded.value.requestId,
     payload: {
-      tag: `wire_${wireId}`,
+      tag: `wire_${String(wireId)}`,
       value: {
         wireId,
         bytes: decoded.value.payload.value,
@@ -492,7 +492,7 @@ function wrapCoreProviderForDebug(
       };
     },
     subscribeClose(callback) {
-      return provider.subscribeClose?.(callback) ?? (() => {});
+      return provider.subscribeClose?.(callback) ?? noop;
     },
     async disconnectSession() {
       await provider.disconnectSession();
@@ -585,13 +585,7 @@ export function requestCoreLogin(
       }
       cleanup();
       try {
-        const envelope = responseCodec.dec(decoded.value.payload.value) as {
-          tag: "V1";
-          value: ResultPayload<
-            LoginResponse,
-            CallErrorValue<VersionedHostRequestLoginError>
-          >;
-        };
+        const envelope = responseCodec.dec(decoded.value.payload.value);
         const result = envelope.value;
         if (result.success) {
           emitDotliDebugEvent({
@@ -710,39 +704,37 @@ async function createHost(args: {
     // still on the Nova host-api SDK instead post raw SCALE frames (Uint8Array)
     // to `window.parent`. Detect that first frame and re-pipe the core over a
     // window-postMessage provider. Remove once products migrate.
-    if (ENABLE_LEGACY_HOST_API_BRIDGE) {
-      let probeMode: "pending" | "modern" | "legacy" = "pending";
-      const onProbe = (event: MessageEvent): void => {
-        if (probeMode !== "pending") {
-          return;
-        }
-        const targetWindow = host.iframe.contentWindow;
-        if (!targetWindow || event.source !== targetWindow) {
-          return;
-        }
-        if (event.data instanceof Uint8Array) {
-          probeMode = "legacy";
-          legacyProbeCleanup?.();
-          // Drop the unused modern MessagePort pipe before rewiring.
-          cleanupProductSide();
-          const legacyProvider = createWindowMessageProvider(targetWindow);
-          productProvider = legacyProvider;
-          disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
-          // Replay the handshake frame the probe just consumed.
-          legacyProvider.injectInbound(event.data);
-        } else if (
-          (event.data as { type?: unknown } | null)?.type === "truapi-ready"
-        ) {
-          probeMode = "modern";
-          legacyProbeCleanup?.();
-        }
-      };
-      window.addEventListener("message", onProbe);
-      legacyProbeCleanup = () => {
-        window.removeEventListener("message", onProbe);
-        legacyProbeCleanup = null;
-      };
-    }
+    let probeMode: "pending" | "modern" | "legacy" = "pending";
+    const onProbe = (event: MessageEvent): void => {
+      if (probeMode !== "pending") {
+        return;
+      }
+      const targetWindow = host.iframe.contentWindow;
+      if (!targetWindow || event.source !== targetWindow) {
+        return;
+      }
+      if (event.data instanceof Uint8Array) {
+        probeMode = "legacy";
+        legacyProbeCleanup?.();
+        // Drop the unused modern MessagePort pipe before rewiring.
+        cleanupProductSide();
+        const legacyProvider = createWindowMessageProvider(targetWindow);
+        productProvider = legacyProvider;
+        disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
+        // Replay the handshake frame the probe just consumed.
+        legacyProvider.injectInbound(event.data);
+      } else if (
+        (event.data as { type?: unknown } | null)?.type === "truapi-ready"
+      ) {
+        probeMode = "modern";
+        legacyProbeCleanup?.();
+      }
+    };
+    window.addEventListener("message", onProbe);
+    legacyProbeCleanup = () => {
+      window.removeEventListener("message", onProbe);
+      legacyProbeCleanup = null;
+    };
 
     return {
       iframe: host.iframe,

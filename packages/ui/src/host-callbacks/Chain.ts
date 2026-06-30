@@ -144,7 +144,7 @@ function toConnection(
 function emitStatementStoreRequest(
   request: JsonRpcRequest<unknown>,
   debugRequests: Map<string, StatementStoreDebugRequest>,
-) {
+): void {
   if (!hasDotliDebugListeners()) {
     return;
   }

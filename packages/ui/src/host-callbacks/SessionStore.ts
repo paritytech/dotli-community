@@ -16,6 +16,7 @@ import {
   subscribeSharedAuthStorage,
   writeSharedAuthStorage,
 } from "@dotli/protocol/client";
+import { log } from "@dotli/shared/log";
 import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
@@ -75,8 +76,8 @@ export async function writeUiStateCache(
     } else {
       await clearSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY);
     }
-  } catch {
-    /* cache write is best-effort */
+  } catch (err) {
+    log.warn("[dot.li] session UI cache write failed:", err);
   }
 }
 
@@ -90,7 +91,7 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
     if (
       typeof parsed === "object" &&
       parsed !== null &&
-      (parsed as TruapiSessionUiState).connected === true
+      (parsed as TruapiSessionUiState).connected
     ) {
       return parsed as TruapiSessionUiState;
     }
@@ -145,11 +146,12 @@ async function readCoreStorageValue(
   key: CoreStorageKey,
 ): Promise<Uint8Array | undefined> {
   if (key.tag === "AuthSession") {
-    let raw: string | null = null;
+    let raw: string | null;
     try {
       raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    } catch {
-      raw = null;
+    } catch (err) {
+      log.warn("[dot.li] shared auth session read failed:", err);
+      return undefined;
     }
     if (raw === null || raw === "") {
       return undefined;
