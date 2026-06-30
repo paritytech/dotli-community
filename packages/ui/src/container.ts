@@ -45,7 +45,7 @@ import {
 } from "@novasamatech/statement-store";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
-import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
+import { BASE_DOMAIN } from "@dotli/config/config";
 import {
   getPermissionStatus,
   isEnforceableDevicePermission,
@@ -88,6 +88,16 @@ import {
 } from "@dotli/protocol/client";
 import { MAX_NESTED_BRIDGES } from "@dotli/config/config";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
+import {
+  buildDotTargetUrl,
+  getHostOrigin,
+  identifierToLabel,
+  isProductAccountValid,
+  isUint8ArrayLike,
+  labelAcceptsIdentifier,
+  labelToProductIdentifier,
+  resolveProductAccountId,
+} from "./container-product";
 import { log } from "@dotli/shared/log";
 import { getBackend } from "@dotli/config/mode";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
@@ -119,52 +129,6 @@ function subscribeSession(
   return onAuthStateChange((state: AuthState) => {
     callback(state.status === "authenticated" ? state.session : null);
   });
-}
-
-// localhost proxy and webcontainer previews are developer affordances for
-// running a `.dot` app before it's deployed.
-function isDevPreviewLabel(label: string): boolean {
-  return (
-    label.startsWith("localhost:") || dotNsUrl.isWebcontainerPreviewHost(label)
-  );
-}
-
-/**
- * Derive the product-id from an iframe label.
- *
- * Dev previews (localhost proxy, webcontainer) keep the bare host label. dotNs
- * products get the `.dot` suffix appended. Same rule encoded in
- * `isProductAccountValid`.
- */
-function labelToProductIdentifier(label: string): string {
-  return isDevPreviewLabel(label) ? label : `${label}.dot`;
-}
-
-function labelAcceptsIdentifier(label: string, id: string): boolean {
-  return (
-    dotNsUrl.isProductIdentifier(id) || id === labelToProductIdentifier(label)
-  );
-}
-
-// Dev previews are permissive. A deployed `.dot` must sign as its own identifier.
-function isProductAccountValid(label: string, accountId: string): boolean {
-  if (isDevPreviewLabel(label)) {
-    return labelAcceptsIdentifier(label, accountId);
-  }
-  return accountId === labelToProductIdentifier(label);
-}
-
-/**
- * Resolve the product-account tuple a product is allowed to act as.
- */
-function resolveProductAccountId(
-  label: string,
-  reported: Parameters<typeof normalizeProductAccountId>[0],
-): ReturnType<typeof normalizeProductAccountId> {
-  const normalized = normalizeProductAccountId(reported);
-  return isDevPreviewLabel(label)
-    ? normalized
-    : [labelToProductIdentifier(label), normalized[1]];
 }
 
 function wireContainerHandlers(
@@ -1308,41 +1272,6 @@ function promptCachedSubmitPermission(
 }
 
 /** Strip the `.dot` suffix to get the bare label (e.g. "mytestapp.dot" becomes "mytestapp"). */
-function identifierToLabel(identifier: string): string {
-  return identifier.slice(0, -".dot".length);
-}
-
-/** Build a full URL for a .dot product on the current environment. */
-function buildDotTargetUrl(label: string, pathname: string): string {
-  const suffix = pathname ? "/" + pathname : "";
-  if (isLocalhost) {
-    return `http://${label}.localhost:${window.location.port}${suffix}`;
-  }
-  return `${window.location.protocol}//${label}.${BASE_DOMAIN}${suffix}`;
-}
-
-/** Bare host origin without any product subdomain (e.g. `http://localhost:5173` or `https://dot.li`). */
-function getHostOrigin(): string {
-  if (isLocalhost) {
-    return `http://localhost:${window.location.port}`;
-  }
-  return `${window.location.protocol}//${BASE_DOMAIN}`;
-}
-
-/** Check if a value is a Uint8Array (or cross-realm equivalent). */
-function isUint8ArrayLike(data: unknown): data is Uint8Array {
-  if (data instanceof Uint8Array) {
-    return true;
-  }
-  if (typeof data !== "object" || data === null) {
-    return false;
-  }
-  return (
-    (data as { constructor: { name: string } }).constructor.name ===
-    "Uint8Array"
-  );
-}
-
 // Implements the same Provider interface as createIframeProvider
 // but targets a captured Window reference (from event.source)
 // instead of an HTMLIFrameElement.

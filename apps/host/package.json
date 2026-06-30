@@ -13,6 +13,7 @@
     "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
     "test:perf:compare": "bun tests/performance/compare.ts",
     "test:perf:compare:md": "bun tests/performance/compare.ts --markdown",
+    "test": "vitest run",
     "lint": "bunx eslint src/",
     "typecheck": "tsc --noEmit"
   },
@@ -23,11 +24,13 @@
     "playwright": "^1.59.1",
     "@types/node": "^25.9.3",
     "eslint": "^10.5.0",
+    "happy-dom": "^20.10.3",
     "jsqr": "^1.4.0",
     "prettier": "^3.8.3",
     "simple-statistics": "^7.9.0",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
+    "vitest": "^4.1.8",
     "vite-plugin-pwa": "^1.2.0",
     "vite-plugin-wasm": "^3.5.0",
     "workbox-window": "^7.4.0"

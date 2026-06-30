@@ -6,80 +6,39 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
+import type {
+  BrokerConnection,
+  ChainBrokerManager,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  OwnedToken,
+  PendingRequest,
+  Session,
+  SharedFollow,
+  SubscriptionMessage,
+  WireMode,
+} from "./broker-types.ts";
+import {
+  buildJsonRpcError,
+  buildJsonRpcResult,
+  cloneWithRewrittenFirstParam,
+  isJsonRpcObject,
+  isRequestMessage,
+  isResponseMessage,
+  isSubscriptionMessage,
+  normalizeUnpinHashes,
+  parseInbound,
+} from "./broker-jsonrpc.ts";
+import { SessionRegistry } from "./broker-session-registry.ts";
+import { TokenRegistry } from "./broker-token-registry.ts";
+import { FollowRegistry } from "./broker-follow-registry.ts";
 
-/**
- * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
- *
- * The postMessage relay ships `message` as a string, while the upstream
- * `JsonRpcConnection.send` takes `JsonRpcRequest` objects. The local string
- * variant keeps `connectRemote`'s signature matched to the wire.
- */
-export interface StringJsonRpcConnection {
-  send: (message: string) => void;
-  disconnect: () => void;
-}
-
-type JsonRpcId = string | number | null;
-
-interface JsonRpcRequest {
-  jsonrpc?: string;
-  id?: JsonRpcId;
-  method?: unknown;
-  params?: unknown;
-}
-
-interface JsonRpcResponse {
-  jsonrpc?: string;
-  id?: JsonRpcId;
-  result?: unknown;
-  error?: unknown;
-}
-
-interface SubscriptionMessage {
-  jsonrpc?: string;
-  method?: unknown;
-  params?: {
-    subscription?: unknown;
-    result?: unknown;
-  };
-}
-
-interface PendingRequest {
-  sessionId: string;
-  clientId: JsonRpcId;
-  method: string;
-}
-
-interface OwnedToken {
-  sessionId: string;
-  localToken: string;
-  releaseMethod: string;
-}
-
-interface SharedFollow {
-  key: string;
-  upstreamToken: string | null;
-  requestInFlight: boolean;
-  localTokens: Set<string>;
-  pendingLocals: {
-    sessionId: string;
-    requestId: JsonRpcId;
-    localToken: string;
-  }[];
-  finalizedBlockHashes: string[];
-  finalizedBlockRuntime: unknown;
-  bestBlockHash: string | null;
-  blocks: Map<string, CachedBlock>;
-  /** Block hash -> local follow tokens still holding a pin on it. */
-  pins: Map<string, Set<string>>;
-}
-
-interface CachedBlock {
-  result: Record<string, unknown>;
-  parentBlockHash: string | null;
-}
-
-type WireMode = "string" | "object";
+// Re-export the public broker types so existing `@dotli/protocol/broker`
+// importers keep resolving after the type/helper split.
+export type {
+  ChainBrokerManager,
+  StringJsonRpcConnection,
+} from "./broker-types.ts";
 
 // Wire mode is fixed at broker construction time. Auto-detecting from
 // message shape lets a malformed first payload silently flip the broker
@@ -91,113 +50,10 @@ type WireMode = "string" | "object";
 // "no silent fallbacks" contract.
 const DEFAULT_WIRE_MODE: WireMode = "string";
 
-interface Session {
-  id: string;
-  onMessage: (message: unknown) => void;
-  ownedTokens: Set<string>;
-  connected: boolean;
-  /** Fixed at session creation, never inferred from message shape later. */
-  wireMode: WireMode;
-}
-
-/** Internal session handle returned by `ChainBroker.connect()`. */
-interface BrokerConnection {
-  send: (message: unknown) => void;
-  disconnect: () => void;
-}
-
 const TOKEN_METHODS = new Map<string, string>([
   ["transaction_v1_broadcast", "transaction_v1_stop"],
   ["statement_subscribeStatement", "statement_unsubscribeStatement"],
 ]);
-
-function isJsonRpcObject(
-  value: unknown,
-): value is Record<string, unknown> & { jsonrpc?: string } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function buildJsonRpcError(
-  id: JsonRpcId,
-  message: string,
-): Record<string, unknown> {
-  return { jsonrpc: "2.0", id, error: { code: -32603, message } };
-}
-
-function buildJsonRpcResult(
-  id: JsonRpcId,
-  result: unknown,
-): Record<string, unknown> {
-  return { jsonrpc: "2.0", id, result };
-}
-
-function isRequestMessage(value: unknown): value is JsonRpcRequest {
-  return isJsonRpcObject(value) && typeof value.method === "string";
-}
-
-function isResponseMessage(value: unknown): value is JsonRpcResponse {
-  return isJsonRpcObject(value) && "id" in value && !("method" in value);
-}
-
-function isSubscriptionMessage(value: unknown): value is SubscriptionMessage {
-  return (
-    isJsonRpcObject(value) &&
-    "method" in value &&
-    isJsonRpcObject(value.params) &&
-    "subscription" in value.params
-  );
-}
-
-/**
- * Parse an inbound message into a JS object without guessing wire mode.
- * The sender must match the broker's configured wire mode. Message shape
- * never flips the whole broker's encoding. Strings are parsed for the
- * object wire too, since some substrate clients serialize payloads
- * inconsistently, but the result is always returned as an object.
- */
-function parseInbound(message: unknown): unknown {
-  if (typeof message === "string") {
-    return JSON.parse(message);
-  }
-  return message;
-}
-
-/** Encode a JS object into the given wire format. */
-function encode(value: unknown, mode: WireMode): unknown {
-  return mode === "string" ? JSON.stringify(value) : value;
-}
-
-/** `chainHead_v1_unpin` takes its hash arg as a string or an array; normalize to an array. */
-function normalizeUnpinHashes(param: unknown): string[] {
-  if (typeof param === "string") {
-    return [param];
-  }
-  if (Array.isArray(param)) {
-    return param.filter((hash): hash is string => typeof hash === "string");
-  }
-  return [];
-}
-
-function cloneWithRewrittenFirstParam(
-  request: JsonRpcRequest,
-  rewrittenToken: string,
-): JsonRpcRequest {
-  const params: unknown[] = Array.isArray(request.params)
-    ? [...(request.params as unknown[])]
-    : [];
-  params[0] = rewrittenToken;
-  return { ...request, params };
-}
-
-export interface ChainBrokerManager {
-  connectRemote(
-    genesisHash: string,
-    connectionId: string,
-    onMessage: (message: string) => void,
-  ): StringJsonRpcConnection | null;
-  getLocalProvider(genesisHash: string): JsonRpcProvider | null;
-  disconnectAll(): void;
-}
 
 // Broker-backed object-wire provider for a chain, or throw. Object-wire (the
 // default) matches the polkadot-api getSmProvider boundary the resolver
@@ -224,16 +80,10 @@ class ChainBroker {
   private readonly provider: JsonRpcProvider;
   private readonly onEmpty: () => void;
   private upstream: JsonRpcConnection | null = null;
-  private readonly sessions = new Map<string, Session>();
+  private readonly sessions = new SessionRegistry();
+  private readonly tokens = new TokenRegistry();
+  private readonly follows = new FollowRegistry();
   private readonly pending = new Map<string, PendingRequest>();
-  private readonly localToOwned = new Map<string, OwnedToken>();
-  private readonly upstreamToOwned = new Map<string, OwnedToken>();
-  private readonly localFollowTokens = new Map<
-    string,
-    { sessionId: string; followKey: string }
-  >();
-  private readonly sharedFollows = new Map<string, SharedFollow>();
-  private readonly upstreamFollowTokens = new Map<string, SharedFollow>();
   private requestCounter = 0;
   private tokenCounter = 0;
 
@@ -244,7 +94,7 @@ class ChainBroker {
 
   /** Send a JSON-RPC object to a session in its configured wire format. */
   private sendToSession(session: Session, obj: unknown): void {
-    session.onMessage(encode(obj, session.wireMode));
+    this.sessions.send(session, obj);
   }
 
   private sendUpstream(obj: unknown): void {
@@ -264,7 +114,7 @@ class ChainBroker {
       `Session ${sessionId} connecting (${String(this.sessions.size)} existing sessions)`,
     );
     this.ensureUpstream();
-    this.sessions.set(sessionId, {
+    this.sessions.add({
       id: sessionId,
       onMessage,
       ownedTokens: new Set<string>(),
@@ -283,7 +133,7 @@ class ChainBroker {
   }
 
   disconnectAll(): void {
-    for (const sessionId of [...this.sessions.keys()]) {
+    for (const sessionId of this.sessions.ids()) {
       this.disconnectSession(sessionId);
     }
     this.disconnectUpstream();
@@ -295,7 +145,7 @@ class ChainBroker {
       return;
     }
     brokerLog(
-      `Connecting to upstream provider... (sessions: [${[...this.sessions.keys()].join(",")}])`,
+      `Connecting to upstream provider... (sessions: [${this.sessions.ids().join(",")}])`,
     );
     this.upstream = this.provider((message) => {
       this.handleUpstreamMessage(message);
@@ -415,7 +265,7 @@ class ChainBroker {
     const params = Array.isArray(request.params) ? request.params : [];
     const token = typeof params[0] === "string" ? params[0] : null;
     const followToken =
-      token !== null ? this.localFollowTokens.get(token) : undefined;
+      token !== null ? this.follows.getLocal(token) : undefined;
 
     // Non-follow tokens: fall back to the unchanged passthrough.
     if (
@@ -427,7 +277,7 @@ class ChainBroker {
       return;
     }
 
-    const sharedFollow = this.sharedFollows.get(followToken.followKey);
+    const sharedFollow = this.follows.getShared(followToken.followKey);
     if (
       sharedFollow?.upstreamToken === undefined ||
       sharedFollow.upstreamToken === null
@@ -439,7 +289,7 @@ class ChainBroker {
       return;
     }
 
-    const orphaned = this.releasePins(
+    const orphaned = this.follows.releasePins(
       sharedFollow,
       token,
       normalizeUnpinHashes(params[1]),
@@ -451,75 +301,6 @@ class ChainBroker {
     if (request.id !== undefined) {
       this.sendToSession(session, buildJsonRpcResult(request.id ?? null, null));
     }
-  }
-
-  /** Record that `localToken` holds a pin on `hash` for this shared follow. */
-  private registerPin(
-    sharedFollow: SharedFollow,
-    localToken: string,
-    hash: string,
-  ): void {
-    let holders = sharedFollow.pins.get(hash);
-    if (!holders) {
-      holders = new Set<string>();
-      sharedFollow.pins.set(hash, holders);
-    }
-    holders.add(localToken);
-  }
-
-  /** Pin the blocks a follow event implies: `initialized` finalized blocks and `newBlock`. */
-  private registerPinsFromEvent(
-    sharedFollow: SharedFollow,
-    localToken: string,
-    eventResult: unknown,
-  ): void {
-    if (!isJsonRpcObject(eventResult)) {
-      return;
-    }
-    if (eventResult.event === "initialized") {
-      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
-        ? eventResult.finalizedBlockHashes
-        : [];
-      for (const hash of hashes) {
-        if (typeof hash === "string") {
-          this.registerPin(sharedFollow, localToken, hash);
-        }
-      }
-      return;
-    }
-    if (
-      eventResult.event === "newBlock" &&
-      typeof eventResult.blockHash === "string"
-    ) {
-      this.registerPin(sharedFollow, localToken, eventResult.blockHash);
-    }
-  }
-
-  /**
-   * Drop `localToken`'s hold on the given hashes (or all of them when null) and
-   * return the hashes no session holds anymore — the ones to unpin upstream.
-   */
-  private releasePins(
-    sharedFollow: SharedFollow,
-    localToken: string,
-    hashes: string[] | null,
-  ): string[] {
-    const orphaned: string[] = [];
-    const entries = hashes ?? [...sharedFollow.pins.keys()];
-    for (const hash of entries) {
-      const holders = sharedFollow.pins.get(hash);
-      if (!holders) {
-        continue;
-      }
-      if (!holders.delete(localToken)) {
-        continue;
-      }
-      if (holders.size === 0) {
-        sharedFollow.pins.delete(hash);
-        orphaned.push(hash);
-      }
-    }
-    return orphaned;
   }
 
   private sendUpstreamUnpin(upstreamToken: string, hashes: string[]): void {
@@ -545,12 +326,12 @@ class ChainBroker {
       return request;
     }
 
-    const followToken = this.localFollowTokens.get(firstParam);
+    const followToken = this.follows.getLocal(firstParam);
     if (followToken) {
       if (followToken.sessionId !== session.id) {
         return null;
       }
-      const sharedFollow = this.sharedFollows.get(followToken.followKey);
+      const sharedFollow = this.follows.getShared(followToken.followKey);
       if (
         sharedFollow?.upstreamToken === undefined ||
         sharedFollow.upstreamToken === null
@@ -560,7 +341,7 @@ class ChainBroker {
       return cloneWithRewrittenFirstParam(request, sharedFollow.upstreamToken);
     }
 
-    const owned = this.localToOwned.get(firstParam);
+    const owned = this.tokens.ownedByLocal(firstParam);
     if (!owned) {
       return request;
     }
@@ -569,21 +350,12 @@ class ChainBroker {
       return null;
     }
 
-    const upstreamToken = this.getUpstreamToken(firstParam);
+    const upstreamToken = this.tokens.upstreamForLocal(firstParam);
     if (upstreamToken === null) {
       return null;
     }
 
     return cloneWithRewrittenFirstParam(request, upstreamToken);
-  }
-
-  private getUpstreamToken(localToken: string): string | null {
-    for (const [upstreamToken, owned] of this.upstreamToOwned.entries()) {
-      if (owned.localToken === localToken) {
-        return upstreamToken;
-      }
-    }
-    return null;
   }
 
   private handleUpstreamMessage(message: unknown): void {
@@ -642,7 +414,7 @@ class ChainBroker {
         const rawSub = parsed.params?.subscription;
         const token = typeof rawSub === "string" ? rawSub : "?";
         // Find which session owns this token
-        const owned = this.upstreamToOwned.get(token);
+        const owned = this.tokens.ownedByUpstream(token);
         const sessionTag = owned ? owned.sessionId : "unknown";
         if (event === "newBlock") {
           brokerLog(
@@ -698,14 +470,14 @@ class ChainBroker {
       pending.method === "chainHead_v1_follow" &&
       typeof response.result === "string"
     ) {
-      const sharedFollow = this.sharedFollows.get(pending.sessionId);
+      const sharedFollow = this.follows.getShared(pending.sessionId);
       if (!sharedFollow) {
         brokerLog(`Missing shared follow state for key ${pending.sessionId}`);
         return;
       }
       sharedFollow.requestInFlight = false;
       sharedFollow.upstreamToken = response.result;
-      this.upstreamFollowTokens.set(response.result, sharedFollow);
+      this.follows.bindUpstream(response.result, sharedFollow);
       for (const pendingLocal of sharedFollow.pendingLocals.splice(0)) {
         const pendingSession = this.sessions.get(pendingLocal.sessionId);
         if (pendingSession?.connected !== true) {
@@ -722,7 +494,7 @@ class ChainBroker {
     const session = this.sessions.get(pending.sessionId);
     if (session?.connected !== true) {
       brokerLog(
-        `← upstream response for disconnected session: sessionId=${JSON.stringify(pending.sessionId)}, method=${pending.method}, responseId=${String(response.id)}, sessions=[${[...this.sessions.keys()].join(",")}]`,
+        `← upstream response for disconnected session: sessionId=${JSON.stringify(pending.sessionId)}, method=${pending.method}, responseId=${String(response.id)}, sessions=[${this.sessions.ids().join(",")}]`,
       );
       return;
     }
@@ -737,8 +509,7 @@ class ChainBroker {
         localToken,
         releaseMethod,
       };
-      this.localToOwned.set(localToken, owned);
-      this.upstreamToOwned.set(response.result, owned);
+      this.tokens.link(localToken, response.result, owned);
       session.ownedTokens.add(localToken);
       brokerLog(
         `Token mapped: ${localToken} ↔ ${response.result} (${pending.method})`,
@@ -766,11 +537,11 @@ class ChainBroker {
       return;
     }
 
-    const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
+    const sharedFollow = this.follows.getByUpstream(upstreamToken);
     if (sharedFollow) {
-      this.cacheSharedFollowEvent(sharedFollow, message.params?.result);
+      this.follows.cacheSharedFollowEvent(sharedFollow, message.params?.result);
       for (const localToken of sharedFollow.localTokens) {
-        const local = this.localFollowTokens.get(localToken);
+        const local = this.follows.getLocal(localToken);
         if (!local) {
           continue;
         }
@@ -779,7 +550,11 @@ class ChainBroker {
           continue;
         }
         const eventResult = message.params?.result;
-        this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
+        this.follows.registerPinsFromEvent(
+          sharedFollow,
+          localToken,
+          eventResult,
+        );
         const eventType = isJsonRpcObject(eventResult)
           ? typeof eventResult.event === "string"
             ? eventResult.event
@@ -807,7 +582,7 @@ class ChainBroker {
         brokerLog(
           `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
         );
-        this.upstreamFollowTokens.delete(upstreamToken);
+        this.follows.unbindUpstream(upstreamToken);
         sharedFollow.upstreamToken = null;
         sharedFollow.requestInFlight = false;
         sharedFollow.finalizedBlockHashes = [];
@@ -818,7 +593,7 @@ class ChainBroker {
       return;
     }
 
-    const owned = this.upstreamToOwned.get(upstreamToken);
+    const owned = this.tokens.ownedByUpstream(upstreamToken);
     if (!owned) {
       brokerLog(`← upstream subscription for unknown token: ${upstreamToken}`);
       return;
@@ -880,9 +655,7 @@ class ChainBroker {
       this.releaseOwnedToken(localToken, true);
     }
 
-    for (const [localToken, followToken] of [
-      ...this.localFollowTokens.entries(),
-    ]) {
+    for (const [localToken, followToken] of this.follows.localEntries()) {
       if (followToken.sessionId === sessionId) {
         this.releaseLocalFollowToken(localToken);
       }
@@ -890,27 +663,18 @@ class ChainBroker {
   }
 
   private releaseOwnedToken(localToken: string, notifyUpstream: boolean): void {
-    const owned = this.localToOwned.get(localToken);
+    const owned = this.tokens.ownedByLocal(localToken);
     if (!owned) {
       return;
     }
 
-    this.localToOwned.delete(localToken);
     const session = this.sessions.get(owned.sessionId);
     session?.ownedTokens.delete(localToken);
 
-    let upstreamTokenToDelete: string | null = null;
-    for (const [upstreamToken, candidate] of this.upstreamToOwned.entries()) {
-      if (candidate.localToken === localToken) {
-        upstreamTokenToDelete = upstreamToken;
-        break;
-      }
-    }
+    const upstreamTokenToDelete = this.tokens.unlinkByLocal(localToken);
     if (upstreamTokenToDelete === null) {
       return;
     }
-
-    this.upstreamToOwned.delete(upstreamTokenToDelete);
 
     if (!notifyUpstream) {
       return;
@@ -927,11 +691,8 @@ class ChainBroker {
 
   private disconnectUpstream(): void {
     this.pending.clear();
-    this.localToOwned.clear();
-    this.upstreamToOwned.clear();
-    this.localFollowTokens.clear();
-    this.sharedFollows.clear();
-    this.upstreamFollowTokens.clear();
+    this.tokens.clear();
+    this.follows.clear();
     this.upstream?.disconnect();
     this.upstream = null;
   }
@@ -941,26 +702,11 @@ class ChainBroker {
     request: JsonRpcRequest,
   ): void {
     const followKey = JSON.stringify(request.params ?? []);
-    let sharedFollow = this.sharedFollows.get(followKey);
-    if (!sharedFollow) {
-      sharedFollow = {
-        key: followKey,
-        upstreamToken: null,
-        requestInFlight: false,
-        localTokens: new Set<string>(),
-        pendingLocals: [],
-        finalizedBlockHashes: [],
-        finalizedBlockRuntime: null,
-        bestBlockHash: null,
-        blocks: new Map<string, CachedBlock>(),
-        pins: new Map<string, Set<string>>(),
-      };
-      this.sharedFollows.set(followKey, sharedFollow);
-    }
+    const sharedFollow = this.follows.ensureShared(followKey);
 
     const localToken = `follow:${this.tokenCounter.toString(36)}:${session.id}`;
     this.tokenCounter += 1;
-    this.localFollowTokens.set(localToken, {
+    this.follows.setLocal(localToken, {
       sessionId: session.id,
       followKey,
     });
@@ -1015,7 +761,7 @@ class ChainBroker {
       return;
     }
 
-    const followToken = this.localFollowTokens.get(token);
+    const followToken = this.follows.getLocal(token);
     if (followToken) {
       if (followToken.sessionId !== session.id) {
         this.sendToSession(
@@ -1058,16 +804,16 @@ class ChainBroker {
   }
 
   private releaseLocalFollowToken(localToken: string): void {
-    const followToken = this.localFollowTokens.get(localToken);
+    const followToken = this.follows.getLocal(localToken);
     if (!followToken) {
       return;
     }
 
-    this.localFollowTokens.delete(localToken);
+    this.follows.deleteLocal(localToken);
     const session = this.sessions.get(followToken.sessionId);
     session?.ownedTokens.delete(localToken);
 
-    const sharedFollow = this.sharedFollows.get(followToken.followKey);
+    const sharedFollow = this.follows.getShared(followToken.followKey);
     if (!sharedFollow) {
       return;
     }
@@ -1082,7 +828,7 @@ class ChainBroker {
 
     // Drop this token's pins. If the follow stays alive, unpin orphaned blocks
     // upstream; if it's the last token, the unfollow below releases them all.
-    const orphaned = this.releasePins(sharedFollow, localToken, null);
+    const orphaned = this.follows.releasePins(sharedFollow, localToken, null);
     if (followStaysAlive) {
       if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
         this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
@@ -1091,7 +837,7 @@ class ChainBroker {
     }
 
     if (sharedFollow.upstreamToken !== null) {
-      this.upstreamFollowTokens.delete(sharedFollow.upstreamToken);
+      this.follows.unbindUpstream(sharedFollow.upstreamToken);
       this.sendUpstream({
         jsonrpc: "2.0",
         id: `broker-release:${this.requestCounter.toString(36)}`,
@@ -1101,75 +847,7 @@ class ChainBroker {
       this.requestCounter += 1;
     }
 
-    this.sharedFollows.delete(followToken.followKey);
-  }
-
-  private cacheSharedFollowEvent(
-    sharedFollow: SharedFollow,
-    eventResult: unknown,
-  ): void {
-    if (!isJsonRpcObject(eventResult)) {
-      return;
-    }
-
-    const eventType =
-      typeof eventResult.event === "string" ? eventResult.event : "";
-    if (eventType === "initialized") {
-      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
-        ? eventResult.finalizedBlockHashes.filter(
-            (hash): hash is string => typeof hash === "string",
-          )
-        : [];
-      sharedFollow.finalizedBlockHashes = hashes;
-      sharedFollow.finalizedBlockRuntime =
-        eventResult.finalizedBlockRuntime ?? null;
-      sharedFollow.blocks.clear();
-      sharedFollow.bestBlockHash = null;
-      return;
-    }
-
-    if (eventType === "newBlock") {
-      const blockHash =
-        typeof eventResult.blockHash === "string"
-          ? eventResult.blockHash
-          : null;
-      if (blockHash === null) {
-        return;
-      }
-      sharedFollow.blocks.set(blockHash, {
-        result: { ...eventResult },
-        parentBlockHash:
-          typeof eventResult.parentBlockHash === "string"
-            ? eventResult.parentBlockHash
-            : null,
-      });
-      return;
-    }
-
-    if (eventType === "bestBlockChanged") {
-      sharedFollow.bestBlockHash =
-        typeof eventResult.bestBlockHash === "string"
-          ? eventResult.bestBlockHash
-          : null;
-      return;
-    }
-
-    if (eventType === "finalized") {
-      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
-        ? eventResult.finalizedBlockHashes.filter(
-            (hash): hash is string => typeof hash === "string",
-          )
-        : [];
-      sharedFollow.finalizedBlockHashes = hashes;
-      const pruned = Array.isArray(eventResult.prunedBlockHashes)
-        ? eventResult.prunedBlockHashes.filter(
-            (hash): hash is string => typeof hash === "string",
-          )
-        : [];
-      for (const hash of pruned) {
-        sharedFollow.blocks.delete(hash);
-      }
-    }
+    this.follows.deleteShared(followToken.followKey);
   }
 
   private replayFollowSnapshot(
@@ -1179,7 +857,7 @@ class ChainBroker {
   ): void {
     if (sharedFollow.finalizedBlockHashes.length > 0) {
       for (const hash of sharedFollow.finalizedBlockHashes) {
-        this.registerPin(sharedFollow, localToken, hash);
+        this.follows.registerPin(sharedFollow, localToken, hash);
       }
       this.sendToSession(session, {
         jsonrpc: "2.0",
@@ -1216,7 +894,7 @@ class ChainBroker {
 
     replayBlocks.reverse();
     for (const result of replayBlocks) {
-      this.registerPinsFromEvent(sharedFollow, localToken, result);
+      this.follows.registerPinsFromEvent(sharedFollow, localToken, result);
       this.sendToSession(session, {
         jsonrpc: "2.0",
         method: "chainHead_v1_followEvent",
