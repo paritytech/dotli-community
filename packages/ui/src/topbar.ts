@@ -340,9 +340,11 @@ function shortenTruapiSessionName(state: TruapiSessionUiState): string {
   if (fullName !== undefined && fullName.length > 0) {
     const parts = fullName.split(" ").filter((part) => part.length > 0);
     if (parts.length === 1) {
-      return parts[0]!.slice(0, 2).toUpperCase();
+      return parts[0].slice(0, 2).toUpperCase();
     }
-    return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();
+    if (parts.length > 1) {
+      return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+    }
   }
   const liteName = state.liteUsername;
   if (liteName !== undefined && liteName.length > 0) {
