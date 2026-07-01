@@ -4,6 +4,13 @@ import { showPreimageSubmitModal } from "../preimage-modal";
 interface ConfirmationCopy {
   title: string;
   action: string;
+  cancelAction?: string;
+}
+
+interface ConfirmationField {
+  label: string;
+  value: string;
+  mono?: boolean;
 }
 
 type UserConfirmationReview = Parameters<
@@ -13,9 +20,10 @@ type UserConfirmationReview = Parameters<
 function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
-  review: unknown,
+  review: UserConfirmationReview,
 ): Promise<boolean> {
   return new Promise((resolve) => {
+    const display = confirmationDisplay(label, review);
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
 
@@ -29,31 +37,9 @@ function showConfirmationModal(
     const fields = document.createElement("div");
     fields.className = "signing-fields";
 
-    const appField = document.createElement("div");
-    appField.className = "signing-field";
-    const appLabel = document.createElement("div");
-    appLabel.className = "signing-field-label";
-    appLabel.textContent = "Application";
-    const appValue = document.createElement("div");
-    appValue.className = "signing-field-value";
-    appValue.textContent = label.startsWith("localhost:")
-      ? label
-      : `${label}.dot`;
-    appField.append(appLabel, appValue);
-    fields.appendChild(appField);
-
-    const reviewField = document.createElement("div");
-    reviewField.className = "signing-field";
-    const reviewLabel = document.createElement("div");
-    reviewLabel.className = "signing-field-label";
-    reviewLabel.textContent = "Request";
-    const reviewValue = document.createElement("div");
-    reviewValue.className = "signing-field-value";
-    const text = formatReview(review);
-    reviewValue.textContent =
-      text.length > 180 ? `${text.slice(0, 180)}...` : text;
-    reviewField.append(reviewLabel, reviewValue);
-    fields.appendChild(reviewField);
+    for (const field of display.fields) {
+      fields.appendChild(createField(field));
+    }
 
     modal.appendChild(fields);
 
@@ -62,7 +48,7 @@ function showConfirmationModal(
 
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "signing-btn-cancel";
-    cancelBtn.textContent = "Cancel";
+    cancelBtn.textContent = copy.cancelAction ?? "Cancel";
     footer.appendChild(cancelBtn);
 
     const allowBtn = document.createElement("button");
@@ -96,6 +82,26 @@ function showConfirmationModal(
   });
 }
 
+function createField(field: ConfirmationField): HTMLDivElement {
+  const group = document.createElement("div");
+  group.className = "signing-field";
+
+  const label = document.createElement("div");
+  label.className = "signing-field-label";
+  label.textContent = field.label;
+  group.appendChild(label);
+
+  const value = document.createElement("div");
+  value.className = "signing-field-value";
+  if (field.mono === true) {
+    value.classList.add("mono");
+  }
+  value.textContent = field.value;
+  group.appendChild(value);
+
+  return group;
+}
+
 function formatReview(review: unknown): string {
   return JSON.stringify(
     review,
@@ -114,6 +120,177 @@ function formatReview(review: unknown): string {
   );
 }
 
+function confirmationDisplay(
+  label: string,
+  review: UserConfirmationReview,
+): { fields: ConfirmationField[] } {
+  if (review.tag === "SignPayload") {
+    return { fields: createSignPayloadFields(label, review.value) };
+  }
+  if (review.tag === "SignRaw") {
+    return { fields: createSignRawFields(label, review.value) };
+  }
+  if (review.tag === "CreateTransaction") {
+    return { fields: createTransactionFields(label, review.value) };
+  }
+  if (review.tag === "AccountAlias") {
+    return { fields: createAccountAliasFields(review.value) };
+  }
+  if (review.tag === "ResourceAllocation") {
+    return { fields: createResourceAllocationFields(review.value) };
+  }
+
+  const text = formatReview(review);
+  return {
+    fields: [
+      {
+        label: "Application",
+        value: label.startsWith("localhost:") ? label : `${label}.dot`,
+      },
+      {
+        label: "Request",
+        value: text.length > 180 ? `${text.slice(0, 180)}...` : text,
+      },
+    ],
+  };
+}
+
+function truncateHex(value: string): string {
+  return value.length > 80 ? `${value.slice(0, 80)}...` : value;
+}
+
+type SignRawPayload = Extract<
+  UserConfirmationReview,
+  { tag: "SignRaw" }
+>["value"]["value"]["payload"];
+
+function formatRawPayload(payload: SignRawPayload): string {
+  return truncateHex(
+    payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload,
+  );
+}
+
+function formatProductAccount(account: {
+  dotNsIdentifier: string;
+  derivationIndex: number;
+}): string {
+  return `${account.dotNsIdentifier} / ${String(account.derivationIndex)}`;
+}
+
+type SignPayloadData = Extract<
+  UserConfirmationReview,
+  { tag: "SignPayload" }
+>["value"]["value"]["payload"];
+
+function createPayloadFields(
+  app: string,
+  signer: string,
+  payload: SignPayloadData,
+): ConfirmationField[] {
+  return [
+    { label: "App", value: app },
+    { label: "Signer", value: signer },
+    { label: "Genesis Hash", value: payload.genesisHash, mono: true },
+    { label: "Call Data", value: truncateHex(payload.method), mono: true },
+    { label: "Version", value: String(payload.version) },
+  ];
+}
+
+function createSignPayloadFields(
+  label: string,
+  review: Extract<UserConfirmationReview, { tag: "SignPayload" }>["value"],
+): ConfirmationField[] {
+  if (review.tag === "Product") {
+    return createPayloadFields(
+      label,
+      formatProductAccount(review.value.account),
+      review.value.payload,
+    );
+  }
+
+  return createPayloadFields(label, review.value.signer, review.value.payload);
+}
+
+function createSignRawFields(
+  label: string,
+  review: Extract<UserConfirmationReview, { tag: "SignRaw" }>["value"],
+): ConfirmationField[] {
+  if (review.tag === "Product") {
+    return [
+      { label: "App", value: label },
+      { label: "Signer", value: formatProductAccount(review.value.account) },
+      {
+        label: "Message",
+        value: formatRawPayload(review.value.payload),
+        mono: true,
+      },
+    ];
+  }
+
+  return [
+    { label: "App", value: label },
+    { label: "Signer", value: review.value.signer },
+    {
+      label: "Message",
+      value: formatRawPayload(review.value.payload),
+      mono: true,
+    },
+  ];
+}
+
+function createTransactionFields(
+  label: string,
+  review: Extract<UserConfirmationReview, { tag: "CreateTransaction" }>["value"],
+): ConfirmationField[] {
+  const payload = review.value;
+  const signer =
+    review.tag === "Product"
+      ? formatProductAccount(review.value.signer)
+      : review.value.signer;
+
+  return [
+    { label: "App", value: label },
+    { label: "Signer", value: signer },
+    { label: "Genesis Hash", value: payload.genesisHash, mono: true },
+    { label: "Call Data", value: truncateHex(payload.callData), mono: true },
+    { label: "Tx Ext Version", value: String(payload.txExtVersion) },
+  ];
+}
+
+function createAccountAliasFields(
+  review: Extract<UserConfirmationReview, { tag: "AccountAlias" }>["value"],
+): ConfirmationField[] {
+  return [
+    { label: "Requesting product", value: review.requestingProductId },
+    { label: "Requested context", value: review.targetProductId },
+  ];
+}
+
+function formatResource(
+  resource: Extract<
+    UserConfirmationReview,
+    { tag: "ResourceAllocation" }
+  >["value"]["resources"][number],
+): string {
+  return resource.tag === "SmartContractAllowance"
+    ? `SmartContractAllowance / ${String(resource.value)}`
+    : resource.tag;
+}
+
+function createResourceAllocationFields(
+  review: Extract<
+    UserConfirmationReview,
+    { tag: "ResourceAllocation" }
+  >["value"],
+): ConfirmationField[] {
+  return [
+    {
+      label: "Resources",
+      value: review.resources.map(formatResource).join(", "),
+    },
+  ];
+}
+
 function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
   switch (review.tag) {
     case "SignPayload":
@@ -121,9 +298,13 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
     case "SignRaw":
       return { title: "Sign Message", action: "Sign" };
     case "CreateTransaction":
-      return { title: "Create Transaction", action: "Create" };
+      return { title: "Sign Transaction", action: "Sign" };
     case "AccountAlias":
-      return { title: "Alias Permission", action: "Allow" };
+      return {
+        title: "Alias Permission",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
     case "ResourceAllocation":
       return { title: "Resource Allocation", action: "Allow" };
     case "PreimageSubmit":

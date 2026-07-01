@@ -7,7 +7,12 @@
 // TransactionStorage.store through configured WSS JSON-RPC endpoints and
 // intentionally does not import smoldot.
 
-import { createClient, type PolkadotClient } from "polkadot-api";
+import {
+  AccountId,
+  createClient,
+  Enum,
+  type PolkadotClient,
+} from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws";
 import { getPolkadotSigner } from "@polkadot-api/signer";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
@@ -70,6 +75,61 @@ export function getTestSigner(): ReturnType<typeof getPolkadotSigner> {
 }
 
 const TX_TIMEOUT_MS = 120_000;
+const DEFAULT_AUTH_TRANSACTIONS = 100;
+const DEFAULT_AUTH_BYTES = 100 * 1024 * 1024;
+
+interface WatchedTransaction {
+  signSubmitAndWatch(signer: ReturnType<typeof getPolkadotSigner>): {
+    subscribe(observer: {
+      next(ev: {
+        type: string;
+        found?: boolean;
+        ok?: boolean;
+        dispatchError?: { type: string; value: unknown };
+      }): void;
+      error(e: unknown): void;
+    }): { unsubscribe(): void };
+  };
+}
+
+interface StorageAuthorization {
+  extent: {
+    transactions: number;
+    bytes: bigint;
+  };
+  expiration: number;
+}
+
+async function ensureStorageAuthorization(
+  client: PolkadotClient,
+  api: ReturnType<PolkadotClient["getUnsafeApi"]>,
+  signer: ReturnType<typeof getPolkadotSigner>,
+  dataLength: number,
+): Promise<void> {
+  const finalized = await client.getFinalizedBlock();
+  const signerAddress = AccountId().dec(signer.publicKey);
+  const authKey = Enum("Account", signerAddress);
+  const authorization =
+    (await api.query.TransactionStorage.Authorizations.getValue(authKey)) as
+      | StorageAuthorization
+      | undefined;
+
+  if (
+    authorization &&
+    authorization.expiration > finalized.number &&
+    authorization.extent.transactions > 0 &&
+    authorization.extent.bytes >= BigInt(dataLength)
+  ) {
+    return;
+  }
+
+  const tx = api.tx.TransactionStorage.authorize_account({
+    who: signerAddress,
+    transactions: DEFAULT_AUTH_TRANSACTIONS,
+    bytes: BigInt(DEFAULT_AUTH_BYTES),
+  });
+  await submitTransaction(tx, signer, "Bulletin RPC authorization tx failed");
+}
 
 export async function submitPreimageTransactionViaRpc(
   data: Uint8Array,
@@ -77,8 +137,17 @@ export async function submitPreimageTransactionViaRpc(
 ): Promise<void> {
   const client = await ensureBulletinRpcClient();
   const api = client.getUnsafeApi();
+  await ensureStorageAuthorization(client, api, signer, data.byteLength);
   const tx = api.tx.TransactionStorage.store({ data });
 
+  await submitTransaction(tx, signer, "Bulletin RPC tx failed");
+}
+
+async function submitTransaction(
+  tx: WatchedTransaction,
+  signer: ReturnType<typeof getPolkadotSigner>,
+  failureMessage: string,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let resolved = false;
 
@@ -114,7 +183,7 @@ export async function submitPreimageTransactionViaRpc(
         resolved = true;
         clearTimeout(timeoutId);
         subscription.unsubscribe();
-        reject(new Error("Bulletin RPC tx failed", { cause: e }));
+        reject(new Error(failureMessage, { cause: e }));
       },
     });
 
