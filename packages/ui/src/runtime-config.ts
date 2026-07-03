@@ -1,5 +1,5 @@
 import { getActiveServicesConfig } from "@dotli/config/network";
-import type { HostCoreRuntimeConfig } from "@parity/truapi-host-wasm";
+import type { ProductRuntimeConfig } from "@parity/truapi-host-wasm";
 
 type RuntimeLocation = Pick<Location, "origin">;
 
@@ -26,7 +26,7 @@ export function createTruapiRuntimeConfig(
   label: string,
   location: RuntimeLocation = window.location,
   productId: string = labelToProductId(label),
-): HostCoreRuntimeConfig {
+): ProductRuntimeConfig {
   void location;
   return {
     productId,

@@ -35,6 +35,9 @@ const slowMo = process.env.SLOWMO ? Number(process.env.SLOWMO) : 0;
 const smokeOnly = process.env.E2E_DOTLI_SMOKE === "1";
 const defaultBotBase = "https://signing-bot-dev.novasama-tech.org/";
 const defaultBotNetwork = "paseo-next-v2";
+const loginUserBadgeTimeoutMs = Number(
+  process.env.E2E_DOTLI_LOGIN_TIMEOUT_MS ?? "90000",
+);
 
 const botToken = readEnv("SIGNER_BOT_SVC_TOKEN");
 const botBase = process.env.SIGNER_BOT_BASE_URL ?? defaultBotBase;
@@ -274,7 +277,7 @@ async function waitForSignedIn(page: Page, result: PairResult): Promise<void> {
     await Promise.race([
       page
         .locator("#auth-button .user-badge")
-        .waitFor({ state: "visible", timeout: 90_000 }),
+        .waitFor({ state: "visible", timeout: loginUserBadgeTimeoutMs }),
       page.evaluate(
         () =>
           new Promise<never>((_, reject) => {

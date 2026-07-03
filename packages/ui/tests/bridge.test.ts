@@ -19,12 +19,17 @@ type MockProvider = {
   subscribe: ReturnType<typeof vi.fn>;
   subscribeClose: ReturnType<typeof vi.fn>;
   disconnectSession: ReturnType<typeof vi.fn>;
-  cancelPairing: ReturnType<typeof vi.fn>;
-  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatuses: ReturnType<typeof vi.fn>;
   setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+};
+
+type MockRuntime = {
+  createProvider: ReturnType<typeof vi.fn>;
+  cancelPairing: ReturnType<typeof vi.fn>;
+  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
 
@@ -43,12 +48,13 @@ function deferred<T>(): Deferred<T> {
 const mocks = vi.hoisted(() => ({
   coreProviders: [] as MockProvider[],
   coreProviderDefers: [] as Deferred<MockProvider>[],
+  coreRuntimes: [] as MockRuntime[],
   iframeHosts: [] as {
     iframeUrl: string;
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
-  createWebWorkerProvider: vi.fn(),
+  createWebWorkerPairingHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
@@ -60,7 +66,7 @@ vi.mock("@parity/truapi-host-wasm", () => ({
 }));
 
 vi.mock("@parity/truapi-host-wasm/web", () => ({
-  createWebWorkerProvider: mocks.createWebWorkerProvider,
+  createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));
 
@@ -81,8 +87,6 @@ function makeProvider(): MockProvider {
     subscribe: vi.fn(() => () => {}),
     subscribeClose: vi.fn(() => () => {}),
     disconnectSession: vi.fn(async () => {}),
-    cancelPairing: vi.fn(),
-    notifySessionStoreChanged: vi.fn(),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
     getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
       requests.map(() => "NotDetermined"),
@@ -111,8 +115,6 @@ function makeLoginProvider(options: {
     }),
     subscribeClose: vi.fn(() => () => {}),
     disconnectSession: vi.fn(async () => {}),
-    cancelPairing: vi.fn(),
-    notifySessionStoreChanged: vi.fn(),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
     getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
       requests.map(() => "NotDetermined"),
@@ -122,6 +124,21 @@ function makeLoginProvider(options: {
     dispose: vi.fn(),
   };
   return provider;
+}
+
+function makeRuntime(): MockRuntime {
+  const runtime = {
+    createProvider: vi.fn(() => {
+      const item = deferred<MockProvider>();
+      mocks.coreProviderDefers.push(item);
+      return item.promise;
+    }),
+    cancelPairing: vi.fn(),
+    notifySessionStoreChanged: vi.fn(),
+    dispose: vi.fn(),
+  };
+  mocks.coreRuntimes.push(runtime);
+  return runtime;
 }
 
 function loginResponseFrame(
@@ -212,13 +229,12 @@ describe("bridge render lifecycle", () => {
     vi.clearAllMocks();
     mocks.coreProviders.length = 0;
     mocks.coreProviderDefers.length = 0;
+    mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
     document.body.innerHTML = `<div id="app"></div>`;
-    mocks.createWebWorkerProvider.mockImplementation(() => {
-      const item = deferred<MockProvider>();
-      mocks.coreProviderDefers.push(item);
-      return item.promise;
-    });
+    mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
+      Promise.resolve(makeRuntime()),
+    );
     mocks.createIframeHost.mockImplementation(
       (args: { iframeUrl: string; container: HTMLElement }) => {
         const iframe = document.createElement("iframe");

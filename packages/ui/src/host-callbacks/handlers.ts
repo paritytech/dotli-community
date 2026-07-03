@@ -5,7 +5,7 @@
 // Scoping:
 // - `label` identifies the dApp, used in topbar notifications, permission
 //   storage keys, and sign modal titles.
-// - `storagePrefix` scopes `localStorage` per dApp.
+// - product storage keys are opaque; Rust core owns product namespacing.
 //
 import type { HostCallbacks } from "@parity/truapi-host-wasm";
 import { createNavigateTo } from "./OpenUrl";
@@ -29,7 +29,6 @@ export interface CreateHostCallbacksOptions {
   pairingLabel?: string;
   pairingDotSuffix?: boolean;
   pairingHostGlobal?: boolean;
-  storagePrefix: string;
 }
 
 export function createHostCallbacks(
@@ -40,16 +39,15 @@ export function createHostCallbacks(
     pairingLabel,
     pairingDotSuffix,
     pairingHostGlobal,
-    storagePrefix,
   } = options;
   return {
     navigateTo: createNavigateTo(),
     ...createNotificationAdapters(label),
     ...createPromptPermission(label),
     featureSupported: createFeatureSupported(),
-    read: createLocalStorageRead(storagePrefix),
-    write: createLocalStorageWrite(storagePrefix),
-    clear: createLocalStorageClear(storagePrefix),
+    read: createLocalStorageRead(),
+    write: createLocalStorageWrite(),
+    clear: createLocalStorageClear(),
     authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
       dotSuffix: pairingDotSuffix,
       hostGlobal: pairingHostGlobal,

@@ -8,8 +8,32 @@ const TRANSIENT = new Set([502, 503, 504]);
 // Per-attempt request timeout. First-time pair can include user creation and
 // People-chain attestation, so give the one-shot handshake room to finish
 // instead of aborting and retrying the same QR payload.
-const PAIR_REQUEST_TIMEOUT_MS = 120_000;
+const PAIR_REQUEST_TIMEOUT_MS = Number(
+  process.env.SIGNER_BOT_PAIR_TIMEOUT_MS ?? "120000",
+);
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000;
+
+function shellQuote(value: string): string {
+  if (value.length === 0) return "''";
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function buildPairCurl(url: string, body: unknown): string {
+  return [
+    `curl -sS -X POST ${shellQuote(url)}`,
+    '-H "Authorization: Bearer ${SIGNER_BOT_SVC_TOKEN}"',
+    "-H 'Content-Type: application/json'",
+    "-H 'Accept: application/json'",
+    `--data-raw ${shellQuote(JSON.stringify(body))}`,
+  ].join(" \\\n  ");
+}
+
+function redactSignerBotResponse(text: string): string {
+  return text.replace(
+    /"mnemonic"\s*:\s*"[^"]+"/g,
+    '"mnemonic":"[redacted]"',
+  );
+}
 
 async function fetchWithTimeout(
   url: string,
@@ -98,7 +122,9 @@ export async function pair(
   svcToken: string,
   args: { handshake: string; username: string; network: string },
 ): Promise<PairResult> {
-  const r = await fetchRetry(`${base.replace(/\/$/, "")}/api/pair`, {
+  const url = `${base.replace(/\/$/, "")}/api/pair`;
+  console.log(`[bot] /api/pair curl:\n${buildPairCurl(url, args)}`);
+  const r = await fetchRetry(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${svcToken}`,
@@ -107,10 +133,14 @@ export async function pair(
     },
     body: JSON.stringify(args),
   });
+  const text = await r.text();
+  console.log(
+    `[bot] /api/pair response ${r.status} ${r.statusText}: ${redactSignerBotResponse(text)}`,
+  );
   if (!r.ok) {
-    throw new Error(`pair ${r.status}: ${await r.text()}`);
+    throw new Error(`pair ${r.status}: ${text}`);
   }
-  return (await r.json()) as PairResult;
+  return JSON.parse(text) as PairResult;
 }
 
 /**

@@ -3,12 +3,10 @@ import { base64 } from "@scure/base";
 
 const SSO_DEVICE_IDENTITY_KEY = "truapi:sso-device-identity:v1";
 
-export function createLocalStorageRead(
-  storagePrefix: string,
-): HostCallbacks["read"] {
+export function createLocalStorageRead(): HostCallbacks["read"] {
   return (key) => {
     try {
-      const raw = localStorage.getItem(storagePrefix + key);
+      const raw = localStorage.getItem(storageKey(key));
       if (raw === null) {
         return Promise.resolve(undefined);
       }
@@ -21,12 +19,10 @@ export function createLocalStorageRead(
   };
 }
 
-export function createLocalStorageWrite(
-  storagePrefix: string,
-): HostCallbacks["write"] {
+export function createLocalStorageWrite(): HostCallbacks["write"] {
   return (key, value) => {
     try {
-      localStorage.setItem(storagePrefix + key, base64.encode(value));
+      localStorage.setItem(storageKey(key), base64.encode(value));
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error("Failed to write to storage", { cause }));
@@ -34,20 +30,22 @@ export function createLocalStorageWrite(
   };
 }
 
-export function createLocalStorageClear(
-  storagePrefix: string,
-): HostCallbacks["clear"] {
+export function createLocalStorageClear(): HostCallbacks["clear"] {
   return (key) => {
     try {
       if (key === SSO_DEVICE_IDENTITY_KEY) {
         clearSsoDeviceIdentities();
       }
-      localStorage.removeItem(storagePrefix + key);
+      localStorage.removeItem(storageKey(key));
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(new Error("Failed to clear storage", { cause }));
     }
   };
+}
+
+function storageKey(key: string): string {
+  return `dotli:${key}`;
 }
 
 function clearSsoDeviceIdentities(): void {

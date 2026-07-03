@@ -16,7 +16,7 @@ import type { HostDevicePermissionRequest } from "@parity/truapi";
 import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
-  TrUApiHostCoreProvider,
+  TrUApiProductProvider,
 } from "@parity/truapi-host-wasm";
 
 export type DevicePermissionName = HostDevicePermissionRequest;
@@ -113,7 +113,7 @@ export function isDevicePermission(name: string): boolean {
 }
 
 type PermissionAuthorizationProvider = Pick<
-  TrUApiHostCoreProvider,
+  TrUApiProductProvider,
   "getPermissionAuthorizationStatuses" | "setPermissionAuthorizationStatus"
 >;
 
