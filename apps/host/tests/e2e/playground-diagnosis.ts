@@ -38,6 +38,7 @@ const defaultBotNetwork = "paseo-next-v2";
 const loginUserBadgeTimeoutMs = Number(
   process.env.E2E_DOTLI_LOGIN_TIMEOUT_MS ?? "90000",
 );
+const pairingDeviceIdentityStorageKey = "dotli:core:pairing-device-identity";
 
 const botToken = readEnv("SIGNER_BOT_SVC_TOKEN");
 const botBase = process.env.SIGNER_BOT_BASE_URL ?? defaultBotBase;
@@ -477,10 +478,21 @@ async function assertHostSignOutAndReconnect(
   page: Page,
 ): Promise<PairResult> {
   console.log("[e2e-dotli] validating host sign-out");
+  const pairingDeviceIdentity = await page.evaluate((key) => {
+    return localStorage.getItem(key);
+  }, pairingDeviceIdentityStorageKey);
   await signOutIfNeeded(page);
   await page
     .locator("#auth-button .user-badge")
     .waitFor({ state: "hidden", timeout: 20_000 });
+  if (pairingDeviceIdentity) {
+    await page.evaluate(
+      ({ key, value }) => {
+        localStorage.setItem(key, value);
+      },
+      { key: pairingDeviceIdentityStorageKey, value: pairingDeviceIdentity },
+    );
+  }
   await captureStep(page, "signed-out");
 
   console.log("[e2e-dotli] validating signer reconnect");

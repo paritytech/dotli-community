@@ -1,9 +1,9 @@
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { ProductStorage } from "@parity/truapi-host-wasm";
 import { base64 } from "@scure/base";
 
 const SSO_DEVICE_IDENTITY_KEY = "truapi:sso-device-identity:v1";
 
-export function createLocalStorageRead(): HostCallbacks["read"] {
+export function createLocalStorageRead(): ProductStorage["read"] {
   return (key) => {
     try {
       const raw = localStorage.getItem(storageKey(key));
@@ -19,7 +19,7 @@ export function createLocalStorageRead(): HostCallbacks["read"] {
   };
 }
 
-export function createLocalStorageWrite(): HostCallbacks["write"] {
+export function createLocalStorageWrite(): ProductStorage["write"] {
   return (key, value) => {
     try {
       localStorage.setItem(storageKey(key), base64.encode(value));
@@ -30,7 +30,7 @@ export function createLocalStorageWrite(): HostCallbacks["write"] {
   };
 }
 
-export function createLocalStorageClear(): HostCallbacks["clear"] {
+export function createLocalStorageClear(): ProductStorage["clear"] {
   return (key) => {
     try {
       if (key === SSO_DEVICE_IDENTITY_KEY) {

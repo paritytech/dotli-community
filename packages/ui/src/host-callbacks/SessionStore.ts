@@ -2,8 +2,8 @@ import { SITE_ID } from "@dotli/config/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
 import { encodeCoreStorageKey } from "@parity/truapi-host-wasm";
 import type {
+  CoreStorage,
   CoreStorageKey,
-  HostCallbacks,
   SessionUiInfo,
 } from "@parity/truapi-host-wasm";
 import {
@@ -125,10 +125,7 @@ export function emitPersistedSessionUiState(): void {
   })();
 }
 
-export function createSessionStoreAdapters(): Pick<
-  HostCallbacks,
-  "readCoreStorage" | "writeCoreStorage" | "clearCoreStorage"
-> {
+export function createSessionStoreAdapters(): CoreStorage {
   return {
     async readCoreStorage(key) {
       return readCoreStorageValue(key);

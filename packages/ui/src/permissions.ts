@@ -24,6 +24,7 @@ export type DevicePermissionName = HostDevicePermissionRequest;
 export type PermissionName =
   | DevicePermissionName
   | "ChainSubmit"
+  | "IdentityDisclosure"
   | "PreimageSubmit"
   | "StatementSubmit";
 
@@ -102,6 +103,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: "NFC", label: "NFC" },
   { name: "Clipboard", label: "Clipboard" },
   { name: "Biometrics", label: "Biometrics" },
+  { name: "IdentityDisclosure", label: "Identity Disclosure" },
   { name: "ChainSubmit", label: "Sign Transactions" },
   { name: "PreimageSubmit", label: "Submit Preimages" },
   { name: "StatementSubmit", label: "Submit Statements" },
@@ -147,6 +149,9 @@ function authorizationRequest(
       tag: "Remote",
       value: { permission: { tag: permission } },
     };
+  }
+  if (permission === "IdentityDisclosure") {
+    return { tag: "IdentityDisclosure" };
   }
   return { tag: "Device", value: permission };
 }

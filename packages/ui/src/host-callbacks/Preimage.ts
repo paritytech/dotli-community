@@ -2,7 +2,7 @@
 // (Helia P2P or IPFS gateway) until the preimage is found or the
 // subscription is dropped.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { PreimageHost } from "@parity/truapi-host-wasm";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getBackend } from "@dotli/config/mode";
@@ -22,7 +22,7 @@ function noop(): void {
 
 function createPreimageSubmit(
   label: string,
-): Required<HostCallbacks>["submitPreimage"] {
+): Required<PreimageHost>["submitPreimage"] {
   return async (value) => {
     const key = computePreimageKey(value);
     await submitPreimageRemote(value);
@@ -34,7 +34,7 @@ function createPreimageSubmit(
 
 function createPreimageLookupSubscribe(
   label: string,
-): Required<HostCallbacks>["lookupPreimage"] {
+): Required<PreimageHost>["lookupPreimage"] {
   return (request) => {
     const key = toHex(request);
     log.warn(`[${label}] Preimage lookup subscribe, key: ${key}`);
@@ -114,7 +114,7 @@ function createPreimageLookupSubscribe(
 
 export function createPreimageAdapters(
   label: string,
-): Pick<Required<HostCallbacks>, "submitPreimage" | "lookupPreimage"> {
+): Required<PreimageHost> {
   return {
     submitPreimage: createPreimageSubmit(label),
     lookupPreimage: createPreimageLookupSubscribe(label),

@@ -66,6 +66,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `Device:${request.value}`;
     case "Remote":
       return `Remote:${request.value.permission.tag}`;
+    case "IdentityDisclosure":
+      return "IdentityDisclosure";
   }
 }
 
@@ -73,6 +75,9 @@ describe("getPermissionStatus / setPermissionStatus", () => {
   it("returns 'ask' by default", async () => {
     expect(await getPermissionStatus("myapp", "Camera")).toBe("ask");
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("ask");
+    expect(await getPermissionStatus("myapp", "IdentityDisclosure")).toBe(
+      "ask",
+    );
   });
 
   it("round-trips a granted status", async () => {
@@ -88,15 +93,20 @@ describe("getPermissionStatus / setPermissionStatus", () => {
   it("uses the core-backed authorization store", async () => {
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
     await setPermissionStatus("myapp", "Camera", "denied");
+    await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
 
     expect(myappStore).toEqual(
       new Map([
         ["Remote:ChainSubmit", "Authorized"],
         ["Device:Camera", "Denied"],
+        ["IdentityDisclosure", "Authorized"],
       ]),
     );
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
     expect(await getPermissionStatus("myapp", "Camera")).toBe("denied");
+    expect(await getPermissionStatus("myapp", "IdentityDisclosure")).toBe(
+      "granted",
+    );
   });
 
   it("reads multiple statuses in one provider call", async () => {
@@ -139,13 +149,14 @@ describe("hasAnyGrant", () => {
   });
 
   it("returns true after any grant", async () => {
-    await setPermissionStatus("myapp", "Camera", "granted");
+    await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
     expect(await hasAnyGrant("myapp")).toBe(true);
   });
 
   it("returns false when only denials exist", async () => {
     await setPermissionStatus("myapp", "Camera", "denied");
     await setPermissionStatus("myapp", "ChainSubmit", "denied");
+    await setPermissionStatus("myapp", "IdentityDisclosure", "denied");
     expect(await hasAnyGrant("myapp")).toBe(false);
   });
 
@@ -171,6 +182,7 @@ describe("isDevicePermission", () => {
     expect(isDevicePermission("ChainSubmit")).toBe(false);
     expect(isDevicePermission("PreimageSubmit")).toBe(false);
     expect(isDevicePermission("StatementSubmit")).toBe(false);
+    expect(isDevicePermission("IdentityDisclosure")).toBe(false);
   });
 
   it("rejects device permissions absent from the policy map", () => {
@@ -195,10 +207,11 @@ describe("isEnforceableDevicePermission", () => {
 });
 
 describe("getGrantedDevicePermissions", () => {
-  it("returns only granted device permissions, ignoring submit-style grants", async () => {
+  it("returns only granted device permissions, ignoring core-only grants", async () => {
     await setPermissionStatus("myapp", "Camera", "granted");
     await setPermissionStatus("myapp", "Microphone", "denied");
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
+    await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
 
     expect(await getGrantedDevicePermissions("myapp")).toEqual(["Camera"]);
   });
@@ -241,6 +254,7 @@ describe("ALL_PERMISSIONS (data invariants)", () => {
   it("uses the canonical v0.7 wire tags for submit gates", () => {
     const names = ALL_PERMISSIONS.map((p) => p.name);
     expect(names).toContain("ChainSubmit");
+    expect(names).toContain("IdentityDisclosure");
     expect(names).toContain("PreimageSubmit");
     expect(names).toContain("StatementSubmit");
     expect(names).toContain("Notifications");

@@ -11,9 +11,9 @@ import {
 // Shows a confirmation dialog when a product requests a permission the
 // host can actually gate: the Permissions-Policy-backed device
 // variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
-// Biometrics, Notifications) and the internal submitted gates (ChainSubmit,
-// PreimageSubmit, StatementSubmit). `OpenUrl` is auto-granted at the
-// container level and never reaches this modal.
+// Biometrics, Notifications), identity disclosure, and the internal submitted
+// gates (ChainSubmit, PreimageSubmit, StatementSubmit). `OpenUrl` is
+// auto-granted at the container level and never reaches this modal.
 // Returns a Promise that resolves on "Allow" and rejects on "Deny".
 //
 // DOM structure follows the signing modal pattern (signing.css).
@@ -30,6 +30,7 @@ export const PERMISSION_DESCRIPTIONS: Record<
   NFC: "Read and write nearby NFC tags",
   Clipboard: "Read text and data from your clipboard",
   Biometrics: "Authenticate with a platform passkey or biometric prompt",
+  IdentityDisclosure: "Share your primary DotNS identity with this app",
   ChainSubmit: "Sign and submit on-chain transactions on your behalf",
   PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
   StatementSubmit: "Submit signed statements to the statement store",
@@ -71,6 +72,11 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<path d="M12 11a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0v-2a4 4 0 0 0-4-4z"/>' +
     '<path d="M6 11a6 6 0 0 1 12 0"/>' +
     '<path d="M4 11a8 8 0 0 1 16 0"/></svg>',
+  IdentityDisclosure:
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="8" r="4"/>' +
+    '<path d="M4 21a8 8 0 0 1 16 0"/>' +
+    '<path d="M19 3v4h4"/></svg>',
   ChainSubmit:
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>' +

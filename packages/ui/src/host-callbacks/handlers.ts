@@ -7,7 +7,7 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { RequiredHostCallbacks } from "@parity/truapi-host-wasm";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
 import { createPromptPermission } from "./PromptPermission";
@@ -33,7 +33,7 @@ export interface CreateHostCallbacksOptions {
 
 export function createHostCallbacks(
   options: CreateHostCallbacksOptions,
-): Required<HostCallbacks> {
+): RequiredHostCallbacks {
   const {
     label,
     pairingLabel,
@@ -41,21 +41,25 @@ export function createHostCallbacks(
     pairingHostGlobal,
   } = options;
   return {
-    navigateTo: createNavigateTo(),
-    ...createNotificationAdapters(label),
-    ...createPromptPermission(label),
-    featureSupported: createFeatureSupported(),
-    read: createLocalStorageRead(),
-    write: createLocalStorageWrite(),
-    clear: createLocalStorageClear(),
-    authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
-      dotSuffix: pairingDotSuffix,
-      hostGlobal: pairingHostGlobal,
-    }),
-    ...createSessionStoreAdapters(),
-    ...createUserConfirmationAdapters(label),
-    ...createPreimageAdapters(label),
-    subscribeTheme: createThemeSubscribe(),
-    connect: createChainConnect(),
+    navigation: { navigateTo: createNavigateTo() },
+    notifications: createNotificationAdapters(label),
+    permissions: createPromptPermission(label),
+    features: { featureSupported: createFeatureSupported() },
+    productStorage: {
+      read: createLocalStorageRead(),
+      write: createLocalStorageWrite(),
+      clear: createLocalStorageClear(),
+    },
+    coreStorage: createSessionStoreAdapters(),
+    auth: {
+      authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
+        dotSuffix: pairingDotSuffix,
+        hostGlobal: pairingHostGlobal,
+      }),
+    },
+    userConfirmation: createUserConfirmationAdapters(label),
+    theme: { subscribeTheme: createThemeSubscribe() },
+    preimage: createPreimageAdapters(label),
+    chain: { connect: createChainConnect() },
   };
 }

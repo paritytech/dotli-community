@@ -1,7 +1,7 @@
 // Push-notification callback. The Rust core passes the typed request, and
 // this adapter returns a stable host-side id for cancel support.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { Notifications } from "@parity/truapi-host-wasm";
 import { log } from "@dotli/shared/log";
 import {
   cancelNotification,
@@ -13,9 +13,9 @@ import { createSubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
-): Pick<Required<HostCallbacks>, "pushNotification" | "cancelNotification"> {
+): Required<Notifications> {
   const limiter = createSubmitRateLimiter();
-  const pushNotification: Required<HostCallbacks>["pushNotification"] = async ({
+  const pushNotification: Required<Notifications>["pushNotification"] = async ({
     text,
     deeplink,
     scheduledAt,
@@ -52,7 +52,7 @@ export function createNotificationAdapters(
   };
 
   const cancelPushNotification: Required<
-    HostCallbacks
+    Notifications
   >["cancelNotification"] = async (id) => {
     await cancelNotification(label, id);
   };

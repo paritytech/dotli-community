@@ -15,7 +15,7 @@ import type {
   JsonRpcRequest,
   JsonRpcProvider,
 } from "@polkadot-api/json-rpc-provider";
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { ChainProvider } from "@parity/truapi-host-wasm";
 import type { PlatformJsonRpcConnection } from "@parity/truapi-host-wasm";
 import { hasDotliDebugListeners } from "@dotli/truapi-debug/dotli-debug-bus";
 import { SS_USE_SMOLDOT } from "@dotli/config/config";
@@ -262,7 +262,7 @@ function errorMessage(error: unknown): string | undefined {
   return typeof message === "string" ? message : JSON.stringify(error);
 }
 
-export function createChainConnect(): HostCallbacks["connect"] {
+export function createChainConnect(): ChainProvider["connect"] {
   return (genesisHashBytes) => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = backendForChain(genesisHash);

@@ -1,9 +1,9 @@
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { UserConfirmation } from "@parity/truapi-host-wasm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
 
 type UserConfirmationReview = Parameters<
-  Required<HostCallbacks>["confirmUserAction"]
+  Required<UserConfirmation>["confirmUserAction"]
 >[0];
 
 afterEach(() => {
@@ -157,6 +157,37 @@ describe("user confirmation modal", () => {
     expect(fields).toEqual({
       "Requesting product": "truapi-playground.dot",
       "Requested context": "truapix-playground.dot",
+    });
+    expect(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
+        ?.textContent,
+    ).toBe("Deny");
+    expect(Object.keys(fields)).not.toContain("Application");
+    expect(Object.keys(fields)).not.toContain("Request");
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    await expect(confirmation).resolves.toBe(true);
+  });
+
+  it("renders identity disclosure as structured product fields", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "IdentityDisclosure",
+      value: {
+        productId: "truapi-playground.dot",
+      },
+    };
+
+    const confirmation = confirmUserAction(review);
+
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Identity Disclosure",
+    );
+    const fields = modalFields();
+    expect(fields).toEqual({
+      "Requesting product": "truapi-playground.dot",
     });
     expect(
       document.querySelector<HTMLButtonElement>(".signing-btn-cancel")

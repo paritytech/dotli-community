@@ -1,4 +1,4 @@
-import type { AuthState, HostCallbacks } from "@parity/truapi-host-wasm";
+import type { AuthPresenter, AuthState } from "@parity/truapi-host-wasm";
 import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { emitSsoPairingPresented } from "./SsoDebug";
 import {
@@ -41,7 +41,7 @@ export function dispatchAuthState(state: DotliAuthState): void {
 export function createAuthStateChanged(
   label: string,
   options: { dotSuffix?: boolean; hostGlobal?: boolean } = {},
-): Required<HostCallbacks>["authStateChanged"] {
+): Required<AuthPresenter>["authStateChanged"] {
   return (state: AuthState) => {
     switch (state.tag) {
       case "Pairing": {

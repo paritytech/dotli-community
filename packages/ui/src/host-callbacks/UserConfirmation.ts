@@ -1,4 +1,4 @@
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { UserConfirmation as UserConfirmationHost } from "@parity/truapi-host-wasm";
 import { showPreimageSubmitModal } from "../preimage-modal";
 
 interface ConfirmationCopy {
@@ -14,7 +14,7 @@ interface ConfirmationField {
 }
 
 type UserConfirmationReview = Parameters<
-  Required<HostCallbacks>["confirmUserAction"]
+  Required<UserConfirmationHost>["confirmUserAction"]
 >[0];
 
 function showConfirmationModal(
@@ -135,6 +135,9 @@ function confirmationDisplay(
   }
   if (review.tag === "AccountAlias") {
     return { fields: createAccountAliasFields(review.value) };
+  }
+  if (review.tag === "IdentityDisclosure") {
+    return { fields: createIdentityDisclosureFields(review.value) };
   }
   if (review.tag === "ResourceAllocation") {
     return { fields: createResourceAllocationFields(review.value) };
@@ -266,6 +269,15 @@ function createAccountAliasFields(
   ];
 }
 
+function createIdentityDisclosureFields(
+  review: Extract<
+    UserConfirmationReview,
+    { tag: "IdentityDisclosure" }
+  >["value"],
+): ConfirmationField[] {
+  return [{ label: "Requesting product", value: review.productId }];
+}
+
 function formatResource(
   resource: Extract<
     UserConfirmationReview,
@@ -305,6 +317,12 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
         action: "Allow",
         cancelAction: "Deny",
       };
+    case "IdentityDisclosure":
+      return {
+        title: "Identity Disclosure",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
     case "ResourceAllocation":
       return { title: "Resource Allocation", action: "Allow" };
     case "PreimageSubmit":
@@ -325,7 +343,7 @@ async function handlePreimageSubmitReview(
 
 export function createUserConfirmationAdapters(
   label: string,
-): Pick<Required<HostCallbacks>, "confirmUserAction"> {
+): Required<UserConfirmationHost> {
   return {
     confirmUserAction: (review) =>
       review.tag === "PreimageSubmit"

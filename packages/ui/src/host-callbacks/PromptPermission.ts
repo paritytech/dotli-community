@@ -3,7 +3,7 @@
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { Permissions } from "@parity/truapi-host-wasm";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
@@ -34,9 +34,9 @@ function gatedRemotePermissionName(
 
 export function createPromptPermission(
   label: string,
-): Pick<HostCallbacks, "devicePermission" | "remotePermission"> {
+): Permissions {
   const limiter = createSubmitRateLimiter();
-  const devicePermission: HostCallbacks["devicePermission"] = async (tag) => {
+  const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
@@ -51,7 +51,7 @@ export function createPromptPermission(
     };
   };
 
-  const remotePermission: HostCallbacks["remotePermission"] = async (
+  const remotePermission: Permissions["remotePermission"] = async (
     request,
   ) => {
     const name = gatedRemotePermissionName(request.permission.tag);
