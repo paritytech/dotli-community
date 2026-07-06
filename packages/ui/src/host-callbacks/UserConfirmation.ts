@@ -136,6 +136,9 @@ function confirmationDisplay(
   if (review.tag === "AccountAlias") {
     return { fields: createAccountAliasFields(review.value) };
   }
+  if (review.tag === "AccountAccess") {
+    return { fields: createAccountAccessFields(review.value) };
+  }
   if (review.tag === "IdentityDisclosure") {
     return { fields: createIdentityDisclosureFields(review.value) };
   }
@@ -269,6 +272,15 @@ function createAccountAliasFields(
   ];
 }
 
+function createAccountAccessFields(
+  review: Extract<UserConfirmationReview, { tag: "AccountAccess" }>["value"],
+): ConfirmationField[] {
+  return [
+    { label: "Requesting product", value: review.requestingProductId },
+    { label: "Requested account", value: review.targetProductId },
+  ];
+}
+
 function createIdentityDisclosureFields(
   review: Extract<
     UserConfirmationReview,
@@ -314,6 +326,12 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
     case "AccountAlias":
       return {
         title: "Alias Permission",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
+    case "AccountAccess":
+      return {
+        title: "Account Access",
         action: "Allow",
         cancelAction: "Deny",
       };

@@ -170,6 +170,39 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
+  it("renders account access permission as structured product fields", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    };
+
+    const confirmation = confirmUserAction(review);
+
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Account Access",
+    );
+    const fields = modalFields();
+    expect(fields).toEqual({
+      "Requesting product": "truapi-playground.dot",
+      "Requested account": "other-product.dot",
+    });
+    expect(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
+        ?.textContent,
+    ).toBe("Deny");
+    expect(Object.keys(fields)).not.toContain("Application");
+    expect(Object.keys(fields)).not.toContain("Request");
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    await expect(confirmation).resolves.toBe(true);
+  });
+
   it("renders identity disclosure as structured product fields", async () => {
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
