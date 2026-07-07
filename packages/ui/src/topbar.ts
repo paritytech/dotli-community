@@ -15,6 +15,7 @@ import type { Identity } from "@novasamatech/host-papp";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
+import { toHex } from "@dotli/shared/hex";
 import {
   formatAppVersion,
   getActiveAppManifest,
@@ -172,6 +173,7 @@ export function initTopBar(): void {
 
   // Auth button: opens modal (logged out) or popover (logged in)
   authButton.addEventListener("click", handleAuthButtonClick);
+  authButton.removeAttribute("disabled");
 
   // Modal close button
   modalClose.addEventListener("click", closeModal);
@@ -362,9 +364,7 @@ function renderLoggedIn(state: AuthState & { status: "authenticated" }): void {
     username = fullName ?? liteName ?? "";
   } else {
     // Fallback to truncated account address
-    const id = Array.from(state.session.remoteAccount.accountId)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    const id = toHex(state.session.remoteAccount.accountId).slice(2);
     username = `0x${id.slice(0, 6)}...${id.slice(-4)}`;
   }
   userPopoverUsername.textContent = username;
@@ -381,6 +381,7 @@ function renderPairing(payload: string): void {
 
   // Render QR code (lazy-load qrcode lib, guard against stale appends)
   const canvas = document.createElement("canvas");
+  canvas.dataset.qrPayload = payload;
   const capturedPayload = payload;
   void import("qrcode")
     .then((QRCode) =>

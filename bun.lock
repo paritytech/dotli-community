@@ -263,6 +263,7 @@
       "version": "0.6.0",
       "dependencies": {
         "@dotli/config": "workspace:*",
+        "@noble/hashes": "^2.2.0",
       },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",
