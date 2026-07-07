@@ -14,7 +14,8 @@ import {
 // Biometrics, Notifications) and the internal submitted gates (ChainSubmit,
 // PreimageSubmit, StatementSubmit). `OpenUrl` is auto-granted at the
 // container level and never reaches this modal.
-// Returns a Promise that resolves on "Allow" and rejects on "Deny".
+// Returns an explicit decision so callers can distinguish "Deny" from
+// dismissing the dialog without storing a denial.
 //
 // DOM structure follows the signing modal pattern (signing.css).
 
@@ -93,15 +94,16 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<circle cx="12" cy="7" r="4"/></svg>',
 };
 
+export type PermissionPromptDecision = "granted" | "denied" | "dismissed";
+
 /**
- * Show a permission request modal. Resolves when the user clicks "Allow",
- * rejects when the user clicks "Deny".
+ * Show a permission request modal.
  */
 export function showPermissionRequestModal(
   label: string,
   permission: EnforceablePermissionName,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
+): Promise<PermissionPromptDecision> {
+  return new Promise((resolve) => {
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
 
@@ -187,19 +189,19 @@ export function showPermissionRequestModal(
 
     denyBtn.addEventListener("click", () => {
       cleanup();
-      reject(new Error("User denied permission"));
+      resolve("denied");
     });
 
     allowBtn.addEventListener("click", () => {
       cleanup();
-      resolve();
+      resolve("granted");
     });
 
     // Close on backdrop click (outside modal)
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
         cleanup();
-        reject(new Error("User dismissed permission dialog"));
+        resolve("dismissed");
       }
     });
   });

@@ -821,14 +821,20 @@ function wireContainerHandlers(
         }
 
         return fromPromise(
-          showPermissionRequestModal(label, "Notifications").then(() => {
-            setPermissionStatus(label, "Notifications", "granted");
-          }),
-          () => "denied" as const,
+          showPermissionRequestModal(label, "Notifications"),
+          () => "dismissed" as const,
         )
-          .map(() => true)
+          .map((decision) => {
+            if (decision === "granted") {
+              setPermissionStatus(label, "Notifications", "granted");
+              return true;
+            }
+            if (decision === "denied") {
+              setPermissionStatus(label, "Notifications", "denied");
+            }
+            return false;
+          })
           .orElse(() => {
-            setPermissionStatus(label, "Notifications", "denied");
             return ok(false);
           });
       }
@@ -858,29 +864,31 @@ function wireContainerHandlers(
 
       // status === 'ask': show consent modal
       return fromPromise(
-        showPermissionRequestModal(label, permission).then(() => {
-          setPermissionStatus(label, permission, "granted");
-          // Defer the reload to the next event loop tick so the
-          // container can finish sending the response before being
-          // disposed. Without this, cleanup() runs synchronously
-          // inside the dispatch, disposing the transport mid-response.
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent("dotli:device-permission-changed", {
-                detail: { label, permission },
-              }),
-            );
-          }, 0);
-        }),
-        () => "denied" as const,
+        showPermissionRequestModal(label, permission),
+        () => "dismissed" as const,
       )
-        .map(() => {
-          // User allowed, but the iframe reloads, so return false for now
+        .map((decision) => {
+          if (decision === "granted") {
+            setPermissionStatus(label, permission, "granted");
+            // Defer the reload to the next event loop tick so the
+            // container can finish sending the response before being
+            // disposed. Without this, cleanup() runs synchronously
+            // inside the dispatch, disposing the transport mid-response.
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("dotli:device-permission-changed", {
+                  detail: { label, permission },
+                }),
+              );
+            }, 0);
+          } else if (decision === "denied") {
+            setPermissionStatus(label, permission, "denied");
+          }
+          // User allowed reloads the iframe, so return false for now. Deny and
+          // dismiss also fail closed for this request.
           return false;
         })
         .orElse(() => {
-          // User denied (rejected promise) or dialog dismissed
-          setPermissionStatus(label, permission, "denied");
           return ok(false);
         });
     }),
@@ -1290,19 +1298,25 @@ function promptCachedSubmitPermission(
   }
 
   return fromPromise(
-    showPermissionRequestModal(productLabel, storageKey).then(() => {
-      setPermissionStatus(productLabel, storageKey, "granted");
-      window.dispatchEvent(
-        new CustomEvent("dotli:permission-changed", {
-          detail: { label: productLabel },
-        }),
-      );
-    }),
-    () => "denied" as const,
+    showPermissionRequestModal(productLabel, storageKey),
+    () => "dismissed" as const,
   )
-    .map(() => true)
+    .map((decision) => {
+      if (decision === "granted") {
+        setPermissionStatus(productLabel, storageKey, "granted");
+        window.dispatchEvent(
+          new CustomEvent("dotli:permission-changed", {
+            detail: { label: productLabel },
+          }),
+        );
+        return true;
+      }
+      if (decision === "denied") {
+        setPermissionStatus(productLabel, storageKey, "denied");
+      }
+      return false;
+    })
     .orElse(() => {
-      setPermissionStatus(productLabel, storageKey, "denied");
       return okAsync(false);
     });
 }
