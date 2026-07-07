@@ -50,7 +50,7 @@ describe("notification host callbacks", () => {
       immediate: true,
     });
     mocks.cancelNotification.mockResolvedValue(true);
-    mocks.showPermissionRequestModal.mockResolvedValue(undefined);
+    mocks.showPermissionRequestModal.mockResolvedValue("granted");
   });
 
   it("prompts for notification permission, schedules, fires immediate notifications, and returns ids", async () => {
@@ -110,7 +110,7 @@ describe("notification host callbacks", () => {
 
   it("rejects when notification permission is denied", async () => {
     const authorization = await registerNotificationAuthorization();
-    mocks.showPermissionRequestModal.mockRejectedValue(new Error("denied"));
+    mocks.showPermissionRequestModal.mockResolvedValue("denied");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");
@@ -125,6 +125,25 @@ describe("notification host callbacks", () => {
 
     expect(mocks.scheduleNotification).not.toHaveBeenCalled();
     expect(authorization.status).toBe("Denied");
+  });
+
+  it("keeps notification permission ask when the prompt is dismissed", async () => {
+    const authorization = await registerNotificationAuthorization();
+    mocks.showPermissionRequestModal.mockResolvedValue("dismissed");
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
+    const { pushNotification } = createNotificationAdapters("myapp");
+
+    await expect(
+      pushNotification({
+        text: "hello",
+        deeplink: undefined,
+        scheduledAt: undefined,
+      }),
+    ).rejects.toThrow("User dismissed permission dialog");
+
+    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
+    expect(authorization.status).toBe("NotDetermined");
   });
 
   it("reuses the shared blocked-permission path for stored notification denials", async () => {

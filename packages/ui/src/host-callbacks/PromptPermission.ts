@@ -32,9 +32,7 @@ function gatedRemotePermissionName(
   }
 }
 
-export function createPromptPermission(
-  label: string,
-): Permissions {
+export function createPromptPermission(label: string): Permissions {
   const limiter = createSubmitRateLimiter();
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
@@ -51,9 +49,7 @@ export function createPromptPermission(
     };
   };
 
-  const remotePermission: Permissions["remotePermission"] = async (
-    request,
-  ) => {
+  const remotePermission: Permissions["remotePermission"] = async (request) => {
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
       return { granted: true };
@@ -97,11 +93,13 @@ export async function decidePromptPermission(
   }
   // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
-    return false;
+    throw new Error("Permission prompt rate limited");
   }
-  try {
-    await showPermissionRequestModal(label, name);
-  } catch {
+  const decision = await showPermissionRequestModal(label, name);
+  if (decision === "dismissed") {
+    throw new Error("User dismissed permission dialog");
+  }
+  if (decision === "denied") {
     await setPermissionStatus(label, name, "denied");
     return false;
   }

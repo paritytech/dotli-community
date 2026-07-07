@@ -113,10 +113,7 @@ describe("user confirmation modal", () => {
     const review: UserConfirmationReview = {
       tag: "ResourceAllocation",
       value: {
-        resources: [
-          { tag: "StatementStoreAllowance" },
-          { tag: "AutoSigning" },
-        ],
+        resources: [{ tag: "StatementStoreAllowance" }, { tag: "AutoSigning" }],
       },
     };
 
@@ -232,5 +229,24 @@ describe("user confirmation modal", () => {
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
     await expect(confirmation).resolves.toBe(true);
+  });
+
+  it("rejects identity disclosure when the dialog is dismissed", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "IdentityDisclosure",
+      value: {
+        productId: "truapi-playground.dot",
+      },
+    };
+
+    const confirmation = confirmUserAction(review);
+
+    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+
+    await expect(confirmation).rejects.toThrow(
+      "User dismissed identity disclosure dialog",
+    );
   });
 });

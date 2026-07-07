@@ -36,9 +36,8 @@ const smokeOnly = process.env.E2E_DOTLI_SMOKE === "1";
 const defaultBotBase = "https://signing-bot-dev.novasama-tech.org/";
 const defaultBotNetwork = "paseo-next-v2";
 const loginUserBadgeTimeoutMs = Number(
-  process.env.E2E_DOTLI_LOGIN_TIMEOUT_MS ?? "90000",
+  process.env.E2E_DOTLI_LOGIN_TIMEOUT_MS ?? "240000",
 );
-const pairingDeviceIdentityStorageKey = "dotli:core:pairing-device-identity";
 
 const botToken = readEnv("SIGNER_BOT_SVC_TOKEN");
 const botBase = process.env.SIGNER_BOT_BASE_URL ?? defaultBotBase;
@@ -474,25 +473,12 @@ async function waitForPlaygroundE2EHook(page: Page): Promise<void> {
   });
 }
 
-async function assertHostSignOutAndReconnect(
-  page: Page,
-): Promise<PairResult> {
+async function assertHostSignOutAndReconnect(page: Page): Promise<PairResult> {
   console.log("[e2e-dotli] validating host sign-out");
-  const pairingDeviceIdentity = await page.evaluate((key) => {
-    return localStorage.getItem(key);
-  }, pairingDeviceIdentityStorageKey);
   await signOutIfNeeded(page);
   await page
     .locator("#auth-button .user-badge")
     .waitFor({ state: "hidden", timeout: 20_000 });
-  if (pairingDeviceIdentity) {
-    await page.evaluate(
-      ({ key, value }) => {
-        localStorage.setItem(key, value);
-      },
-      { key: pairingDeviceIdentityStorageKey, value: pairingDeviceIdentity },
-    );
-  }
   await captureStep(page, "signed-out");
 
   console.log("[e2e-dotli] validating signer reconnect");
@@ -655,7 +641,7 @@ async function main(): Promise<void> {
         try {
           const playgroundLabel = `localhost:${playgroundPort}`;
           localStorage.setItem("dotli:mode", "gateway");
-          localStorage.setItem("dotli:chain-backend", "rpc");
+          localStorage.setItem("dotli:chain-backend", "rpc-gateway");
           localStorage.setItem("dotli:content-backend", "ipfs-gateway");
           localStorage.setItem(
             `dotli:permissions:${playgroundLabel}`,
@@ -680,7 +666,12 @@ async function main(): Promise<void> {
       { playgroundPort },
     );
 
-    const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?e2e=${Date.now()}`;
+    const params = new URLSearchParams({
+      chainBackend: "rpc-gateway",
+      e2e: String(Date.now()),
+      network: botNetwork,
+    });
+    const url = `http://localhost:${hostPort}/localhost:${playgroundPort}?${params.toString()}`;
     await page.goto(url, { timeout: 60_000, waitUntil: "domcontentloaded" });
     await captureStep(page, "loaded");
     await signOutIfNeeded(page);

@@ -17,11 +17,13 @@ type UserConfirmationReview = Parameters<
   Required<UserConfirmationHost>["confirmUserAction"]
 >[0];
 
+type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
+
 function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
   review: UserConfirmationReview,
-): Promise<boolean> {
+): Promise<ConfirmationDecision> {
   return new Promise((resolve) => {
     const display = confirmationDisplay(label, review);
     const backdrop = document.createElement("div");
@@ -63,20 +65,20 @@ function showConfirmationModal(
     const cleanup = (): void => {
       backdrop.remove();
     };
-    const finish = (accepted: boolean): void => {
+    const finish = (decision: ConfirmationDecision): void => {
       cleanup();
-      resolve(accepted);
+      resolve(decision);
     };
 
     cancelBtn.addEventListener("click", () => {
-      finish(false);
+      finish("rejected");
     });
     allowBtn.addEventListener("click", () => {
-      finish(true);
+      finish("accepted");
     });
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
-        finish(false);
+        finish("dismissed");
       }
     });
   });
@@ -246,7 +248,10 @@ function createSignRawFields(
 
 function createTransactionFields(
   label: string,
-  review: Extract<UserConfirmationReview, { tag: "CreateTransaction" }>["value"],
+  review: Extract<
+    UserConfirmationReview,
+    { tag: "CreateTransaction" }
+  >["value"],
 ): ConfirmationField[] {
   const payload = review.value;
   const signer =
@@ -359,6 +364,24 @@ async function handlePreimageSubmitReview(
   }
 }
 
+async function handleConfirmationReview(
+  label: string,
+  review: UserConfirmationReview,
+): Promise<boolean> {
+  const decision = await showConfirmationModal(
+    label,
+    confirmationCopy(review),
+    review,
+  );
+  if (decision === "accepted") {
+    return true;
+  }
+  if (decision === "dismissed" && review.tag === "IdentityDisclosure") {
+    throw new Error("User dismissed identity disclosure dialog");
+  }
+  return false;
+}
+
 export function createUserConfirmationAdapters(
   label: string,
 ): Required<UserConfirmationHost> {
@@ -366,6 +389,6 @@ export function createUserConfirmationAdapters(
     confirmUserAction: (review) =>
       review.tag === "PreimageSubmit"
         ? handlePreimageSubmitReview(review)
-        : showConfirmationModal(label, confirmationCopy(review), review),
+        : handleConfirmationReview(label, review),
   };
 }

@@ -100,6 +100,10 @@ interface StorageAuthorization {
   expiration: number;
 }
 
+interface SubmitTransactionOptions {
+  resolveOnBroadcast?: boolean;
+}
+
 async function ensureStorageAuthorization(
   client: PolkadotClient,
   api: ReturnType<PolkadotClient["getUnsafeApi"]>,
@@ -140,18 +144,44 @@ export async function submitPreimageTransactionViaRpc(
   await ensureStorageAuthorization(client, api, signer, data.byteLength);
   const tx = api.tx.TransactionStorage.store({ data });
 
-  await submitTransaction(tx, signer, "Bulletin RPC tx failed");
+  await submitTransaction(tx, signer, "Bulletin RPC tx failed", {
+    resolveOnBroadcast: true,
+  });
 }
 
 async function submitTransaction(
   tx: WatchedTransaction,
   signer: ReturnType<typeof getPolkadotSigner>,
   failureMessage: string,
+  options: SubmitTransactionOptions = {},
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    let resolved = false;
+    const state = { resolved: false };
+    let subscription: { unsubscribe(): void } | null = null;
 
-    const subscription = tx.signSubmitAndWatch(signer).subscribe({
+    const cleanup = (): void => {
+      clearTimeout(timeoutId);
+      if (subscription !== null) {
+        subscription.unsubscribe();
+      }
+    };
+
+    const settle = (complete: () => void): void => {
+      if (state.resolved) {
+        return;
+      }
+      state.resolved = true;
+      cleanup();
+      complete();
+    };
+
+    const timeoutId = setTimeout(() => {
+      settle(() => {
+        reject(new Error("Transaction timed out"));
+      });
+    }, TX_TIMEOUT_MS);
+
+    subscription = tx.signSubmitAndWatch(signer).subscribe({
       next: (ev: {
         type: string;
         found?: boolean;
@@ -159,40 +189,43 @@ async function submitTransaction(
         dispatchError?: { type: string; value: unknown };
       }) => {
         log.debug(`[dot.li bulletin-rpc] tx event`, { type: ev.type });
-        if (resolved || ev.type !== "txBestBlocksState" || ev.found !== true) {
+        if (options.resolveOnBroadcast === true && ev.type === "broadcasted") {
+          settle(() => {
+            resolve();
+          });
           return;
         }
-        resolved = true;
-        clearTimeout(timeoutId);
-        subscription.unsubscribe();
+        if (
+          state.resolved ||
+          ev.type !== "txBestBlocksState" ||
+          ev.found !== true
+        ) {
+          return;
+        }
         if (ev.ok === false) {
-          reject(
-            new Error(
-              `TransactionStorage.store dispatch failed: ${ev.dispatchError?.type ?? "Unknown"}`,
-              { cause: ev.dispatchError },
-            ),
-          );
+          settle(() => {
+            reject(
+              new Error(
+                `TransactionStorage.store dispatch failed: ${ev.dispatchError?.type ?? "Unknown"}`,
+                { cause: ev.dispatchError },
+              ),
+            );
+          });
           return;
         }
-        resolve();
+        settle(() => {
+          resolve();
+        });
       },
       error: (e: unknown) => {
-        if (resolved) {
-          return;
-        }
-        resolved = true;
-        clearTimeout(timeoutId);
-        subscription.unsubscribe();
-        reject(new Error(failureMessage, { cause: e }));
+        settle(() => {
+          reject(new Error(failureMessage, { cause: e }));
+        });
       },
     });
 
-    const timeoutId = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        subscription.unsubscribe();
-        reject(new Error("Transaction timed out"));
-      }
-    }, TX_TIMEOUT_MS);
+    if (state.resolved) {
+      subscription.unsubscribe();
+    }
   });
 }
