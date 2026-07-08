@@ -281,7 +281,12 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
-  return [cfg.relay, cfg.assethub, cfg.people].filter((c) => c.rpcs.length > 0);
+  // Bulletin is included so in-core preimage submission can reach it in
+  // RPC-gateway mode; the `rpcs` filter drops it on networks without a public
+  // Bulletin endpoint.
+  return [cfg.relay, cfg.assethub, cfg.people, cfg.bulletin].filter(
+    (c) => c.rpcs.length > 0,
+  );
 }
 
 /** Genesis hashes (lowercased) a dApp can reach in RPC-gateway mode. */

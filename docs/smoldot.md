@@ -74,7 +74,7 @@ const client = createClient(provider); // polkadot-api
 
 Resolution helpers are pre-built: `resolveDotNameRemote(label)` and `resolveOwnerRemote(label)` at `client.ts:525` and `client.ts:537`. Call these instead of the resolver's local equivalents.
 
-Bulletin preimage submission is not served by the protocol iframe. The previous resolver-owned submit path used a hard-coded Alice development signer and was removed; the Rust-core web host must use a real user allowance signer before enabling `PreimageHost.submitPreimage`.
+Bulletin preimage submission is built, signed, and submitted entirely by the Rust core (`truapi-server`), which routes its `TransactionStorage.store` traffic through the host `chain.connect` callback like any other chain access. The host only provides `PreimageHost.lookupPreimage` for content retrieval; it no longer builds or signs the transaction.
 
 ## Persistence
 
