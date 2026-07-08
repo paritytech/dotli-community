@@ -280,7 +280,9 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
-  // The `rpcs` filter drops Bulletin on networks without a public endpoint.
+  // Bulletin is included so in-core preimage submission can reach it in
+  // RPC-gateway mode; the `rpcs` filter drops it on networks without a public
+  // Bulletin endpoint.
   return [cfg.relay, cfg.assethub, cfg.people, cfg.bulletin].filter(
     (c) => c.rpcs.length > 0,
   );

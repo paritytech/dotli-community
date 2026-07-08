@@ -3,15 +3,13 @@
 // subscription is dropped.
 
 import type { PreimageHost } from "@parity/truapi-host";
-import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
+import { hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getBackend } from "@dotli/config/mode";
 import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
-import { getPolkadotSigner } from "polkadot-api/signer";
 import { bitswapGet } from "../bulletin-bitswap";
-import { fromHex, toHex } from "@dotli/shared/hex";
-import { submitPreimageAsUser } from "../preimage-submit";
+import { toHex } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -20,31 +18,6 @@ const preimageCache = new Map<string, Uint8Array>();
 
 function noop(): void {
   return;
-}
-
-function createPreimageSubmit(
-  label: string,
-): Required<PreimageHost>["submitPreimage"] {
-  return async (value, bulletinAllowanceSigner) => {
-    const key = computePreimageKey(value);
-    log.warn(
-      `[${label}] Preimage submit request, size: ${String(value.byteLength)}`,
-    );
-
-    const signer = getPolkadotSigner(
-      bulletinAllowanceSigner.publicKey,
-      "Sr25519",
-      (input) => bulletinAllowanceSigner.sign(input),
-    );
-
-    log.debug(`[${label}] Bulletin allowance signer`, {
-      publicKey: toHex(signer.publicKey),
-    });
-    await submitPreimageAsUser(value, signer);
-    preimageCache.set(key, value);
-    log.warn(`[${label}] Preimage stored, key: ${key}`);
-    return fromHex(key);
-  };
 }
 
 function createPreimageLookupSubscribe(
@@ -129,7 +102,6 @@ function createPreimageLookupSubscribe(
 
 export function createPreimageAdapters(label: string): Required<PreimageHost> {
   return {
-    submitPreimage: createPreimageSubmit(label),
     lookupPreimage: createPreimageLookupSubscribe(label),
   };
 }
