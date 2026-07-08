@@ -20,6 +20,7 @@ import { getWsProvider } from "polkadot-api/ws";
 import { createRemoteChainProvider } from "@dotli/protocol/client";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { getBackend } from "@dotli/config/mode";
+import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
 
 let bulletinClient: PolkadotClient | null = null;
@@ -68,67 +69,70 @@ function unknownRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+interface TxErrorDetails {
+  type: string;
+  valueType?: string;
+}
+
+function readTxErrorDetails(value: unknown): TxErrorDetails | null {
+  const record = unknownRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const type = record.type;
+  if (typeof type !== "string") {
+    return null;
+  }
+  const valueType = unknownRecord(record.value)?.type;
+  if (typeof valueType === "string") {
+    return { type, valueType };
+  }
+  return { type };
+}
+
+function readJsonTxErrorDetails(message: string): TxErrorDetails | null {
+  try {
+    return readTxErrorDetails(JSON.parse(message));
+  } catch {
+    return null;
+  }
+}
+
+function readThrownTxErrorDetails(error: unknown): TxErrorDetails | null {
+  const details = readTxErrorDetails(error);
+  if (details !== null) {
+    return details;
+  }
+  if (typeof error === "string") {
+    return readJsonTxErrorDetails(error);
+  }
+  if (error instanceof Error) {
+    return readJsonTxErrorDetails(error.message);
+  }
+  return null;
+}
+
+function formatTxErrorDetails(details: TxErrorDetails): string {
+  if (details.valueType !== undefined) {
+    return `${details.type}.${details.valueType}`;
+  }
+  return details.type;
+}
+
+function describeTxError(error: unknown): string {
+  const details = readThrownTxErrorDetails(error);
+  if (details !== null) {
+    return formatTxErrorDetails(details);
+  }
+  return serializeError(error);
+}
+
 interface TxWatchEvent {
   type: string;
   found?: boolean;
   ok?: boolean;
   dispatchError?: unknown;
   isValid?: boolean;
-}
-
-function compactTxError(error: unknown): string | null {
-  const record = unknownRecord(error);
-  const type = record?.type;
-  if (typeof type !== "string") {
-    return null;
-  }
-  const valueType = unknownRecord(record?.value)?.type;
-  if (typeof valueType === "string") {
-    return `${type}.${valueType}`;
-  }
-  return type;
-}
-
-function compactJsonTxErrorMessage(message: string): string | null {
-  const trimmed = message.trim();
-  if (!trimmed.startsWith("{")) {
-    return null;
-  }
-  try {
-    return compactTxError(JSON.parse(trimmed));
-  } catch {
-    return null;
-  }
-}
-
-function describeTxError(error: unknown): string {
-  if (error instanceof Error) {
-    return (
-      compactTxError(error) ??
-      compactJsonTxErrorMessage(error.message) ??
-      error.message
-    );
-  }
-  if (typeof error === "string") {
-    return compactJsonTxErrorMessage(error) ?? error;
-  }
-  const compact = compactTxError(error);
-  if (compact !== null) {
-    return compact;
-  }
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function txDispatchErrorLabel(error: unknown): string {
-  const compact = compactTxError(error);
-  if (compact !== null) {
-    return compact;
-  }
-  return describeTxError(error);
 }
 
 export async function submitPreimageAsUser(
@@ -186,7 +190,7 @@ export async function submitPreimageAsUser(
                 `TransactionStorage.store dispatch failed: ${
                   ev.dispatchError === undefined
                     ? "Unknown"
-                    : txDispatchErrorLabel(ev.dispatchError)
+                    : describeTxError(ev.dispatchError)
                 }`,
                 { cause: ev.dispatchError },
               ),
