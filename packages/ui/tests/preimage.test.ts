@@ -1,12 +1,33 @@
-import { describe, expect, it, vi } from "vitest";
+import { computePreimageKey } from "@dotli/content/preimage";
+import { fromHex } from "@dotli/shared/hex";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPreimageAdapters } from "@dotli/ui/host-callbacks/Preimage";
-import { submitPreimageRemote } from "@dotli/protocol/client";
 
-vi.mock("@dotli/protocol/client", () => ({
-  submitPreimageRemote: vi.fn(async () => undefined),
+const mocks = vi.hoisted(() => ({
+  getPolkadotSigner: vi.fn(
+    (
+      publicKey: Uint8Array,
+      type: string,
+      sign: (input: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+    ) => ({ publicKey, type, sign }),
+  ),
+  submitPreimageAsUser: vi.fn(async () => undefined),
+}));
+
+vi.mock("polkadot-api/signer", () => ({
+  getPolkadotSigner: mocks.getPolkadotSigner,
+}));
+
+vi.mock("@dotli/ui/preimage-submit", () => ({
+  submitPreimageAsUser: mocks.submitPreimageAsUser,
 }));
 
 describe("preimage host callbacks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.submitPreimageAsUser.mockResolvedValue(undefined);
+  });
+
   it("emits a miss immediately for an uncached lookup", async () => {
     const { lookupPreimage } = createPreimageAdapters("myapp");
     const missingKey = new Uint8Array(32);
@@ -20,13 +41,45 @@ describe("preimage host callbacks", () => {
     expect(first.value._unsafeUnwrap()).toBeUndefined();
   });
 
-  it("emits a cached preimage immediately after submit", async () => {
-    const { submitPreimage, lookupPreimage } = createPreimageAdapters("myapp");
-    const preimage = new Uint8Array([1, 2, 3, 4]);
+  it("submits with the bulletin allowance signer and caches the preimage", async () => {
+    const { lookupPreimage, submitPreimage } = createPreimageAdapters("myapp");
+    const value = new Uint8Array([1, 2, 3, 4]);
+    const publicKey = new Uint8Array(32);
+    publicKey.fill(7);
+    const allowanceSigner = {
+      publicKey,
+      sign: vi.fn(async (input: Uint8Array) => {
+        const signature = new Uint8Array(input.length + 1);
+        signature.set(input);
+        signature[signature.length - 1] = 42;
+        return signature;
+      }),
+    };
 
-    const key = await submitPreimage(preimage);
+    const key = await submitPreimage(value, allowanceSigner);
 
-    expect(submitPreimageRemote).toHaveBeenCalledWith(preimage);
+    const expectedKey = fromHex(computePreimageKey(value));
+    expect(key).toEqual(expectedKey);
+    expect(mocks.getPolkadotSigner).toHaveBeenCalledWith(
+      new Uint8Array(32).fill(7),
+      "Sr25519",
+      expect.any(Function),
+    );
+    expect(mocks.submitPreimageAsUser).toHaveBeenCalledWith(
+      value,
+      expect.objectContaining({
+        publicKey: new Uint8Array(32).fill(7),
+        type: "Sr25519",
+      }),
+    );
+
+    const signer = mocks.submitPreimageAsUser.mock.calls[0]?.[1] as
+      | { sign: (input: Uint8Array) => Promise<Uint8Array> | Uint8Array }
+      | undefined;
+    await expect(signer?.sign(new Uint8Array([8, 9]))).resolves.toEqual(
+      new Uint8Array([8, 9, 42]),
+    );
+    expect(allowanceSigner.sign).toHaveBeenCalledWith(new Uint8Array([8, 9]));
 
     const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
     const first = await iterator.next();
@@ -34,8 +87,6 @@ describe("preimage host callbacks", () => {
 
     expect(first.done).toBe(false);
     expect(first.value.isOk()).toBe(true);
-    expect(Array.from(first.value._unsafeUnwrap() ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(first.value._unsafeUnwrap()).toEqual(value);
   });
 });

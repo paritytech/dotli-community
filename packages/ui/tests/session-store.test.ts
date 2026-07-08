@@ -150,6 +150,26 @@ describe("session-store host callbacks", () => {
     expect(localStorage.length).toBe(1);
   });
 
+  it("encrypts persisted allowance key slots", async () => {
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const key = {
+      tag: "AllowanceKeys",
+      value: { sessionId: "session-1" },
+    } satisfies CoreStorageKey;
+
+    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+
+    const storageKey = "dotli:core:allowance-keys:session-1";
+    expect(localStorage.getItem(storageKey)).not.toBe("0x01020304");
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
+      1, 2, 3, 4,
+    ]);
+
+    await clearCoreStorage(key);
+    expect(await readCoreStorage(key)).toBeUndefined();
+  });
+
   it("emits the typed session identity details from a connected auth state", () => {
     const authStateChanged = createAuthStateChanged("Polkadot Web");
     const events: unknown[] = [];

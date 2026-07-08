@@ -202,7 +202,6 @@ describe("isEnforceableDevicePermission", () => {
     expect(isEnforceableDevicePermission("Notifications")).toBe(true);
     expect(isEnforceableDevicePermission("Camera")).toBe(true);
     expect(isEnforceableDevicePermission("Microphone")).toBe(true);
-    expect(isEnforceableDevicePermission("Notifications")).toBe(true);
   });
 });
 

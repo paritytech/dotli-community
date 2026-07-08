@@ -54,6 +54,20 @@ function ensureBulletinClient(): PolkadotClient {
 
 const TX_TIMEOUT_MS = 120_000;
 
+function describeTxError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 export async function submitPreimageAsUser(
   data: Uint8Array,
   signer: PolkadotSigner,
@@ -101,7 +115,9 @@ export async function submitPreimageAsUser(
         resolved = true;
         clearTimeout(timeoutId);
         subscription.unsubscribe();
-        reject(new Error("Bulletin tx failed", { cause: e }));
+        const reason = describeTxError(e);
+        log.error("[dot.li bulletin] tx failed", { reason, cause: e });
+        reject(new Error(`Bulletin tx failed: ${reason}`, { cause: e }));
       },
     });
 
