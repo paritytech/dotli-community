@@ -2,12 +2,12 @@ import { SITE_ID } from "@dotli/config/config";
 import { gcm } from "@noble/ciphers/aes.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import { encodeCoreStorageKey } from "@parity/truapi-host-wasm";
+import { encodeCoreStorageKey } from "@parity/truapi-host";
 import type {
   CoreStorage,
   CoreStorageKey,
   SessionUiInfo,
-} from "@parity/truapi-host-wasm";
+} from "@parity/truapi-host";
 import {
   hasStoredSharedAuthSession,
   SHARED_CORE_SESSION_KEY,

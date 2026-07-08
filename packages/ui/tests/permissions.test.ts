@@ -20,7 +20,7 @@ import {
 import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
-} from "@parity/truapi-host-wasm";
+} from "@parity/truapi-host";
 
 type Store = Map<string, PermissionAuthorizationStatus>;
 

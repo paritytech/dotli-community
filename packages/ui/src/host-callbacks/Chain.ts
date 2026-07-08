@@ -15,8 +15,8 @@ import type {
   JsonRpcRequest,
   JsonRpcProvider,
 } from "@polkadot-api/json-rpc-provider";
-import type { ChainProvider } from "@parity/truapi-host-wasm";
-import type { PlatformJsonRpcConnection } from "@parity/truapi-host-wasm";
+import type { ChainProvider } from "@parity/truapi-host";
+import type { PlatformJsonRpcConnection } from "@parity/truapi-host";
 import { hasDotliDebugListeners } from "@dotli/truapi-debug/dotli-debug-bus";
 import { SS_USE_SMOLDOT } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";

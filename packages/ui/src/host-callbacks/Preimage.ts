@@ -2,7 +2,7 @@
 // (Helia P2P or IPFS gateway) until the preimage is found or the
 // subscription is dropped.
 
-import type { PreimageHost } from "@parity/truapi-host-wasm";
+import type { PreimageHost } from "@parity/truapi-host";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getBackend } from "@dotli/config/mode";

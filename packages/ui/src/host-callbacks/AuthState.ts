@@ -1,4 +1,4 @@
-import type { AuthPresenter, AuthState } from "@parity/truapi-host-wasm";
+import type { AuthPresenter, AuthState } from "@parity/truapi-host";
 import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import { emitSsoPairingPresented } from "./SsoDebug";
 import {

@@ -1,4 +1,4 @@
-import type { UserConfirmation as UserConfirmationHost } from "@parity/truapi-host-wasm";
+import type { UserConfirmation as UserConfirmationHost } from "@parity/truapi-host";
 import { showPreimageSubmitModal } from "../preimage-modal";
 
 interface ConfirmationCopy {

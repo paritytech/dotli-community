@@ -1,7 +1,7 @@
 // dot.li — TrUAPI host bridge
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
-// product iframe via `@parity/truapi-host-wasm`. Each render swaps the running
+// product iframe via `@parity/truapi-host`. Each render swaps the running
 // runtime, so disposing the last host tears down both the iframe and
 // the core.
 //
@@ -35,8 +35,8 @@ import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
 } from "@dotli/truapi-debug/dotli-debug-bus";
-import type { TrUApiProductProvider } from "@parity/truapi-host-wasm";
-import type { PairingHostAdmin } from "@parity/truapi-host-wasm";
+import type { TrUApiProductProvider } from "@parity/truapi-host";
+import type { PairingHostAdmin } from "@parity/truapi-host";
 import {
   buildAllowAttribute,
   registerPermissionAuthorizationProvider,
@@ -62,8 +62,8 @@ const noop = (): void => undefined;
 // main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
 const runtimeChunkPromise = Promise.all([
-  import("@parity/truapi-host-wasm/web"),
-  import("@parity/truapi-host-wasm/worker-runtime?worker"),
+  import("@parity/truapi-host/web"),
+  import("@parity/truapi-host/worker-runtime?worker"),
 ]).then(([web, workerMod]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {

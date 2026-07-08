@@ -7,7 +7,7 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { RequiredHostCallbacks } from "@parity/truapi-host-wasm";
+import type { RequiredHostCallbacks } from "@parity/truapi-host";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
 import { createPromptPermission } from "./PromptPermission";

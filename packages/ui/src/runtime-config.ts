@@ -1,5 +1,5 @@
 import { getActiveServicesConfig } from "@dotli/config/network";
-import type { ProductRuntimeConfig } from "@parity/truapi-host-wasm";
+import type { ProductRuntimeConfig } from "@parity/truapi-host";
 
 type RuntimeLocation = Pick<Location, "origin">;
 

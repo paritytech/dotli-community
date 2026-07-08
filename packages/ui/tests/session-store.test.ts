@@ -7,7 +7,7 @@ import {
   onStoredSessionChanged,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
-import type { CoreStorageKey } from "@parity/truapi-host-wasm";
+import type { CoreStorageKey } from "@parity/truapi-host";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),

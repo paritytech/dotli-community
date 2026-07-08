@@ -1,4 +1,4 @@
-import type { UserConfirmation } from "@parity/truapi-host-wasm";
+import type { UserConfirmation } from "@parity/truapi-host";
 import { afterEach, describe, expect, it } from "vitest";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
 

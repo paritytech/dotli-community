@@ -3,7 +3,7 @@
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
 
-import type { Permissions } from "@parity/truapi-host-wasm";
+import type { Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,

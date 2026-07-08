@@ -15,8 +15,8 @@ dotli still has two protocol layers:
 
 The active launch path is `packages/ui/src/bridge.ts`:
 
-- imports `@parity/truapi-host-wasm/web` and
-  `@parity/truapi-host-wasm/worker-runtime?worker`;
+- imports `@parity/truapi-host/web` and
+  `@parity/truapi-host/worker-runtime?worker`;
 - starts a Web Worker that owns the `truapi-server` WASM core;
 - adapts typed dotli callbacks with `createWasmRawCallbacks(...)`;
 - calls `createWebWorkerProvider(new HostWorker(), rawCallbacks, { runtimeConfig })`;
@@ -57,7 +57,7 @@ routing that belongs inside the Rust core.
 
 ```jsonc
 "@parity/truapi": "file:../../../../js/packages/truapi",
-"@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm"
+"@parity/truapi-host": "file:../../../../js/packages/truapi-host"
 ```
 
 > **TODO(packaging):** the `file:../../../../` links resolve only when dotli

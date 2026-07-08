@@ -337,17 +337,12 @@ function copyTruapiWasmWebBundle(): Plugin {
 }
 
 function findTruapiWasmWebBundle(): string {
-  const packageRelative = "node_modules/@parity/truapi-host-wasm/dist/wasm/web";
+  const packageRelative = "node_modules/@parity/truapi-host/dist/wasm/web";
   const checked: string[] = [];
-  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
-    const candidate = resolve(dir, packageRelative);
+  for (const candidate of truapiWasmWebBundleCandidates(packageRelative)) {
     checked.push(candidate);
     if (existsSync(resolve(candidate, "truapi_server.js"))) {
       return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
     }
   }
   throw new Error(
@@ -357,6 +352,19 @@ function findTruapiWasmWebBundle(): string {
       `Checked: ${checked.join(", ")}`,
     ].join(" "),
   );
+}
+
+function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
+  const candidates: string[] = [];
+  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
+    candidates.push(resolve(dir, packageRelative));
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+  }
+  candidates.push(resolve(import.meta.dirname, "../../packages/ui", packageRelative));
+  return [...new Set(candidates)];
 }
 
 /**

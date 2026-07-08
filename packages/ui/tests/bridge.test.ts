@@ -61,16 +61,16 @@ const mocks = vi.hoisted(() => ({
   HostWorker: vi.fn(),
 }));
 
-vi.mock("@parity/truapi-host-wasm", () => ({
+vi.mock("@parity/truapi-host", () => ({
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
-vi.mock("@parity/truapi-host-wasm/web", () => ({
+vi.mock("@parity/truapi-host/web", () => ({
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));
 
-vi.mock("@parity/truapi-host-wasm/worker-runtime?worker", () => ({
+vi.mock("@parity/truapi-host/worker-runtime?worker", () => ({
   default: mocks.HostWorker,
 }));
 

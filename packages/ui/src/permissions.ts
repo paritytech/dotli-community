@@ -17,7 +17,7 @@ import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
   TrUApiProductProvider,
-} from "@parity/truapi-host-wasm";
+} from "@parity/truapi-host";
 
 export type DevicePermissionName = HostDevicePermissionRequest;
 

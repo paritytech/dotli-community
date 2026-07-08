@@ -1,4 +1,4 @@
-import type { Features } from "@parity/truapi-host-wasm";
+import type { Features } from "@parity/truapi-host";
 import { getBackend } from "@dotli/config/mode";
 import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/chains";
 import { isRpcChainSupported } from "@dotli/resolver/rpc-chain";
