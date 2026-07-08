@@ -200,9 +200,9 @@ refresh_spec "previewnet-bulletin-local.smol.json" false "https://previewnet.sub
 refresh_spec "previewnet-people.smol.json"         false "https://previewnet.substrate.dev/people"
 
 # Paseo Next v2
-refresh_spec "paseo.smol.json"                     true  "https://paseo.dotters.network" \
-                                                         "https://paseo.rpc.amforc.com" \
-                                                         "https://rpc.ibp.network/paseo"
+refresh_spec "paseo.smol.json"                     true  "https://paseo-rpc.n.dwellir.com" \
+                                                         "https://rpc.interweb-it.com/paseo" \
+                                                         "https://rpc-paseo.stakeworld.io"
 refresh_spec "paseo-asset-hub-next.smol.json"      false "https://paseo-asset-hub-next-rpc.polkadot.io"
 refresh_spec "paseo-bulletin-next.smol.json"       false "https://paseo-bulletin-next-rpc.polkadot.io"
 refresh_spec "paseo-people-next-system.smol.json"  false "https://paseo-people-next-system-rpc.polkadot.io"
