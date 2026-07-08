@@ -96,6 +96,7 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
 let truapiSessionConnected = false;
+let authModalPhase: "idle" | "pairing" | "logging-in" = "idle";
 
 function getStoredTheme(): "light" | "dark" {
   const stored = localStorage.getItem("dotli-theme");
@@ -173,6 +174,14 @@ export function initTopBar(): void {
   // tear down an in-flight pairing presentation.
   window.addEventListener("dotli:truapi-auth-state", (e: Event) => {
     renderAuthState((e as CustomEvent<DotliAuthState>).detail);
+  });
+  window.addEventListener("dotli:truapi-login-progress", () => {
+    if (
+      authModalPhase === "pairing" &&
+      modalBackdrop.classList.contains("open")
+    ) {
+      renderLoggingIn();
+    }
   });
 
   // Mobile-only "more" menu: collapses Permissions / Theme / Settings into a
@@ -297,6 +306,7 @@ function renderAuthState(state: DotliAuthState): void {
       renderLoggedOut();
       break;
     case "Pairing":
+      authModalPhase = "pairing";
       openModal(
         undefined,
         state.hostGlobal === true ? undefined : state.label,
@@ -305,10 +315,12 @@ function renderAuthState(state: DotliAuthState): void {
       renderPairing(state.deeplink);
       break;
     case "Connected":
+      authModalPhase = "idle";
       closeModal({ skipTruapiCancel: true });
       renderTruapiLoggedIn(state.session);
       break;
     case "LoginFailed":
+      authModalPhase = "idle";
       openModal();
       renderError(state.reason);
       break;
@@ -432,6 +444,22 @@ function renderPairing(payload: string): void {
     });
 }
 
+function renderLoggingIn(): void {
+  authModalPhase = "logging-in";
+  currentQrPayload = null;
+  modalQr.classList.remove("auth-modal-qr-mobile");
+  modalQr.innerHTML = "";
+
+  const container = document.createElement("div");
+  container.className = "attesting";
+  const spinner = document.createElement("div");
+  spinner.className = "spinner";
+  const label = document.createElement("p");
+  label.textContent = "Logging in...";
+  container.append(spinner, label);
+  modalQr.appendChild(container);
+}
+
 // Clock glyph for the "account still being set up" state.
 const PENDING_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
@@ -442,7 +470,23 @@ const PENDING_ICON_SVG =
 // ring, so the wallet cannot grant the host its statement-store allowance yet.
 function friendlyAuthError(
   message: string,
-): { title: string; subtitle: string } | null {
+): { title: string; subtitle: string; detail?: string } | null {
+  if (message.includes("no free statement-store slot for device registration")) {
+    return {
+      title: "No Statement Store slots left",
+      subtitle:
+        "Polkadot Mobile could not register this browser as a device.",
+      detail: "no free statement-store slot for device registration",
+    };
+  }
+  if (message.includes("SubstrateSdk.JSONRPCError error 1")) {
+    return {
+      title: "Statement Store registration failed",
+      subtitle:
+        "Polkadot Mobile reported a JSON-RPC failure while registering this browser as a device.",
+      detail: message,
+    };
+  }
   if (message.includes("OriginPersonProviderError")) {
     return {
       title: "Your account is still being set up",
@@ -472,6 +516,13 @@ function renderError(message: string): void {
     subtitle.className = "auth-modal-pending-subtitle";
     subtitle.textContent = friendly.subtitle;
     container.appendChild(subtitle);
+
+    if (friendly.detail !== undefined && friendly.detail.length > 0) {
+      const detail = document.createElement("p");
+      detail.className = "auth-modal-error";
+      detail.textContent = friendly.detail;
+      container.appendChild(detail);
+    }
   } else {
     const msg = document.createElement("p");
     msg.className = "auth-modal-error";
@@ -2017,6 +2068,7 @@ function openModal(
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
   currentQrPayload = null;
+  authModalPhase = "idle";
   modalQr.innerHTML = "";
 
   if (opts.skipTruapiCancel !== true) {

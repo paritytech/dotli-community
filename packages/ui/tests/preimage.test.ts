@@ -89,4 +89,32 @@ describe("preimage host callbacks", () => {
     expect(first.value.isOk()).toBe(true);
     expect(first.value._unsafeUnwrap()).toEqual(value);
   });
+
+  it("propagates submit failures without caching the preimage", async () => {
+    const { lookupPreimage, submitPreimage } = createPreimageAdapters("myapp");
+    const value = new Uint8Array([5, 6, 7, 8]);
+    const publicKey = new Uint8Array(32);
+    publicKey.fill(9);
+    const allowanceSigner = {
+      publicKey,
+      sign: vi.fn(async (input: Uint8Array) => input),
+    };
+    mocks.submitPreimageAsUser.mockRejectedValueOnce(
+      new Error("Transaction timed out after 45000ms"),
+    );
+
+    await expect(submitPreimage(value, allowanceSigner)).rejects.toThrow(
+      "Transaction timed out after 45000ms",
+    );
+
+    const iterator = lookupPreimage(fromHex(computePreimageKey(value)))[
+      Symbol.asyncIterator
+    ]();
+    const first = await iterator.next();
+    await iterator.return?.();
+
+    expect(first.done).toBe(false);
+    expect(first.value.isOk()).toBe(true);
+    expect(first.value._unsafeUnwrap()).toBeUndefined();
+  });
 });

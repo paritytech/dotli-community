@@ -145,7 +145,8 @@ function loginResponseFrame(
   requestId: string,
   result:
     | { success: true; value: "Success" | "AlreadyConnected" | "Rejected" }
-    | { success: false; reason: string },
+    | { success: false; reason: string }
+    | { success: false; hostFailure: string },
 ): Uint8Array {
   const responseCodec = scale.indexedTaggedUnion({
     V1: [
@@ -160,7 +161,15 @@ function loginResponseFrame(
     tag: "V1",
     value: result.success
       ? { success: true, value: result.value }
-      : {
+      : "hostFailure" in result
+        ? {
+            success: false,
+            value: {
+              tag: "HostFailure",
+              value: { reason: result.hostFailure },
+            },
+          }
+        : {
           success: false,
           value: {
             tag: "Domain",
@@ -172,7 +181,7 @@ function loginResponseFrame(
               },
             },
           },
-        },
+          },
   });
   const frame = encodeWireMessage({
     requestId,
@@ -333,12 +342,42 @@ describe("requestCoreLogin", () => {
       },
     });
 
-    await expect(requestCoreLogin(provider)).rejects.toMatchObject({
+    const promise = requestCoreLogin(provider);
+
+    await expect(promise).rejects.toThrow("Rejected");
+    await expect(promise).rejects.toMatchObject({
       name: "LoginRequestError",
       error: {
-        tag: "V1",
-        value: { tag: "Unknown", value: { reason: "Rejected" } },
+        tag: "Domain",
+        value: {
+          tag: "V1",
+          value: { tag: "Unknown", value: { reason: "Rejected" } },
+        },
       },
+    });
+    expect(provider.listener).toBeNull();
+  });
+
+  it("rejects host failures with the reason as the error message", async () => {
+    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const reason = "no free statement-store slot for device registration";
+    const provider = makeLoginProvider({
+      onPostMessage(message) {
+        provider.listener?.(
+          loginResponseFrame(requestIdFromFrame(message), {
+            success: false,
+            hostFailure: reason,
+          }),
+        );
+      },
+    });
+
+    const promise = requestCoreLogin(provider);
+
+    await expect(promise).rejects.toThrow(reason);
+    await expect(promise).rejects.toMatchObject({
+      name: "LoginRequestError",
+      error: { tag: "HostFailure", value: { reason } },
     });
     expect(provider.listener).toBeNull();
   });

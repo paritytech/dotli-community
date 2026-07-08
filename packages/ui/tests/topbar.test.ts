@@ -315,6 +315,32 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
   });
 
+  it("shows logging-in progress after the pairing QR receives a statement", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+        },
+      }),
+    );
+    window.dispatchEvent(new Event("dotli:truapi-login-progress"));
+
+    expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
+      "Logging in...",
+    );
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+  });
+
   it("keeps the retry view for login failures", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
@@ -342,6 +368,28 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
       "Retry",
     );
+  });
+
+  it("explains statement-store slot exhaustion in the login failure view", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          reason: "no free statement-store slot for device registration",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("No Statement Store slots left");
+    expect(modalText).toContain(
+      "no free statement-store slot for device registration",
+    );
+    expect(modalText).toContain("Retry");
   });
 });
 

@@ -29,8 +29,9 @@ function ensureBulletinClient(): PolkadotClient {
     return bulletinClient;
   }
   const bulletin = getActiveServicesConfig().bulletin;
+  const backend = getBackend();
   let provider;
-  if (getBackend() !== "rpc-gateway") {
+  if (backend !== "rpc-gateway") {
     const remote = createRemoteChainProvider(bulletin.genesis);
     if (remote === null) {
       throw new Error(
@@ -52,20 +53,82 @@ function ensureBulletinClient(): PolkadotClient {
   return bulletinClient;
 }
 
-const TX_TIMEOUT_MS = 120_000;
+// Keep this below the playground/e2e preimage timeout so tx stalls surface as
+// host errors instead of generic test timeouts.
+const TX_TIMEOUT_MS = 45_000;
+
+interface TxSubscription {
+  unsubscribe: () => void;
+}
+
+function unknownRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+interface TxWatchEvent {
+  type: string;
+  found?: boolean;
+  ok?: boolean;
+  dispatchError?: unknown;
+  isValid?: boolean;
+}
+
+function compactTxError(error: unknown): string | null {
+  const record = unknownRecord(error);
+  const type = record?.type;
+  if (typeof type !== "string") {
+    return null;
+  }
+  const valueType = unknownRecord(record?.value)?.type;
+  if (typeof valueType === "string") {
+    return `${type}.${valueType}`;
+  }
+  return type;
+}
+
+function compactJsonTxErrorMessage(message: string): string | null {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+  try {
+    return compactTxError(JSON.parse(trimmed));
+  } catch {
+    return null;
+  }
+}
 
 function describeTxError(error: unknown): string {
   if (error instanceof Error) {
-    return error.message;
+    return (
+      compactTxError(error) ??
+      compactJsonTxErrorMessage(error.message) ??
+      error.message
+    );
   }
   if (typeof error === "string") {
-    return error;
+    return compactJsonTxErrorMessage(error) ?? error;
+  }
+  const compact = compactTxError(error);
+  if (compact !== null) {
+    return compact;
   }
   try {
     return JSON.stringify(error);
   } catch {
     return String(error);
   }
+}
+
+function txDispatchErrorLabel(error: unknown): string {
+  const compact = compactTxError(error);
+  if (compact !== null) {
+    return compact;
+  }
+  return describeTxError(error);
 }
 
 export async function submitPreimageAsUser(
@@ -78,55 +141,83 @@ export async function submitPreimageAsUser(
 
   await new Promise<void>((resolve, reject) => {
     let resolved = false;
+    let subscription: TxSubscription | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const subscription = tx.signSubmitAndWatch(signer).subscribe({
-      next: (ev: {
-        type: string;
-        found?: boolean;
-        ok?: boolean;
-        dispatchError?: { type: string; value: unknown };
-        isValid?: boolean;
-      }) => {
-        log.debug(`[dot.li bulletin] tx event`, { type: ev.type });
-        if (resolved || ev.type !== "txBestBlocksState" || ev.found !== true) {
-          return;
-        }
-        resolved = true;
+    const cleanup = (): void => {
+      if (timeoutId !== null) {
         clearTimeout(timeoutId);
-        subscription.unsubscribe();
-        // When `found: true`, `ok` tells us whether the extrinsic dispatch
-        // succeeded. `ok: false` means the tx landed but the pallet
-        // rejected it (e.g. unauthorized signer, insufficient funds).
-        if (ev.ok === false) {
-          reject(
-            new Error(
-              `TransactionStorage.store dispatch failed: ${ev.dispatchError?.type ?? "Unknown"}`,
-              { cause: ev.dispatchError },
-            ),
-          );
-          return;
-        }
-        resolve();
-      },
-      error: (e: unknown) => {
-        if (resolved) {
-          return;
-        }
-        resolved = true;
-        clearTimeout(timeoutId);
-        subscription.unsubscribe();
-        const reason = describeTxError(e);
-        log.error("[dot.li bulletin] tx failed", { reason, cause: e });
-        reject(new Error(`Bulletin tx failed: ${reason}`, { cause: e }));
-      },
-    });
-
-    const timeoutId = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        subscription.unsubscribe();
-        reject(new Error("Transaction timed out"));
+        timeoutId = null;
       }
+      subscription?.unsubscribe();
+      subscription = null;
+    };
+
+    timeoutId = setTimeout(() => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      cleanup();
+      reject(
+        new Error(`Transaction timed out after ${String(TX_TIMEOUT_MS)}ms`),
+      );
     }, TX_TIMEOUT_MS);
+
+    try {
+      subscription = tx.signSubmitAndWatch(signer).subscribe({
+        next: (ev: TxWatchEvent) => {
+          log.debug(`[dot.li bulletin] tx event`, { type: ev.type });
+          if (
+            resolved ||
+            ev.type !== "txBestBlocksState" ||
+            ev.found !== true
+          ) {
+            return;
+          }
+          resolved = true;
+          cleanup();
+          // When `found: true`, `ok` tells us whether the extrinsic dispatch
+          // succeeded. `ok: false` means the tx landed but the pallet
+          // rejected it (e.g. unauthorized signer, insufficient funds).
+          if (ev.ok === false) {
+            reject(
+              new Error(
+                `TransactionStorage.store dispatch failed: ${
+                  ev.dispatchError === undefined
+                    ? "Unknown"
+                    : txDispatchErrorLabel(ev.dispatchError)
+                }`,
+                { cause: ev.dispatchError },
+              ),
+            );
+            return;
+          }
+          resolve();
+        },
+        error: (e: unknown) => {
+          if (resolved) {
+            return;
+          }
+          resolved = true;
+          cleanup();
+          const reason = describeTxError(e);
+          log.error("[dot.li bulletin] tx failed", {
+            reason,
+            cause: e,
+          });
+          reject(new Error(`Bulletin tx failed: ${reason}`, { cause: e }));
+        },
+      });
+    } catch (e) {
+      resolved = true;
+      cleanup();
+      const reason = describeTxError(e);
+      reject(
+        new Error(`Bulletin tx subscription failed: ${reason}`, {
+          cause: e,
+        }),
+      );
+    }
   });
 }

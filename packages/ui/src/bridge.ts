@@ -630,6 +630,7 @@ export function requestCoreLogin(
           });
           resolve(result.value);
         } else {
+          const error = new LoginRequestError(result.value);
           emitDotliDebugEvent({
             layer: "sso",
             event: "login_request_failed",
@@ -637,11 +638,7 @@ export function requestCoreLogin(
             timestamp: Date.now(),
             payload: { requestId },
           });
-          if (result.value.tag === "Domain") {
-            reject(new LoginRequestError(result.value.value));
-          } else {
-            reject(new Error(JSON.stringify(result.value)));
-          }
+          reject(error);
         }
       } catch (error) {
         emitDotliDebugEvent({

@@ -742,6 +742,14 @@ export function createRemoteChainProvider(
           void postRequest("chainSend", {
             connectionId,
             message: JSON.stringify(message),
+          }).catch((error: unknown) => {
+            const errResponse = buildJsonRpcError(
+              message,
+              serializeError(error),
+            );
+            if (errResponse !== null) {
+              onMessage(errResponse);
+            }
           });
         }
         remote.pendingMessages = [];
