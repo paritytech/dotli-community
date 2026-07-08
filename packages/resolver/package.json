@@ -35,9 +35,9 @@
     "@polkadot-api/substrate-bindings": "0.20.3",
     "@polkadot-api/substrate-client": "0.7.0",
     "@polkadot-api/utils": "0.4.0",
-    "@polkadot-labs/hdkd": "^0.0.28",
-    "@polkadot-labs/hdkd-helpers": "^0.0.30",
+    "@polkadot-labs/hdkd": "^0.0.29",
+    "@polkadot-labs/hdkd-helpers": "^0.0.31",
     "polkadot-api": "^2.1.6",
-    "smoldot": "^3.1.4"
+    "smoldot": "^3.3.1"
   }
 }

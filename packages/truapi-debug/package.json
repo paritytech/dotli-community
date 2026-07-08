@@ -20,9 +20,9 @@
   },
   "dependencies": {
     "@dotli/shared": "workspace:*",
-    "@novasamatech/host-api": "0.8.9",
-    "@novasamatech/host-container": "0.8.9",
-    "@novasamatech/host-papp": "0.8.9",
+    "@novasamatech/host-api": "0.8.10",
+    "@novasamatech/host-container": "0.8.10",
+    "@novasamatech/host-papp": "0.8.10",
     "nanoevents": "^9.1.0"
   }
 }
