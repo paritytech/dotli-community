@@ -51,11 +51,10 @@ export function createNotificationAdapters(
     return { id: result.id };
   };
 
-  const cancelPushNotification: Required<
-    Notifications
-  >["cancelNotification"] = async (id) => {
-    await cancelNotification(label, id);
-  };
+  const cancelPushNotification: Required<Notifications>["cancelNotification"] =
+    async (id) => {
+      await cancelNotification(label, id);
+    };
 
   return { pushNotification, cancelNotification: cancelPushNotification };
 }

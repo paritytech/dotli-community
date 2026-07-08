@@ -3,7 +3,13 @@
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+} from "node:fs";
 import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import wasm from "vite-plugin-wasm";

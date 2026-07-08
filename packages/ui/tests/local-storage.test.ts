@@ -30,7 +30,9 @@ describe("local-storage host callbacks", () => {
     ).toEqual([0, 1, 2, 253, 254, 255]);
 
     await clear("truapi:product-storage:v1:9:myapp.dot:key");
-    expect(await read("truapi:product-storage:v1:9:myapp.dot:key")).toBeUndefined();
+    expect(
+      await read("truapi:product-storage:v1:9:myapp.dot:key"),
+    ).toBeUndefined();
   });
 
   it("rotates SSO device identity across host runtime prefixes", async () => {
@@ -58,7 +60,10 @@ describe("local-storage host callbacks", () => {
   it("writes values larger than a single argument-spread chunk", async () => {
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();
-    const value = Uint8Array.from({ length: 70_000 }, (_, index) => index % 256);
+    const value = Uint8Array.from(
+      { length: 70_000 },
+      (_, index) => index % 256,
+    );
 
     await write("truapi:product-storage:v1:9:myapp.dot:large", value);
 

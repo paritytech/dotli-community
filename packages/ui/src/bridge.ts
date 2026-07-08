@@ -803,7 +803,8 @@ async function createCoreProvider(
     productId?: string;
   } = {},
 ): Promise<CoreProvider> {
-  const { createWebWorkerPairingHostRuntime, HostWorker } = await runtimeChunkPromise;
+  const { createWebWorkerPairingHostRuntime, HostWorker } =
+    await runtimeChunkPromise;
   const runtimeConfig = createTruapiRuntimeConfig(
     label,
     window.location,

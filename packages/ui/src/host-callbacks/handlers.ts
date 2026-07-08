@@ -34,12 +34,7 @@ export interface CreateHostCallbacksOptions {
 export function createHostCallbacks(
   options: CreateHostCallbacksOptions,
 ): RequiredHostCallbacks {
-  const {
-    label,
-    pairingLabel,
-    pairingDotSuffix,
-    pairingHostGlobal,
-  } = options;
+  const { label, pairingLabel, pairingDotSuffix, pairingHostGlobal } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters(label),

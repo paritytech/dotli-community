@@ -7,15 +7,14 @@
 // suitable for the debug panel. Handles Uint8Array (hex, truncated) and
 // cycles. No DOM or SDK imports here, kept pure for easy testing.
 
+import { toHex } from "@dotli/shared/hex";
+
 const MAX_UINT8_PREVIEW_BYTES = 32;
 const MAX_STRING_PREVIEW_CHARS = 200;
 
 function hexOf(bytes: Uint8Array, max: number): string {
   const preview = bytes.subarray(0, max);
-  const hex = Array.from(preview, (b) => b.toString(16).padStart(2, "0")).join(
-    "",
-  );
-  return `0x${hex}${bytes.length > max ? "…" : ""}`;
+  return `${toHex(preview)}${bytes.length > max ? "…" : ""}`;
 }
 
 function isUint8ArrayLike(v: unknown): v is Uint8Array {
