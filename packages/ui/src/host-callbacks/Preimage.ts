@@ -6,6 +6,7 @@ import type { PreimageHost } from "@parity/truapi-host";
 import { computePreimageKey, hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getBackend } from "@dotli/config/mode";
+import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
 import { getPolkadotSigner } from "polkadot-api/signer";
 import { bitswapGet } from "../bulletin-bitswap";
@@ -59,64 +60,70 @@ function createPreimageLookupSubscribe(
     }
 
     let stopped = false;
-    return createResultStream<Uint8Array | undefined>([undefined], (push) => {
-      let intervalId: ReturnType<typeof setInterval> | null = null;
-      let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
-      const stopPolling = (): void => {
-        stopped = true;
-        if (intervalId !== null) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
-        if (initialTimeoutId !== null) {
-          clearTimeout(initialTimeoutId);
-          initialTimeoutId = null;
-        }
-      };
-      const poll = async (): Promise<void> => {
-        if (stopped) {
-          return;
-        }
-
-        const cached = preimageCache.get(key);
-        if (cached) {
-          push(cached);
-          return;
-        }
-
-        const cid = hashToCid(key);
-        const cidString = cid.toString();
-        const backend = getBackend();
-        try {
-          if (backend !== "rpc-gateway") {
-            const data = await bitswapGet(cidString);
-            if (data.length > 0) {
-              preimageCache.set(key, data);
-              push(data);
-              stopPolling();
-              return;
-            }
-          } else {
-            const result = await fetchFromIpfs(cidString);
-            if (result.data.length > 0) {
-              preimageCache.set(key, result.data);
-              push(result.data);
-              stopPolling();
-              return;
-            }
+    return createResultStream<Uint8Array | undefined>(
+      [undefined],
+      (push, pushError) => {
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+        let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
+        const stopPolling = (): void => {
+          stopped = true;
+          if (intervalId !== null) {
+            clearInterval(intervalId);
+            intervalId = null;
           }
-        } catch (err) {
-          log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
-        }
-      };
+          if (initialTimeoutId !== null) {
+            clearTimeout(initialTimeoutId);
+            initialTimeoutId = null;
+          }
+        };
+        const poll = async (): Promise<void> => {
+          if (stopped) {
+            return;
+          }
 
-      intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
-      initialTimeoutId = setTimeout(() => void poll(), INITIAL_POLL_DELAY_MS);
+          const cached = preimageCache.get(key);
+          if (cached) {
+            push(cached);
+            return;
+          }
 
-      return () => {
-        stopPolling();
-      };
-    });
+          const cid = hashToCid(key);
+          const cidString = cid.toString();
+          const backend = getBackend();
+          try {
+            if (backend !== "rpc-gateway") {
+              const data = await bitswapGet(cidString);
+              if (data.length > 0) {
+                preimageCache.set(key, data);
+                push(data);
+                stopPolling();
+                return;
+              }
+            } else {
+              const result = await fetchFromIpfs(cidString);
+              if (result.data.length > 0) {
+                preimageCache.set(key, result.data);
+                push(result.data);
+                stopPolling();
+                return;
+              }
+            }
+          } catch (err) {
+            log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
+            pushError({
+              reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
+            });
+          }
+        };
+
+        intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
+        initialTimeoutId = setTimeout(() => void poll(), INITIAL_POLL_DELAY_MS);
+
+        return () => {
+          stopPolling();
+        };
+      },
+    );
   };
 }
 

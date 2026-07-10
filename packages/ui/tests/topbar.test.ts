@@ -391,6 +391,26 @@ describe("topbar login cancellation", () => {
     );
     expect(modalText).toContain("Retry");
   });
+
+  it("explains rejected statement-store transactions from the raw reason", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          reason: "submit RPC error: Invalid Transaction",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("Statement Store transaction rejected");
+    expect(modalText).toContain("submit RPC error: Invalid Transaction");
+    expect(modalText).toContain("Retry");
+  });
 });
 
 describe("topbar boot rehydration", () => {

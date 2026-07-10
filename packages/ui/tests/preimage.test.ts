@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPreimageAdapters } from "@dotli/ui/host-callbacks/Preimage";
 
 const mocks = vi.hoisted(() => ({
+  fetchFromIpfs: vi.fn(async () => ({ data: new Uint8Array() })),
+  getBackend: vi.fn(() => "rpc-gateway"),
   getPolkadotSigner: vi.fn(
     (
       publicKey: Uint8Array,
@@ -12,6 +14,14 @@ const mocks = vi.hoisted(() => ({
     ) => ({ publicKey, type, sign }),
   ),
   submitPreimageAsUser: vi.fn(async () => undefined),
+}));
+
+vi.mock("@dotli/content/ipfs", () => ({
+  fetchFromIpfs: mocks.fetchFromIpfs,
+}));
+
+vi.mock("@dotli/config/mode", () => ({
+  getBackend: mocks.getBackend,
 }));
 
 vi.mock("polkadot-api/signer", () => ({
@@ -25,6 +35,8 @@ vi.mock("@dotli/ui/preimage-submit", () => ({
 describe("preimage host callbacks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.fetchFromIpfs.mockResolvedValue({ data: new Uint8Array() });
+    mocks.getBackend.mockReturnValue("rpc-gateway");
     mocks.submitPreimageAsUser.mockResolvedValue(undefined);
   });
 
@@ -116,5 +128,37 @@ describe("preimage host callbacks", () => {
     expect(first.done).toBe(false);
     expect(first.value.isOk()).toBe(true);
     expect(first.value._unsafeUnwrap()).toBeUndefined();
+  });
+
+  it("emits lookup backend failures as stream errors", async () => {
+    vi.useFakeTimers();
+    try {
+      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const missingKey = new Uint8Array(32);
+      mocks.fetchFromIpfs.mockRejectedValueOnce(
+        new Error("gateway unavailable"),
+      );
+
+      const iterator = lookupPreimage(missingKey)[Symbol.asyncIterator]();
+      const first = await iterator.next();
+      const secondPromise = iterator.next();
+      await vi.advanceTimersByTimeAsync(1000);
+      const second = await secondPromise;
+      const done = await iterator.next();
+
+      expect(first.done).toBe(false);
+      expect(first.value.isOk()).toBe(true);
+      expect(first.value._unsafeUnwrap()).toBeUndefined();
+      expect(second.done).toBe(false);
+      expect(second.value.isErr()).toBe(true);
+      expect(second.value._unsafeUnwrapErr().reason).toContain(
+        "preimage lookup via rpc-gateway failed: gateway unavailable",
+      );
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
+      expect(done.done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,14 +1,21 @@
 import type { GenericError, Result } from "@parity/truapi";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 
 export function createResultStream<T>(
   initial: T[],
-  start: (push: (value: T) => void) => () => void,
+  start: (
+    push: (value: T) => void,
+    pushError: (error: GenericError) => void,
+  ) => () => void,
 ): AsyncIterable<Result<T, GenericError>> {
   return {
     [Symbol.asyncIterator](): AsyncIterator<Result<T, GenericError>> {
-      const queue = initial.map((value) => ({ value }));
+      const queue: Result<T, GenericError>[] = initial.map((value) =>
+        ok(value),
+      );
       let stopped = false;
+      let cleanup: (() => void) | null = null;
+      let cleanedUp = false;
       let resolve:
         | ((result: IteratorResult<Result<T, GenericError>>) => void)
         | null = null;
@@ -17,6 +24,13 @@ export function createResultStream<T>(
         done: true,
         value: undefined as never,
       });
+      const runCleanup = (): void => {
+        if (cleanedUp || cleanup === null) {
+          return;
+        }
+        cleanedUp = true;
+        cleanup();
+      };
       const push = (value: T): void => {
         if (stopped) {
           return;
@@ -27,18 +41,36 @@ export function createResultStream<T>(
           send({ done: false, value: ok(value) });
           return;
         }
-        queue.push({ value });
+        queue.push(ok(value));
       };
-      const cleanup = start(push);
+      const pushError = (error: GenericError): void => {
+        if (stopped) {
+          return;
+        }
+        stopped = true;
+        runCleanup();
+        const result = err<T, GenericError>(error);
+        if (resolve) {
+          const send = resolve;
+          resolve = null;
+          send({ done: false, value: result });
+          return;
+        }
+        queue.push(result);
+      };
+      cleanup = start(push, pushError);
+      if (stopped) {
+        runCleanup();
+      }
 
       return {
         next(): Promise<IteratorResult<Result<T, GenericError>>> {
-          if (stopped) {
-            return Promise.resolve(complete());
-          }
           const item = queue.shift();
           if (item) {
-            return Promise.resolve({ done: false, value: ok(item.value) });
+            return Promise.resolve({ done: false, value: item });
+          }
+          if (stopped) {
+            return Promise.resolve(complete());
           }
           return new Promise((r) => {
             resolve = r;
@@ -46,7 +78,7 @@ export function createResultStream<T>(
         },
         return(): Promise<IteratorResult<Result<T, GenericError>>> {
           stopped = true;
-          cleanup();
+          runCleanup();
           if (resolve) {
             const send = resolve;
             resolve = null;

@@ -465,18 +465,25 @@ const PENDING_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
 // Recognize known wallet-side SSO failures and return friendly copy, or null to
-// fall back to the raw error. OriginPersonProviderError ("error 0" =
-// noPersonsExist) means the signer's personhood is not yet included in a VRF
-// ring, so the wallet cannot grant the host its statement-store allowance yet.
+// fall back to the raw error.
 function friendlyAuthError(
   message: string,
 ): { title: string; subtitle: string; detail?: string } | null {
-  if (message.includes("no free statement-store slot for device registration")) {
+  if (
+    message.includes("no free statement-store slot for device registration")
+  ) {
     return {
       title: "No Statement Store slots left",
-      subtitle:
-        "Polkadot Mobile could not register this browser as a device.",
+      subtitle: "Polkadot Mobile could not register this browser as a device.",
       detail: "no free statement-store slot for device registration",
+    };
+  }
+  if (message.includes("Invalid Transaction")) {
+    return {
+      title: "Statement Store transaction rejected",
+      subtitle:
+        "Polkadot Mobile could not register this browser because the chain rejected the registration transaction.",
+      detail: message,
     };
   }
   if (message.includes("SubstrateSdk.JSONRPCError error 1")) {
