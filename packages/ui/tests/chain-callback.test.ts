@@ -176,6 +176,42 @@ describe("createChainConnect", () => {
     expect(mocks.emitSsoStatementStoreResponse).not.toHaveBeenCalled();
   });
 
+  it("emits login progress when a statement-store page carries statements", async () => {
+    let onMessage: ((message: unknown) => void) | undefined;
+    mocks.smoldotProvider.mockImplementation(
+      (handler: (message: unknown) => void) => {
+        onMessage = handler;
+        return {
+          send: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      },
+    );
+    const progressEvents: Event[] = [];
+    window.addEventListener("dotli:truapi-login-progress", (event) => {
+      progressEvents.push(event);
+    });
+    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
+
+    onMessage?.({
+      jsonrpc: "2.0",
+      method: "statement_statement",
+      params: {
+        subscription: "pairing-sub",
+        result: {
+          event: "newStatements",
+          data: { statements: ["0x1234"], remaining: 0 },
+        },
+      },
+    });
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    await responses.next();
+    await responses.return?.();
+
+    expect(progressEvents).toHaveLength(1);
+  });
+
   it("emits statement-store debug events by correlating opaque request ids", async () => {
     mocks.hasDotliDebugListeners.mockReturnValue(true);
     let onMessage: ((message: unknown) => void) | undefined;

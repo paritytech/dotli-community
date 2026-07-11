@@ -10,6 +10,8 @@
 // storage corruption and passive tampering, not an active same-origin
 // adversary.
 
+import { toHex } from "./hex";
+
 /**
  * Deterministic SHA-256 digest over a file map. For each file (in
  * sorted-path order) the manifest holds SHA-256(path) ++ SHA-256(bytes):
@@ -38,7 +40,5 @@ export async function computeArchiveDigest(
     manifest.set(fileHash, i * 64 + 32);
   });
   const digest = await crypto.subtle.digest("SHA-256", manifest);
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
+  return toHex(new Uint8Array(digest)).slice(2);
 }

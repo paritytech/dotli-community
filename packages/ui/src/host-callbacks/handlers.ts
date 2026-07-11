@@ -5,9 +5,9 @@
 // Scoping:
 // - `label` identifies the dApp, used in topbar notifications, permission
 //   storage keys, and sign modal titles.
-// - `storagePrefix` scopes `localStorage` per dApp.
+// - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { RequiredHostCallbacks } from "@parity/truapi-host";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
 import { createPromptPermission } from "./PromptPermission";
@@ -29,35 +29,32 @@ export interface CreateHostCallbacksOptions {
   pairingLabel?: string;
   pairingDotSuffix?: boolean;
   pairingHostGlobal?: boolean;
-  storagePrefix: string;
 }
 
 export function createHostCallbacks(
   options: CreateHostCallbacksOptions,
-): Required<HostCallbacks> {
-  const {
-    label,
-    pairingLabel,
-    pairingDotSuffix,
-    pairingHostGlobal,
-    storagePrefix,
-  } = options;
+): RequiredHostCallbacks {
+  const { label, pairingLabel, pairingDotSuffix, pairingHostGlobal } = options;
   return {
-    navigateTo: createNavigateTo(),
-    ...createNotificationAdapters(label),
-    ...createPromptPermission(label),
-    featureSupported: createFeatureSupported(),
-    read: createLocalStorageRead(storagePrefix),
-    write: createLocalStorageWrite(storagePrefix),
-    clear: createLocalStorageClear(storagePrefix),
-    authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
-      dotSuffix: pairingDotSuffix,
-      hostGlobal: pairingHostGlobal,
-    }),
-    ...createSessionStoreAdapters(),
-    ...createUserConfirmationAdapters(label),
-    ...createPreimageAdapters(label),
-    subscribeTheme: createThemeSubscribe(),
-    connect: createChainConnect(),
+    navigation: { navigateTo: createNavigateTo() },
+    notifications: createNotificationAdapters(label),
+    permissions: createPromptPermission(label),
+    features: { featureSupported: createFeatureSupported() },
+    productStorage: {
+      read: createLocalStorageRead(),
+      write: createLocalStorageWrite(),
+      clear: createLocalStorageClear(),
+    },
+    coreStorage: createSessionStoreAdapters(),
+    auth: {
+      authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
+        dotSuffix: pairingDotSuffix,
+        hostGlobal: pairingHostGlobal,
+      }),
+    },
+    userConfirmation: createUserConfirmationAdapters(label),
+    theme: { subscribeTheme: createThemeSubscribe() },
+    preimage: createPreimageAdapters(label),
+    chain: { connect: createChainConnect() },
   };
 }

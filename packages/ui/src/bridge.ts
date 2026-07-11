@@ -1,7 +1,7 @@
 // dot.li — TrUAPI host bridge
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
-// product iframe via `@parity/truapi-host-wasm`. Each render swaps the running
+// product iframe via `@parity/truapi-host`. Each render swaps the running
 // runtime, so disposing the last host tears down both the iframe and
 // the core.
 //
@@ -35,7 +35,8 @@ import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
 } from "@dotli/truapi-debug/dotli-debug-bus";
-import type { TrUApiHostCoreProvider } from "@parity/truapi-host-wasm";
+import type { TrUApiProductProvider } from "@parity/truapi-host";
+import type { PairingHostAdmin } from "@parity/truapi-host";
 import {
   buildAllowAttribute,
   registerPermissionAuthorizationProvider,
@@ -61,12 +62,12 @@ const noop = (): void => undefined;
 // main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
 const runtimeChunkPromise = Promise.all([
-  import("@parity/truapi-host-wasm/web"),
-  import("@parity/truapi-host-wasm/worker-runtime?worker"),
+  import("@parity/truapi-host/web"),
+  import("@parity/truapi-host/worker-runtime?worker"),
 ]).then(([web, workerMod]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {
-    createWebWorkerProvider: web.createWebWorkerProvider,
+    createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
     createIframeHost: web.createIframeHost,
     HostWorker: workerMod.default,
   };
@@ -91,16 +92,18 @@ interface CoreHost {
   dispose: () => void;
 }
 
-type CoreProvider = Provider &
+type CoreProviderBase = Provider &
   Pick<
-    TrUApiHostCoreProvider,
+    TrUApiProductProvider,
     | "disconnectSession"
-    | "cancelPairing"
-    | "notifySessionStoreChanged"
     | "getPermissionAuthorizationStatus"
     | "getPermissionAuthorizationStatuses"
     | "setPermissionAuthorizationStatus"
   >;
+type CoreProvider = CoreProviderBase & PairingHostAdmin;
+type PairingRuntimeControls = PairingHostAdmin & {
+  dispose(): void;
+};
 type CurrentProduct =
   | {
       mode: "iframe";
@@ -135,16 +138,11 @@ function ensureStoredSessionForwarder(): void {
   });
 }
 
-function trackCoreProvider(provider: CoreProvider): CoreProvider {
-  liveCoreProviders.add(provider);
-  ensureStoredSessionForwarder();
-  let disposed = false;
-  queueMicrotask(() => {
-    if (!disposed) {
-      provider.notifySessionStoreChanged();
-    }
-  });
-  return {
+function trackCoreProvider(
+  provider: CoreProviderBase,
+  pairing: PairingRuntimeControls,
+): CoreProvider {
+  const tracked: CoreProvider = {
     postMessage(message: Uint8Array): void {
       provider.postMessage(message);
     },
@@ -158,10 +156,10 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
       await provider.disconnectSession();
     },
     cancelPairing() {
-      provider.cancelPairing();
+      pairing.cancelPairing();
     },
     notifySessionStoreChanged() {
-      provider.notifySessionStoreChanged();
+      pairing.notifySessionStoreChanged();
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
@@ -173,11 +171,52 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
       return provider.setPermissionAuthorizationStatus(request, status);
     },
     dispose() {
+      provider.dispose();
+      pairing.dispose();
+    },
+  };
+  liveCoreProviders.add(tracked);
+  ensureStoredSessionForwarder();
+  let disposed = false;
+  queueMicrotask(() => {
+    if (!disposed) {
+      tracked.notifySessionStoreChanged();
+    }
+  });
+  return {
+    postMessage(message: Uint8Array): void {
+      tracked.postMessage(message);
+    },
+    subscribe(callback) {
+      return tracked.subscribe(callback);
+    },
+    subscribeClose(callback) {
+      return tracked.subscribeClose?.(callback) ?? noop;
+    },
+    async disconnectSession() {
+      await tracked.disconnectSession();
+    },
+    cancelPairing() {
+      tracked.cancelPairing();
+    },
+    notifySessionStoreChanged() {
+      tracked.notifySessionStoreChanged();
+    },
+    getPermissionAuthorizationStatus(request) {
+      return tracked.getPermissionAuthorizationStatus(request);
+    },
+    getPermissionAuthorizationStatuses(requests) {
+      return tracked.getPermissionAuthorizationStatuses(requests);
+    },
+    setPermissionAuthorizationStatus(request, status) {
+      return tracked.setPermissionAuthorizationStatus(request, status);
+    },
+    dispose() {
       if (disposed) {
         return;
       }
       disposed = true;
-      liveCoreProviders.delete(provider);
+      liveCoreProviders.delete(tracked);
       if (
         liveCoreProviders.size === 0 &&
         unsubscribeSessionStoreChanges !== null
@@ -185,7 +224,7 @@ function trackCoreProvider(provider: CoreProvider): CoreProvider {
         unsubscribeSessionStoreChanges();
         unsubscribeSessionStoreChanges = null;
       }
-      provider.dispose();
+      tracked.dispose();
     },
   };
 }
@@ -462,9 +501,9 @@ function emitWireFrameDebug(
 }
 
 function wrapCoreProviderForDebug(
-  provider: CoreProvider,
+  provider: CoreProviderBase,
   productId: string,
-): CoreProvider {
+): CoreProviderBase {
   const listeners = new Set<(message: Uint8Array) => void>();
   let disposed = false;
   const unsubscribeCore = provider.subscribe((message) => {
@@ -496,12 +535,6 @@ function wrapCoreProviderForDebug(
     },
     async disconnectSession() {
       await provider.disconnectSession();
-    },
-    cancelPairing() {
-      provider.cancelPairing();
-    },
-    notifySessionStoreChanged() {
-      provider.notifySessionStoreChanged();
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
@@ -597,6 +630,7 @@ export function requestCoreLogin(
           });
           resolve(result.value);
         } else {
+          const error = new LoginRequestError(result.value);
           emitDotliDebugEvent({
             layer: "sso",
             event: "login_request_failed",
@@ -604,11 +638,7 @@ export function requestCoreLogin(
             timestamp: Date.now(),
             payload: { requestId },
           });
-          if (result.value.tag === "Domain") {
-            reject(new LoginRequestError(result.value.value));
-          } else {
-            reject(new Error(JSON.stringify(result.value)));
-          }
+          reject(error);
         }
       } catch (error) {
         emitDotliDebugEvent({
@@ -770,26 +800,30 @@ async function createCoreProvider(
     productId?: string;
   } = {},
 ): Promise<CoreProvider> {
-  const { createWebWorkerProvider, HostWorker } = await runtimeChunkPromise;
-  const provider = await createWebWorkerProvider(
+  const { createWebWorkerPairingHostRuntime, HostWorker } =
+    await runtimeChunkPromise;
+  const runtimeConfig = createTruapiRuntimeConfig(
+    label,
+    window.location,
+    options.productId,
+  );
+  const { productId, ...hostConfig } = runtimeConfig;
+  const runtime = await createWebWorkerPairingHostRuntime(
     new HostWorker(),
     createHostCallbacks({
       label,
       pairingLabel: options.pairingLabel,
       pairingDotSuffix: options.pairingDotSuffix,
       pairingHostGlobal: options.pairingHostGlobal,
-      storagePrefix: `dotli:${label}:`,
     }),
     {
-      runtimeConfig: createTruapiRuntimeConfig(
-        label,
-        window.location,
-        options.productId,
-      ),
+      hostConfig,
     },
   );
+  const provider = await runtime.createProvider({ productId });
   return trackCoreProvider(
     wrapCoreProviderForDebug(provider, options.productId ?? label),
+    runtime,
   );
 }
 

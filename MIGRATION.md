@@ -15,8 +15,8 @@ dotli still has two protocol layers:
 
 The active launch path is `packages/ui/src/bridge.ts`:
 
-- imports `@parity/truapi-host-wasm/web` and
-  `@parity/truapi-host-wasm/worker-runtime?worker`;
+- imports `@parity/truapi-host/web` and
+  `@parity/truapi-host/worker-runtime?worker`;
 - starts a Web Worker that owns the `truapi-server` WASM core;
 - adapts typed dotli callbacks with `createWasmRawCallbacks(...)`;
 - calls `createWebWorkerProvider(new HostWorker(), rawCallbacks, { runtimeConfig })`;
@@ -57,25 +57,19 @@ routing that belongs inside the Rust core.
 
 ```jsonc
 "@parity/truapi": "file:../../../../js/packages/truapi",
-"@parity/truapi-host-wasm": "file:../../../../js/packages/truapi-host-wasm"
+"@parity/truapi-host": "file:../../../../js/packages/truapi-host"
 ```
 
 > **TODO(packaging):** the `file:../../../../` links resolve only when dotli
 > lives at `hosts/dotli/` inside the TrUAPI monorepo. A standalone dotli
 > checkout (including dotli's own CI, which runs `bun install
-> --frozen-lockfile` without the parent repo) cannot install these packages.
+--frozen-lockfile` without the parent repo) cannot install these packages.
 > Before this branch lands on dotli `main`, decide between publishing the
 > `@parity/truapi*` packages to a registry, vendoring tarballs, or retiring
 > dotli's standalone CI. Carry this note into the dotli PR description.
 
 The runtime manifests and source must not depend on or import the removed
-`@novasamatech/*` runtime packages. The canonical forbidden-package list lives
-in `packages/ui/tests/nova-removal.test.ts`; keep that guard broad rather than
-duplicating a package list in this document.
-
-`packages/ui/tests/nova-removal.test.ts` guards this invariant across dotli
-manifests, `bun.lock`, `THIRD_PARTY_NOTICES.md`, `apps/*/src`, and
-`packages/*/src`.
+`@novasamatech/*` runtime packages.
 
 ## Nested dApps
 

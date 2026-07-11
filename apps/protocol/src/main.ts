@@ -659,16 +659,11 @@ async function initDirectMode(): Promise<void> {
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the smoldot / chain-specs bundle cost (D-1).
-  const [
-    { createChainProvider, isChainSupported },
-    resolve,
-    smoldotMod,
-    bulletin,
-  ] = await Promise.all([
+  const [{ createChainProvider, isChainSupported }, resolve, smoldotMod] =
+    await Promise.all([
       import("@dotli/resolver/chains"),
       import("@dotli/resolver/resolve"),
       import("@dotli/resolver/smoldot"),
-      import("@dotli/resolver/bulletin"),
     ]);
   const {
     getRelayChain,
@@ -682,7 +677,6 @@ async function initDirectMode(): Promise<void> {
     waitForPeopleFinalized,
   } = resolve;
   const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
-  const { submitPreimageTransaction, getTestSigner } = bulletin;
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
   // mode has no SharedWorker in the loop, so we post straight up to the
@@ -746,8 +740,6 @@ async function initDirectMode(): Promise<void> {
     resolveOwner,
     resolveExecutableManifest,
     resolveRootManifest,
-    submitBulletinPreimage: (value) =>
-      submitPreimageTransaction(value, getTestSigner()),
   });
 
   bindEngineToMessages(engine);
@@ -776,13 +768,6 @@ function initRpcMode(): void {
     // No onInit / onCleanup: the WS provider lifecycle is owned by the
     // broker's `ensureUpstream` / `disconnectAll`.
     // No resolver: gateway-mode resolution doesn't go through this iframe.
-    submitBulletinPreimage: async (value) => {
-      const bulletin = await import("@dotli/resolver/bulletin-rpc");
-      await bulletin.submitPreimageTransactionViaRpc(
-        value,
-        bulletin.getTestSigner(),
-      );
-    },
   });
 
   bindEngineToMessages(engine);
@@ -1095,8 +1080,6 @@ interface EngineOptions {
   resolveRootManifest?: (
     label: string,
   ) => Promise<ManifestResult<RootManifest>>;
-  /** Bulletin Paseo preimage submission. */
-  submitBulletinPreimage?: (value: Uint8Array) => Promise<void>;
 }
 
 function createEngine(options: EngineOptions): ProtocolEngine {
@@ -1313,28 +1296,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
             originConns.delete(orig);
           }
         }
-        respond({
-          namespace: "dotli:protocol",
-          kind: "response",
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case "bulletinSubmitPreimage": {
-        if (!options.submitBulletinPreimage) {
-          throw new Error(
-            "bulletinSubmitPreimage is not served by this protocol mode",
-          );
-        }
-        const payload =
-          request.payload as ProtocolRequestMap["bulletinSubmitPreimage"];
-        if (!(payload.value instanceof Uint8Array)) {
-          throw new Error("Invalid value: expected Uint8Array");
-        }
-        await options.submitBulletinPreimage(payload.value);
         respond({
           namespace: "dotli:protocol",
           kind: "response",

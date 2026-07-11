@@ -3,7 +3,13 @@
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+} from "node:fs";
 import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
@@ -331,17 +337,12 @@ function copyTruapiWasmWebBundle(): Plugin {
 }
 
 function findTruapiWasmWebBundle(): string {
-  const packageRelative = "node_modules/@parity/truapi-host-wasm/dist/wasm/web";
+  const packageRelative = "node_modules/@parity/truapi-host/dist/wasm/web";
   const checked: string[] = [];
-  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
-    const candidate = resolve(dir, packageRelative);
+  for (const candidate of truapiWasmWebBundleCandidates(packageRelative)) {
     checked.push(candidate);
     if (existsSync(resolve(candidate, "truapi_server.js"))) {
       return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
     }
   }
   throw new Error(
@@ -351,6 +352,21 @@ function findTruapiWasmWebBundle(): string {
       `Checked: ${checked.join(", ")}`,
     ].join(" "),
   );
+}
+
+function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
+  const candidates: string[] = [];
+  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
+    candidates.push(resolve(dir, packageRelative));
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+  }
+  candidates.push(
+    resolve(import.meta.dirname, "../../packages/ui", packageRelative),
+  );
+  return [...new Set(candidates)];
 }
 
 /**
@@ -388,11 +404,11 @@ export default defineConfig({
     sentry(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
-    // cross-origin and outside this SW's reach by design. Smoldot.wasm lives
-    // in the protocol build; browser HTTP cache (immutable, hashed filename)
-    // already prevents redownload on revisit, so the precache list excludes
-    // wasm entirely. `registerType: "prompt"` defers update activation to
-    // the user via workbox-window in src/pwa.ts.
+    // cross-origin and outside this SW's reach by design. The Rust TrUAPI core
+    // wasm-pack bundle uses stable filenames, so its JS glue and `.wasm` must
+    // be precached together; mixing old glue with a freshly served `.wasm`
+    // fails during instantiation. `registerType: "prompt"` defers update
+    // activation to the user via workbox-window in src/pwa.ts.
     VitePWA({
       injectRegister: false,
       registerType: "prompt",
@@ -417,7 +433,11 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
+        // VitePWA's default treats every file under `assets/` as
+        // hash-versioned. The copied wasm-pack bundle keeps stable filenames,
+        // so let Workbox attach content revisions to those entries.
+        dontCacheBustURLsMatching: /^assets\/(?!wasm\/web\/)/,
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.

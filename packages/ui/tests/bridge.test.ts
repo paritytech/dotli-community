@@ -19,12 +19,17 @@ type MockProvider = {
   subscribe: ReturnType<typeof vi.fn>;
   subscribeClose: ReturnType<typeof vi.fn>;
   disconnectSession: ReturnType<typeof vi.fn>;
-  cancelPairing: ReturnType<typeof vi.fn>;
-  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatuses: ReturnType<typeof vi.fn>;
   setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+};
+
+type MockRuntime = {
+  createProvider: ReturnType<typeof vi.fn>;
+  cancelPairing: ReturnType<typeof vi.fn>;
+  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
 
@@ -43,28 +48,29 @@ function deferred<T>(): Deferred<T> {
 const mocks = vi.hoisted(() => ({
   coreProviders: [] as MockProvider[],
   coreProviderDefers: [] as Deferred<MockProvider>[],
+  coreRuntimes: [] as MockRuntime[],
   iframeHosts: [] as {
     iframeUrl: string;
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
-  createWebWorkerProvider: vi.fn(),
+  createWebWorkerPairingHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
   HostWorker: vi.fn(),
 }));
 
-vi.mock("@parity/truapi-host-wasm", () => ({
+vi.mock("@parity/truapi-host", () => ({
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
-vi.mock("@parity/truapi-host-wasm/web", () => ({
-  createWebWorkerProvider: mocks.createWebWorkerProvider,
+vi.mock("@parity/truapi-host/web", () => ({
+  createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));
 
-vi.mock("@parity/truapi-host-wasm/worker-runtime?worker", () => ({
+vi.mock("@parity/truapi-host/worker-runtime?worker", () => ({
   default: mocks.HostWorker,
 }));
 
@@ -81,8 +87,6 @@ function makeProvider(): MockProvider {
     subscribe: vi.fn(() => () => {}),
     subscribeClose: vi.fn(() => () => {}),
     disconnectSession: vi.fn(async () => {}),
-    cancelPairing: vi.fn(),
-    notifySessionStoreChanged: vi.fn(),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
     getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
       requests.map(() => "NotDetermined"),
@@ -111,8 +115,6 @@ function makeLoginProvider(options: {
     }),
     subscribeClose: vi.fn(() => () => {}),
     disconnectSession: vi.fn(async () => {}),
-    cancelPairing: vi.fn(),
-    notifySessionStoreChanged: vi.fn(),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
     getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
       requests.map(() => "NotDetermined"),
@@ -124,11 +126,27 @@ function makeLoginProvider(options: {
   return provider;
 }
 
+function makeRuntime(): MockRuntime {
+  const runtime = {
+    createProvider: vi.fn(() => {
+      const item = deferred<MockProvider>();
+      mocks.coreProviderDefers.push(item);
+      return item.promise;
+    }),
+    cancelPairing: vi.fn(),
+    notifySessionStoreChanged: vi.fn(),
+    dispose: vi.fn(),
+  };
+  mocks.coreRuntimes.push(runtime);
+  return runtime;
+}
+
 function loginResponseFrame(
   requestId: string,
   result:
     | { success: true; value: "Success" | "AlreadyConnected" | "Rejected" }
-    | { success: false; reason: string },
+    | { success: false; reason: string }
+    | { success: false; hostFailure: string },
 ): Uint8Array {
   const responseCodec = scale.indexedTaggedUnion({
     V1: [
@@ -143,7 +161,15 @@ function loginResponseFrame(
     tag: "V1",
     value: result.success
       ? { success: true, value: result.value }
-      : {
+      : "hostFailure" in result
+        ? {
+            success: false,
+            value: {
+              tag: "HostFailure",
+              value: { reason: result.hostFailure },
+            },
+          }
+        : {
           success: false,
           value: {
             tag: "Domain",
@@ -155,7 +181,7 @@ function loginResponseFrame(
               },
             },
           },
-        },
+          },
   });
   const frame = encodeWireMessage({
     requestId,
@@ -212,13 +238,12 @@ describe("bridge render lifecycle", () => {
     vi.clearAllMocks();
     mocks.coreProviders.length = 0;
     mocks.coreProviderDefers.length = 0;
+    mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
     document.body.innerHTML = `<div id="app"></div>`;
-    mocks.createWebWorkerProvider.mockImplementation(() => {
-      const item = deferred<MockProvider>();
-      mocks.coreProviderDefers.push(item);
-      return item.promise;
-    });
+    mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
+      Promise.resolve(makeRuntime()),
+    );
     mocks.createIframeHost.mockImplementation(
       (args: { iframeUrl: string; container: HTMLElement }) => {
         const iframe = document.createElement("iframe");
@@ -317,12 +342,42 @@ describe("requestCoreLogin", () => {
       },
     });
 
-    await expect(requestCoreLogin(provider)).rejects.toMatchObject({
+    const promise = requestCoreLogin(provider);
+
+    await expect(promise).rejects.toThrow("Rejected");
+    await expect(promise).rejects.toMatchObject({
       name: "LoginRequestError",
       error: {
-        tag: "V1",
-        value: { tag: "Unknown", value: { reason: "Rejected" } },
+        tag: "Domain",
+        value: {
+          tag: "V1",
+          value: { tag: "Unknown", value: { reason: "Rejected" } },
+        },
       },
+    });
+    expect(provider.listener).toBeNull();
+  });
+
+  it("rejects host failures with the reason as the error message", async () => {
+    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const reason = "no free statement-store slot for device registration";
+    const provider = makeLoginProvider({
+      onPostMessage(message) {
+        provider.listener?.(
+          loginResponseFrame(requestIdFromFrame(message), {
+            success: false,
+            hostFailure: reason,
+          }),
+        );
+      },
+    });
+
+    const promise = requestCoreLogin(provider);
+
+    await expect(promise).rejects.toThrow(reason);
+    await expect(promise).rejects.toMatchObject({
+      name: "LoginRequestError",
+      error: { tag: "HostFailure", value: { reason } },
     });
     expect(provider.listener).toBeNull();
   });

@@ -15,8 +15,8 @@ import type {
   JsonRpcRequest,
   JsonRpcProvider,
 } from "@polkadot-api/json-rpc-provider";
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
-import type { PlatformJsonRpcConnection } from "@parity/truapi-host-wasm";
+import type { ChainProvider } from "@parity/truapi-host";
+import type { PlatformJsonRpcConnection } from "@parity/truapi-host";
 import { hasDotliDebugListeners } from "@dotli/truapi-debug/dotli-debug-bus";
 import { SS_USE_SMOLDOT } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";
@@ -41,6 +41,8 @@ import {
 const STATEMENT_SUBMIT_METHOD = "statement_submit";
 const STATEMENT_SUBSCRIBE_METHOD = "statement_subscribeStatement";
 const STATEMENT_UNSUBSCRIBE_METHOD = "statement_unsubscribeStatement";
+const STATEMENT_NOTIFICATION_METHOD = "statement_statement";
+const LOGIN_PROGRESS_EVENT = "dotli:truapi-login-progress";
 
 interface StatementStoreDebugRequest {
   method: string;
@@ -169,9 +171,6 @@ function emitStatementStoreResponse(
   response: string,
   debugRequests: Map<string, StatementStoreDebugRequest>,
 ): void {
-  if (!hasDotliDebugListeners()) {
-    return;
-  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(response);
@@ -182,6 +181,18 @@ function emitStatementStoreResponse(
     return;
   }
   const record = parsed as Record<string, unknown>;
+  const statementPage = parseStatementStorePage(record);
+  if (
+    statementPage !== null &&
+    statementPage.statementCount > 0 &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(new Event(LOGIN_PROGRESS_EVENT));
+  }
+
+  if (!hasDotliDebugListeners()) {
+    return;
+  }
   const responseId = jsonRpcId(record.id);
   if (responseId !== null) {
     const request = debugRequests.get(responseId);
@@ -203,8 +214,41 @@ function emitStatementStoreResponse(
     return;
   }
 
-  if (record.method !== STATEMENT_SUBSCRIBE_METHOD) {
+  if (statementPage === null) {
     return;
+  }
+  emitSsoStatementStoreResponse({
+    method: statementPage.method,
+    requestKind: "page",
+    frameKind: statementPage.malformed ? "malformed-page" : "page",
+    ...(statementPage.remoteSubscriptionId !== undefined
+      ? { remoteSubscriptionId: statementPage.remoteSubscriptionId }
+      : {}),
+    ...(statementPage.eventName !== undefined
+      ? { eventName: statementPage.eventName }
+      : {}),
+    statementCount: statementPage.statementCount,
+    ...(statementPage.remaining !== undefined
+      ? { remaining: statementPage.remaining }
+      : {}),
+  });
+}
+
+function parseStatementStorePage(record: Record<string, unknown>):
+  | {
+      method: string;
+      malformed: boolean;
+      remoteSubscriptionId?: string;
+      eventName?: string;
+      statementCount: number;
+      remaining?: number;
+    }
+  | null {
+  if (
+    record.method !== STATEMENT_NOTIFICATION_METHOD &&
+    record.method !== STATEMENT_SUBSCRIBE_METHOD
+  ) {
+    return null;
   }
   const params =
     typeof record.params === "object" && record.params !== null
@@ -219,19 +263,16 @@ function emitStatementStoreResponse(
       ? (result.data as Record<string, unknown>)
       : null;
   const statements = Array.isArray(data?.statements) ? data.statements : [];
-  emitSsoStatementStoreResponse({
-    method: STATEMENT_SUBSCRIBE_METHOD,
-    requestKind: "page",
-    frameKind: result === null ? "malformed-page" : "page",
+  return {
+    method: record.method,
+    malformed: result === null,
     ...(typeof params?.subscription === "string"
       ? { remoteSubscriptionId: params.subscription }
       : {}),
     ...(typeof result?.event === "string" ? { eventName: result.event } : {}),
     statementCount: statements.length,
-    ...(typeof data?.remaining === "number"
-      ? { remaining: data.remaining }
-      : {}),
-  });
+    ...(typeof data?.remaining === "number" ? { remaining: data.remaining } : {}),
+  };
 }
 
 function statementRequestKind(method: string): string | null {
@@ -262,7 +303,7 @@ function errorMessage(error: unknown): string | undefined {
   return typeof message === "string" ? message : JSON.stringify(error);
 }
 
-export function createChainConnect(): HostCallbacks["connect"] {
+export function createChainConnect(): ChainProvider["connect"] {
   return (genesisHashBytes) => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = backendForChain(genesisHash);

@@ -16,14 +16,15 @@ import type { HostDevicePermissionRequest } from "@parity/truapi";
 import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
-  TrUApiHostCoreProvider,
-} from "@parity/truapi-host-wasm";
+  TrUApiProductProvider,
+} from "@parity/truapi-host";
 
 export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
   | DevicePermissionName
   | "ChainSubmit"
+  | "IdentityDisclosure"
   | "PreimageSubmit"
   | "StatementSubmit";
 
@@ -102,6 +103,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: "NFC", label: "NFC" },
   { name: "Clipboard", label: "Clipboard" },
   { name: "Biometrics", label: "Biometrics" },
+  { name: "IdentityDisclosure", label: "Identity Disclosure" },
   { name: "ChainSubmit", label: "Sign Transactions" },
   { name: "PreimageSubmit", label: "Submit Preimages" },
   { name: "StatementSubmit", label: "Submit Statements" },
@@ -113,7 +115,7 @@ export function isDevicePermission(name: string): boolean {
 }
 
 type PermissionAuthorizationProvider = Pick<
-  TrUApiHostCoreProvider,
+  TrUApiProductProvider,
   "getPermissionAuthorizationStatuses" | "setPermissionAuthorizationStatus"
 >;
 
@@ -147,6 +149,9 @@ function authorizationRequest(
       tag: "Remote",
       value: { permission: { tag: permission } },
     };
+  }
+  if (permission === "IdentityDisclosure") {
+    return { tag: "IdentityDisclosure" };
   }
   return { tag: "Device", value: permission };
 }

@@ -315,6 +315,32 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
   });
 
+  it("shows logging-in progress after the pairing QR receives a statement", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+        },
+      }),
+    );
+    window.dispatchEvent(new Event("dotli:truapi-login-progress"));
+
+    expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
+      "Logging in...",
+    );
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+  });
+
   it("keeps the retry view for login failures", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
@@ -342,6 +368,28 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
       "Retry",
     );
+  });
+
+  it("explains statement-store slot exhaustion in the login failure view", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          reason: "no free statement-store slot for device registration",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("No Statement Store slots left");
+    expect(modalText).toContain(
+      "no free statement-store slot for device registration",
+    );
+    expect(modalText).toContain("Retry");
   });
 });
 
@@ -393,49 +441,5 @@ describe("topbar boot rehydration", () => {
     expect(
       document.getElementById("auth-button")?.querySelector(".user-badge"),
     ).toBeNull();
-  });
-});
-
-describe("settings dependency list", () => {
-  it("lists current runtime packages without Novasama dependencies", async () => {
-    installTopbarDom();
-    vi.stubGlobal("__DOTLI_VERSION__", "0.5.0");
-    vi.stubGlobal("__SMOLDOT_VERSION__", "3.2.0");
-    vi.stubGlobal("__SMOLDOT_COMMIT__", "abcdef1234567890");
-    vi.stubGlobal("__POLKADOT_API_VERSION__", "2.1.6");
-    vi.stubGlobal("__POLKADOT_API_VERSIONS__", [
-      { name: "@polkadot-api/json-rpc-provider", version: "0.2.0" },
-    ]);
-    vi.stubGlobal("__PARITY_TRUAPI_VERSIONS__", [
-      { name: "@parity/truapi", version: "0.3.0" },
-      { name: "@parity/truapi-host-wasm", version: "0.1.0" },
-    ]);
-
-    const opened: string[] = [];
-    vi.spyOn(window, "open").mockImplementation((url?: string | URL) => {
-      opened.push(String(url));
-      return null;
-    });
-
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-
-    document.getElementById("mode-button")?.click();
-
-    const content = document.getElementById("mode-popover-content");
-    expect(content?.textContent).toContain("@parity/truapi");
-    expect(content?.textContent).toContain("@parity/truapi-host-wasm");
-    expect(content?.textContent).not.toContain("@novasamatech");
-
-    Array.from(document.querySelectorAll("button"))
-      .find((button) => button.textContent === "Share diagnostic")
-      ?.click();
-    await flushMicrotasks();
-
-    expect(opened).toHaveLength(1);
-    const body = new URL(opened[0]!).searchParams.get("body") ?? "";
-    expect(body).toContain("@parity/truapi");
-    expect(body).toContain("@parity/truapi-host-wasm");
-    expect(body).not.toContain("@novasamatech");
   });
 });

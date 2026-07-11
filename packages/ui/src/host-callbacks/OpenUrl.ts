@@ -2,7 +2,7 @@
 // needs to classify the result so `.dot` domains land on the right host
 // subdomain and localhost products wrap into the configured host origin.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { Navigation } from "@parity/truapi-host";
 import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
@@ -25,7 +25,7 @@ function getHostOrigin(): string {
   return `${window.location.protocol}//${BASE_DOMAIN}`;
 }
 
-export function createNavigateTo(): HostCallbacks["navigateTo"] {
+export function createNavigateTo(): Navigation["navigateTo"] {
   return (url) => {
     const dotUrl = dotNsUrl.parseDotNsDomain(url);
 

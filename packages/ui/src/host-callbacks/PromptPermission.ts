@@ -3,7 +3,7 @@
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
 
-import type { HostCallbacks } from "@parity/truapi-host-wasm";
+import type { Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
@@ -32,11 +32,9 @@ function gatedRemotePermissionName(
   }
 }
 
-export function createPromptPermission(
-  label: string,
-): Pick<HostCallbacks, "devicePermission" | "remotePermission"> {
+export function createPromptPermission(label: string): Permissions {
   const limiter = createSubmitRateLimiter();
-  const devicePermission: HostCallbacks["devicePermission"] = async (tag) => {
+  const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
@@ -51,9 +49,7 @@ export function createPromptPermission(
     };
   };
 
-  const remotePermission: HostCallbacks["remotePermission"] = async (
-    request,
-  ) => {
+  const remotePermission: Permissions["remotePermission"] = async (request) => {
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
       return { granted: true };
@@ -97,11 +93,13 @@ export async function decidePromptPermission(
   }
   // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
-    return false;
+    throw new Error("Permission prompt rate limited");
   }
-  try {
-    await showPermissionRequestModal(label, name);
-  } catch {
+  const decision = await showPermissionRequestModal(label, name);
+  if (decision === "dismissed") {
+    throw new Error("User dismissed permission dialog");
+  }
+  if (decision === "denied") {
     await setPermissionStatus(label, name, "denied");
     return false;
   }

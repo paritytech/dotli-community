@@ -8,8 +8,29 @@ const TRANSIENT = new Set([502, 503, 504]);
 // Per-attempt request timeout. First-time pair can include user creation and
 // People-chain attestation, so give the one-shot handshake room to finish
 // instead of aborting and retrying the same QR payload.
-const PAIR_REQUEST_TIMEOUT_MS = 120_000;
+const PAIR_REQUEST_TIMEOUT_MS = Number(
+  process.env.SIGNER_BOT_PAIR_TIMEOUT_MS ?? "120000",
+);
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000;
+
+function shellQuote(value: string): string {
+  if (value.length === 0) return "''";
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function buildPairCurl(url: string, body: unknown): string {
+  return [
+    `curl -sS -X POST ${shellQuote(url)}`,
+    '-H "Authorization: Bearer ${SIGNER_BOT_SVC_TOKEN}"',
+    "-H 'Content-Type: application/json'",
+    "-H 'Accept: application/json'",
+    `--data-raw ${shellQuote(JSON.stringify(body))}`,
+  ].join(" \\\n  ");
+}
+
+function redactSignerBotResponse(text: string): string {
+  return text.replace(/"mnemonic"\s*:\s*"[^"]+"/g, '"mnemonic":"[redacted]"');
+}
 
 async function fetchWithTimeout(
   url: string,
@@ -25,19 +46,43 @@ async function fetchWithTimeout(
   }
 }
 
-async function fetchRetry(
+interface TextResponse {
+  response: Response;
+  text: string;
+}
+
+async function fetchTextWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<TextResponse> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const text = await response.text();
+    return { response, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchTextRetry(
   url: string,
   init: RequestInit,
   attempts = 4,
   timeoutMs = PAIR_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
+): Promise<TextResponse> {
   let last: unknown = null;
   for (let i = 1; i <= attempts; i++) {
     try {
-      const r = await fetchWithTimeout(url, init, timeoutMs);
-      if (r.ok || !TRANSIENT.has(r.status) || i === attempts) return r;
+      const result = await fetchTextWithTimeout(url, init, timeoutMs);
+      const { response, text } = result;
+      if (response.ok || !TRANSIENT.has(response.status) || i === attempts) {
+        return result;
+      }
       console.warn(
-        `[bot] ${init.method ?? "GET"} ${url} → ${r.status} (attempt ${i}/${attempts})`,
+        `[bot] ${init.method ?? "GET"} ${url} response ${response.status} ${response.statusText} (attempt ${i}/${attempts}): ${redactSignerBotResponse(text)}`,
       );
     } catch (e) {
       last = e;
@@ -48,7 +93,7 @@ async function fetchRetry(
     }
     await sleep(1_000 * 2 ** (i - 1));
   }
-  throw last ?? new Error("fetchRetry exhausted");
+  throw last ?? new Error("fetchTextRetry exhausted");
 }
 
 /**
@@ -98,7 +143,9 @@ export async function pair(
   svcToken: string,
   args: { handshake: string; username: string; network: string },
 ): Promise<PairResult> {
-  const r = await fetchRetry(`${base.replace(/\/$/, "")}/api/pair`, {
+  const url = `${base.replace(/\/$/, "")}/api/pair`;
+  console.log(`[bot] /api/pair curl:\n${buildPairCurl(url, args)}`);
+  const init: RequestInit = {
     method: "POST",
     headers: {
       Authorization: `Bearer ${svcToken}`,
@@ -106,11 +153,24 @@ export async function pair(
       Accept: "application/json",
     },
     body: JSON.stringify(args),
-  });
-  if (!r.ok) {
-    throw new Error(`pair ${r.status}: ${await r.text()}`);
+  };
+  let result: TextResponse;
+  try {
+    result = await fetchTextRetry(url, init);
+  } catch (e) {
+    console.error(
+      `[bot] /api/pair response unavailable: ${(e as Error).message}`,
+    );
+    throw e;
   }
-  return (await r.json()) as PairResult;
+  const { response: r, text } = result;
+  console.log(
+    `[bot] /api/pair raw response ${r.status} ${r.statusText}: ${redactSignerBotResponse(text) || "<empty>"}`,
+  );
+  if (!r.ok) {
+    throw new Error(`pair ${r.status}: ${text}`);
+  }
+  return JSON.parse(text) as PairResult;
 }
 
 /**

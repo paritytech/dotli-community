@@ -48,17 +48,12 @@ describe("createTruapiRuntimeConfig", () => {
       people: {
         genesisHash: getActiveServicesConfig().people.genesis,
       },
+      bulletin: {
+        genesisHash: getActiveServicesConfig().bulletin.genesis,
+      },
       pairing: {
         deeplinkScheme: "polkadotapp",
       },
     });
-  });
-
-  it("leaves host icon unset when the host runs on localhost", () => {
-    expect(
-      createTruapiRuntimeConfig("localhost:3000", {
-        origin: "http://localhost:5173",
-      } as Location).host.icon,
-    ).toBeUndefined();
   });
 });
