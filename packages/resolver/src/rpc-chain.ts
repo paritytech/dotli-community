@@ -13,11 +13,11 @@
  * smoldot is never imported here, so Vite tree-shakes the light client out of
  * any bundle that only pulls this module.
  *
- * Coverage is the active network's relay, Asset Hub, and People chains, each
- * dialled through its configured `rpcs`. Login and identity resolution live
+ * Coverage is the active network's relay, Asset Hub, People, and Bulletin
+ * chains when they have configured `rpcs`. Login and identity resolution live
  * on the People chain, so it must be reachable for auth to work in gateway
- * mode. Bulletin is deliberately absent. Its content (IPFS or bitswap) is
- * served through IPFS gateways, not a chain RPC connection.
+ * mode. Bulletin is reachable so in-core preimage submission can use its
+ * `TransactionStorage` runtime API over the same trusted RPC posture.
  */
 import { getWsProvider } from "polkadot-api/ws";
 import type { JsonRpcProvider } from "polkadot-api";
