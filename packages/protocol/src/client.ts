@@ -691,8 +691,7 @@ export function subscribeSharedAuthStorage(
 
 export function isRemoteChainSupported(genesisHash: string): boolean {
   // Advertise only what the *active* backend can actually serve. Gateway mode
-  // bridges a curated RPC subset (no Bulletin chain — its content goes via
-  // IPFS gateways), while smoldot can run any configured chain.
+  // bridges a curated RPC subset, while smoldot can run any configured chain.
   const supported =
     getBackend() === "rpc-gateway"
       ? getActiveGatewaySupportedGenesisHashes()

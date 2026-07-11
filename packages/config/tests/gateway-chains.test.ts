@@ -29,9 +29,9 @@ describe("gateway-supported chains (rpc-gateway mode)", () => {
     expect(hashes.has(v2.people.genesis.toLowerCase())).toBe(true);
   });
 
-  it("excludes the Bulletin chain (content served via IPFS, not chain RPC)", () => {
+  it("includes the Bulletin chain for in-core preimage submission", () => {
     const hashes = getActiveGatewaySupportedGenesisHashes();
-    expect(hashes.has(v2.bulletin.genesis.toLowerCase())).toBe(false);
+    expect(hashes.has(v2.bulletin.genesis.toLowerCase())).toBe(true);
   });
 
   it("never advertises a chain without a configured RPC endpoint", () => {
