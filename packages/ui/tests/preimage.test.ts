@@ -45,31 +45,49 @@ describe("preimage host callbacks", () => {
     expect(first.value._unsafeUnwrap()).toBeUndefined();
   });
 
+  it("only exposes the lookup callback (submission is core-owned)", () => {
+    const adapters = createPreimageAdapters("myapp");
+    expect(typeof adapters.lookupPreimage).toBe("function");
+    expect("submitPreimage" in adapters).toBe(false);
+  });
+
   it("As a dotli integrator, the host retries transient lookup backend failures", async () => {
     // Given
     vi.useFakeTimers();
     try {
       const { lookupPreimage } = createPreimageAdapters("myapp");
-      const missingKey = new Uint8Array(32);
+      const found = new TextEncoder().encode("retried preimage");
+      const key = fromHex(computePreimageKey(found));
       mocks.fetchFromIpfs.mockRejectedValueOnce(
         new Error("gateway unavailable"),
       );
+      mocks.fetchFromIpfs.mockResolvedValueOnce({ data: found });
 
       // When
-      const iterator = lookupPreimage(missingKey)[Symbol.asyncIterator]();
+      const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
       const first = await iterator.next();
+      const secondPromise = iterator.next();
+      let secondSettled = false;
+      void secondPromise.then(() => {
+        secondSettled = true;
+      });
       await vi.advanceTimersByTimeAsync(1000);
 
       // Then
       expect(first.done).toBe(false);
       expect(first.value.isOk()).toBe(true);
       expect(first.value._unsafeUnwrap()).toBeUndefined();
+      expect(secondSettled).toBe(false);
       expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
 
       // When
       await vi.advanceTimersByTimeAsync(9_000);
 
       // Then
+      const second = await secondPromise;
+      expect(second.done).toBe(false);
+      expect(second.value.isOk()).toBe(true);
+      expect(second.value._unsafeUnwrap()).toEqual(found);
       expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(2);
       await iterator.return?.();
     } finally {
