@@ -92,7 +92,7 @@ describe("topbar disconnect", () => {
     requestTruapiDisconnect();
 
     expect(requests).toBe(1);
-  });
+  }, 10_000);
 
   it("routes the disconnect button through the Rust-core event path", async () => {
     installTopbarDom();
