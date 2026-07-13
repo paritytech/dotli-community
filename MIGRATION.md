@@ -53,20 +53,21 @@ routing that belongs inside the Rust core.
 
 ## Dependencies
 
-`packages/ui/package.json` depends on the local TrUAPI packages:
+`packages/ui/package.json` currently resolves the public TrUAPI package names
+through temporary npm aliases:
 
 ```jsonc
-"@parity/truapi": "file:../../../../js/packages/truapi",
-"@parity/truapi-host": "file:../../../../js/packages/truapi-host"
+"@parity/truapi": "npm:@pgherveou2/truapi-dev@...",
+"@parity/truapi-host": "npm:@pgherveou2/truapi-host-dev@..."
 ```
 
-> **TODO(packaging):** the `file:../../../../` links resolve only when dotli
-> lives at `hosts/dotli/` inside the TrUAPI monorepo. A standalone dotli
-> checkout (including dotli's own CI, which runs `bun install
---frozen-lockfile` without the parent repo) cannot install these packages.
-> Before this branch lands on dotli `main`, decide between publishing the
-> `@parity/truapi*` packages to a registry, vendoring tarballs, or retiring
-> dotli's standalone CI. Carry this note into the dotli PR description.
+This keeps standalone dotli installs and CI reproducible while the Rust core
+port is in review. TrUAPI's development and E2E Make targets run
+`bun run link:truapi` after building the local packages, so parent-repo work
+always exercises the current checkout instead of the npm artifacts.
+
+> **TODO(packaging):** publish `@parity/truapi` and
+> `@parity/truapi-host`, then replace the temporary aliases before merge.
 
 The runtime manifests and source must not depend on or import the removed
 `@novasamatech/*` runtime packages.
