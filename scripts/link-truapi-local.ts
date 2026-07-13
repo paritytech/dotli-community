@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,4 +49,12 @@ for (const pkg of packages) {
   run(["link"], pkg.path);
 }
 
-run(["link", ...packages.map((pkg) => pkg.name)], dotliRoot);
+const packageNames = packages.map((pkg) => pkg.name);
+run(["link", ...packageNames], dotliRoot);
+
+for (const name of ["truapi", "truapi-host"]) {
+  rmSync(resolve(dotliRoot, "packages/ui/node_modules/@parity", name), {
+    force: true,
+    recursive: true,
+  });
+}
