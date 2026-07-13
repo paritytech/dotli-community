@@ -1676,12 +1676,9 @@ function buildBaseDiagnosticsRows(): [label: string, value: string][] {
   //     the two match. The row still lets us spot a divergence in the
   //     field.)
   //   - smoldot-direct: no sub-row. smoldot is torn down every page load.
-  //   - rpc-gateway: both WSS endpoints (Relay and Asset Hub). The curated
-  //     lists are candidate endpoints. polkadot-api's ws-provider rotates
-  //     on failure, so `renderDiagnostics` later replaces the Asset Hub
-  //     entry with the one the provider is actually connected to. Relay
-  //     isn't dialed at all in rpc mode today (dotNS is Asset Hub only),
-  //     so it just shows the first candidate for reference.
+  //   - rpc-gateway: the first configured WSS endpoint for each
+  //     gateway-backed chain. The curated lists are candidate endpoints;
+  //     individual providers may rotate to another endpoint on failure.
   if (backend === "smoldot-shared-worker") {
     if (typeof SharedWorker === "undefined") {
       rows.push(["Worker", "unavailable"]);
@@ -1746,11 +1743,10 @@ function buildSmoldotVersionLabel(): string {
  *   - smoldot-shared-worker / smoldot-direct: goes through smoldot
  *   - rpc: goes through the curated WSS endpoint
  *
- * Returns `null` if the chain isn't supported by the active backend (e.g.
- * asking for relay in rpc mode, which only supports Asset Hub) or if the
- * query doesn't resolve within the timeout. The heavy `polkadot-api` import
- * stays dynamic so opening the popover is cheap when the user doesn't care
- * about blocks.
+ * Returns `null` if the chain isn't supported by the active backend or if
+ * the query doesn't resolve within the timeout. The heavy `polkadot-api`
+ * import stays dynamic so opening the popover is cheap when the user doesn't
+ * care about blocks.
  */
 async function queryFinalizedBlock(
   genesisHash: string,
