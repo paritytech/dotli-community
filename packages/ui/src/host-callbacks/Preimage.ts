@@ -6,7 +6,6 @@ import type { PreimageHost } from "@parity/truapi-host";
 import { hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
 import { getBackend } from "@dotli/config/mode";
-import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
 import { bitswapGet } from "../bulletin-bitswap";
 import { toHex } from "@dotli/shared/hex";
@@ -35,7 +34,7 @@ function createPreimageLookupSubscribe(
     let stopped = false;
     return createResultStream<Uint8Array | undefined>(
       [undefined],
-      (push, pushError) => {
+      (push, _pushError) => {
         let intervalId: ReturnType<typeof setInterval> | null = null;
         let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
         const stopPolling = (): void => {
@@ -83,9 +82,6 @@ function createPreimageLookupSubscribe(
             }
           } catch (err) {
             log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
-            pushError({
-              reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
-            });
           }
         };
 

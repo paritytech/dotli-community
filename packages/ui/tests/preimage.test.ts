@@ -40,33 +40,39 @@ describe("preimage host callbacks", () => {
     expect("submitPreimage" in adapters).toBe(false);
   });
 
-  it("emits lookup backend failures as stream errors", async () => {
+  it("keeps polling after transient lookup backend failures", async () => {
     vi.useFakeTimers();
     try {
       const { lookupPreimage } = createPreimageAdapters("myapp");
       const missingKey = new Uint8Array(32);
+      const found = new Uint8Array([1, 2, 3]);
       mocks.fetchFromIpfs.mockRejectedValueOnce(
         new Error("gateway unavailable"),
       );
+      mocks.fetchFromIpfs.mockResolvedValueOnce({ data: found });
 
       const iterator = lookupPreimage(missingKey)[Symbol.asyncIterator]();
       const first = await iterator.next();
       const secondPromise = iterator.next();
+      let secondSettled = false;
+      void secondPromise.then(() => {
+        secondSettled = true;
+      });
       await vi.advanceTimersByTimeAsync(1000);
-      const second = await secondPromise;
-      const done = await iterator.next();
 
       expect(first.done).toBe(false);
       expect(first.value.isOk()).toBe(true);
       expect(first.value._unsafeUnwrap()).toBeUndefined();
-      expect(second.done).toBe(false);
-      expect(second.value.isErr()).toBe(true);
-      expect(second.value._unsafeUnwrapErr().reason).toContain(
-        "preimage lookup via rpc-gateway failed: gateway unavailable",
-      );
-      await vi.advanceTimersByTimeAsync(10_000);
+      expect(secondSettled).toBe(false);
       expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
-      expect(done.done).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(9000);
+      const second = await secondPromise;
+      expect(second.done).toBe(false);
+      expect(second.value.isOk()).toBe(true);
+      expect(second.value._unsafeUnwrap()).toEqual(found);
+      expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(2);
+      await iterator.return?.();
     } finally {
       vi.useRealTimers();
     }
