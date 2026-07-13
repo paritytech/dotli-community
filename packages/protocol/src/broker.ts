@@ -426,8 +426,7 @@ class ChainBroker {
       localToken !== null ? this.localToOwned.get(localToken) : undefined;
     if (
       localToken === null ||
-      owned === undefined ||
-      owned.sessionId !== session.id ||
+      owned?.sessionId !== session.id ||
       owned.releaseMethod !== method
     ) {
       this.sendToSession(
@@ -983,7 +982,7 @@ class ChainBroker {
     session?.ownedTokens.delete(localToken);
 
     const localTokens = this.upstreamToOwned.get(owned.upstreamToken);
-    if (localTokens === undefined || !localTokens.delete(localToken)) {
+    if (localTokens?.delete(localToken) !== true) {
       return null;
     }
 

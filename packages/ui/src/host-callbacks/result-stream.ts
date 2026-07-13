@@ -13,7 +13,7 @@ export function createResultStream<T>(
       const queue: Result<T, GenericError>[] = initial.map((value) =>
         ok(value),
       );
-      let stopped = false;
+      const state = { stopped: false };
       let cleanup: (() => void) | null = null;
       let cleanedUp = false;
       let resolve:
@@ -32,7 +32,7 @@ export function createResultStream<T>(
         cleanup();
       };
       const push = (value: T): void => {
-        if (stopped) {
+        if (state.stopped) {
           return;
         }
         if (resolve) {
@@ -44,10 +44,10 @@ export function createResultStream<T>(
         queue.push(ok(value));
       };
       const pushError = (error: GenericError): void => {
-        if (stopped) {
+        if (state.stopped) {
           return;
         }
-        stopped = true;
+        state.stopped = true;
         runCleanup();
         const result = err<T, GenericError>(error);
         if (resolve) {
@@ -59,7 +59,7 @@ export function createResultStream<T>(
         queue.push(result);
       };
       cleanup = start(push, pushError);
-      if (stopped) {
+      if (state.stopped) {
         runCleanup();
       }
 
@@ -69,7 +69,7 @@ export function createResultStream<T>(
           if (item) {
             return Promise.resolve({ done: false, value: item });
           }
-          if (stopped) {
+          if (state.stopped) {
             return Promise.resolve(complete());
           }
           return new Promise((r) => {
@@ -77,7 +77,7 @@ export function createResultStream<T>(
           });
         },
         return(): Promise<IteratorResult<Result<T, GenericError>>> {
-          stopped = true;
+          state.stopped = true;
           runCleanup();
           if (resolve) {
             const send = resolve;

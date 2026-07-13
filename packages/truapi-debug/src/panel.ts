@@ -51,10 +51,16 @@ const DEBUG_SESSION_KEY = "dotli:truapi-debug";
 
 type DockPosition = "bottom" | "right";
 
+function hasKind(
+  ev: DotliDebugBusEvent,
+): ev is DotliDebugBusEvent & { kind: unknown } {
+  return Object.hasOwn(ev, "kind");
+}
+
 function isTruapiDebugEvent(
   ev: DotliDebugBusEvent,
 ): ev is Extract<DotliDebugBusEvent, { kind: "truapi" }> {
-  return "kind" in ev && ev.kind === "truapi";
+  return hasKind(ev) && ev.kind === "truapi";
 }
 
 function readStoredDock(): DockPosition {
