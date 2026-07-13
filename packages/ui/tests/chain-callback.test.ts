@@ -137,6 +137,31 @@ describe("createChainConnect", () => {
     await responses.return?.();
   });
 
+  it("does not rewrite core chain RPC requests", async () => {
+    const sent: unknown[] = [];
+    mocks.smoldotProvider.mockImplementation(
+      (_handler: (message: unknown) => void) => ({
+        send: (request: unknown) => {
+          sent.push(request);
+        },
+        disconnect: vi.fn(),
+      }),
+    );
+    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
+    const unpin = {
+      jsonrpc: "2.0",
+      id: "core-unpin",
+      method: "chainHead_v1_unpin",
+      params: ["REMOTE-FOLLOW", "0xabc"],
+    };
+
+    connection.send(JSON.stringify(unpin));
+
+    expect(sent).toEqual([unpin]);
+    connection.close();
+  });
+
   it("skips statement-store debug events when no debug listener is attached", async () => {
     let onMessage: ((message: unknown) => void) | undefined;
     const sent: unknown[] = [];
