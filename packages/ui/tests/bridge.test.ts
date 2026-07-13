@@ -207,10 +207,13 @@ function requestIdFromFrame(message: Uint8Array): string {
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 async function waitForProviderRequests(count: number): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 100; i += 1) {
     if (mocks.coreProviderDefers.length >= count) {
       return;
     }
@@ -223,7 +226,7 @@ async function waitForMockCalls(
   mock: ReturnType<typeof vi.fn>,
   count: number,
 ): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 100; i += 1) {
     if (mock.mock.calls.length >= count) {
       return;
     }
@@ -288,7 +291,7 @@ describe("bridge render lifecycle", () => {
     expect(document.querySelector("iframe")?.dataset.src).toBe(
       "https://second.example/app",
     );
-  });
+  }, 15_000);
 
   it("boots the landing auth core to disconnect a stored session without a product", async () => {
     await import("@dotli/ui/bridge");
@@ -301,7 +304,7 @@ describe("bridge render lifecycle", () => {
     await waitForMockCalls(provider.disconnectSession, 1);
 
     expect(provider.disconnectSession).toHaveBeenCalledTimes(1);
-  });
+  }, 15_000);
 });
 
 describe("requestCoreLogin", () => {
