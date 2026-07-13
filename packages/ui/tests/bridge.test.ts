@@ -170,17 +170,17 @@ function loginResponseFrame(
             },
           }
         : {
-          success: false,
-          value: {
-            tag: "Domain",
+            success: false,
             value: {
-              tag: "V1",
+              tag: "Domain",
               value: {
-                tag: "Unknown",
-                value: { reason: result.reason },
+                tag: "V1",
+                value: {
+                  tag: "Unknown",
+                  value: { reason: result.reason },
+                },
               },
             },
-          },
           },
   });
   const frame = encodeWireMessage({

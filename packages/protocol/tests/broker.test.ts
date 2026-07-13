@@ -314,8 +314,7 @@ describe("createChainBrokerManager", () => {
     connectionB?.disconnect();
     const releases = harness.sent.filter(
       (message) =>
-        (message as JsonRpcRequest).method ===
-        "statement_unsubscribeStatement",
+        (message as JsonRpcRequest).method === "statement_unsubscribeStatement",
     );
     expect(releases).toHaveLength(1);
     expect((releases[0]?.params as unknown[])[0]).toBe("up-stmt");

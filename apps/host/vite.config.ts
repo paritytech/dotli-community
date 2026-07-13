@@ -363,7 +363,9 @@ function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
       break;
     }
   }
-  candidates.push(resolve(import.meta.dirname, "../../packages/ui", packageRelative));
+  candidates.push(
+    resolve(import.meta.dirname, "../../packages/ui", packageRelative),
+  );
   return [...new Set(candidates)];
 }
 
