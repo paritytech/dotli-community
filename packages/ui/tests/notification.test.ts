@@ -83,6 +83,22 @@ describe("notification host callbacks", () => {
     ).toEqual(["hello"]);
   });
 
+  it("does not reload the product after granting notification permission", async () => {
+    await registerNotificationAuthorization();
+    const reload = vi.fn();
+    window.addEventListener("dotli:device-permission-changed", reload);
+    const { createPromptPermission } =
+      await import("@dotli/ui/host-callbacks/PromptPermission");
+
+    await expect(
+      createPromptPermission("myapp").devicePermission("Notifications"),
+    ).resolves.toEqual({ granted: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(reload).not.toHaveBeenCalled();
+    window.removeEventListener("dotli:device-permission-changed", reload);
+  });
+
   it("reuses granted permission and cancels through the shared scheduler", async () => {
     await registerNotificationAuthorization("Authorized");
     const { createNotificationAdapters } =
