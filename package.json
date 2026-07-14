@@ -24,7 +24,7 @@
   "devDependencies": {
     "prettier": "^3.8.4",
     "turbo": "^2.9.18",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "packageManager": "bun@1.3.6",
   "workspaces": [
@@ -32,10 +32,10 @@
     "packages/*"
   ],
   "dependencies": {
-    "smoldot": "3.2.0"
+    "smoldot": "3.3.1"
   },
   "overrides": {
-    "smoldot": "3.2.0",
+    "smoldot": "3.3.1",
     "esbuild": "^0.28.1"
   }
 }
