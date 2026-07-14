@@ -295,8 +295,8 @@
         "@dotli/truapi-debug": "workspace:*",
         "@noble/ciphers": "^2.2.0",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi": "npm:@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714055223.6084b0bd",
-        "@parity/truapi-host": "npm:@pgherveou2/truapi-host-dev@0.1.0-bulletin.t20260714055223.6084b0bd",
+        "@parity/truapi": "npm:@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714183005.14a5711f",
+        "@parity/truapi-host": "npm:@pgherveou2/truapi-host-dev@0.1.0-bulletin.t20260714183005.14a5711f",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
@@ -658,9 +658,9 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.137.0", "", {}, "sha512-WT+Gb24i8hmvo85AIv2oEYouEXkRlKAlT9WaCa3TfLgNCN+GhrJOGZuIlMouAh38Qe4QOx26eUOVsq70qXrywA=="],
 
-    "@parity/truapi": ["@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714055223.6084b0bd", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-YgKTkZVgBmPyPFVbj5YrWc14PVoHlKX5yITiIvAS6GFcJ5h/3YHbtbFm+oDhh5zWIvVhtjXib3uEJ4VDZyQXCA=="],
+    "@parity/truapi": ["@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714183005.14a5711f", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-wjdhSmf2k84kNse9H6ewn/Nw025XnODMElDqkK9UTh8hrcCdA0w1fJGKez5PEH3ljQb8DT2Qo6U3VDEKO7QwpA=="],
 
-    "@parity/truapi-host": ["@pgherveou2/truapi-host-dev@0.1.0-bulletin.t20260714055223.6084b0bd", "", { "dependencies": { "@parity/truapi": "npm:@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714055223.6084b0bd" } }, "sha512-lUGq/oIk1NWmyIkGlMtHhUs0UqieojFBeupr7oc9/P5Gu+7qCrPRmYwhQvwxr7MT6aaFUi+wWPBLzQi3FzHLMg=="],
+    "@parity/truapi-host": ["@pgherveou2/truapi-host-dev@0.1.0-bulletin.t20260714183005.14a5711f", "", { "dependencies": { "@parity/truapi": "npm:@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714183005.14a5711f" } }, "sha512-veBQxEQ3Ecq1Jd6VHfF1eRIps/X051X2CNBml89eVCSjNDwGI7rD7cfj0UJRiYMoKC7PxmF5UxpHn9eULmtaKA=="],
 
     "@playwright/test": ["@playwright/test@1.61.1", "", { "dependencies": { "playwright": "1.61.1" }, "bin": { "playwright": "cli.js" } }, "sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig=="],
 
