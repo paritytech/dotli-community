@@ -9,6 +9,7 @@ import {
   getPermissionStatus,
   isDevicePermission,
   isEnforceableDevicePermission,
+  isDevicePermission,
   setPermissionStatus,
   type EnforceablePermissionName,
 } from "../permissions";
