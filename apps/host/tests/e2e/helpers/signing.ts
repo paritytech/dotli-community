@@ -6,15 +6,16 @@ import { expect, type Page, type Frame, type Locator } from "@playwright/test";
 type PageLike = Page | Frame;
 
 /**
- * Click run-<testId>, click through dot.li's host-side dialogs (Allow/Sign),
- * wait for the log entry to resolve. The bot signs automatically once the
- * SignRequest hits the Statement Store, so no per-tx approval flow is needed.
+ * Click run-<testId>, handle non-permission host dialogs, and wait for the log
+ * entry to resolve. The worker fixture owns every "Allow" click; keeping one
+ * permission driver avoids concurrent clicks when host dialogs overlap. The
+ * bot signs automatically once the SignRequest hits the Statement Store.
  */
 export async function runWebSignedTest(
   hostPage: Page,
   productFrame: PageLike,
   testId: string,
-  dialogButtons: string | string[],
+  manualDialogButtons: readonly string[],
   opts: { timeoutMs?: number; preClickDelayMs?: number } = {},
 ): Promise<"success" | "error"> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
@@ -33,12 +34,17 @@ export async function runWebSignedTest(
   console.log(`[signed] ${testId}: clicking run`);
   await btn.click();
 
-  const buttons = Array.isArray(dialogButtons)
-    ? dialogButtons
-    : [dialogButtons];
-  void clickHostDialogs(hostPage, buttons, 60_000, preClickDelayMs).catch(
-    () => {},
-  );
+  const dialogController = new AbortController();
+  const dialogTask =
+    manualDialogButtons.length > 0
+      ? clickHostDialogs(
+          hostPage,
+          manualDialogButtons,
+          60_000,
+          preClickDelayMs,
+          dialogController.signal,
+        ).catch(() => {})
+      : Promise.resolve();
 
   const result = await waitForLogResult(
     entries,
@@ -46,6 +52,8 @@ export async function runWebSignedTest(
     testId,
     timeoutMs,
   );
+  dialogController.abort();
+  await dialogTask;
   if (result === "error") {
     // On failure, dump the visible buttons on the host page. Invaluable for
     // diagnosing modal selector mismatches when the bot signs but Playwright
@@ -66,12 +74,8 @@ export async function runWebSignedTest(
 }
 
 /**
- * Drive dot.li host-side dialogs through their lifecycle. Different signing
- * operations show different gates: PreimageSubmit / StatementSubmit /
- * ChainSubmit each show an "Allow" modal the first time they're invoked
- * in a session, and the actual signing confirmation shows a "Sign" button.
- * Some flows show two modals in sequence (e.g. "Allow" permission, then
- * "Sign" confirmation); some show one or none.
+ * Drive non-permission host dialogs through their lifecycle. Permission
+ * "Allow" modals are handled exclusively by the worker fixture.
  *
  * Strategy: poll for any of `buttonNames` to be visible. When one is, click
  * it. Keep polling until either no expected button has appeared for
@@ -81,16 +85,17 @@ export async function runWebSignedTest(
  */
 async function clickHostDialogs(
   page: Page,
-  buttonNames: string[],
+  buttonNames: readonly string[],
   timeoutMs: number,
   preClickDelayMs: number,
+  signal: AbortSignal,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   const idleStopMs = 5_000; // declare done if no button appears for this long
   let lastSeenAt = Date.now();
   const seen = new Set<string>();
 
-  while (Date.now() < deadline) {
+  while (!signal.aborted && Date.now() < deadline) {
     if (Date.now() - lastSeenAt > idleStopMs && seen.size > 0) {
       // We've handled at least one dialog and nothing new has shown for a
       // while, so assume the flow has moved past the modal phase.
@@ -99,7 +104,7 @@ async function clickHostDialogs(
 
     let clickedThisPass = false;
     for (const name of buttonNames) {
-      const btn = page.getByRole("button", { name, exact: true }).first();
+      const btn = page.getByRole("button", { name, exact: true }).last();
       const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
       if (!visible) continue;
 
@@ -126,6 +131,9 @@ async function clickHostDialogs(
     }
   }
 
+  if (signal.aborted) {
+    return;
+  }
   if (seen.size === 0) {
     console.log(
       `[signed] no host dialog appeared (looked for: ${buttonNames.join(", ")})`,
