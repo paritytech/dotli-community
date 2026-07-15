@@ -194,7 +194,7 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     return;
   }
   const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? 40 : 0;
+  const topOffset = hasTopbar ? 56 : 0;
   if (state.dock === "right") {
     iframe.style.height = `calc(100vh - ${String(topOffset)}px)`;
     // When collapsed, the 32px header bar overlays the top-right corner
