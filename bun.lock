@@ -225,6 +225,7 @@
         "@dotli/storage": "workspace:*",
         "@ensdomains/content-hash": "^3.0.0",
         "@noble/hashes": "^2.2.0",
+        "@parity/truapi-provider": "0.1.1-dev-20260715.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@polkadot-api/json-rpc-provider-proxy": "^0.4.0",
         "@polkadot-api/signer": "^0.3.3",
@@ -234,7 +235,6 @@
         "@polkadot-labs/hdkd": "^0.0.28",
         "@polkadot-labs/hdkd-helpers": "^0.0.30",
         "polkadot-api": "^2.1.6",
-        "smoldot": "^3.1.4",
       },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",
@@ -715,6 +715,8 @@
     "@novasamatech/substrate-slot-sr25519-wasm": ["@novasamatech/substrate-slot-sr25519-wasm@0.8.9", "", {}, "sha512-Y8tkYq7h9gGn0WwtxrdCjGBUdG+nVXEDzKDo+5WXe+MZI+kTc2zmhlaxXWe3f/gzqNktxKGEkJXyokB8b21buA=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.133.0", "", {}, "sha512-KzkdCd6Uxqnf6l3HOw1xfatAlUURA0g14cvBYFyJ5SaNOQbOUvBr9PKArcPcrNIeRsBdgcUzOGrhKveVpvOIGA=="],
+
+    "@parity/truapi-provider": ["@parity/truapi-provider@0.1.1-dev-20260715.0", "", {}, "sha512-9KMcJAoYS/oqeZbXQDZVVyviNUiiNe+J0Q2nTtO91fH58kwbTYrei69AtOCDhQBLE/tPmJ38Ut66qO/xi47oYA=="],
 
     "@playwright/test": ["@playwright/test@1.60.0", "", { "dependencies": { "playwright": "1.60.0" }, "bin": { "playwright": "cli.js" } }, "sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag=="],
 

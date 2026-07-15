@@ -3,12 +3,11 @@
 
 // Protocol SharedWorker.
 //
-// Runs smoldot directly on the SharedWorker thread using `start()` from
-// `polkadot-api/smoldot` (no sub-Worker needed, because the `Worker`
-// constructor is not available in SharedWorkerGlobalScope).
-//
-// All protocol iframes (across all tabs) connect via MessagePort.
-// Smoldot persists as long as at least one tab is open.
+// Runs @parity/truapi-provider's embedded smoldot light client in-thread, via
+// `@dotli/resolver/provider`. No sub-Worker is spawned, because the `Worker`
+// constructor is not available in SharedWorkerGlobalScope. All protocol iframes
+// across every tab connect over MessagePort and share the one light client,
+// which persists as long as at least one tab is open.
 
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
@@ -20,10 +19,8 @@ import {
   setNetworkOverride,
   getActiveServicesConfig,
 } from "@dotli/config/network";
-import { createChainProvider, isChainSupported } from "@dotli/resolver/chains";
+import { createChainProvider, isChainSupported } from "@dotli/resolver/provider";
 import {
-  getRelayChain,
-  getSmoldotDirect,
   resolveDotName,
   resolveExecutableManifest,
   resolveOwner,
@@ -33,7 +30,6 @@ import {
   waitForAssetHubFinalized,
   waitForPeopleFinalized,
 } from "@dotli/resolver/resolve";
-import { onSmoldotFatal } from "@dotli/resolver/smoldot";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
@@ -118,32 +114,6 @@ if (requestedNetwork === null) {
 // Placeholder broker manager until pre-sync creates the real one.
 let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
 
-// Smoldot panic broadcast. When smoldot's log callback detects a WASM
-// panic, relay a `fatal` envelope to every connected port so the host
-// client rejects every in-flight request immediately instead of waiting
-// for a per-request timeout. `onSmoldotFatal` is idempotent and replays
-// the last panic to late subscribers, so firing this once at module
-// load is enough for the lifetime of the SharedWorker.
-onSmoldotFatal((message) => {
-  swError(
-    `Smoldot panic detected, broadcasting fatal to ${String(ports.size)} port(s)`,
-  );
-  const fatal: ProtocolEnvelope = {
-    namespace: "dotli:protocol",
-    kind: "fatal",
-    message,
-  };
-  const msg: SWRelayResponse = { type: "relay-response", envelope: fatal };
-  for (const port of ports) {
-    try {
-      port.postMessage(msg);
-      // eslint-disable-next-line no-restricted-syntax -- defensive fatal broadcast: one closed port must not prevent delivery to the rest. `removePort` already cleans up ports that throw on later sends.
-    } catch {
-      /* port already disconnected, ignore on broadcast */
-    }
-  }
-});
-
 // NO retries. NO cleanup-and-retry. NO backoff. The user picked
 // smoldot-shared-worker. If presync fails the actual cause is surfaced to
 // every waiting port and the engine stays dead until the user reloads.
@@ -152,34 +122,10 @@ let presyncFailureMessage: string | null = null;
 
 async function presync(): Promise<void> {
   const t0 = performance.now();
-  m.breadcrumb("smoldot presync starting");
+  m.breadcrumb("presync starting");
 
   try {
-    // 1. Create smoldot on the SharedWorker's own thread.
-    //
-    // `getSmoldotDirect()` is the in-thread smoldot bootstrap helper. The
-    // name is a polkadot-api convention meaning "run smoldot on the
-    // current execution context", NOT the dot.li chain backend named
-    // "smoldot-direct". Inside a SharedWorker the `Worker` constructor
-    // is unavailable, so this is the only option. The chain backend the
-    // user picked is still honored via the iframe's `?mode=` param.
-    swLog("Creating smoldot on SharedWorker thread...");
-    getSmoldotDirect();
-    m.measure(S.SMOLDOT_CREATE, performance.now() - t0);
-    swLog(
-      `Smoldot client created (${String(Math.round(performance.now() - t0))}ms)`,
-    );
-
-    // 2. Add relay chain
-    swLog("Adding relay chain...");
-    const relayT0 = performance.now();
-    await getRelayChain();
-    m.measure(S.SMOLDOT_RELAY_CHAIN, performance.now() - relayT0);
-    swLog(
-      `Relay chain added (${String(Math.round(performance.now() - t0))}ms)`,
-    );
-
-    // 3. Create the broker FIRST and route the resolver's Asset Hub reads
+    // Create the broker FIRST and route the resolver's Asset Hub reads
     // through it as a local session, so there is one shared Asset Hub follow
     // (never removed mid-read) instead of a separate resolver chain the first
     // dApp connection would release — the `ChainHead disjointed` load failure.
@@ -203,7 +149,7 @@ async function presync(): Promise<void> {
       ),
     );
 
-    // 4. Wait for Asset Hub to sync to a finalized block via the
+    // Wait for Asset Hub to sync to a finalized block via the
     // explicit presync primitive (no more overloading `resolveDotName`
     // with a sentinel label). This now syncs the broker's shared chain.
     swLog("Waiting for Asset Hub to reach finalized block...");
@@ -215,7 +161,7 @@ async function presync(): Promise<void> {
     m.distribution(S.SMOLDOT_PRESYNC, totalMs);
     swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
 
-    // 5. Success: mark ready.
+    // Success: mark ready.
     swLog("Pre-sync complete, engine ready");
     engineReady = true;
 
