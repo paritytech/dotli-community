@@ -53,6 +53,7 @@ interface PendingRequest {
 interface OwnedToken {
   sessionId: string;
   localToken: string;
+  upstreamToken: string;
   releaseMethod: string;
 }
 
@@ -108,8 +109,10 @@ interface BrokerConnection {
 
 const TOKEN_METHODS = new Map<string, string>([
   ["transaction_v1_broadcast", "transaction_v1_stop"],
+  ["transactionWatch_v1_submitAndWatch", "transactionWatch_v1_unwatch"],
   ["statement_subscribeStatement", "statement_unsubscribeStatement"],
 ]);
+const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
 
 function isJsonRpcObject(
   value: unknown,
@@ -189,6 +192,10 @@ function cloneWithRewrittenFirstParam(
   return { ...request, params };
 }
 
+function releaseResultFor(method: string): unknown {
+  return method === "statement_unsubscribeStatement" ? true : null;
+}
+
 export interface ChainBrokerManager {
   connectRemote(
     genesisHash: string,
@@ -227,7 +234,7 @@ class ChainBroker {
   private readonly sessions = new Map<string, Session>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly localToOwned = new Map<string, OwnedToken>();
-  private readonly upstreamToOwned = new Map<string, OwnedToken>();
+  private readonly upstreamToOwned = new Map<string, Set<string>>();
   private readonly localFollowTokens = new Map<
     string,
     { sessionId: string; followKey: string }
@@ -375,10 +382,16 @@ class ChainBroker {
 
   /** Rewrite a session-owned token to its upstream token and forward. */
   private routeGenericRequest(session: Session, request: JsonRpcRequest): void {
+    const method = request.method as string;
+    if (RELEASE_METHODS.has(method)) {
+      this.routeOwnedReleaseRequest(session, request, method);
+      return;
+    }
+
     const rewritten = this.rewriteOwnedToken(session, request);
     if (rewritten === null) {
       brokerLog(
-        `routeGenericRequest: unknown token for session ${session.id}, method=${request.method as string}`,
+        `routeGenericRequest: unknown token for session ${session.id}, method=${method}`,
       );
       this.sendToSession(
         session,
@@ -397,7 +410,64 @@ class ChainBroker {
     this.pending.set(upstreamId, {
       sessionId: session.id,
       clientId: request.id ?? null,
-      method: request.method as string,
+      method,
+    });
+    this.sendUpstream({ ...rewritten, id: upstreamId });
+  }
+
+  private routeOwnedReleaseRequest(
+    session: Session,
+    request: JsonRpcRequest,
+    method: string,
+  ): void {
+    const params = Array.isArray(request.params) ? request.params : [];
+    const localToken = typeof params[0] === "string" ? params[0] : null;
+    const owned =
+      localToken !== null ? this.localToOwned.get(localToken) : undefined;
+    if (
+      localToken === null ||
+      owned?.sessionId !== session.id ||
+      owned.releaseMethod !== method
+    ) {
+      this.sendToSession(
+        session,
+        buildJsonRpcError(request.id ?? null, "Unknown subscription/token"),
+      );
+      return;
+    }
+
+    const upstreamToken = owned.upstreamToken;
+    const released = this.releaseOwnedToken(localToken, false);
+    if (released === null) {
+      this.sendToSession(
+        session,
+        buildJsonRpcError(request.id ?? null, "Unknown subscription/token"),
+      );
+      return;
+    }
+
+    if (!released.lastOwner) {
+      if (request.id !== undefined) {
+        this.sendToSession(
+          session,
+          buildJsonRpcResult(request.id ?? null, releaseResultFor(method)),
+        );
+      }
+      return;
+    }
+
+    const rewritten = cloneWithRewrittenFirstParam(request, upstreamToken);
+    if (request.id === undefined) {
+      this.sendUpstream(rewritten);
+      return;
+    }
+
+    const upstreamId = `broker:${this.requestCounter.toString(36)}:${session.id}`;
+    this.requestCounter += 1;
+    this.pending.set(upstreamId, {
+      sessionId: session.id,
+      clientId: request.id ?? null,
+      method,
     });
     this.sendUpstream({ ...rewritten, id: upstreamId });
   }
@@ -569,21 +639,7 @@ class ChainBroker {
       return null;
     }
 
-    const upstreamToken = this.getUpstreamToken(firstParam);
-    if (upstreamToken === null) {
-      return null;
-    }
-
-    return cloneWithRewrittenFirstParam(request, upstreamToken);
-  }
-
-  private getUpstreamToken(localToken: string): string | null {
-    for (const [upstreamToken, owned] of this.upstreamToOwned.entries()) {
-      if (owned.localToken === localToken) {
-        return upstreamToken;
-      }
-    }
-    return null;
+    return cloneWithRewrittenFirstParam(request, owned.upstreamToken);
   }
 
   private handleUpstreamMessage(message: unknown): void {
@@ -641,9 +697,16 @@ class ChainBroker {
         const event = result.event;
         const rawSub = parsed.params?.subscription;
         const token = typeof rawSub === "string" ? rawSub : "?";
-        // Find which session owns this token
-        const owned = this.upstreamToOwned.get(token);
-        const sessionTag = owned ? owned.sessionId : "unknown";
+        const ownedLocals = this.upstreamToOwned.get(token);
+        const sessionTag =
+          ownedLocals !== undefined && ownedLocals.size > 0
+            ? [...ownedLocals]
+                .map(
+                  (localToken) =>
+                    this.localToOwned.get(localToken)?.sessionId ?? "?",
+                )
+                .join(",")
+            : "unknown";
         if (event === "newBlock") {
           brokerLog(
             `← raw newBlock [${sessionTag}] hash=${String(result.blockHash).slice(0, 18)}… parent=${String(result.parentBlockHash).slice(0, 18)}… token=${token.slice(0, 12)}…`,
@@ -735,10 +798,16 @@ class ChainBroker {
       const owned: OwnedToken = {
         sessionId: pending.sessionId,
         localToken,
+        upstreamToken: response.result,
         releaseMethod,
       };
       this.localToOwned.set(localToken, owned);
-      this.upstreamToOwned.set(response.result, owned);
+      let localTokens = this.upstreamToOwned.get(response.result);
+      if (localTokens === undefined) {
+        localTokens = new Set<string>();
+        this.upstreamToOwned.set(response.result, localTokens);
+      }
+      localTokens.add(localToken);
       session.ownedTokens.add(localToken);
       brokerLog(
         `Token mapped: ${localToken} ↔ ${response.result} (${pending.method})`,
@@ -818,17 +887,9 @@ class ChainBroker {
       return;
     }
 
-    const owned = this.upstreamToOwned.get(upstreamToken);
-    if (!owned) {
+    const ownedLocals = this.upstreamToOwned.get(upstreamToken);
+    if (ownedLocals === undefined || ownedLocals.size === 0) {
       brokerLog(`← upstream subscription for unknown token: ${upstreamToken}`);
-      return;
-    }
-
-    const session = this.sessions.get(owned.sessionId);
-    if (session?.connected !== true) {
-      brokerLog(
-        `← upstream subscription for disconnected session: ${owned.sessionId}`,
-      );
       return;
     }
 
@@ -838,21 +899,39 @@ class ChainBroker {
         ? eventResult.event
         : "unknown"
       : "?";
-    brokerLog(
-      `← subscription [${owned.sessionId}] event=${eventType} method=${String(message.method)}`,
-    );
+    const localTokens = [...ownedLocals];
+    for (const localToken of localTokens) {
+      const owned = this.localToOwned.get(localToken);
+      if (owned === undefined) {
+        continue;
+      }
 
-    this.sendToSession(session, {
-      ...message,
-      params: {
-        ...message.params,
-        subscription: owned.localToken,
-      },
-    });
+      const session = this.sessions.get(owned.sessionId);
+      if (session?.connected !== true) {
+        brokerLog(
+          `← upstream subscription for disconnected session: ${owned.sessionId}`,
+        );
+        continue;
+      }
+
+      brokerLog(
+        `← subscription [${owned.sessionId}] event=${eventType} method=${String(message.method)}`,
+      );
+
+      this.sendToSession(session, {
+        ...message,
+        params: {
+          ...message.params,
+          subscription: owned.localToken,
+        },
+      });
+    }
 
     if (isJsonRpcObject(eventResult) && eventResult.event === "stop") {
-      brokerLog(`Token stopped by upstream: ${owned.localToken}`);
-      this.releaseOwnedToken(owned.localToken, false);
+      brokerLog(`Token stopped by upstream: ${upstreamToken}`);
+      for (const localToken of localTokens) {
+        this.releaseOwnedToken(localToken, false);
+      }
     }
   }
 
@@ -889,40 +968,42 @@ class ChainBroker {
     }
   }
 
-  private releaseOwnedToken(localToken: string, notifyUpstream: boolean): void {
+  private releaseOwnedToken(
+    localToken: string,
+    notifyUpstream: boolean,
+  ): { lastOwner: boolean } | null {
     const owned = this.localToOwned.get(localToken);
     if (!owned) {
-      return;
+      return null;
     }
 
     this.localToOwned.delete(localToken);
     const session = this.sessions.get(owned.sessionId);
     session?.ownedTokens.delete(localToken);
 
-    let upstreamTokenToDelete: string | null = null;
-    for (const [upstreamToken, candidate] of this.upstreamToOwned.entries()) {
-      if (candidate.localToken === localToken) {
-        upstreamTokenToDelete = upstreamToken;
-        break;
-      }
-    }
-    if (upstreamTokenToDelete === null) {
-      return;
+    const localTokens = this.upstreamToOwned.get(owned.upstreamToken);
+    if (localTokens?.delete(localToken) !== true) {
+      return null;
     }
 
-    this.upstreamToOwned.delete(upstreamTokenToDelete);
+    if (localTokens.size > 0) {
+      return { lastOwner: false };
+    }
+
+    this.upstreamToOwned.delete(owned.upstreamToken);
 
     if (!notifyUpstream) {
-      return;
+      return { lastOwner: true };
     }
 
     this.sendUpstream({
       jsonrpc: "2.0",
       id: `broker-release:${this.requestCounter.toString(36)}`,
       method: owned.releaseMethod,
-      params: [upstreamTokenToDelete],
+      params: [owned.upstreamToken],
     });
     this.requestCounter += 1;
+    return { lastOwner: true };
   }
 
   private disconnectUpstream(): void {

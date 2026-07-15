@@ -79,14 +79,12 @@ import {
 import {
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
-  hasStoredSharedAuthSession,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-  SHARED_AUTH_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 import {
   isProtocolEnvelope,
@@ -961,22 +959,6 @@ function handleSharedAuthRequest(
   assertSharedAuthOrigin(origin);
 
   switch (request.method) {
-    case "authHasSession": {
-      const payload = request.payload as ProtocolRequestMap["authHasSession"];
-      assertSharedAuthSiteId(payload.siteId);
-      const value = localStorage.getItem(
-        buildSharedAuthStorageKey(payload.siteId, SHARED_AUTH_SESSION_KEY),
-      );
-      respond({
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result: hasStoredSharedAuthSession(value),
-      });
-      return;
-    }
-
     case "authStorageRead": {
       const payload = request.payload as ProtocolRequestMap["authStorageRead"];
       assertSharedAuthSiteId(payload.siteId);

@@ -5,7 +5,6 @@ import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config/config";
 import type { ProtocolRequestMethod } from "./messages";
 
 export type SharedAuthRequestMethod =
-  | "authHasSession"
   | "authStorageRead"
   | "authStorageWrite"
   | "authStorageClear";
@@ -15,13 +14,7 @@ export type SharedModeRequestMethod =
   | "modeStorageWrite"
   | "modeStorageClear";
 
-export const SHARED_AUTH_SESSION_KEY = "SsoSessionsV3";
-
-// SCALE-encoded empty `Vec<Session>` from `@novasamatech/host-papp`, a single
-// length byte of 0. If host-papp ever changes the session list encoding (e.g.
-// wraps it in an `Option<>`), this sentinel must be updated or the probe will
-// return true for empty payloads and trigger `ensureAuth()` on every load.
-const EMPTY_SHARED_AUTH_SESSION_LIST = "0x00";
+export const SHARED_CORE_SESSION_KEY = "session";
 
 // Both the shared-auth and shared-mode stores accept the same key shape, an
 // alphanumeric token with dots, underscores, colons and dashes. Keep the
@@ -29,7 +22,6 @@ const EMPTY_SHARED_AUTH_SESSION_LIST = "0x00";
 // needing a different shape should get its own constant.
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>([
-  "authHasSession",
   "authStorageRead",
   "authStorageWrite",
   "authStorageClear",
@@ -79,7 +71,10 @@ export function isValidSharedAuthKey(key: string): boolean {
 }
 
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
-  return `PAPP_${siteId}_${key}`;
+  if (key === SHARED_CORE_SESSION_KEY) {
+    return `TRUAPI_SESSION_${siteId}`;
+  }
+  return `TRUAPI_${siteId}_${key}`;
 }
 
 /**
@@ -97,12 +92,6 @@ export function buildSharedModeStorageKey(siteId: SiteId, key: string): string {
  */
 export function isValidSharedModeKey(key: string): boolean {
   return SHARED_STORAGE_KEY_PATTERN.test(key);
-}
-
-export function hasStoredSharedAuthSession(value: string | null): boolean {
-  return (
-    value !== null && value !== "" && value !== EMPTY_SHARED_AUTH_SESSION_LIST
-  );
 }
 
 export function isSharedAuthOriginAllowed(origin: string): boolean {

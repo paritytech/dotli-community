@@ -3,9 +3,15 @@
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import { readFileSync, readdirSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+} from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
@@ -310,6 +316,60 @@ function previewCoepHeaders(): Plugin {
 }
 
 /**
+ * The Rust core worker dynamically imports
+ * `./wasm/web/truapi_server.js` relative to its emitted worker asset. Vite
+ * treats that path as a runtime dynamic import, so copy wasm-pack's generated
+ * web bundle beside the worker under `assets/wasm/web/`.
+ */
+function copyTruapiWasmWebBundle(): Plugin {
+  return {
+    name: "copy-truapi-wasm-web-bundle",
+    apply: "build",
+    writeBundle() {
+      const source = findTruapiWasmWebBundle();
+      const targetParent = resolve(import.meta.dirname, OUT_DIR, "assets/wasm");
+      const target = resolve(targetParent, "web");
+      mkdirSync(targetParent, { recursive: true });
+      cpSync(source, target, { recursive: true });
+      console.log("Copied TrUAPI WASM web bundle -> assets/wasm/web/\n");
+    },
+  };
+}
+
+function findTruapiWasmWebBundle(): string {
+  const packageRelative = "node_modules/@parity/truapi-host/dist/wasm/web";
+  const checked: string[] = [];
+  for (const candidate of truapiWasmWebBundleCandidates(packageRelative)) {
+    checked.push(candidate);
+    if (existsSync(resolve(candidate, "truapi_server.js"))) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    [
+      "Missing TrUAPI WASM web bundle.",
+      "Run `make wasm` from the TrUAPI repo root before building dotli.",
+      `Checked: ${checked.join(", ")}`,
+    ].join(" "),
+  );
+}
+
+function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
+  const candidates: string[] = [];
+  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
+    candidates.push(resolve(dir, packageRelative));
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+  }
+  candidates.push(
+    resolve(import.meta.dirname, "../../packages/ui", packageRelative),
+  );
+  return [...new Set(candidates)];
+}
+
+/**
  * Sentry sourcemap upload. Skipped when metrics are off (runtime SDK is aliased to a
  * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
  * (preserves source maps for debugging).
@@ -340,14 +400,15 @@ export default defineConfig({
     preconnectBootnodes(),
     preloadCriticalAssets(),
     previewCoepHeaders(),
+    copyTruapiWasmWebBundle(),
     sentry(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
-    // cross-origin and outside this SW's reach by design. Smoldot.wasm lives
-    // in the protocol build; browser HTTP cache (immutable, hashed filename)
-    // already prevents redownload on revisit, so the precache list excludes
-    // wasm entirely. `registerType: "prompt"` defers update activation to
-    // the user via workbox-window in src/pwa.ts.
+    // cross-origin and outside this SW's reach by design. The Rust TrUAPI core
+    // wasm-pack bundle uses stable filenames, so its JS glue and `.wasm` must
+    // be precached together; mixing old glue with a freshly served `.wasm`
+    // fails during instantiation. `registerType: "prompt"` defers update
+    // activation to the user via workbox-window in src/pwa.ts.
     VitePWA({
       injectRegister: false,
       registerType: "prompt",
@@ -372,13 +433,17 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
+        // VitePWA's default treats every file under `assets/` as
+        // hash-versioned. The copied wasm-pack bundle keeps stable filenames,
+        // so let Workbox attach content revisions to those entries.
+        dontCacheBustURLsMatching: /^assets\/(?!wasm\/web\/)/,
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
         clientsClaim: false,
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
         // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
         // reach the browser.
         navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/],
@@ -395,7 +460,6 @@ export default defineConfig({
       "@dotli/resolver": resolve(PACKAGES, "resolver/src"),
       "@dotli/protocol": resolve(PACKAGES, "protocol/src"),
       "@dotli/content": resolve(PACKAGES, "content/src"),
-      "@dotli/auth": resolve(PACKAGES, "auth/src"),
       "@dotli/ui": resolve(PACKAGES, "ui/src"),
       "@dotli/sandbox-checker": SANDBOX_CHECKER_SRC,
     },
@@ -412,8 +476,8 @@ export default defineConfig({
     __POLKADOT_API_VERSIONS__: JSON.stringify(
       collectDirectScopedDeps("@polkadot-api/"),
     ),
-    __NOVASAMATECH_VERSIONS__: JSON.stringify(
-      collectDirectScopedDeps("@novasamatech/"),
+    __PARITY_TRUAPI_VERSIONS__: JSON.stringify(
+      collectDirectScopedDeps("@parity/truapi"),
     ),
   },
   optimizeDeps: {
@@ -424,15 +488,6 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("@novasamatech/scale")) {
-            return "nova-scale";
-          }
-        },
-      },
-    },
   },
   server: {
     headers: {

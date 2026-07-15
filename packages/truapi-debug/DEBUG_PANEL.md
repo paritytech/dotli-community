@@ -91,42 +91,29 @@ To turn it off:
 - Close the tab — the choice is sessionStorage-scoped, so a fresh
   tab starts clean regardless.
 
-## The three event sources
+## The two event sources
 
-Every event observed by the panel comes from one of three buses. Each
+Every event observed by the panel comes from one of two buses. Each
 bus is independent; the panel merges their streams into one time-
 aligned store.
 
 ### 1. TrUAPI — host ↔ product messages
 
 The postMessage protocol between the dotli host and product iframes,
-captured by `onHostApiDebugMessage` from `@novasamatech/host-container`.
-Every message is already decoded (no SCALE bytes). Categories:
+captured from the Rust-backed TrUAPI bridge. The producer currently decodes
+the transport envelope only: each event includes direction, request id, wire
+id, method tag, and raw SCALE payload bytes (`payload.value.bytes`). Method
+payload decoding is intentionally not duplicated in this package yet.
+Categories:
 
 - `host_*` — accounts, signing, scoped storage, chain connections,
   statement-store proxying, preimage submission, permissions prompts,
   push notifications.
 - `remote_chain_*` — chainHead, chainSpec, and transaction methods
   (one-to-one wrap of the new Substrate JSON-RPC spec).
-- Many more — anything in the `HostApiProtocol` enum.
+- Many more — anything in the generated TrUAPI wire table.
 
-### 2. host-papp — SSO / attestation / session
-
-Semantic protocol flows that sit above the statement-store transport,
-captured by `onHostPappDebugMessage` from `@novasamatech/host-papp/debug`.
-
-- `sso:*` — QR-code pairing flow (`pairing_started`,
-  `deeplink_generated`, `awaiting_response`, `response_received`,
-  `session_established`, `pairing_failed`).
-- `attestation:*` — on-chain guest identity registration
-  (`started`, `username_claimed`, `allowance_granted`,
-  `vrf_proof_generated`, `person_registered`, `completed`, `failed`).
-- `session:*` — post-pairing wallet ↔ host messages in both
-  directions (`peer_action_received/processed/failed`,
-  `host_action_sent/response_received/failed`, plus `opened` and
-  `terminated`).
-
-### 3. dotli — boot / resolve / render / bridge / failover
+### 2. dotli — boot / resolve / render / bridge / failover
 
 Dotli-internal host-side orchestration, captured by
 `onDotliDebugEvent` from `@dotli/truapi-debug/dotli-debug-bus`.
@@ -137,7 +124,8 @@ Dotli-internal host-side orchestration, captured by
 - `resolve:*` — `started`, `phase`, `storage_read`, `completed`,
   `failed`.
 - `render:*` — `iframe_begin`, `iframe_ready`.
-- `bridge:*` — `setup_begin`, `setup_ready`, `nested_detected`.
+- `bridge:*` — `setup_begin`, `setup_ready`,
+  `iframe_load`, `first_inbound`, `first_outbound`.
 - `failover:*` — `chain_backend` (user-triggered backend switch).
 
 ## Views
@@ -152,7 +140,7 @@ A chronological row per event. Each row shows:
 
 - Wall-clock timestamp (HH:MM:SS.mmm).
 - Direction arrow (▶ outgoing, ◀ incoming) for TrUAPI; a layer badge
-  (`boot`, `resolve`, `sso`, …) for system events.
+  (`boot`, `resolve`, `bridge`, …) for system events.
 - Product id (for TrUAPI) or a flow-id badge (for system) — both
   tinted by a stable hash of the id, so rows belonging to the same
   request / flow share a colour.
@@ -220,8 +208,7 @@ Click any row, box, or pill to pin it. The detail pane shows:
 
 ### For system events
 
-- **Core metadata**: time, source (`host-papp` or `dotli`), layer,
-  event, flowId.
+- **Core metadata**: time, source, layer, event, flowId.
 - **Summary** — the short sentence from `system-summary.ts`.
 - **"What is this?"** — a collapsible `<details>` block with a
   long-form paragraph explaining what the subsystem is doing at
@@ -235,7 +222,7 @@ Click any row, box, or pill to pin it. The detail pane shows:
 When a box is clicked in Timeline view, the detail pane stacks every
 member of the box's group chronologically. Each member has its own
 Summary, "What is this?", and payload JSON. This is useful for long
-flows (an SSO pairing, a chainHead.body that streamed N result
+flows (for example, a chainHead.body that streamed N result
 events through its follow subscription): you see the whole sequence
 in one glance.
 
@@ -263,11 +250,9 @@ In the Timeline:
 - A **box** represents a flow that has (or will have) a clear
   beginning and end. Examples: a TrUAPI request → response pair, a
   chainHead.body operation from request → terminal event on its
-  follow subscription, a whole SSO pairing flow, an attestation
-  sequence.
+  follow subscription.
 - A **pill** represents a point-in-time event with no natural end —
-  `failover:chain_backend`, `bridge:nested_detected`, and single-
-  event system flows.
+  `failover:chain_backend` and single-event system flows.
 - **Pending boxes** have a dashed bottom edge. They grow downward
   as time advances; once the terminal event lands, the box snaps to
   its final height.
@@ -286,8 +271,8 @@ their own left-edge column — not boxes.
   (otherwise it'd clutter the view with one-off queries). The
   header shows the chain's friendly name when known (Paseo, Paseo
   Asset Hub, Paseo Bulletin) or a short hex hash otherwise.
-- **System swimlane** — everything from the `host-papp` and `dotli`
-  buses. Always present if any system event is visible.
+- **System swimlane** — everything from the system event buses. Always
+  present if any system event is visible.
 - **Other swimlane** — TrUAPI traffic that isn't chain-related
   (host API calls for signing, storage, accounts, statement store,
   etc.).
@@ -313,10 +298,8 @@ subsequent no-listener emits go back to being silent no-ops.
 This makes the captured boot sequence consistent regardless of
 browser cache warmth.
 
-The TrUAPI hook and the host-papp hook don't need the same
-mechanism in practice: TrUAPI traffic can't start before a product
-iframe is rendered (long after the panel is up), and SSO flows only
-begin on user interaction.
+The TrUAPI hook does not need the same mechanism in practice: traffic cannot
+start before a product iframe is rendered, long after the panel is up.
 
 ### Keyed reconciliation
 
@@ -348,18 +331,16 @@ layer already being observed.
   calls into JSON-RPC over WebSocket. The TrUAPI hook already shows
   the semantic shape; the JSON-RPC layer is just the wire format.
 - **statement-store transport** (encrypt/decrypt, RPC adapter,
-  subscription multiplexer). Pure transport for SSO / session
-  messages; the SSO / session hooks capture the semantic protocol
-  on top.
+  subscription multiplexer). This remains opaque chain traffic at the host
+  boundary.
 - **smoldot internals** (raw log callback stream). Dependency
   chatter, not host logic. The resolver's decision outcomes are
   captured instead.
-- **host-container raw iframe postMessage**. Encoded form of TrUAPI
-  messages already observed in decoded form.
+- **Raw iframe postMessage**. The TrUAPI hook already captures the
+  transport envelope and payload bytes at the bridge boundary. Add
+  method-payload decoding there if the raw bytes become insufficient.
 - **handoff-service file chunking**. Transfer transport, not
   semantic protocol.
-- **Bulletin preimage submission**. Direct forward of the TrUAPI
-  `remote_preimage_submit` request.
 
 If any of these become useful to observe in practice, they can be
 added without restructuring anything: each hook is an independent
@@ -367,22 +348,21 @@ bus and the panel subscribes to all of them.
 
 ## Adding a new hook
 
-1. **Pick the right bus.** If the event originates in the SDK
-   (host-api / host-container / host-papp / statement-store), it
-   belongs in the SDK's bus (and needs an upstream release in
-   `@novasamatech/*`). If it originates in dotli, use the dotli bus.
-2. **Add an event type.** Extend the relevant discriminated union
-   (`DotliDebugEvent`, `HostPappDebugEvent`) with a new variant
-   carrying `layer`, `event`, `flowId`, `timestamp`, and a typed
-   `payload`.
+1. **Pick the right bus.** If the event originates in dotli host
+   orchestration, use the dotli bus. If it originates in TrUAPI traffic
+   use the dotli bus; TrUAPI wire traffic uses the TrUAPI event shape.
+2. **Add an event type.** Extend the relevant discriminated union with
+   a new variant carrying `layer`, `event`, `flowId`, `timestamp`, and a
+   typed `payload`.
 3. **Add a summary.** Extend `system-summary.ts` (one-liner) and
    `system-explanations.ts` (long-form "What is this?").
 4. **Add a flow terminator if needed.** If the new event closes a
-   multi-step flow, add its suffix to `SYSTEM_TERMINATOR_SUFFIXES`
-   in `timeline-layout.ts` so pending-vs-complete is computed right.
-5. **Emit.** Call `emitDotliDebugEvent(...)` or
-   `emitHostPappDebugMessage(...)` at the decision point. Check
-   `hasDotliDebugListeners()` first if payload construction is
+   multi-step flow, add an exact `layer:event` entry to
+   `SYSTEM_TERMINATOR_EVENTS` or, for a true event family, a suffix to
+   `SYSTEM_TERMINATOR_SUFFIXES` in `timeline-layout.ts` so
+   pending-vs-complete is computed right.
+5. **Emit.** Call the matching debug-bus emitter at the decision point.
+   Check `hasDotliDebugListeners()` first if payload construction is
    expensive.
 
 No UI changes required — the filters, swimlanes, and detail pane
