@@ -267,7 +267,6 @@
       "name": "@dotli/truapi-debug",
       "version": "0.6.0",
       "dependencies": {
-        "@dotli/config": "workspace:*",
         "@dotli/shared": "workspace:*",
         "nanoevents": "^9.1.0",
       },
