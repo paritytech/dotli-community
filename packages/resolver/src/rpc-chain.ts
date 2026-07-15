@@ -13,15 +13,18 @@
  * smoldot is never imported here, so Vite tree-shakes the light client out of
  * any bundle that only pulls this module.
  *
- * Coverage is the active network's relay, Asset Hub, and People chains, each
- * dialled through its configured `rpcs`. Login and identity resolution live
+ * Coverage is the active network's relay, Asset Hub, People, and Bulletin
+ * chains when they have configured `rpcs`. Login and identity resolution live
  * on the People chain, so it must be reachable for auth to work in gateway
- * mode. Bulletin is deliberately absent. Its content (IPFS or bitswap) is
- * served through IPFS gateways, not a chain RPC connection.
+ * mode. Bulletin is reachable so in-core preimage submission can use its
+ * `TransactionStorage` runtime API over the same trusted RPC posture.
  */
 import { getWsProvider } from "polkadot-api/ws";
 import type { JsonRpcProvider } from "polkadot-api";
-import { getActiveGatewayChains } from "@dotli/config/network";
+import {
+  getActiveCoreGatewayChains,
+  getActiveGatewayChains,
+} from "@dotli/config/network";
 import type { ChainService } from "@dotli/config/network";
 
 /**
@@ -38,6 +41,15 @@ function gatewayChain(genesisHash: string): ChainService | null {
   );
 }
 
+function coreGatewayChain(genesisHash: string): ChainService | null {
+  const key = genesisHash.toLowerCase();
+  return (
+    getActiveCoreGatewayChains().find(
+      (chain) => chain.genesis.toLowerCase() === key,
+    ) ?? null
+  );
+}
+
 /** Whether gateway mode can serve chain calls for `genesisHash`. */
 export function isRpcChainSupported(genesisHash: string): boolean {
   return gatewayChain(genesisHash) !== null;
@@ -47,7 +59,24 @@ export function isRpcChainSupported(genesisHash: string): boolean {
 export function createRpcChainProvider(
   genesisHash: string,
 ): JsonRpcProvider | null {
-  const chain = gatewayChain(genesisHash);
+  return createGatewayProvider(gatewayChain(genesisHash));
+}
+
+/** Whether the host-owned Rust core can reach `genesisHash` in gateway mode. */
+export function isCoreRpcChainSupported(genesisHash: string): boolean {
+  return coreGatewayChain(genesisHash) !== null;
+}
+
+/** Gateway provider for host-owned Rust-core traffic, including Bulletin. */
+export function createCoreRpcChainProvider(
+  genesisHash: string,
+): JsonRpcProvider | null {
+  return createGatewayProvider(coreGatewayChain(genesisHash));
+}
+
+function createGatewayProvider(
+  chain: ChainService | null,
+): JsonRpcProvider | null {
   if (chain === null) {
     return null;
   }

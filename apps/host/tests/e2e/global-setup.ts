@@ -28,7 +28,10 @@ const BOT_NETWORK = requiredEnv("SIGNER_BOT_NETWORK");
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
 const PORT = process.env.PORT ?? "5173";
-const HOST = process.env.E2E_HOST ?? "host-playground";
+// Pairing only needs the host shell and protocol iframe. Loading the
+// host-playground product here can open product permission modals before the
+// auth button is clicked, so keep global auth setup on the bare host origin.
+const AUTH_HOST = process.env.E2E_AUTH_HOST ?? "localhost";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -139,7 +142,7 @@ async function pairOnce(
   });
 
   try {
-    await page.goto(`http://${HOST}.localhost:${PORT}/`, { timeout: 60_000 });
+    await page.goto(`http://${AUTH_HOST}:${PORT}/`, { timeout: 60_000 });
     await page
       .getByRole("button", { name: "Switch to Gateway" })
       .click({ timeout: 5_000 })

@@ -12,7 +12,7 @@
  * `scheduled_notifications` store (keyPath hostId, autoIncrement) holds
  * the records. The `notification_counters` store (keyPath productId)
  * holds the monotonic per-product `next` value, so each schedule returns
- * a stable, unique `perProductId` (the host-api NotificationId).
+ * a stable, unique `perProductId` for TrUAPI notification callbacks.
  */
 
 import { getDb } from "./db";

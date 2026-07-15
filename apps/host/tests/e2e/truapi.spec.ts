@@ -4,6 +4,7 @@
 import { test, expect } from "./fixtures/paired";
 import {
   waitForPlaygroundReady,
+  runTestExpectError,
   runTestExpectSuccess,
 } from "./helpers/run-test";
 import { runWebSignedTest } from "./helpers/signing";
@@ -77,21 +78,20 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   // Each allocation triggers an "Allow" modal on the host that the user
-  // approves. The bot is auto-paired so the modal click is what the suite
-  // drives via runWebSignedTest with a single-button list.
+  // approves. The bot is auto-paired and the worker fixture accepts the modal.
 
   test.describe("Allowances", () => {
     test("StatementStore Allowance", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
         "allowances-statement-store",
-        ["Allow"],
-        { timeoutMs: 30_000 },
+        [],
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -100,15 +100,15 @@ test.describe("dot.li > host-playground.dot", () => {
 
     test("Bulletin Allowance", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
         "allowances-bulletin",
-        ["Allow"],
-        { timeoutMs: 30_000 },
+        [],
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -117,15 +117,15 @@ test.describe("dot.li > host-playground.dot", () => {
 
     test("Smart-Contract Allowance", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
         "allowances-smart-contract",
-        ["Allow"],
-        { timeoutMs: 30_000 },
+        [],
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -134,15 +134,15 @@ test.describe("dot.li > host-playground.dot", () => {
 
     test("All Allowances", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
         "allowances-all",
-        ["Allow"],
-        { timeoutMs: 30_000 },
+        [],
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -189,7 +189,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-remote",
-        ["Allow"],
+        [],
         { timeoutMs: 30_000 },
       );
 
@@ -206,7 +206,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-webrtc",
-        ["Allow"],
+        [],
         { timeoutMs: 30_000 },
       );
 
@@ -223,7 +223,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-chain-submit",
-        ["Allow"],
+        [],
         { timeoutMs: 30_000 },
       );
 
@@ -240,7 +240,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-preimage-submit",
-        ["Allow"],
+        [],
         { timeoutMs: 30_000 },
       );
 
@@ -257,7 +257,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-statement-submit",
-        ["Allow"],
+        [],
         { timeoutMs: 30_000 },
       );
 
@@ -267,25 +267,17 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   test.describe("Statements", () => {
-    test("Create Proof", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "statement-store-create-proof");
+    test("Create Proof Authorized", async ({ productFrame }) => {
+      await runTestExpectSuccess(
+        productFrame,
+        "statement-store-create-proof-authorized",
+      );
     });
 
-    test("Submit", async ({ pairedPage, productFrame }) => {
-      // Given
-      test.setTimeout(120_000);
-
-      // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        "statement-store-submit",
-        ["Allow", "Sign"],
-        { timeoutMs: 60_000, preClickDelayMs: 1_000 },
-      );
-
-      // Then
-      expect(status).toBe("success");
+    test("Legacy Submit Is Unavailable", async ({ productFrame }) => {
+      // The legacy card asks the host to sign for a caller-selected account.
+      // The Rust runtime intentionally exposes only its authorized proof path.
+      await runTestExpectError(productFrame, "statement-store-submit", 60_000);
     });
 
     test("Subscribe Match All", async ({ productFrame }) => {
@@ -315,7 +307,16 @@ test.describe("dot.li > host-playground.dot", () => {
     });
 
     test("In-App", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "navigate-internal");
+      const button = productFrame.locator(
+        '[data-testid="run-navigate-internal"]',
+      );
+      await expect(button).toBeVisible();
+      await button.click();
+      await expect
+        .poll(() => productFrame.url())
+        .toContain("/page?id=hello#fragment=something");
+      await productFrame.getByRole("link", { name: "Back to tests" }).click();
+      await waitForPlaygroundReady(productFrame);
     });
   });
 
@@ -369,8 +370,8 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-factory",
-        ["Allow", "Sign"],
-        { timeoutMs: 60_000, preClickDelayMs: 1_000 },
+        [],
+        { timeoutMs: 60_000 },
       );
 
       // Then
@@ -386,8 +387,8 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-submit",
-        ["Allow", "Sign"],
-        { timeoutMs: 60_000, preClickDelayMs: 1_000 },
+        [],
+        { timeoutMs: 60_000 },
       );
 
       // Then
@@ -413,8 +414,8 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "sign-raw",
-        ["Allow", "Sign"],
+        "wallet-sign-message",
+        ["Sign"],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 

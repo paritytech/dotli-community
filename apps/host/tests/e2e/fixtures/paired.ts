@@ -30,12 +30,12 @@ function startAutoAllow(page: Page): () => void {
       try {
         const allow = page.getByRole("button", { name: "Allow", exact: true });
         const visible = await allow
-          .first()
+          .last()
           .isVisible({ timeout: POLL_MS })
           .catch(() => false);
         if (visible) {
           await allow
-            .first()
+            .last()
             .click({ timeout: 2_000 })
             .catch(() => {});
         } else {
@@ -118,7 +118,7 @@ export const test = base.extend<
         if (
           type === "error" ||
           type === "warning" ||
-          /\[dotli|\[dot\.li|host-papp|statement.store|signing/i.test(text)
+          /\[dotli|\[dot\.li|statement.store|signing/i.test(text)
         ) {
           const isFullText =
             type === "error" ||
