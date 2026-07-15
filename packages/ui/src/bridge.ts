@@ -31,10 +31,7 @@ import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { log } from "@dotli/shared/log";
-import {
-  emitDotliDebugEvent,
-  hasDotliDebugListeners,
-} from "@dotli/truapi-debug/dotli-debug-bus";
+import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
 import type { TrUApiProductProvider } from "@parity/truapi-host";
 import type { PairingHostAdmin } from "@parity/truapi-host";
 import {
@@ -439,91 +436,6 @@ function pipeProviders(
   };
 }
 
-function emitWireFrameDebug(
-  direction: "incoming" | "outgoing",
-  productId: string,
-  message: Uint8Array,
-): void {
-  if (!hasDotliDebugListeners()) {
-    return;
-  }
-  const decoded = decodeWireMessage(message);
-  if (decoded.isErr()) {
-    return;
-  }
-  const wireId = decoded.value.payload.id;
-  emitDotliDebugEvent({
-    kind: "truapi",
-    direction,
-    productId,
-    requestId: decoded.value.requestId,
-    payload: {
-      tag: `wire_${String(wireId)}`,
-      value: {
-        wireId,
-        bytes: decoded.value.payload.value,
-      },
-    },
-  });
-}
-
-function wrapCoreProviderForDebug(
-  provider: CoreProviderBase,
-  productId: string,
-): CoreProviderBase {
-  const listeners = new Set<(message: Uint8Array) => void>();
-  let disposed = false;
-  const unsubscribeCore = provider.subscribe((message) => {
-    if (disposed) {
-      return;
-    }
-    emitWireFrameDebug("outgoing", productId, message);
-    for (const listener of [...listeners]) {
-      listener(message);
-    }
-  });
-
-  return {
-    postMessage(message: Uint8Array): void {
-      if (disposed) {
-        return;
-      }
-      emitWireFrameDebug("incoming", productId, message);
-      provider.postMessage(message);
-    },
-    subscribe(callback) {
-      listeners.add(callback);
-      return () => {
-        listeners.delete(callback);
-      };
-    },
-    subscribeClose(callback) {
-      return provider.subscribeClose?.(callback) ?? noop;
-    },
-    async disconnectSession() {
-      await provider.disconnectSession();
-    },
-    getPermissionAuthorizationStatus(request) {
-      return provider.getPermissionAuthorizationStatus(request);
-    },
-    getPermissionAuthorizationStatuses(requests) {
-      return provider.getPermissionAuthorizationStatuses(requests);
-    },
-    setPermissionAuthorizationStatus(request, status) {
-      return provider.setPermissionAuthorizationStatus(request, status);
-    },
-    dispose() {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      unsubscribeCore();
-      listeners.clear();
-      provider.dispose();
-    },
-  };
-}
-
 let topbarLoginRequestSeq = 0;
 
 export function requestCoreLogin(
@@ -732,10 +644,7 @@ async function createCoreProvider(
     },
   );
   const provider = await runtime.createProvider({ productId });
-  return trackCoreProvider(
-    wrapCoreProviderForDebug(provider, options.productId ?? label),
-    runtime,
-  );
+  return trackCoreProvider(provider, runtime);
 }
 
 async function getLandingAuthHost(): Promise<CoreHost> {
