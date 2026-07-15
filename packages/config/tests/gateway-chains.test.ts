@@ -30,7 +30,7 @@ describe("gateway-supported chains (rpc-gateway mode)", () => {
     expect(hashes.has(v2.people.genesis.toLowerCase())).toBe(true);
   });
 
-  it("does not advertise the Bulletin chain to sandboxed dApps", () => {
+  it("excludes the Bulletin chain (content served via IPFS, not chain RPC)", () => {
     const hashes = getActiveGatewaySupportedGenesisHashes();
     expect(hashes.has(v2.bulletin.genesis.toLowerCase())).toBe(false);
   });
