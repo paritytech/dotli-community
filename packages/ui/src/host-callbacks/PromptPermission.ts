@@ -19,6 +19,7 @@ import {
   throwIfAborted,
   type BlockingModalScope,
 } from "../blocking-modal-queue";
+import { createSubmitRateLimiter } from "./rate-limit";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -41,6 +42,7 @@ export function createPromptPermission(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Permissions {
+  const limiter = createSubmitRateLimiter();
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
@@ -53,6 +55,7 @@ export function createPromptPermission(
         tag,
         {
           kind: "Device",
+          limiter,
           reloadOnGrant: isDevicePermission(tag),
         },
         modalScope,
@@ -71,6 +74,7 @@ export function createPromptPermission(
         name,
         {
           kind: "Remote",
+          limiter,
         },
         modalScope,
       ),
@@ -85,6 +89,7 @@ export async function decidePromptPermission(
   name: EnforceablePermissionName,
   options: {
     kind: "Device" | "Remote";
+    limiter: { allow: () => boolean };
     reloadOnGrant?: boolean;
   },
   modalScope: BlockingModalScope = createBlockingModalScope(),
@@ -99,11 +104,12 @@ async function decidePromptPermissionWhenActive(
   name: EnforceablePermissionName,
   options: {
     kind: "Device" | "Remote";
+    limiter: { allow: () => boolean };
     reloadOnGrant?: boolean;
   },
   signal: AbortSignal,
 ): Promise<boolean> {
-  const { kind, reloadOnGrant = false } = options;
+  const { kind, limiter, reloadOnGrant = false } = options;
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === "granted") {
@@ -122,6 +128,9 @@ async function decidePromptPermissionWhenActive(
     return false;
   }
   // status === "ask": show the modal and wait for the user.
+  if (!limiter.allow()) {
+    throw new Error("Permission prompt rate limited");
+  }
   const decision = await showPermissionRequestModal(label, name, signal);
   throwIfAborted(signal);
   if (decision === "dismissed") {

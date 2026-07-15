@@ -13,11 +13,13 @@ import {
   createBlockingModalScope,
   type BlockingModalScope,
 } from "../blocking-modal-queue";
+import { createSubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Required<Notifications> {
+  const limiter = createSubmitRateLimiter();
   const pushNotification: Required<Notifications>["pushNotification"] = async ({
     text,
     deeplink,
@@ -34,6 +36,7 @@ export function createNotificationAdapters(
       "Notifications",
       {
         kind: "Device",
+        limiter,
       },
       modalScope,
     );
