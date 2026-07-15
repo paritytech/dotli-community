@@ -53,21 +53,17 @@ routing that belongs inside the Rust core.
 
 ## Dependencies
 
-`packages/ui/package.json` currently resolves the public TrUAPI package names
-through temporary npm aliases:
+`packages/ui/package.json` depends on the published TrUAPI packages:
 
 ```jsonc
-"@parity/truapi": "npm:@pgherveou2/truapi-dev@...",
-"@parity/truapi-host": "npm:@pgherveou2/truapi-host-dev@..."
+"@parity/truapi": "0.4.0",
+"@parity/truapi-host": "0.1.0"
 ```
 
-This keeps standalone dotli installs and CI reproducible while the Rust core
-port is in review. TrUAPI's development and E2E Make targets run
-`bun run link:truapi` after building the local packages, so parent-repo work
-always exercises the current checkout instead of the npm artifacts.
-
-> **TODO(packaging):** publish `@parity/truapi` and
-> `@parity/truapi-host`, then replace the temporary aliases before merge.
+Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's
+development and E2E Make targets run `bun run link:truapi` after building the
+local packages, so parent-repo work always exercises the current checkout
+instead of the npm artifacts.
 
 The runtime manifests and source must not depend on or import the removed
 `@novasamatech/*` runtime packages.
