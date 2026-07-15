@@ -166,7 +166,7 @@ describe("session-store host callbacks", () => {
     expect(localStorage.length).toBe(1);
   });
 
-  it("As a dotli integrator, the host round-trips persisted allowance key slots", async () => {
+  it("As a dotli integrator, the host encrypts persisted allowance key slots", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
       createSessionStoreAdapters();
@@ -180,7 +180,7 @@ describe("session-store host callbacks", () => {
 
     // Then
     const storageKey = "dotli:core:allowance-keys:session-1";
-    expect(localStorage.getItem(storageKey)).toBe("0x01020304");
+    expect(localStorage.getItem(storageKey)).not.toBe("0x01020304");
     expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
       1, 2, 3, 4,
     ]);

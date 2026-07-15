@@ -1,4 +1,6 @@
 import { SITE_ID } from "@dotli/config/config";
+import { gcm } from "@noble/ciphers/aes.js";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
 import { encodeCoreStorageKey } from "@parity/truapi-host";
 import type {
@@ -18,6 +20,7 @@ import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
 const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
+const textEncoder = new TextEncoder();
 
 // JSON cache of the last connected UI state the core reported via
 // `authStateChanged`. Lives in shared auth storage next to the opaque
@@ -153,9 +156,7 @@ async function readCoreStorageValue(
     return decodeStoredBytes(raw, "shared auth session");
   }
   const raw = localStorage.getItem(coreLocalStorageKey(key));
-  return raw === null
-    ? undefined
-    : decodeStoredBytes(raw, `core storage ${key.tag}`);
+  return raw === null ? undefined : decodeCoreStorageValue(key, raw);
 }
 
 function decodeStoredBytes(
@@ -183,7 +184,10 @@ async function writeCoreStorageValue(
     emitLocalChange();
     return;
   }
-  localStorage.setItem(coreLocalStorageKey(key), bytesToHex(value));
+  localStorage.setItem(
+    coreLocalStorageKey(key),
+    encodeCoreStorageValue(key, value),
+  );
 }
 
 async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
@@ -211,6 +215,39 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     case "AuthSession":
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
   }
+}
+
+function encodeCoreStorageValue(
+  key: CoreStorageKey,
+  value: Uint8Array,
+): string {
+  if (key.tag === "AllowanceKeys") {
+    return bytesToHex(allowanceStorageCipher().encrypt(value));
+  }
+  return bytesToHex(value);
+}
+
+function decodeCoreStorageValue(
+  key: CoreStorageKey,
+  raw: string,
+): Uint8Array | undefined {
+  const bytes = decodeStoredBytes(raw, `core storage ${key.tag}`);
+  if (bytes === undefined || key.tag !== "AllowanceKeys") {
+    return bytes;
+  }
+  try {
+    return allowanceStorageCipher().decrypt(bytes);
+  } catch (err) {
+    log.warn(`[dot.li] ignoring undecryptable core storage ${key.tag}:`, err);
+    return undefined;
+  }
+}
+
+function allowanceStorageCipher(): ReturnType<typeof gcm> {
+  return gcm(
+    blake2b(textEncoder.encode(SITE_ID), { dkLen: 16 }),
+    blake2b(textEncoder.encode("nonce"), { dkLen: 32 }),
+  );
 }
 
 function hexNoPrefix(bytes: Uint8Array): string {

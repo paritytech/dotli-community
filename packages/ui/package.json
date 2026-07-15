@@ -31,6 +31,7 @@
     "@dotli/shared": "workspace:*",
     "@dotli/storage": "workspace:*",
     "@dotli/truapi-debug": "workspace:*",
+    "@noble/ciphers": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@parity/truapi": "0.5.1",
     "@parity/truapi-host": "0.2.0",
