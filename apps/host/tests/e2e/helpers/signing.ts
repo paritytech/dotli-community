@@ -6,16 +6,15 @@ import { expect, type Page, type Frame, type Locator } from "@playwright/test";
 type PageLike = Page | Frame;
 
 /**
- * Click run-<testId>, handle non-permission host dialogs, and wait for the log
- * entry to resolve. The worker fixture owns every "Allow" click; keeping one
- * permission driver avoids concurrent clicks when host dialogs overlap. The
- * bot signs automatically once the SignRequest hits the Statement Store.
+ * Click run-<testId>, click through dot.li's host-side dialogs, and wait for
+ * the log entry to resolve. The bot signs automatically once the SignRequest
+ * hits the Statement Store.
  */
 export async function runWebSignedTest(
   hostPage: Page,
   productFrame: PageLike,
   testId: string,
-  manualDialogButtons: readonly string[],
+  dialogButtons: readonly string[],
   opts: { timeoutMs?: number; preClickDelayMs?: number } = {},
 ): Promise<"success" | "error"> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
@@ -36,10 +35,10 @@ export async function runWebSignedTest(
 
   const dialogController = new AbortController();
   const dialogTask =
-    manualDialogButtons.length > 0
+    dialogButtons.length > 0
       ? clickHostDialogs(
           hostPage,
-          manualDialogButtons,
+          dialogButtons,
           60_000,
           preClickDelayMs,
           dialogController.signal,
@@ -74,8 +73,8 @@ export async function runWebSignedTest(
 }
 
 /**
- * Drive non-permission host dialogs through their lifecycle. Permission
- * "Allow" modals are handled exclusively by the worker fixture.
+ * Drive dot.li host-side dialogs through their lifecycle. Different operations
+ * may show permission ("Allow") and confirmation ("Sign") dialogs in sequence.
  *
  * Strategy: poll for any of `buttonNames` to be visible. When one is, click
  * it. Keep polling until either no expected button has appeared for
@@ -104,7 +103,7 @@ async function clickHostDialogs(
 
     let clickedThisPass = false;
     for (const name of buttonNames) {
-      const btn = page.getByRole("button", { name, exact: true }).last();
+      const btn = page.getByRole("button", { name, exact: true }).first();
       const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
       if (!visible) continue;
 

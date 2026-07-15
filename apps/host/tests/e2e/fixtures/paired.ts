@@ -30,12 +30,12 @@ function startAutoAllow(page: Page): () => void {
       try {
         const allow = page.getByRole("button", { name: "Allow", exact: true });
         const visible = await allow
-          .last()
+          .first()
           .isVisible({ timeout: POLL_MS })
           .catch(() => false);
         if (visible) {
           await allow
-            .last()
+            .first()
             .click({ timeout: 2_000 })
             .catch(() => {});
         } else {

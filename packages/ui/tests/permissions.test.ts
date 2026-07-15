@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ALL_PERMISSIONS,
   AUTO_GRANT_DEVICE_PERMISSIONS,
@@ -21,6 +21,7 @@ import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
+import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
 
 type Store = Map<string, PermissionAuthorizationStatus>;
 
@@ -202,6 +203,39 @@ describe("isEnforceableDevicePermission", () => {
     expect(isEnforceableDevicePermission("Notifications")).toBe(true);
     expect(isEnforceableDevicePermission("Camera")).toBe(true);
     expect(isEnforceableDevicePermission("Microphone")).toBe(true);
+  });
+});
+
+describe("device permission prompts", () => {
+  async function grantAndCountReloads(
+    permission: "Camera" | "Notifications",
+  ): Promise<number> {
+    let reloads = 0;
+    const onReload = (): void => {
+      reloads += 1;
+    };
+    window.addEventListener("dotli:device-permission-changed", onReload);
+
+    const response =
+      createPromptPermission("myapp").devicePermission(permission);
+    await vi.waitFor(() => {
+      expect(document.querySelector(".signing-btn-sign")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await expect(response).resolves.toEqual({ granted: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    window.removeEventListener("dotli:device-permission-changed", onReload);
+    document.body.replaceChildren();
+    return reloads;
+  }
+
+  it("keeps the iframe alive for notification grants", async () => {
+    expect(await grantAndCountReloads("Notifications")).toBe(0);
+  });
+
+  it("reloads for grants that alter the iframe allow attribute", async () => {
+    expect(await grantAndCountReloads("Camera")).toBe(1);
   });
 });
 

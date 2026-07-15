@@ -78,7 +78,7 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   // Each allocation triggers an "Allow" modal on the host that the user
-  // approves. The bot is auto-paired and the worker fixture accepts the modal.
+  // approves. The bot is auto-paired so the test only drives the modal.
 
   test.describe("Allowances", () => {
     test("StatementStore Allowance", async ({ pairedPage, productFrame }) => {
@@ -90,7 +90,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-statement-store",
-        [],
+        ["Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -107,7 +107,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-bulletin",
-        [],
+        ["Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -124,7 +124,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-smart-contract",
-        [],
+        ["Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -141,7 +141,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-all",
-        [],
+        ["Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -189,7 +189,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-remote",
-        [],
+        ["Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -206,7 +206,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-webrtc",
-        [],
+        ["Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -223,7 +223,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-chain-submit",
-        [],
+        ["Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -240,7 +240,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-preimage-submit",
-        [],
+        ["Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -257,7 +257,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-statement-submit",
-        [],
+        ["Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -370,7 +370,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-factory",
-        [],
+        ["Allow"],
         { timeoutMs: 60_000 },
       );
 
@@ -387,7 +387,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-submit",
-        [],
+        ["Allow"],
         { timeoutMs: 60_000 },
       );
 
@@ -397,8 +397,15 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   test.describe("Notifications", () => {
-    test("Push Notification", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "push-notification");
+    test("Push Notification", async ({ pairedPage, productFrame }) => {
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "push-notification",
+        ["Allow"],
+        { timeoutMs: 20_000 },
+      );
+      expect(status).toBe("success");
     });
   });
 
@@ -415,7 +422,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "wallet-sign-message",
-        ["Sign"],
+        ["Allow", "Sign"],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 
