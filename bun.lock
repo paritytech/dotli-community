@@ -294,7 +294,6 @@
         "@dotli/shared": "workspace:*",
         "@dotli/storage": "workspace:*",
         "@dotli/truapi-debug": "workspace:*",
-        "@noble/ciphers": "^2.2.0",
         "@noble/hashes": "^2.2.0",
         "@parity/truapi": "npm:@pgherveou2/truapi-dev@0.3.1-bulletin.t20260714183005.14a5711f",
         "@parity/truapi-host": "npm:@pgherveou2/truapi-host-dev@0.1.0-bulletin.t20260714183005.14a5711f",
