@@ -7,6 +7,7 @@ import type { Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
+  isDevicePermission,
   isEnforceableDevicePermission,
   setPermissionStatus,
   type EnforceablePermissionName,
@@ -44,7 +45,7 @@ export function createPromptPermission(label: string): Permissions {
       granted: await decidePromptPermission(label, tag, {
         kind: "Device",
         limiter,
-        reloadOnGrant: true,
+        reloadOnGrant: isDevicePermission(tag),
       }),
     };
   };
