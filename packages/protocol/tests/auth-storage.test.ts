@@ -70,11 +70,11 @@ describe("shared auth storage helpers", () => {
 
   it("builds stable storage keys", () => {
     expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
-      "TRUAPI_SESSION_dot.li",
+      "TRUAPI_dot.li_session",
     );
     expect(
       buildSharedAuthStorageKey("paseoli.dev", SHARED_CORE_SESSION_KEY),
-    ).toBe("TRUAPI_SESSION_paseoli.dev");
+    ).toBe("TRUAPI_paseoli.dev_session");
     expect(buildSharedAuthStorageKey("dot.li", "UserSecrets")).toBe(
       "TRUAPI_dot.li_UserSecrets",
     );

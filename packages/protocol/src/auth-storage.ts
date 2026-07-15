@@ -71,9 +71,6 @@ export function isValidSharedAuthKey(key: string): boolean {
 }
 
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
-  if (key === SHARED_CORE_SESSION_KEY) {
-    return `TRUAPI_SESSION_${siteId}`;
-  }
   return `TRUAPI_${siteId}_${key}`;
 }
 
