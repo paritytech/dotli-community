@@ -226,6 +226,51 @@ describe("createChainBrokerManager", () => {
     expect(release.params[0]).toBe("up-tx");
   });
 
+  it("delivers transactionWatch events received before the subscribe response", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote("asset-hub", "conn-a", (message) =>
+      messages.push(message),
+    );
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "transactionWatch_v1_submitAndWatch",
+        params: ["0x0102"],
+      }),
+    );
+
+    const upstreamRequest = harness.sent[0] as { id: string };
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "transactionWatch_v1_watchEvent",
+      params: {
+        subscription: "up-tx",
+        result: { event: "finalized", block: { hash: "0xabc" } },
+      },
+    });
+    expect(messages).toEqual([]);
+
+    harness.emit({
+      jsonrpc: "2.0",
+      id: upstreamRequest.id,
+      result: "up-tx",
+    });
+
+    const response = JSON.parse(messages[0] ?? "{}") as { result: string };
+    expect(JSON.parse(messages[1] ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      method: "transactionWatch_v1_watchEvent",
+      params: {
+        subscription: response.result,
+        result: { event: "finalized", block: { hash: "0xabc" } },
+      },
+    });
+  });
+
   it("fans out same-token statement notifications to every local owner", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);

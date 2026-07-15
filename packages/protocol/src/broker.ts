@@ -113,6 +113,8 @@ const TOKEN_METHODS = new Map<string, string>([
   ["statement_subscribeStatement", "statement_unsubscribeStatement"],
 ]);
 const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
+const MAX_EARLY_SUBSCRIPTION_TOKENS = 32;
+const MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN = 16;
 
 function isJsonRpcObject(
   value: unknown,
@@ -235,6 +237,10 @@ class ChainBroker {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly localToOwned = new Map<string, OwnedToken>();
   private readonly upstreamToOwned = new Map<string, Set<string>>();
+  private readonly earlySubscriptions = new Map<
+    string,
+    SubscriptionMessage[]
+  >();
   private readonly localFollowTokens = new Map<
     string,
     { sessionId: string; followKey: string }
@@ -779,6 +785,7 @@ class ChainBroker {
           buildJsonRpcResult(pendingLocal.requestId, pendingLocal.localToken),
         );
       }
+      this.flushEarlySubscriptions(response.result);
       return;
     }
 
@@ -823,6 +830,9 @@ class ChainBroker {
       rewritten.result = result;
     }
     this.sendToSession(session, rewritten);
+    if (releaseMethod !== undefined && typeof response.result === "string") {
+      this.flushEarlySubscriptions(response.result);
+    }
   }
 
   private handleUpstreamSubscription(message: SubscriptionMessage): void {
@@ -889,6 +899,10 @@ class ChainBroker {
 
     const ownedLocals = this.upstreamToOwned.get(upstreamToken);
     if (ownedLocals === undefined || ownedLocals.size === 0) {
+      if (this.hasPendingSubscriptionRequest()) {
+        this.bufferEarlySubscription(upstreamToken, message);
+        return;
+      }
       brokerLog(`← upstream subscription for unknown token: ${upstreamToken}`);
       return;
     }
@@ -932,6 +946,44 @@ class ChainBroker {
       for (const localToken of localTokens) {
         this.releaseOwnedToken(localToken, false);
       }
+    }
+  }
+
+  private hasPendingSubscriptionRequest(): boolean {
+    return [...this.pending.values()].some(
+      ({ method }) =>
+        method === "chainHead_v1_follow" || TOKEN_METHODS.has(method),
+    );
+  }
+
+  private bufferEarlySubscription(
+    upstreamToken: string,
+    message: SubscriptionMessage,
+  ): void {
+    let events = this.earlySubscriptions.get(upstreamToken);
+    if (events === undefined) {
+      if (this.earlySubscriptions.size >= MAX_EARLY_SUBSCRIPTION_TOKENS) {
+        const oldestToken = this.earlySubscriptions.keys().next().value;
+        if (oldestToken !== undefined) {
+          this.earlySubscriptions.delete(oldestToken);
+        }
+      }
+      events = [];
+      this.earlySubscriptions.set(upstreamToken, events);
+    }
+    if (events.length < MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN) {
+      events.push(message);
+    }
+  }
+
+  private flushEarlySubscriptions(upstreamToken: string): void {
+    const events = this.earlySubscriptions.get(upstreamToken);
+    if (events === undefined) {
+      return;
+    }
+    this.earlySubscriptions.delete(upstreamToken);
+    for (const event of events) {
+      this.handleUpstreamSubscription(event);
     }
   }
 
@@ -1010,6 +1062,7 @@ class ChainBroker {
     this.pending.clear();
     this.localToOwned.clear();
     this.upstreamToOwned.clear();
+    this.earlySubscriptions.clear();
     this.localFollowTokens.clear();
     this.sharedFollows.clear();
     this.upstreamFollowTokens.clear();
