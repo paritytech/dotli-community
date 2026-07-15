@@ -154,6 +154,26 @@ bun install
 bun run preview          # Build + serve both apps on localhost:5173
 ```
 
+The TrUAPI packages are installed from temporary npm aliases while the Rust core
+port is in review. To iterate against a local truapi checkout instead, run:
+
+```bash
+bun run link:truapi
+```
+
+When dotli is not checked out under `truapi/hosts/dotli`, point the script at
+the truapi repo:
+
+```bash
+TRUAPI_REPO=/path/to/truapi bun run link:truapi
+```
+
+Return to the package versions recorded in `bun.lock` with:
+
+```bash
+bun run unlink:truapi
+```
+
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host

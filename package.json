@@ -19,6 +19,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "typecheck": "turbo run typecheck",
     "set-version": "bun scripts/set-version.ts",
+    "link:truapi": "bun scripts/link-truapi-local.ts",
+    "unlink:truapi": "bun scripts/unlink-truapi-local.ts",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
   },
   "devDependencies": {
