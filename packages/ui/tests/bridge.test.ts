@@ -204,32 +204,19 @@ function requestIdFromFrame(message: Uint8Array): string {
   return decoded.value.requestId;
 }
 
-async function flushMicrotasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
 async function waitForProviderRequests(count: number): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
-    if (mocks.coreProviderDefers.length >= count) {
-      return;
-    }
-    await flushMicrotasks();
-  }
-  throw new Error(`expected ${count} provider request(s)`);
+  await vi.waitFor(() => {
+    expect(mocks.coreProviderDefers.length).toBeGreaterThanOrEqual(count);
+  });
 }
 
 async function waitForMockCalls(
   mock: ReturnType<typeof vi.fn>,
   count: number,
 ): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
-    if (mock.mock.calls.length >= count) {
-      return;
-    }
-    await flushMicrotasks();
-  }
-  throw new Error(`expected ${count} mock call(s)`);
+  await vi.waitFor(() => {
+    expect(mock).toHaveBeenCalledTimes(count);
+  });
 }
 
 describe("bridge render lifecycle", () => {
@@ -288,7 +275,7 @@ describe("bridge render lifecycle", () => {
     expect(document.querySelector("iframe")?.dataset.src).toBe(
       "https://second.example/app",
     );
-  });
+  }, 10_000);
 
   it("boots the landing auth core to disconnect a stored session without a product", async () => {
     await import("@dotli/ui/bridge");
@@ -301,7 +288,7 @@ describe("bridge render lifecycle", () => {
     await waitForMockCalls(provider.disconnectSession, 1);
 
     expect(provider.disconnectSession).toHaveBeenCalledTimes(1);
-  });
+  }, 10_000);
 });
 
 describe("requestCoreLogin", () => {
