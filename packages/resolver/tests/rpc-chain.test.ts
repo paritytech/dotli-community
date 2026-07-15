@@ -16,6 +16,25 @@ vi.mock("polkadot-api/ws", () => ({
 }));
 
 describe("rpc-chain", () => {
+  it("supports the active People chain when RPC endpoints are configured", () => {
+    const people = getActiveServicesConfig().people;
+
+    expect(isRpcChainSupported(people.genesis)).toBe(true);
+
+    const provider = {};
+    mocks.getWsProvider.mockReturnValueOnce(provider);
+
+    expect(createRpcChainProvider(people.genesis)).toBe(provider);
+    expect(mocks.getWsProvider).toHaveBeenCalledWith([...people.rpcs], {
+      heartbeatTimeout: 120_000,
+    });
+  });
+
+  it("rejects unknown genesis hashes", () => {
+    expect(isRpcChainSupported("0xdeadbeef")).toBe(false);
+    expect(createRpcChainProvider("0xdeadbeef")).toBeNull();
+  });
+
   it("As a dotli integrator, the host reserves Bulletin RPC access for the host-owned Rust core", () => {
     // Given
     const bulletin = getActiveServicesConfig().bulletin;
