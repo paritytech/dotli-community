@@ -201,6 +201,282 @@ describe("createChainBrokerManager", () => {
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("releases transactionWatch subscriptions on disconnect", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const connection = manager.connectRemote("asset-hub", "conn-a", () => {});
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "transactionWatch_v1_submitAndWatch",
+        params: ["0x0102"],
+      }),
+    );
+
+    const upstreamRequest = harness.sent[0] as { id: string; method: string };
+    expect(upstreamRequest.method).toBe("transactionWatch_v1_submitAndWatch");
+    harness.emit({ jsonrpc: "2.0", id: upstreamRequest.id, result: "up-tx" });
+
+    connection?.disconnect();
+
+    const release = harness.sent[1] as { method: string; params: string[] };
+    expect(release.method).toBe("transactionWatch_v1_unwatch");
+    expect(release.params[0]).toBe("up-tx");
+  });
+
+  it("delivers transactionWatch events received before the subscribe response", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote("asset-hub", "conn-a", (message) =>
+      messages.push(message),
+    );
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "transactionWatch_v1_submitAndWatch",
+        params: ["0x0102"],
+      }),
+    );
+
+    const upstreamRequest = harness.sent[0] as { id: string };
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "transactionWatch_v1_watchEvent",
+      params: {
+        subscription: "up-tx",
+        result: { event: "finalized", block: { hash: "0xabc" } },
+      },
+    });
+    expect(messages).toEqual([]);
+
+    harness.emit({
+      jsonrpc: "2.0",
+      id: upstreamRequest.id,
+      result: "up-tx",
+    });
+
+    const response = JSON.parse(messages[0] ?? "{}") as { result: string };
+    expect(JSON.parse(messages[1] ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      method: "transactionWatch_v1_watchEvent",
+      params: {
+        subscription: response.result,
+        result: { event: "finalized", block: { hash: "0xabc" } },
+      },
+    });
+  });
+
+  it("fans out same-token statement notifications to every local owner", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote("asset-hub", "conn-a", (m) =>
+      messagesA.push(m),
+    );
+    const connectionB = manager.connectRemote("asset-hub", "conn-b", (m) =>
+      messagesB.push(m),
+    );
+
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "statement_subscribeStatement",
+        params: [{ matchAll: ["0xtopic"] }],
+      }),
+    );
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "statement_subscribeStatement",
+        params: [{ matchAll: ["0xtopic"] }],
+      }),
+    );
+
+    harness.emit({
+      jsonrpc: "2.0",
+      id: (harness.sent[0] as { id: string }).id,
+      result: "up-stmt",
+    });
+    harness.emit({
+      jsonrpc: "2.0",
+      id: (harness.sent[1] as { id: string }).id,
+      result: "up-stmt",
+    });
+
+    const localTokenA = (JSON.parse(messagesA[0] ?? "{}") as { result: string })
+      .result;
+    const localTokenB = (JSON.parse(messagesB[0] ?? "{}") as { result: string })
+      .result;
+    expect(localTokenA).not.toBe(localTokenB);
+
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "statement_statement",
+      params: {
+        subscription: "up-stmt",
+        result: { event: "newStatements", data: { statements: [] } },
+      },
+    });
+
+    expect(messagesA[1]).toBe(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "statement_statement",
+        params: {
+          subscription: localTokenA,
+          result: { event: "newStatements", data: { statements: [] } },
+        },
+      }),
+    );
+    expect(messagesB[1]).toBe(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "statement_statement",
+        params: {
+          subscription: localTokenB,
+          result: { event: "newStatements", data: { statements: [] } },
+        },
+      }),
+    );
+
+    connectionA?.disconnect();
+    expect(
+      harness.sent.filter(
+        (message) =>
+          (message as JsonRpcRequest).method ===
+          "statement_unsubscribeStatement",
+      ),
+    ).toHaveLength(0);
+
+    connectionB?.disconnect();
+    const releases = harness.sent.filter(
+      (message) =>
+        (message as JsonRpcRequest).method === "statement_unsubscribeStatement",
+    );
+    expect(releases).toHaveLength(1);
+    expect((releases[0]?.params as unknown[])[0]).toBe("up-stmt");
+  });
+
+  it("ref-counts same-token statement unsubscribe requests", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote("asset-hub", "conn-a", (m) =>
+      messagesA.push(m),
+    );
+    const connectionB = manager.connectRemote("asset-hub", "conn-b", (m) =>
+      messagesB.push(m),
+    );
+
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "statement_subscribeStatement",
+        params: [{ matchAll: ["0xtopic"] }],
+      }),
+    );
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "statement_subscribeStatement",
+        params: [{ matchAll: ["0xtopic"] }],
+      }),
+    );
+    harness.emit({
+      jsonrpc: "2.0",
+      id: (harness.sent[0] as { id: string }).id,
+      result: "up-stmt",
+    });
+    harness.emit({
+      jsonrpc: "2.0",
+      id: (harness.sent[1] as { id: string }).id,
+      result: "up-stmt",
+    });
+    const localTokenA = (JSON.parse(messagesA[0] ?? "{}") as { result: string })
+      .result;
+    const localTokenB = (JSON.parse(messagesB[0] ?? "{}") as { result: string })
+      .result;
+
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 10,
+        method: "statement_unsubscribeStatement",
+        params: [localTokenA],
+      }),
+    );
+    expect(JSON.parse(messagesA.at(-1) ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      id: 10,
+      result: true,
+    });
+    expect(
+      harness.sent.filter(
+        (message) =>
+          (message as JsonRpcRequest).method ===
+          "statement_unsubscribeStatement",
+      ),
+    ).toHaveLength(0);
+
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "statement_statement",
+      params: {
+        subscription: "up-stmt",
+        result: { event: "newStatements", data: { statements: [] } },
+      },
+    });
+    expect(messagesA).toHaveLength(2);
+    expect(messagesB.at(-1)).toBe(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "statement_statement",
+        params: {
+          subscription: localTokenB,
+          result: { event: "newStatements", data: { statements: [] } },
+        },
+      }),
+    );
+
+    connectionB?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 11,
+        method: "statement_unsubscribeStatement",
+        params: [localTokenB],
+      }),
+    );
+    const release = harness.sent.at(-1) as {
+      id: string;
+      method: string;
+      params: string[];
+    };
+    expect(release.method).toBe("statement_unsubscribeStatement");
+    expect(release.params[0]).toBe("up-stmt");
+
+    harness.emit({
+      jsonrpc: "2.0",
+      id: release.id,
+      result: true,
+    } as JsonRpcMessage);
+    expect(JSON.parse(messagesB.at(-1) ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      id: 11,
+      result: true,
+    });
+  });
+
   it("reuses the warm upstream when a new session attaches after every previous one disconnected", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
