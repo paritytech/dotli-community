@@ -14,7 +14,6 @@ import {
 } from "../permissions";
 import { showPermissionRequestModal } from "../permission-modal";
 import { showNotification } from "../notification";
-import { createSubmitRateLimiter } from "./rate-limit";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -34,7 +33,6 @@ function gatedRemotePermissionName(
 }
 
 export function createPromptPermission(label: string): Permissions {
-  const limiter = createSubmitRateLimiter();
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
@@ -44,7 +42,6 @@ export function createPromptPermission(label: string): Permissions {
     return {
       granted: await decidePromptPermission(label, tag, {
         kind: "Device",
-        limiter,
         reloadOnGrant: isDevicePermission(tag),
       }),
     };
@@ -58,7 +55,6 @@ export function createPromptPermission(label: string): Permissions {
     return {
       granted: await decidePromptPermission(label, name, {
         kind: "Remote",
-        limiter,
       }),
     };
   };
@@ -71,11 +67,10 @@ export async function decidePromptPermission(
   name: EnforceablePermissionName,
   options: {
     kind: "Device" | "Remote";
-    limiter: { allow: () => boolean };
     reloadOnGrant?: boolean;
   },
 ): Promise<boolean> {
-  const { kind, limiter, reloadOnGrant = false } = options;
+  const { kind, reloadOnGrant = false } = options;
   const status = await getPermissionStatus(label, name);
   if (status === "granted") {
     return true;
@@ -93,9 +88,6 @@ export async function decidePromptPermission(
     return false;
   }
   // status === "ask": show the modal and wait for the user.
-  if (!limiter.allow()) {
-    throw new Error("Permission prompt rate limited");
-  }
   const decision = await showPermissionRequestModal(label, name);
   if (decision === "dismissed") {
     throw new Error("User dismissed permission dialog");

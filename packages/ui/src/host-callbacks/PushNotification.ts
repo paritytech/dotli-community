@@ -9,12 +9,10 @@ import {
 } from "../scheduled-notifications";
 import { showNotification } from "../notification";
 import { decidePromptPermission } from "./PromptPermission";
-import { createSubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
 ): Required<Notifications> {
-  const limiter = createSubmitRateLimiter();
   const pushNotification: Required<Notifications>["pushNotification"] = async ({
     text,
     deeplink,
@@ -28,7 +26,6 @@ export function createNotificationAdapters(
 
     const granted = await decidePromptPermission(label, "Notifications", {
       kind: "Device",
-      limiter,
     });
     if (!granted) {
       throw new Error("Notifications permission denied");
