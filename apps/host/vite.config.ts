@@ -172,55 +172,6 @@ async function resolveSmoldotCommit(version: string): Promise<string> {
 const SMOLDOT_COMMIT = await resolveSmoldotCommit(readSmoldotVersion());
 
 /**
- * Extract unique WSS bootnode hostnames from a chain spec JSON file.
- */
-function extractBootnodeHosts(specPath: string): string[] {
-  try {
-    const spec = JSON.parse(readFileSync(specPath, "utf8")) as {
-      bootNodes?: string[];
-    };
-    const hosts = new Set<string>();
-    for (const bn of spec.bootNodes ?? []) {
-      if (bn.includes("/wss/") || bn.includes("/tls/ws/")) {
-        const match = /\/dns[46]?\/([^/]+)/.exec(bn);
-        if (match?.[1]) hosts.add(match[1]);
-      }
-    }
-    return [...hosts];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Vite plugin that injects <link rel="preconnect"> for smoldot relay chain
- * and Asset Hub bootnode hostnames.
- */
-function preconnectBootnodes(): Plugin {
-  return {
-    name: "preconnect-bootnodes",
-    transformIndexHtml(html) {
-      const specDir = resolve(
-        import.meta.dirname,
-        "../../packages/resolver/src/chain-specs",
-      );
-      const hosts = [
-        ...extractBootnodeHosts(resolve(specDir, "paseo.smol.json")),
-        ...extractBootnodeHosts(resolve(specDir, "paseo-asset-hub.smol.json")),
-      ];
-      const unique = [...new Set(hosts)];
-      const links = unique
-        .map(
-          (host) =>
-            `<link rel="preconnect" href="https://${host}" crossorigin />`,
-        )
-        .join("\n    ");
-      return html.replace("</head>", `    ${links}\n  </head>`);
-    },
-  };
-}
-
-/**
  * Vite plugin that injects conditional <link rel="modulepreload"> for
  * critical chunks on subdomain pages.
  */
@@ -337,7 +288,6 @@ export default defineConfig({
     : "/",
   plugins: [
     wasm(),
-    preconnectBootnodes(),
     preloadCriticalAssets(),
     previewCoepHeaders(),
     sentry(),
