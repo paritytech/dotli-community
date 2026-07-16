@@ -19,7 +19,10 @@ import {
   setNetworkOverride,
   getActiveServicesConfig,
 } from "@dotli/config/network";
-import { createChainProvider, isChainSupported } from "@dotli/resolver/provider";
+import {
+  createChainProvider,
+  isChainSupported,
+} from "@dotli/resolver/provider";
 import {
   resolveDotName,
   resolveExecutableManifest,
