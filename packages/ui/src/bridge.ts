@@ -43,7 +43,10 @@ import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { createTruapiRuntimeConfig } from "./runtime-config";
-import { createWindowMessageProvider } from "./legacy-host-bridge";
+import {
+  createLegacyNovaChainHeadProvider,
+  createWindowMessageProvider,
+} from "./legacy-host-bridge";
 
 // DEPRECATED: enables the legacy Nova host-api transport shim for products that
 // have not yet migrated to `@parity/truapi`. Remove once they have.
@@ -571,11 +574,13 @@ async function createHost(args: {
         legacyProbeCleanup?.();
         // Drop the unused modern MessagePort pipe before rewiring.
         cleanupProductSide();
-        const legacyProvider = createWindowMessageProvider(targetWindow);
+        const windowProvider = createWindowMessageProvider(targetWindow);
+        const legacyProvider =
+          createLegacyNovaChainHeadProvider(windowProvider);
         productProvider = legacyProvider;
         disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
         // Replay the handshake frame the probe just consumed.
-        legacyProvider.injectInbound(event.data);
+        windowProvider.injectInbound(event.data);
       } else if (
         (event.data as { type?: unknown } | null)?.type === "truapi-ready"
       ) {
