@@ -227,8 +227,16 @@ describe("user confirmation modal", () => {
     const review: UserConfirmationReview = {
       tag: "AccountAlias",
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "truapix-playground.dot",
+        callingProductId: "truapi-playground.dot",
+        context: {
+          productId: "truapix-playground.dot",
+          suffix: "0x00",
+        },
+        ringLocation: {
+          chainId:
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+          junctions: [{ tag: "PalletInstance", value: 42 }],
+        },
       },
     };
 
@@ -240,7 +248,11 @@ describe("user confirmation modal", () => {
     const fields = modalFields();
     expect(fields).toEqual({
       "Requesting product": "truapi-playground.dot",
-      "Requested context": "truapix-playground.dot",
+      "Context product": "truapix-playground.dot",
+      "Context suffix": "0x00",
+      Chain:
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "Ring path": "PalletInstance(42)",
     });
     expect(
       document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
@@ -248,6 +260,46 @@ describe("user confirmation modal", () => {
     ).toBe("Deny");
     expect(Object.keys(fields)).not.toContain("Application");
     expect(Object.keys(fields)).not.toContain("Request");
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    await expect(confirmation).resolves.toBe(true);
+  });
+
+  it("renders proof permission as structured ring fields", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "CreateProof",
+      value: {
+        callingProductId: "truapi-playground.dot",
+        context: {
+          productId: "truapix-playground.dot",
+          suffix: "0x00",
+        },
+        ringLocation: {
+          chainId:
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+          junctions: [{ tag: "PalletInstance", value: 42 }],
+        },
+        message: new Uint8Array([0x48, 0x69]),
+      },
+    };
+
+    const confirmation = confirmUserAction(review);
+
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Proof Permission",
+    );
+    expect(modalFields()).toEqual({
+      "Requesting product": "truapi-playground.dot",
+      "Context product": "truapix-playground.dot",
+      "Context suffix": "0x00",
+      Chain:
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "Ring path": "PalletInstance(42)",
+      Message: "0x4869",
+    });
 
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 

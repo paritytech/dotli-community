@@ -122,6 +122,12 @@ function formatReview(review: unknown): string {
   );
 }
 
+function formatBytes(value: Uint8Array): string {
+  return `0x${Array.from(value, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
 function confirmationDisplay(
   label: string,
   review: UserConfirmationReview,
@@ -137,6 +143,9 @@ function confirmationDisplay(
   }
   if (review.tag === "AccountAlias") {
     return { fields: createAccountAliasFields(review.value) };
+  }
+  if (review.tag === "CreateProof") {
+    return { fields: createProofFields(review.value) };
   }
   if (review.tag === "AccountAccess") {
     return { fields: createAccountAccessFields(review.value) };
@@ -268,12 +277,42 @@ function createTransactionFields(
   ];
 }
 
+type RingReview = Extract<
+  UserConfirmationReview,
+  { tag: "AccountAlias" | "CreateProof" }
+>["value"];
+
+function formatRingJunction(
+  junction: RingReview["ringLocation"]["junctions"][number],
+): string {
+  return `${junction.tag}(${String(junction.value)})`;
+}
+
+function createRingContextFields(review: RingReview): ConfirmationField[] {
+  return [
+    { label: "Requesting product", value: review.callingProductId },
+    { label: "Context product", value: review.context.productId },
+    { label: "Context suffix", value: review.context.suffix, mono: true },
+    { label: "Chain", value: review.ringLocation.chainId, mono: true },
+    {
+      label: "Ring path",
+      value: review.ringLocation.junctions.map(formatRingJunction).join(" / "),
+    },
+  ];
+}
+
 function createAccountAliasFields(
   review: Extract<UserConfirmationReview, { tag: "AccountAlias" }>["value"],
 ): ConfirmationField[] {
+  return createRingContextFields(review);
+}
+
+function createProofFields(
+  review: Extract<UserConfirmationReview, { tag: "CreateProof" }>["value"],
+): ConfirmationField[] {
   return [
-    { label: "Requesting product", value: review.requestingProductId },
-    { label: "Requested context", value: review.targetProductId },
+    ...createRingContextFields(review),
+    { label: "Message", value: formatBytes(review.message), mono: true },
   ];
 }
 
@@ -331,6 +370,12 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
     case "AccountAlias":
       return {
         title: "Alias Permission",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
+    case "CreateProof":
+      return {
+        title: "Proof Permission",
         action: "Allow",
         cancelAction: "Deny",
       };
