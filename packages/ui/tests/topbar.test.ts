@@ -395,3 +395,46 @@ describe("topbar boot rehydration", () => {
     ).toBeNull();
   });
 });
+
+describe("topbar permissions", () => {
+  it("renders one row per permission after changing a dropdown", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } =
+      await import("@dotli/ui/permissions");
+    const setPermissionAuthorizationStatus = vi.fn(async () => {});
+    registerPermissionAuthorizationProvider("localhost:3000", {
+      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
+        requests.map(() => "NotDetermined" as const),
+      ),
+      setPermissionAuthorizationStatus,
+    });
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:product-loaded", {
+        detail: { label: "localhost:3000" },
+      }),
+    );
+    document.getElementById("permissions-button")?.click();
+    await flushMicrotasks();
+
+    document
+      .querySelector<HTMLButtonElement>(".permissions-popover-select")
+      ?.click();
+    const allow = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".permissions-popover-menu-item",
+      ),
+    ).find((item) => item.textContent === "Allowed");
+    allow?.click();
+    await vi.waitFor(() => {
+      expect(setPermissionAuthorizationStatus).toHaveBeenCalledTimes(1);
+    });
+    await flushMicrotasks();
+
+    expect(document.querySelectorAll(".permissions-popover-row")).toHaveLength(
+      ALL_PERMISSIONS.length,
+    );
+  });
+});

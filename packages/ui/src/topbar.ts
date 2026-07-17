@@ -701,7 +701,6 @@ async function renderPermissionsPopoverAsync(): Promise<void> {
               detail: { label: productLabel, permission: perm.name },
             }),
           );
-          renderPermissionsPopover();
         })().catch(() => {
           renderPermissionsPopover();
         });
