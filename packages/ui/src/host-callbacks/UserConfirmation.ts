@@ -26,8 +26,14 @@ interface RingContextReview {
   };
 }
 
+interface LegacyAccountAliasReview {
+  requestingProductId: string;
+  targetProductId: string;
+}
+
 type UserConfirmationReview =
   | PublishedUserConfirmationReview
+  | { tag: "AccountAlias"; value: LegacyAccountAliasReview }
   | { tag: "AccountAlias"; value: RingContextReview }
   | {
       tag: "CreateProof";
