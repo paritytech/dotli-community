@@ -23,10 +23,59 @@ import {
   CHAIN_STOP_HEAD_OPERATION,
   CHAIN_UNPIN_HEAD,
 } from "@parity/truapi/wire-table";
-import { createLegacyNovaChainHeadProvider } from "@dotli/ui/legacy-host-bridge";
+import {
+  createLegacyNovaChainHeadProvider,
+  createWindowMessageProvider,
+} from "@dotli/ui/legacy-host-bridge";
 
 const genesisHash = `0x${"11".repeat(32)}` as const;
 const blockHash = `0x${"22".repeat(32)}` as const;
+
+describe("createWindowMessageProvider", () => {
+  it("pins outbound and inbound frames to the product origin", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const targetWindow = {
+      postMessage: vi.fn(),
+    } as unknown as Window;
+    const targetOrigin = "https://product.app.dotli.dev";
+    const provider = createWindowMessageProvider(targetWindow, targetOrigin);
+    const listener = vi.fn();
+    provider.subscribe(listener);
+    const message = new Uint8Array([1, 2, 3]);
+
+    provider.postMessage(message);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: "https://attacker.example",
+        source: targetWindow,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: targetOrigin,
+        source: window,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: targetOrigin,
+        source: targetWindow,
+      }),
+    );
+
+    expect(targetWindow.postMessage).toHaveBeenCalledWith(
+      message,
+      targetOrigin,
+    );
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(message);
+
+    provider.dispose();
+  });
+});
 
 type FollowBoundRequest = {
   tag: "V1";

@@ -205,6 +205,7 @@ let warned = false;
 
 export function createWindowMessageProvider(
   targetWindow: Window,
+  targetOrigin: string,
 ): WindowMessageProvider {
   if (!warned) {
     warned = true;
@@ -220,16 +221,19 @@ export function createWindowMessageProvider(
     }
   };
   const onMessage = (event: MessageEvent): void => {
-    if (event.source === targetWindow && event.data instanceof Uint8Array) {
+    if (
+      event.source === targetWindow &&
+      event.origin === targetOrigin &&
+      event.data instanceof Uint8Array
+    ) {
       deliver(event.data);
     }
   };
   window.addEventListener("message", onMessage);
 
   return {
-    // "*" matches the credentialless product iframe (its origin reports "null").
     postMessage(message) {
-      targetWindow.postMessage(message, "*");
+      targetWindow.postMessage(message, targetOrigin);
     },
     subscribe(callback) {
       subscribers.add(callback);

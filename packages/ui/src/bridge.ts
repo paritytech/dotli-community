@@ -615,7 +615,11 @@ async function createHost(args: {
         return;
       }
       const targetWindow = host.iframe.contentWindow;
-      if (!targetWindow || event.source !== targetWindow) {
+      if (
+        !targetWindow ||
+        event.source !== targetWindow ||
+        event.origin !== args.allowedOrigin
+      ) {
         return;
       }
       if (event.data instanceof Uint8Array) {
@@ -623,7 +627,10 @@ async function createHost(args: {
         legacyProbeCleanup?.();
         // Drop the unused modern MessagePort pipe before rewiring.
         cleanupProductSide();
-        const windowProvider = createWindowMessageProvider(targetWindow);
+        const windowProvider = createWindowMessageProvider(
+          targetWindow,
+          args.allowedOrigin,
+        );
         const legacyProvider =
           createLegacyNovaChainHeadProvider(windowProvider);
         productProvider = legacyProvider;
