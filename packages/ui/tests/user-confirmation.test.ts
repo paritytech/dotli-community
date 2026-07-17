@@ -71,6 +71,53 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
+  it("renders product payload signing with the derived account", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "SignPayload",
+      value: {
+        tag: "Product",
+        value: {
+          account: {
+            dotNsIdentifier: "truapi-playground.dot",
+            derivationIndex: 2,
+          },
+          payload: {
+            blockHash:
+              "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+            blockNumber: "0x00000000",
+            era: "0x00",
+            genesisHash:
+              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+            method: "0x0500",
+            nonce: "0x00000000",
+            signedExtensions: [],
+            specVersion: "0x00000000",
+            tip: "0x00000000000000000000000000000000",
+            transactionVersion: "0x00000000",
+            version: 4,
+          },
+        },
+      },
+    };
+
+    const confirmation = confirmUserAction(review);
+
+    expect(modalFields()).toEqual({
+      App: "localhost:3000",
+      Signer: "truapi-playground.dot / 2",
+      "Genesis Hash":
+        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+      "Call Data": "0x0500",
+      Version: "4",
+    });
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    await expect(confirmation).resolves.toBe(true);
+  });
+
   it("renders legacy raw signing as structured sign-message fields", async () => {
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
@@ -101,6 +148,46 @@ describe("user confirmation modal", () => {
       Message: "0x48656c6c6f2c20776f726c6421",
     });
     expect(document.body.textContent).not.toContain("Request");
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    await expect(confirmation).resolves.toBe(true);
+  });
+
+  it("renders product transaction creation as structured fields", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "CreateTransaction",
+      value: {
+        tag: "Product",
+        value: {
+          signer: {
+            dotNsIdentifier: "truapi-playground.dot",
+            derivationIndex: 3,
+          },
+          genesisHash:
+            "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+          callData: "0x0500",
+          extensions: [],
+          txExtVersion: 5,
+        },
+      },
+    };
+
+    const confirmation = confirmUserAction(review);
+
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Sign Transaction",
+    );
+    expect(modalFields()).toEqual({
+      App: "localhost:3000",
+      Signer: "truapi-playground.dot / 3",
+      "Genesis Hash":
+        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+      "Call Data": "0x0500",
+      "Tx Ext Version": "5",
+    });
 
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
@@ -248,5 +335,36 @@ describe("user confirmation modal", () => {
     await expect(confirmation).rejects.toThrow(
       "User dismissed identity disclosure dialog",
     );
+  });
+
+  it("allows preimage submission from its dedicated dialog", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const confirmation = confirmUserAction({
+      tag: "PreimageSubmit",
+      value: { size: 2048n },
+    });
+
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Submit Preimage",
+    );
+    expect(modalFields()).toEqual({ "Data size": "2 KB" });
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    await expect(confirmation).resolves.toBe(true);
+  });
+
+  it("denies preimage submission when the user cancels", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const confirmation = confirmUserAction({
+      tag: "PreimageSubmit",
+      value: { size: 512n },
+    });
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+
+    await expect(confirmation).resolves.toBe(false);
   });
 });
