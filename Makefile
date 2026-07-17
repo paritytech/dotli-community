@@ -65,7 +65,7 @@ ENV ?= paseo
 # back certbot's API calls.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-.PHONY: build provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
+.PHONY: build provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert update-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
 build:
 	bun run build
@@ -113,6 +113,13 @@ provision-cert: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval CERT_FLAGS := $(foreach d,$(CERT_DOMAINS_$(ENV)), -d '$(d)'))
 	ssh $(REMOTE_TARGET) "sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini --dns-cloudflare-propagation-seconds 30 --non-interactive --agree-tos -m '$(ADMIN_EMAIL)' --keep-until-expiring --expand --cert-name $(SITE_$(ENV)) $(CERT_FLAGS)"
+
+# Expands an existing certificate using the ACME account and Cloudflare
+# credentials already provisioned on the server, then activates it in nginx.
+update-cert: _require-env
+	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
+	$(eval CERT_FLAGS := $(foreach d,$(CERT_DOMAINS_$(ENV)), -d '$(d)'))
+	ssh $(REMOTE_TARGET) "set -eu; sudo test -r /etc/letsencrypt/cloudflare.ini; sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini --dns-cloudflare-propagation-seconds 30 --non-interactive --keep-until-expiring --expand --cert-name $(SITE_$(ENV)) $(CERT_FLAGS); sudo nginx -t; sudo systemctl reload nginx"
 
 provision-renewal: _require-env
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
