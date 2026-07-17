@@ -32,7 +32,7 @@
     "@dotli/storage": "workspace:*",
     "@dotli/truapi-debug": "workspace:*",
     "@noble/hashes": "^2.2.0",
-    "@parity/truapi": "0.4.0",
+    "@parity/truapi": "0.4.1",
     "@parity/truapi-host": "0.1.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@scure/base": "^2.2.0",
