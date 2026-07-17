@@ -266,6 +266,26 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
+  it("renders the published account alias review shape", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const confirmation = confirmUserAction({
+      tag: "AccountAlias",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+
+    expect(modalFields()).toEqual({
+      "Requesting product": "truapi-playground.dot",
+      "Requested account": "other-product.dot",
+    });
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await expect(confirmation).resolves.toBe(true);
+  });
+
   it("renders proof permission as structured ring fields", async () => {
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");

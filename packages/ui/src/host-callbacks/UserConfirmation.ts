@@ -13,9 +13,26 @@ interface ConfirmationField {
   mono?: boolean;
 }
 
-type UserConfirmationReview = Parameters<
+type PublishedUserConfirmationReview = Parameters<
   Required<UserConfirmationHost>["confirmUserAction"]
 >[0];
+
+interface RingContextReview {
+  callingProductId: string;
+  context: { productId: string; suffix: string };
+  ringLocation: {
+    chainId: string;
+    junctions: { tag: string; value: number | string }[];
+  };
+}
+
+type UserConfirmationReview =
+  | PublishedUserConfirmationReview
+  | { tag: "AccountAlias"; value: RingContextReview }
+  | {
+      tag: "CreateProof";
+      value: RingContextReview & { message: Uint8Array };
+    };
 
 type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
 
@@ -277,18 +294,15 @@ function createTransactionFields(
   ];
 }
 
-type RingReview = Extract<
-  UserConfirmationReview,
-  { tag: "AccountAlias" | "CreateProof" }
->["value"];
-
 function formatRingJunction(
-  junction: RingReview["ringLocation"]["junctions"][number],
+  junction: RingContextReview["ringLocation"]["junctions"][number],
 ): string {
   return `${junction.tag}(${String(junction.value)})`;
 }
 
-function createRingContextFields(review: RingReview): ConfirmationField[] {
+function createRingContextFields(
+  review: RingContextReview,
+): ConfirmationField[] {
   return [
     { label: "Requesting product", value: review.callingProductId },
     { label: "Context product", value: review.context.productId },
@@ -304,7 +318,13 @@ function createRingContextFields(review: RingReview): ConfirmationField[] {
 function createAccountAliasFields(
   review: Extract<UserConfirmationReview, { tag: "AccountAlias" }>["value"],
 ): ConfirmationField[] {
-  return createRingContextFields(review);
+  if ("ringLocation" in review) {
+    return createRingContextFields(review);
+  }
+  return [
+    { label: "Requesting product", value: review.requestingProductId },
+    { label: "Requested account", value: review.targetProductId },
+  ];
 }
 
 function createProofFields(
@@ -431,9 +451,11 @@ export function createUserConfirmationAdapters(
   label: string,
 ): Required<UserConfirmationHost> {
   return {
-    confirmUserAction: (review) =>
-      review.tag === "PreimageSubmit"
-        ? handlePreimageSubmitReview(review)
-        : handleConfirmationReview(label, review),
+    confirmUserAction: (review) => {
+      const compatibleReview = review as UserConfirmationReview;
+      return compatibleReview.tag === "PreimageSubmit"
+        ? handlePreimageSubmitReview(compatibleReview)
+        : handleConfirmationReview(label, compatibleReview);
+    },
   };
 }
