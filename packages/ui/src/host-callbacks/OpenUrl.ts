@@ -36,6 +36,7 @@ export function createNavigateTo(): Navigation["navigateTo"] {
           dotUrl.pathname,
         ),
         "_blank",
+        "noopener",
       );
       return Promise.resolve(undefined);
     }
@@ -43,11 +44,15 @@ export function createNavigateTo(): Navigation["navigateTo"] {
     const localhostUrl = dotNsUrl.parseLocalhostUrl(url);
     if (localhostUrl) {
       const suffix = localhostUrl.pathname ? "/" + localhostUrl.pathname : "";
-      window.open(`${getHostOrigin()}/${localhostUrl.host}${suffix}`, "_blank");
+      window.open(
+        `${getHostOrigin()}/${localhostUrl.host}${suffix}`,
+        "_blank",
+        "noopener",
+      );
       return Promise.resolve(undefined);
     }
 
-    window.open(url, "_blank");
+    window.open(url, "_blank", "noopener");
     return Promise.resolve(undefined);
   };
 }
