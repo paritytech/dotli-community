@@ -470,42 +470,91 @@ export function requestCoreLogin(
   }
 
   return new Promise<LoginResponse>((resolve, reject) => {
-    const unsubscribe = core.subscribe((message) => {
-      const decoded = decodeWireMessage(message);
-      if (decoded.isErr()) {
-        cleanup();
-        reject(decoded.error);
-        return;
-      }
-      if (
-        decoded.value.requestId !== requestId ||
-        decoded.value.payload.id !== ACCOUNT_REQUEST_LOGIN.response
-      ) {
-        return;
-      }
-      cleanup();
-      try {
-        const envelope = responseCodec.dec(decoded.value.payload.value);
-        const result = envelope.value;
-        if (result.success) {
-          resolve(result.value);
-        } else {
-          const error = new LoginRequestError(result.value);
-          reject(error);
-        }
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
+    let settled = false;
+    let cleanupRequested = false;
+    let unsubscribeMessage: (() => void) | undefined;
+    let unsubscribeClose: (() => void) | undefined;
     const cleanup = (): void => {
-      unsubscribe();
+      cleanupRequested = true;
+      unsubscribeMessage?.();
+      unsubscribeMessage = undefined;
+      unsubscribeClose?.();
+      unsubscribeClose = undefined;
     };
+    const registerCleanup = (
+      unsubscribe: (() => void) | undefined,
+      retain: (value: (() => void) | undefined) => void,
+    ): void => {
+      if (cleanupRequested) {
+        unsubscribe?.();
+      } else {
+        retain(unsubscribe);
+      }
+    };
+    const rejectRequest = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const resolveRequest = (response: LoginResponse): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(response);
+    };
+
+    registerCleanup(
+      core.subscribe((message) => {
+        const decoded = decodeWireMessage(message);
+        if (decoded.isErr()) {
+          rejectRequest(decoded.error);
+          return;
+        }
+        if (
+          decoded.value.requestId !== requestId ||
+          decoded.value.payload.id !== ACCOUNT_REQUEST_LOGIN.response
+        ) {
+          return;
+        }
+        cleanup();
+        try {
+          const envelope = responseCodec.dec(decoded.value.payload.value);
+          const result = envelope.value;
+          if (result.success) {
+            resolveRequest(result.value);
+          } else {
+            const error = new LoginRequestError(result.value);
+            rejectRequest(error);
+          }
+        } catch (error) {
+          rejectRequest(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        }
+      }),
+      (unsubscribe) => {
+        unsubscribeMessage = unsubscribe;
+      },
+    );
+
+    registerCleanup(
+      core.subscribeClose?.((error) => {
+        rejectRequest(error);
+      }),
+      (unsubscribe) => {
+        unsubscribeClose = unsubscribe;
+      },
+    );
 
     try {
       core.postMessage(frame.value);
     } catch (error) {
-      cleanup();
-      reject(error instanceof Error ? error : new Error(String(error)));
+      rejectRequest(error instanceof Error ? error : new Error(String(error)));
     }
   });
 }

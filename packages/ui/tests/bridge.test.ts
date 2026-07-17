@@ -34,6 +34,7 @@ type MockRuntime = {
 };
 
 type ProviderListener = (message: Uint8Array) => void;
+type ProviderCloseListener = (error: Error) => void;
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
@@ -101,9 +102,13 @@ function makeProvider(): MockProvider {
 
 function makeLoginProvider(options: {
   onPostMessage?: (message: Uint8Array) => void;
-}): MockProvider & { listener: ProviderListener | null } {
+}): MockProvider & {
+  listener: ProviderListener | null;
+  closeListener: ProviderCloseListener | null;
+} {
   const provider = {
     listener: null as ProviderListener | null,
+    closeListener: null as ProviderCloseListener | null,
     postMessage: vi.fn((message: Uint8Array) => {
       options.onPostMessage?.(message);
     }),
@@ -113,7 +118,12 @@ function makeLoginProvider(options: {
         provider.listener = null;
       };
     }),
-    subscribeClose: vi.fn(() => () => {}),
+    subscribeClose: vi.fn((callback: ProviderCloseListener) => {
+      provider.closeListener = callback;
+      return () => {
+        provider.closeListener = null;
+      };
+    }),
     disconnectSession: vi.fn(async () => {}),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
     getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
@@ -391,5 +401,20 @@ describe("requestCoreLogin", () => {
 
     await expect(requestCoreLogin(provider)).rejects.toThrow("send failed");
     expect(provider.listener).toBeNull();
+  });
+
+  it("rejects and unsubscribes when the core provider closes", async () => {
+    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const provider = makeLoginProvider({});
+
+    const promise = requestCoreLogin(provider);
+    expect(provider.listener).not.toBeNull();
+    expect(provider.closeListener).not.toBeNull();
+
+    provider.closeListener?.(new Error("core transport closed"));
+
+    await expect(promise).rejects.toThrow("core transport closed");
+    expect(provider.listener).toBeNull();
+    expect(provider.closeListener).toBeNull();
   });
 });
