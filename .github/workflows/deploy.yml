@@ -7,9 +7,15 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment to deploy
+        required: true
+        type: environment
 
 concurrency:
-  group: deploy-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref_name }}
+  group: deploy-${{ github.event_name }}-${{ inputs.environment || github.event.pull_request.number || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -28,11 +34,16 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          MANUAL_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set -euo pipefail
           # Environments a PR label is allowed to target (development only).
           ALLOWED='["westend.li","dotli.dev","paseoli.dev","westendli.dev","testnet.li"]'
           case "$EVENT_NAME" in
+            workflow_dispatch)
+              echo "environments=$(jq -nc --arg environment "$MANUAL_ENVIRONMENT" '[$environment]')" >> "$GITHUB_OUTPUT"
+              echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+              ;;
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"

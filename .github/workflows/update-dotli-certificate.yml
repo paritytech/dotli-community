@@ -1,0 +1,72 @@
+name: Update dotli certificate
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment whose certificate should be updated
+        required: true
+        type: environment
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-dotli-certificate-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  update-certificate:
+    name: Update ${{ inputs.environment }} certificate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Map deployment environment
+        id: target
+        env:
+          CERTIFICATE_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          case "$CERTIFICATE_ENVIRONMENT" in
+            dotli.dev) make_environment=dev-polkadot ;;
+            paseo.li) make_environment=paseo ;;
+            paseoli.dev) make_environment=dev-paseo ;;
+            testnet.li) make_environment=dev-test ;;
+            westend.li) make_environment=westend ;;
+            westendli.dev) make_environment=dev-westend ;;
+            *) echo "Unsupported environment: $CERTIFICATE_ENVIRONMENT" >&2; exit 1 ;;
+          esac
+          echo "make_environment=$make_environment" >> "$GITHUB_OUTPUT"
+          echo "certificate_hostname=certificate-check.app.$CERTIFICATE_ENVIRONMENT" >> "$GITHUB_OUTPUT"
+
+      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Trust deployment host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: ssh-keyscan "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Expand certificate and reload nginx
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          MAKE_ENVIRONMENT: ${{ steps.target.outputs.make_environment }}
+        run: make update-cert ENV="$MAKE_ENVIRONMENT" REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
+
+      - name: Verify sandbox hostname
+        env:
+          CERTIFICATE_HOST: ${{ steps.target.outputs.certificate_hostname }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          EXPECTED_SAN: DNS:*.app.${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          printf '' | openssl s_client \
+            -connect "$DEPLOY_HOST:443" \
+            -servername "$CERTIFICATE_HOST" \
+            -verify_hostname "$CERTIFICATE_HOST" \
+            -verify_return_error 2>/dev/null \
+            | openssl x509 -noout -ext subjectAltName \
+            | grep --fixed-strings "$EXPECTED_SAN"
