@@ -32,10 +32,10 @@
     "packages/*"
   ],
   "dependencies": {
-    "smoldot": "3.2.0"
+    "smoldot": "3.3.1"
   },
   "overrides": {
-    "smoldot": "3.2.0",
+    "smoldot": "3.3.1",
     "esbuild": "^0.28.1"
   }
 }
