@@ -5,6 +5,7 @@
 import type { PreimageHost } from "@parity/truapi-host";
 import { hashToCid } from "@dotli/content/preimage";
 import { fetchFromIpfs } from "@dotli/content/ipfs";
+import { assertBlockMatchesCid } from "@dotli/content/verify";
 import { getBackend } from "@dotli/config/mode";
 import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
@@ -67,6 +68,7 @@ function createPreimageLookupSubscribe(
             if (backend !== "rpc-gateway") {
               const data = await bitswapGet(cidString);
               if (data.length > 0) {
+                assertBlockMatchesCid(cid, data);
                 preimageCache.set(key, data);
                 push(data);
                 stopPolling();
@@ -75,6 +77,7 @@ function createPreimageLookupSubscribe(
             } else {
               const result = await fetchFromIpfs(cidString);
               if (result.data.length > 0) {
+                assertBlockMatchesCid(cid, result.data);
                 preimageCache.set(key, result.data);
                 push(result.data);
                 stopPolling();
