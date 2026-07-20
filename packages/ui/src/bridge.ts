@@ -792,7 +792,13 @@ export async function renderIframe(
     payload: { label, url, mode: "iframe" },
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  cleanup();
+  // Keep the current product visible while the replacement core initializes.
+  // Core startup can take several seconds; removing the old iframe first made
+  // permission-triggered reloads look like a permanently blank application.
+  const previousHost = currentHost;
+  if (previousHost === null) {
+    app.innerHTML = "";
+  }
   disposeLandingAuthHost();
 
   currentProduct = {
@@ -801,8 +807,6 @@ export async function renderIframe(
     url,
     productId: options.productId,
   };
-
-  app.innerHTML = "";
 
   const hasTopbar = document.getElementById("topbar") !== null;
   const iframeUrl = new URL(url, window.location.href);
@@ -835,6 +839,16 @@ export async function renderIframe(
     timestamp: Date.now(),
     payload: { label, productId },
   });
+  if (currentPanelDispose) {
+    currentPanelDispose();
+    currentPanelDispose = null;
+  }
+  previousHost?.dispose();
+  for (const child of [...app.children]) {
+    if (child !== host.iframe) {
+      child.remove();
+    }
+  }
   applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
   currentHost = host;
   host.iframe.addEventListener(
