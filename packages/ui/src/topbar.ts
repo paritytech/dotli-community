@@ -52,6 +52,11 @@ import {
   emitPersistedSessionUiState,
   type TruapiSessionUiState,
 } from "./host-callbacks/SessionStore";
+import {
+  createBlockingModalCoordinator,
+  type BlockingModalCoordinator,
+  type BlockingModalScope,
+} from "./blocking-modal-queue";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -96,6 +101,9 @@ const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" st
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
 let truapiSessionConnected = false;
+let blockingModalCoordinator: BlockingModalCoordinator | null = null;
+let authModalScope: BlockingModalScope | null = null;
+let releaseAuthModal: (() => void) | null = null;
 
 function getStoredTheme(): "light" | "dark" {
   const stored = localStorage.getItem("dotli-theme");
@@ -129,7 +137,10 @@ function initThemeToggle(): void {
   });
 }
 
-export function initTopBar(): void {
+export function initTopBar(
+  modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator(),
+): void {
+  blockingModalCoordinator = modalCoordinator;
   authButton = getElement("auth-button");
   modalBackdrop = getElement("auth-modal-backdrop");
   modalTitle = getElement("auth-modal-title");
@@ -262,6 +273,18 @@ export function initTopBar(): void {
 
   // Permissions
   initPermissions();
+
+  window.addEventListener("dotli:blocking-modal-active", (event: Event) => {
+    const { active } = (event as CustomEvent<{ active: boolean }>).detail;
+    if (!active) {
+      return;
+    }
+    userPopover.classList.remove("open");
+    setModePopoverOpen(false);
+    setPermissionsPopoverOpen(false);
+    morePopover?.classList.remove("open");
+    moreButton?.setAttribute("aria-expanded", "false");
+  });
 
   // Show default logged-out state
   renderLoggedOut();
@@ -2011,17 +2034,59 @@ function openModal(
     modalReason.textContent = "";
     modalReason.hidden = true;
   }
-  modalBackdrop.classList.add("open");
+  ensureAuthModalLease();
 }
 
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
   currentQrPayload = null;
   modalQr.innerHTML = "";
+  const scope = authModalScope;
+  const release = releaseAuthModal;
+  authModalScope = null;
+  releaseAuthModal = null;
+  release?.();
+  scope?.dispose("Authentication modal closed");
 
   if (opts.skipTruapiCancel !== true) {
     // User-initiated close: cancel any in-flight login in the core so the
     // pairing flow stops polling and resolves as Rejected.
     window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
   }
+}
+
+function ensureAuthModalLease(): void {
+  if (authModalScope !== null) {
+    return;
+  }
+
+  if (blockingModalCoordinator === null) {
+    throw new Error("Top bar initialized without a blocking modal coordinator");
+  }
+  const scope = blockingModalCoordinator.createScope();
+  authModalScope = scope;
+  void scope
+    .enqueue(
+      (signal) =>
+        new Promise<void>((resolve) => {
+          if (authModalScope !== scope || signal.aborted) {
+            resolve();
+            return;
+          }
+
+          const finish = (): void => {
+            signal.removeEventListener("abort", finish);
+            if (releaseAuthModal === finish) {
+              releaseAuthModal = null;
+            }
+            resolve();
+          };
+          releaseAuthModal = finish;
+          signal.addEventListener("abort", finish, { once: true });
+          modalBackdrop.classList.add("open");
+        }),
+    )
+    .catch(() => {
+      // Closing a pending or active authentication modal disposes its lease.
+    });
 }

@@ -150,6 +150,45 @@ describe("topbar disconnect", () => {
 });
 
 describe("topbar login cancellation", () => {
+  it("waits for an active TrUAPI prompt before opening login", async () => {
+    installTopbarDom();
+    const [{ initTopBar }, { createBlockingModalCoordinator }] =
+      await Promise.all([
+        import("@dotli/ui/topbar"),
+        import("@dotli/ui/blocking-modal-queue"),
+      ]);
+    const coordinator = createBlockingModalCoordinator();
+    initTopBar(coordinator);
+    const scope = coordinator.createScope();
+    let releaseBlockingPrompt: (() => void) | null = null;
+    const blockingPrompt = scope.enqueue(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseBlockingPrompt = resolve;
+        }),
+    );
+
+    document.getElementById("auth-button")?.click();
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(false);
+
+    releaseBlockingPrompt?.();
+    await blockingPrompt;
+
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+
+    document.getElementById("auth-modal-close")?.click();
+    scope.dispose();
+  });
+
   it("opens host-global login from the topbar even when a product is loaded", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");

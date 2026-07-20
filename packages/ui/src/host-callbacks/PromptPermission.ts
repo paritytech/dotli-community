@@ -14,6 +14,11 @@ import {
 } from "../permissions";
 import { showPermissionRequestModal } from "../permission-modal";
 import { showNotification } from "../notification";
+import {
+  createBlockingModalScope,
+  throwIfAborted,
+  type BlockingModalScope,
+} from "../blocking-modal-queue";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -32,7 +37,10 @@ function gatedRemotePermissionName(
   }
 }
 
-export function createPromptPermission(label: string): Permissions {
+export function createPromptPermission(
+  label: string,
+  modalScope: BlockingModalScope = createBlockingModalScope(),
+): Permissions {
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
@@ -40,10 +48,15 @@ export function createPromptPermission(label: string): Permissions {
       return { granted: true };
     }
     return {
-      granted: await decidePromptPermission(label, tag, {
-        kind: "Device",
-        reloadOnGrant: isDevicePermission(tag),
-      }),
+      granted: await decidePromptPermission(
+        label,
+        tag,
+        {
+          kind: "Device",
+          reloadOnGrant: isDevicePermission(tag),
+        },
+        modalScope,
+      ),
     };
   };
 
@@ -53,9 +66,14 @@ export function createPromptPermission(label: string): Permissions {
       return { granted: true };
     }
     return {
-      granted: await decidePromptPermission(label, name, {
-        kind: "Remote",
-      }),
+      granted: await decidePromptPermission(
+        label,
+        name,
+        {
+          kind: "Remote",
+        },
+        modalScope,
+      ),
     };
   };
 
@@ -69,9 +87,25 @@ export async function decidePromptPermission(
     kind: "Device" | "Remote";
     reloadOnGrant?: boolean;
   },
+  modalScope: BlockingModalScope = createBlockingModalScope(),
+): Promise<boolean> {
+  return modalScope.enqueue((signal) =>
+    decidePromptPermissionWhenActive(label, name, options, signal),
+  );
+}
+
+async function decidePromptPermissionWhenActive(
+  label: string,
+  name: EnforceablePermissionName,
+  options: {
+    kind: "Device" | "Remote";
+    reloadOnGrant?: boolean;
+  },
+  signal: AbortSignal,
 ): Promise<boolean> {
   const { kind, reloadOnGrant = false } = options;
   const status = await getPermissionStatus(label, name);
+  throwIfAborted(signal);
   if (status === "granted") {
     return true;
   }
@@ -88,21 +122,29 @@ export async function decidePromptPermission(
     return false;
   }
   // status === "ask": show the modal and wait for the user.
-  const decision = await showPermissionRequestModal(label, name);
+  const decision = await showPermissionRequestModal(label, name, signal);
+  throwIfAborted(signal);
   if (decision === "dismissed") {
     throw new Error("User dismissed permission dialog");
   }
   if (decision === "denied") {
+    throwIfAborted(signal);
     await setPermissionStatus(label, name, "denied");
+    throwIfAborted(signal);
     return false;
   }
+  throwIfAborted(signal);
   await setPermissionStatus(label, name, "granted");
+  throwIfAborted(signal);
   if (kind === "Device" && reloadOnGrant) {
     // Device permissions are also gated by the iframe `allow` attribute,
     // which is fixed at iframe load time. Reload so the next attempt sees
     // the updated attribute. Defer to the next tick so the prompt response
     // can flush before the iframe is disposed.
     setTimeout(() => {
+      if (signal.aborted) {
+        return;
+      }
       window.dispatchEvent(
         new CustomEvent("dotli:device-permission-changed", {
           detail: { label, permission: name },
@@ -113,6 +155,7 @@ export async function decidePromptPermission(
   }
   // Remote permissions have no browser-level gate, so we can return the
   // actual grant. The event keeps the topbar in sync.
+  throwIfAborted(signal);
   window.dispatchEvent(
     new CustomEvent("dotli:permission-changed", { detail: { label } }),
   );

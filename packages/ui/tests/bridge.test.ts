@@ -230,7 +230,7 @@ async function waitForMockCalls(
 }
 
 describe("bridge render lifecycle", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.coreProviders.length = 0;
@@ -254,6 +254,12 @@ describe("bridge render lifecycle", () => {
         return { iframe, dispose };
       },
     );
+    const [{ initBridgeEventListeners }, { createBlockingModalCoordinator }] =
+      await Promise.all([
+        import("@dotli/ui/bridge"),
+        import("@dotli/ui/blocking-modal-queue"),
+      ]);
+    initBridgeEventListeners(createBlockingModalCoordinator());
   });
 
   it("disposes a host that resolves after a newer render has started", async () => {

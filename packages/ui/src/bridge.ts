@@ -47,6 +47,7 @@ import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
 } from "./legacy-host-bridge";
+import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 
 // DEPRECATED: enables the legacy Nova host-api transport shim for products that
 // have not yet migrated to `@parity/truapi`. Remove once they have.
@@ -124,6 +125,7 @@ let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
 const liveCoreProviders = new Set<CoreProvider>();
 let unsubscribeSessionStoreChanges: (() => void) | null = null;
+let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 
 function ensureStoredSessionForwarder(): void {
   if (unsubscribeSessionStoreChanges !== null) {
@@ -137,6 +139,7 @@ function ensureStoredSessionForwarder(): void {
 function trackCoreProvider(
   provider: CoreProviderBase,
   pairing: PairingRuntimeControls,
+  disposeModalScope: () => void,
 ): CoreProvider {
   const tracked: CoreProvider = {
     postMessage(message: Uint8Array): void {
@@ -167,6 +170,7 @@ function trackCoreProvider(
       return provider.setPermissionAuthorizationStatus(request, status);
     },
     dispose() {
+      disposeModalScope();
       provider.dispose();
       pairing.dispose();
     },
@@ -281,10 +285,13 @@ window.addEventListener("message", (event: MessageEvent) => {
 
 let bridgeEventListenersInitialized = false;
 
-export function initBridgeEventListeners(): void {
+export function initBridgeEventListeners(
+  modalCoordinator: BlockingModalCoordinator,
+): void {
   if (bridgeEventListenersInitialized) {
     return;
   }
+  blockingModalCoordinator = modalCoordinator;
   bridgeEventListenersInitialized = true;
   (
     window as typeof window & { __dotliTruapiBridgeReady?: boolean }
@@ -326,8 +333,6 @@ export function initBridgeEventListeners(): void {
     });
   });
 }
-
-initBridgeEventListeners();
 
 async function disconnectTruapiHosts(): Promise<void> {
   const hosts = new Set<CoreHost | ActiveHost>();
@@ -684,28 +689,42 @@ async function createCoreProvider(
     productId?: string;
   } = {},
 ): Promise<CoreProvider> {
-  const { createWebWorkerPairingHostRuntime, HostWorker } =
-    await runtimeChunkPromise;
-  const runtimeConfig = createTruapiRuntimeConfig(
-    label,
-    window.location,
-    options.productId,
-  );
-  const { productId, ...hostConfig } = runtimeConfig;
-  const runtime = await createWebWorkerPairingHostRuntime(
-    new HostWorker(),
-    createHostCallbacks({
+  if (blockingModalCoordinator === null) {
+    throw new Error(
+      "TrUAPI bridge initialized without a blocking modal coordinator",
+    );
+  }
+  const blockingModalScope = blockingModalCoordinator.createScope();
+  try {
+    const { createWebWorkerPairingHostRuntime, HostWorker } =
+      await runtimeChunkPromise;
+    const runtimeConfig = createTruapiRuntimeConfig(
       label,
-      pairingLabel: options.pairingLabel,
-      pairingDotSuffix: options.pairingDotSuffix,
-      pairingHostGlobal: options.pairingHostGlobal,
-    }),
-    {
-      hostConfig,
-    },
-  );
-  const provider = await runtime.createProvider({ productId });
-  return trackCoreProvider(provider, runtime);
+      window.location,
+      options.productId,
+    );
+    const { productId, ...hostConfig } = runtimeConfig;
+    const runtime = await createWebWorkerPairingHostRuntime(
+      new HostWorker(),
+      createHostCallbacks({
+        label,
+        pairingLabel: options.pairingLabel,
+        pairingDotSuffix: options.pairingDotSuffix,
+        pairingHostGlobal: options.pairingHostGlobal,
+        blockingModalScope,
+      }),
+      {
+        hostConfig,
+      },
+    );
+    const provider = await runtime.createProvider({ productId });
+    return trackCoreProvider(provider, runtime, () => {
+      blockingModalScope.dispose();
+    });
+  } catch (error) {
+    blockingModalScope.dispose();
+    throw error;
+  }
 }
 
 async function getLandingAuthHost(): Promise<CoreHost> {

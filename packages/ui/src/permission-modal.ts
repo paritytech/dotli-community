@@ -5,6 +5,7 @@ import {
   isDevicePermission,
   type EnforceablePermissionName,
 } from "./permissions";
+import { blockingModalAbortError } from "./blocking-modal-queue";
 
 // dot.li Permission request modal (vanilla DOM)
 //
@@ -103,8 +104,9 @@ export type PermissionPromptDecision = "granted" | "denied" | "dismissed";
 export function showPermissionRequestModal(
   label: string,
   permission: EnforceablePermissionName,
+  signal?: AbortSignal,
 ): Promise<PermissionPromptDecision> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
 
@@ -184,25 +186,48 @@ export function showPermissionRequestModal(
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
 
+    let settled = false;
     function cleanup(): void {
+      signal?.removeEventListener("abort", onAbort);
       backdrop.remove();
     }
 
-    denyBtn.addEventListener("click", () => {
+    function finish(decision: PermissionPromptDecision): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
       cleanup();
-      resolve("denied");
+      resolve(decision);
+    }
+
+    function onAbort(): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(blockingModalAbortError(signal?.reason));
+    }
+
+    if (signal?.aborted === true) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    denyBtn.addEventListener("click", () => {
+      finish("denied");
     });
 
     allowBtn.addEventListener("click", () => {
-      cleanup();
-      resolve("granted");
+      finish("granted");
     });
 
     // Close on backdrop click (outside modal)
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
-        cleanup();
-        resolve("dismissed");
+        finish("dismissed");
       }
     });
   });

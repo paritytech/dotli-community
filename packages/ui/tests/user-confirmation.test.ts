@@ -21,6 +21,43 @@ function modalFields(): Record<string, string> {
 }
 
 describe("user confirmation modal", () => {
+  it("shows concurrent confirmation requests one at a time", async () => {
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const accountAccess = confirmUserAction({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+    const identityDisclosure = confirmUserAction({
+      tag: "IdentityDisclosure",
+      value: { productId: "truapi-playground.dot" },
+    });
+
+    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
+      1,
+    );
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Account Access",
+    );
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await expect(accountAccess).resolves.toBe(true);
+
+    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
+      1,
+    );
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Identity Disclosure",
+    );
+
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await expect(identityDisclosure).resolves.toBe(true);
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+  });
+
   it("renders legacy payload signing as structured transaction fields", async () => {
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");

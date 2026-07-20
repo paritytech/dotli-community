@@ -9,9 +9,14 @@ import {
 } from "../scheduled-notifications";
 import { showNotification } from "../notification";
 import { decidePromptPermission } from "./PromptPermission";
+import {
+  createBlockingModalScope,
+  type BlockingModalScope,
+} from "../blocking-modal-queue";
 
 export function createNotificationAdapters(
   label: string,
+  modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Required<Notifications> {
   const pushNotification: Required<Notifications>["pushNotification"] = async ({
     text,
@@ -24,9 +29,14 @@ export function createNotificationAdapters(
       scheduledAt,
     });
 
-    const granted = await decidePromptPermission(label, "Notifications", {
-      kind: "Device",
-    });
+    const granted = await decidePromptPermission(
+      label,
+      "Notifications",
+      {
+        kind: "Device",
+      },
+      modalScope,
+    );
     if (!granted) {
       throw new Error("Notifications permission denied");
     }

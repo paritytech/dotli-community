@@ -1,5 +1,11 @@
 import type { UserConfirmation as UserConfirmationHost } from "@parity/truapi-host";
 import { showPreimageSubmitModal } from "../preimage-modal";
+import {
+  blockingModalAbortError,
+  createBlockingModalScope,
+  throwIfAborted,
+  type BlockingModalScope,
+} from "../blocking-modal-queue";
 
 interface ConfirmationCopy {
   title: string;
@@ -46,8 +52,10 @@ function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
   review: UserConfirmationReview,
+  signal: AbortSignal,
 ): Promise<ConfirmationDecision> {
-  return new Promise((resolve) => {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
     const display = confirmationDisplay(label, review);
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
@@ -85,13 +93,29 @@ function showConfirmationModal(
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
 
+    let settled = false;
     const cleanup = (): void => {
+      signal.removeEventListener("abort", onAbort);
       backdrop.remove();
     };
     const finish = (decision: ConfirmationDecision): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       cleanup();
       resolve(decision);
     };
+    const onAbort = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(blockingModalAbortError(signal.reason));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
 
     cancelBtn.addEventListener("click", () => {
       finish("rejected");
@@ -426,11 +450,13 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
 
 async function handlePreimageSubmitReview(
   review: Extract<UserConfirmationReview, { tag: "PreimageSubmit" }>,
+  signal: AbortSignal,
 ): Promise<boolean> {
   try {
-    await showPreimageSubmitModal(Number(review.value.size));
+    await showPreimageSubmitModal(Number(review.value.size), signal);
     return true;
   } catch {
+    throwIfAborted(signal);
     return false;
   }
 }
@@ -438,11 +464,13 @@ async function handlePreimageSubmitReview(
 async function handleConfirmationReview(
   label: string,
   review: UserConfirmationReview,
+  signal: AbortSignal,
 ): Promise<boolean> {
   const decision = await showConfirmationModal(
     label,
     confirmationCopy(review),
     review,
+    signal,
   );
   if (decision === "accepted") {
     return true;
@@ -455,13 +483,16 @@ async function handleConfirmationReview(
 
 export function createUserConfirmationAdapters(
   label: string,
+  modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Required<UserConfirmationHost> {
   return {
     confirmUserAction: (review) => {
       const compatibleReview = review as UserConfirmationReview;
-      return compatibleReview.tag === "PreimageSubmit"
-        ? handlePreimageSubmitReview(compatibleReview)
-        : handleConfirmationReview(label, compatibleReview);
+      return modalScope.enqueue((signal) =>
+        compatibleReview.tag === "PreimageSubmit"
+          ? handlePreimageSubmitReview(compatibleReview, signal)
+          : handleConfirmationReview(label, compatibleReview, signal),
+      );
     },
   };
 }

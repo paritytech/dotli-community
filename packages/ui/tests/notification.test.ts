@@ -68,6 +68,7 @@ describe("notification host callbacks", () => {
     expect(mocks.showPermissionRequestModal).toHaveBeenCalledWith(
       "myapp",
       "Notifications",
+      expect.any(AbortSignal),
     );
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
       productId: "myapp",

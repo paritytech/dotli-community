@@ -37,6 +37,7 @@ import {
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
+import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
   listenForSandboxBitswap,
@@ -166,6 +167,7 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 
 const T0 = performance.now();
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
+const blockingModalCoordinator = createBlockingModalCoordinator();
 
 function parseLocalProductIdOverride(): string | undefined {
   if (!isLocalhost) {
@@ -991,11 +993,11 @@ async function main(): Promise<void> {
 
   const bridgeModulePromise = import("@dotli/ui/bridge");
   const bridgeModule = await bridgeModulePromise;
-  bridgeModule.initBridgeEventListeners();
+  bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
 
   // Initialize top bar UI.
   const t0 = performance.now();
-  initTopBar();
+  initTopBar(blockingModalCoordinator);
   log.warn(`[dot.li perf] initTopBar() done (${dur(t0)})`);
   emitDotliDebugEvent({
     layer: "boot",
