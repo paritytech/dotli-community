@@ -315,6 +315,37 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
   });
 
+  it("replaces the pairing QR with login progress after wallet approval", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "Polkadot Web",
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: { tag: "Authenticating" },
+      }),
+    );
+
+    expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
+      "Logging in...",
+    );
+    expect(document.querySelector("#auth-modal-qr .spinner")).not.toBeNull();
+    expect(
+      document
+        .getElementById("auth-modal-backdrop")
+        ?.classList.contains("open"),
+    ).toBe(true);
+  });
+
   it("keeps the retry view for login failures", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");

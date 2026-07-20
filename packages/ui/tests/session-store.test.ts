@@ -211,6 +211,18 @@ describe("session-store host callbacks", () => {
     ]);
   });
 
+  it("dispatches the authenticating state", () => {
+    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    authStateChanged?.({ tag: "Authenticating" });
+
+    expect(events).toEqual([{ tag: "Authenticating" }]);
+  });
+
   it("caches the connected UI state and clears it with the session", async () => {
     const authStateChanged = createAuthStateChanged("Polkadot Web");
     const { clearCoreStorage } = createSessionStoreAdapters();

@@ -178,6 +178,33 @@ Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
 
+### Running the host-playground E2E locally
+
+The product E2E suite can load the source checkout directly through dotli's
+localhost proxy instead of resolving the published `host-playground.dot` CID.
+By default it expects the product at `../../../host-playground` relative to this
+repository and the local signing bot at `http://localhost:3737/`:
+
+```bash
+bun run test:e2e:local
+```
+
+Override either checkout or server when needed:
+
+```bash
+E2E_PRODUCT_REPO=/path/to/host-playground \
+E2E_PRODUCT_URL=http://localhost:5199 \
+bun run test:e2e:local
+```
+
+The signer can run natively or in Docker; set `SIGNER_BOT_BASE_URL`,
+`SIGNER_BOT_SVC_TOKEN`, and `SIGNER_BOT_NETWORK` when its published port or
+credentials differ from the defaults.
+
+The command builds dotli with its debug-only localhost proxy enabled, starts
+both preview servers through Playwright, pairs once through the signer bot, and
+runs the same host-product suite used in CI.
+
 ### Running an approved build
 
 Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dotli deployment runs). To reproduce a specific approved version from a fresh checkout:

@@ -19,6 +19,7 @@ export type DotliAuthState =
       dotSuffix?: boolean;
       hostGlobal?: boolean;
     }
+  | { tag: "Authenticating" }
   | { tag: "Connected"; session: TruapiSessionUiState }
   | { tag: "LoginFailed"; reason: string };
 
@@ -50,6 +51,10 @@ export function createAuthStateChanged(
           dotSuffix: options.dotSuffix,
           hostGlobal: options.hostGlobal,
         });
+        break;
+      }
+      case "Authenticating": {
+        dispatchAuthState({ tag: "Authenticating" });
         break;
       }
       case "Connected": {

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, lstatSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,4 +22,38 @@ const result = spawnSync("bun", ["install", "--force"], {
 });
 if (result.status !== 0) {
   process.exit(result.status ?? 1);
+}
+
+const productRoot = resolve(
+  process.env.E2E_PRODUCT_REPO ??
+    resolve(dotliRoot, "../../../host-playground"),
+);
+const nestedTruapi = resolve(
+  productRoot,
+  "node_modules/@parity/product-sdk-host/node_modules/@parity/truapi",
+);
+const linkedProductSdkHost = resolve(
+  productRoot,
+  "node_modules/@parity/product-sdk-host",
+);
+if (
+  existsSync(resolve(productRoot, "package.json")) &&
+  ((existsSync(nestedTruapi) && lstatSync(nestedTruapi).isSymbolicLink()) ||
+    (existsSync(linkedProductSdkHost) &&
+      lstatSync(linkedProductSdkHost).isSymbolicLink()))
+) {
+  if (
+    existsSync(linkedProductSdkHost) &&
+    lstatSync(linkedProductSdkHost).isSymbolicLink()
+  ) {
+    rmSync(linkedProductSdkHost, { force: true, recursive: true });
+  }
+  rmSync(nestedTruapi, { force: true, recursive: true });
+  const productInstall = spawnSync("yarn", ["install", "--force"], {
+    cwd: productRoot,
+    stdio: "inherit",
+  });
+  if (productInstall.status !== 0) {
+    process.exit(productInstall.status ?? 1);
+  }
 }

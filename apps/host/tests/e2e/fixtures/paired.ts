@@ -7,6 +7,7 @@ import { STATE_FILE } from "./paths";
 
 const PORT = process.env.PORT ?? "5173";
 const HOST = process.env.E2E_HOST ?? "host-playground";
+const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
 
 // Restored-session badge wait. The bot was paired once in globalSetup, the
 // storageState restores the host's auth on every context, so seeing the
@@ -171,7 +172,11 @@ export const test = base.extend<
         console.log(`[ws] CDP attach failed: ${(e as Error).message}`);
       }
 
-      await page.goto(`http://${HOST}.localhost:${PORT}/`, {
+      const productHostUrl =
+        PRODUCT_URL === undefined
+          ? `http://${HOST}.localhost:${PORT}/`
+          : `http://localhost:${PORT}/${new URL(PRODUCT_URL).host}`;
+      await page.goto(productHostUrl, {
         timeout: 60_000,
       });
       await page

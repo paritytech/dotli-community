@@ -285,9 +285,10 @@ function scheduleIdle(callback: () => void): void {
 
 /**
  * Render one auth state. The modal lifecycle is state-driven: `Pairing`
- * opens it with the QR, `Connected` closes it, `LoginFailed` shows a
- * retryable error, and `Disconnected` only updates the badge so an
- * unrelated disconnect signal can never close an active pairing modal.
+ * opens it with the QR, `Authenticating` replaces the QR with progress,
+ * `Connected` closes it, `LoginFailed` shows a retryable error, and
+ * `Disconnected` only updates the badge so an unrelated disconnect signal
+ * can never close an active pairing modal.
  */
 function renderAuthState(state: DotliAuthState): void {
   truapiSessionConnected = state.tag === "Connected";
@@ -302,6 +303,9 @@ function renderAuthState(state: DotliAuthState): void {
         { dotSuffix: state.dotSuffix },
       );
       renderPairing(state.deeplink);
+      break;
+    case "Authenticating":
+      renderAuthenticating();
       break;
     case "Connected":
       closeModal({ skipTruapiCancel: true });
@@ -429,6 +433,18 @@ function renderPairing(payload: string): void {
     .catch((err: unknown) => {
       log.error("[dot.li] QR render failed:", err);
     });
+}
+
+function renderAuthenticating(): void {
+  // Invalidate an in-flight lazy QR render so it cannot replace this progress
+  // state after the wallet handshake has already been accepted.
+  currentQrPayload = null;
+  modalQr.innerHTML = `
+    <div class="attesting">
+      <div class="spinner"></div>
+      <p>Logging in...</p>
+    </div>
+  `;
 }
 
 // Clock glyph for the "account still being set up" state.

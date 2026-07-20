@@ -11,7 +11,7 @@ import {
   readdirSync,
 } from "node:fs";
 import { execSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
@@ -355,18 +355,15 @@ function findTruapiWasmWebBundle(): string {
 }
 
 function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
-  const candidates: string[] = [];
-  for (let dir = import.meta.dirname; ; dir = dirname(dir)) {
-    candidates.push(resolve(dir, packageRelative));
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-  }
-  candidates.push(
-    resolve(import.meta.dirname, "../../packages/ui", packageRelative),
-  );
-  return [...new Set(candidates)];
+  const dotliRoot = resolve(import.meta.dirname, "../..");
+  return [
+    // Prefer the package that @dotli/ui actually declares. Walking above the
+    // dotli checkout can accidentally pick up an unrelated ancestor checkout
+    // (notably TrUAPI's workspace package when dotli is a submodule).
+    resolve(dotliRoot, "packages/ui", packageRelative),
+    // `bun run link:truapi` removes the nested copy and links at this root.
+    resolve(dotliRoot, packageRelative),
+  ];
 }
 
 /**

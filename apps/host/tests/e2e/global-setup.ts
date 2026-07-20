@@ -44,13 +44,33 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    console.error(
+      `[globalSetup] ${name} must be a positive integer, got "${raw}".`,
+    );
+    process.exit(1);
+  }
+  return value;
+}
+
 const PAIR_ATTEMPTS = 3;
 const PAIR_ATTEMPT_BACKOFF_MS = 3_000;
 // One-time setup: the bot has to create the user and attest on the
 // network, so the ceiling is more generous than the per-test restore.
 // If this trips, the bot or chain is in trouble and the whole run
 // should fail fast.
-const USER_BADGE_TIMEOUT_MS = 60_000;
+// The bot only returns from `/api/pair` after accepting the handshake. Its
+// chain-side device allowance is then finalized asynchronously and can take
+// longer than the ring inclusion timeout (150s). Keep this above that ceiling.
+const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv(
+  "E2E_PAIR_BADGE_TIMEOUT_MS",
+  240_000,
+);
 
 // Distinct exit code so CI workflow / reviewers can tell "Nova is down"
 // apart from "dot.li tests asserted false". Keeps the failure attributable.
