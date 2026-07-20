@@ -42,7 +42,7 @@ import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
-import { createTruapiRuntimeConfig } from "./runtime-config";
+import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
@@ -581,13 +581,14 @@ async function createHost(args: {
     coreProvider,
   );
   const { createIframeHost } = await runtimeChunkPromise;
+  const productId = args.productId ?? labelToProductId(args.label);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   let legacyProbeCleanup: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
-    productId: args.productId ?? args.label,
+    productId,
   };
   const cleanupProductSide = (): void => {
     disposePipe?.();
@@ -636,8 +637,10 @@ async function createHost(args: {
           targetWindow,
           args.allowedOrigin,
         );
-        const legacyProvider =
-          createLegacyNovaChainHeadProvider(windowProvider);
+        const legacyProvider = createLegacyNovaChainHeadProvider(
+          windowProvider,
+          productId,
+        );
         productProvider = legacyProvider;
         disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
         // Replay the handshake frame the probe just consumed.

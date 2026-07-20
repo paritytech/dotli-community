@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   decodeWireMessage,
   encodeWireMessage,
+  VersionedHostAccountGetRequest,
   VersionedRemoteChainHeadBodyRequest,
   VersionedRemoteChainHeadCallRequest,
   VersionedRemoteChainHeadContinueRequest,
@@ -14,6 +15,7 @@ import {
   type WireProvider,
 } from "@parity/truapi";
 import {
+  ACCOUNT_GET_ACCOUNT,
   CHAIN_CALL_HEAD,
   CHAIN_CONTINUE_HEAD,
   CHAIN_FOLLOW_HEAD_SUBSCRIBE,
@@ -92,7 +94,7 @@ function unwrap<T>(result: { isErr(): boolean; value: T; error: unknown }): T {
   return result.value;
 }
 
-function createHarness(): {
+function createHarness(productId?: string): {
   adapted: WireProvider;
   emit(message: Uint8Array): void;
   received: Uint8Array[];
@@ -110,7 +112,7 @@ function createHarness(): {
     },
     dispose,
   };
-  const adapted = createLegacyNovaChainHeadProvider(provider);
+  const adapted = createLegacyNovaChainHeadProvider(provider, productId);
   const received: Uint8Array[] = [];
   adapted.subscribe((message) => received.push(message));
   return {
@@ -165,6 +167,56 @@ function decodedFollowId<T extends FollowBoundRequest>(
 }
 
 describe("createLegacyNovaChainHeadProvider", () => {
+  it("normalizes the legacy .dot suffix for a localhost product account", () => {
+    const harness = createHarness("localhost:3000");
+    harness.emit(
+      frame(
+        "account-request",
+        ACCOUNT_GET_ACCOUNT.request,
+        VersionedHostAccountGetRequest.enc({
+          tag: "V1",
+          value: {
+            productAccountId: {
+              dotNsIdentifier: "localhost:3000.dot",
+              derivationIndex: 0,
+            },
+          },
+        }),
+      ),
+    );
+
+    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    expect(
+      VersionedHostAccountGetRequest.dec(decoded.payload.value).value
+        .productAccountId.dotNsIdentifier,
+    ).toBe("localhost:3000");
+  });
+
+  it("does not rewrite an explicitly requested different product account", () => {
+    const harness = createHarness("localhost:3000");
+    harness.emit(
+      frame(
+        "account-request",
+        ACCOUNT_GET_ACCOUNT.request,
+        VersionedHostAccountGetRequest.enc({
+          tag: "V1",
+          value: {
+            productAccountId: {
+              dotNsIdentifier: "other-product.dot",
+              derivationIndex: 0,
+            },
+          },
+        }),
+      ),
+    );
+
+    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    expect(
+      VersionedHostAccountGetRequest.dec(decoded.payload.value).value
+        .productAccountId.dotNsIdentifier,
+    ).toBe("other-product.dot");
+  });
+
   it("rewrites every follow-bound request to the active wire follow id", () => {
     const harness = createHarness();
     harness.emit(followStart("wire-follow"));

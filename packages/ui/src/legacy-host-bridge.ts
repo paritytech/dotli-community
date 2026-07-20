@@ -13,6 +13,7 @@
 import {
   decodeWireMessage,
   encodeWireMessage,
+  VersionedHostAccountGetRequest,
   VersionedRemoteChainHeadBodyRequest,
   VersionedRemoteChainHeadCallRequest,
   VersionedRemoteChainHeadContinueRequest,
@@ -25,6 +26,7 @@ import {
   type WireProvider,
 } from "@parity/truapi";
 import {
+  ACCOUNT_GET_ACCOUNT,
   CHAIN_CALL_HEAD,
   CHAIN_CONTINUE_HEAD,
   CHAIN_FOLLOW_HEAD_SUBSCRIBE,
@@ -117,8 +119,13 @@ export interface WindowMessageProvider extends WireProvider {
  */
 export function createLegacyNovaChainHeadProvider(
   provider: WireProvider,
+  productId?: string,
 ): WireProvider {
   const followIdsByGenesis = new Map<string, Set<string>>();
+  const localProductId =
+    productId === "localhost" || productId?.startsWith("localhost:") === true
+      ? productId
+      : undefined;
 
   const rewrite = (message: Uint8Array): Uint8Array => {
     const decoded = decodeWireMessage(message);
@@ -127,6 +134,30 @@ export function createLegacyNovaChainHeadProvider(
     }
 
     const { requestId, payload } = decoded.value;
+    if (
+      payload.id === ACCOUNT_GET_ACCOUNT.request &&
+      localProductId !== undefined
+    ) {
+      try {
+        const request = VersionedHostAccountGetRequest.dec(payload.value);
+        const productAccountId = request.value.productAccountId;
+        if (productAccountId.dotNsIdentifier === `${localProductId}.dot`) {
+          productAccountId.dotNsIdentifier = localProductId;
+          const encoded = encodeWireMessage({
+            requestId,
+            payload: {
+              id: payload.id,
+              value: VersionedHostAccountGetRequest.enc(request),
+            },
+          });
+          return encoded.isOk() ? encoded.value : message;
+        }
+      } catch {
+        // Let the core report malformed legacy frames.
+        return message;
+      }
+    }
+
     if (payload.id === CHAIN_FOLLOW_HEAD_SUBSCRIBE.start) {
       let genesisHash: string;
       try {
