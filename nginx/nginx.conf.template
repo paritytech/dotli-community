@@ -1,9 +1,14 @@
 # ${DOMAIN} NGINX configuration — DO NOT EDIT THE INSTALLED COPY.
 #
 # Rendered per-env from nginx/nginx.conf.template by `make deploy-nginx`
-# (envsubst). Substituted tokens: ${DOMAIN}, ${WEBROOT}, ${ZONE}, ${RL}.
+# (envsubst). Substituted tokens: ${DOMAIN}, ${WEBROOT}, ${ZONE}, ${RL},
+# ${SENTRY}, ${SENTRY_INGEST}, ${SENTRY_PROJECT}.
 # ${RL} is "" to enable rate-limiting (paseo.li / testnet.li) or "#" to
-# comment it out (all other envs). nginx's own $variables are left intact.
+# comment it out (all other envs). ${SENTRY} works the same for the optional
+# Sentry tunnel lines: "" when SENTRY_DSN is set (with ${SENTRY_INGEST} and
+# ${SENTRY_PROJECT} cut from the DSN), "#" when it is not - the tunnel
+# snippet is then neither included nor uploaded.
+# nginx's own $variables are left intact.
 #
 # Three-build architecture:
 #   host.${DOMAIN}    → Shared protocol host (smoldot, shared chain cache)
@@ -41,6 +46,10 @@ server {
     root ${WEBROOT}/host;
     index index.html;
 
+    ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
+    ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
+
     location = /__preview {
         set $csp_ancestors "revx.dev stg.revx.dev http://localhost:*";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
@@ -75,6 +84,10 @@ server {
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
+    ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
+    ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
+
     location / {
         try_files $uri /index.html;
     }
@@ -102,6 +115,10 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
+    ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
+    ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
+
     location / {
         try_files $uri /index.html;
     }
@@ -127,6 +144,10 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+
+    ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
+    ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
+    ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
     location / {
         try_files $uri /index.html;
