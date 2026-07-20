@@ -2,7 +2,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import { isSmoldotEvent } from "../src/sentry";
+import {
+  excludeBrowserApiErrorsIntegration,
+  isSmoldotEvent,
+} from "../src/sentry";
+
+describe("excludeBrowserApiErrorsIntegration", () => {
+  it("keeps safe Sentry defaults without the callback wrapper", () => {
+    const defaults = [
+      { name: "GlobalHandlers" },
+      { name: "BrowserApiErrors" },
+      { name: "Breadcrumbs" },
+    ];
+
+    expect(excludeBrowserApiErrorsIntegration(defaults)).toEqual([
+      { name: "GlobalHandlers" },
+      { name: "Breadcrumbs" },
+    ]);
+    expect(defaults).toHaveLength(3);
+  });
+});
 
 describe("isSmoldotEvent", () => {
   it("matches a CrashError exception type", () => {
