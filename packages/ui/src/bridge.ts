@@ -839,18 +839,8 @@ export async function renderIframe(
     timestamp: Date.now(),
     payload: { label, productId },
   });
-  if (currentPanelDispose) {
-    currentPanelDispose();
-    currentPanelDispose = null;
-  }
-  previousHost?.dispose();
-  for (const child of [...app.children]) {
-    if (child !== host.iframe) {
-      child.remove();
-    }
-  }
   applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
-  currentHost = host;
+  activateHost(host, previousHost);
   host.iframe.addEventListener(
     "load",
     () => {
@@ -908,7 +898,10 @@ export async function renderAppSubdomain(
   const renderFlowId = newFlowId("render");
   const bridgeFlowId = newFlowId("bridge");
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  cleanup();
+  // Permission changes rebuild this host so the iframe receives a refreshed
+  // `allow` attribute. Keep the current product visible until its replacement
+  // core and iframe are ready, just like the direct-iframe render path.
+  const previousHost = currentHost;
   disposeLandingAuthHost();
 
   currentProduct = {
@@ -969,11 +962,15 @@ export async function renderAppSubdomain(
 
   // Keep the loading overlay visible — the sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only remove non-loading children from #app before handing it off.
-  const loading = app.querySelector(".loading");
-  app.innerHTML = "";
-  if (loading) {
-    app.appendChild(loading);
+  // Only prepare it on the initial render. During a permission refresh the
+  // current iframe remains visible until the replacement is ready.
+  const loading =
+    previousHost === null ? app.querySelector<HTMLElement>(".loading") : null;
+  if (previousHost === null) {
+    app.innerHTML = "";
+    if (loading) {
+      app.appendChild(loading);
+    }
   }
 
   const iframeUrl = new URL(url);
@@ -1013,7 +1010,7 @@ export async function renderAppSubdomain(
     payload: { label, productId: label },
   });
   applyIframeStyling(host.iframe, { topbarOffset: true });
-  currentHost = host;
+  activateHost(host, previousHost, loading === null ? [] : [loading]);
   host.iframe.addEventListener(
     "load",
     () => {
@@ -1064,15 +1061,23 @@ function getAppOrigin(label: string): string {
   return `https://${label}.app.${BASE_DOMAIN}`;
 }
 
-function cleanup(): void {
+function activateHost(
+  host: ActiveHost,
+  previousHost: ActiveHost | null,
+  retainedChildren: readonly HTMLElement[] = [],
+): void {
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;
   }
-  if (currentHost) {
-    currentHost.dispose();
-    currentHost = null;
+  previousHost?.dispose();
+  const retained = new Set<HTMLElement>([host.iframe, ...retainedChildren]);
+  for (const child of [...app.children]) {
+    if (!retained.has(child as HTMLElement)) {
+      child.remove();
+    }
   }
+  currentHost = host;
 }
 
 function newFlowId(prefix: string): string {

@@ -287,6 +287,61 @@ describe("bridge render lifecycle", () => {
     );
   }, 10_000);
 
+  it("keeps the previous iframe visible while its replacement initializes", async () => {
+    const { renderIframe } = await import("@dotli/ui/bridge");
+
+    const first = renderIframe("https://first.example/app", "first");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await first;
+
+    const firstHost = mocks.iframeHosts[0];
+    const second = renderIframe("https://second.example/app", "second");
+    await waitForProviderRequests(2);
+
+    expect(firstHost.iframe.isConnected).toBe(true);
+    expect(firstHost.dispose).not.toHaveBeenCalled();
+    expect(document.querySelector("iframe")?.dataset.src).toBe(
+      "https://first.example/app",
+    );
+
+    mocks.coreProviderDefers[1].resolve(makeProvider());
+    await second;
+
+    expect(firstHost.dispose).toHaveBeenCalledTimes(1);
+    const app = document.getElementById("app");
+    expect(app?.querySelectorAll("iframe")).toHaveLength(1);
+    expect(app?.querySelector("iframe")?.dataset.src).toBe(
+      "https://second.example/app",
+    );
+  }, 10_000);
+
+  it("keeps the previous app-subdomain iframe visible while its replacement initializes", async () => {
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+    const first = renderAppSubdomain("first-cid", "first");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await first;
+
+    const firstHost = mocks.iframeHosts[0];
+    const second = renderAppSubdomain("second-cid", "first");
+    await waitForProviderRequests(2);
+
+    expect(firstHost.iframe.isConnected).toBe(true);
+    expect(firstHost.dispose).not.toHaveBeenCalled();
+
+    mocks.coreProviderDefers[1].resolve(makeProvider());
+    await second;
+
+    expect(firstHost.dispose).toHaveBeenCalledTimes(1);
+    const app = document.getElementById("app");
+    expect(app?.querySelectorAll("iframe")).toHaveLength(1);
+    expect(app?.querySelector("iframe")?.dataset.src).toContain(
+      "cid=second-cid",
+    );
+  }, 10_000);
+
   it("boots the landing auth core to disconnect a stored session without a product", async () => {
     await import("@dotli/ui/bridge");
 
