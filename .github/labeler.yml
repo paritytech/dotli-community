@@ -52,12 +52,6 @@ github-actions:
           - 'packages/content/**'
           - '!packages/content/package.json'
 
-"pkg: auth":
-  - changed-files:
-      - all-globs-to-any-file:
-          - 'packages/auth/**'
-          - '!packages/auth/package.json'
-
 "pkg: ui":
   - changed-files:
       - all-globs-to-any-file:

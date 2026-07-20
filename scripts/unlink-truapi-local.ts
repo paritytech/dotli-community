@@ -36,16 +36,13 @@ const linkedProductSdkHost = resolve(
   productRoot,
   "node_modules/@parity/product-sdk-host",
 );
+const isSymlink = (path: string): boolean =>
+  lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
 if (
   existsSync(resolve(productRoot, "package.json")) &&
-  ((existsSync(nestedTruapi) && lstatSync(nestedTruapi).isSymbolicLink()) ||
-    (existsSync(linkedProductSdkHost) &&
-      lstatSync(linkedProductSdkHost).isSymbolicLink()))
+  (isSymlink(nestedTruapi) || isSymlink(linkedProductSdkHost))
 ) {
-  if (
-    existsSync(linkedProductSdkHost) &&
-    lstatSync(linkedProductSdkHost).isSymbolicLink()
-  ) {
+  if (isSymlink(linkedProductSdkHost)) {
     rmSync(linkedProductSdkHost, { force: true, recursive: true });
   }
   rmSync(nestedTruapi, { force: true, recursive: true });

@@ -125,6 +125,21 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     await setPermissionStatus("myapp", "Camera", "granted");
     expect(await getPermissionStatus("otherapp", "Camera")).toBe("ask");
   });
+
+  it("restores the active provider when a replacement fails", async () => {
+    await setPermissionStatus("myapp", "Camera", "granted");
+    const replacementStore: Store = new Map([["Device:Camera", "Denied"]]);
+    const unregisterReplacement = registerTestProvider(
+      "myapp",
+      replacementStore,
+    );
+
+    expect(await getPermissionStatus("myapp", "Camera")).toBe("denied");
+
+    unregisterReplacement();
+
+    expect(await getPermissionStatus("myapp", "Camera")).toBe("granted");
+  });
 });
 
 describe("resetPermission", () => {

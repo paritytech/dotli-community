@@ -150,10 +150,24 @@ async function readCoreStorageValue(
     if (raw === null || raw === "") {
       return undefined;
     }
-    return hexToBytes(raw);
+    return decodeStoredBytes(raw, "shared auth session");
   }
   const raw = localStorage.getItem(coreLocalStorageKey(key));
-  return raw === null ? undefined : hexToBytes(raw);
+  return raw === null
+    ? undefined
+    : decodeStoredBytes(raw, `core storage ${key.tag}`);
+}
+
+function decodeStoredBytes(
+  raw: string,
+  description: string,
+): Uint8Array | undefined {
+  try {
+    return hexToBytes(raw);
+  } catch (err) {
+    log.warn(`[dot.li] ignoring corrupt ${description}:`, err);
+    return undefined;
+  }
 }
 
 async function writeCoreStorageValue(

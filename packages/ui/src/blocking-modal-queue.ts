@@ -113,6 +113,18 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
       this.finish(entry, { ok: false, error });
       return;
     }
+    const resultPromise = Promise.resolve(result);
+    // Observe the task before checking whether it disposed its own scope.
+    // Otherwise an asynchronously rejecting result would be abandoned when
+    // the queue finishes the entry with AbortError below.
+    void resultPromise.then(
+      (value) => {
+        this.finish(entry, { ok: true, value });
+      },
+      (error: unknown) => {
+        this.finish(entry, { ok: false, error });
+      },
+    );
     if (entry.scope.disposed) {
       this.finish(entry, {
         ok: false,
@@ -130,14 +142,6 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
         });
       },
       { once: true },
-    );
-    void Promise.resolve(result).then(
-      (value) => {
-        this.finish(entry, { ok: true, value });
-      },
-      (error: unknown) => {
-        this.finish(entry, { ok: false, error });
-      },
     );
   }
 

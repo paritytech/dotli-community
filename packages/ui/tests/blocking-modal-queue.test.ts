@@ -138,6 +138,17 @@ describe("blocking modal queue", () => {
     secondScope.dispose();
   });
 
+  it("observes a rejecting task that disposes its own scope", async () => {
+    const scope = createBlockingModalCoordinator().createScope();
+    const queued = scope.enqueue(() => {
+      scope.dispose();
+      return Promise.reject(new Error("late task failure"));
+    });
+
+    await expect(queued).rejects.toMatchObject({ name: "AbortError" });
+    await Promise.resolve();
+  });
+
   it("rejects queued and future work when its host is disposed", async () => {
     const coordinator = createBlockingModalCoordinator();
     const activeScope = coordinator.createScope();

@@ -77,6 +77,7 @@ import {
   type ChainBrokerManager,
 } from "@dotli/protocol/broker";
 import {
+  buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
@@ -99,6 +100,14 @@ installGlobalErrorHandlers("host");
 
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+
+function clearLegacySharedAuthSession(): void {
+  try {
+    localStorage.removeItem(buildLegacySharedAuthSessionStorageKey(SITE_ID));
+  } catch (err) {
+    log.warn("[dot.li protocol] Legacy auth session cleanup failed:", err);
+  }
+}
 
 // Same trust set as shared auth: host shell plus non-sandbox *.<BASE>, but NOT
 // app.<BASE> or *.app.<BASE>. A user-uploaded CID app must never drive the
@@ -1308,6 +1317,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   return { handleRequest, cleanup };
 }
 
+clearLegacySharedAuthSession();
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();

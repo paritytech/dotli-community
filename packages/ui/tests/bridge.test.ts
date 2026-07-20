@@ -52,6 +52,7 @@ const mocks = vi.hoisted(() => ({
   coreRuntimes: [] as MockRuntime[],
   iframeHosts: [] as {
     iframeUrl: string;
+    allowedOrigin: string;
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
@@ -238,18 +239,28 @@ describe("bridge render lifecycle", () => {
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
     document.body.innerHTML = `<div id="app"></div>`;
+    window.history.replaceState(null, "", "/");
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
       Promise.resolve(makeRuntime()),
     );
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; container: HTMLElement }) => {
+      (args: {
+        iframeUrl: string;
+        allowedOrigin: string;
+        container: HTMLElement;
+      }) => {
         const iframe = document.createElement("iframe");
         iframe.dataset.src = args.iframeUrl;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
         });
-        const host = { iframeUrl: args.iframeUrl, iframe, dispose };
+        const host = {
+          iframeUrl: args.iframeUrl,
+          allowedOrigin: args.allowedOrigin,
+          iframe,
+          dispose,
+        };
         mocks.iframeHosts.push(host);
         return { iframe, dispose };
       },
@@ -347,6 +358,38 @@ describe("bridge render lifecycle", () => {
       "cid=second-cid",
     );
   }, 10_000);
+
+  it.each(["/x.dot@evil.com/pay", "/foo.dotify/pay"])(
+    "keeps an adversarial deep path on the app sandbox origin: %s",
+    async (path) => {
+      window.history.replaceState(null, "", path);
+      const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+      const render = renderAppSubdomain("cid", "first");
+      await waitForProviderRequests(1);
+      mocks.coreProviderDefers[0].resolve(makeProvider());
+      await render;
+
+      const created = mocks.iframeHosts[0];
+      const iframeUrl = new URL(created.iframeUrl);
+      expect(iframeUrl.hostname).toBe("first.app.localhost");
+      expect(iframeUrl.pathname).toBe(path);
+      expect(created.allowedOrigin).toBe(iframeUrl.origin);
+    },
+  );
+
+  it("cancels pairing on the active product host", async () => {
+    const { renderIframe } = await import("@dotli/ui/bridge");
+
+    const render = renderIframe("https://product.example/app", "product");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
+
+    expect(mocks.coreRuntimes[0].cancelPairing).toHaveBeenCalledTimes(1);
+  });
 
   it("boots the landing auth core to disconnect a stored session without a product", async () => {
     await import("@dotli/ui/bridge");

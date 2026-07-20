@@ -24,6 +24,7 @@ import {
   CHAIN_GET_HEAD_STORAGE,
   CHAIN_STOP_HEAD_OPERATION,
   CHAIN_UNPIN_HEAD,
+  SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
 import {
   createLegacyNovaChainHeadProvider,
@@ -98,12 +99,14 @@ function createHarness(productId?: string): {
   adapted: WireProvider;
   emit(message: Uint8Array): void;
   received: Uint8Array[];
+  sent: Uint8Array[];
   dispose: ReturnType<typeof vi.fn>;
 } {
   let listener: ((message: Uint8Array) => void) | undefined;
   const dispose = vi.fn();
+  const sent: Uint8Array[] = [];
   const provider: WireProvider = {
-    postMessage: vi.fn(),
+    postMessage: vi.fn((message: Uint8Array) => sent.push(message)),
     subscribe(callback) {
       listener = callback;
       return () => {
@@ -121,6 +124,7 @@ function createHarness(productId?: string): {
       listener?.(message);
     },
     received,
+    sent,
     dispose,
   };
 }
@@ -362,6 +366,69 @@ describe("createLegacyNovaChainHeadProvider", () => {
 
     harness.emit(followStart("wire-refollow"));
     expect(emitHeader()).toBe("wire-refollow");
+  });
+
+  it("forgets a follow interrupted by the core", () => {
+    const harness = createHarness();
+    const request = {
+      tag: "V1",
+      value: { genesisHash, followSubscriptionId: "follow_0", hash: blockHash },
+    } as const;
+
+    harness.emit(followStart("wire-old"));
+    harness.adapted.postMessage(
+      frame(
+        "wire-old",
+        CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt,
+        new Uint8Array(),
+      ),
+    );
+    harness.emit(followStart("wire-new"));
+    harness.emit(
+      followBoundFrame(
+        "header-request",
+        CHAIN_GET_HEAD_HEADER.request,
+        VersionedRemoteChainHeadHeaderRequest,
+        request,
+      ),
+    );
+
+    expect(harness.sent).toHaveLength(1);
+    expect(
+      decodedFollowId(
+        harness.received.at(-1)!,
+        VersionedRemoteChainHeadHeaderRequest,
+      ),
+    ).toBe("wire-new");
+  });
+
+  it("drops stale follows when a reloaded iframe handshakes", () => {
+    const harness = createHarness();
+    const request = {
+      tag: "V1",
+      value: { genesisHash, followSubscriptionId: "follow_0", hash: blockHash },
+    } as const;
+
+    harness.emit(followStart("wire-old"));
+    harness.emit(
+      frame("handshake", SYSTEM_HANDSHAKE.request, new Uint8Array()),
+    );
+    harness.emit(followStart("wire-new"));
+    harness.emit(
+      followBoundFrame(
+        "header-request",
+        CHAIN_GET_HEAD_HEADER.request,
+        VersionedRemoteChainHeadHeaderRequest,
+        request,
+      ),
+    );
+
+    expect(
+      decodedFollowId(
+        harness.received.at(-1)!,
+        VersionedRemoteChainHeadHeaderRequest,
+      ),
+    ).toBe("wire-new");
   });
 
   it("owns and disposes the wrapped provider", () => {

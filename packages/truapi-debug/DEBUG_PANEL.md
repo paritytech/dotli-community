@@ -357,10 +357,9 @@ bus and the panel subscribes to all of them.
 3. **Add a summary.** Extend `system-summary.ts` (one-liner) and
    `system-explanations.ts` (long-form "What is this?").
 4. **Add a flow terminator if needed.** If the new event closes a
-   multi-step flow, add an exact `layer:event` entry to
-   `SYSTEM_TERMINATOR_EVENTS` or, for a true event family, a suffix to
-   `SYSTEM_TERMINATOR_SUFFIXES` in `timeline-layout.ts` so
-   pending-vs-complete is computed right.
+   multi-step flow, add its event name (or a shared terminal suffix) to
+   `SYSTEM_TERMINATOR_SUFFIXES`, or extend `isSystemFlowTerminator()` in
+   `timeline-layout.ts`, so pending-vs-complete is computed right.
 5. **Emit.** Call the matching debug-bus emitter at the decision point.
    Check `hasDotliDebugListeners()` first if payload construction is
    expensive.

@@ -154,8 +154,8 @@ bun install
 bun run preview          # Build + serve both apps on localhost:5173
 ```
 
-The TrUAPI packages are installed from temporary npm aliases while the Rust core
-port is in review. To iterate against a local truapi checkout instead, run:
+The TrUAPI packages are installed from their published `@parity` packages. To
+iterate against a local truapi checkout instead, run:
 
 ```bash
 bun run link:truapi

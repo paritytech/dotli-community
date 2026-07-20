@@ -1,8 +1,6 @@
 import type { ProductStorage } from "@parity/truapi-host";
 import { base64 } from "@scure/base";
 
-const SSO_DEVICE_IDENTITY_KEY = "truapi:sso-device-identity:v1";
-
 export function createLocalStorageRead(): ProductStorage["read"] {
   return (key) => {
     try {
@@ -33,9 +31,6 @@ export function createLocalStorageWrite(): ProductStorage["write"] {
 export function createLocalStorageClear(): ProductStorage["clear"] {
   return (key) => {
     try {
-      if (key === SSO_DEVICE_IDENTITY_KEY) {
-        clearSsoDeviceIdentities();
-      }
       localStorage.removeItem(storageKey(key));
       return Promise.resolve();
     } catch (cause) {
@@ -46,14 +41,4 @@ export function createLocalStorageClear(): ProductStorage["clear"] {
 
 function storageKey(key: string): string {
   return `dotli:${key}`;
-}
-
-function clearSsoDeviceIdentities(): void {
-  const suffix = `:${SSO_DEVICE_IDENTITY_KEY}`;
-  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-    const itemKey = localStorage.key(index);
-    if (itemKey?.startsWith("dotli:") === true && itemKey.endsWith(suffix)) {
-      localStorage.removeItem(itemKey);
-    }
-  }
 }

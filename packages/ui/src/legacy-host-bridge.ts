@@ -35,6 +35,7 @@ import {
   CHAIN_GET_HEAD_STORAGE,
   CHAIN_STOP_HEAD_OPERATION,
   CHAIN_UNPIN_HEAD,
+  SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
 
 interface VersionedFollowBoundRequest {
@@ -126,6 +127,14 @@ export function createLegacyNovaChainHeadProvider(
     productId === "localhost" || productId?.startsWith("localhost:") === true
       ? productId
       : undefined;
+  const forgetFollowId = (requestId: string): void => {
+    for (const [genesisHash, followIds] of followIdsByGenesis) {
+      followIds.delete(requestId);
+      if (followIds.size === 0) {
+        followIdsByGenesis.delete(genesisHash);
+      }
+    }
+  };
 
   const rewrite = (message: Uint8Array): Uint8Array => {
     const decoded = decodeWireMessage(message);
@@ -134,6 +143,13 @@ export function createLegacyNovaChainHeadProvider(
     }
 
     const { requestId, payload } = decoded.value;
+    // A legacy transport handshake is the first frame after an iframe reload.
+    // The core-side provider survives that navigation, so discard mappings
+    // belonging to the previous document before accepting new follows.
+    if (payload.id === SYSTEM_HANDSHAKE.request) {
+      followIdsByGenesis.clear();
+      return message;
+    }
     if (
       payload.id === ACCOUNT_GET_ACCOUNT.request &&
       localProductId !== undefined
@@ -176,12 +192,7 @@ export function createLegacyNovaChainHeadProvider(
     }
 
     if (payload.id === CHAIN_FOLLOW_HEAD_SUBSCRIBE.stop) {
-      for (const [genesisHash, followIds] of followIdsByGenesis) {
-        followIds.delete(requestId);
-        if (followIds.size === 0) {
-          followIdsByGenesis.delete(genesisHash);
-        }
-      }
+      forgetFollowId(requestId);
       return message;
     }
 
@@ -217,6 +228,13 @@ export function createLegacyNovaChainHeadProvider(
 
   return {
     postMessage(message) {
+      const decoded = decodeWireMessage(message);
+      if (
+        decoded.isOk() &&
+        decoded.value.payload.id === CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt
+      ) {
+        forgetFollowId(decoded.value.requestId);
+      }
       provider.postMessage(message);
     },
     subscribe(callback) {

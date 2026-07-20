@@ -119,22 +119,35 @@ type PermissionAuthorizationProvider = Pick<
   "getPermissionAuthorizationStatuses" | "setPermissionAuthorizationStatus"
 >;
 
-const permissionProviders = new Map<string, PermissionAuthorizationProvider>();
+const permissionProviders = new Map<
+  string,
+  PermissionAuthorizationProvider[]
+>();
 
 export function registerPermissionAuthorizationProvider(
   label: string,
   provider: PermissionAuthorizationProvider,
 ): () => void {
-  permissionProviders.set(label, provider);
+  const providers = permissionProviders.get(label) ?? [];
+  providers.push(provider);
+  permissionProviders.set(label, providers);
   return () => {
-    if (permissionProviders.get(label) === provider) {
+    const registered = permissionProviders.get(label);
+    if (registered === undefined) {
+      return;
+    }
+    const index = registered.lastIndexOf(provider);
+    if (index >= 0) {
+      registered.splice(index, 1);
+    }
+    if (registered.length === 0) {
       permissionProviders.delete(label);
     }
   };
 }
 
 function providerFor(label: string): PermissionAuthorizationProvider | null {
-  return permissionProviders.get(label) ?? null;
+  return permissionProviders.get(label)?.at(-1) ?? null;
 }
 
 function authorizationRequest(

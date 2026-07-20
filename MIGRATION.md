@@ -18,13 +18,15 @@ The active launch path is `packages/ui/src/bridge.ts`:
 - imports `@parity/truapi-host/web` and
   `@parity/truapi-host/worker-runtime?worker`;
 - starts a Web Worker that owns the `truapi-server` WASM core;
-- adapts typed dotli callbacks with `createWasmRawCallbacks(...)`;
-- calls `createWebWorkerProvider(new HostWorker(), rawCallbacks, { runtimeConfig })`;
-- supplies callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
+- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
+- supplies typed callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
+- creates a product-scoped provider with `runtime.createProvider({ productId })`;
 - calls `createIframeHost(...)` with the product URL, sandbox policy, allowed
   origin, and the worker-backed provider.
 
-Product frames enter the Rust core through the iframe `MessageChannel`.
+Modern product frames enter the Rust core through the iframe `MessageChannel`.
+The temporary Nova compatibility shim forwards legacy `window.postMessage`
+frames into the same product-scoped provider.
 Account, signing, statement-store, SSO pairing, restore, and logout are
 core-owned and do not cross the JS host callback boundary as Nova-specific
 routes.
@@ -56,8 +58,8 @@ routing that belongs inside the Rust core.
 `packages/ui/package.json` depends on the published TrUAPI packages:
 
 ```jsonc
-"@parity/truapi": "0.4.0",
-"@parity/truapi-host": "0.1.0"
+"@parity/truapi": "0.5.0",
+"@parity/truapi-host": "0.2.0"
 ```
 
 Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's

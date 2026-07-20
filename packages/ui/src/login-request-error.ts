@@ -16,7 +16,7 @@ export class LoginRequestError extends Error {
   }
 }
 
-export function formatLoginRequestError(error: LoginRequestFailure): string {
+function formatLoginRequestError(error: LoginRequestFailure): string {
   switch (error.tag) {
     case "Domain":
       return formatDomainLoginError(error.value);

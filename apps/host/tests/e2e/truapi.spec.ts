@@ -4,7 +4,6 @@
 import { test, expect } from "./fixtures/paired";
 import {
   waitForPlaygroundReady,
-  runTestExpectError,
   runTestExpectSuccess,
 } from "./helpers/run-test";
 import { runWebSignedTest } from "./helpers/signing";
@@ -274,10 +273,16 @@ test.describe("dot.li > host-playground.dot", () => {
       );
     });
 
-    test("Legacy Submit Is Unavailable", async ({ productFrame }) => {
-      // The legacy card asks the host to sign for a caller-selected account.
-      // The Rust runtime intentionally exposes only its authorized proof path.
-      await runTestExpectError(productFrame, "statement-store-submit", 60_000);
+    test("Submit", async ({ pairedPage, productFrame }) => {
+      test.setTimeout(120_000);
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "statement-store-submit",
+        ["Allow"],
+        { timeoutMs: 90_000 },
+      );
+      expect(status).toBe("success");
     });
 
     test("Subscribe Match All", async ({ productFrame }) => {

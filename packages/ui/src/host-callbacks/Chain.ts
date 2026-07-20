@@ -107,6 +107,9 @@ export function createChainConnect(): ChainProvider["connect"] {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
     if (backend === "rpc-gateway") {
+      // This callback is shared by product-forwarded calls and core-owned
+      // Bulletin operations. `featureSupported` is the dApp advertisement;
+      // this seam cannot enforce that advertised subset.
       if (!isCoreRpcChainSupported(genesisHash)) {
         log.warn(
           `[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`,

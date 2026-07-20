@@ -170,6 +170,24 @@ describe("session-store host callbacks", () => {
     expect(await readCoreStorage(key)).toBeUndefined();
   });
 
+  it("treats corrupt persisted core bytes as a cache miss", async () => {
+    const { readCoreStorage } = createSessionStoreAdapters();
+    const key = {
+      tag: "AllowanceKeys",
+      value: { sessionId: "corrupt" },
+    } satisfies CoreStorageKey;
+    localStorage.setItem("dotli:core:allowance-keys:corrupt", "not-hex");
+
+    await expect(readCoreStorage(key)).resolves.toBeUndefined();
+  });
+
+  it("treats a corrupt shared auth session as a cache miss", async () => {
+    const { readCoreStorage } = createSessionStoreAdapters();
+    sharedAuth.storage.set(STORAGE_KEY, "not-hex");
+
+    await expect(readCoreStorage(AUTH_SESSION_KEY)).resolves.toBeUndefined();
+  });
+
   it("emits the typed session identity details from a connected auth state", () => {
     const authStateChanged = createAuthStateChanged("Polkadot Web");
     const events: unknown[] = [];

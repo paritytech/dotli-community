@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { SITE_ID } from "@dotli/config/config";
 import {
+  buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
@@ -77,6 +78,9 @@ describe("shared auth storage helpers", () => {
     ).toBe("TRUAPI_paseoli.dev_session");
     expect(buildSharedAuthStorageKey("dot.li", "UserSecrets")).toBe(
       "TRUAPI_dot.li_UserSecrets",
+    );
+    expect(buildLegacySharedAuthSessionStorageKey("dot.li")).toBe(
+      "PAPP_dot.li_SsoSessionsV3",
     );
   });
 

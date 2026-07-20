@@ -48,6 +48,7 @@ import {
   createWindowMessageProvider,
 } from "./legacy-host-bridge";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
+import { showNotification } from "./notification";
 
 // DEPRECATED: enables the legacy Nova host-api transport shim for products that
 // have not yet migrated to `@parity/truapi`. Remove once they have.
@@ -78,6 +79,7 @@ const app = document.getElementById("app") ?? document.body;
 interface ActiveHost {
   iframe: HTMLIFrameElement;
   requestLogin: (reason?: string) => Promise<LoginResponse>;
+  cancelLogin: () => void;
   disconnect: () => Promise<void>;
   dispose: () => void;
 }
@@ -235,16 +237,42 @@ function notifyLiveCoreProvidersSessionStoreChanged(): void {
   }
 }
 
-// Listen for device permission grants — reload the iframe so the
-// updated `allow` attribute takes effect.
+function rerenderProduct(product: CurrentProduct): void {
+  const expectedGeneration = renderGeneration + 1;
+  const render =
+    product.mode === "iframe"
+      ? renderIframe(product.url, product.label, {
+          productId: product.productId,
+        })
+      : renderAppSubdomain(product.cid, product.label);
+  void render.catch((error: unknown) => {
+    // A newer render superseded this one; its result owns the UI now.
+    if (renderGeneration !== expectedGeneration) {
+      return;
+    }
+    log.error("[dot.li] Product iframe reload failed:", error);
+    showNotification({
+      label: "dot.li",
+      text: "The app could not be reloaded.",
+      browserNotification: false,
+      dismissMs: 0,
+      action: {
+        label: "Reload",
+        onClick: () => {
+          window.location.reload();
+        },
+      },
+    });
+  });
+}
+
+// Listen for device permission grants — reload the iframe so the updated
+// `allow` attribute takes effect. Keep the current iframe visible and surface
+// a retry if replacement host startup fails.
 window.addEventListener("dotli:device-permission-changed", () => {
   const product = currentProduct;
-  if (product?.mode === "iframe") {
-    void renderIframe(product.url, product.label, {
-      productId: product.productId,
-    });
-  } else if (product?.mode === "subdomain") {
-    void renderAppSubdomain(product.cid, product.label);
+  if (product !== null) {
+    rerenderProduct(product);
   }
 });
 
@@ -280,7 +308,7 @@ window.addEventListener("message", (event: MessageEvent) => {
     return;
   }
   lastRecoverAt = now;
-  void renderAppSubdomain(product.cid, product.label);
+  rerenderProduct(product);
 });
 
 let bridgeEventListenersInitialized = false;
@@ -300,9 +328,11 @@ export function initBridgeEventListeners(
     void disconnectTruapiHosts();
   });
 
-  // User closed the pairing modal: cancel the in-flight login on the auth
-  // host. Only an already-booted host can have a login in flight.
+  // User closed the pairing modal: cancel whichever core initiated it. A
+  // product can request login directly, while the topbar uses the landing
+  // auth host.
   window.addEventListener("dotli:truapi-cancel-login", () => {
+    currentHost?.cancelLogin();
     void landingAuthHostPromise?.then(
       (host) => {
         host.cancelLogin();
@@ -370,12 +400,11 @@ function getDeepPath(): string {
   if (base !== "/" && p.startsWith(base)) {
     p = "/" + p.slice(base.length);
   }
-  const stripped = p.replace(/^\/[^/]+\.dot/, "");
-  const isRoot = stripped === "" || stripped === "/";
+  const isRoot = p === "" || p === "/";
   if (isRoot) {
     return search || hash ? search + hash : "";
   }
-  return stripped + search + hash;
+  return p + search + hash;
 }
 
 function applyIframeStyling(
@@ -662,6 +691,9 @@ async function createHost(args: {
       iframe: host.iframe,
       requestLogin(reason) {
         return requestCoreLogin(coreProvider, reason);
+      },
+      cancelLogin() {
+        coreProvider.cancelPairing();
       },
       disconnect() {
         return coreProvider.disconnectSession();
@@ -954,33 +986,27 @@ export async function renderAppSubdomain(
   } catch {
     /* sessionStorage unavailable — skip pending reset */
   }
-  let url = deepPath ? `${appOrigin}${deepPath}` : appOrigin;
-  try {
-    const parsed = new URL(url);
-    parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
-    parsed.searchParams.set(
-      SANDBOX_CONTRACT_PARAMS.v,
-      String(SANDBOX_SCHEMA_VERSION),
-    );
-    parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.chainBackend, chainBackend);
-    parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
-    if (cache.skipArchiveCache) {
-      parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
-    }
-    if (fullReset) {
-      parsed.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
-    }
-    url = parsed.toString();
-  } catch {
-    const sep = url.includes("?") ? "&" : "?";
-    url += `${sep}${SANDBOX_CONTRACT_PARAMS.cid}=${cid}&${SANDBOX_CONTRACT_PARAMS.v}=${String(SANDBOX_SCHEMA_VERSION)}&${SANDBOX_CONTRACT_PARAMS.chainBackend}=${chainBackend}&${SANDBOX_CONTRACT_PARAMS.network}=${network}`;
-    if (cache.skipArchiveCache) {
-      url += `&${SANDBOX_CONTRACT_PARAMS.skipArchiveCache}=1`;
-    }
-    if (fullReset) {
-      url += `&${SANDBOX_CONTRACT_PARAMS.fullReset}=1`;
-    }
+  const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
+  if (parsedUrl.origin !== appOrigin) {
+    throw new Error("Refusing to render an app URL outside its sandbox origin");
   }
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
+  parsedUrl.searchParams.set(
+    SANDBOX_CONTRACT_PARAMS.v,
+    String(SANDBOX_SCHEMA_VERSION),
+  );
+  parsedUrl.searchParams.set(
+    SANDBOX_CONTRACT_PARAMS.chainBackend,
+    chainBackend,
+  );
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
+  if (cache.skipArchiveCache) {
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
+  }
+  if (fullReset) {
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
+  }
+  const url = parsedUrl.toString();
 
   // Keep the loading overlay visible — the sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.

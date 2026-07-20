@@ -269,11 +269,11 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
 }
 
 /**
- * Chains a sandboxed dApp can reach in **RPC-gateway** mode: the curated
+ * Chains advertised to sandboxed dApps in **RPC-gateway** mode: the curated
  * system chains that have configured WSS RPC endpoints. The Bulletin chain is
- * intentionally excluded even when it has an RPC - its content is served
- * through IPFS gateways, not a chain RPC connection - so gateway mode never
- * advertises it as a connectable dApp chain.
+ * intentionally excluded because its content is served through IPFS gateways.
+ * This list controls feature advertisement, not access control: the shared
+ * Rust-core connection callback also serves core-owned Bulletin operations.
  *
  * Single source of truth shared by the host's chain-support advertisement
  * (`isRemoteChainSupported`) and the gateway provider factory
@@ -284,12 +284,12 @@ export function getActiveGatewayChains(): ChainService[] {
   return [cfg.relay, cfg.assethub, cfg.people].filter((c) => c.rpcs.length > 0);
 }
 
-/** Genesis hashes (lowercased) a dApp can reach in RPC-gateway mode. */
+/** Genesis hashes (lowercased) advertised to dApps in RPC-gateway mode. */
 export function getActiveGatewaySupportedGenesisHashes(): Set<string> {
   return new Set(getActiveGatewayChains().map((c) => c.genesis.toLowerCase()));
 }
 
-/** Gateway chains available to the host-owned Rust core. */
+/** Gateway chains accepted by the shared Rust-core connection callback. */
 export function getActiveCoreGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
   return [...getActiveGatewayChains(), cfg.bulletin].filter(

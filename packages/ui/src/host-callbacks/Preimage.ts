@@ -64,32 +64,33 @@ function createPreimageLookupSubscribe(
           const cid = hashToCid(key);
           const cidString = cid.toString();
           const backend = getBackend();
+          let data: Uint8Array;
           try {
             if (backend !== "rpc-gateway") {
-              const data = await bitswapGet(cidString);
-              if (data.length > 0) {
-                assertBlockMatchesCid(cid, data);
-                preimageCache.set(key, data);
-                push(data);
-                stopPolling();
-                return;
-              }
+              data = await bitswapGet(cidString);
             } else {
               const result = await fetchFromIpfs(cidString);
-              if (result.data.length > 0) {
-                assertBlockMatchesCid(cid, result.data);
-                preimageCache.set(key, result.data);
-                push(result.data);
-                stopPolling();
-                return;
-              }
+              data = result.data;
             }
           } catch (err) {
             log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
+            return;
+          }
+          if (data.length === 0) {
+            return;
+          }
+          try {
+            assertBlockMatchesCid(cid, data);
+          } catch (err) {
+            stopPolling();
             pushError({
               reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
             });
+            return;
           }
+          preimageCache.set(key, data);
+          push(data);
+          stopPolling();
         };
 
         intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);

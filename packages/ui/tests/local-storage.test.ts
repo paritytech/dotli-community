@@ -35,28 +35,6 @@ describe("local-storage host callbacks", () => {
     ).toBeUndefined();
   });
 
-  it("rotates SSO device identity across host runtime prefixes", async () => {
-    const clear = createLocalStorageClear();
-    localStorage.setItem("dotli:dotli:truapi:sso-device-identity:v1", "old");
-    localStorage.setItem(
-      "dotli:localhost:3000:truapi:sso-device-identity:v1",
-      "old",
-    );
-    localStorage.setItem("dotli:myapp:other", "keep");
-
-    await clear("truapi:sso-device-identity:v1");
-
-    expect(
-      localStorage.getItem("dotli:dotli:truapi:sso-device-identity:v1"),
-    ).toBeNull();
-    expect(
-      localStorage.getItem(
-        "dotli:localhost:3000:truapi:sso-device-identity:v1",
-      ),
-    ).toBeNull();
-    expect(localStorage.getItem("dotli:myapp:other")).toBe("keep");
-  });
-
   it("writes values larger than a single argument-spread chunk", async () => {
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();
