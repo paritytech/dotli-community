@@ -24,9 +24,7 @@ The active launch path is `packages/ui/src/bridge.ts`:
 - calls `createIframeHost(...)` with the product URL, sandbox policy, allowed
   origin, and the worker-backed provider.
 
-Modern product frames enter the Rust core through the iframe `MessageChannel`.
-The temporary Nova compatibility shim forwards legacy `window.postMessage`
-frames into the same product-scoped provider.
+Product frames enter the Rust core through the iframe `MessageChannel`.
 Account, signing, statement-store, SSO pairing, restore, and logout are
 core-owned and do not cross the JS host callback boundary as Nova-specific
 routes.
