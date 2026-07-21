@@ -116,16 +116,33 @@ export function initSentry(source: SentrySource): void {
   const integrations =
     source === "worker"
       ? []
-      : [Sentry.browserTracingIntegration({ idleTimeout: 120000 })];
+      : [
+          // Overriding the default instance: kill all automatic breadcrumb
+          // sources. Sentry.addBreadcrumb() still works.
+          Sentry.breadcrumbsIntegration({
+            dom: false,      // clicks/keypresses (selectors, sometimes text)
+            history: false,  // URL navigation history
+            fetch: false,    // request URLs
+            xhr: false,
+            console: false,  // console output can carry user data
+          }),
+      ];
   Sentry.init({
     dsn,
     tunnel: "/t",
     environment: env,
     release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
-    sendDefaultPii: false,
     beforeSend: tagSmoldotEvents,
     integrations,
+      // Never attach user info
+    sendDefaultPii: false,
+    // Needed so your manual Sentry.startSpan() calls are sent.
+    // WITHOUT browserTracingIntegration there is NO automatic
+    // pageload, navigation, INP/interaction, fetch, or XHR spans
     tracesSampleRate: 1.0,
+    // Don't inject sentry-trace/baggage headers into outgoing requests
+    // (avoids leaking trace IDs to third-party endpoints).
+    tracePropagationTargets: [],
   });
 
   // Anonymous per-browser UUID for Sentry user-level metrics. No PII.
