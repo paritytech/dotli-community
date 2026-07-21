@@ -38,6 +38,7 @@
     "smoldot": "3.3.1"
   },
   "overrides": {
+    "@parity/truapi": "0.5.1",
     "smoldot": "3.3.1",
     "esbuild": "^0.28.1"
   }
