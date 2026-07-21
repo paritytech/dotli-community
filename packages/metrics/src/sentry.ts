@@ -120,13 +120,13 @@ export function initSentry(source: SentrySource): void {
           // Overriding the default instance: kill all automatic breadcrumb
           // sources. Sentry.addBreadcrumb() still works.
           Sentry.breadcrumbsIntegration({
-            dom: false,      // clicks/keypresses (selectors, sometimes text)
-            history: false,  // URL navigation history
-            fetch: false,    // request URLs
+            dom: false, // clicks/keypresses (selectors, sometimes text)
+            history: false, // URL navigation history
+            fetch: false, // request URLs
             xhr: false,
-            console: false,  // console output can carry user data
+            console: false, // console output can carry user data
           }),
-      ];
+        ];
   Sentry.init({
     dsn,
     tunnel: "/t",
@@ -134,7 +134,7 @@ export function initSentry(source: SentrySource): void {
     release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
     beforeSend: tagSmoldotEvents,
     integrations,
-      // Never attach user info
+    // Never attach user info
     sendDefaultPii: false,
     // Needed so your manual Sentry.startSpan() calls are sent.
     // WITHOUT browserTracingIntegration there is NO automatic
