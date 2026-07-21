@@ -53,29 +53,36 @@ describe("createChainConnect", () => {
     mocks.isCoreRpcChainSupported.mockReturnValue(true);
   });
 
-  it("routes People-chain connections through the selected smoldot backend", async () => {
+  it("As a dotli integrator, the host routes People-chain connections through the selected smoldot backend", async () => {
+    // Given
     const peopleGenesis = getActiveServicesConfig().people.genesis;
 
+    // When
     await createChainConnect()(hexBytes(peopleGenesis));
 
+    // Then
     expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(
       peopleGenesis,
     );
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
 
-  it("keeps non-People chain connections on the selected smoldot backend", async () => {
+  it("As a dotli integrator, the host keeps non-People chain connections on the selected smoldot backend", async () => {
+    // Given
     const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
 
+    // When
     await createChainConnect()(hexBytes(assetHubGenesis));
 
+    // Then
     expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(
       assetHubGenesis,
     );
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
 
-  it("passes statement-store traffic through untouched", async () => {
+  it("As a dotli integrator, the host passes statement-store traffic through untouched", async () => {
+    // Given
     let onMessage: ((message: unknown) => void) | undefined;
     const sent: unknown[] = [];
     mocks.smoldotProvider.mockImplementation(
@@ -98,21 +105,29 @@ describe("createChainConnect", () => {
       method: "statement_subscribeStatement",
       params: [{ matchAll: [] }],
     };
+
+    // When
     connection.send(JSON.stringify(query));
+
+    // Then
     expect(sent).toEqual([query]);
 
+    // When
     const ack = {
       jsonrpc: "2.0",
       id: "opaque-query-request",
       result: "remote-sub",
     };
     onMessage?.(ack);
+
+    // Then
     const responses = connection.responses()[Symbol.asyncIterator]();
     expect(JSON.parse((await responses.next()).value)).toEqual(ack);
     await responses.return?.();
   });
 
-  it("does not rewrite core chain RPC requests", async () => {
+  it("As a dotli integrator, the host does not rewrite core chain RPC requests", async () => {
+    // Given
     const sent: unknown[] = [];
     mocks.smoldotProvider.mockImplementation(
       (_handler: (message: unknown) => void) => ({
@@ -131,8 +146,10 @@ describe("createChainConnect", () => {
       params: ["REMOTE-FOLLOW", "0xabc"],
     };
 
+    // When
     connection.send(JSON.stringify(unpin));
 
+    // Then
     expect(sent).toEqual([unpin]);
     connection.close();
   });

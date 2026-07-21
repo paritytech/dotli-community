@@ -8,14 +8,19 @@ import {
 } from "../src/sentry";
 
 describe("excludeBrowserApiErrorsIntegration", () => {
-  it("keeps safe Sentry defaults without the callback wrapper", () => {
+  it("As a host user, my callbacks remain intact when Sentry starts", () => {
+    // Given
     const defaults = [
       { name: "GlobalHandlers" },
       { name: "BrowserApiErrors" },
       { name: "Breadcrumbs" },
     ];
 
-    expect(excludeBrowserApiErrorsIntegration(defaults)).toEqual([
+    // When
+    const integrations = excludeBrowserApiErrorsIntegration(defaults);
+
+    // Then
+    expect(integrations).toEqual([
       { name: "GlobalHandlers" },
       { name: "Breadcrumbs" },
     ]);

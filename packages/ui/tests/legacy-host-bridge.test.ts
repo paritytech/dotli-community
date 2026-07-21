@@ -35,7 +35,8 @@ const genesisHash = `0x${"11".repeat(32)}` as const;
 const blockHash = `0x${"22".repeat(32)}` as const;
 
 describe("createWindowMessageProvider", () => {
-  it("pins outbound and inbound frames to the product origin", () => {
+  it("As a dotli integrator, the host pins outbound and inbound frames to the product origin", () => {
+    // Given
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const targetWindow = {
       postMessage: vi.fn(),
@@ -46,6 +47,7 @@ describe("createWindowMessageProvider", () => {
     provider.subscribe(listener);
     const message = new Uint8Array([1, 2, 3]);
 
+    // When
     provider.postMessage(message);
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -69,6 +71,7 @@ describe("createWindowMessageProvider", () => {
       }),
     );
 
+    // Then
     expect(targetWindow.postMessage).toHaveBeenCalledWith(
       message,
       targetOrigin,
@@ -171,8 +174,11 @@ function decodedFollowId<T extends FollowBoundRequest>(
 }
 
 describe("createLegacyNovaChainHeadProvider", () => {
-  it("normalizes the legacy .dot suffix for a localhost product account", () => {
+  it("As a dotli integrator, the host normalizes the legacy .dot suffix for a localhost product account", () => {
+    // Given
     const harness = createHarness("localhost:3000");
+
+    // When
     harness.emit(
       frame(
         "account-request",
@@ -189,6 +195,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       ),
     );
 
+    // Then
     const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
     expect(
       VersionedHostAccountGetRequest.dec(decoded.payload.value).value
@@ -196,8 +203,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
     ).toBe("localhost:3000");
   });
 
-  it("does not rewrite an explicitly requested different product account", () => {
+  it("As a dotli integrator, the host does not rewrite an explicitly requested different product account", () => {
+    // Given
     const harness = createHarness("localhost:3000");
+
+    // When
     harness.emit(
       frame(
         "account-request",
@@ -214,6 +224,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       ),
     );
 
+    // Then
     const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
     expect(
       VersionedHostAccountGetRequest.dec(decoded.payload.value).value
@@ -221,7 +232,8 @@ describe("createLegacyNovaChainHeadProvider", () => {
     ).toBe("other-product.dot");
   });
 
-  it("rewrites every follow-bound request to the active wire follow id", () => {
+  it("As a dotli integrator, the host rewrites every follow-bound request to the active wire follow id", () => {
+    // Given
     const harness = createHarness();
     harness.emit(followStart("wire-follow"));
 
@@ -316,6 +328,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
     ] as const;
 
     for (const [index, item] of cases.entries()) {
+      // When
       harness.emit(
         followBoundFrame(
           `request-${index}`,
@@ -324,6 +337,8 @@ describe("createLegacyNovaChainHeadProvider", () => {
           item.request,
         ),
       );
+
+      // Then
       expect(
         decodedFollowId(
           harness.received.at(-1)!,
@@ -333,7 +348,8 @@ describe("createLegacyNovaChainHeadProvider", () => {
     }
   });
 
-  it("retains the first follow until that exact subscription stops", () => {
+  it("As a dotli integrator, the host retains the first follow until that exact subscription stops", () => {
+    // Given
     const harness = createHarness();
     const request = {
       tag: "V1",
@@ -354,27 +370,41 @@ describe("createLegacyNovaChainHeadProvider", () => {
       );
     };
 
+    // When
     harness.emit(followStart("wire-first"));
     harness.emit(followStart("wire-second"));
+
+    // Then
     expect(emitHeader()).toBe("wire-first");
 
+    // When
     harness.emit(followStop("wire-second"));
+
+    // Then
     expect(emitHeader()).toBe("wire-first");
 
+    // When
     harness.emit(followStop("wire-first"));
+
+    // Then
     expect(emitHeader()).toBe("follow_0");
 
+    // When
     harness.emit(followStart("wire-refollow"));
+
+    // Then
     expect(emitHeader()).toBe("wire-refollow");
   });
 
-  it("forgets a follow interrupted by the core", () => {
+  it("As a dotli integrator, the host forgets a follow interrupted by the core", () => {
+    // Given
     const harness = createHarness();
     const request = {
       tag: "V1",
       value: { genesisHash, followSubscriptionId: "follow_0", hash: blockHash },
     } as const;
 
+    // When
     harness.emit(followStart("wire-old"));
     harness.adapted.postMessage(
       frame(
@@ -393,6 +423,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       ),
     );
 
+    // Then
     expect(harness.sent).toHaveLength(1);
     expect(
       decodedFollowId(
@@ -402,13 +433,15 @@ describe("createLegacyNovaChainHeadProvider", () => {
     ).toBe("wire-new");
   });
 
-  it("drops stale follows when a reloaded iframe handshakes", () => {
+  it("As a dotli integrator, the host drops stale follows when a reloaded iframe handshakes", () => {
+    // Given
     const harness = createHarness();
     const request = {
       tag: "V1",
       value: { genesisHash, followSubscriptionId: "follow_0", hash: blockHash },
     } as const;
 
+    // When
     harness.emit(followStart("wire-old"));
     harness.emit(
       frame("handshake", SYSTEM_HANDSHAKE.request, new Uint8Array()),
@@ -423,6 +456,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       ),
     );
 
+    // Then
     expect(
       decodedFollowId(
         harness.received.at(-1)!,
@@ -431,11 +465,14 @@ describe("createLegacyNovaChainHeadProvider", () => {
     ).toBe("wire-new");
   });
 
-  it("owns and disposes the wrapped provider", () => {
+  it("As a dotli integrator, the host owns and disposes the wrapped provider", () => {
+    // Given
     const harness = createHarness();
 
+    // When
     harness.adapted.dispose();
 
+    // Then
     expect(harness.dispose).toHaveBeenCalledOnce();
   });
 });

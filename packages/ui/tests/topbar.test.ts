@@ -78,7 +78,8 @@ beforeEach(() => {
 });
 
 describe("topbar disconnect", () => {
-  it("emits the Rust-core disconnect request", async () => {
+  it("As a dotli integrator, the host emits the Rust-core disconnect request", async () => {
+    // Given
     const { requestTruapiDisconnect } = await import("@dotli/ui/topbar");
     let requests = 0;
     window.addEventListener(
@@ -89,12 +90,15 @@ describe("topbar disconnect", () => {
       { once: true },
     );
 
+    // When
     requestTruapiDisconnect();
 
+    // Then
     expect(requests).toBe(1);
   }, 10_000);
 
-  it("routes the disconnect button through the Rust-core event path", async () => {
+  it("As a dotli integrator, the host routes the disconnect button through the Rust-core event path", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     let requests = 0;
@@ -109,24 +113,31 @@ describe("topbar disconnect", () => {
       }),
     );
 
+    // When
     document.getElementById("auth-button")?.click();
+
+    // Then
     expect(
       document.getElementById("user-popover")?.classList.contains("open"),
     ).toBe(true);
 
+    // When
     document.getElementById("user-popover-disconnect")?.click();
 
+    // Then
     expect(requests).toBe(1);
     expect(
       document.getElementById("user-popover")?.classList.contains("open"),
     ).toBe(false);
   });
 
-  it("renders the connected username from the Rust-core auth state", async () => {
+  it("As a dotli integrator, the host renders the connected username from the Rust-core auth state", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
@@ -142,6 +153,7 @@ describe("topbar disconnect", () => {
       }),
     );
 
+    // Then
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
     expect(document.getElementById("user-popover-username")?.textContent).toBe(
       "pgherveou.04",
@@ -150,7 +162,8 @@ describe("topbar disconnect", () => {
 });
 
 describe("topbar login cancellation", () => {
-  it("waits for an active TrUAPI prompt before opening login", async () => {
+  it("As a dotli integrator, the host waits for an active TrUAPI prompt before opening login", async () => {
+    // Given
     installTopbarDom();
     const [{ initTopBar }, { createBlockingModalCoordinator }] =
       await Promise.all([
@@ -168,17 +181,21 @@ describe("topbar login cancellation", () => {
         }),
     );
 
+    // When
     document.getElementById("auth-button")?.click();
 
+    // Then
     expect(
       document
         .getElementById("auth-modal-backdrop")
         ?.classList.contains("open"),
     ).toBe(false);
 
+    // When
     releaseBlockingPrompt?.();
     await blockingPrompt;
 
+    // Then
     expect(
       document
         .getElementById("auth-modal-backdrop")
@@ -189,7 +206,8 @@ describe("topbar login cancellation", () => {
     scope.dispose();
   });
 
-  it("opens host-global login from the topbar even when a product is loaded", async () => {
+  it("As a dotli integrator, the host opens host-global login from the topbar even when a product is loaded", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     const loginRequests: unknown[] = [];
@@ -198,6 +216,7 @@ describe("topbar login cancellation", () => {
     });
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:product-loaded", {
         detail: { label: "localhost:3000" },
@@ -205,13 +224,15 @@ describe("topbar login cancellation", () => {
     );
     document.getElementById("auth-button")?.click();
 
+    // Then
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
       "Login with Polkadot Mobile",
     );
     expect(loginRequests).toEqual([{ reason: undefined }]);
   });
 
-  it("emits a login request on the first auth button click", async () => {
+  it("As a dotli integrator, the host emits a login request on the first auth button click", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     const loginRequests: unknown[] = [];
@@ -223,11 +244,16 @@ describe("topbar login cancellation", () => {
     (
       window as typeof window & { __dotliTruapiBridgeReady?: boolean }
     ).__dotliTruapiBridgeReady = true;
+
+    // Then
     expect(
       document.getElementById("auth-button")?.hasAttribute("disabled"),
     ).toBe(false);
+
+    // When
     document.getElementById("auth-button")?.click();
 
+    // Then
     expect(loginRequests).toEqual([{ reason: undefined }]);
     expect(
       document
@@ -236,11 +262,13 @@ describe("topbar login cancellation", () => {
     ).toBe(true);
   });
 
-  it("keeps the pairing modal open through an unrelated disconnected state", async () => {
+  it("As a dotli integrator, the host keeps the pairing modal open through an unrelated disconnected state", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
@@ -260,6 +288,7 @@ describe("topbar login cancellation", () => {
       }),
     );
 
+    // Then
     expect(
       document
         .getElementById("auth-modal-backdrop")
@@ -267,11 +296,13 @@ describe("topbar login cancellation", () => {
     ).toBe(true);
   });
 
-  it("keeps landing pairing presentation host-global", async () => {
+  it("As a dotli integrator, the host keeps landing pairing presentation host-global", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
@@ -284,12 +315,14 @@ describe("topbar login cancellation", () => {
       }),
     );
 
+    // Then
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
       "Login with Polkadot Mobile",
     );
   });
 
-  it("cancels the in-flight login when the user closes the pairing modal", async () => {
+  it("As a dotli integrator, the host cancels the in-flight login when the user closes the pairing modal", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
@@ -298,6 +331,7 @@ describe("topbar login cancellation", () => {
       cancels += 1;
     });
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
@@ -309,6 +343,7 @@ describe("topbar login cancellation", () => {
     );
     document.getElementById("auth-modal-close")?.click();
 
+    // Then
     expect(cancels).toBe(1);
     expect(
       document
@@ -318,7 +353,8 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
   });
 
-  it("closes the pairing modal when the session connects", async () => {
+  it("As a dotli integrator, the host closes the pairing modal when the session connects", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
@@ -327,6 +363,7 @@ describe("topbar login cancellation", () => {
       cancels += 1;
     });
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
@@ -345,6 +382,7 @@ describe("topbar login cancellation", () => {
       }),
     );
 
+    // Then
     expect(
       document
         .getElementById("auth-modal-backdrop")
@@ -354,11 +392,13 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
   });
 
-  it("replaces the pairing QR with login progress after wallet approval", async () => {
+  it("As a dotli integrator, the host replaces the pairing QR with login progress after wallet approval", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
@@ -374,6 +414,7 @@ describe("topbar login cancellation", () => {
       }),
     );
 
+    // Then
     expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
       "Logging in...",
     );
@@ -385,11 +426,13 @@ describe("topbar login cancellation", () => {
     ).toBe(true);
   });
 
-  it("keeps the retry view for login failures", async () => {
+  it("As a dotli integrator, the host keeps the retry view for login failures", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:product-loaded", {
         detail: { label: "localhost:3000" },
@@ -401,6 +444,7 @@ describe("topbar login cancellation", () => {
       }),
     );
 
+    // Then
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
       "Login with Polkadot Mobile",
     );
@@ -416,7 +460,8 @@ describe("topbar login cancellation", () => {
 });
 
 describe("topbar boot rehydration", () => {
-  it("renders the persisted session badge on idle after init", async () => {
+  it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {
+    // Given
     installTopbarDom();
     vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
       callback();
@@ -440,26 +485,31 @@ describe("topbar boot rehydration", () => {
       }),
     );
 
+    // When
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
     await flushMicrotasks();
 
+    // Then
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
     expect(document.getElementById("user-popover-username")?.textContent).toBe(
       "pgherveou.04",
     );
   });
 
-  it("stays logged out when no session is persisted", async () => {
+  it("As a dotli integrator, the host stays logged out when no session is persisted", async () => {
+    // Given
     installTopbarDom();
     vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
       callback();
       return 0;
     });
 
+    // When
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
 
+    // Then
     expect(
       document.getElementById("auth-button")?.querySelector(".user-badge"),
     ).toBeNull();
@@ -467,7 +517,8 @@ describe("topbar boot rehydration", () => {
 });
 
 describe("topbar permissions", () => {
-  it("renders one row per permission after changing a dropdown", async () => {
+  it("As a dotli integrator, the host renders one row per permission after changing a dropdown", async () => {
+    // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     const { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } =
@@ -481,6 +532,7 @@ describe("topbar permissions", () => {
     });
     initTopBar();
 
+    // When
     window.dispatchEvent(
       new CustomEvent("dotli:product-loaded", {
         detail: { label: "localhost:3000" },
@@ -489,6 +541,7 @@ describe("topbar permissions", () => {
     document.getElementById("permissions-button")?.click();
     await flushMicrotasks();
 
+    // When
     document
       .querySelector<HTMLButtonElement>(".permissions-popover-select")
       ?.click();
@@ -503,6 +556,7 @@ describe("topbar permissions", () => {
     });
     await flushMicrotasks();
 
+    // Then
     expect(document.querySelectorAll(".permissions-popover-row")).toHaveLength(
       ALL_PERMISSIONS.length,
     );

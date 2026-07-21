@@ -266,15 +266,23 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   test.describe("Statements", () => {
-    test("Create Proof Authorized", async ({ productFrame }) => {
+    test("As a product user, I can create an authorized statement proof", async ({
+      productFrame,
+    }) => {
       await runTestExpectSuccess(
         productFrame,
         "statement-store-create-proof-authorized",
       );
     });
 
-    test("Submit", async ({ pairedPage, productFrame }) => {
+    test("As a product user, I can submit a statement", async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
       test.setTimeout(120_000);
+
+      // When
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
@@ -282,6 +290,8 @@ test.describe("dot.li > host-playground.dot", () => {
         ["Allow"],
         { timeoutMs: 90_000 },
       );
+
+      // Then
       expect(status).toBe("success");
     });
 
@@ -311,12 +321,19 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "navigate-polkadot");
     });
 
-    test("In-App", async ({ productFrame }) => {
+    test("As a product user, I can navigate within the current product", async ({
+      productFrame,
+    }) => {
+      // Given
       const button = productFrame.locator(
         '[data-testid="run-navigate-internal"]',
       );
       await expect(button).toBeVisible();
+
+      // When
       await button.click();
+
+      // Then
       await expect
         .poll(() => productFrame.url())
         .toContain("/page?id=hello#fragment=something");
@@ -402,14 +419,23 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   test.describe("Notifications", () => {
-    test("Push Notification", async ({ pairedPage, productFrame }) => {
+    test("As a product user, I can allow and receive a push notification", async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      const approvalButtons = ["Allow"];
+
+      // When
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
         "push-notification",
-        ["Allow"],
+        approvalButtons,
         { timeoutMs: 20_000 },
       );
+
+      // Then
       expect(status).toBe("success");
     });
   });

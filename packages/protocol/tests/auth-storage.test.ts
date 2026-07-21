@@ -69,7 +69,7 @@ describe("shared auth storage helpers", () => {
     expect(isValidSharedAuthKey("")).toBe(false);
   });
 
-  it("builds stable storage keys", () => {
+  it("As a returning user, my shared authentication uses stable storage keys", () => {
     expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
       "TRUAPI_dot.li_session",
     );

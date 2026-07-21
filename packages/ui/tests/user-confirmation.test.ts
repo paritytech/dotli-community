@@ -21,9 +21,12 @@ function modalFields(): Record<string, string> {
 }
 
 describe("user confirmation modal", () => {
-  it("shows concurrent confirmation requests one at a time", async () => {
+  it("As a dotli integrator, the host shows concurrent confirmation requests one at a time", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
+
+    // When
     const accountAccess = confirmUserAction({
       tag: "AccountAccess",
       value: {
@@ -36,6 +39,7 @@ describe("user confirmation modal", () => {
       value: { productId: "truapi-playground.dot" },
     });
 
+    // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
       1,
     );
@@ -43,9 +47,13 @@ describe("user confirmation modal", () => {
       "Account Access",
     );
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
     await expect(accountAccess).resolves.toBe(true);
 
+    // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
       1,
     );
@@ -53,12 +61,16 @@ describe("user confirmation modal", () => {
       "Identity Disclosure",
     );
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
     await expect(identityDisclosure).resolves.toBe(true);
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
   });
 
-  it("renders legacy payload signing as structured transaction fields", async () => {
+  it("As a dotli integrator, the host renders legacy payload signing as structured transaction fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -87,8 +99,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Sign Transaction",
     );
@@ -103,12 +117,15 @@ describe("user confirmation modal", () => {
     });
     expect(document.body.textContent).not.toContain("Request");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders product payload signing with the derived account", async () => {
+  it("As a dotli integrator, the host renders product payload signing with the derived account", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -139,8 +156,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(modalFields()).toEqual({
       App: "localhost:3000",
       Signer: "truapi-playground.dot / 2",
@@ -150,12 +169,15 @@ describe("user confirmation modal", () => {
       Version: "4",
     });
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders legacy raw signing as structured sign-message fields", async () => {
+  it("As a dotli integrator, the host renders legacy raw signing as structured sign-message fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -173,8 +195,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Sign Message",
     );
@@ -186,12 +210,15 @@ describe("user confirmation modal", () => {
     });
     expect(document.body.textContent).not.toContain("Request");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders product transaction creation as structured fields", async () => {
+  it("As a dotli integrator, the host renders product transaction creation as structured fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -212,8 +239,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Sign Transaction",
     );
@@ -226,12 +255,15 @@ describe("user confirmation modal", () => {
       "Tx Ext Version": "5",
     });
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders resource allocation as structured resource fields", async () => {
+  it("As a dotli integrator, the host renders resource allocation as structured resource fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -241,8 +273,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Resource Allocation",
     );
@@ -253,12 +287,15 @@ describe("user confirmation modal", () => {
     expect(Object.keys(fields)).not.toContain("Application");
     expect(Object.keys(fields)).not.toContain("Request");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders account alias permission as structured product fields", async () => {
+  it("As a dotli integrator, the host renders account alias permission as structured product fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -277,8 +314,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Alias Permission",
     );
@@ -298,14 +337,18 @@ describe("user confirmation modal", () => {
     expect(Object.keys(fields)).not.toContain("Application");
     expect(Object.keys(fields)).not.toContain("Request");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders the published account alias review shape", async () => {
+  it("As a dotli integrator, the host renders the published account alias review shape", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
+    // When
     const confirmation = confirmUserAction({
       tag: "AccountAlias",
       value: {
@@ -314,16 +357,21 @@ describe("user confirmation modal", () => {
       },
     });
 
+    // Then
     expect(modalFields()).toEqual({
       "Requesting product": "truapi-playground.dot",
       "Requested account": "other-product.dot",
     });
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders proof permission as structured ring fields", async () => {
+  it("As a dotli integrator, the host renders proof permission as structured ring fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -343,8 +391,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Proof Permission",
     );
@@ -358,12 +408,15 @@ describe("user confirmation modal", () => {
       Message: "0x4869",
     });
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders account access permission as structured product fields", async () => {
+  it("As a dotli integrator, the host renders account access permission as structured product fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -374,8 +427,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Account Access",
     );
@@ -391,12 +446,15 @@ describe("user confirmation modal", () => {
     expect(Object.keys(fields)).not.toContain("Application");
     expect(Object.keys(fields)).not.toContain("Request");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("renders identity disclosure as structured product fields", async () => {
+  it("As a dotli integrator, the host renders identity disclosure as structured product fields", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -406,8 +464,10 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Identity Disclosure",
     );
@@ -422,12 +482,15 @@ describe("user confirmation modal", () => {
     expect(Object.keys(fields)).not.toContain("Application");
     expect(Object.keys(fields)).not.toContain("Request");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("rejects identity disclosure when the dialog is dismissed", async () => {
+  it("As a dotli integrator, the host rejects identity disclosure when the dialog is dismissed", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
     const review: UserConfirmationReview = {
@@ -437,43 +500,55 @@ describe("user confirmation modal", () => {
       },
     };
 
+    // When
     const confirmation = confirmUserAction(review);
 
+    // When
     document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
 
+    // Then
     await expect(confirmation).rejects.toThrow(
       "User dismissed identity disclosure dialog",
     );
   });
 
-  it("allows preimage submission from its dedicated dialog", async () => {
+  it("As a dotli integrator, the host allows preimage submission from its dedicated dialog", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
+    // When
     const confirmation = confirmUserAction({
       tag: "PreimageSubmit",
       value: { size: 2048n },
     });
 
+    // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Submit Preimage",
     );
     expect(modalFields()).toEqual({ "Data size": "2 KB" });
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("denies preimage submission when the user cancels", async () => {
+  it("As a dotli integrator, the host denies preimage submission when the user cancels", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
+    // When
     const confirmation = confirmUserAction({
       tag: "PreimageSubmit",
       value: { size: 512n },
     });
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
 
+    // Then
     await expect(confirmation).resolves.toBe(false);
   });
 });

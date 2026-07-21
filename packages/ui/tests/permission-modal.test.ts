@@ -6,27 +6,36 @@ afterEach(() => {
 });
 
 describe("permission request modal", () => {
-  it("resolves granted when the user allows", async () => {
+  it("As a dotli integrator, the host resolves granted when the user allows", async () => {
+    // Given
     const decision = showPermissionRequestModal("myapp", "Camera");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
+    // Then
     await expect(decision).resolves.toBe("granted");
   });
 
-  it("resolves denied when the user denies", async () => {
+  it("As a dotli integrator, the host resolves denied when the user denies", async () => {
+    // Given
     const decision = showPermissionRequestModal("myapp", "Camera");
 
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
 
+    // Then
     await expect(decision).resolves.toBe("denied");
   });
 
-  it("resolves dismissed when the backdrop is clicked", async () => {
+  it("As a dotli integrator, the host resolves dismissed when the backdrop is clicked", async () => {
+    // Given
     const decision = showPermissionRequestModal("myapp", "Camera");
 
+    // When
     document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
 
+    // Then
     await expect(decision).resolves.toBe("dismissed");
   });
 });
