@@ -11,6 +11,10 @@ import {
   type PairResult,
 } from "./helpers/signer-bot";
 import { extractQrPayload } from "./helpers/extract-qr-payload";
+import {
+  E2E_CHAIN_BACKEND,
+  initializeChainBackend,
+} from "./helpers/chain-backend";
 import { STATE_FILE, SESSION_FILE } from "./fixtures/paths";
 
 // External-service config. Required, with no defaults. A wrong or missing
@@ -77,7 +81,9 @@ const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv(
 export const BOT_UNAVAILABLE_EXIT_CODE = 99;
 
 export default async function globalSetup(_config: FullConfig): Promise<void> {
-  console.log(`[globalSetup] bot=${BOT_BASE} network=${BOT_NETWORK}`);
+  console.log(
+    `[globalSetup] bot=${BOT_BASE} network=${BOT_NETWORK} backend=${E2E_CHAIN_BACKEND}`,
+  );
 
   const probe = await health(BOT_BASE);
   if (!probe.ok) {
@@ -151,22 +157,16 @@ async function pairOnce(
     console.log(`[globalSetup:pageerror] ${err.message}`);
   });
 
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem("dotli:mode", "gateway");
-      localStorage.setItem("dotli:chain-backend", "rpc");
-      localStorage.setItem("dotli:content-backend", "ipfs-gateway");
-    } catch {
-      /* ignore */
-    }
-  });
+  await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
 
   try {
     await page.goto(`http://${AUTH_HOST}:${PORT}/`, { timeout: 60_000 });
-    await page
-      .getByRole("button", { name: "Switch to Gateway" })
-      .click({ timeout: 5_000 })
-      .catch(() => {});
+    if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+      await page
+        .getByRole("button", { name: "Switch to Gateway" })
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+    }
 
     const authBtn = page.locator("#auth-button");
     await authBtn.waitFor({ state: "visible", timeout: 30_000 });

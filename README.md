@@ -125,7 +125,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `accountGet`                   | Derives a per-app public key via HDKD soft derivation                  |
 | `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host |
 | `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session     |
-| `chainConnection`              | Returns a smoldot-backed JsonRpcProvider for supported chains          |
+| `chainConnection`              | Returns an isolated broker connection over the selected chain backend  |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                |
 | `navigateTo`                   | Opens URLs in new tabs                                                 |
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)   |
@@ -195,6 +195,13 @@ Override either checkout or server when needed:
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
 bun run test:e2e:local
+```
+
+The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same
+flow through either light-client backend:
+
+```bash
+E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
 ```
 
 The signer can run natively or in Docker; set `SIGNER_BOT_BASE_URL`,
