@@ -275,9 +275,9 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
  * This list controls feature advertisement, not access control: the shared
  * Rust-core connection callback also serves core-owned Bulletin operations.
  *
- * Single source of truth shared by the host's chain-support advertisement
- * (`isRemoteChainSupported`) and the gateway provider factory
- * (`createRpcChainProvider`).
+ * Single source of truth for product-facing gateway feature support. The
+ * protocol runtime uses `getActiveCoreGatewayChains()` for its wider
+ * operational connection set.
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();

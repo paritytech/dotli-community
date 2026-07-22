@@ -1,24 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type {
-  JsonRpcConnection,
-  JsonRpcMessage,
-  JsonRpcProvider,
-  JsonRpcRequest,
-} from "@polkadot-api/json-rpc-provider";
-import { ProtocolFatalError, ProtocolInitFailedError } from "./errors";
+import type { JsonRpcProvider } from "@polkadot-api/json-rpc-provider";
+import {
+  ChainConnectionError,
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+} from "./errors";
 import type {
   ExecutableManifest,
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
-import {
-  getActiveGatewaySupportedGenesisHashes,
-  getActiveSupportedGenesisHashes,
-  getNetwork,
-} from "@dotli/config/network";
+import { getNetwork } from "@dotli/config/network";
 import { getBackend, type Backend } from "@dotli/config/mode";
 import { log } from "@dotli/shared/log";
 import { m } from "@dotli/metrics/metrics";
@@ -33,18 +28,18 @@ import {
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
 } from "./auth-storage";
-import { serializeError } from "@dotli/shared/errors";
+import {
+  createChainConnectionClient,
+  createPapiChainProvider,
+  type ChainConnection,
+} from "./chain-connection";
+
+export type { ChainConnection } from "./chain-connection";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
   onProgress?: (message: string) => void;
-}
-
-interface RemoteChainConnection {
-  onMessage: (message: JsonRpcMessage) => void;
-  pendingMessages: JsonRpcRequest[];
-  connected: boolean;
 }
 
 export interface SharedAuthStorageChange {
@@ -61,10 +56,40 @@ let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
-const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 let listenerBound = false;
 let protocolReady = false;
+
+const chainConnectionClient = createChainConnectionClient({
+  createConnectionId: createRequestId,
+  transport: {
+    async connect(genesisHash, connectionId) {
+      await postRequest("chainConnect", { genesisHash, connectionId });
+    },
+    async send(connectionId, request) {
+      await postRequest("chainSend", { connectionId, message: request });
+    },
+    async disconnect(connectionId) {
+      await postRequest("chainDisconnect", { connectionId });
+    },
+  },
+  onLateMessage(connectionId) {
+    log.debug(
+      `[dot.li protocol] Ignoring late chain message for ${connectionId}`,
+    );
+  },
+  onDisconnectError(error) {
+    log.warn("[dot.li protocol] Remote disconnect failed:", error);
+  },
+  onStateChange(state, connectionId, genesisHash) {
+    log.debug("[dot.li protocol] Chain connection state", {
+      state,
+      connectionId,
+      genesisHash,
+      backend: getBackend(),
+    });
+  },
+});
 interface ReadyWaiter {
   resolve: () => void;
   reject: (err: Error) => void;
@@ -137,10 +162,7 @@ function resolveProtocolReady(): void {
  * was wrong and need a clean restart before chain operations run.
  *
  * Side effects callers should be aware of:
- *   - Any in-flight `postRequest()` whose response hasn't arrived will be
- *     orphaned: it will time out via the per-method timer instead of
- *     completing. Callers that have outstanding work should expect those
- *     rejections.
+ *   - Any in-flight request and open chain connection is rejected immediately.
  *   - Any `waitForProtocolReady()` waiter is rejected immediately rather
  *     than waiting for `IFRAME_READY_TIMEOUT_MS`.
  *   - In `shared-worker` mode, removing the iframe drops its
@@ -154,6 +176,8 @@ export function resetProtocolFrame(): void {
 }
 
 function resetProtocolFrameState(reason?: Error): void {
+  const resetError =
+    reason ?? new Error("Protocol frame state reset before request completed");
   protocolIframe?.remove();
   protocolIframe = null;
   hostFramePromise = null;
@@ -164,12 +188,17 @@ function resetProtocolFrameState(reason?: Error): void {
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
   if (orphaned.length > 0) {
-    const err =
-      reason ?? new Error("Protocol frame state reset before ready signal");
     for (const waiter of orphaned) {
-      waiter.reject(err);
+      waiter.reject(resetError);
     }
   }
+  for (const [id, pending] of pendingRequests) {
+    pendingRequests.delete(id);
+    pending.reject(resetError);
+  }
+  chainConnectionClient.failAll(
+    new ChainConnectionError("PROTOCOL_UNAVAILABLE", resetError.message),
+  );
 }
 
 function bindMessageListener(): void {
@@ -210,8 +239,16 @@ function bindMessageListener(): void {
         if (msg.ok) {
           pending.resolve(msg.result);
         } else {
-          const err = new Error(msg.error || "Unknown protocol error");
-          err.name = "ProtocolResponseError";
+          const err =
+            msg.code === undefined
+              ? new Error(msg.error || "Unknown protocol error")
+              : new ChainConnectionError(
+                  msg.code,
+                  msg.error || "Unknown protocol error",
+                );
+          if (msg.code === undefined) {
+            err.name = "ProtocolResponseError";
+          }
           pending.reject(err);
         }
         return;
@@ -237,6 +274,10 @@ function bindMessageListener(): void {
           pending.reject(err);
         }
 
+        chainConnectionClient.failAll(
+          new ChainConnectionError("PROTOCOL_UNAVAILABLE", err.message),
+        );
+
         // Route through the same reset path used by iframe load failures
         // so callers blocked on `waitForProtocolReady()`
         // (`pendingReadyResolvers`) are rejected immediately rather than
@@ -250,37 +291,11 @@ function bindMessageListener(): void {
         return;
       }
       case "chain-message": {
-        const conn = chainConnections.get(msg.connectionId);
-        if (!conn) {
-          log.warn(
-            `[dot.li protocol] chain-message for unknown connectionId: ${msg.connectionId} (known: ${[...chainConnections.keys()].join(", ")})`,
-          );
-          return;
-        }
-        // Envelope ships `message` as a string. The provider contract
-        // wants the consumer to receive a parsed `JsonRpcMessage`.
-        let parsed: JsonRpcMessage;
-        try {
-          parsed = JSON.parse(msg.message) as JsonRpcMessage;
-        } catch (err: unknown) {
-          log.error(
-            `[dot.li protocol] chain-message JSON parse failed (conn=${msg.connectionId.slice(-8)}):`,
-            err instanceof Error ? err.message : err,
-          );
-          return;
-        }
-        try {
-          conn.onMessage(parsed);
-        } catch (err: unknown) {
-          log.error(
-            `[dot.li protocol] onMessage threw (conn=${msg.connectionId.slice(-8)}):`,
-            err instanceof Error ? err.message : err,
-          );
-        }
+        chainConnectionClient.handleMessage(msg.connectionId, msg.message);
         return;
       }
       case "chain-halt":
-        chainConnections.delete(msg.connectionId);
+        chainConnectionClient.handleHalt(msg.connectionId, msg.message);
         return;
       case "request":
         // Ignore inbound requests on the client side
@@ -548,6 +563,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
         if (timer !== null) {
           clearTimeout(timer);
         }
+        stopReq();
         reject(reason instanceof Error ? reason : new Error(String(reason)));
       },
       onProgress,
@@ -685,121 +701,17 @@ export function subscribeSharedAuthStorage(
   };
 }
 
-export function isRemoteChainSupported(genesisHash: string): boolean {
-  // Advertise only what the *active* backend can actually serve. Gateway mode
-  // bridges a curated RPC subset, while smoldot can run any configured chain.
-  const supported =
-    getBackend() === "rpc-gateway"
-      ? getActiveGatewaySupportedGenesisHashes()
-      : getActiveSupportedGenesisHashes();
-  return supported.has(genesisHash.toLowerCase());
-}
-
-/**
- * Notification-style requests (no `id`) get `null`, nothing to respond to.
- */
-function buildJsonRpcError(
-  request: JsonRpcRequest,
-  errorMessage: string,
-): JsonRpcMessage | null {
-  if (request.id === undefined || request.id === null) {
-    return null;
-  }
-  return {
-    jsonrpc: "2.0",
-    id: request.id,
-    error: { code: -32603, message: errorMessage },
-  };
+export function connectChain(genesisHash: string): Promise<ChainConnection> {
+  return chainConnectionClient.connectChain(genesisHash);
 }
 
 export function createRemoteChainProvider(
   genesisHash: string,
-): JsonRpcProvider | null {
-  if (!isRemoteChainSupported(genesisHash)) {
-    return null;
-  }
-
-  return (onMessage): JsonRpcConnection => {
-    const connectionId = createRequestId();
-    const remote: RemoteChainConnection = {
-      onMessage,
-      pendingMessages: [],
-      connected: false,
-    };
-
-    chainConnections.set(connectionId, remote);
-
-    void ensureProtocolFrame()
-      .then(async () => {
-        await postRequest("chainConnect", { genesisHash, connectionId });
-        remote.connected = true;
-        for (const message of remote.pendingMessages) {
-          void postRequest("chainSend", {
-            connectionId,
-            message: JSON.stringify(message),
-          });
-        }
-        remote.pendingMessages = [];
-      })
-      .catch((error: unknown) => {
-        // Connection failed. Send JSON-RPC error responses for all
-        // pending messages so polkadot-api's client knows the connection
-        // died instead of hanging on "Not connected" forever.
-        const reason = serializeError(error);
-        log.error("[dot.li protocol] Failed to connect remote chain:", error);
-        for (const pending of remote.pendingMessages) {
-          const errResponse = buildJsonRpcError(pending, reason);
-          if (errResponse !== null) {
-            onMessage(errResponse);
-          }
-        }
-        remote.pendingMessages = [];
-        chainConnections.delete(connectionId);
-      });
-
-    return {
-      send(message) {
-        const current = chainConnections.get(connectionId);
-        if (!current) {
-          // Connection was removed (failed or disconnected).
-          // Respond with an error so the caller doesn't hang.
-          const errResponse = buildJsonRpcError(
-            message,
-            "Chain connection is closed",
-          );
-          if (errResponse !== null) {
-            onMessage(errResponse);
-          }
-          return;
-        }
-        if (!current.connected) {
-          current.pendingMessages.push(message);
-          return;
-        }
-        void postRequest("chainSend", {
-          connectionId,
-          message: JSON.stringify(message),
-        }).catch((error: unknown) => {
-          const reason = serializeError(error);
-          log.error("[dot.li protocol] Remote chain send failed:", error);
-          const errResponse = buildJsonRpcError(message, reason);
-          if (errResponse !== null) {
-            onMessage(errResponse);
-          }
-        });
-      },
-      disconnect() {
-        const current = chainConnections.get(connectionId);
-        chainConnections.delete(connectionId);
-        if (!current) {
-          return;
-        }
-        void postRequest("chainDisconnect", { connectionId }).catch(
-          (error: unknown) => {
-            log.warn("[dot.li protocol] Remote disconnect failed:", error);
-          },
-        );
-      },
-    };
-  };
+): JsonRpcProvider {
+  return createPapiChainProvider(
+    () => connectChain(genesisHash),
+    (message, error) => {
+      log.error(`[dot.li protocol] ${message}:`, error);
+    },
+  );
 }

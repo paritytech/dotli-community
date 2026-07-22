@@ -255,9 +255,11 @@ export function getSmoldotDirect(): SmoldotClient {
   if (smoldotInstance !== null) {
     return smoldotInstance;
   }
-  log.warn("[dot.li smoldot] Creating smoldot via start() (current thread)");
+  log.debug("[dot.li smoldot] Creating smoldot via start() (current thread)");
   smoldotInstance = startSmoldotDirect({
-    maxLogLevel: 5,
+    // Keep errors, warnings, and lifecycle info. Per-request debug/trace logs
+    // overwhelm the browser console and are not used for health detection.
+    maxLogLevel: 3,
     logCallback: smoldotLogCallback,
     // Smoldot's own auto-detection (no-auto-bytecode-browser.js) is buggy
     // and never sets this in browsers, so peer-gossipped `ws://[ip]` addrs
@@ -267,7 +269,7 @@ export function getSmoldotDirect(): SmoldotClient {
     // (which breaks SW registration).
     forbidNonLocalWs: true,
   });
-  log.warn("[dot.li smoldot] Smoldot client ready (direct mode)");
+  log.debug("[dot.li smoldot] Smoldot client ready (direct mode)");
   return smoldotInstance;
 }
 
@@ -275,9 +277,9 @@ export function getSmoldot(): SmoldotClient {
   if (smoldotInstance !== null) {
     return smoldotInstance;
   }
-  log.warn("[dot.li smoldot] Creating smoldot via startFromWorker()");
+  log.debug("[dot.li smoldot] Creating smoldot via startFromWorker()");
   smoldotInstance = startFromWorker(new SmWorker(), {
-    maxLogLevel: 5,
+    maxLogLevel: 3,
     logCallback: smoldotLogCallback,
     forbidNonLocalWs: true,
   });
@@ -537,7 +539,7 @@ export function getDappAssetHubChain(): Promise<SmoldotChain> {
 
 /**
  * Return a provider backed by the dApp's fresh Asset Hub chain.
- * Used by `createChainProvider()` for remote dApp connections.
+ * Used by `createSmoldotUpstreamProvider()` for remote chain connections.
  */
 export function getDappAssetHubProvider(): JsonRpcProvider {
   return getSmProvider(() => getDappAssetHubChain());

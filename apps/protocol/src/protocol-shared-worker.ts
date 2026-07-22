@@ -20,7 +20,10 @@ import {
   setNetworkOverride,
   getActiveServicesConfig,
 } from "@dotli/config/network";
-import { createChainProvider, isChainSupported } from "@dotli/resolver/chains";
+import {
+  createSmoldotUpstreamProvider,
+  isChainSupported,
+} from "@dotli/resolver/chains";
 import {
   getRelayChain,
   getSmoldotDirect,
@@ -29,9 +32,7 @@ import {
   resolveOwner,
   resolveRootManifest,
   setResolverAssetHubProvider,
-  setResolverPeopleProvider,
   waitForAssetHubFinalized,
-  waitForPeopleFinalized,
 } from "@dotli/resolver/resolve";
 import { onSmoldotFatal } from "@dotli/resolver/smoldot";
 import { m } from "@dotli/metrics/metrics";
@@ -43,6 +44,11 @@ import {
 } from "@dotli/protocol/broker";
 import { serializeError } from "@dotli/shared/errors";
 import { isExecutableKind } from "@dotli/shared/executables";
+import {
+  ChainConnectionError,
+  toProtocolErrorPayload,
+} from "@dotli/protocol/errors";
+import { log } from "@dotli/shared/log";
 
 initSentry("worker");
 installGlobalErrorHandlers("worker");
@@ -85,7 +91,7 @@ export type SWOutbound = SWRelayResponse | SWReady | SWError;
 const TAG = "[dot.li SW]";
 
 function swLog(...args: unknown[]): void {
-  console.warn(TAG, ...args);
+  log.debug(TAG, ...args);
 }
 
 function swError(...args: unknown[]): void {
@@ -183,7 +189,9 @@ async function presync(): Promise<void> {
     // through it as a local session, so there is one shared Asset Hub follow
     // (never removed mid-read) instead of a separate resolver chain the first
     // dApp connection would release — the `ChainHead disjointed` load failure.
-    chainBrokerManager = createChainBrokerManager(createChainProvider);
+    chainBrokerManager = createChainBrokerManager(
+      createSmoldotUpstreamProvider,
+    );
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(
         chainBrokerManager,
@@ -191,18 +199,6 @@ async function presync(): Promise<void> {
         "Asset Hub",
       ),
     );
-    // The People warm-keep must share this same broker follow. A separate
-    // getSmProvider on the People chain would race the broker's follow (one
-    // shared smoldot JSON-RPC queue) and have its events misrouted, so the
-    // broker drops People follow events as "unknown token" and reads hang.
-    setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().people.genesis,
-        "People",
-      ),
-    );
-
     // 4. Wait for Asset Hub to sync to a finalized block via the
     // explicit presync primitive (no more overloading `resolveDotName`
     // with a sentinel label). This now syncs the broker's shared chain.
@@ -225,33 +221,6 @@ async function presync(): Promise<void> {
       port.postMessage(readyMsg);
     }
     pendingPorts.length = 0;
-
-    // Warm the People chain in the background. Legacy-account auth reads the
-    // username -> account map on People, and on a cold start that read races
-    // the parachain warp sync (the source of the intermittent failures). Start
-    // syncing it now so it is ready by the time auth runs. People is not needed
-    // for resolution, so this must not gate the ready signal above.
-    swLog("Warming People chain in background...");
-    // Route the People warm-up through the broker's shared follow (mirrors
-    // Asset Hub above) so it doesn't open a second competing smoldot follow.
-    setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().people.genesis,
-        "People",
-      ),
-    );
-    void waitForPeopleFinalized((msg) => {
-      swLog(`People warm status: ${msg}`);
-    })
-      .then(() => {
-        swLog("People chain warmed");
-      })
-      .catch((err: unknown) => {
-        swLog(
-          `People chain warm failed (retried on demand): ${serializeError(err)}`,
-        );
-      });
   } catch (err: unknown) {
     const msg = serializeError(err);
     swError(`Pre-sync failed: ${msg}`);
@@ -460,32 +429,39 @@ async function handleRequest(
         );
       }
       if (!isChainSupported(payload.genesisHash)) {
-        throw new Error(`Unsupported chain: ${payload.genesisHash}`);
+        throw new ChainConnectionError(
+          "UNSUPPORTED_CHAIN",
+          `Unsupported chain: ${payload.genesisHash}`,
+        );
       }
       // The resolver and all dApp sessions share one Asset Hub chain via the
       // broker, so there is no resolver chain to release here; connect
       // directly.
-      let chainMsgCount = 0;
-      const connection = chainBrokerManager.connectRemote(
-        payload.genesisHash,
-        payload.connectionId,
-        (message) => {
-          chainMsgCount++;
-          if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
-            swLog(
-              `Chain message #${String(chainMsgCount)} for ${payload.connectionId} (${String(message.length)} bytes)`,
-            );
-          }
-          sendToPort(port, {
-            namespace: "dotli:protocol",
-            kind: "chain-message",
-            connectionId: payload.connectionId,
-            message,
-          });
-        },
-      );
+      let connection: StringJsonRpcConnection | null;
+      try {
+        connection = chainBrokerManager.connectRemote(
+          payload.genesisHash,
+          payload.connectionId,
+          (message) => {
+            sendToPort(port, {
+              namespace: "dotli:protocol",
+              kind: "chain-message",
+              connectionId: payload.connectionId,
+              message,
+            });
+          },
+        );
+      } catch (error: unknown) {
+        throw new ChainConnectionError(
+          "UPSTREAM_CONNECTION_FAILED",
+          serializeError(error),
+        );
+      }
       if (connection === null) {
-        throw new Error("Failed to create chain broker");
+        throw new ChainConnectionError(
+          "UPSTREAM_CONNECTION_FAILED",
+          "Failed to create chain broker",
+        );
       }
       chainConnections.set(payload.connectionId, connection);
       connectionPorts.set(payload.connectionId, port);
@@ -604,7 +580,7 @@ self.addEventListener("connect", (event) => {
         kind: "response",
         id: envelope.id,
         ok: false,
-        error: msg,
+        ...toProtocolErrorPayload(error),
       });
     });
   });

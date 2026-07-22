@@ -1290,7 +1290,8 @@ async function main(): Promise<void> {
       });
 
       try {
-        const { statusToPhase } = await import("@dotli/resolver/resolve");
+        const { statusToPhase } =
+          await import("@dotli/resolver/access-raw-storage");
         const onResolveProgress = (msg: string): void => {
           // Progress events arrive as opaque strings across the iframe
           // boundary. The resolver package owns the authoritative

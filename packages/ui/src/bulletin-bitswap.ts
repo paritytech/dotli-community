@@ -2,15 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { isResponse } from "@polkadot-api/json-rpc-provider";
-import type {
-  JsonRpcConnection,
-  JsonRpcMessage,
-} from "@polkadot-api/json-rpc-provider";
+import type { JsonRpcMessage } from "@polkadot-api/json-rpc-provider";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import {
-  createRemoteChainProvider,
-  isRemoteChainSupported,
-} from "@dotli/protocol/client";
+import { connectChain, type ChainConnection } from "@dotli/protocol/client";
 import { isSandboxOrigin } from "@dotli/config/config";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { log } from "@dotli/shared/log";
@@ -36,55 +30,72 @@ interface PendingResolver {
 let nextId = 1;
 const pending = new Map<number, PendingResolver>();
 
-let connection: JsonRpcConnection | null = null;
+let connectionPromise: Promise<ChainConnection> | null = null;
 
-function ensureConnection(): JsonRpcConnection {
-  if (connection !== null) {
-    return connection;
+function rejectPending(error: Error): void {
+  for (const entry of pending.values()) {
+    entry.reject(error);
   }
+  pending.clear();
+}
+
+function ensureConnection(): Promise<ChainConnection> {
+  if (connectionPromise !== null) {
+    return connectionPromise;
+  }
+
   const bulletinGenesis = getActiveServicesConfig().bulletin.genesis;
-  const provider = createRemoteChainProvider(bulletinGenesis);
-  if (provider === null) {
-    throw new Error(
-      `Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`,
-    );
-  }
-  connection = provider((message: JsonRpcMessage) => {
-    if (!isResponse(message)) {
-      return;
-    }
-    if (typeof message.id !== "number") {
-      return;
-    }
-    const entry = pending.get(message.id);
-    if (entry === undefined) {
-      return;
-    }
-    pending.delete(message.id);
-    if ("error" in message) {
-      const err = new Error(
-        `bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`,
-      );
-      (err as { code?: number }).code = message.error.code;
-      entry.reject(err);
-      return;
-    }
-    if (typeof message.result !== "string") {
-      entry.reject(
-        new Error(
-          `bitswap_v1_get: expected hex string result, got ${typeof message.result}`,
-        ),
-      );
-      return;
-    }
-    // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
-    // transferred zero-copy via postMessage instead of cloning an 8 MB
-    // hex string and re-parsing on the other side.
-    const hex = message.result;
-    const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
-    entry.resolve(hexToBytes(stripped));
-  });
-  return connection;
+  const opening = connectChain(bulletinGenesis);
+  connectionPromise = opening;
+
+  void opening
+    .then(async (connection) => {
+      for await (const encoded of connection.responses()) {
+        const message = JSON.parse(encoded) as JsonRpcMessage;
+        if (!isResponse(message) || typeof message.id !== "number") {
+          continue;
+        }
+        const entry = pending.get(message.id);
+        if (entry === undefined) {
+          continue;
+        }
+        pending.delete(message.id);
+        if ("error" in message) {
+          const err = new Error(
+            `bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`,
+          );
+          (err as { code?: number }).code = message.error.code;
+          entry.reject(err);
+          continue;
+        }
+        if (typeof message.result !== "string") {
+          entry.reject(
+            new Error(
+              `bitswap_v1_get: expected hex string result, got ${typeof message.result}`,
+            ),
+          );
+          continue;
+        }
+        // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
+        // transferred zero-copy via postMessage instead of cloning an 8 MB
+        // hex string and re-parsing on the other side.
+        const hex = message.result;
+        const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+        entry.resolve(hexToBytes(stripped));
+      }
+      throw new Error("Bulletin chain connection closed");
+    })
+    .catch((error: unknown) => {
+      if (connectionPromise === opening) {
+        connectionPromise = null;
+      }
+      const connectionError =
+        error instanceof Error ? error : new Error(serializeError(error));
+      rejectPending(connectionError);
+      log.error("[dot.li bitswap] Bulletin connection failed:", error);
+    });
+
+  return opening;
 }
 
 function errorCode(err: unknown): number | null {
@@ -135,7 +146,7 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
 
 function sendOnce(cid: string, timeoutMs: number): Promise<Uint8Array> {
   const id = nextId++;
-  const conn = ensureConnection();
+  const connection = ensureConnection();
   return new Promise<Uint8Array>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
@@ -155,12 +166,30 @@ function sendOnce(cid: string, timeoutMs: number): Promise<Uint8Array> {
         reject(err);
       },
     });
-    conn.send({
-      jsonrpc: "2.0",
-      id,
-      method: "bitswap_v1_get",
-      params: [cid],
-    });
+    void connection
+      .then((conn) => {
+        if (!pending.has(id)) {
+          return;
+        }
+        conn.send(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            method: "bitswap_v1_get",
+            params: [cid],
+          }),
+        );
+      })
+      .catch((error: unknown) => {
+        const entry = pending.get(id);
+        if (entry === undefined) {
+          return;
+        }
+        pending.delete(id);
+        entry.reject(
+          error instanceof Error ? error : new Error(serializeError(error)),
+        );
+      });
   });
 }
 
@@ -200,11 +229,6 @@ function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
 
 /** Idempotent. Call once at host startup. */
 export function listenForSandboxBitswap(): void {
-  if (!isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)) {
-    log.warn(
-      "[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.",
-    );
-  }
   window.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
     if (!isBitswapGetMessage(data)) {

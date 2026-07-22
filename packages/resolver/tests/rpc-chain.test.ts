@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import {
-  createCoreRpcChainProvider,
-  createRpcChainProvider,
-  isCoreRpcChainSupported,
-  isRpcChainSupported,
+  createRpcUpstreamProvider,
+  isRpcUpstreamSupported,
 } from "@dotli/resolver/rpc-chain";
 
 const mocks = vi.hoisted(() => ({
@@ -16,22 +14,18 @@ vi.mock("polkadot-api/ws", () => ({
 }));
 
 describe("rpc-chain", () => {
-  it("As a dotli integrator, the host reserves Bulletin RPC access for the host-owned Rust core", () => {
+  it("keeps Bulletin operational in the protocol runtime", () => {
     // Given
     const bulletin = getActiveServicesConfig().bulletin;
     const provider = {};
     mocks.getWsProvider.mockReturnValueOnce(provider);
 
     // When
-    const productSupported = isRpcChainSupported(bulletin.genesis);
-    const productProvider = createRpcChainProvider(bulletin.genesis);
-    const coreSupported = isCoreRpcChainSupported(bulletin.genesis);
-    const coreProvider = createCoreRpcChainProvider(bulletin.genesis);
+    const upstreamSupported = isRpcUpstreamSupported(bulletin.genesis);
+    const upstreamProvider = createRpcUpstreamProvider(bulletin.genesis);
 
     // Then
-    expect(productSupported).toBe(false);
-    expect(productProvider).toBeNull();
-    expect(coreSupported).toBe(true);
-    expect(coreProvider).toBe(provider);
+    expect(upstreamSupported).toBe(true);
+    expect(upstreamProvider).toBe(provider);
   });
 });
