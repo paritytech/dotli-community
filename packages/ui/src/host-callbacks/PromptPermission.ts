@@ -19,7 +19,7 @@ import {
   throwIfAborted,
   type BlockingModalScope,
 } from "../blocking-modal-queue";
-import { createSubmitRateLimiter } from "./rate-limit";
+import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -41,8 +41,11 @@ function gatedRemotePermissionName(
 export function createPromptPermission(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
+  // One budget per host callback surface: `handlers.ts` passes the same
+  // limiter here and to the notification adapters so a product cannot double
+  // its prompt budget by alternating prompt kinds.
+  limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
-  const limiter = createSubmitRateLimiter();
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.

@@ -27,6 +27,7 @@ import {
   createBlockingModalScope,
   type BlockingModalScope,
 } from "../blocking-modal-queue";
+import { createSubmitRateLimiter } from "./rate-limit";
 
 export interface CreateHostCallbacksOptions {
   label: string;
@@ -46,10 +47,21 @@ export function createHostCallbacks(
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
   } = options;
+  // Permission and notification prompts draw from one budget so a product
+  // cannot double its prompt rate by alternating prompt kinds.
+  const promptLimiter = createSubmitRateLimiter();
   return {
     navigation: { navigateTo: createNavigateTo() },
-    notifications: createNotificationAdapters(label, blockingModalScope),
-    permissions: createPromptPermission(label, blockingModalScope),
+    notifications: createNotificationAdapters(
+      label,
+      blockingModalScope,
+      promptLimiter,
+    ),
+    permissions: createPromptPermission(
+      label,
+      blockingModalScope,
+      promptLimiter,
+    ),
     features: { featureSupported: createFeatureSupported() },
     productStorage: {
       read: createLocalStorageRead(),

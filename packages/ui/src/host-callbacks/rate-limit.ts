@@ -3,7 +3,11 @@
 const SUBMIT_WINDOW_MS = 10_000;
 const SUBMIT_MAX_PER_WINDOW = 20;
 
-export function createSubmitRateLimiter(): { allow: () => boolean } {
+export interface SubmitRateLimiter {
+  allow: () => boolean;
+}
+
+export function createSubmitRateLimiter(): SubmitRateLimiter {
   const timestamps: number[] = [];
   return {
     allow() {
