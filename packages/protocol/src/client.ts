@@ -295,7 +295,7 @@ function bindMessageListener(): void {
         return;
       }
       case "chain-halt":
-        chainConnectionClient.handleHalt(msg.connectionId, msg.message);
+        chainConnectionClient.handleHalt(msg.connectionId);
         return;
       case "request":
         // Ignore inbound requests on the client side

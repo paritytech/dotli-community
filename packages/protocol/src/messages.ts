@@ -70,7 +70,6 @@ export interface ProtocolChainHaltEnvelope {
   namespace: "dotli:protocol";
   kind: "chain-halt";
   connectionId: string;
-  message?: string;
 }
 
 export interface ProtocolReadyEnvelope {

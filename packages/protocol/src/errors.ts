@@ -23,13 +23,6 @@ export type ChainConnectionErrorCode =
   | "UPSTREAM_CONNECTION_FAILED"
   | "CHAIN_HALTED";
 
-const CHAIN_CONNECTION_ERROR_CODES = new Set<ChainConnectionErrorCode>([
-  "UNSUPPORTED_CHAIN",
-  "PROTOCOL_UNAVAILABLE",
-  "UPSTREAM_CONNECTION_FAILED",
-  "CHAIN_HALTED",
-]);
-
 export class ChainConnectionError extends Error {
   readonly code: ChainConnectionErrorCode;
 
@@ -38,15 +31,6 @@ export class ChainConnectionError extends Error {
     this.name = "ChainConnectionError";
     this.code = code;
   }
-}
-
-export function isChainConnectionErrorCode(
-  value: unknown,
-): value is ChainConnectionErrorCode {
-  return (
-    typeof value === "string" &&
-    CHAIN_CONNECTION_ERROR_CODES.has(value as ChainConnectionErrorCode)
-  );
 }
 
 export function asChainConnectionError(
