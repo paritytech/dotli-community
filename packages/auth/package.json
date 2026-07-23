@@ -36,7 +36,7 @@
     "@novasamatech/storage-adapter": "0.8.9",
     "@scure/sr25519": "^2.2.0",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^2.1.6",
+    "polkadot-api": "^2.1.8",
     "scale-ts": "^1.6.1"
   }
 }
