@@ -966,6 +966,9 @@ class ChainBroker {
         const oldestToken = this.earlySubscriptions.keys().next().value;
         if (oldestToken !== undefined) {
           this.earlySubscriptions.delete(oldestToken);
+          brokerLog(
+            `early-subscription token cap hit; dropping buffered events for oldest token: ${oldestToken}`,
+          );
         }
       }
       events = [];
@@ -973,6 +976,12 @@ class ChainBroker {
     }
     if (events.length < MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN) {
       events.push(message);
+    } else {
+      // Memory bound, not correctness: events for a token that never maps
+      // to a local subscription would otherwise grow without limit.
+      brokerLog(
+        `early-subscription event cap hit; dropping event for token: ${upstreamToken}`,
+      );
     }
   }
 
