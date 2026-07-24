@@ -55,9 +55,12 @@ function installTopbarDom(): void {
       <span id="user-popover-username"></span>
       <button id="user-popover-disconnect"></button>
     </div>
-    <button id="theme-toggle"></button>
-    <span id="theme-icon-sun"></span>
-    <span id="theme-icon-moon"></span>
+    <button id="theme-toggle" aria-expanded="false"></button>
+    <div id="theme-popover" role="menu">
+      <button class="theme-popover-option" role="menuitemradio" aria-checked="false" data-theme-option="light" tabindex="-1"></button>
+      <button class="theme-popover-option" role="menuitemradio" aria-checked="false" data-theme-option="dark" tabindex="-1"></button>
+      <button class="theme-popover-option" role="menuitemradio" aria-checked="false" data-theme-option="system" tabindex="-1"></button>
+    </div>
     <button id="mode-button"></button>
     <div id="mode-popover"><div id="mode-popover-content"></div></div>
     <div id="mode-popover-backdrop"></div>
@@ -875,5 +878,226 @@ describe("topbar popover keyboard access", () => {
 
     // Cleanup
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  });
+});
+
+// Deterministic stand-in for the OS colour scheme, since happy-dom
+// cannot evaluate prefers-color-scheme queries.
+function stubColorScheme(initial: "light" | "dark"): {
+  set: (scheme: "light" | "dark") => void;
+} {
+  let scheme = initial;
+  const listeners = new Set<(e: Event) => void>();
+  const mql = {
+    get matches() {
+      return scheme === "light";
+    },
+    media: "(prefers-color-scheme: light)",
+    addEventListener: (_type: string, cb: (e: Event) => void) => {
+      listeners.add(cb);
+    },
+    removeEventListener: (_type: string, cb: (e: Event) => void) => {
+      listeners.delete(cb);
+    },
+  };
+  vi.stubGlobal("matchMedia", () => mql);
+  return {
+    set: (next) => {
+      scheme = next;
+      for (const cb of listeners) {
+        cb(new Event("change"));
+      }
+    },
+  };
+}
+
+describe("topbar theme toggle", () => {
+  beforeEach(() => {
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-theme-pref");
+  });
+
+  function themeOption(pref: string): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>(
+      `.theme-popover-option[data-theme-option="${pref}"]`,
+    );
+  }
+
+  it("As a dotli user, the theme button opens a menu with the current theme checked", async () => {
+    // Given
+    installTopbarDom();
+    stubColorScheme("dark");
+    localStorage.setItem("dotli-theme", "light");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const btn = document.getElementById("theme-toggle");
+    const popover = document.getElementById("theme-popover");
+
+    // When
+    btn?.click();
+
+    // Then
+    expect(popover?.classList.contains("open")).toBe(true);
+    expect(btn?.getAttribute("aria-expanded")).toBe("true");
+    expect(themeOption("light")?.getAttribute("aria-checked")).toBe("true");
+    expect(themeOption("dark")?.getAttribute("aria-checked")).toBe("false");
+    expect(themeOption("system")?.getAttribute("aria-checked")).toBe("false");
+    expect(document.activeElement).toBe(themeOption("light"));
+  });
+
+  it("As a dotli user, selecting a theme from the menu applies and persists it", async () => {
+    // Given
+    installTopbarDom();
+    stubColorScheme("light");
+    localStorage.setItem("dotli-theme", "light");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const btn = document.getElementById("theme-toggle");
+    const popover = document.getElementById("theme-popover");
+    btn?.click();
+
+    // When
+    themeOption("dark")?.click();
+
+    // Then
+    expect(localStorage.getItem("dotli-theme")).toBe("dark");
+    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
+      "dark",
+    );
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(themeOption("dark")?.getAttribute("aria-checked")).toBe("true");
+    expect(popover?.classList.contains("open")).toBe(false);
+    expect(btn?.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(btn);
+
+    // When selecting System with the OS in light mode
+    btn?.click();
+    themeOption("system")?.click();
+
+    // Then
+    expect(localStorage.getItem("dotli-theme")).toBe("system");
+    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
+      "system",
+    );
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  });
+
+  it("As a keyboard user, the theme menu supports arrow keys and Escape", async () => {
+    // Given
+    installTopbarDom();
+    stubColorScheme("dark");
+    localStorage.setItem("dotli-theme", "light");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const btn = document.getElementById("theme-toggle");
+    const popover = document.getElementById("theme-popover");
+    btn?.click();
+    expect(document.activeElement).toBe(themeOption("light"));
+
+    // When / Then: arrows move focus and wrap around the menu
+    popover?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
+    expect(document.activeElement).toBe(themeOption("dark"));
+    popover?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    );
+    popover?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    );
+    expect(document.activeElement).toBe(themeOption("system"));
+    popover?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+    );
+    expect(document.activeElement).toBe(themeOption("light"));
+
+    // When / Then: Escape closes without changing the theme
+    popover?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    expect(popover?.classList.contains("open")).toBe(false);
+    expect(btn?.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(btn);
+    expect(localStorage.getItem("dotli-theme")).toBe("light");
+  });
+
+  it("As a dotli user, clicking outside closes the theme menu", async () => {
+    // Given
+    installTopbarDom();
+    stubColorScheme("dark");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const btn = document.getElementById("theme-toggle");
+    const popover = document.getElementById("theme-popover");
+    btn?.click();
+    expect(popover?.classList.contains("open")).toBe(true);
+
+    // When
+    document.body.click();
+
+    // Then
+    expect(popover?.classList.contains("open")).toBe(false);
+    expect(btn?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("As a dotli user, the System option follows OS theme changes", async () => {
+    // Given
+    installTopbarDom();
+    const os = stubColorScheme("dark");
+    localStorage.setItem("dotli-theme", "system");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    let changes = 0;
+    const onThemeChanged = (): void => {
+      changes += 1;
+    };
+    window.addEventListener("dotli:theme-changed", onThemeChanged);
+    initTopBar();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    const changesAfterInit = changes;
+
+    // When
+    os.set("light");
+
+    // Then
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(changes).toBe(changesAfterInit + 1);
+    window.removeEventListener("dotli:theme-changed", onThemeChanged);
+  });
+
+  it("As a dotli user, an explicit theme ignores OS theme changes", async () => {
+    // Given
+    installTopbarDom();
+    const os = stubColorScheme("light");
+    localStorage.setItem("dotli-theme", "dark");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+
+    // When
+    os.set("dark");
+    os.set("light");
+
+    // Then
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
+      "dark",
+    );
+  });
+
+  it("As a dotli user, a fresh profile defaults to the System option", async () => {
+    // Given
+    installTopbarDom();
+    stubColorScheme("light");
+    const { initTopBar } = await import("@dotli/ui/topbar");
+
+    // When
+    initTopBar();
+
+    // Then
+    expect(localStorage.getItem("dotli-theme")).toBeNull();
+    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
+      "system",
+    );
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 });

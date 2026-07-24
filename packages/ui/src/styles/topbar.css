@@ -156,22 +156,42 @@
   opacity: 1;
   transform: scale(1);
 }
-/* Theme icons (main #theme-toggle and the more-row mirror): in dark mode
-   show moon (click to go light), in light mode show sun. CSS switches
-   purely on the `data-theme` attribute on <html>, which is set
-   synchronously by the inline boot script in index.html so both icons
-   never paint at once before JS attaches. */
 #theme-icon-sun,
-.more-row-icon-sun {
+.more-row-icon-sun,
+#theme-icon-system,
+.more-row-icon-system {
   display: none;
 }
-[data-theme="light"] #theme-icon-sun,
-[data-theme="light"] .more-row-icon-sun {
+[data-theme-pref="light"] #theme-icon-sun,
+[data-theme-pref="light"] .more-row-icon-sun {
   display: block;
 }
-[data-theme="light"] #theme-icon-moon,
-[data-theme="light"] .more-row-icon-moon {
+[data-theme-pref="light"] #theme-icon-moon,
+[data-theme-pref="light"] .more-row-icon-moon,
+[data-theme-pref="system"] #theme-icon-moon,
+[data-theme-pref="system"] .more-row-icon-moon {
   display: none;
+}
+[data-theme-pref="system"] #theme-icon-system,
+[data-theme-pref="system"] .more-row-icon-system {
+  display: block;
+}
+.theme-popover {
+  min-width: 150px;
+}
+.theme-popover-option .theme-popover-check {
+  margin-left: auto;
+  visibility: hidden;
+}
+.theme-popover-option[aria-checked="true"] {
+  color: #fff;
+}
+.theme-popover-option[aria-checked="true"] .theme-popover-check {
+  visibility: visible;
+}
+.theme-popover-option:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: -2px;
 }
 @starting-style {
   .more-popover.open {

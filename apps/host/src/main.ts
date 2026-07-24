@@ -833,7 +833,7 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
-  if (theme === "light" || theme === "dark") {
+  if (theme === "light" || theme === "dark" || theme === "system") {
     try {
       localStorage.setItem("dotli-theme", theme);
       // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode; theme restore is best-effort.

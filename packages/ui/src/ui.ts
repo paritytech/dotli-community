@@ -618,14 +618,18 @@ export function showLanding(): void {
 
   input.focus();
 
-  // Move auth + theme toggle buttons to the landing page top-right
+  // Move auth + theme toggle buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");
   const authButton = document.getElementById("auth-button");
   const themeToggle = document.getElementById("theme-toggle");
+  const themePopover = document.getElementById("theme-popover");
   if (landingAuth && authButton) {
     landingAuth.appendChild(authButton);
     if (themeToggle) {
       landingAuth.appendChild(themeToggle);
+      if (themePopover) {
+        landingAuth.appendChild(themePopover);
+      }
     }
   }
 
