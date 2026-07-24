@@ -61,7 +61,7 @@ Each product gets its own `<label>.app.paseo.li` origin, so versions of the same
 
 1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected to Asset Hub Paseo, querying dotNS contracts.
 2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via smoldot `bitswap_v1_get` JSON-RPC or an IPFS gateway.
-3. **Renders** the content in a sandboxed iframe with a full host-container bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage.
+3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage.
 
 ```
 host-playground.paseo.li
@@ -116,7 +116,7 @@ On repeat visits, content renders instantly from the cache while it is resolved 
 
 If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification with a **Reload** action rather than swapping content silently.
 
-## Host-container bridge
+## TrUAPI bridge
 
 Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:
 
@@ -124,18 +124,16 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | ------------------------------ | ---------------------------------------------------------------------- |
 | `accountGet`                   | Derives a per-app public key via HDKD soft derivation                  |
 | `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host |
-| `signPayload` / `signRaw`      | Shows signing modals, delegates to host-papp session                   |
-| `chainConnection`              | Returns a smoldot-backed JsonRpcProvider for supported chains          |
+| `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session     |
+| `chainConnection`              | Returns an isolated broker connection over the selected chain backend  |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                |
 | `navigateTo`                   | Opens URLs in new tabs                                                 |
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)   |
 | `connectionStatus`             | Streams auth state changes to the SPA                                  |
 
-### Nested dApp support
+### App iframe model
 
-dApps can embed other dApps via iframes (e.g. a marketplace app embedding a payments app). The host automatically detects nested dApps and creates separate bridges for each one, regardless of nesting depth.
-
-When the host receives a protocol message from an unknown iframe window, it dynamically creates a new container bridge targeting that window. The dApp SDK always sends to `window.top`, so all nested dApps communicate directly with the host — no relay needed.
+The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must use the top-level product's shared Rust core/provider context rather than separate host-created bridges.
 
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
@@ -156,9 +154,63 @@ bun install
 bun run preview          # Build + serve both apps on localhost:5173
 ```
 
+The TrUAPI packages are installed from their published `@parity` packages. To
+iterate against a local truapi checkout instead, run:
+
+```bash
+bun run link:truapi
+```
+
+When dotli is not checked out under `truapi/hosts/dotli`, point the script at
+the truapi repo:
+
+```bash
+TRUAPI_REPO=/path/to/truapi bun run link:truapi
+```
+
+Return to the package versions recorded in `bun.lock` with:
+
+```bash
+bun run unlink:truapi
+```
+
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
+
+### Running the host-playground E2E locally
+
+The product E2E suite can load the source checkout directly through dotli's
+localhost proxy instead of resolving the published `host-playground.dot` CID.
+By default it expects the product at `../../../host-playground` relative to this
+repository and the local signing bot at `http://localhost:3737/`:
+
+```bash
+bun run test:e2e:local
+```
+
+Override either checkout or server when needed:
+
+```bash
+E2E_PRODUCT_REPO=/path/to/host-playground \
+E2E_PRODUCT_URL=http://localhost:5199 \
+bun run test:e2e:local
+```
+
+The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same
+flow through either light-client backend:
+
+```bash
+E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
+```
+
+The signer can run natively or in Docker; set `SIGNER_BOT_BASE_URL`,
+`SIGNER_BOT_SVC_TOKEN`, and `SIGNER_BOT_NETWORK` when its published port or
+credentials differ from the defaults.
+
+The command builds dotli with its debug-only localhost proxy enabled, starts
+both preview servers through Playwright, pairs once through the signer bot, and
+runs the same host-product suite used in CI.
 
 ### Running an approved build
 
@@ -174,7 +226,7 @@ The published tag on the [Releases page](https://github.com/paritytech/dotli/rel
 
 ## Debug panel
 
-dotli ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, host-papp SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
+dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploys at `paseoli.dev` / `dotli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
 

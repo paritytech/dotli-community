@@ -5,16 +5,18 @@ import {
   isDevicePermission,
   type EnforceablePermissionName,
 } from "./permissions";
+import { blockingModalAbortError } from "./blocking-modal-queue";
 
 // dot.li Permission request modal (vanilla DOM)
 //
 // Shows a confirmation dialog when a product requests a permission the
 // host can actually gate: the Permissions-Policy-backed device
 // variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
-// Biometrics, Notifications) and the internal submitted gates (ChainSubmit,
-// PreimageSubmit, StatementSubmit). `OpenUrl` is auto-granted at the
-// container level and never reaches this modal.
-// Returns a Promise that resolves on "Allow" and rejects on "Deny".
+// Biometrics, Notifications), identity disclosure, and the internal submitted
+// gates (ChainSubmit, PreimageSubmit, StatementSubmit). `OpenUrl` is
+// auto-granted at the container level and never reaches this modal.
+// Returns an explicit decision so callers can distinguish "Deny" from
+// dismissing the dialog without storing a denial.
 //
 // DOM structure follows the signing modal pattern (signing.css).
 
@@ -30,10 +32,10 @@ export const PERMISSION_DESCRIPTIONS: Record<
   NFC: "Read and write nearby NFC tags",
   Clipboard: "Read text and data from your clipboard",
   Biometrics: "Authenticate with a platform passkey or biometric prompt",
+  IdentityDisclosure: "Share your primary DotNS identity with this app",
   ChainSubmit: "Sign and submit on-chain transactions on your behalf",
   PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
   StatementSubmit: "Submit signed statements to the statement store",
-  GetUserId: "Reveal your dotNS username to this app",
 };
 
 const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
@@ -72,6 +74,11 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<path d="M12 11a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0v-2a4 4 0 0 0-4-4z"/>' +
     '<path d="M6 11a6 6 0 0 1 12 0"/>' +
     '<path d="M4 11a8 8 0 0 1 16 0"/></svg>',
+  IdentityDisclosure:
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="8" r="4"/>' +
+    '<path d="M4 21a8 8 0 0 1 16 0"/>' +
+    '<path d="M19 3v4h4"/></svg>',
   ChainSubmit:
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>' +
@@ -87,20 +94,18 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<polyline points="14 2 14 8 20 8"/>' +
     '<line x1="8" y1="13" x2="16" y2="13"/>' +
     '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
-  GetUserId:
-    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>' +
-    '<circle cx="12" cy="7" r="4"/></svg>',
 };
 
+export type PermissionPromptDecision = "granted" | "denied" | "dismissed";
+
 /**
- * Show a permission request modal. Resolves when the user clicks "Allow",
- * rejects when the user clicks "Deny".
+ * Show a permission request modal.
  */
 export function showPermissionRequestModal(
   label: string,
   permission: EnforceablePermissionName,
-): Promise<void> {
+  signal?: AbortSignal,
+): Promise<PermissionPromptDecision> {
   return new Promise((resolve, reject) => {
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
@@ -181,25 +186,48 @@ export function showPermissionRequestModal(
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
 
+    let settled = false;
     function cleanup(): void {
+      signal?.removeEventListener("abort", onAbort);
       backdrop.remove();
     }
 
-    denyBtn.addEventListener("click", () => {
+    function finish(decision: PermissionPromptDecision): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
       cleanup();
-      reject(new Error("User denied permission"));
+      resolve(decision);
+    }
+
+    function onAbort(): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(blockingModalAbortError(signal?.reason));
+    }
+
+    if (signal?.aborted === true) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    denyBtn.addEventListener("click", () => {
+      finish("denied");
     });
 
     allowBtn.addEventListener("click", () => {
-      cleanup();
-      resolve();
+      finish("granted");
     });
 
     // Close on backdrop click (outside modal)
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
-        cleanup();
-        reject(new Error("User dismissed permission dialog"));
+        finish("dismissed");
       }
     });
   });

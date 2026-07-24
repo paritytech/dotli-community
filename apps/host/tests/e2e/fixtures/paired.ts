@@ -4,9 +4,14 @@
 import { test as base, type Page, type Frame } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { STATE_FILE } from "./paths";
+import {
+  E2E_CHAIN_BACKEND,
+  initializeChainBackend,
+} from "../helpers/chain-backend";
 
 const PORT = process.env.PORT ?? "5173";
 const HOST = process.env.E2E_HOST ?? "host-playground";
+const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
 
 // Restored-session badge wait. The bot was paired once in globalSetup, the
 // storageState restores the host's auth on every context, so seeing the
@@ -118,7 +123,7 @@ export const test = base.extend<
         if (
           type === "error" ||
           type === "warning" ||
-          /\[dotli|\[dot\.li|host-papp|statement.store|signing/i.test(text)
+          /\[dotli|\[dot\.li|statement.store|signing/i.test(text)
         ) {
           const isFullText =
             type === "error" ||
@@ -138,15 +143,7 @@ export const test = base.extend<
 
       // Mirror the init flags globalSetup used so the page boots into the
       // same backend mode and the restored localStorage stays consistent.
-      await page.addInitScript(() => {
-        try {
-          localStorage.setItem("dotli:mode", "gateway");
-          localStorage.setItem("dotli:chain-backend", "rpc");
-          localStorage.setItem("dotli:content-backend", "ipfs-gateway");
-        } catch {
-          /* ignore */
-        }
-      });
+      await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
 
       // WebSocket frames: statement_submit / broadcast traffic for
       // diagnosing the signing tests. Filtered to avoid chain-head spam.
@@ -171,13 +168,19 @@ export const test = base.extend<
         console.log(`[ws] CDP attach failed: ${(e as Error).message}`);
       }
 
-      await page.goto(`http://${HOST}.localhost:${PORT}/`, {
+      const productHostUrl =
+        PRODUCT_URL === undefined
+          ? `http://${HOST}.localhost:${PORT}/`
+          : `http://localhost:${PORT}/${new URL(PRODUCT_URL).host}`;
+      await page.goto(productHostUrl, {
         timeout: 60_000,
       });
-      await page
-        .getByRole("button", { name: "Switch to Gateway" })
-        .click({ timeout: 5_000 })
-        .catch(() => {});
+      if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+        await page
+          .getByRole("button", { name: "Switch to Gateway" })
+          .click({ timeout: 5_000 })
+          .catch(() => {});
+      }
 
       const restoreStart = Date.now();
       await page

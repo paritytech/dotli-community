@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "@playwright/test";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { baseConfig } from "../playwright.base.config";
 
@@ -21,6 +21,8 @@ try {
 } catch {
   /* no .env, env must already be set */
 }
+
+const localProductUrl = process.env.E2E_PRODUCT_URL;
 
 // Stale-dist guard. The preview server serves built artifacts from
 // `apps/{host,sandbox,protocol}/dist`. If those are older than the lockfile
@@ -50,8 +52,49 @@ if (process.env.CI !== "true") {
   }
 }
 
+const dotliWebServer = {
+  command: "bun ../../../../scripts/preview-server.ts",
+  url: `http://localhost:${process.env.PORT ?? "5173"}`,
+  reuseExistingServer: true,
+  timeout: 30_000,
+};
+
+const webServer: Array<
+  typeof dotliWebServer & {
+    cwd?: string;
+  }
+> = [dotliWebServer];
+if (localProductUrl !== undefined) {
+  const productUrl = new URL(localProductUrl);
+  if (
+    productUrl.protocol !== "http:" ||
+    (productUrl.hostname !== "localhost" && productUrl.hostname !== "127.0.0.1")
+  ) {
+    throw new Error(
+      `E2E_PRODUCT_URL must be a loopback HTTP URL, got ${localProductUrl}`,
+    );
+  }
+  const hostPlaygroundRoot = resolve(
+    process.env.E2E_PRODUCT_REPO ??
+      resolve(repoRoot, "../../../host-playground"),
+  );
+  if (!existsSync(resolve(hostPlaygroundRoot, "package.json"))) {
+    throw new Error(
+      `host-playground checkout not found at ${hostPlaygroundRoot}. Set E2E_PRODUCT_REPO=/path/to/host-playground.`,
+    );
+  }
+  webServer.unshift({
+    command: `yarn dev --port ${productUrl.port || "80"}`,
+    cwd: hostPlaygroundRoot,
+    url: productUrl.origin,
+    reuseExistingServer: true,
+    timeout: 30_000,
+  });
+}
+
 export default defineConfig({
   ...baseConfig,
+  webServer,
   testDir: ".",
   // Co-locate traces with results.json (configDir-relative). The default is
   // packageJsonDir/test-results, which the CI upload step doesn't cover.

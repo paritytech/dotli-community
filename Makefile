@@ -68,16 +68,29 @@ SENTRY_PROJECT   := $(lastword  $(subst /, ,$(_sentry_hostpath)))
 # Default env when none is passed on the command line.
 ENV ?= paseo
 
+# When this repo is checked out as truapi/hosts/dotli, local make builds should
+# consume the checked-out TrUAPI packages instead of the temporary npm aliases.
+TRUAPI_REPO ?= $(abspath ../..)
+TRUAPI_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi/package.json
+TRUAPI_HOST_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi-host/package.json
+
 # Packages required on a fresh Ubuntu 22.04+ box. The brotli module is split
 # across two packages on noble (filter + static) and both ship a drop-in in
 # /etc/nginx/modules-enabled/ so they auto-load. curl and ca-certificates
 # back certbot's API calls.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-.PHONY: build provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
+.PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
-build:
+build: link-truapi-local
 	bun run build
+
+link-truapi-local:
+	@if [ -f "$(TRUAPI_LOCAL_PACKAGE)" ] && [ -f "$(TRUAPI_HOST_LOCAL_PACKAGE)" ]; then \
+		TRUAPI_REPO="$(TRUAPI_REPO)" bun run link:truapi; \
+	else \
+		echo "No local TrUAPI checkout found at $(TRUAPI_REPO); using package manager dependencies."; \
+	fi
 
 # ====================================================================
 # Fresh-server provisioning. Idempotent; safe to re-run.

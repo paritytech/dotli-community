@@ -12,14 +12,18 @@ dotli embeds the [smoldot](https://github.com/smol-dot/smoldot) Polkadot light c
 
 ## Where smoldot lives
 
-In default config, exactly one smoldot client runs per session, owned by the protocol iframe.
+The protocol iframe owns the resolver and sandbox-facing smoldot client. When
+the host backend is set to Light Client, the host shell also starts a smoldot
+client for Rust-core `chain.connect` requests.
 
 | Origin | Purpose | Triggered by |
 |---|---|---|
-| Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), bitswap content fetching, Bulletin Paseo preimage submission | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | None today, except an opt-in path: People chain auth when `VITE_SS_USE_SMOLDOT=true` | `packages/auth/src/auth.ts:210` (`getPeopleChainProvider()`, opt-in only) |
+| Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
+| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/ui/src/host-callbacks/Chain.ts` |
 
-The protocol-iframe smoldot is constructed via the singletons in `packages/resolver/src/smoldot.ts`. The opt-in People-chain path on the host shell still spins up a second smoldot at the user's origin, gated by the `VITE_SS_USE_SMOLDOT` env flag.
+Both origins construct smoldot through the singletons in
+`packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
+to configured WebSocket endpoints and does not start the host-shell client.
 
 ## Smoldot factories
 
@@ -38,12 +42,13 @@ Five chain factories ship in `packages/resolver/src/smoldot.ts`.
 |---|---|---|---|
 | `getRelayChain()` | Paseo relay | Required parent for the parachains below | `PASEO_RELAY_GENESIS` (`config.ts:83`) |
 | `getDappAssetHubChain()` | Asset Hub Paseo | Domain resolution and product queries (single shared chain) | `ASSET_HUB_PASEO_GENESIS` (`config.ts:85`) |
-| `getBulletinChain()` | Bulletin Paseo | Preimage submission via `TransactionStorage.store` | `BULLETIN_PASEO_GENESIS` (`config.ts:87`) |
-| `getPeopleChain()` | People (chain spec selected by `SS_PEOPLE_CHAIN`, currently `next-people-paseo`) | Statement-store auth | not in `SUPPORTED_GENESIS_HASHES` |
+| `getBulletinChain()` | Bulletin Paseo | Content reads and Rust-core preimage submission | active network config |
+| `getPeopleChain()` | People | Statement-store auth | active network config |
 
 There is exactly one Asset Hub chain (`getDappAssetHubChain()`, `smoldot.ts:519`), shared by the resolver and every dApp session through the `ChainBroker`. The broker opens a single follow that is never removed mid-read. The resolver reads through a local broker session (`broker.getLocalProvider(genesis)`, object-wire), and dApp connections attach as remote sessions on the same follow. This replaced the earlier resolver/product chain split. In that split the resolver's chain was released once the CID was cached, so the first dApp connection releasing that follow mid-read produced the `ChainHead disjointed` load failure.
 
-`SUPPORTED_GENESIS_HASHES` (`config.ts:90`) contains relay, Asset Hub, and Bulletin. People chain is not in the set today, which is why the host shell still spins up its own smoldot for it under `VITE_SS_USE_SMOLDOT=true`.
+`getActiveSupportedGenesisHashes()` contains the active network's relay, Asset
+Hub, Bulletin, and People chains.
 
 ## Protocol modes
 
@@ -57,7 +62,10 @@ The host shell selects the submode from `chainBackend` at `apps/host/src/main.ts
 
 ## Talking to a chain
 
-Code in `packages/ui`, `packages/auth`, and `apps/host` must not import `@dotli/resolver/{smoldot,bulletin,chains,resolve}`. Use the cross-origin seam exposed by `@dotli/protocol/client`:
+Sandbox-facing consumers use the cross-origin seam exposed by
+`@dotli/protocol/client`. The host's Rust-core `chain.connect` callback is the
+exception: it imports `@dotli/resolver/chains` and
+`@dotli/resolver/rpc-chain` to honor the selected backend.
 
 ```ts
 import { createRemoteChainProvider } from "@dotli/protocol/client";
@@ -74,7 +82,7 @@ const client = createClient(provider); // polkadot-api
 
 Resolution helpers are pre-built: `resolveDotNameRemote(label)` and `resolveOwnerRemote(label)` at `client.ts:525` and `client.ts:537`. Call these instead of the resolver's local equivalents.
 
-For Bulletin Paseo preimage submission, use `submitPreimageRemote(value)` (`client.ts:543`). The protocol iframe runs the full submit flow (build extrinsic, sign with the test signer, watch until included) against its bulletin chain. Consumers never hold key material.
+Bulletin preimage submission is built, signed, and submitted entirely by the Rust core (`truapi-server`), which routes its `TransactionStorage.store` traffic through the host `chain.connect` callback like any other chain access. The host only provides `PreimageHost.lookupPreimage` for content retrieval; it no longer builds or signs the transaction.
 
 ## Persistence
 
@@ -91,14 +99,12 @@ Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's 
 
 ## Owner-only APIs
 
-These resolver-package exports are owner-only and must not be imported outside `apps/protocol/`:
+These resolver-package exports are owner-only and must not be imported outside
+`apps/protocol/`, except for the host chain callback described above:
 
 - `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getDappAssetHubChain`, `getDappAssetHubProvider`, `makeNonRemovingChain`, `getPeopleChainProvider`
-- `bulletin.ts`: `ensureBulletinClient`, `submitPreimageTransaction`, `getTestSigner`
-- `chains.ts`: `createChainProvider`, `isChainSupported`
+- `chains.ts`: `createChainProvider`, `isChainSupported` (host chain callback only)
 - `resolve.ts` re-exports of `getSmoldot`, `getSmoldotDirect`, `getRelayChain`, `onConnectionIssue` plus the chain-touching helpers `resolveDotName`, `resolveOwner`, `waitForAssetHubFinalized`, `destroyResolverClient`, and `setResolverAssetHubProvider` (the bootstrap seam that points the resolver's Asset Hub reads at the broker's local session)
-
-Enforced by `packages/ui/tests/owner-boundary.contract.test.ts`, which currently bans `@dotli/resolver/bulletin` imports in `packages/ui/src/`, `packages/auth/src/`, and `apps/host/src/`. The remaining reach-in is `packages/auth/src/auth.ts:24` (`getPeopleChainProvider`), gated by `VITE_SS_USE_SMOLDOT` and out of scope for this change.
 
 ## Adding a new chain
 
@@ -109,9 +115,10 @@ Steps to make a parachain reachable through the protocol iframe. The sequence be
 3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
 4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
 5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Consumer code calls `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol/client`. No host-side smoldot required.
+6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol/client`; Rust-core access uses the host `chain.connect` callback.
 
-Steps 4 and 5 are what makes a chain reachable from the host shell across the postMessage seam. Skip them and the host either crashes with `"Unsupported chain"` or silently spins up its own smoldot. This is the current People chain situation.
+Steps 4 and 5 make a chain reachable from both the protocol broker and the
+host callback. Skip them and the request fails with `"Unsupported chain"`.
 
 ## Related
 

@@ -4,19 +4,17 @@
 // TrUAPI chain message decoder
 //
 // Pure function that takes a TrUAPI payload tag (e.g.
-// `remote_chain_head_body_request`) plus its already-decoded value and
-// returns the JSON-RPC-level correlation keys the event carries:
-// `genesisHash`, `followSubscriptionId`, `operationId`, `blockHash`,
-// and (for follow receive events) the ChainHeadEvent variant tag.
+// `remote_chain_head_body_request`) plus an already-decoded value and returns
+// the JSON-RPC-level correlation keys the event carries: `genesisHash`,
+// `followSubscriptionId`, `operationId`, `blockHash`, and (for follow receive
+// events) the ChainHeadEvent variant tag.
 //
-// The hook in @novasamatech/host-container delivers payloads in
-// already-decoded form (scale-ts conventions: Hex becomes a hex string,
-// Option becomes T|undefined, Nullable becomes T|null, Enum becomes
-// {tag, value}, Result becomes {success, value}), so this module is a
-// shape-matching walk, not a SCALE decode.
+// Current dotli producers emit wire metadata plus raw SCALE bytes:
+// `{ wireId, bytes }`. Those raw payloads intentionally return null here.
+// The shape-matching decoder below is retained for any producer that opts into
+// method-payload decoding before insertion.
 //
-// Shapes mirror packages/host-api/src/protocol/v1/chainInteraction.ts
-// in the triangle-js-sdks repo.
+// Shapes mirror the TrUAPI chain callback payloads.
 
 /** High-level categorisation of a chain message. Direction (request vs
  *  response vs subscription start/receive) is already known from the
@@ -105,6 +103,9 @@ export function decodeChainAnnotations(
   tag: string,
   rawPayload: unknown,
 ): ChainAnnotations | null {
+  if (isRawWirePayload(rawPayload)) {
+    return null;
+  }
   const payload = peelVersion(rawPayload);
   switch (tag) {
     // chainHead.follow subscription
@@ -251,6 +252,18 @@ export function decodeChainAnnotations(
     default:
       return null;
   }
+}
+
+function isRawWirePayload(payload: unknown): boolean {
+  const obj = asObj(payload);
+  return (
+    typeof obj?.wireId === "number" &&
+    (obj.bytes instanceof Uint8Array ||
+      (typeof obj.bytes === "object" &&
+        obj.bytes !== null &&
+        (obj.bytes as { constructor?: { name?: string } }).constructor?.name ===
+          "Uint8Array"))
+  );
 }
 
 /**
@@ -408,12 +421,10 @@ function extractErrorReason(v: unknown): string | undefined {
   if (o === undefined) {
     return undefined;
   }
-  // `Err()` from @novasamatech/scale wraps struct data in an Error
-  // instance whose payload holds the struct, so `.payload.reason` is the
-  // canonical location. Top-level `.reason` is kept as a fallback in
-  // case a future error shape skips the Error wrapper, and the Error's
-  // `.message` is the last resort so we never render "err: ?" when
-  // there's a usable string somewhere on the value.
+  // Error-shaped decoded values can carry structured details in
+  // `.payload.reason`. Top-level `.reason` is kept as a fallback, and the
+  // Error's `.message` is the last resort so we never render "err: ?"
+  // when there's a usable string somewhere on the value.
   const payload = asObj(o.payload);
   const reason = asString(payload?.reason) ?? asString(o.reason);
   if (reason !== undefined) {

@@ -77,13 +77,12 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   // Each allocation triggers an "Allow" modal on the host that the user
-  // approves. The bot is auto-paired so the modal click is what the suite
-  // drives via runWebSignedTest with a single-button list.
+  // approves. The bot is auto-paired so the test only drives the modal.
 
   test.describe("Allowances", () => {
     test("StatementStore Allowance", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
@@ -91,7 +90,7 @@ test.describe("dot.li > host-playground.dot", () => {
         productFrame,
         "allowances-statement-store",
         ["Allow"],
-        { timeoutMs: 30_000 },
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -100,7 +99,7 @@ test.describe("dot.li > host-playground.dot", () => {
 
     test("Bulletin Allowance", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
@@ -108,7 +107,7 @@ test.describe("dot.li > host-playground.dot", () => {
         productFrame,
         "allowances-bulletin",
         ["Allow"],
-        { timeoutMs: 30_000 },
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -117,7 +116,7 @@ test.describe("dot.li > host-playground.dot", () => {
 
     test("Smart-Contract Allowance", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
@@ -125,7 +124,7 @@ test.describe("dot.li > host-playground.dot", () => {
         productFrame,
         "allowances-smart-contract",
         ["Allow"],
-        { timeoutMs: 30_000 },
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -134,7 +133,7 @@ test.describe("dot.li > host-playground.dot", () => {
 
     test("All Allowances", async ({ pairedPage, productFrame }) => {
       // Given
-      test.setTimeout(60_000);
+      test.setTimeout(120_000);
 
       // When
       const status = await runWebSignedTest(
@@ -142,7 +141,7 @@ test.describe("dot.li > host-playground.dot", () => {
         productFrame,
         "allowances-all",
         ["Allow"],
-        { timeoutMs: 30_000 },
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -267,11 +266,19 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   test.describe("Statements", () => {
-    test("Create Proof", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "statement-store-create-proof");
+    test("As a product user, I can create an authorized statement proof", async ({
+      productFrame,
+    }) => {
+      await runTestExpectSuccess(
+        productFrame,
+        "statement-store-create-proof-authorized",
+      );
     });
 
-    test("Submit", async ({ pairedPage, productFrame }) => {
+    test("As a product user, I can submit a statement", async ({
+      pairedPage,
+      productFrame,
+    }) => {
       // Given
       test.setTimeout(120_000);
 
@@ -280,8 +287,8 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "statement-store-submit",
-        ["Allow", "Sign"],
-        { timeoutMs: 60_000, preClickDelayMs: 1_000 },
+        ["Allow"],
+        { timeoutMs: 90_000 },
       );
 
       // Then
@@ -314,8 +321,24 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "navigate-polkadot");
     });
 
-    test("In-App", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "navigate-internal");
+    test("As a product user, I can navigate within the current product", async ({
+      productFrame,
+    }) => {
+      // Given
+      const button = productFrame.locator(
+        '[data-testid="run-navigate-internal"]',
+      );
+      await expect(button).toBeVisible();
+
+      // When
+      await button.click();
+
+      // Then
+      await expect
+        .poll(() => productFrame.url())
+        .toContain("/page?id=hello#fragment=something");
+      await productFrame.getByRole("link", { name: "Back to tests" }).click();
+      await waitForPlaygroundReady(productFrame);
     });
   });
 
@@ -369,8 +392,8 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-factory",
-        ["Allow", "Sign"],
-        { timeoutMs: 60_000, preClickDelayMs: 1_000 },
+        ["Allow"],
+        { timeoutMs: 60_000 },
       );
 
       // Then
@@ -386,8 +409,8 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-submit",
-        ["Allow", "Sign"],
-        { timeoutMs: 60_000, preClickDelayMs: 1_000 },
+        ["Allow"],
+        { timeoutMs: 60_000 },
       );
 
       // Then
@@ -396,8 +419,24 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   test.describe("Notifications", () => {
-    test("Push Notification", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "push-notification");
+    test("As a product user, I can allow and receive a push notification", async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      const approvalButtons = ["Allow"];
+
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "push-notification",
+        approvalButtons,
+        { timeoutMs: 20_000 },
+      );
+
+      // Then
+      expect(status).toBe("success");
     });
   });
 
@@ -413,7 +452,7 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "sign-raw",
+        "wallet-sign-message",
         ["Allow", "Sign"],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );

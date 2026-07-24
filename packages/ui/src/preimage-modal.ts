@@ -9,13 +9,18 @@
 //
 // DOM structure follows the signing modal pattern (signing.ts).
 
+import { blockingModalAbortError } from "./blocking-modal-queue";
+
 function formatSize(bytes: number): string {
   return bytes >= 1024
     ? `${String(Math.round(bytes / 1024))} KB`
     : `${String(bytes)} B`;
 }
 
-export function showPreimageSubmitModal(dataSize: number): Promise<void> {
+export function showPreimageSubmitModal(
+  dataSize: number,
+  signal?: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
@@ -63,18 +68,41 @@ export function showPreimageSubmitModal(dataSize: number): Promise<void> {
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
 
+    let settled = false;
     function cleanup(): void {
+      signal?.removeEventListener("abort", onAbort);
       backdrop.remove();
     }
 
-    cancelBtn.addEventListener("click", () => {
+    function finish(error?: Error): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
       cleanup();
-      reject(new Error("User denied preimage submit"));
+      if (error === undefined) {
+        resolve();
+      } else {
+        reject(error);
+      }
+    }
+
+    function onAbort(): void {
+      finish(blockingModalAbortError(signal?.reason));
+    }
+
+    if (signal?.aborted === true) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    cancelBtn.addEventListener("click", () => {
+      finish(new Error("User denied preimage submit"));
     });
 
     allowBtn.addEventListener("click", () => {
-      cleanup();
-      resolve();
+      finish();
     });
   });
 }
