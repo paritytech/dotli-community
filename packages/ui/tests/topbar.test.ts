@@ -353,6 +353,42 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
   });
 
+  it("As a dotli integrator, the host cancels the in-flight login when Escape closes the pairing modal", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    let cancels = 0;
+    window.addEventListener("dotli:truapi-cancel-login", () => {
+      cancels += 1;
+    });
+
+    // When
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+        },
+      }),
+    );
+    await flushMicrotasks();
+
+    // Then
+    const backdrop = document.getElementById("auth-modal-backdrop");
+    expect(backdrop?.classList.contains("open")).toBe(true);
+    expect(document.activeElement).toBe(backdrop);
+
+    // When
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // Then
+    expect(backdrop?.classList.contains("open")).toBe(false);
+    expect(cancels).toBe(1);
+    expect(document.activeElement).toBe(document.getElementById("auth-button"));
+  });
+
   it("As a dotli integrator, the host closes the pairing modal when the session connects", async () => {
     // Given
     installTopbarDom();
@@ -602,5 +638,242 @@ describe("topbar permissions", () => {
     expect(document.querySelectorAll(".permissions-popover-row")).toHaveLength(
       ALL_PERMISSIONS.length,
     );
+  });
+});
+
+describe("topbar popover keyboard access", () => {
+  it("As a dotli integrator, the host closes the settings popover on Escape and restores trigger focus", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const modeButton = document.getElementById("mode-button");
+    const modePopover = document.getElementById("mode-popover");
+
+    // When
+    modeButton?.click();
+
+    // Then
+    expect(modePopover?.classList.contains("open")).toBe(true);
+    expect(modeButton?.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(modePopover);
+
+    // When
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // Then
+    expect(modePopover?.classList.contains("open")).toBe(false);
+    expect(modeButton?.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(modeButton);
+  });
+
+  it("As a dotli integrator, the host wraps Tab focus inside the settings popover", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    document.getElementById("mode-button")?.click();
+    const modePopover = document.getElementById("mode-popover");
+    const focusables = Array.from(
+      modePopover?.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled])",
+      ) ?? [],
+    );
+    expect(focusables.length).toBeGreaterThan(1);
+    focusables[focusables.length - 1].focus();
+
+    // When
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
+
+    // Then
+    expect(document.activeElement).toBe(focusables[0]);
+
+    // When
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true }),
+    );
+
+    // Then
+    expect(document.activeElement).toBe(focusables[focusables.length - 1]);
+
+    // Close so the trap's document listener doesn't leak into other tests.
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  });
+
+  it("As a dotli integrator, the host lets Escape close the permission dropdown before the popover", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const { registerPermissionAuthorizationProvider } =
+      await import("@dotli/ui/permissions");
+    registerPermissionAuthorizationProvider("localhost:3000", {
+      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
+        requests.map(() => "NotDetermined" as const),
+      ),
+      setPermissionAuthorizationStatus: vi.fn(async () => {}),
+    });
+    initTopBar();
+    window.dispatchEvent(
+      new CustomEvent("dotli:product-loaded", {
+        detail: { label: "localhost:3000" },
+      }),
+    );
+    const permissionsButton = document.getElementById("permissions-button");
+    const permissionsPopover = document.getElementById("permissions-popover");
+    permissionsButton?.click();
+    await flushMicrotasks();
+    document
+      .querySelector<HTMLButtonElement>(".permissions-popover-select")
+      ?.click();
+    expect(document.querySelector(".permissions-popover-menu")).not.toBeNull();
+
+    // When
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // Then
+    expect(document.querySelector(".permissions-popover-menu")).toBeNull();
+    expect(permissionsPopover?.classList.contains("open")).toBe(true);
+
+    // When
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // Then
+    expect(permissionsPopover?.classList.contains("open")).toBe(false);
+    expect(permissionsButton?.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(permissionsButton);
+  });
+
+  it("As a dotli integrator, the host names each permission select for screen readers", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const { registerPermissionAuthorizationProvider } =
+      await import("@dotli/ui/permissions");
+    registerPermissionAuthorizationProvider("localhost:3000", {
+      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
+        requests.map(() => "NotDetermined" as const),
+      ),
+      setPermissionAuthorizationStatus: vi.fn(async () => {}),
+    });
+    initTopBar();
+    window.dispatchEvent(
+      new CustomEvent("dotli:product-loaded", {
+        detail: { label: "localhost:3000" },
+      }),
+    );
+    document.getElementById("permissions-button")?.click();
+    await flushMicrotasks();
+
+    // Then: the select's accessible name covers the permission and its value
+    const select = document.querySelector<HTMLButtonElement>(
+      ".permissions-popover-select",
+    );
+    const labelIds = select?.getAttribute("aria-labelledby")?.split(" ") ?? [];
+    const labelText = labelIds
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(" ");
+    expect(labelText).toBe("Notifications Ask (Default)");
+
+    // When: opening the dropdown focuses the selected option
+    select?.click();
+
+    // Then
+    const menu = document.querySelector<HTMLElement>(
+      ".permissions-popover-menu",
+    );
+    expect(menu?.getAttribute("aria-label")).toBe("Notifications permission");
+    const selected = menu?.querySelector<HTMLButtonElement>(
+      '[aria-selected="true"]',
+    );
+    expect(document.activeElement).toBe(selected);
+
+    // When: ArrowDown moves focus to the next option
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
+
+    // Then
+    expect(document.activeElement?.textContent).toBe("Allowed");
+
+    // When: Escape closes the dropdown and returns focus to the select
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // Then
+    expect(document.activeElement).toBe(select);
+
+    // Cleanup: close the popover
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  });
+
+  it("As a dotli integrator, the host keeps focus on the row select after changing a permission", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const { registerPermissionAuthorizationProvider } =
+      await import("@dotli/ui/permissions");
+    const setPermissionAuthorizationStatus = vi.fn(async () => {});
+    registerPermissionAuthorizationProvider("localhost:3000", {
+      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
+        requests.map(() => "NotDetermined" as const),
+      ),
+      setPermissionAuthorizationStatus,
+    });
+    initTopBar();
+    window.dispatchEvent(
+      new CustomEvent("dotli:product-loaded", {
+        detail: { label: "localhost:3000" },
+      }),
+    );
+    document.getElementById("permissions-button")?.click();
+    await flushMicrotasks();
+
+    // When: pick a new value from the Camera dropdown
+    const selectId = "permissions-popover-select-Camera";
+    document.getElementById(selectId)?.click();
+    const allow = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".permissions-popover-menu-item",
+      ),
+    ).find((item) => item.textContent === "Allowed");
+    allow?.click();
+    await vi.waitFor(() => {
+      expect(setPermissionAuthorizationStatus).toHaveBeenCalledTimes(1);
+    });
+
+    // Then: the re-rendered list restores focus to the same row's select
+    await vi.waitFor(() => {
+      expect(document.activeElement?.id).toBe(selectId);
+    });
+
+    // Cleanup: close the popover
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  });
+
+  it("As a dotli integrator, the host keeps focus on the checked backend radio across re-renders", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    document.getElementById("mode-button")?.click();
+    const group = document.querySelector<HTMLElement>(
+      '[role="radiogroup"][aria-label="Backend"]',
+    );
+    expect(group).not.toBeNull();
+    const toggle = document.querySelector('[role="switch"]');
+    expect(toggle?.getAttribute("aria-label")).toBe("dotNS cache");
+
+    // When: the user picks another backend
+    const next = Array.from(
+      group?.querySelectorAll<HTMLInputElement>("input") ?? [],
+    ).find((radio) => !radio.checked && !radio.disabled);
+    next?.click();
+
+    // Then: the rebuilt group keeps focus on the newly checked radio
+    const checked = group?.querySelector<HTMLInputElement>("input:checked");
+    expect(checked?.value).toBe(next?.value);
+    expect(document.activeElement).toBe(checked);
+
+    // Cleanup: close the popover
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 });
