@@ -9,7 +9,8 @@
 import { getRecentLabels, addRecentLabel } from "@dotli/storage/cid-cache";
 import { BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";
-import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
+import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
+import type { DotLabelResult } from "@dotli/shared/html";
 
 const app = document.getElementById("app") ?? document.body;
 
@@ -511,6 +512,20 @@ function animateLandingPlaceholder(input: HTMLInputElement): void {
   mode = "holding";
   schedule(LANDING_PLACEHOLDER_HOLD_MS);
 }
+ 
+
+const LANDING_NAME_ERROR_COPY: Record<
+  Exclude<DotLabelResult, { ok: true }>["reason"],
+  string
+> = {
+  empty: "Enter a name to browse",
+  "too-long": "Names can be at most 63 characters",
+  uppercase: "Names can only contain a-z, 0-9 and hyphens",
+  "leading-hyphen": "Names can't start or end with a hyphen",
+  "trailing-hyphen": "Names can't start or end with a hyphen",
+  "invalid-char": "Names can only contain a-z, 0-9 and hyphens",
+  "non-ascii": "Names can only contain a-z, 0-9 and hyphens",
+};
 
 /**
  * Show the landing page (no subdomain detected).
@@ -538,12 +553,13 @@ export function showLanding(): void {
         <p class="landing-subtitle">The decentralized web, in your browser.</p>
         <form id="dotli-nav-form" class="landing-nav-form" autocomplete="off">
           <div class="landing-search-bar" id="dotli-nav-bar">
-            <input id="dotli-nav-input" class="landing-search-input" type="text" placeholder="browse.dot" spellcheck="false" autocomplete="off" aria-label="Search a .dot name" />
+            <input id="dotli-nav-input" class="landing-search-input" type="text" placeholder="browse.dot" spellcheck="false" autocomplete="off" aria-label="Search a .dot name" aria-describedby="dotli-nav-error" />
             <span class="landing-dot-label">.dot</span>
             <button type="submit" class="landing-go-btn" aria-label="Go">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
           </div>
+          <p id="dotli-nav-error" class="landing-nav-error" role="alert" hidden></p>
         </form>
         <div id="dotli-recent" class="landing-recent" hidden></div>
       </div>
@@ -563,13 +579,31 @@ export function showLanding(): void {
 
   animateLandingPlaceholder(input);
 
+  const bar = document.getElementById("dotli-nav-bar");
+  const errorEl = document.getElementById("dotli-nav-error");
+  const clearNavError = (): void => {
+    bar?.classList.remove("landing-search-bar--error");
+    input.removeAttribute("aria-invalid");
+    if (errorEl) {
+      errorEl.hidden = true;
+    }
+  };
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const name = input.value
       .trim()
       .toLowerCase()
       .replace(/\.dot$/, "");
-    if (!name || !isValidDotLabel(name)) {
+    const result = validateDotLabel(name);
+    if (!result.ok) {
+      bar?.classList.add("landing-search-bar--error");
+      input.setAttribute("aria-invalid", "true");
+      if (errorEl) {
+        errorEl.textContent = LANDING_NAME_ERROR_COPY[result.reason];
+        errorEl.hidden = false;
+      }
+      input.focus();
       return;
     }
     const url = dotUrl(name);
@@ -577,6 +611,8 @@ export function showLanding(): void {
       window.location.href = url;
     });
   });
+
+  input.addEventListener("input", clearNavError);
 
   input.focus();
 
