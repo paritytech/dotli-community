@@ -831,11 +831,7 @@ async function createCoreProvider(
   try {
     const { createWebWorkerPairingHostRuntime, HostWorker } =
       await runtimeChunkPromise;
-    const runtimeConfig = createTruapiRuntimeConfig(
-      label,
-      window.location,
-      options.productId,
-    );
+    const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),

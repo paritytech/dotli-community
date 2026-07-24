@@ -1,8 +1,6 @@
 import { getActiveServicesConfig } from "@dotli/config/network";
 import type { ProductRuntimeConfig } from "@parity/truapi-host";
 
-type RuntimeLocation = Pick<Location, "origin">;
-
 declare const __DOTLI_VERSION__: string | undefined;
 
 export function labelToProductId(label: string): string {
@@ -22,12 +20,12 @@ function getPlatformType(userAgent: string = navigator.userAgent): string {
   return "Unknown";
 }
 
+// The window origin deliberately plays no part here: `productId` comes
+// solely from the label (or the explicit override).
 export function createTruapiRuntimeConfig(
   label: string,
-  location: RuntimeLocation = window.location,
   productId: string = labelToProductId(label),
 ): ProductRuntimeConfig {
-  void location;
   return {
     productId,
     host: {
