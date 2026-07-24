@@ -15,11 +15,11 @@
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
     "eslint": "^10.5.0",
-    "typescript": "~6.0.3",
+    "typescript": "~7.0.2",
     "vite": "^8.0.16"
   },
   "dependencies": {
     "@dotli/shared": "workspace:*",
-    "nanoevents": "^9.1.0"
+    "nanoevents": "^10.0.0"
   }
 }
