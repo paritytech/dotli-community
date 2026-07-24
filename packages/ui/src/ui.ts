@@ -512,7 +512,6 @@ function animateLandingPlaceholder(input: HTMLInputElement): void {
   mode = "holding";
   schedule(LANDING_PLACEHOLDER_HOLD_MS);
 }
- 
 
 const LANDING_NAME_ERROR_COPY: Record<
   Exclude<DotLabelResult, { ok: true }>["reason"],
