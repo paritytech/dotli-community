@@ -81,21 +81,54 @@ export async function writeUiStateCache(
   }
 }
 
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+/** Validate a parsed UI-state cache blob field by field. The cache is
+ * host-written same-origin data, but it can be stale from a different code
+ * version or partially corrupted, so a malformed blob degrades to null
+ * (bare connected state) rather than being cast into the typed shape. */
+function parseUiStateCache(parsed: unknown): TruapiSessionUiState | null {
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const state = parsed as Record<string, unknown>;
+  if (
+    state.connected !== true ||
+    !isOptionalString(state.publicKey) ||
+    !isOptionalString(state.identityAccountId) ||
+    !isOptionalString(state.liteUsername) ||
+    !isOptionalString(state.fullUsername) ||
+    !isOptionalString(state.primaryUsername)
+  ) {
+    return null;
+  }
+  return {
+    connected: true,
+    ...(state.publicKey !== undefined ? { publicKey: state.publicKey } : {}),
+    ...(state.identityAccountId !== undefined
+      ? { identityAccountId: state.identityAccountId }
+      : {}),
+    ...(state.liteUsername !== undefined
+      ? { liteUsername: state.liteUsername }
+      : {}),
+    ...(state.fullUsername !== undefined
+      ? { fullUsername: state.fullUsername }
+      : {}),
+    ...(state.primaryUsername !== undefined
+      ? { primaryUsername: state.primaryUsername }
+      : {}),
+  };
+}
+
 async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
   try {
     const raw = await readSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY);
     if (raw === null) {
       return null;
     }
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as TruapiSessionUiState).connected
-    ) {
-      return parsed as TruapiSessionUiState;
-    }
-    return null;
+    return parseUiStateCache(JSON.parse(raw));
   } catch {
     return null;
   }

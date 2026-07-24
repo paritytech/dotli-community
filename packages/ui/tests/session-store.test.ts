@@ -379,6 +379,31 @@ describe("session-store host callbacks", () => {
     ]);
   });
 
+  it("As a dotli integrator, the host degrades to a bare connected state when the cached UI state is malformed", async () => {
+    // Given: a persisted session, but a UI-state cache whose fields no longer
+    // match the expected shape (e.g. written by a different code version).
+    const { writeCoreStorage } = createSessionStoreAdapters();
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    sharedAuth.storage.set(
+      UI_STATE_CACHE_KEY,
+      JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }),
+    );
+
+    // When
+    emitPersistedSessionUiState();
+    await flushMicrotasks();
+
+    // Then: the malformed cache is discarded instead of being laundered into
+    // a typed session state with non-string fields.
+    expect(events).toEqual([
+      { tag: "Connected", session: { connected: true } },
+    ]);
+  });
+
   it("As a dotli integrator, the host notifies local and matching storage changes", async () => {
     // Given
     const { writeCoreStorage } = createSessionStoreAdapters();
