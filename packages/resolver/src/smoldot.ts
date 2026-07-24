@@ -153,10 +153,19 @@ function smoldotLogCallback(
 let smoldotInstance: SmoldotClient | null = null;
 let relayChainPromise: Promise<SmoldotChain> | null = null;
 
+// Persistence cadence. Kept short so a leader-iframe handoff warm-starts from
+// a recent finalized checkpoint (paired with `flushPersistence`, which the
+// leader iframe calls when its tab is hidden). Shorter = smaller catch-up on
+// failover, at the cost of more frequent finalized-DB serialization.
+const PERSIST_INITIAL_MS = 10_000;
+const PERSIST_INTERVAL_MS = 30_000;
+
 interface PersistenceEntry {
   tap: ChainDbTap;
   initialTimer: ReturnType<typeof setTimeout>;
   periodicTimer: ReturnType<typeof setInterval>;
+  /** Force an immediate snapshot now (used by `flushPersistence`). */
+  persistNow: () => Promise<void>;
 }
 const persistence = new Map<string, PersistenceEntry>();
 
@@ -208,13 +217,18 @@ function schedulePersistence(chainName: string, tap: ChainDbTap): void {
   }
   const initialTimer = setTimeout(() => {
     void persist();
-  }, 30_000);
+  }, PERSIST_INITIAL_MS);
   const periodicTimer = setInterval(() => {
     void persist();
-  }, 60_000);
+  }, PERSIST_INTERVAL_MS);
   unrefHandle(initialTimer);
   unrefHandle(periodicTimer);
-  persistence.set(chainName, { tap, initialTimer, periodicTimer });
+  persistence.set(chainName, {
+    tap,
+    initialTimer,
+    periodicTimer,
+    persistNow: persist,
+  });
 }
 
 function teardownPersistence(chainName: string): void {
@@ -234,6 +248,19 @@ function teardownAllPersistence(): void {
   }
 }
 
+/**
+ * Force an immediate DB snapshot of every tapped chain. The leader iframe
+ * calls this when its tab is hidden (a tab switch, or right before close) so a
+ * leader handoff warm-starts from an up-to-date checkpoint instead of one up
+ * to `PERSIST_INTERVAL_MS` old. Best-effort and coalesced with any in-flight
+ * periodic save (each entry's `persist` guards against overlap).
+ */
+export async function flushPersistence(): Promise<void> {
+  await Promise.all(
+    [...persistence.values()].map((entry) => entry.persistNow()),
+  );
+}
+
 function attachPersistence(
   chainName: string,
   underlying: SmoldotChain,
@@ -247,9 +274,11 @@ function attachPersistence(
 /**
  * Create smoldot using `start()`, which runs on the current thread.
  *
- * Used in SharedWorker context where the `Worker` constructor is unavailable.
- * Smoldot networking (WebSocket) is async; occasional CPU bursts for block
- * verification (~2-10ms per block) are acceptable on the SharedWorker thread.
+ * Used by the elected leader iframe in `shared-worker` mode: running on the
+ * iframe's Window main thread (rather than a Worker) is what makes WebRTC
+ * (`RTCPeerConnection`) available to smoldot. Networking is async; occasional
+ * CPU bursts for block verification (~2-10ms per block) are acceptable on the
+ * headless protocol-iframe main thread.
  */
 export function getSmoldotDirect(): SmoldotClient {
   if (smoldotInstance !== null) {

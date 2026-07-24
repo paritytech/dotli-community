@@ -4,7 +4,10 @@
 // Protocol host entry point.
 //
 // Three modes, selected explicitly via the `?mode=` URL parameter:
-//   1. "shared-worker": smoldot runs in a SharedWorker shared across tabs.
+//   1. "shared-worker": one iframe is elected leader (Web Locks) and runs
+//      smoldot on its own Window main thread — so WebRTC is available — while
+//      the SharedWorker routes every other tab's requests to it. Failover is
+//      automatic when the leader's tab goes away. See `initLeaderIframeMode`.
 //   2. "direct": smoldot runs in this iframe with no cross-tab coordination.
 //   3. "rpc": trusted WSS JSON-RPC to a public node (no smoldot), used by
 //      gateway mode to bridge sandboxed-app chain calls.
@@ -51,7 +54,6 @@ import { isExecutableKind } from "@dotli/shared/executables";
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
   SITE_ID,
-  TIMEOUTS,
   type SiteId,
 } from "@dotli/config/config";
 import {
@@ -94,7 +96,19 @@ import {
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
 } from "@dotli/protocol/messages";
-import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
+import type {
+  SWRelayRequest,
+  SWRelayResponse,
+  SWOutbound,
+  SWError,
+  SWLeaderClaiming,
+  SWLeaderReady,
+  SWLeaderError,
+  SWLeaderForward,
+  SWLeaderResponse,
+  SWClientGone,
+  SWDisconnect,
+} from "./protocol-shared-worker";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -504,7 +518,7 @@ async function init(): Promise<void> {
     // Values are kebab-case to match `DotliMode` and the `?mode=` URL
     // convention, keeping one naming scheme across host and protocol.
     m.setDefaults({ protocol_mode: "shared-worker" });
-    await initSharedWorkerMode(requestedNetwork.network);
+    await initLeaderIframeMode(requestedNetwork.network);
     m.count(S.PROTOCOL_MODE, { mode: "shared-worker" });
   } else if (mode === "rpc") {
     m.setDefaults({ protocol_mode: "rpc" });
@@ -537,118 +551,441 @@ function signalError(message: string): void {
   }
 }
 
-async function initSharedWorkerMode(network: Network): Promise<void> {
-  const swStartTime = performance.now();
+// ---------------------------------------------------------------------------
+// shared-worker backend = leader-elected iframe + SharedWorker router.
+//
+// smoldot runs in exactly ONE iframe (the "leader"), chosen via the Web Locks
+// API, on that iframe's Window main thread so it can use WebRTC. Every other
+// same-origin iframe is a "follower" that relays its parent tab's chain and
+// resolve requests through the SharedWorker (a pure router — see
+// ./protocol-shared-worker.ts) to the leader. The leader also serves its own
+// parent tab directly. If the leader's tab closes/crashes, its Web Lock
+// releases and a queued follower is promoted, warm-starting a fresh smoldot
+// from the shared-origin IndexedDB.
+// ---------------------------------------------------------------------------
 
-  // Vite statically rewrites `new SharedWorker(new URL("./worker.ts",
-  // import.meta.url), ...)` to point at the bundled chunk. The `new URL`
-  // MUST be a literal argument to the SharedWorker constructor. Assigning
-  // it to a variable (even briefly to set a query param) breaks the
-  // rewrite and the browser ends up fetching the unresolved `.ts` path,
-  // which 404s in production. Network is therefore propagated via the
-  // worker name and read inside the worker via `self.name`.
+async function initLeaderIframeMode(network: Network): Promise<void> {
+  // One SharedWorker per network routes between all same-origin iframes. The
+  // `new URL(...)` MUST stay a literal argument for Vite's worker rewrite
+  // (assigning it to a variable breaks the static rewrite and 404s in prod).
+  // Network travels via the worker name, read from `self.name` in the worker.
   const worker = new SharedWorker(
     new URL("./protocol-shared-worker.ts", import.meta.url),
     { type: "module", name: `dotli-protocol-${network}` },
   );
   const port = worker.port;
-
-  // Listen for SharedWorker errors (e.g. if the script fails to load)
   worker.addEventListener("error", (event) => {
-    log.error("[dot.li protocol] SharedWorker error event:", event);
+    log.error("[dot.li protocol] SharedWorker (router) error:", event);
     m.count(S.BOOTNODE_ERROR, { source: "shared-worker" });
   });
+  // NOTE: `port.start()` is deliberately NOT called here. Each role
+  // (`runAsLeader` / `runAsFollower`) attaches its message listener first and
+  // then starts the port, so an early message from the router (e.g. `ready`)
+  // is queued and delivered rather than dispatched to no listener.
+  await electLeader(port, network);
+}
 
-  // Wait for SharedWorker to signal ready (or error)
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const waitMs = performance.now() - swStartTime;
-      m.distribution(S.PROTOCOL_SW_READY, waitMs, "millisecond", {
-        outcome: "timeout",
-      });
-      reject(new Error("SharedWorker did not signal ready within timeout"));
-    }, TIMEOUTS.SHARED_WORKER_READY);
+/** Never resolves — held inside a Web Lock callback to keep the lock for this
+ *  iframe's lifetime. The browser frees the lock when the tab is torn down,
+ *  which is our failover trigger. */
+function holdUntilUnload(): Promise<never> {
+  return new Promise<never>(() => {
+    /* held until this context is destroyed */
+  });
+}
 
-    function onMessage(event: MessageEvent): void {
-      const data = event.data as SWOutbound | null;
-      if (data?.type === "ready") {
-        clearTimeout(timer);
-        port.removeEventListener("message", onMessage);
-        const readyMs = performance.now() - swStartTime;
-        m.measure(S.PROTOCOL_SW_READY, readyMs);
-        m.distribution(S.PROTOCOL_SW_READY, readyMs, "millisecond", {
-          outcome: "ok",
-        });
-        resolve();
-      } else if (data?.type === "error") {
-        clearTimeout(timer);
-        port.removeEventListener("message", onMessage);
-        const failMs = performance.now() - swStartTime;
-        m.distribution(S.PROTOCOL_SW_READY, failMs, "millisecond", {
-          outcome: "error",
-        });
-        reject(new Error(`SharedWorker error: ${data.message}`));
-      }
-    }
+/**
+ * Elect a single leader across all same-origin iframes with the Web Locks API.
+ *
+ * Every iframe starts as a follower AND queues for one exclusive lock. Whoever
+ * holds it — the first tab immediately, or a follower later when the current
+ * leader's tab closes and the browser frees the lock — sheds its follower
+ * wiring and runs smoldot. The lock guarantees exactly one holder, so there is
+ * never more than one leader, and failover needs no explicit signalling.
+ */
+async function electLeader(port: MessagePort, network: Network): Promise<void> {
+  const lockName = `dotli-leader:${network}`;
 
-    port.addEventListener("message", onMessage);
-    port.start();
+  if (!("locks" in navigator)) {
+    // No Web Locks: degrade to "this iframe is the sole leader". Cross-tab
+    // sharing is lost, but chain access still works.
+    log.warn("[dot.li protocol] Web Locks unavailable; running as sole leader");
+    await runAsLeader(port);
+    return;
+  }
+
+  const follower = runAsFollower(port);
+  void navigator.locks
+    .request(lockName, { mode: "exclusive" }, async () => {
+      // Stop relaying — we are the leader now. From here until `runAsLeader`
+      // binds the engine listeners (one dynamic import later), parent
+      // requests are dropped and surface via their normal request timeouts —
+      // consistent with the reset-on-failover semantics. The router side has
+      // no such gap: `leader-claiming` makes it buffer follower forwards.
+      follower.detach();
+      log.warn(
+        "[dot.li protocol] Won leader lock; running smoldot in this iframe",
+      );
+      await runAsLeader(port);
+      await holdUntilUnload();
+    })
+    .catch((err: unknown) => {
+      log.error("[dot.li protocol] Leader lock request failed:", err);
+    });
+}
+
+/**
+ * Lazily load the resolver + smoldot modules (dynamic import). The return type
+ * is inferred on purpose: naming it would require an `import(...)` type
+ * annotation, which the repo's `consistent-type-imports` rule forbids, so
+ * `ResolverModules` is derived from it below.
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- inferred module-namespace tuple; see doc above
+async function loadResolverModules() {
+  // Dynamic imports so iframes that never host smoldot (rpc submode, or a
+  // follower that is never promoted) don't pay the smoldot / chain-spec bundle.
+  const [chains, resolve, smoldotMod] = await Promise.all([
+    import("@dotli/resolver/chains"),
+    import("@dotli/resolver/resolve"),
+    import("@dotli/resolver/smoldot"),
+  ]);
+  return { chains, resolve, smoldotMod };
+}
+type ResolverModules = Awaited<ReturnType<typeof loadResolverModules>>;
+
+/**
+ * Build the chain engine shared by `direct` mode and the leader iframe. Both
+ * wire the broker's shared Asset Hub / People follows, forward smoldot panics
+ * to the parent, flush the persisted DB when the tab is hidden, and tear down
+ * on unload — identically. They differ only in the smoldot factory (`onInit`:
+ * a dedicated Worker for `direct`, this Window's main thread for the leader)
+ * and, for `direct` mode, a lazy `onWarmup`.
+ */
+function makeResolverEngine(
+  mods: ResolverModules,
+  opts: { onInit: () => void; onWarmup?: () => Promise<void> },
+): ProtocolEngine {
+  const { chains, resolve, smoldotMod } = mods;
+  const engine = createEngine({
+    createChainProvider: chains.createChainProvider,
+    isChainSupported: chains.isChainSupported,
+    onBrokerReady: (broker) => {
+      // Route the resolver's Asset Hub reads AND the People warm-keep through
+      // the broker's shared follow (object-wire) so there is one shared Asset
+      // Hub follow, never released mid-read.
+      resolve.setResolverAssetHubProvider(() =>
+        requireBrokerLocalProvider(
+          broker,
+          getActiveServicesConfig().assethub.genesis,
+          "Asset Hub",
+        ),
+      );
+      resolve.setResolverPeopleProvider(() =>
+        requireBrokerLocalProvider(
+          broker,
+          getActiveServicesConfig().people.genesis,
+          "People",
+        ),
+      );
+    },
+    onInit: opts.onInit,
+    onCleanup: () => {
+      smoldotMod.terminateSmoldot();
+    },
+    onWarmup: opts.onWarmup,
+    resolveDotName: resolve.resolveDotName,
+    resolveOwner: resolve.resolveOwner,
+    resolveExecutableManifest: resolve.resolveExecutableManifest,
+    resolveRootManifest: resolve.resolveRootManifest,
   });
 
-  log.warn("[dot.li protocol] === SHARED WORKER MODE ACTIVE ===");
-  log.warn(
-    "[dot.li protocol] Smoldot runs in SharedWorker, persists across navigations",
-  );
+  smoldotMod.onSmoldotFatal((message) => {
+    log.error("[dot.li protocol] Smoldot panic detected, signaling fatal");
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        { namespace: "dotli:protocol", kind: "fatal", message } as const,
+        "*",
+      );
+    }
+  });
 
-  // Relay parent postMessage requests into the SharedWorker.
-  window.addEventListener("message", (event: MessageEvent) => {
-    const data: unknown = event.data;
-    if (!isProtocolEnvelope(data) || data.kind !== "request") {
-      return;
+  // Flush a DB snapshot whenever this (smoldot-hosting) iframe is hidden — a
+  // tab switch, or right before the tab closes. Paired with the short persist
+  // interval, this keeps the shared-origin IndexedDB checkpoint fresh so a
+  // leader handoff warm-starts with only seconds of catch-up.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      void smoldotMod.flushPersistence();
     }
-    if (
-      isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method)
-    ) {
-      return;
-    }
-    if (!isAllowedOrigin(event.origin)) {
+  });
+
+  window.addEventListener("beforeunload", () => {
+    engine.cleanup();
+  });
+
+  return engine;
+}
+
+/**
+ * Run smoldot + the chain broker in THIS iframe, serving both our own parent
+ * tab and every follower (via the router). Resolves once set up and presynced;
+ * the Web Lock callback keeps holding the lock afterwards.
+ */
+async function runAsLeader(port: MessagePort): Promise<void> {
+  log.warn("[dot.li protocol] === LEADER: smoldot runs in this iframe ===");
+  m.setDefaults({ protocol_role: "leader" });
+
+  // Preempt any stale leader immediately (before the async import + presync)
+  // so the router buffers follower forwards during the gap instead of posting
+  // them into a dead port.
+  port.postMessage({ type: "leader-claiming" } satisfies SWLeaderClaiming);
+
+  const mods = await loadResolverModules();
+  const { resolve } = mods;
+  const engine = makeResolverEngine(mods, {
+    // CRUCIAL: `getSmoldotDirect()` runs smoldot on THIS Window's main thread,
+    // where `RTCPeerConnection` exists. `getSmoldot()` (the dedicated-Worker
+    // variant `direct` mode uses) would put smoldot back in a Worker and
+    // silently lose WebRTC — the whole reason for this mode. smoldot is a
+    // singleton, so this first call fixes the instance every later
+    // `getSmoldot()` / `getRelayChain()` call reuses.
+    onInit: () => {
+      resolve.getSmoldotDirect();
+    },
+    // No `onWarmup`: the leader presyncs eagerly below, before it signals
+    // ready. Gating presync on the parent's `warmup` would deadlock — the
+    // parent only sends `warmup` after it sees `ready`, and `ready` is gated
+    // on presync.
+  });
+
+  // Serve our own parent tab directly (no router hop) and every follower via
+  // the router. Bind both before presync so requests the router buffered are
+  // handled the moment we post `leader-ready`, and start the port only after
+  // the router-forward listener is attached (see `initLeaderIframeMode`).
+  bindEngineToMessages(engine);
+  bindLeaderRouterForward(engine, port);
+  port.start();
+
+  // Eager presync (mirrors the former SharedWorker `presync()`): relay chain,
+  // then Asset Hub to a finalized block; warm People in the background.
+  try {
+    await resolve.getRelayChain();
+    await resolve.waitForAssetHubFinalized((msg) => {
+      log.warn(`[dot.li protocol] leader presync: ${msg}`);
+    });
+    void resolve.waitForPeopleFinalized().catch((err: unknown) => {
       log.warn(
-        `[dot.li protocol] Rejected request from disallowed origin: ${event.origin}`,
+        `[dot.li protocol] People warm failed (retried on demand): ${serializeError(err)}`,
+      );
+    });
+  } catch (err: unknown) {
+    const message = serializeError(err);
+    log.error("[dot.li protocol] Leader presync failed:", message);
+    // Surface to followers (via the router) and our own parent, then stay
+    // dead — matching the no-auto-retry policy of the old presync path.
+    port.postMessage({ type: "leader-error", message } satisfies SWLeaderError);
+    signalError(message);
+    return;
+  }
+
+  // Register as leader (the router flushes any buffered follower forwards to
+  // us) and release our own parent tab.
+  port.postMessage({ type: "leader-ready" } satisfies SWLeaderReady);
+  signalReady();
+  log.warn("[dot.li protocol] Leader ready");
+}
+
+/**
+ * On the leader, handle requests the router forwards on behalf of followers.
+ * Each forward carries the follower's `clientId`; responses (and async
+ * chain-messages) are posted back tagged with that id so the router can route
+ * them to the right follower. Per-follower connection tracking lets us tear
+ * down a follower's chain connections when the router reports it gone.
+ */
+function bindLeaderRouterForward(
+  engine: ProtocolEngine,
+  port: MessagePort,
+): void {
+  const clientConnections = new Map<number, Set<string>>();
+
+  const disconnectClient = (clientId: number): void => {
+    const conns = clientConnections.get(clientId);
+    if (!conns) {
+      return;
+    }
+    clientConnections.delete(clientId);
+    for (const connectionId of conns) {
+      void engine
+        .handleRequest(
+          {
+            namespace: "dotli:protocol",
+            kind: "request",
+            id: `client-gone:${connectionId}`,
+            method: "chainDisconnect",
+            payload: { connectionId },
+          },
+          "leader-cleanup",
+          () => {
+            /* teardown ack; nothing to route back */
+          },
+        )
+        .catch(() => {
+          /* best-effort teardown */
+        });
+    }
+  };
+
+  port.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as SWLeaderForward | SWClientGone | null;
+    if (data?.type === "client-gone") {
+      disconnectClient(data.clientId);
+      return;
+    }
+    if (data?.type !== "leader-forward") {
+      return;
+    }
+    const { clientId, envelope, origin } = data;
+    if (!isAllowedOrigin(origin)) {
+      log.warn(
+        `[dot.li protocol] Leader rejecting forwarded request from disallowed origin: ${origin}`,
       );
       return;
     }
-
-    const msg: SWRelayRequest = {
-      type: "relay-request",
-      envelope: data,
-      origin: event.origin,
-    };
-    port.postMessage(msg);
-  });
-
-  // Relay SharedWorker responses back up to the parent.
-  port.addEventListener("message", (event: MessageEvent) => {
-    const data = event.data as SWOutbound | null;
-    if (data?.type === "relay-response" && window.parent !== window) {
-      window.parent.postMessage(data.envelope, "*");
+    // Track chain-connection lifecycle so `client-gone` can release them.
+    if (envelope.method === "chainConnect") {
+      const payload = envelope.payload as ProtocolRequestMap["chainConnect"];
+      let set = clientConnections.get(clientId);
+      if (!set) {
+        set = new Set<string>();
+        clientConnections.set(clientId, set);
+      }
+      set.add(payload.connectionId);
+    } else if (envelope.method === "chainDisconnect") {
+      const payload = envelope.payload as ProtocolRequestMap["chainDisconnect"];
+      clientConnections.get(clientId)?.delete(payload.connectionId);
     }
+    void engine
+      .handleRequest(envelope, origin, (responseEnvelope) => {
+        port.postMessage({
+          type: "leader-response",
+          clientId,
+          envelope: responseEnvelope,
+        } satisfies SWLeaderResponse);
+      })
+      .catch((error: unknown) => {
+        port.postMessage({
+          type: "leader-response",
+          clientId,
+          envelope: {
+            namespace: "dotli:protocol",
+            kind: "response",
+            id: envelope.id,
+            ok: false,
+            error: serializeError(error),
+          },
+        } satisfies SWLeaderResponse);
+      });
   });
+}
 
-  signalReady();
+/**
+ * Relay this iframe's parent-tab requests to the leader via the router, and
+ * relay the leader's responses back up to the parent. Returns a handle whose
+ * `detach()` removes all listeners — used when this iframe is promoted to
+ * leader and must stop relaying on the same port.
+ */
+function runAsFollower(port: MessagePort): { detach: () => void } {
+  log.warn("[dot.li protocol] === FOLLOWER: relaying to the leader ===");
+  m.setDefaults({ protocol_role: "follower" });
+  const ac = new AbortController();
+  const { signal } = ac;
 
-  window.addEventListener("beforeunload", () => {
-    log.warn(
-      "[dot.li protocol] Iframe unloading, sending disconnect to SharedWorker",
-    );
-    try {
-      port.postMessage({ type: "disconnect" });
-      // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal to the SharedWorker; the port may already be closed (browser tab unloading), which is the expected terminal state.
-    } catch {
-      /* port already closed on unload, safe */
-    }
-    port.close();
-  });
+  // Parent -> router.
+  window.addEventListener(
+    "message",
+    (event: MessageEvent) => {
+      const data: unknown = event.data;
+      if (!isProtocolEnvelope(data) || data.kind !== "request") {
+        return;
+      }
+      if (
+        isSharedAuthRequestMethod(data.method) ||
+        isSharedModeRequestMethod(data.method)
+      ) {
+        return; // handled locally by the shared-auth / shared-mode listeners
+      }
+      if (!isAllowedOrigin(event.origin)) {
+        log.warn(
+          `[dot.li protocol] Rejected request from disallowed origin: ${event.origin}`,
+        );
+        return;
+      }
+      port.postMessage({
+        type: "relay-request",
+        envelope: data,
+        origin: event.origin,
+      } satisfies SWRelayRequest);
+    },
+    { signal },
+  );
+
+  // Router -> parent, plus lifecycle signals.
+  port.addEventListener(
+    "message",
+    (event: MessageEvent) => {
+      const data = event.data as SWOutbound | { type?: string } | null;
+      const type = data?.type;
+      // if/else (not switch): loosely-typed wire messages; unrecognized types
+      // (e.g. the router's "ping") are ignored.
+      if (type === "relay-response") {
+        if (window.parent !== window) {
+          window.parent.postMessage((data as SWRelayResponse).envelope, "*");
+        }
+      } else if (type === "ready") {
+        // The leader presynced. Release our parent tab.
+        signalReady();
+      } else if (type === "error") {
+        signalError(`Protocol leader failed: ${(data as SWError).message}`);
+      } else if (type === "leader-changed") {
+        // The leader's tab went away. This iframe stays alive (it may be the
+        // one promoted). Existing chain connections are dead; the next request
+        // each polkadot-api consumer sends is rejected by the fresh leader
+        // ("Unknown chain connection"), surfacing as a normal chain error, and
+        // the consumer reconnects. (Seamless per-connection re-subscribe is a
+        // planned follow-up.)
+        log.warn(
+          "[dot.li protocol] Leader changed; chain connections reconnect on next use",
+        );
+      }
+    },
+    { signal },
+  );
+
+  // Best-effort disconnect so the router releases our chain connections
+  // promptly (rather than waiting for the next stale-port sweep). Removed on
+  // promotion via `detach()` — the promoted leader's own teardown takes over.
+  window.addEventListener(
+    "pagehide",
+    () => {
+      try {
+        port.postMessage({ type: "disconnect" } satisfies SWDisconnect);
+        // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal; the port may already be closing as the tab unloads.
+      } catch {
+        /* port already closing on unload */
+      }
+    },
+    { signal },
+  );
+
+  // Listeners are attached; now start the port so any message the router
+  // already queued (e.g. an early `ready`) is delivered.
+  port.start();
+
+  return {
+    detach: () => {
+      ac.abort();
+    },
+  };
 }
 
 async function initDirectMode(): Promise<void> {
@@ -657,97 +994,31 @@ async function initDirectMode(): Promise<void> {
     "[dot.li protocol] Smoldot runs in this iframe with no cross-tab coordination",
   );
 
-  // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
-  // the smoldot / chain-specs bundle cost (D-1).
-  const [{ createChainProvider, isChainSupported }, resolve, smoldotMod] =
-    await Promise.all([
-      import("@dotli/resolver/chains"),
-      import("@dotli/resolver/resolve"),
-      import("@dotli/resolver/smoldot"),
-    ]);
-  const {
-    getRelayChain,
-    getSmoldot,
-    resolveDotName,
-    resolveExecutableManifest,
-    resolveOwner,
-    resolveRootManifest,
-    setResolverAssetHubProvider,
-    setResolverPeopleProvider,
-    waitForPeopleFinalized,
-  } = resolve;
-  const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
-
-  // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
-  // mode has no SharedWorker in the loop, so we post straight up to the
-  // host shell.
-  onSmoldotFatal((message) => {
-    log.error("[dot.li protocol] Smoldot panic detected, signaling fatal");
-    if (window.parent !== window) {
-      window.parent.postMessage(
-        {
-          namespace: "dotli:protocol",
-          kind: "fatal",
-          message,
-        },
-        "*",
-      );
-    }
-  });
-
-  const engine = createEngine({
-    createChainProvider,
-    isChainSupported,
-    onBrokerReady: (broker) => {
-      // Route the resolver's Asset Hub reads AND the People warm-keep through
-      // the broker's shared follows (object-wire — see protocol-shared-worker
-      // for the rationale). A separate getSmProvider on either chain would race
-      // the broker's follow on the same smoldot chain and get its events
-      // misrouted (the broker then drops them as "unknown token").
-      setResolverAssetHubProvider(() =>
-        requireBrokerLocalProvider(
-          broker,
-          getActiveServicesConfig().assethub.genesis,
-          "Asset Hub",
-        ),
-      );
-      setResolverPeopleProvider(() =>
-        requireBrokerLocalProvider(
-          broker,
-          getActiveServicesConfig().people.genesis,
-          "People",
-        ),
-      );
-    },
+  const mods = await loadResolverModules();
+  const { resolve } = mods;
+  const engine = makeResolverEngine(mods, {
+    // `direct` mode runs smoldot in a dedicated Worker: no cross-tab sharing,
+    // and no WebRTC (see `runAsLeader` for why the leader uses the main thread
+    // instead).
     onInit: () => {
-      getSmoldot();
+      resolve.getSmoldot();
     },
-    onCleanup: () => {
-      terminateSmoldot();
-    },
+    // Lazy: start smoldot + relay sync on the first `warmup`, and warm People
+    // in the background so legacy-account auth reads don't race a cold
+    // parachain warp sync.
     onWarmup: async () => {
-      getSmoldot();
-      await getRelayChain();
-      // Warm People in the background so legacy-account auth reads do not race
-      // a cold parachain warp sync. Not needed for resolution, so do not await.
-      void waitForPeopleFinalized().catch((err: unknown) => {
+      resolve.getSmoldot();
+      await resolve.getRelayChain();
+      void resolve.waitForPeopleFinalized().catch((err: unknown) => {
         log.warn(
           `[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`,
         );
       });
     },
-    resolveDotName,
-    resolveOwner,
-    resolveExecutableManifest,
-    resolveRootManifest,
   });
 
   bindEngineToMessages(engine);
   signalReady();
-
-  window.addEventListener("beforeunload", () => {
-    engine.cleanup();
-  });
 }
 
 // No smoldot. Sandboxed app chain requests are bridged to a trusted WSS
@@ -1083,7 +1354,10 @@ interface EngineOptions {
 }
 
 function createEngine(options: EngineOptions): ProtocolEngine {
-  const MAX_CONNS = 10;
+  // Aggregate cap across every connection this engine serves. In leader mode
+  // one engine serves all tabs' followers, so the former per-tab value of 10
+  // was too low; the real abuse guard is the per-origin cap enforced below.
+  const MAX_CONNS = 100;
   const connections = new Map<string, StringJsonRpcConnection>();
   const originConns = new Map<string, Set<string>>();
   const broker = createChainBrokerManager(options.createChainProvider);

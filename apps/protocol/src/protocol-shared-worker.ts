@@ -1,639 +1,371 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Protocol SharedWorker.
+// Protocol SharedWorker — leader-aware message ROUTER.
 //
-// Runs smoldot directly on the SharedWorker thread using `start()` from
-// `polkadot-api/smoldot` (no sub-Worker needed, because the `Worker`
-// constructor is not available in SharedWorkerGlobalScope).
+// smoldot no longer runs here. `RTCPeerConnection` does not exist in a
+// SharedWorker scope, so a light client running in the worker cannot use its
+// WebRTC transport. Instead, exactly one `host.<BASE>` iframe is elected
+// leader (via the Web Locks API, see `main.ts`) and runs smoldot on its own
+// Window main thread, where WebRTC is available. Every same-origin protocol
+// iframe (one per tab) still attaches to this one SharedWorker, but its only
+// job now is routing: forward each follower iframe's protocol requests to the
+// leader, and route the leader's responses (including async chain-messages)
+// back to the originating follower.
 //
-// All protocol iframes (across all tabs) connect via MessagePort.
-// Smoldot persists as long as at least one tab is open.
+// Routing is by an integer `clientId`, assigned to each connecting port. A
+// follower's requests are forwarded to the leader tagged with its clientId;
+// the leader echoes that id on every response so we can post it back to the
+// right follower port. The router never inspects request payloads.
+//
+// Failover: when the leader's port closes (its tab went away), the Web Lock
+// releases and a queued follower is promoted; it presyncs a fresh smoldot
+// (warm-started from the shared-origin IndexedDB) and registers here with a
+// new `leader-ready`. Requests that arrive during the gap are buffered and
+// flushed to the new leader.
 
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
-import { MAX_CONNECTIONS_PER_ORIGIN } from "@dotli/config/config";
-import {
-  isValidNetwork,
-  setNetworkOverride,
-  getActiveServicesConfig,
-} from "@dotli/config/network";
-import { createChainProvider, isChainSupported } from "@dotli/resolver/chains";
-import {
-  getRelayChain,
-  getSmoldotDirect,
-  resolveDotName,
-  resolveExecutableManifest,
-  resolveOwner,
-  resolveRootManifest,
-  setResolverAssetHubProvider,
-  setResolverPeopleProvider,
-  waitForAssetHubFinalized,
-  waitForPeopleFinalized,
-} from "@dotli/resolver/resolve";
-import { onSmoldotFatal } from "@dotli/resolver/smoldot";
 import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
 import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
-import {
-  createChainBrokerManager,
-  requireBrokerLocalProvider,
-} from "@dotli/protocol/broker";
-import { serializeError } from "@dotli/shared/errors";
-import { isExecutableKind } from "@dotli/shared/executables";
-
-initSentry("worker");
-installGlobalErrorHandlers("worker");
-// Only ever runs in shared-worker mode. Tag every metric emitted from this
-// context so broker/smoldot counters aggregate cleanly with the iframe's.
-m.setDefaults({ protocol_mode: "shared-worker" });
-import {
-  isSharedAuthRequestMethod,
-  isSharedModeRequestMethod,
-} from "@dotli/protocol/auth-storage";
 import type {
   ProtocolRequestEnvelope,
-  ProtocolRequestMap,
   ProtocolEnvelope,
 } from "@dotli/protocol/messages";
 
+initSentry("worker");
+installGlobalErrorHandlers("worker");
+m.setDefaults({ protocol_mode: "shared-worker" });
+
+const NETWORK_NAME_PREFIX = "dotli-protocol-";
+const network = self.name.startsWith(NETWORK_NAME_PREFIX)
+  ? self.name.slice(NETWORK_NAME_PREFIX.length)
+  : null;
+if (network !== null) {
+  m.setDefaults({ network });
+}
+
+// ---------------------------------------------------------------------------
+// Wire envelopes on the iframe <-> SharedWorker MessagePort.
+//
+// `SWRelayRequest` / `SWRelayResponse` / `SWReady` / `SWError` are the
+// follower-facing messages (shapes unchanged from the pre-router protocol, so
+// the follower relay in `main.ts` is a near drop-in). The `SWLeader*`
+// messages are the router <-> leader control channel.
+// ---------------------------------------------------------------------------
+
+/** Follower -> router: a protocol request from the follower's parent tab. */
 export interface SWRelayRequest {
   type: "relay-request";
   envelope: ProtocolRequestEnvelope;
   origin: string;
 }
-
+/** Router -> follower: a protocol response/notification for its parent tab. */
 export interface SWRelayResponse {
   type: "relay-response";
   envelope: ProtocolEnvelope;
 }
-
+/** Router -> follower: a leader is presynced; the follower may signal ready. */
 export interface SWReady {
   type: "ready";
 }
-
+/** Router -> follower: the leader failed to initialize; surface the cause. */
 export interface SWError {
   type: "error";
   message: string;
 }
+/** Leader -> router: "I hold the lock and am presynced; route to me." */
+export interface SWLeaderReady {
+  type: "leader-ready";
+}
+/**
+ * Leader -> router: posted the instant a (promoted) iframe wins the lock,
+ * before it presyncs. Preempts the prior stale leader so follower forwards
+ * buffer instead of being posted into the dead port during the gap.
+ */
+export interface SWLeaderClaiming {
+  type: "leader-claiming";
+}
+/** Leader -> router: presync failed; fail every waiting follower. */
+export interface SWLeaderError {
+  type: "leader-error";
+  message: string;
+}
+/** Router -> leader: a follower request to handle, tagged with its clientId. */
+export interface SWLeaderForward {
+  type: "leader-forward";
+  clientId: number;
+  envelope: ProtocolRequestEnvelope;
+  origin: string;
+}
+/** Leader -> router: a response destined for the follower `clientId`. */
+export interface SWLeaderResponse {
+  type: "leader-response";
+  clientId: number;
+  envelope: ProtocolEnvelope;
+}
+/** Router -> leader: a follower disconnected; release its chain connections. */
+export interface SWClientGone {
+  type: "client-gone";
+  clientId: number;
+}
+/** Router -> follower: the leader went away; a new one is being elected. */
+export interface SWLeaderChanged {
+  type: "leader-changed";
+}
+/** Follower -> router: explicit disconnect from the iframe's `beforeunload`. */
+export interface SWDisconnect {
+  type: "disconnect";
+}
 
-export type SWInbound = SWRelayRequest;
-export type SWOutbound = SWRelayResponse | SWReady | SWError;
+/** Messages the router RECEIVES from a port (follower or leader). */
+export type SWInbound =
+  | SWRelayRequest
+  | SWLeaderClaiming
+  | SWLeaderReady
+  | SWLeaderError
+  | SWLeaderResponse
+  | SWDisconnect;
+/** Messages an iframe may RECEIVE from the router (follower- or leader-role). */
+export type SWOutbound =
+  | SWRelayResponse
+  | SWReady
+  | SWError
+  | SWLeaderForward
+  | SWClientGone
+  | SWLeaderChanged;
 
-const TAG = "[dot.li SW]";
-
+const TAG = "[dot.li SW router]";
 function swLog(...args: unknown[]): void {
   console.warn(TAG, ...args);
 }
-
 function swError(...args: unknown[]): void {
   console.error(TAG, ...args);
 }
 
-const MAX_CHAIN_CONNECTIONS = 10;
-const chainConnections = new Map<string, StringJsonRpcConnection>();
-const originConnections = new Map<string, Set<string>>();
-const connectionPorts = new Map<string, MessagePort>();
-const ports = new Set<MessagePort>();
-const pendingPorts: MessagePort[] = [];
-let engineReady = false;
+// The single leader port, plus every follower keyed by its clientId. The
+// leader's own port is NOT in `clientPorts` (it is not a follower). While no
+// leader is registered, follower forwards accumulate in `pendingForwards` and
+// flush on the next `leader-ready` — the direct analog of the old presync
+// `pendingPorts` queue.
+let leaderPort: MessagePort | null = null;
+let leaderReady = false;
+let leaderError: string | null = null;
+let clientIdCounter = 0;
+const allPorts = new Set<MessagePort>();
+const clientPorts = new Map<number, MessagePort>();
+const portToClientId = new Map<MessagePort, number>();
+const pendingForwards: SWLeaderForward[] = [];
 
-const NETWORK_NAME_PREFIX = "dotli-protocol-";
-let networkInitFailure: string | null = null;
-const requestedNetwork = self.name.startsWith(NETWORK_NAME_PREFIX)
-  ? self.name.slice(NETWORK_NAME_PREFIX.length)
-  : null;
-if (requestedNetwork === null) {
-  networkInitFailure = `Unexpected SharedWorker name "${self.name}" — iframe did not encode the active network.`;
-} else if (!isValidNetwork(requestedNetwork)) {
-  networkInitFailure = `Unknown protocol network: "${requestedNetwork}"`;
-} else {
-  setNetworkOverride(requestedNetwork);
-  m.setDefaults({ network: requestedNetwork });
-  swLog(`Active network pinned to ${requestedNetwork}`);
-}
-
-// Placeholder broker manager until pre-sync creates the real one.
-let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
-
-// Smoldot panic broadcast. When smoldot's log callback detects a WASM
-// panic, relay a `fatal` envelope to every connected port so the host
-// client rejects every in-flight request immediately instead of waiting
-// for a per-request timeout. `onSmoldotFatal` is idempotent and replays
-// the last panic to late subscribers, so firing this once at module
-// load is enough for the lifetime of the SharedWorker.
-onSmoldotFatal((message) => {
-  swError(
-    `Smoldot panic detected, broadcasting fatal to ${String(ports.size)} port(s)`,
-  );
-  const fatal: ProtocolEnvelope = {
-    namespace: "dotli:protocol",
-    kind: "fatal",
-    message,
-  };
-  const msg: SWRelayResponse = { type: "relay-response", envelope: fatal };
-  for (const port of ports) {
-    try {
-      port.postMessage(msg);
-      // eslint-disable-next-line no-restricted-syntax -- defensive fatal broadcast: one closed port must not prevent delivery to the rest. `removePort` already cleans up ports that throw on later sends.
-    } catch {
-      /* port already disconnected, ignore on broadcast */
-    }
-  }
-});
-
-// NO retries. NO cleanup-and-retry. NO backoff. The user picked
-// smoldot-shared-worker. If presync fails the actual cause is surfaced to
-// every waiting port and the engine stays dead until the user reloads.
-
-let presyncFailureMessage: string | null = null;
-
-async function presync(): Promise<void> {
-  const t0 = performance.now();
-  m.breadcrumb("smoldot presync starting");
-
+function postTo(port: MessagePort, msg: SWOutbound): void {
   try {
-    // 1. Create smoldot on the SharedWorker's own thread.
-    //
-    // `getSmoldotDirect()` is the in-thread smoldot bootstrap helper. The
-    // name is a polkadot-api convention meaning "run smoldot on the
-    // current execution context", NOT the dot.li chain backend named
-    // "smoldot-direct". Inside a SharedWorker the `Worker` constructor
-    // is unavailable, so this is the only option. The chain backend the
-    // user picked is still honored via the iframe's `?mode=` param.
-    swLog("Creating smoldot on SharedWorker thread...");
-    getSmoldotDirect();
-    m.measure(S.SMOLDOT_CREATE, performance.now() - t0);
-    swLog(
-      `Smoldot client created (${String(Math.round(performance.now() - t0))}ms)`,
-    );
-
-    // 2. Add relay chain
-    swLog("Adding relay chain...");
-    const relayT0 = performance.now();
-    await getRelayChain();
-    m.measure(S.SMOLDOT_RELAY_CHAIN, performance.now() - relayT0);
-    swLog(
-      `Relay chain added (${String(Math.round(performance.now() - t0))}ms)`,
-    );
-
-    // 3. Create the broker FIRST and route the resolver's Asset Hub reads
-    // through it as a local session, so there is one shared Asset Hub follow
-    // (never removed mid-read) instead of a separate resolver chain the first
-    // dApp connection would release — the `ChainHead disjointed` load failure.
-    chainBrokerManager = createChainBrokerManager(createChainProvider);
-    setResolverAssetHubProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().assethub.genesis,
-        "Asset Hub",
-      ),
-    );
-    // The People warm-keep must share this same broker follow. A separate
-    // getSmProvider on the People chain would race the broker's follow (one
-    // shared smoldot JSON-RPC queue) and have its events misrouted, so the
-    // broker drops People follow events as "unknown token" and reads hang.
-    setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().people.genesis,
-        "People",
-      ),
-    );
-
-    // 4. Wait for Asset Hub to sync to a finalized block via the
-    // explicit presync primitive (no more overloading `resolveDotName`
-    // with a sentinel label). This now syncs the broker's shared chain.
-    swLog("Waiting for Asset Hub to reach finalized block...");
-    await waitForAssetHubFinalized((msg) => {
-      swLog(`Pre-sync status: ${msg}`);
-    });
-    const totalMs = performance.now() - t0;
-    m.measure(S.SMOLDOT_PRESYNC, totalMs);
-    m.distribution(S.SMOLDOT_PRESYNC, totalMs);
-    swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
-
-    // 5. Success: mark ready.
-    swLog("Pre-sync complete, engine ready");
-    engineReady = true;
-
-    // Signal ready to any ports that connected during pre-sync
-    for (const port of pendingPorts) {
-      const readyMsg: SWReady = { type: "ready" };
-      port.postMessage(readyMsg);
-    }
-    pendingPorts.length = 0;
-
-    // Warm the People chain in the background. Legacy-account auth reads the
-    // username -> account map on People, and on a cold start that read races
-    // the parachain warp sync (the source of the intermittent failures). Start
-    // syncing it now so it is ready by the time auth runs. People is not needed
-    // for resolution, so this must not gate the ready signal above.
-    swLog("Warming People chain in background...");
-    // Route the People warm-up through the broker's shared follow (mirrors
-    // Asset Hub above) so it doesn't open a second competing smoldot follow.
-    setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().people.genesis,
-        "People",
-      ),
-    );
-    void waitForPeopleFinalized((msg) => {
-      swLog(`People warm status: ${msg}`);
-    })
-      .then(() => {
-        swLog("People chain warmed");
-      })
-      .catch((err: unknown) => {
-        swLog(
-          `People chain warm failed (retried on demand): ${serializeError(err)}`,
-        );
-      });
-  } catch (err: unknown) {
-    const msg = serializeError(err);
-    swError(`Pre-sync failed: ${msg}`);
-    m.count(S.SMOLDOT_PRESYNC, {
-      outcome: "error",
-      reason: err instanceof Error ? err.name : "unknown",
-    });
-    m.breadcrumb("smoldot presync failed", { reason: msg });
-
-    // Surface the actual cause to every waiting port. Engine remains
-    // permanently dead. The user must reload to retry.
-    presyncFailureMessage = msg;
-    for (const port of pendingPorts) {
-      const errorMsg: SWError = { type: "error", message: msg };
-      port.postMessage(errorMsg);
-    }
-    pendingPorts.length = 0;
-  }
-}
-
-function assertString(value: unknown, name: string): asserts value is string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Invalid ${name}: expected non-empty string`);
-  }
-}
-
-function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
-  try {
-    const msg: SWRelayResponse = { type: "relay-response", envelope };
     port.postMessage(msg);
   } catch (err: unknown) {
-    // Distinguish "port closed" (expected on tab navigation) from any
-    // other postMessage failure. Closed ports throw `InvalidStateError`
-    // or `DataCloneError` with `name === "InvalidStateError"`. Any other
-    // cause (a structured-clone failure on an un-transferable payload,
-    // for example) is a real bug and we want it visible instead of
-    // silently removing an otherwise-healthy port.
-    const name =
-      err instanceof Error && typeof err.name === "string" ? err.name : "";
-    if (name === "InvalidStateError") {
-      swLog("Port closed, cleaning up");
-      removePort(port);
-      return;
+    // A closed port throws `InvalidStateError`; drop it. Anything else is a
+    // real bug (e.g. a non-cloneable payload) — log it but still remove the
+    // port, since we can no longer deliver to it.
+    const name = err instanceof Error ? err.name : "";
+    if (name !== "InvalidStateError") {
+      swError(`postMessage failed (name=${name || "<unknown>"}):`, err);
     }
-    swError(
-      `sendToPort unexpected failure (name=${name || "<unknown>"}):`,
-      err,
-    );
-    // Remove the port regardless, since we can't deliver to it. The
-    // error log above preserves the real cause for triage.
     removePort(port);
   }
 }
 
-function removePort(port: MessagePort): void {
-  ports.delete(port);
-  let cleaned = 0;
-  for (const [connId, connPort] of connectionPorts) {
-    if (connPort === port) {
-      const connection = chainConnections.get(connId);
-      connection?.disconnect();
-      chainConnections.delete(connId);
-      connectionPorts.delete(connId);
-      for (const [orig, conns] of originConnections) {
-        conns.delete(connId);
-        if (conns.size === 0) {
-          originConnections.delete(orig);
-        }
-      }
-      cleaned++;
-    }
+function broadcastToFollowers(msg: SWOutbound): void {
+  for (const port of clientPorts.values()) {
+    postTo(port, msg);
   }
-  swLog(
-    `Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`,
-  );
 }
 
-async function handleRequest(
-  port: MessagePort,
-  request: ProtocolRequestEnvelope,
+function handleLeaderClaiming(port: MessagePort): void {
+  // A promotion is underway. Stop routing to any prior (now-stale) leader and
+  // buffer follower forwards until this claimant finishes presync and posts
+  // `leader-ready`. Drop the claimant's own follower identity.
+  const cid = portToClientId.get(port);
+  if (cid !== undefined) {
+    clientPorts.delete(cid);
+    portToClientId.delete(port);
+  }
+  leaderPort = null;
+  leaderReady = false;
+  leaderError = null;
+  swLog("Leader claiming; buffering forwards until presync completes");
+}
+
+function handleLeaderReady(port: MessagePort): void {
+  if (leaderPort !== null && leaderPort !== port) {
+    // A previous leader crashed without a clean disconnect. Replace it.
+    swLog("Replacing a stale leader port");
+  }
+  // The leader is not a follower: drop the provisional clientId it got on
+  // connect so we never route follower traffic (or `client-gone`) to it.
+  const cid = portToClientId.get(port);
+  if (cid !== undefined) {
+    clientPorts.delete(cid);
+    portToClientId.delete(port);
+  }
+  leaderPort = port;
+  leaderReady = true;
+  leaderError = null;
+  swLog(`Leader ready (${String(clientPorts.size)} follower(s) waiting)`);
+
+  // Flush follower requests buffered during the election/presync gap.
+  const buffered = pendingForwards.splice(0);
+  for (const fwd of buffered) {
+    postTo(port, fwd);
+  }
+  // Release every waiting follower.
+  broadcastToFollowers({ type: "ready" });
+}
+
+function handleLeaderError(message: string): void {
+  leaderError = message;
+  leaderReady = false;
+  swError(`Leader init failed: ${message}`);
+  pendingForwards.length = 0;
+  broadcastToFollowers({ type: "error", message });
+}
+
+function routeLeaderResponse(data: SWLeaderResponse): void {
+  // The follower may have closed between request and response. Drop silently.
+  const port = clientPorts.get(data.clientId);
+  if (port !== undefined) {
+    postTo(port, { type: "relay-response", envelope: data.envelope });
+  }
+}
+
+function forwardToLeader(
+  clientId: number,
+  envelope: ProtocolRequestEnvelope,
   origin: string,
-): Promise<void> {
-  const t = performance.now();
-  if (isSharedAuthRequestMethod(request.method)) {
-    throw new Error(
-      `Shared auth requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`,
-    );
+): void {
+  const fwd: SWLeaderForward = {
+    type: "leader-forward",
+    clientId,
+    envelope,
+    origin,
+  };
+  if (leaderPort !== null && leaderReady) {
+    postTo(leaderPort, fwd);
+    return;
   }
-  if (isSharedModeRequestMethod(request.method)) {
-    throw new Error(
-      `Shared mode-storage requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`,
-    );
-  }
-
-  switch (request.method) {
-    case "warmup": {
-      // Pre-sync already started smoldot, the relay chain, and periodic
-      // saves. Just confirm it's done.
-      swLog(
-        `Warmup acknowledged (engine already pre-synced) (${String(Math.round(performance.now() - t))}ms)`,
-      );
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result: true,
-      });
-      return;
-    }
-
-    case "resolveDotName": {
-      const payload = request.payload as ProtocolRequestMap["resolveDotName"];
-      assertString(payload.label, "label");
-      const result = await resolveDotName(payload.label, (message) => {
-        sendToPort(port, {
+  if (leaderError !== null) {
+    // Election already failed; reject fast instead of hanging the follower.
+    const port = clientPorts.get(clientId);
+    if (port !== undefined) {
+      postTo(port, {
+        type: "relay-response",
+        envelope: {
           namespace: "dotli:protocol",
-          kind: "progress",
-          id: request.id,
-          message,
-        });
-      });
-      swLog(
-        `Resolved "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
-      );
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result,
-      });
-      return;
-    }
-
-    case "resolveOwner": {
-      const payload = request.payload as ProtocolRequestMap["resolveOwner"];
-      assertString(payload.label, "label");
-      const result = await resolveOwner(payload.label);
-      swLog(
-        `Owner "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
-      );
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result,
-      });
-      return;
-    }
-
-    case "resolveExecutableManifest": {
-      const payload =
-        request.payload as ProtocolRequestMap["resolveExecutableManifest"];
-      assertString(payload.label, "label");
-      // postMessage payloads are untrusted strings even though TS narrows
-      // `payload.kind` to the union. Widening through a string local keeps the
-      // runtime check intact under strict TS rules.
-      const kind: string = payload.kind;
-      if (!isExecutableKind(kind)) {
-        throw new Error(`Unsupported executable kind: ${kind}`);
-      }
-      const result = await resolveExecutableManifest(
-        payload.label,
-        payload.kind,
-      );
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result,
-      });
-      return;
-    }
-
-    case "resolveRootManifest": {
-      const payload =
-        request.payload as ProtocolRequestMap["resolveRootManifest"];
-      assertString(payload.label, "label");
-      const result = await resolveRootManifest(payload.label);
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result,
-      });
-      return;
-    }
-
-    case "chainConnect": {
-      const payload = request.payload as ProtocolRequestMap["chainConnect"];
-      assertString(payload.genesisHash, "genesisHash");
-      assertString(payload.connectionId, "connectionId");
-      if (chainConnections.size >= MAX_CHAIN_CONNECTIONS) {
-        throw new Error(
-          `Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`,
-        );
-      }
-      const originConns = originConnections.get(origin) ?? new Set<string>();
-      if (originConns.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-        throw new Error(
-          `Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`,
-        );
-      }
-      if (!isChainSupported(payload.genesisHash)) {
-        throw new Error(`Unsupported chain: ${payload.genesisHash}`);
-      }
-      // The resolver and all dApp sessions share one Asset Hub chain via the
-      // broker, so there is no resolver chain to release here; connect
-      // directly.
-      let chainMsgCount = 0;
-      const connection = chainBrokerManager.connectRemote(
-        payload.genesisHash,
-        payload.connectionId,
-        (message) => {
-          chainMsgCount++;
-          if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
-            swLog(
-              `Chain message #${String(chainMsgCount)} for ${payload.connectionId} (${String(message.length)} bytes)`,
-            );
-          }
-          sendToPort(port, {
-            namespace: "dotli:protocol",
-            kind: "chain-message",
-            connectionId: payload.connectionId,
-            message,
-          });
+          kind: "response",
+          id: envelope.id,
+          ok: false,
+          error: `Protocol leader unavailable: ${leaderError}`,
         },
-      );
-      if (connection === null) {
-        throw new Error("Failed to create chain broker");
-      }
-      chainConnections.set(payload.connectionId, connection);
-      connectionPorts.set(payload.connectionId, port);
-      originConns.add(payload.connectionId);
-      originConnections.set(origin, originConns);
-      swLog(
-        `Chain connected: ${payload.connectionId} (${String(chainConnections.size)} total)`,
-      );
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result: true,
       });
-      return;
     }
+    return;
+  }
+  // Election/presync in progress. Buffer; flushed on `leader-ready`.
+  pendingForwards.push(fwd);
+}
 
-    case "chainSend": {
-      const payload = request.payload as ProtocolRequestMap["chainSend"];
-      assertString(payload.connectionId, "connectionId");
-      assertString(payload.message, "message");
-      const connection = chainConnections.get(payload.connectionId);
-      if (connection === undefined) {
-        throw new Error(`Unknown chain connection: ${payload.connectionId}`);
+function removePort(port: MessagePort): void {
+  if (!allPorts.delete(port)) {
+    return;
+  }
+  const cid = portToClientId.get(port);
+  if (cid !== undefined) {
+    clientPorts.delete(cid);
+    portToClientId.delete(port);
+    // Drop any of this follower's forwards still buffered for the next
+    // leader. Flushing them would make that leader open connections for a
+    // tab that no longer exists — and since this clientId is forgotten here,
+    // no `client-gone` could ever release them (a leak against the cap).
+    for (let i = pendingForwards.length - 1; i >= 0; i--) {
+      if (pendingForwards[i]?.clientId === cid) {
+        pendingForwards.splice(i, 1);
       }
-      connection.send(payload.message);
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result: true,
-      });
-      return;
     }
-
-    case "chainDisconnect": {
-      const payload = request.payload as ProtocolRequestMap["chainDisconnect"];
-      assertString(payload.connectionId, "connectionId");
-      const connection = chainConnections.get(payload.connectionId);
-      connection?.disconnect();
-      chainConnections.delete(payload.connectionId);
-      connectionPorts.delete(payload.connectionId);
-      for (const [orig, conns] of originConnections) {
-        conns.delete(payload.connectionId);
-        if (conns.size === 0) {
-          originConnections.delete(orig);
-        }
-      }
-      swLog(
-        `Chain disconnected: ${payload.connectionId} (${String(chainConnections.size)} remaining)`,
-      );
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result: true,
-      });
-      return;
+    // Tell the leader to release this follower's chain connections so they
+    // don't leak against the global connection cap.
+    if (leaderPort !== null && leaderPort !== port) {
+      postTo(leaderPort, { type: "client-gone", clientId: cid });
     }
+  }
+  if (port === leaderPort) {
+    swLog("Leader port closed; awaiting re-election");
+    leaderPort = null;
+    leaderReady = false;
+    // Followers' connections are now dead. A queued follower will win the
+    // Web Lock and re-register; meanwhile new forwards buffer.
+    broadcastToFollowers({ type: "leader-changed" });
+  }
+}
 
-    default: {
-      const _method: never = request.method;
-      throw new Error(`Unknown protocol method: ${_method as string}`);
+// Ping every port; a throwing post means the port is dead. Runs on each new
+// connection so reloaded iframes don't linger in the registries.
+function cleanStalePorts(): void {
+  for (const port of [...allPorts]) {
+    try {
+      port.postMessage({ type: "ping" });
+    } catch {
+      swLog("Reaping a stale port");
+      removePort(port);
     }
   }
 }
 
-// Proactively clean up stale ports by sending a ping.
-// Posting to a closed port throws, and we catch that to detect dead ports.
-function cleanStalePorts(): void {
-  for (const p of [...ports]) {
-    try {
-      p.postMessage({ type: "ping" });
-    } catch {
-      swLog("Detected stale port during cleanup");
-      removePort(p);
-    }
+function routeInbound(port: MessagePort, clientId: number, data: unknown): void {
+  const type = (data as { type?: string } | null)?.type;
+  // if/else (not switch) because these are loosely-typed wire messages and we
+  // deliberately ignore "ping" and anything unrecognized.
+  if (type === "disconnect") {
+    removePort(port);
+  } else if (type === "leader-claiming") {
+    handleLeaderClaiming(port);
+  } else if (type === "leader-ready") {
+    handleLeaderReady(port);
+  } else if (type === "leader-error") {
+    handleLeaderError((data as SWLeaderError).message);
+  } else if (type === "leader-response") {
+    routeLeaderResponse(data as SWLeaderResponse);
+  } else if (type === "relay-request") {
+    const req = data as SWRelayRequest;
+    forwardToLeader(clientId, req.envelope, req.origin);
   }
 }
 
 self.addEventListener("connect", (event) => {
   const port = event.ports[0];
-
-  // Clean up any stale ports from previous iframe reloads
   cleanStalePorts();
 
-  ports.add(port);
-  swLog(
-    `Port connected (${String(ports.size)} total, engine ${engineReady ? "ready" : "syncing"})`,
-  );
+  const clientId = clientIdCounter++;
+  allPorts.add(port);
+  // Register provisionally as a follower. If this port turns out to be the
+  // leader, `handleLeaderReady` removes it from `clientPorts`.
+  clientPorts.set(clientId, port);
+  portToClientId.set(port, clientId);
 
-  port.addEventListener("message", (msgEvent: MessageEvent) => {
-    const data = msgEvent.data as { type?: string } | null;
-
-    // Handle disconnect signal from iframe beforeunload
-    if (data?.type === "disconnect") {
-      swLog("Port sent disconnect signal, cleaning up");
-      removePort(port);
-      return;
-    }
-
-    if (data?.type !== "relay-request") {
-      return;
-    }
-
-    const relayData = data as SWRelayRequest;
-    const { envelope, origin } = relayData;
-    void handleRequest(port, envelope, origin).catch((error: unknown) => {
-      const msg = serializeError(error);
-      swError(`Request ${envelope.method} failed:`, msg);
-      sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: envelope.id,
-        ok: false,
-        error: msg,
-      });
-    });
+  port.addEventListener("message", (e: MessageEvent) => {
+    routeInbound(port, clientId, e.data);
   });
-
   port.start();
 
-  if (engineReady) {
-    // Engine already synced, signal ready immediately.
-    const readyMsg: SWReady = { type: "ready" };
-    port.postMessage(readyMsg);
-  } else if (presyncFailureMessage !== null) {
-    // Pre-sync already failed. Surface the original cause immediately
-    // instead of queuing this port forever.
-    const errorMsg: SWError = {
-      type: "error",
-      message: presyncFailureMessage,
-    };
-    port.postMessage(errorMsg);
-  } else {
-    // Engine still syncing. Queue the port and signal when pre-sync completes.
-    swLog("Engine not ready yet, queuing port for ready signal");
-    pendingPorts.push(port);
+  swLog(
+    `Port connected (clientId=${String(clientId)}, ${String(allPorts.size)} total, leader ${leaderReady ? "ready" : "pending"})`,
+  );
+
+  // If a leader is already serving, this connector is a follower: release it
+  // immediately. Otherwise it waits for the leader-ready broadcast (or the
+  // leader-error path).
+  if (leaderReady) {
+    postTo(port, { type: "ready" });
+  } else if (leaderError !== null) {
+    postTo(port, { type: "error", message: leaderError });
   }
 });
 
-if (networkInitFailure !== null) {
-  swError(networkInitFailure);
-  presyncFailureMessage = networkInitFailure;
-} else {
-  swLog("SharedWorker initialized, starting pre-sync...");
-  void presync();
-}
+swLog(`Router initialized (network=${network ?? "<unknown>"})`);
