@@ -152,8 +152,6 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
-  // Dialog semantics for the pairing modal. Escape and focus handling
-  // attach when the modal is actually shown, in ensureAuthModalLease.
   modalBackdrop.setAttribute("role", "dialog");
   modalBackdrop.setAttribute("aria-modal", "true");
   modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
@@ -633,8 +631,6 @@ function initPermissions(): void {
     "permissions-popover-backdrop",
   );
 
-  // Set dialog semantics here rather than in the host HTML so older
-  // shells get them too. aria-expanded stays in sync via setOpen below.
   permissionsButton.setAttribute("aria-haspopup", "dialog");
   permissionsButton.setAttribute("aria-expanded", "false");
   permissionsButton.setAttribute("aria-controls", permissionsPopover.id);
@@ -742,8 +738,6 @@ function renderPermissionsPopover(): void {
 
 async function renderPermissionsPopoverAsync(token: number): Promise<void> {
   closeOpenDropdown();
-  // A re-render replaces the focused control. Remember it by id so focus
-  // can be restored below, keeping keyboard and screen reader users anchored.
   const prevFocusId = permissionsPopoverList.contains(document.activeElement)
     ? (document.activeElement?.id ?? "")
     : "";
@@ -847,8 +841,6 @@ function createPermissionDropdown(
   triggerLabel.textContent = STATUS_LABELS[currentStatus];
   trigger.appendChild(triggerLabel);
 
-  // Name the control "<permission> <status>" so screen readers announce
-  // which permission this select changes, not just its current value.
   trigger.setAttribute(
     "aria-labelledby",
     `permissions-popover-name-${perm.name} ${triggerLabel.id}`,
@@ -923,7 +915,6 @@ function createPermissionDropdown(
 
     wrap.appendChild(menu);
     trigger.setAttribute("aria-expanded", "true");
-    // Start keyboard and screen reader navigation from the current choice.
     menu.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
 
     function onDocClick(ev: MouseEvent): void {
@@ -962,8 +953,6 @@ function initModeToggle(): void {
   // still work, the popover just doesn't get a modal overlay there.
   modePopoverBackdrop = document.getElementById("mode-popover-backdrop");
 
-  // Set dialog semantics here rather than in the host HTML so older
-  // shells get them too. aria-expanded stays in sync via setOpen below.
   modeButton.setAttribute("aria-haspopup", "dialog");
   modeButton.setAttribute("aria-expanded", "false");
   modeButton.setAttribute("aria-controls", modePopover.id);
@@ -1016,8 +1005,6 @@ function trapPopoverFocus(
   const focusables = (): HTMLElement[] =>
     Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
       .filter(
-        // Match native tab order: unchecked radios are reached with arrow
-        // keys inside their group, not with Tab.
         (el) =>
           !(
             el instanceof HTMLInputElement &&
@@ -1026,20 +1013,15 @@ function trapPopoverFocus(
           ),
       )
       .filter(
-        // Skip controls CSS hides, like the sheet close button on desktop.
         (el) =>
           typeof el.checkVisibility !== "function" || el.checkVisibility(),
       );
 
   function onKeyDown(ev: KeyboardEvent): void {
-    // A popover that was removed from the document without a close call
-    // (e.g. a replaced DOM subtree) must not keep acting on key events.
     if (!popover.isConnected) {
       return;
     }
     if (ev.key === "Escape") {
-      // An open permission dropdown consumes Escape first. Its own
-      // document handler closes it right after this one returns.
       if (openDropdownCleanup === null) {
         close();
       }
@@ -1072,8 +1054,6 @@ function trapPopoverFocus(
 
   return () => {
     document.removeEventListener("keydown", onKeyDown);
-    // Restore focus unless the user already moved it somewhere else,
-    // e.g. by clicking outside the popover to dismiss it.
     const active = document.activeElement;
     if (
       active === null ||
@@ -1081,8 +1061,6 @@ function trapPopoverFocus(
       popover.contains(active)
     ) {
       trigger.focus();
-      // On phones the trigger is hidden and focus() no-ops. Fall back to
-      // the burger menu, which is how the popover was opened there.
       if (document.activeElement !== trigger) {
         document.getElementById("more-button")?.focus();
       }
@@ -1224,8 +1202,6 @@ function renderModePopover(): void {
           (next) => {
             draft.network = next;
             rerenderNetwork();
-            // The rebuild replaced the focused input. Refocus the checked
-            // radio so keyboard arrow navigation survives the re-render.
             networkGroup
               .querySelector<HTMLInputElement>("input:checked")
               ?.focus();
@@ -1279,8 +1255,6 @@ function renderModePopover(): void {
         (next) => {
           draft.chain = next;
           rerenderChain();
-          // The rebuild replaced the focused input. Refocus the checked
-          // radio so keyboard arrow navigation survives the re-render.
           chainGroup.querySelector<HTMLInputElement>("input:checked")?.focus();
           syncApply();
         },
@@ -2210,7 +2184,6 @@ function renderCacheToggle(
 
   const toggle = document.createElement("button");
   toggle.setAttribute("role", "switch");
-  // The visible label is a sibling span, so name the switch explicitly.
   toggle.setAttribute("aria-label", label);
 
   const track = document.createElement("span");
@@ -2326,8 +2299,6 @@ function ensureAuthModalLease(): void {
           releaseAuthModal = finish;
           signal.addEventListener("abort", finish, { once: true });
           modalBackdrop.classList.add("open");
-          // Escape closes the modal and cancels the in-flight login, the
-          // same as the Cancel button. Torn down again in closeModal.
           authModalFocusTrap ??= trapPopoverFocus(
             modalBackdrop,
             authButton,
