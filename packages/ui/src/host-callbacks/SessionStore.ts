@@ -255,7 +255,14 @@ function encodeCoreStorageValue(
   value: Uint8Array,
 ): string {
   if (key.tag === "AllowanceKeys") {
-    return bytesToHex(allowanceStorageCipher().encrypt(value));
+    const nonce = crypto.getRandomValues(
+      new Uint8Array(ALLOWANCE_NONCE_LENGTH),
+    );
+    const ciphertext = allowanceStorageCipher(nonce).encrypt(value);
+    const stored = new Uint8Array(nonce.length + ciphertext.length);
+    stored.set(nonce);
+    stored.set(ciphertext, nonce.length);
+    return bytesToHex(stored);
   }
   return bytesToHex(value);
 }
@@ -269,18 +276,22 @@ function decodeCoreStorageValue(
     return bytes;
   }
   try {
-    return allowanceStorageCipher().decrypt(bytes);
+    const nonce = bytes.subarray(0, ALLOWANCE_NONCE_LENGTH);
+    const ciphertext = bytes.subarray(ALLOWANCE_NONCE_LENGTH);
+    return allowanceStorageCipher(nonce).decrypt(ciphertext);
   } catch (err) {
     log.warn(`[dot.li] ignoring undecryptable core storage ${key.tag}:`, err);
     return undefined;
   }
 }
 
-function allowanceStorageCipher(): ReturnType<typeof gcm> {
-  return gcm(
-    blake2b(textEncoder.encode(SITE_ID), { dkLen: 16 }),
-    blake2b(textEncoder.encode("nonce"), { dkLen: 32 }),
-  );
+// Standard AES-GCM nonce length. A fresh random nonce is drawn per write and
+// stored as the ciphertext prefix: GCM security collapses if a (key, nonce)
+// pair is ever reused.
+const ALLOWANCE_NONCE_LENGTH = 12;
+
+function allowanceStorageCipher(nonce: Uint8Array): ReturnType<typeof gcm> {
+  return gcm(blake2b(textEncoder.encode(SITE_ID), { dkLen: 16 }), nonce);
 }
 
 function hexNoPrefix(bytes: Uint8Array): string {

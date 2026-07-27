@@ -192,6 +192,30 @@ describe("session-store host callbacks", () => {
     expect(await readCoreStorage(key)).toBeUndefined();
   });
 
+  it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
+    // Given
+    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const key = {
+      tag: "AllowanceKeys",
+      value: { sessionId: "session-1" },
+    } satisfies CoreStorageKey;
+    const storageKey = "dotli:core:allowance-keys:session-1";
+
+    // When: the same plaintext is written twice
+    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    const first = localStorage.getItem(storageKey);
+    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    const second = localStorage.getItem(storageKey);
+
+    // Then: the ciphertexts differ (fresh nonce per write) and still decrypt
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
   it("As a dotli integrator, the host treats corrupt persisted core bytes as a cache miss", async () => {
     // Given
     const { readCoreStorage } = createSessionStoreAdapters();
