@@ -279,9 +279,16 @@ function decodeCoreStorageValue(
     const nonce = bytes.subarray(0, ALLOWANCE_NONCE_LENGTH);
     const ciphertext = bytes.subarray(ALLOWANCE_NONCE_LENGTH);
     return allowanceStorageCipher(nonce).decrypt(ciphertext);
-  } catch (err) {
-    log.warn(`[dot.li] ignoring undecryptable core storage ${key.tag}:`, err);
-    return undefined;
+  } catch {
+    // Slots written before at-rest encryption shipped hold the plain key
+    // bytes, so a failed decrypt means the legacy format. Re-persist
+    // encrypted so the plaintext copy doesn't outlive this read.
+    log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
+    localStorage.setItem(
+      coreLocalStorageKey(key),
+      encodeCoreStorageValue(key, bytes),
+    );
+    return bytes;
   }
 }
 

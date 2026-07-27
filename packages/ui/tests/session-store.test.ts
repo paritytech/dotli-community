@@ -216,6 +216,27 @@ describe("session-store host callbacks", () => {
     ]);
   });
 
+  it("As a dotli integrator, the host migrates legacy plaintext allowance keys on read", async () => {
+    // Given: a plain-hex slot written before at-rest encryption shipped
+    const { readCoreStorage } = createSessionStoreAdapters();
+    const key = {
+      tag: "AllowanceKeys",
+      value: { sessionId: "legacy" },
+    } satisfies CoreStorageKey;
+    const storageKey = "dotli:core:allowance-keys:legacy";
+    localStorage.setItem(storageKey, "0x01020304");
+
+    // When
+    const bytes = await readCoreStorage(key);
+
+    // Then: the legacy bytes are readable and re-persisted encrypted
+    expect(Array.from(bytes ?? [])).toEqual([1, 2, 3, 4]);
+    expect(localStorage.getItem(storageKey)).not.toBe("0x01020304");
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
   it("As a dotli integrator, the host treats corrupt persisted core bytes as a cache miss", async () => {
     // Given
     const { readCoreStorage } = createSessionStoreAdapters();
