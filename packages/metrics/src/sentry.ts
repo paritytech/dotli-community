@@ -27,8 +27,8 @@ export type SentrySource = "host" | "worker" | "sandbox";
 // The smoldot WASM client panics at the Rust layer and surfaces the
 // crash as a `CrashError` with a `panicked at /__w/smoldot/...` message.
 // These events can arrive via our own handlers or via Sentry's default
-// browser integrations (e.g. `auto.browser.browserapierrors`), so we
-// tag at `beforeSend` time to cover every path into the pipeline.
+// browser integrations, so we tag at `beforeSend` time to cover every path
+// into the pipeline.
 
 /** Minimal structural view of a Sentry event, decoupling the detector from `@sentry/browser` internals for testing. */
 interface SmoldotEventLike {
@@ -54,6 +54,30 @@ const SMOLDOT_PATH_RE = /[/\\]smoldot(?:@[\w.+-]+)?[/\\]/i;
 // wrapper raises "Smoldot has panicked" or "Smoldot has crashed".
 const SMOLDOT_VALUE_RE =
   /panicked at [^\n]*[/\\]smoldot[/\\]|Smoldot has (?:panicked|crashed)/i;
+
+const BROWSER_API_ERRORS_INTEGRATION = "BrowserApiErrors";
+
+/**
+ * Exclude Sentry's callback wrapper while retaining its other defaults.
+ *
+ * `@polkadot-api/utils` represents `noop` as `Function.prototype`, and the
+ * WebSocket provider registers it as an event listener while disconnecting.
+ * BrowserApiErrors stores `__sentry_wrapped__` on that callback. Because every
+ * function inherits from Function.prototype, all later callbacks then look
+ * already wrapped and Sentry replaces them with the same no-op. In production
+ * this made every event listener registered after a chain disconnect inert,
+ * including modal buttons.
+ *
+ * GlobalHandlers plus our explicit global error handlers still capture
+ * uncaught errors and unhandled rejections without mutating callbacks.
+ */
+export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(
+  defaultIntegrations: T[],
+): T[] {
+  return defaultIntegrations.filter(
+    (integration) => integration.name !== BROWSER_API_ERRORS_INTEGRATION,
+  );
+}
 
 /**
  * Return true when a Sentry event originated from smoldot: either a
@@ -113,7 +137,7 @@ function sentryEnvironment(): string {
 export function initSentry(source: SentrySource): void {
   const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
   const env = sentryEnvironment();
-  const integrations =
+  const extraIntegrations =
     source === "worker"
       ? []
       : [
@@ -133,7 +157,10 @@ export function initSentry(source: SentrySource): void {
     environment: env,
     release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
     beforeSend: tagSmoldotEvents,
-    integrations,
+    integrations: (defaultIntegrations) => [
+      ...excludeBrowserApiErrorsIntegration(defaultIntegrations),
+      ...extraIntegrations,
+    ],
     // Never attach user info
     sendDefaultPii: false,
     // Needed so your manual Sentry.startSpan() calls are sent.

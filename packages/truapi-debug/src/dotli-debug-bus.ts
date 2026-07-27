@@ -4,11 +4,9 @@
 // dotli-internal debug event bus
 //
 // Module-global pub/sub for boot / resolve / render / bridge / failover
-// events. Mirrors the lazy-subscription pattern used by
-// `onHostApiDebugMessage` and `onHostPappDebugMessage` so emit cost
-// stays near zero when no listener is attached (the primary code path
-// checks `hasDotliDebugListeners()` before constructing expensive
-// payloads).
+// events. The emit path stays near zero-cost when no listener is attached
+// because the primary code path checks `hasDotliDebugListeners()` before
+// constructing expensive payloads.
 //
 // Runtime gate: the bus stays `null` until `enableDotliDebugBuffering()`
 // flips it on. That call is made by `resolveTruapiDebugMode()` in
@@ -24,9 +22,12 @@
 import { createNanoEvents } from "nanoevents";
 
 import type { DotliDebugEvent } from "./dotli-debug-types.ts";
+import type { TruapiDebugMessageEvent } from "./event-store.ts";
+
+export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
 let bus: ReturnType<
-  typeof createNanoEvents<{ event: (e: DotliDebugEvent) => void }>
+  typeof createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>
 > | null = null;
 let listenerCount = 0;
 
@@ -46,7 +47,7 @@ let listenerCount = 0;
  */
 const BUFFER_MAX = 512;
 let bufferingEnabled = false;
-let bufferedEvents: DotliDebugEvent[] = [];
+let bufferedEvents: DotliDebugBusEvent[] = [];
 
 function noopUnsubscribe(): void {
   /* prod stub returned from `onDotliDebugEvent` when the bus is disabled */
@@ -58,13 +59,13 @@ function noopUnsubscribe(): void {
  * decision to enable the debug panel, before any emit site runs.
  */
 export function enableDotliDebugBuffering(): void {
-  bus ??= createNanoEvents<{ event: (e: DotliDebugEvent) => void }>();
+  bus ??= createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>();
   bufferingEnabled = true;
 }
 
 /** Emit a debug event. Silent no-op when no listener is attached
  *  AND buffering is off. */
-export function emitDotliDebugEvent(event: DotliDebugEvent): void {
+export function emitDotliDebugEvent(event: DotliDebugBusEvent): void {
   if (bus === null) {
     return;
   }
@@ -95,7 +96,7 @@ export function hasDotliDebugListeners(): boolean {
  * is a catch-up mechanism, not a persistent replay log).
  */
 export function onDotliDebugEvent(
-  callback: (event: DotliDebugEvent) => void,
+  callback: (event: DotliDebugBusEvent) => void,
 ): () => void {
   if (bus === null) {
     return noopUnsubscribe;

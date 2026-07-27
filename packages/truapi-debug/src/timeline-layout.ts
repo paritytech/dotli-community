@@ -695,8 +695,6 @@ const SYSTEM_TERMINATOR_SUFFIXES: readonly string[] = [
   "failed",
   "landing_page_shown",
   "completed",
-  "session_established",
-  "pairing_failed",
   "terminated",
   "iframe_ready",
   // `setup_ready` does not close the bridge flow. It only means the

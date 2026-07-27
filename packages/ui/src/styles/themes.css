@@ -256,48 +256,6 @@
 [data-theme="light"] .signing-field-value {
   color: #333;
 }
-[data-theme="light"] .allocation-modal-list {
-  color: #333;
-}
-[data-theme="light"] .allocation-info-icon {
-  color: #999;
-}
-[data-theme="light"] .allocation-info-icon:hover,
-[data-theme="light"] .allocation-info-wrap:focus-within .allocation-info-icon {
-  color: #555;
-}
-[data-theme="light"] .allocation-tooltip {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-}
-[data-theme="light"] .allocation-tooltip-title {
-  color: #333;
-}
-[data-theme="light"] .allocation-account-summary:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-[data-theme="light"] .allocation-account-label {
-  color: #1a1a1a;
-}
-[data-theme="light"] .allocation-account-chevron {
-  color: rgba(0, 0, 0, 0.4);
-}
-[data-theme="light"] .allocation-account-copy {
-  color: #888;
-}
-[data-theme="light"] .allocation-account-copy:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: #333;
-}
-[data-theme="light"] .allocation-account-copy.copied {
-  color: #16a34a;
-}
-[data-theme="light"] .allocation-account-address {
-  color: #333;
-  background: #f5f5f5;
-  border-color: #e2e2e2;
-}
 [data-theme="light"] .signing-field-value.mono {
   background: #f5f5f5;
   border-color: #ddd;

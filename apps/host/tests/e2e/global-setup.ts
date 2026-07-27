@@ -11,6 +11,10 @@ import {
   type PairResult,
 } from "./helpers/signer-bot";
 import { extractQrPayload } from "./helpers/extract-qr-payload";
+import {
+  E2E_CHAIN_BACKEND,
+  initializeChainBackend,
+} from "./helpers/chain-backend";
 import { STATE_FILE, SESSION_FILE } from "./fixtures/paths";
 
 // External-service config. Required, with no defaults. A wrong or missing
@@ -28,7 +32,10 @@ const BOT_NETWORK = requiredEnv("SIGNER_BOT_NETWORK");
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
 const PORT = process.env.PORT ?? "5173";
-const HOST = process.env.E2E_HOST ?? "host-playground";
+// Pairing only needs the host shell and protocol iframe. Loading the
+// host-playground product here can open product permission modals before the
+// auth button is clicked, so keep global auth setup on the bare host origin.
+const AUTH_HOST = process.env.E2E_AUTH_HOST ?? "localhost";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -41,20 +48,42 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    console.error(
+      `[globalSetup] ${name} must be a positive integer, got "${raw}".`,
+    );
+    process.exit(1);
+  }
+  return value;
+}
+
 const PAIR_ATTEMPTS = 3;
 const PAIR_ATTEMPT_BACKOFF_MS = 3_000;
 // One-time setup: the bot has to create the user and attest on the
 // network, so the ceiling is more generous than the per-test restore.
 // If this trips, the bot or chain is in trouble and the whole run
 // should fail fast.
-const USER_BADGE_TIMEOUT_MS = 60_000;
+// The bot only returns from `/api/pair` after accepting the handshake. Its
+// chain-side device allowance is then finalized asynchronously and can take
+// longer than the ring inclusion timeout (150s). Keep this above that ceiling.
+const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv(
+  "E2E_PAIR_BADGE_TIMEOUT_MS",
+  240_000,
+);
 
 // Distinct exit code so CI workflow / reviewers can tell "Nova is down"
 // apart from "dot.li tests asserted false". Keeps the failure attributable.
 export const BOT_UNAVAILABLE_EXIT_CODE = 99;
 
 export default async function globalSetup(_config: FullConfig): Promise<void> {
-  console.log(`[globalSetup] bot=${BOT_BASE} network=${BOT_NETWORK}`);
+  console.log(
+    `[globalSetup] bot=${BOT_BASE} network=${BOT_NETWORK} backend=${E2E_CHAIN_BACKEND}`,
+  );
 
   const probe = await health(BOT_BASE);
   if (!probe.ok) {
@@ -128,22 +157,16 @@ async function pairOnce(
     console.log(`[globalSetup:pageerror] ${err.message}`);
   });
 
-  await page.addInitScript(() => {
-    try {
-      localStorage.setItem("dotli:mode", "gateway");
-      localStorage.setItem("dotli:chain-backend", "rpc");
-      localStorage.setItem("dotli:content-backend", "ipfs-gateway");
-    } catch {
-      /* ignore */
-    }
-  });
+  await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
 
   try {
-    await page.goto(`http://${HOST}.localhost:${PORT}/`, { timeout: 60_000 });
-    await page
-      .getByRole("button", { name: "Switch to Gateway" })
-      .click({ timeout: 5_000 })
-      .catch(() => {});
+    await page.goto(`http://${AUTH_HOST}:${PORT}/`, { timeout: 60_000 });
+    if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+      await page
+        .getByRole("button", { name: "Switch to Gateway" })
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+    }
 
     const authBtn = page.locator("#auth-button");
     await authBtn.waitFor({ state: "visible", timeout: 30_000 });

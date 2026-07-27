@@ -4,12 +4,13 @@
 import { describe, expect, it } from "vitest";
 import { SITE_ID } from "@dotli/config/config";
 import {
+  buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
-  hasStoredSharedAuthSession,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isValidSharedAuthKey,
+  SHARED_CORE_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 
 describe("shared auth storage helpers", () => {
@@ -68,21 +69,22 @@ describe("shared auth storage helpers", () => {
     expect(isValidSharedAuthKey("")).toBe(false);
   });
 
-  it("builds stable storage keys and detects empty session payloads", () => {
-    expect(buildSharedAuthStorageKey("dot.li", "SsoSessions")).toBe(
-      "PAPP_dot.li_SsoSessions",
+  it("As a returning user, my shared authentication uses stable storage keys", () => {
+    expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
+      "TRUAPI_dot.li_session",
     );
-    expect(buildSharedAuthStorageKey("paseoli.dev", "SsoSessions")).toBe(
-      "PAPP_paseoli.dev_SsoSessions",
+    expect(
+      buildSharedAuthStorageKey("paseoli.dev", SHARED_CORE_SESSION_KEY),
+    ).toBe("TRUAPI_paseoli.dev_session");
+    expect(buildSharedAuthStorageKey("dot.li", "UserSecrets")).toBe(
+      "TRUAPI_dot.li_UserSecrets",
     );
-    expect(hasStoredSharedAuthSession(null)).toBe(false);
-    expect(hasStoredSharedAuthSession("")).toBe(false);
-    expect(hasStoredSharedAuthSession("0x00")).toBe(false);
-    expect(hasStoredSharedAuthSession("0x04010203")).toBe(true);
+    expect(buildLegacySharedAuthSessionStorageKey("dot.li")).toBe(
+      "PAPP_dot.li_SsoSessionsV3",
+    );
   });
 
   it("identifies shared-auth RPC methods", () => {
-    expect(isSharedAuthRequestMethod("authHasSession")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageRead")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageWrite")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageClear")).toBe(true);

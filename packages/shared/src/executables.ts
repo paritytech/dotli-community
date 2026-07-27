@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Canonical executable-manifest kinds. A product publishes one manifest per
-// kind under an `<kind>.<base>.dot` subname, but all kinds share one derived
-// account (see `stripExecutableSubname` in @dotli/auth/account). Single source
-// of truth so the protocol bridge allowlist and the account derivation stay in
-// sync.
+// kind under an `<kind>.<base>.dot` subname. The host passes the base product
+// name to the Rust core, so every executable kind shares one derived account.
 
 export const EXECUTABLE_KINDS = ["app", "widget", "worker"] as const;
 

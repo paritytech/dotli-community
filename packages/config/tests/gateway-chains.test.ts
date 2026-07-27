@@ -6,6 +6,7 @@ import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
   getActiveSupportedGenesisHashes,
+  getActiveCoreGatewayChains,
   getActiveGatewayChains,
   getActiveGatewaySupportedGenesisHashes,
   setNetworkOverride,
@@ -14,24 +15,30 @@ import {
 const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V2];
 
 // The gateway set drives the host's chain-support advertisement in
-// rpc-gateway mode (`isRemoteChainSupported`). It must match what the gateway
-// backend can actually serve (`createRpcChainProvider`), or a dApp commits to
-// a connection that never completes.
+// rpc-gateway mode (`isRemoteChainSupported`). The core connection callback
+// accepts a wider set because it also carries host-owned Bulletin operations.
 describe("gateway-supported chains (rpc-gateway mode)", () => {
   beforeEach(() => {
     setNetworkOverride(NetworkName.PASEO_NEXT_V2);
   });
 
-  it("serves relay, Asset Hub, and People", () => {
+  it("As a product, the host advertises relay, Asset Hub, and People", () => {
     const hashes = getActiveGatewaySupportedGenesisHashes();
     expect(hashes.has(v2.relay.genesis.toLowerCase())).toBe(true);
     expect(hashes.has(v2.assethub.genesis.toLowerCase())).toBe(true);
     expect(hashes.has(v2.people.genesis.toLowerCase())).toBe(true);
   });
 
-  it("excludes the Bulletin chain (content served via IPFS, not chain RPC)", () => {
+  it("As a product, the host does not advertise the Bulletin chain", () => {
     const hashes = getActiveGatewaySupportedGenesisHashes();
     expect(hashes.has(v2.bulletin.genesis.toLowerCase())).toBe(false);
+  });
+
+  it("As a Rust core runtime, I can access Bulletin through the host gateway set", () => {
+    const hashes = new Set(
+      getActiveCoreGatewayChains().map((chain) => chain.genesis.toLowerCase()),
+    );
+    expect(hashes.has(v2.bulletin.genesis.toLowerCase())).toBe(true);
   });
 
   it("never advertises a chain without a configured RPC endpoint", () => {

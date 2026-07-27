@@ -77,16 +77,15 @@ import {
   type ChainBrokerManager,
 } from "@dotli/protocol/broker";
 import {
+  buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
-  hasStoredSharedAuthSession,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-  SHARED_AUTH_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 import {
   isProtocolEnvelope,
@@ -101,6 +100,14 @@ installGlobalErrorHandlers("host");
 
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+
+function clearLegacySharedAuthSession(): void {
+  try {
+    localStorage.removeItem(buildLegacySharedAuthSessionStorageKey(SITE_ID));
+  } catch (err) {
+    log.warn("[dot.li protocol] Legacy auth session cleanup failed:", err);
+  }
+}
 
 // Same trust set as shared auth: host shell plus non-sandbox *.<BASE>, but NOT
 // app.<BASE> or *.app.<BASE>. A user-uploaded CID app must never drive the
@@ -920,22 +927,6 @@ function handleSharedAuthRequest(
   assertSharedAuthOrigin(origin);
 
   switch (request.method) {
-    case "authHasSession": {
-      const payload = request.payload as ProtocolRequestMap["authHasSession"];
-      assertSharedAuthSiteId(payload.siteId);
-      const value = localStorage.getItem(
-        buildSharedAuthStorageKey(payload.siteId, SHARED_AUTH_SESSION_KEY),
-      );
-      respond({
-        namespace: "dotli:protocol",
-        kind: "response",
-        id: request.id,
-        ok: true,
-        result: hasStoredSharedAuthSession(value),
-      });
-      return;
-    }
-
     case "authStorageRead": {
       const payload = request.payload as ProtocolRequestMap["authStorageRead"];
       assertSharedAuthSiteId(payload.siteId);
@@ -1285,6 +1276,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   return { handleRequest, cleanup };
 }
 
+clearLegacySharedAuthSession();
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();

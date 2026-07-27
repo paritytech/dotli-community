@@ -14,11 +14,14 @@
     "preview": "turbo run build && bun scripts/preview-server.ts",
     "preview:debug": "VITE_APP_DEBUG=true bun preview",
     "test": "turbo run test",
+    "test:e2e:local": "E2E_PRODUCT_REPO=${E2E_PRODUCT_REPO:-../../../host-playground} E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} bun run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true bun run build && bun run --cwd apps/host test:e2e:local",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "typecheck": "turbo run typecheck",
     "set-version": "bun scripts/set-version.ts",
+    "link:truapi": "bun scripts/link-truapi-local.ts",
+    "unlink:truapi": "bun scripts/unlink-truapi-local.ts",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
   },
   "devDependencies": {
@@ -35,6 +38,8 @@
     "smoldot": "3.3.1"
   },
   "overrides": {
+    "@parity/truapi": "0.5.1",
+    "fast-uri": "3.1.4",
     "smoldot": "3.3.1",
     "esbuild": "^0.28.1"
   }

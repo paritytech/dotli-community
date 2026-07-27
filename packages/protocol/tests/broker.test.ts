@@ -430,6 +430,75 @@ describe("createChainBrokerManager", () => {
     ]);
   });
 
+  it("isolates concurrent statement-store subscriptions with duplicate client ids", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const localProvider = manager.getLocalProvider("people");
+    const messagesA: JsonRpcMessage[] = [];
+    const messagesB: JsonRpcMessage[] = [];
+    const connectionA = localProvider?.((message) => messagesA.push(message));
+    const connectionB = localProvider?.((message) => messagesB.push(message));
+
+    connectionA?.send({
+      jsonrpc: "2.0",
+      id: "truapi:1",
+      method: "statement_subscribeStatement",
+      params: [{ matchAll: [{ key: "topic", value: "a" }] }],
+    });
+    connectionB?.send({
+      jsonrpc: "2.0",
+      id: "truapi:1",
+      method: "statement_subscribeStatement",
+      params: [{ matchAll: [{ key: "topic", value: "b" }] }],
+    });
+
+    const upstreamA = harness.sent[0] as { id: string };
+    const upstreamB = harness.sent[1] as { id: string };
+    expect(upstreamA.id).not.toBe(upstreamB.id);
+
+    harness.emit({
+      jsonrpc: "2.0",
+      id: upstreamB.id,
+      result: "upstream-sub-b",
+    });
+    harness.emit({
+      jsonrpc: "2.0",
+      id: upstreamA.id,
+      result: "upstream-sub-a",
+    });
+
+    const responseA = messagesA[0] as { id: string; result: string };
+    const responseB = messagesB[0] as { id: string; result: string };
+    expect(responseA.id).toBe("truapi:1");
+    expect(responseB.id).toBe("truapi:1");
+    expect(responseA.result).not.toBe(responseB.result);
+
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "statement_statement",
+      params: {
+        subscription: "upstream-sub-b",
+        result: { event: "newStatements", statements: ["b"] },
+      },
+    });
+
+    expect(messagesA).toHaveLength(1);
+    expect(messagesB[1]).toEqual({
+      jsonrpc: "2.0",
+      method: "statement_statement",
+      params: {
+        subscription: responseB.result,
+        result: { event: "newStatements", statements: ["b"] },
+      },
+    });
+
+    connectionA?.disconnect();
+    expect(harness.sent.at(-1)).toMatchObject({
+      method: "statement_unsubscribeStatement",
+      params: ["upstream-sub-a"],
+    });
+  });
+
   it("forwards exactly one upstream unpin when two sessions unpin the same shared block", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
