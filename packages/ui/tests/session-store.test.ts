@@ -286,8 +286,7 @@ describe("session-store host callbacks", () => {
     const storageKey = "dotli:core:allowance-keys:session-1";
     await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
     const stored = localStorage.getItem(storageKey) ?? "";
-    const flipped =
-      stored.slice(0, -2) + (stored.endsWith("00") ? "ff" : "00");
+    const flipped = stored.slice(0, -2) + (stored.endsWith("00") ? "ff" : "00");
     localStorage.setItem(storageKey, flipped);
 
     // When

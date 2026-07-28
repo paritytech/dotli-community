@@ -41,6 +41,8 @@
     "@parity/truapi": "0.5.1",
     "fast-uri": "3.1.4",
     "smoldot": "3.3.1",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "brace-expansion": "^5.0.8",
+    "postcss": "^8.5.24"
   }
 }
