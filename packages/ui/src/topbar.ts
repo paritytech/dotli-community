@@ -110,7 +110,11 @@ let releaseAuthModal: (() => void) | null = null;
 
 type ThemePref = "light" | "dark" | "system";
 
-// Absent key means "system" so pre-existing users keep following the OS.
+/**
+ * Read the persisted theme preference.
+ *
+ * An absent key means "system" so pre-existing users keep following the OS.
+ */
 function getStoredThemePref(): ThemePref {
   const stored = localStorage.getItem("dotli-theme");
   if (stored === "light" || stored === "dark" || stored === "system") {

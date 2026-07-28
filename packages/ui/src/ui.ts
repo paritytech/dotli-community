@@ -618,7 +618,7 @@ export function showLanding(): void {
 
   input.focus();
 
-  // Move auth + theme toggle buttons to the landing page top-right.
+  // Move the auth and theme buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");
   const authButton = document.getElementById("auth-button");
   const themeToggle = document.getElementById("theme-toggle");
