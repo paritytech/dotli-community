@@ -14,6 +14,25 @@ vi.mock("polkadot-api/ws", () => ({
 }));
 
 describe("rpc-chain", () => {
+  it("supports the active People chain when RPC endpoints are configured", () => {
+    const people = getActiveServicesConfig().people;
+
+    expect(isRpcUpstreamSupported(people.genesis)).toBe(true);
+
+    const provider = {};
+    mocks.getWsProvider.mockReturnValueOnce(provider);
+
+    expect(createRpcUpstreamProvider(people.genesis)).toBe(provider);
+    expect(mocks.getWsProvider).toHaveBeenCalledWith([...people.rpcs], {
+      heartbeatTimeout: 120_000,
+    });
+  });
+
+  it("rejects unknown genesis hashes", () => {
+    expect(isRpcUpstreamSupported("0xdeadbeef")).toBe(false);
+    expect(createRpcUpstreamProvider("0xdeadbeef")).toBeNull();
+  });
+
   it("keeps Bulletin operational in the protocol runtime", () => {
     // Given
     const bulletin = getActiveServicesConfig().bulletin;

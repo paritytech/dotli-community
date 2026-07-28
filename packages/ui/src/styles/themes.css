@@ -332,6 +332,13 @@
 [data-theme="light"] .landing-search-bar:focus-within {
   border-color: rgba(0, 0, 0, 0.45);
 }
+[data-theme="light"] .landing-search-bar--error,
+[data-theme="light"] .landing-search-bar--error:focus-within {
+  border-color: #dc2626;
+}
+[data-theme="light"] .landing-nav-error {
+  color: #dc2626;
+}
 [data-theme="light"] .landing-search-input {
   color: #111;
 }

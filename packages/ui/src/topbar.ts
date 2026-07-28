@@ -475,7 +475,32 @@ const PENDING_ICON_SVG =
 // fall back to the raw error.
 function friendlyAuthError(
   message: string,
-): { title: string; subtitle: string } | null {
+): { title: string; subtitle: string; detail?: string } | null {
+  if (
+    message.includes("no free statement-store slot for device registration")
+  ) {
+    return {
+      title: "No Statement Store slots left",
+      subtitle: "Polkadot Mobile could not register this browser as a device.",
+      detail: "no free statement-store slot for device registration",
+    };
+  }
+  if (message.includes("Invalid Transaction")) {
+    return {
+      title: "Statement Store transaction rejected",
+      subtitle:
+        "Polkadot Mobile could not register this browser because the chain rejected the registration transaction.",
+      detail: message,
+    };
+  }
+  if (message.includes("SubstrateSdk.JSONRPCError error 1")) {
+    return {
+      title: "Statement Store registration failed",
+      subtitle:
+        "Polkadot Mobile reported a JSON-RPC failure while registering this browser as a device.",
+      detail: message,
+    };
+  }
   if (message.includes("OriginPersonProviderError")) {
     return {
       title: "Your account is still being set up",
@@ -505,6 +530,13 @@ function renderError(message: string): void {
     subtitle.className = "auth-modal-pending-subtitle";
     subtitle.textContent = friendly.subtitle;
     container.appendChild(subtitle);
+
+    if (friendly.detail !== undefined && friendly.detail.length > 0) {
+      const detail = document.createElement("p");
+      detail.className = "auth-modal-error";
+      detail.textContent = friendly.detail;
+      container.appendChild(detail);
+    }
   } else {
     const msg = document.createElement("p");
     msg.className = "auth-modal-error";
@@ -668,6 +700,7 @@ const STATUS_LABELS: Record<PermissionStatus, string> = {
 const STATUS_ORDER: readonly PermissionStatus[] = ["ask", "granted", "denied"];
 
 let openDropdownCleanup: (() => void) | null = null;
+let permissionsRenderToken = 0;
 
 function closeOpenDropdown(): void {
   openDropdownCleanup?.();
@@ -675,12 +708,20 @@ function closeOpenDropdown(): void {
 }
 
 function renderPermissionsPopover(): void {
-  void renderPermissionsPopoverAsync().catch(() => {
+  const token = ++permissionsRenderToken;
+  void renderPermissionsPopoverAsync(token).catch(() => {
+    if (token !== permissionsRenderToken) {
+      return;
+    }
     permissionsPopoverList.innerHTML = "";
+    const hint = document.createElement("div");
+    hint.className = "permissions-popover-footer";
+    hint.textContent = "Permissions are unavailable for this app.";
+    permissionsPopoverList.appendChild(hint);
   });
 }
 
-async function renderPermissionsPopoverAsync(): Promise<void> {
+async function renderPermissionsPopoverAsync(token: number): Promise<void> {
   closeOpenDropdown();
   permissionsPopoverList.innerHTML = "";
 
@@ -702,7 +743,10 @@ async function renderPermissionsPopoverAsync(): Promise<void> {
 
   for (const [index, perm] of ALL_PERMISSIONS.entries()) {
     const status = statuses[index] ?? "ask";
-    if (currentProductLabel !== productLabel) {
+    if (
+      token !== permissionsRenderToken ||
+      currentProductLabel !== productLabel
+    ) {
       return;
     }
 

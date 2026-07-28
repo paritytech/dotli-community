@@ -268,6 +268,12 @@ export function getSmoldotDirect(): SmoldotClient {
     // (link-local), and either way the page is demoted from secure context
     // (which breaks SW registration).
     forbidNonLocalWs: true,
+    // smoldot 3.3.1 advertises WebRTC even though `RTCPeerConnection` is
+    // unavailable in worker scopes. Dialing a discovered `/webrtc-direct/`
+    // peer then throws through WASM and leaves the client unusable.
+    // Remove this workaround once the upstream fix is released:
+    // https://github.com/paritytech/smoldot/pull/3303
+    forbidWebRtc: true,
   });
   log.debug("[dot.li smoldot] Smoldot client ready (direct mode)");
   return smoldotInstance;

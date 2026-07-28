@@ -6,6 +6,7 @@ import type { JsonRpcMessage } from "@polkadot-api/json-rpc-provider";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { connectChain, type ChainConnection } from "@dotli/protocol/client";
 import { isSandboxOrigin } from "@dotli/config/config";
+import { getBackend } from "@dotli/config/mode";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
@@ -229,6 +230,14 @@ function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
 
 /** Idempotent. Call once at host startup. */
 export function listenForSandboxBitswap(): void {
+  // Chain support is now decided by the protocol runtime and surfaces as
+  // `UNSUPPORTED_CHAIN` at connect time, so only the gateway case is
+  // predictable at startup.
+  if (getBackend() === "rpc-gateway") {
+    log.warn(
+      "[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.",
+    );
+  }
   window.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
     if (!isBitswapGetMessage(data)) {

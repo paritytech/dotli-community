@@ -7,8 +7,12 @@
 // ids to PAPI, so the legacy provider translates those ids back to their TrUAPI
 // subscription wire ids. No `@novasamatech/*` dependency is needed.
 //
-// Remove this file (and the probe in `bridge.ts`) once products migrate to
-// `@parity/truapi`.
+// TODO(remove-legacy-nova): once the last product on the legacy Nova host-api
+// stack migrates to `@parity/truapi`, delete this entire file together with
+// every other site tagged `remove-legacy-nova` (grep for that tag): the
+// window-postMessage probe in `bridge.ts` and
+// `tests/legacy-host-bridge.test.ts`. Nothing in the modern MessagePort path
+// or the Rust core depends on anything here.
 
 import {
   decodeWireMessage,
@@ -48,6 +52,8 @@ interface VersionedFollowBoundRequest {
 
 interface DecodedFollowBoundRequest {
   genesisHash: string;
+  /** The synthetic follow id Nova stamped on the incoming frame. */
+  followSubscriptionId: string;
   withFollowSubscriptionId(followSubscriptionId: string): Uint8Array;
 }
 
@@ -60,6 +66,7 @@ function createFollowBoundDecoder<T extends VersionedFollowBoundRequest>(
     const request = codec.dec(payload);
     return {
       genesisHash: request.value.genesisHash,
+      followSubscriptionId: request.value.followSubscriptionId,
       withFollowSubscriptionId(followSubscriptionId) {
         if (request.value.followSubscriptionId === followSubscriptionId) {
           return payload;
@@ -114,24 +121,42 @@ export interface WindowMessageProvider extends WireProvider {
 
 /**
  * Translate Nova's synthetic chain-head follow ids at the legacy transport
- * boundary. The old Nova host selected the first active follow for a chain;
- * retain that behavior while the Rust core requires the exact subscription
- * start frame's request id.
+ * boundary. Nova numbers each follow on a chain monotonically (`follow_0`,
+ * `follow_1`, …) while the Rust core requires the exact subscription start
+ * frame's request id, so the shim mirrors that counter per genesis and
+ * rewrites every follow-bound frame to the wire id of the follow it is bound
+ * to. A product can hold several concurrent follows on one genesis (PAPI
+ * opens a fresh follow during resync before stopping the previous one);
+ * routing by the frame's own synthetic id keeps those from cross-talking.
+ * A synthetic id the shim never saw falls back to the first active follow.
  */
 export function createLegacyNovaChainHeadProvider(
   provider: WireProvider,
   productId?: string,
 ): WireProvider {
-  const followIdsByGenesis = new Map<string, Set<string>>();
+  /** Per genesis: Nova's synthetic follow id -> follow-start wire request id. */
+  const followWireIdsByGenesis = new Map<string, Map<string, string>>();
+  // Nova's synthetic counter never resets within a connection — not even
+  // after every follow on a genesis stops — so this mirror only resets where
+  // Nova's does: handshake (new document) and dispose.
+  const nextSyntheticOrdinal = new Map<string, number>();
   const localProductId =
     productId === "localhost" || productId?.startsWith("localhost:") === true
       ? productId
       : undefined;
+  const forgetAllFollows = (): void => {
+    followWireIdsByGenesis.clear();
+    nextSyntheticOrdinal.clear();
+  };
   const forgetFollowId = (requestId: string): void => {
-    for (const [genesisHash, followIds] of followIdsByGenesis) {
-      followIds.delete(requestId);
+    for (const [genesisHash, followIds] of followWireIdsByGenesis) {
+      for (const [syntheticId, wireId] of followIds) {
+        if (wireId === requestId) {
+          followIds.delete(syntheticId);
+        }
+      }
       if (followIds.size === 0) {
-        followIdsByGenesis.delete(genesisHash);
+        followWireIdsByGenesis.delete(genesisHash);
       }
     }
   };
@@ -147,7 +172,7 @@ export function createLegacyNovaChainHeadProvider(
     // The core-side provider survives that navigation, so discard mappings
     // belonging to the previous document before accepting new follows.
     if (payload.id === SYSTEM_HANDSHAKE.request) {
-      followIdsByGenesis.clear();
+      forgetAllFollows();
       return message;
     }
     if (
@@ -185,9 +210,12 @@ export function createLegacyNovaChainHeadProvider(
         // Let the core report malformed legacy frames.
         return message;
       }
-      const followIds = followIdsByGenesis.get(genesisHash) ?? new Set();
-      followIds.add(requestId);
-      followIdsByGenesis.set(genesisHash, followIds);
+      const followIds =
+        followWireIdsByGenesis.get(genesisHash) ?? new Map<string, string>();
+      const ordinal = nextSyntheticOrdinal.get(genesisHash) ?? 0;
+      followIds.set(`follow_${String(ordinal)}`, requestId);
+      nextSyntheticOrdinal.set(genesisHash, ordinal + 1);
+      followWireIdsByGenesis.set(genesisHash, followIds);
       return message;
     }
 
@@ -203,10 +231,10 @@ export function createLegacyNovaChainHeadProvider(
 
     try {
       const request = decodeFollowBoundRequest(payload.value);
-      const followId = followIdsByGenesis
-        .get(request.genesisHash)
-        ?.values()
-        .next().value;
+      const followIds = followWireIdsByGenesis.get(request.genesisHash);
+      const followId =
+        followIds?.get(request.followSubscriptionId) ??
+        followIds?.values().next().value;
       if (followId === undefined) {
         return message;
       }
@@ -244,7 +272,7 @@ export function createLegacyNovaChainHeadProvider(
     },
     subscribeClose,
     dispose() {
-      followIdsByGenesis.clear();
+      forgetAllFollows();
       provider.dispose();
     },
   };
