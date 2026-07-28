@@ -738,6 +738,8 @@ function renderPermissionsPopover(): void {
 
 async function renderPermissionsPopoverAsync(token: number): Promise<void> {
   closeOpenDropdown();
+  // A re-render replaces the focused control. Remember it by id so focus
+  // can be restored below, keeping keyboard users anchored.
   const prevFocusId = permissionsPopoverList.contains(document.activeElement)
     ? (document.activeElement?.id ?? "")
     : "";
@@ -841,6 +843,8 @@ function createPermissionDropdown(
   triggerLabel.textContent = STATUS_LABELS[currentStatus];
   trigger.appendChild(triggerLabel);
 
+  // Name the control "<permission> <status>" so screen readers announce
+  // which permission this select changes, not just its current value.
   trigger.setAttribute(
     "aria-labelledby",
     `permissions-popover-name-${perm.name} ${triggerLabel.id}`,
@@ -1005,6 +1009,8 @@ function trapPopoverFocus(
   const focusables = (): HTMLElement[] =>
     Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
       .filter(
+        // Match native tab order: unchecked radios are reached with arrow
+        // keys inside their group, not with Tab.
         (el) =>
           !(
             el instanceof HTMLInputElement &&
@@ -1013,15 +1019,20 @@ function trapPopoverFocus(
           ),
       )
       .filter(
+        // Skip controls CSS hides, like the sheet close button on desktop.
         (el) =>
           typeof el.checkVisibility !== "function" || el.checkVisibility(),
       );
 
   function onKeyDown(ev: KeyboardEvent): void {
+    // A popover removed from the document without a close call must not
+    // keep acting on key events.
     if (!popover.isConnected) {
       return;
     }
     if (ev.key === "Escape") {
+      // An open permission dropdown consumes Escape first. Its own
+      // document handler closes it right after this one returns.
       if (openDropdownCleanup === null) {
         close();
       }
@@ -1054,6 +1065,8 @@ function trapPopoverFocus(
 
   return () => {
     document.removeEventListener("keydown", onKeyDown);
+    // Restore focus unless the user already moved it somewhere else,
+    // e.g. by clicking outside the popover to dismiss it.
     const active = document.activeElement;
     if (
       active === null ||
@@ -1202,6 +1215,8 @@ function renderModePopover(): void {
           (next) => {
             draft.network = next;
             rerenderNetwork();
+            // The rebuild replaced the focused input. Refocus the checked
+            // radio so keyboard arrow navigation survives the re-render.
             networkGroup
               .querySelector<HTMLInputElement>("input:checked")
               ?.focus();
@@ -1255,6 +1270,8 @@ function renderModePopover(): void {
         (next) => {
           draft.chain = next;
           rerenderChain();
+          // The rebuild replaced the focused input. Refocus the checked
+          // radio so keyboard arrow navigation survives the re-render.
           chainGroup.querySelector<HTMLInputElement>("input:checked")?.focus();
           syncApply();
         },

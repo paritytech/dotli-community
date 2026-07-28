@@ -764,7 +764,7 @@ describe("topbar popover keyboard access", () => {
     document.getElementById("permissions-button")?.click();
     await flushMicrotasks();
 
-    // Then: the select's accessible name covers the permission and its value
+    // Then
     const select = document.querySelector<HTMLButtonElement>(
       ".permissions-popover-select",
     );
@@ -774,7 +774,7 @@ describe("topbar popover keyboard access", () => {
       .join(" ");
     expect(labelText).toBe("Notifications Ask (Default)");
 
-    // When: opening the dropdown focuses the selected option
+    // When
     select?.click();
 
     // Then
@@ -787,7 +787,7 @@ describe("topbar popover keyboard access", () => {
     );
     expect(document.activeElement).toBe(selected);
 
-    // When: ArrowDown moves focus to the next option
+    // When
     document.activeElement?.dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
     );
@@ -795,13 +795,13 @@ describe("topbar popover keyboard access", () => {
     // Then
     expect(document.activeElement?.textContent).toBe("Allowed");
 
-    // When: Escape closes the dropdown and returns focus to the select
+    // When
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
 
     // Then
     expect(document.activeElement).toBe(select);
 
-    // Cleanup: close the popover
+    // Cleanup
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 
@@ -827,7 +827,7 @@ describe("topbar popover keyboard access", () => {
     document.getElementById("permissions-button")?.click();
     await flushMicrotasks();
 
-    // When: pick a new value from the Camera dropdown
+    // When
     const selectId = "permissions-popover-select-Camera";
     document.getElementById(selectId)?.click();
     const allow = Array.from(
@@ -840,12 +840,12 @@ describe("topbar popover keyboard access", () => {
       expect(setPermissionAuthorizationStatus).toHaveBeenCalledTimes(1);
     });
 
-    // Then: the re-rendered list restores focus to the same row's select
+    // Then
     await vi.waitFor(() => {
       expect(document.activeElement?.id).toBe(selectId);
     });
 
-    // Cleanup: close the popover
+    // Cleanup
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 
@@ -862,18 +862,18 @@ describe("topbar popover keyboard access", () => {
     const toggle = document.querySelector('[role="switch"]');
     expect(toggle?.getAttribute("aria-label")).toBe("dotNS cache");
 
-    // When: the user picks another backend
+    // When
     const next = Array.from(
       group?.querySelectorAll<HTMLInputElement>("input") ?? [],
     ).find((radio) => !radio.checked && !radio.disabled);
     next?.click();
 
-    // Then: the rebuilt group keeps focus on the newly checked radio
+    // Then
     const checked = group?.querySelector<HTMLInputElement>("input:checked");
     expect(checked?.value).toBe(next?.value);
     expect(document.activeElement).toBe(checked);
 
-    // Cleanup: close the popover
+    // Cleanup
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 });
