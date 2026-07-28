@@ -272,8 +272,10 @@
         "@dotli/eslint-config": "workspace:*",
         "@dotli/typescript-config": "workspace:*",
         "eslint": "^10.5.0",
+        "happy-dom": "^20.10.3",
         "typescript": "~6.0.3",
         "vite": "^8.0.16",
+        "vitest": "^4.1.8",
       },
     },
     "packages/typescript-config": {

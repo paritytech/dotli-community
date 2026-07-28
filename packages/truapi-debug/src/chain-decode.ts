@@ -9,10 +9,13 @@
 // `followSubscriptionId`, `operationId`, `blockHash`, and (for follow receive
 // events) the ChainHeadEvent variant tag.
 //
-// Current dotli producers emit wire metadata plus raw SCALE bytes:
-// `{ wireId, bytes }`. Those raw payloads intentionally return null here.
-// The shape-matching decoder below is retained for any producer that opts into
-// method-payload decoding before insertion.
+// The debug tap (`packages/ui/src/debug-wire-describe.ts`) decodes chain-family
+// frames into real payload shapes (Result, ChainHeadEvent, OperationStartedResult,
+// etc.) before the event ever reaches this module. Only a frame whose codec
+// failed to decode (a malformed wire frame) — or one no chain codec was ever
+// registered for — still carries the raw `{ wireId, bytes }` shape; those are
+// intentionally opaque here and `isRawWirePayload` returns null for them rather
+// than guessing at a shape.
 //
 // Shapes mirror the TrUAPI chain callback payloads.
 
@@ -94,10 +97,12 @@ type ResultValue<T, E> =
  *
  * The TrUAPI protocol uses `versionedRequest` / `versionedSubscription`
  * which wrap each method's payload in a version envelope
- * (`{tag: "v1", value: <inner>}`). The event store already peels the
- * outer method envelope (`{tag: "remote_chain_*", value: <versioned>}`),
- * but the version envelope is still present. We peel it here so the
- * decoder body sees the real shape (Result, ChainHeadEvent, etc.).
+ * (`{tag: "V1", value: <inner>}` — the generated codecs emit uppercase `V1`;
+ * the pre-port lowercase `{tag: "v1", ...}` is still tolerated). The event
+ * store already peels the outer method envelope
+ * (`{tag: "remote_chain_*", value: <versioned>}`), but the version envelope
+ * is still present. We peel it here so the decoder body sees the real shape
+ * (Result, ChainHeadEvent, etc.).
  */
 export function decodeChainAnnotations(
   tag: string,
@@ -180,28 +185,35 @@ export function decodeChainAnnotations(
     case "remote_chain_head_stop_operation_response":
       return simpleResponse("head-stop-op-response", payload);
 
-    // chainSpec.* (payload is the genesisHash string directly)
-    case "remote_chain_spec_genesis_hash_request":
+    // chainSpec.* (the generated codecs wrap the request in a struct; the
+    // pre-port shape carried the genesisHash as a bare string, tolerated here)
+    case "remote_chain_spec_genesis_hash_request": {
+      const p = asObj(payload);
       return {
         kind: "spec-genesis-hash-request",
-        genesisHash: asString(payload),
+        genesisHash: asString(payload) ?? asString(p?.genesisHash),
       };
+    }
     case "remote_chain_spec_genesis_hash_response":
       return simpleResponse("spec-genesis-hash-response", payload);
 
-    case "remote_chain_spec_chain_name_request":
+    case "remote_chain_spec_chain_name_request": {
+      const p = asObj(payload);
       return {
         kind: "spec-chain-name-request",
-        genesisHash: asString(payload),
+        genesisHash: asString(payload) ?? asString(p?.genesisHash),
       };
+    }
     case "remote_chain_spec_chain_name_response":
       return simpleResponse("spec-chain-name-response", payload);
 
-    case "remote_chain_spec_properties_request":
+    case "remote_chain_spec_properties_request": {
+      const p = asObj(payload);
       return {
         kind: "spec-properties-request",
-        genesisHash: asString(payload),
+        genesisHash: asString(payload) ?? asString(p?.genesisHash),
       };
+    }
     case "remote_chain_spec_properties_response":
       return simpleResponse("spec-properties-response", payload);
 
@@ -214,16 +226,18 @@ export function decodeChainAnnotations(
       };
     }
     case "remote_chain_transaction_broadcast_response": {
-      // Result<Option<str>, GenericError>.
-      // Ok(Some(id)) is "started" with operationId=id.
-      // Ok(None) is "limit-reached".
-      // Err(e) is "error".
-      const r = payload as ResultValue<string | null, unknown>;
+      // Result<RemoteChainTransactionBroadcastResponse, GenericError> where
+      // RemoteChainTransactionBroadcastResponse = { operationId?: string }.
+      // A present operationId is "started"; absent is "limit-reached".
+      // Err(e) is "error". Also tolerate a bare string/null value in case a
+      // producer hands us the field already unwrapped.
+      const r = payload as ResultValue<unknown, unknown>;
       if (r.success) {
-        if (typeof r.value === "string") {
+        const opId = asString(r.value) ?? asString(asObj(r.value)?.operationId);
+        if (opId !== undefined) {
           return {
             kind: "tx-broadcast-response",
-            operationId: r.value,
+            operationId: opId,
             outcome: "started",
           };
         }
@@ -347,13 +361,17 @@ function simpleResponse(kind: ChainKind, payload: unknown): ChainAnnotations {
   return { kind, outcome: "ok" };
 }
 
-/** For body/storage/call responses: Result<OperationStartedResult, Err>.
- *  OperationStartedResult is itself an enum: Started{operationId} | LimitReached. */
+/** For body/storage/call responses: Result<T, Err> where the success value T
+ *  is a struct wrapping the operation enum, e.g.
+ *  `RemoteChainHeadBodyResponse = { operation: OperationStartedResult }`.
+ *  OperationStartedResult is itself an enum: Started{operationId} | LimitReached.
+ *  Also tolerate a bare (unwrapped) enum in case a producer hands us the
+ *  `operation` field already unwrapped. */
 function operationStarterResponse(
   kind: ChainKind,
   payload: unknown,
 ): ChainAnnotations {
-  const r = payload as ResultValue<EnumValue, unknown>;
+  const r = payload as ResultValue<unknown, unknown>;
   if (!r.success) {
     return {
       kind,
@@ -361,7 +379,13 @@ function operationStarterResponse(
       errorMessage: extractErrorReason(r.value),
     };
   }
-  const inner = r.value;
+  const struct = asObj(r.value);
+  const inner = asEnum(struct?.operation) ?? asEnum(r.value);
+  if (inner === undefined) {
+    // Unknown/undecodable shape. Still note it as ok so we don't swallow the
+    // fact that we decoded a successful response.
+    return { kind, outcome: "ok" };
+  }
   if (inner.tag === "Started") {
     const innerVal = asObj(inner.value);
     return {
@@ -410,21 +434,55 @@ function peelVersion(v: unknown): unknown {
   if (o === undefined) {
     return v;
   }
-  if (typeof o.tag === "string" && /^v\d+$/.test(o.tag) && "value" in o) {
+  if (typeof o.tag === "string" && /^[vV]\d+$/.test(o.tag) && "value" in o) {
     return o.value;
   }
   return v;
 }
 
+/**
+ * The generated codecs' error side is `CallError<D>` (see
+ * `@parity/truapi/scale`'s `CallErrorValue<D>`): `Domain` wraps the
+ * method's own versioned error (peel its `V1` envelope to reach
+ * `{ reason }`); `MalformedFrame`/`HostFailure` carry their own
+ * `{ reason }` directly; `Denied`/`Unsupported` carry no payload, so the
+ * tag itself is the only available reason.
+ */
 function extractErrorReason(v: unknown): string | undefined {
+  const err = asEnum(v);
+  if (err !== undefined) {
+    switch (err.tag) {
+      case "Domain": {
+        const domain = asObj(peelVersion(err.value));
+        const reason = asString(domain?.reason);
+        if (reason !== undefined) {
+          return reason;
+        }
+        break;
+      }
+      case "MalformedFrame":
+      case "HostFailure": {
+        const reason = asString(asObj(err.value)?.reason);
+        if (reason !== undefined) {
+          return reason;
+        }
+        break;
+      }
+      case "Denied":
+      case "Unsupported":
+        return err.tag;
+      default:
+        break;
+    }
+  }
   const o = asObj(v);
   if (o === undefined) {
     return undefined;
   }
-  // Error-shaped decoded values can carry structured details in
-  // `.payload.reason`. Top-level `.reason` is kept as a fallback, and the
-  // Error's `.message` is the last resort so we never render "err: ?"
-  // when there's a usable string somewhere on the value.
+  // Tolerate pre-port/ad-hoc error shapes too: structured details in
+  // `.payload.reason`, a top-level `.reason`, or an Error's `.message` as
+  // the last resort, so we never render "err: ?" when a usable string
+  // exists somewhere on the value.
   const payload = asObj(o.payload);
   const reason = asString(payload?.reason) ?? asString(o.reason);
   if (reason !== undefined) {

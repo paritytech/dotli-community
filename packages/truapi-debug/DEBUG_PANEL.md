@@ -100,18 +100,31 @@ aligned store.
 ### 1. TrUAPI — host ↔ product messages
 
 The postMessage protocol between the dotli host and product iframes,
-captured from the Rust-backed TrUAPI bridge. The producer currently decodes
-the transport envelope only: each event includes direction, request id, wire
-id, method tag, and raw SCALE payload bytes (`payload.value.bytes`). Method
-payload decoding is intentionally not duplicated in this package yet.
-Categories:
+captured from the Rust-backed TrUAPI bridge. Every frame's tag and payload
+come from `describeWireFrame` (`packages/ui/src/debug-wire-describe.ts`),
+which resolves the wire discriminant against `@parity/truapi/wire-table`:
 
-- `host_*` — accounts, signing, scoped storage, chain connections,
-  statement-store proxying, preimage submission, permissions prompts,
-  push notifications.
 - `remote_chain_*` — chainHead, chainSpec, and transaction methods
-  (one-to-one wrap of the new Substrate JSON-RPC spec).
-- Many more — anything in the generated TrUAPI wire table.
+  (one-to-one wrap of the new Substrate JSON-RPC spec). These keep the
+  pre-port legacy tag names on purpose — the panel's swimlane and
+  annotation logic keys on them — and their SCALE payloads are decoded
+  through a small codec registry into the shapes `chain-decode.ts`
+  expects (genesis hash, follow/operation ids, block hashes, events). A
+  malformed frame degrades to `{ wireId, bytes }` rather than breaking
+  the tap.
+- `<export>_<role>` — everything else in the generated wire table,
+  named from the lowercased export plus its lifecycle role (e.g.
+  `system_handshake_request`). These aren't payload-decoded; the detail
+  pane shows the raw SCALE bytes as `{ wireId, bytes }`.
+- `signing_*` / `session_*` / `entropy_*` / `local_storage_*` — redacted
+  regardless of decode registration. The detail pane shows
+  `{ redacted: true, byteLength }` only — decoded contents, and even the
+  raw bytes, never leave the tap.
+- `wire_<id>` — fallback for discriminants absent from the wire table,
+  with raw bytes.
+
+Adding payload decode for a new family is one codec-registry entry in
+`debug-wire-describe.ts` — no changes needed elsewhere in the panel.
 
 ### 2. dotli — boot / resolve / render / bridge / failover
 

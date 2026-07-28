@@ -46,6 +46,7 @@ import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
+import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
 import {
   createLegacyNovaChainHeadProvider,
@@ -483,24 +484,25 @@ function emitWireFrameDebug(
   if (!hasDotliDebugListeners()) {
     return;
   }
-  const decoded = decodeWireMessage(message);
-  if (decoded.isErr()) {
-    return;
+  try {
+    const decoded = decodeWireMessage(message);
+    if (decoded.isErr()) {
+      return;
+    }
+    emitDotliDebugEvent({
+      kind: "truapi",
+      direction,
+      productId,
+      requestId: decoded.value.requestId,
+      payload: describeWireFrame(
+        decoded.value.payload.id,
+        decoded.value.payload.value,
+      ),
+    });
+    // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path; a debug listener (nanoevents does not isolate listener exceptions) must never be able to break message delivery.
+  } catch {
+    /* ignore: debug tap failures must not affect the transport. */
   }
-  const wireId = decoded.value.payload.id;
-  emitDotliDebugEvent({
-    kind: "truapi",
-    direction,
-    productId,
-    requestId: decoded.value.requestId,
-    payload: {
-      tag: `wire_${String(wireId)}`,
-      value: {
-        wireId,
-        bytes: decoded.value.payload.value,
-      },
-    },
-  });
 }
 
 function wrapCoreProviderForDebug(
