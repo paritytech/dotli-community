@@ -37,8 +37,20 @@ interface LegacyAccountAliasReview {
   targetProductId: string;
 }
 
+interface StatementStoreProductSignReview {
+  account: {
+    dotNsIdentifier: string;
+    derivationIndex: number;
+  };
+  payload: Uint8Array;
+}
+
 type UserConfirmationReview =
   | PublishedUserConfirmationReview
+  | {
+      tag: "StatementStoreProductSign";
+      value: StatementStoreProductSignReview;
+    }
   | { tag: "AccountAlias"; value: LegacyAccountAliasReview }
   | { tag: "AccountAlias"; value: RingContextReview }
   | {
@@ -185,6 +197,11 @@ function confirmationDisplay(
   if (review.tag === "SignRaw") {
     return { fields: createSignRawFields(label, review.value) };
   }
+  if (review.tag === "StatementStoreProductSign") {
+    return {
+      fields: createStatementStoreProductSignFields(label, review.value),
+    };
+  }
   if (review.tag === "CreateTransaction") {
     return { fields: createTransactionFields(label, review.value) };
   }
@@ -297,6 +314,24 @@ function createSignRawFields(
     {
       label: "Message",
       value: formatRawPayload(review.value.payload),
+      mono: true,
+    },
+  ];
+}
+
+function createStatementStoreProductSignFields(
+  label: string,
+  review: Extract<
+    UserConfirmationReview,
+    { tag: "StatementStoreProductSign" }
+  >["value"],
+): ConfirmationField[] {
+  return [
+    { label: "App", value: label },
+    { label: "Signer", value: formatProductAccount(review.account) },
+    {
+      label: "Statement",
+      value: truncateHex(formatBytes(review.payload)),
       mono: true,
     },
   ];
@@ -415,6 +450,8 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
       return { title: "Sign Transaction", action: "Sign" };
     case "SignRaw":
       return { title: "Sign Message", action: "Sign" };
+    case "StatementStoreProductSign":
+      return { title: "Sign Statement", action: "Sign" };
     case "CreateTransaction":
       return { title: "Sign Transaction", action: "Sign" };
     case "AccountAlias":
