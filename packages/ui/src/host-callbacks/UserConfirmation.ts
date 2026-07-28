@@ -37,8 +37,20 @@ interface LegacyAccountAliasReview {
   targetProductId: string;
 }
 
+interface StatementStoreProductSignReview {
+  account: {
+    dotNsIdentifier: string;
+    derivationIndex: number;
+  };
+  payload: Uint8Array;
+}
+
 type UserConfirmationReview =
   | PublishedUserConfirmationReview
+  | {
+      tag: "StatementStoreProductSign";
+      value: StatementStoreProductSignReview;
+    }
   | { tag: "AccountAlias"; value: LegacyAccountAliasReview }
   | { tag: "AccountAlias"; value: RingContextReview }
   | {
