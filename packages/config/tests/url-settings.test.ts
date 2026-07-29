@@ -80,14 +80,14 @@ describe("parseSettingsFromSearch", () => {
   });
 });
 
-describe("writeSettingsToSearch with environment-aware default", () => {
-  it("strips chainBackend when value matches detected default (SharedWorker available)", () => {
+describe("writeSettingsToSearch against the smoldot-direct default", () => {
+  it("strips chainBackend=smoldot-direct when SharedWorker is available", () => {
     withSharedWorker(true, () => {
-      const search = new URLSearchParams("chainBackend=smoldot-shared-worker");
+      const search = new URLSearchParams("chainBackend=smoldot-direct");
       const changed = writeSettingsToSearch(
         {
           network: NetworkName.PASEO_NEXT_V1,
-          chainBackend: "smoldot-shared-worker",
+          chainBackend: "smoldot-direct",
           cache: {
             skipCidCache: true,
             skipArchiveCache: true,
@@ -101,13 +101,13 @@ describe("writeSettingsToSearch with environment-aware default", () => {
     });
   });
 
-  it("keeps chainBackend=smoldot-direct in the URL when default is smoldot-shared-worker", () => {
+  it("keeps chainBackend=smoldot-shared-worker in the URL because the default is smoldot-direct", () => {
     withSharedWorker(true, () => {
       const search = new URLSearchParams();
       writeSettingsToSearch(
         {
           network: NetworkName.PASEO_NEXT_V1,
-          chainBackend: "smoldot-direct",
+          chainBackend: "smoldot-shared-worker",
           cache: {
             skipCidCache: true,
             skipArchiveCache: true,
@@ -116,11 +116,11 @@ describe("writeSettingsToSearch with environment-aware default", () => {
         },
         search,
       );
-      expect(search.get("chainBackend")).toBe("smoldot-direct");
+      expect(search.get("chainBackend")).toBe("smoldot-shared-worker");
     });
   });
 
-  it("strips chainBackend=smoldot-direct when SharedWorker is missing (env default)", () => {
+  it("strips chainBackend=smoldot-direct when SharedWorker is missing", () => {
     withSharedWorker(false, () => {
       const search = new URLSearchParams("chainBackend=smoldot-direct");
       writeSettingsToSearch(

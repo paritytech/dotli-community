@@ -143,7 +143,7 @@ export function setBackend(chainBackend: Backend): void {
 }
 
 export function defaultBackend(): Backend {
-  return isSharedWorkerAvailable() ? "smoldot-shared-worker" : "smoldot-direct";
+  return "smoldot-direct";
 }
 
 /**
