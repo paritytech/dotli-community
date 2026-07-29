@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "dotli",
@@ -141,6 +140,25 @@
         "eslint-plugin-turbo": "^2.9.18",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.61.0",
+      },
+    },
+    "packages/host-cli": {
+      "name": "@dotli/host-cli",
+      "version": "0.1.0",
+      "dependencies": {
+        "@parity/truapi-host": "0.6.0",
+        "neverthrow": "^8.2.0",
+        "qrcode": "^1.5.4",
+      },
+      "devDependencies": {
+        "@dotli/eslint-config": "workspace:*",
+        "@dotli/typescript-config": "workspace:*",
+        "@parity/truapi": "0.9.0",
+        "@types/node": "^22.0.0",
+        "@types/qrcode": "^1.5.6",
+        "eslint": "^10.5.0",
+        "typescript": "~6.0.3",
+        "vitest": "^4.1.8",
       },
     },
     "packages/metrics": {
@@ -523,6 +541,8 @@
     "@dotli/eslint-config": ["@dotli/eslint-config@workspace:packages/eslint-config"],
 
     "@dotli/host": ["@dotli/host@workspace:apps/host"],
+
+    "@dotli/host-cli": ["@dotli/host-cli@workspace:packages/host-cli"],
 
     "@dotli/metrics": ["@dotli/metrics@workspace:packages/metrics"],
 
@@ -1732,6 +1752,8 @@
 
     "@commander-js/extra-typings/commander": ["commander@15.0.0", "", {}, "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg=="],
 
+    "@dotli/host-cli/@types/node": ["@types/node@22.20.1", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q=="],
+
     "@ensdomains/content-hash/multiformats": ["multiformats@12.1.3", "", {}, "sha512-eajQ/ZH7qXZQR2AgtfpmSMizQzmyYVmCql7pdhldPuYQi4atACekbJaQplk6dWyIi10jCaFnd6pqvcEFXjbaJw=="],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
@@ -1799,6 +1821,8 @@
     "yargs/find-up": ["find-up@4.1.0", "", { "dependencies": { "locate-path": "^5.0.0", "path-exists": "^4.0.0" } }, "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw=="],
 
     "@apideck/better-ajv-errors/ajv/json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
+
+    "@dotli/host-cli/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@polkadot-api/cli/rollup/@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.62.2", "", { "os": "android", "cpu": "arm" }, "sha512-6o7ZLZK+BeenkZCFNDXqpbjw9bD6nuWonvS/lwQJp7NoVVxm6p3qE7qQ5jGuBjiFsgvqjD8mZAU5oWxTmbOeOg=="],
 

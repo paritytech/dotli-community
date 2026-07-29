@@ -1,0 +1,68 @@
+# Copyright 2026 Parity Technologies (UK) Ltd.
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Publishes @dotli/host-cli to npm when its release tag is pushed:
+#
+#   git tag host-cli-v0.1.0 && git push origin host-cli-v0.1.0
+#
+# The package versions INDEPENDENTLY of the app (scripts/set-version.ts skips
+# published packages), so its tags carry the package prefix. Publishing needs
+# the NPM_TOKEN repository secret (npm automation token with publish rights on
+# the @dotli scope).
+
+name: Release host-cli
+
+on:
+  push:
+    tags:
+      - "host-cli-v*"
+
+permissions:
+  contents: read
+  # npm --provenance signs the package against the workflow identity.
+  id-token: write
+
+jobs:
+  publish:
+    name: Build, test, publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify the tag matches the package version
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#host-cli-v}"
+          PKG_VERSION="$(jq -r .version packages/host-cli/package.json)"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag says $TAG_VERSION but packages/host-cli/package.json says $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Lint
+        run: bunx --bun turbo run lint --filter=@dotli/host-cli
+
+      - name: Type check
+        run: bunx --bun turbo run typecheck --filter=@dotli/host-cli
+
+      - name: Build
+        run: bunx --bun turbo run build --filter=@dotli/host-cli
+
+      - name: Test
+        run: bunx --bun turbo run test --filter=@dotli/host-cli
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
+          cd packages/host-cli
+          npm publish --access public --provenance
