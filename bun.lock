@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "dotli",
@@ -141,6 +140,25 @@
         "eslint-plugin-turbo": "^2.9.18",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.61.0",
+      },
+    },
+    "packages/host-cli": {
+      "name": "@dotli/host-cli",
+      "version": "0.1.0",
+      "dependencies": {
+        "@parity/truapi-host": "0.10.1",
+        "neverthrow": "^8.2.0",
+        "qrcode": "^1.5.4",
+      },
+      "devDependencies": {
+        "@dotli/eslint-config": "workspace:*",
+        "@dotli/typescript-config": "workspace:*",
+        "@parity/truapi": "0.13.1",
+        "@types/node": "^22.0.0",
+        "@types/qrcode": "^1.5.6",
+        "eslint": "^10.5.0",
+        "typescript": "~6.0.3",
+        "vitest": "^4.1.8",
       },
     },
     "packages/metrics": {
@@ -526,6 +544,8 @@
     "@dotli/eslint-config": ["@dotli/eslint-config@workspace:packages/eslint-config"],
 
     "@dotli/host": ["@dotli/host@workspace:apps/host"],
+
+    "@dotli/host-cli": ["@dotli/host-cli@workspace:packages/host-cli"],
 
     "@dotli/metrics": ["@dotli/metrics@workspace:packages/metrics"],
 
@@ -1739,6 +1759,8 @@
 
     "@dotli/host/prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
+    "@dotli/host-cli/@types/node": ["@types/node@22.20.2", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-xlvWf4Vs9n1PEVYwP1n4vvG07M6y8WgvJ2t0vbrWTmijsIHp1cS+uJ2kMIRdY3nHZK0nCYKrPeD171+SzF4/zw=="],
+
     "@dotli/protocol-app/prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
     "@dotli/sandbox/prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
@@ -1800,6 +1822,8 @@
     "yargs/find-up": ["find-up@4.1.0", "", { "dependencies": { "locate-path": "^5.0.0", "path-exists": "^4.0.0" } }, "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw=="],
 
     "@apideck/better-ajv-errors/ajv/json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
+
+    "@dotli/host-cli/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "ora/string-width/strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
 
