@@ -9,17 +9,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "bunx eslint src/",
-    "test": "vitest run"
+    "lint": "bunx eslint src/"
   },
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
     "eslint": "^10.5.0",
-    "happy-dom": "^20.10.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vite": "^8.0.16"
   },
   "dependencies": {
     "@dotli/config": "workspace:*",
