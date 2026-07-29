@@ -31,7 +31,10 @@ import { getNetwork } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { log } from "@dotli/shared/log";
-import { emitDotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-bus";
+import {
+  emitDotliDebugEvent,
+  hasDotliDebugListeners,
+} from "@dotli/truapi-debug/dotli-debug-bus";
 import type { TrUApiProductProvider } from "@parity/truapi-host";
 import type { PairingHostAdmin } from "@parity/truapi-host";
 import {
@@ -43,6 +46,7 @@ import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
+// TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
 import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
@@ -50,8 +54,6 @@ import {
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { showNotification } from "./notification";
 
-// DEPRECATED: enables the legacy Nova host-api transport shim for products that
-// have not yet migrated to `@parity/truapi`. Remove once they have.
 const noop = (): void => undefined;
 
 // Eagerly load the iframe host chunk + worker constructor so they're ready
@@ -473,6 +475,91 @@ function pipeProviders(
   };
 }
 
+function emitWireFrameDebug(
+  direction: "incoming" | "outgoing",
+  productId: string,
+  message: Uint8Array,
+): void {
+  if (!hasDotliDebugListeners()) {
+    return;
+  }
+  const decoded = decodeWireMessage(message);
+  if (decoded.isErr()) {
+    return;
+  }
+  const wireId = decoded.value.payload.id;
+  emitDotliDebugEvent({
+    kind: "truapi",
+    direction,
+    productId,
+    requestId: decoded.value.requestId,
+    payload: {
+      tag: `wire_${String(wireId)}`,
+      value: {
+        wireId,
+        bytes: decoded.value.payload.value,
+      },
+    },
+  });
+}
+
+function wrapCoreProviderForDebug(
+  provider: CoreProviderBase,
+  productId: string,
+): CoreProviderBase {
+  const listeners = new Set<(message: Uint8Array) => void>();
+  let disposed = false;
+  const unsubscribeCore = provider.subscribe((message) => {
+    if (disposed) {
+      return;
+    }
+    emitWireFrameDebug("outgoing", productId, message);
+    for (const listener of [...listeners]) {
+      listener(message);
+    }
+  });
+
+  return {
+    postMessage(message: Uint8Array): void {
+      if (disposed) {
+        return;
+      }
+      emitWireFrameDebug("incoming", productId, message);
+      provider.postMessage(message);
+    },
+    subscribe(callback) {
+      listeners.add(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    },
+    subscribeClose(callback) {
+      return provider.subscribeClose?.(callback) ?? noop;
+    },
+    async disconnectSession() {
+      await provider.disconnectSession();
+    },
+    getPermissionAuthorizationStatus(request) {
+      return provider.getPermissionAuthorizationStatus(request);
+    },
+    getPermissionAuthorizationStatuses(requests) {
+      return provider.getPermissionAuthorizationStatuses(requests);
+    },
+    setPermissionAuthorizationStatus(request, status) {
+      return provider.setPermissionAuthorizationStatus(request, status);
+    },
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      unsubscribeCore();
+      listeners.clear();
+      provider.dispose();
+    },
+  };
+}
+
 let topbarLoginRequestSeq = 0;
 
 export function requestCoreLogin(
@@ -613,6 +700,9 @@ async function createHost(args: {
   const productId = args.productId ?? labelToProductId(args.label);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
+  // TODO(remove-legacy-nova): `legacyProbeCleanup` (including its two `?.()`
+  // call sites in `dispose()` and the catch block below) exists only for the
+  // legacy probe block tagged further down.
   let legacyProbeCleanup: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
@@ -643,7 +733,15 @@ async function createHost(args: {
     // with `{type:"truapi-ready"}` and use the MessagePort wired above. Products
     // still on the Nova host-api SDK instead post raw SCALE frames (Uint8Array)
     // to `window.parent`. Detect that first frame and re-pipe the core over a
-    // window-postMessage provider. Remove once products migrate.
+    // window-postMessage provider.
+    //
+    // TODO(remove-legacy-nova): once the last legacy Nova product migrates to
+    // `@parity/truapi`, delete this probe block (through the
+    // `legacyProbeCleanup` assignment below), the `legacyProbeCleanup`
+    // declaration and call sites tagged above, the `legacy-host-bridge`
+    // import at the top of this file, and the tagged `legacy-host-bridge.ts`
+    // module itself. Modern products need no probe: the MessagePort from
+    // `onPort` is the only wiring.
     let probeMode: "pending" | "modern" | "legacy" = "pending";
     const onProbe = (event: MessageEvent): void => {
       if (probeMode !== "pending") {
@@ -733,11 +831,7 @@ async function createCoreProvider(
   try {
     const { createWebWorkerPairingHostRuntime, HostWorker } =
       await runtimeChunkPromise;
-    const runtimeConfig = createTruapiRuntimeConfig(
-      label,
-      window.location,
-      options.productId,
-    );
+    const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),
@@ -753,9 +847,13 @@ async function createCoreProvider(
       },
     );
     const provider = await runtime.createProvider({ productId });
-    return trackCoreProvider(provider, runtime, () => {
-      blockingModalScope.dispose();
-    });
+    return trackCoreProvider(
+      wrapCoreProviderForDebug(provider, options.productId ?? label),
+      runtime,
+      () => {
+        blockingModalScope.dispose();
+      },
+    );
   } catch (error) {
     blockingModalScope.dispose();
     throw error;

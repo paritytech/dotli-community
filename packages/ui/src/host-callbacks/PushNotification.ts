@@ -13,10 +13,15 @@ import {
   createBlockingModalScope,
   type BlockingModalScope,
 } from "../blocking-modal-queue";
+import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 
 export function createNotificationAdapters(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
+  // One budget per host callback surface: `handlers.ts` passes the same
+  // limiter here and to the permission prompts so a product cannot double
+  // its prompt budget by alternating prompt kinds.
+  limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Required<Notifications> {
   const pushNotification: Required<Notifications>["pushNotification"] = async ({
     text,
@@ -34,6 +39,7 @@ export function createNotificationAdapters(
       "Notifications",
       {
         kind: "Device",
+        limiter,
       },
       modalScope,
     );

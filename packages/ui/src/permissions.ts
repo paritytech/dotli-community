@@ -199,8 +199,8 @@ export async function getPermissionStatus(
   label: string,
   permission: PermissionName,
 ): Promise<PermissionStatus> {
-  const [status] = await getPermissionStatuses(label, [permission]);
-  return status;
+  const statuses = await getPermissionStatuses(label, [permission]);
+  return statuses.at(0) ?? "ask";
 }
 
 export async function getPermissionStatuses(

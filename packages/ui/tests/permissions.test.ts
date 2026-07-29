@@ -81,6 +81,25 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     );
   });
 
+  it("As a product, my status defaults to ask when the provider returns fewer statuses than requested", async () => {
+    // Given: a provider that violates the length contract.
+    const unregister = registerPermissionAuthorizationProvider("shortapp", {
+      async getPermissionAuthorizationStatuses() {
+        return [];
+      },
+      async setPermissionAuthorizationStatus() {
+        return;
+      },
+    });
+
+    try {
+      // Then: the missing entry surfaces as "ask", not undefined.
+      expect(await getPermissionStatus("shortapp", "Camera")).toBe("ask");
+    } finally {
+      unregister();
+    }
+  });
+
   it("As a product, my granted permission status is preserved", async () => {
     await setPermissionStatus("myapp", "Camera", "granted");
     expect(await getPermissionStatus("myapp", "Camera")).toBe("granted");

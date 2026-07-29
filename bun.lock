@@ -197,7 +197,6 @@
         "@parity/truapi-provider": "0.1.1-dev-20260715.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@polkadot-api/json-rpc-provider-proxy": "^0.4.0",
-        "@polkadot-api/signer": "^0.3.3",
         "@polkadot-api/substrate-bindings": "0.20.3",
         "@polkadot-api/substrate-client": "0.7.0",
         "@polkadot-api/utils": "0.4.0",
@@ -267,6 +266,7 @@
       "name": "@dotli/truapi-debug",
       "version": "0.6.0",
       "dependencies": {
+        "@dotli/config": "workspace:*",
         "@dotli/shared": "workspace:*",
         "nanoevents": "^9.1.0",
       },
@@ -296,7 +296,7 @@
         "@dotli/truapi-debug": "workspace:*",
         "@noble/hashes": "^2.2.0",
         "@parity/truapi": "0.5.1",
-        "@parity/truapi-host": "0.2.0",
+        "@parity/truapi-host": "0.2.1",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
@@ -308,6 +308,7 @@
         "@dotli/typescript-config": "workspace:*",
         "@types/qrcode": "^1.5.6",
         "eslint": "^10.5.0",
+        "fake-indexeddb": "^6.2.5",
         "happy-dom": "^20.10.3",
         "typescript": "~6.0.3",
         "vite": "^8.0.16",
@@ -323,10 +324,10 @@
   },
   "overrides": {
     "@parity/truapi": "0.5.1",
-    "brace-expansion": "5.0.8",
+    "brace-expansion": "^5.0.8",
     "esbuild": "^0.28.1",
     "fast-uri": "3.1.4",
-    "postcss": "8.5.23",
+    "postcss": "^8.5.24",
     "smoldot": "3.3.1",
   },
   "packages": {
@@ -666,7 +667,7 @@
 
     "@parity/truapi": ["@parity/truapi@0.5.1", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-5AV6YoqnUKXj2wJ/qt/J2i3jpFawhEVkY165V5fSDccGkgK2oVHxlSfLwscXpZp4DxwFTL1FmvkhwhuqPDIdtA=="],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.2.0", "", { "dependencies": { "@parity/truapi": "^0.5.0" } }, "sha512-Qmr8+AS0Fvzzw1YlXGDLL24vP5E43HSL0oXNjq/NBD5VWpz0cb/fKukLJf0r6Cs4K8vC5p0DEzIA5hwH40vHbw=="],
+    "@parity/truapi-host": ["@parity/truapi-host@0.2.1", "", { "dependencies": { "@parity/truapi": "^0.5.1" } }, "sha512-5GoZGaKxXoUaGwt8h3ini0jc+tSrI3Bjme+C0r7CQrPMSbscLp/qxR6aAtVU/EOY5dr8pvXwdzG+5Lafzl/KfQ=="],
 
     "@parity/truapi-provider": ["@parity/truapi-provider@0.1.1-dev-20260715.0", "", {}, "sha512-9KMcJAoYS/oqeZbXQDZVVyviNUiiNe+J0Q2nTtO91fH58kwbTYrei69AtOCDhQBLE/tPmJ38Ut66qO/xi47oYA=="],
 
@@ -1424,7 +1425,7 @@
 
     "possible-typed-array-names": ["possible-typed-array-names@1.1.0", "", {}, "sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg=="],
 
-    "postcss": ["postcss@8.5.23", "", { "dependencies": { "nanoid": "^3.3.16", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg=="],
+    "postcss": ["postcss@8.5.24", "", { "dependencies": { "nanoid": "^3.3.16", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-8RyVklq0owXUTa4xlpzu4l9AaVKIdQvAcOHZWaMh98HgySsUtxRVf/chRe3dsSLqb6i40BzGRzEUddRaI+9TSw=="],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
 
