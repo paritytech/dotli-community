@@ -126,7 +126,7 @@ describe("describeWireFrame", () => {
     // When
     const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.request, bytes);
 
-    // Then: tag still resolves; payload keeps the raw form instead of throwing.
+    // Then: the tag still resolves and the payload keeps the raw form instead of throwing.
     expect(described.tag).toBe("remote_chain_head_header_request");
     expect(described.value).toEqual({
       wireId: CHAIN_GET_HEAD_HEADER.request,
@@ -147,16 +147,15 @@ describe("describeWireFrame", () => {
       }),
     );
 
-    // Then: sanity — the envelope encodes; Task 2 decodes it with decodeWireMessage.
+    // Then: sanity check that the envelope encodes. The tap decodes it with decodeWireMessage.
     expect(framed).toBeInstanceOf(Uint8Array);
   });
 
   it("As a dotli integrator, the host decodes a real chainHead.header Ok response using the generated client's wire composition", () => {
-    // Given: the exact composition `ChainClient#getHeadHeader` decodes with —
+    // Given: the exact composition `ChainClient#getHeadHeader` decodes with,
     // an indexed V1 envelope around Result(<bare response>, CallError(<error>)).
     // A bare `VersionedRemoteChainHeadHeaderResponse` codec (the old, wrong
-    // registration) would silently decode this into garbage instead of the
-    // real Result/CallError shape.
+    // registration) would silently decode this into garbage.
     const codec = indexedTaggedUnion({
       V1: [
         0,
@@ -269,13 +268,12 @@ describe("describeWireFrame", () => {
   });
 });
 
-// The chain-family registry's linkage table (`CHAIN_LINKAGE`) is the one
-// hand-maintained fact bridging a wire-table entry to its generated codec
-// family — everything else is derived. These tests fail loudly the moment
-// that derivation stops matching the installed `@parity/truapi`: a new
-// codegen chain method with no linkage row, a renamed codec export the
-// registry can no longer resolve, or a stem typo that would silently shift
-// the panel's tag vocabulary.
+// The linkage table (`CHAIN_LINKAGE`) is the one hand-maintained fact
+// bridging a wire-table entry to its generated codec family. Everything
+// else is derived. These tests fail the moment that derivation stops
+// matching the installed `@parity/truapi`: a new codegen chain method with
+// no linkage row, a renamed codec export, or a stem typo that would
+// silently shift the panel's tag vocabulary.
 describe("chain-family drift guard", () => {
   it("As a dotli integrator, the host's linkage table covers every CHAIN_* wire-table export", () => {
     // Given: every chain wire-table export the installed `@parity/truapi` defines.

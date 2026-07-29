@@ -9,13 +9,11 @@
 // `followSubscriptionId`, `operationId`, `blockHash`, and (for follow receive
 // events) the ChainHeadEvent variant tag.
 //
-// The debug tap (`packages/ui/src/debug-wire-describe.ts`) decodes chain-family
-// frames into real payload shapes (Result, ChainHeadEvent, OperationStartedResult,
-// etc.) before the event ever reaches this module. Only a frame whose codec
-// failed to decode (a malformed wire frame) — or one no chain codec was ever
-// registered for — still carries the raw `{ wireId, bytes }` shape; those are
-// intentionally opaque here and `isRawWirePayload` returns null for them rather
-// than guessing at a shape.
+// The debug tap (`packages/ui/src/debug-wire-describe.ts`) already decodes
+// chain frames before they reach this module. A frame whose codec failed to
+// decode, or that has no registered codec, still carries the raw
+// `{ wireId, bytes }` shape. Those stay opaque and `isRawWirePayload`
+// returns null for them instead of guessing.
 //
 // Shapes mirror the TrUAPI chain callback payloads.
 
@@ -95,14 +93,11 @@ type ResultValue<T, E> =
  * Extract chain-protocol annotations from a TrUAPI message.
  * Returns `null` for messages outside the `remote_chain_*` namespace.
  *
- * The TrUAPI protocol uses `versionedRequest` / `versionedSubscription`
- * which wrap each method's payload in a version envelope
- * (`{tag: "V1", value: <inner>}` — the generated codecs emit uppercase `V1`;
- * the pre-port lowercase `{tag: "v1", ...}` is still tolerated). The event
- * store already peels the outer method envelope
- * (`{tag: "remote_chain_*", value: <versioned>}`), but the version envelope
- * is still present. We peel it here so the decoder body sees the real shape
- * (Result, ChainHeadEvent, etc.).
+ * Each method's payload arrives in a version envelope like
+ * `{tag: "V1", value: <inner>}`. The generated codecs emit uppercase `V1`
+ * and the pre-port lowercase `v1` is still tolerated. The event store
+ * already peeled the outer method envelope, so only the version envelope
+ * is peeled here before decoding.
  */
 export function decodeChainAnnotations(
   tag: string,
@@ -127,8 +122,8 @@ export function decodeChainAnnotations(
       return {
         kind: "follow-receive",
         chainEventTag: ev?.tag,
-        // Only operation-variants carry operationId; other variants (Initialized,
-        // NewBlock, Finalized, Stop…) leave it undefined.
+        // Only operation variants carry an operationId. The rest (Initialized,
+        // NewBlock, Finalized, Stop) leave it undefined.
         operationId: asString(eventValue?.operationId),
       };
     }
@@ -185,8 +180,8 @@ export function decodeChainAnnotations(
     case "remote_chain_head_stop_operation_response":
       return simpleResponse("head-stop-op-response", payload);
 
-    // chainSpec.* (the generated codecs wrap the request in a struct; the
-    // pre-port shape carried the genesisHash as a bare string, tolerated here)
+    // chainSpec.* requests are structs in the generated codecs. The pre-port
+    // shape was a bare genesisHash string, still tolerated below.
     case "remote_chain_spec_genesis_hash_request": {
       const p = asObj(payload);
       return {
@@ -226,11 +221,9 @@ export function decodeChainAnnotations(
       };
     }
     case "remote_chain_transaction_broadcast_response": {
-      // Result<RemoteChainTransactionBroadcastResponse, GenericError> where
-      // RemoteChainTransactionBroadcastResponse = { operationId?: string }.
-      // A present operationId is "started"; absent is "limit-reached".
-      // Err(e) is "error". Also tolerate a bare string/null value in case a
-      // producer hands us the field already unwrapped.
+      // The Ok value is `{ operationId?: string }`. With an operationId the
+      // broadcast started, without one the node hit its limit. A bare string
+      // is tolerated in case a producer already unwrapped the field.
       const r = payload as ResultValue<unknown, unknown>;
       if (r.success) {
         const opId = asString(r.value) ?? asString(asObj(r.value)?.operationId);
@@ -361,12 +354,10 @@ function simpleResponse(kind: ChainKind, payload: unknown): ChainAnnotations {
   return { kind, outcome: "ok" };
 }
 
-/** For body/storage/call responses: Result<T, Err> where the success value T
- *  is a struct wrapping the operation enum, e.g.
- *  `RemoteChainHeadBodyResponse = { operation: OperationStartedResult }`.
- *  OperationStartedResult is itself an enum: Started{operationId} | LimitReached.
- *  Also tolerate a bare (unwrapped) enum in case a producer hands us the
- *  `operation` field already unwrapped. */
+/** Body/storage/call responses wrap the operation enum in a struct, e.g.
+ *  `{ operation: OperationStartedResult }` with variants Started{operationId}
+ *  and LimitReached. A bare enum is tolerated in case a producer already
+ *  unwrapped the `operation` field. */
 function operationStarterResponse(
   kind: ChainKind,
   payload: unknown,
@@ -382,8 +373,7 @@ function operationStarterResponse(
   const struct = asObj(r.value);
   const inner = asEnum(struct?.operation) ?? asEnum(r.value);
   if (inner === undefined) {
-    // Unknown/undecodable shape. Still note it as ok so we don't swallow the
-    // fact that we decoded a successful response.
+    // Unknown shape, but the response was still a success. Report ok.
     return { kind, outcome: "ok" };
   }
   if (inner.tag === "Started") {
@@ -397,8 +387,7 @@ function operationStarterResponse(
   if (inner.tag === "LimitReached") {
     return { kind, outcome: "limit-reached" };
   }
-  // Unknown variant. Still note it as ok so we don't swallow the fact
-  // that we decoded a successful response.
+  // Unknown variant, but still a success. Report ok.
   return { kind, outcome: "ok" };
 }
 
@@ -441,12 +430,10 @@ function peelVersion(v: unknown): unknown {
 }
 
 /**
- * The generated codecs' error side is `CallError<D>` (see
- * `@parity/truapi/scale`'s `CallErrorValue<D>`): `Domain` wraps the
- * method's own versioned error (peel its `V1` envelope to reach
- * `{ reason }`); `MalformedFrame`/`HostFailure` carry their own
- * `{ reason }` directly; `Denied`/`Unsupported` carry no payload, so the
- * tag itself is the only available reason.
+ * Errors arrive as `CallError` variants. `Domain` wraps the method's own
+ * versioned error, so peel it to reach `{ reason }`. `MalformedFrame` and
+ * `HostFailure` carry a `{ reason }` directly. `Denied` and `Unsupported`
+ * have no payload, so the tag is the best available reason.
  */
 function extractErrorReason(v: unknown): string | undefined {
   const err = asEnum(v);
@@ -479,10 +466,8 @@ function extractErrorReason(v: unknown): string | undefined {
   if (o === undefined) {
     return undefined;
   }
-  // Tolerate pre-port/ad-hoc error shapes too: structured details in
-  // `.payload.reason`, a top-level `.reason`, or an Error's `.message` as
-  // the last resort, so we never render "err: ?" when a usable string
-  // exists somewhere on the value.
+  // Older and ad-hoc error shapes: `.payload.reason`, a top-level
+  // `.reason`, or an Error's `.message` as a last resort.
   const payload = asObj(o.payload);
   const reason = asString(payload?.reason) ?? asString(o.reason);
   if (reason !== undefined) {

@@ -499,9 +499,9 @@ function emitWireFrameDebug(
         decoded.value.payload.value,
       ),
     });
-    // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path; a debug listener (nanoevents does not isolate listener exceptions) must never be able to break message delivery.
+    // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {
-    /* ignore: debug tap failures must not affect the transport. */
+    /* ignore, debug tap failures must not affect the transport */
   }
 }
 

@@ -80,8 +80,8 @@ describe("decodeChainAnnotations", () => {
   });
 
   it("As a dotli integrator, the host reports 'ok' for a real header response shape (V1-tagged Result of the bare response struct)", () => {
-    // Given: the exact decoded shape `describeWireFrame`'s response codec now
-    // produces — `indexedTaggedUnion({ V1: [0, Result(bare, CallError(...))] })`.
+    // Given: the exact decoded shape `describeWireFrame`'s response codec
+    // produces, `indexedTaggedUnion({ V1: [0, Result(bare, CallError(...))] })`.
     const payload = {
       tag: "V1",
       value: {

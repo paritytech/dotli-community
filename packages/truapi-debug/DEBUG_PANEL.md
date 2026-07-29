@@ -106,25 +106,25 @@ which resolves the wire discriminant against `@parity/truapi/wire-table`:
 
 - `remote_chain_*` — chainHead, chainSpec, and transaction methods
   (one-to-one wrap of the new Substrate JSON-RPC spec). These keep the
-  pre-port legacy tag names on purpose — the panel's swimlane and
-  annotation logic keys on them — and their SCALE payloads are decoded
+  pre-port legacy tag names on purpose, the panel's swimlane and
+  annotation logic keys on them. Their SCALE payloads are decoded
   through a small codec registry into the shapes `chain-decode.ts`
   expects (genesis hash, follow/operation ids, block hashes, events). A
   malformed frame degrades to `{ wireId, bytes }` rather than breaking
   the tap.
 - `<export>_<role>` — everything else in the generated wire table,
   named from the lowercased export plus its lifecycle role (e.g.
-  `system_handshake_request`). These aren't payload-decoded; the detail
+  `system_handshake_request`). These aren't payload-decoded. The detail
   pane shows the raw SCALE bytes as `{ wireId, bytes }`.
 - `signing_*` / `session_*` / `entropy_*` / `local_storage_*` — redacted
   regardless of decode registration. The detail pane shows
-  `{ redacted: true, byteLength }` only — decoded contents, and even the
+  `{ redacted: true, byteLength }` only. Decoded contents, and even the
   raw bytes, never leave the tap.
 - `wire_<id>` — fallback for discriminants absent from the wire table,
   with raw bytes.
 
-Adding payload decode for a new family is one codec-registry entry in
-`debug-wire-describe.ts` — no changes needed elsewhere in the panel.
+Adding payload decode for a new family is one linkage row in
+`debug-wire-describe.ts`, nothing else in the panel changes.
 
 ### 2. dotli — boot / resolve / render / bridge / failover
 
