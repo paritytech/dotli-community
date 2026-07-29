@@ -119,6 +119,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   });
   const state: PanelState = {
     collapsed: options.startCollapsed ?? false,
+    expandedHeight: "",
     selectedSeq: null,
     filters: initialFilterState(),
     view: "list",
@@ -227,6 +228,8 @@ type PanelView = "list" | "timeline";
 
 interface PanelState {
   collapsed: boolean;
+  /** Inline drag-resize height stashed while collapsed, restored on expand. */
+  expandedHeight: string;
   selectedSeq: EventSeq | null;
   filters: FilterState;
   view: PanelView;
@@ -381,6 +384,15 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
   });
   ui.collapseBtn.addEventListener("click", () => {
     state.collapsed = !state.collapsed;
+    if (state.collapsed) {
+      // An inline drag-resize height would override the collapsed 32px
+      // rule and leave an empty panel-sized box. Stash it while collapsed
+      // and restore it on expand.
+      state.expandedHeight = ui.panel.style.height;
+      ui.panel.style.height = "";
+    } else if (state.expandedHeight !== "") {
+      ui.panel.style.height = state.expandedHeight;
+    }
     ui.panel.classList.toggle("collapsed", state.collapsed);
     ui.collapseBtn.textContent = state.collapsed ? "▲" : "▼";
     adjustIframeForPanel(ui.panel, state);
@@ -422,6 +434,8 @@ function applyDockPosition(
   ui.panel.classList.toggle("docked-right", state.dock === "right");
   ui.panel.style.height = "";
   ui.panel.style.width = "";
+  // The stashed pre-collapse height belongs to the previous orientation.
+  state.expandedHeight = "";
   ui.panel.style.removeProperty("--td-left-width");
   ui.panel.style.removeProperty("--td-top-height");
   // Right-dock sits below the host topbar (40px) so the dock toggle and

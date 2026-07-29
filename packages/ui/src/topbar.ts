@@ -1232,14 +1232,14 @@ function renderModePopover(): void {
   appendSectionHeader(leftCol, "Backend");
   const chainChoices: [Backend, string, string][] = [
     [
-      "smoldot-shared-worker",
-      "Light Client Shared",
-      "Verified in your browser, shared across tabs (recommended)",
-    ],
-    [
       "smoldot-direct",
       "Light Client Per-Tab",
-      "Verified in your browser, separate per tab",
+      "Verified in your browser, separate per tab (recommended)",
+    ],
+    [
+      "smoldot-shared-worker",
+      "Light Client Shared",
+      "Verified in your browser, shared across tabs",
     ],
     [
       "rpc-gateway",
