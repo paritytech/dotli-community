@@ -1,0 +1,42 @@
+<!--
+Copyright 2026 Parity Technologies (UK) Ltd.
+SPDX-License-Identifier: AGPL-3.0-only
+-->
+
+# Changelog
+
+All notable changes to `@dotli/host-cli`. This package versions
+independently of the dotli app (see README, "Versioning and releases").
+
+## 0.1.0 (unreleased)
+
+Initial release: a terminal host for `@parity/truapi-host` 0.10.1.
+
+- The full required typed callback surface plus the optional
+  permission-status probe, bridged through the package's own generated
+  adapter (no hand-written SCALE). The optional `chat` group is
+  deliberately absent (a terminal host has no chat surface).
+- RFC-0026 `supportedChains` advertisement, role-mapped from the endpoint
+  map so it can never disagree with `featureSupported` or `chain.connect`.
+- Locale subscription (BCP 47), defaulting to the process locale.
+- Confirm prompts for every review the core can raise, including the
+  RFC-0023 `SignVrf`, the `StatementStoreProductSign` statement payload
+  (signed as-is, never presented with the raw-message convention) and the
+  `ProductSubtree` account-key resolution.
+- In-process wasm boot (`initSync`) and an in-process loopback wire for
+  same-process products.
+- Terminal presenter: pairing QR (offline, instant), progress through the
+  silent `Authenticating` window, deliberately modest confirm prompts that
+  defer content verification to the paired wallet, auto-deny on non-TTY.
+- Prompt routing for embedded contexts: `input: "tty"` asks on the
+  controlling terminal when the standard streams belong to a parent process
+  (git remote helpers), and denies when no terminal exists.
+- Owner-only (0600) JSON file storage for core and product state; product
+  storage cleared on logout and on identity change.
+- Chain-connection pool keyed by genesis hash: per-lease request-id
+  rewriting, subscription routing, capped leases per socket,
+  order-preserving delivery.
+- `serializeOperationStarts`: the load-bearing product-side shim for the
+  chain-head operation-ordering hazard.
+- `explainProductError` / `isProbableSsoTimeout`: translate the untyped 180s
+  SSO timeout into actionable guidance.
