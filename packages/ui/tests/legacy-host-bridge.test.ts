@@ -33,6 +33,7 @@ import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
 } from "@dotli/ui/legacy-host-bridge";
+import { unwrap } from "./support";
 
 const genesisHash = `0x${"11".repeat(32)}` as const;
 const blockHash = `0x${"22".repeat(32)}` as const;
@@ -93,13 +94,6 @@ type FollowBoundRequest = {
     followSubscriptionId: string;
   };
 };
-
-function unwrap<T>(result: { isErr(): boolean; value: T; error: unknown }): T {
-  if (result.isErr()) {
-    throw result.error;
-  }
-  return result.value;
-}
 
 function createHarness(productId?: string): {
   adapted: WireProvider;
