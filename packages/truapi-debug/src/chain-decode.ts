@@ -17,6 +17,8 @@
 //
 // Shapes mirror the TrUAPI chain callback payloads.
 
+import { asEnum, asObj, asString, peelVersion } from "./shape.ts";
+
 /** High-level categorisation of a chain message. Direction (request vs
  *  response vs subscription start/receive) is already known from the
  *  TrUAPI event's `direction` field, so kinds collapse both sides of a
@@ -81,10 +83,6 @@ export interface ChainAnnotations {
   errorMessage?: string;
 }
 
-interface EnumValue {
-  tag: string;
-  value: unknown;
-}
 type ResultValue<T, E> =
   | { success: true; value: T }
   | { success: false; value: E };
@@ -180,35 +178,19 @@ export function decodeChainAnnotations(
     case "remote_chain_head_stop_operation_response":
       return simpleResponse("head-stop-op-response", payload);
 
-    // chainSpec.* requests are structs in the generated codecs. The pre-port
-    // shape was a bare genesisHash string, still tolerated below.
-    case "remote_chain_spec_genesis_hash_request": {
-      const p = asObj(payload);
-      return {
-        kind: "spec-genesis-hash-request",
-        genesisHash: asString(payload) ?? asString(p?.genesisHash),
-      };
-    }
+    // chainSpec.*
+    case "remote_chain_spec_genesis_hash_request":
+      return specRequest("spec-genesis-hash-request", payload);
     case "remote_chain_spec_genesis_hash_response":
       return simpleResponse("spec-genesis-hash-response", payload);
 
-    case "remote_chain_spec_chain_name_request": {
-      const p = asObj(payload);
-      return {
-        kind: "spec-chain-name-request",
-        genesisHash: asString(payload) ?? asString(p?.genesisHash),
-      };
-    }
+    case "remote_chain_spec_chain_name_request":
+      return specRequest("spec-chain-name-request", payload);
     case "remote_chain_spec_chain_name_response":
       return simpleResponse("spec-chain-name-response", payload);
 
-    case "remote_chain_spec_properties_request": {
-      const p = asObj(payload);
-      return {
-        kind: "spec-properties-request",
-        genesisHash: asString(payload) ?? asString(p?.genesisHash),
-      };
-    }
+    case "remote_chain_spec_properties_request":
+      return specRequest("spec-properties-request", payload);
     case "remote_chain_spec_properties_response":
       return simpleResponse("spec-properties-response", payload);
 
@@ -340,6 +322,16 @@ function opRequest(kind: ChainKind, payload: unknown): ChainAnnotations {
   };
 }
 
+/** Spec requests are structs in the generated codecs. The pre-port shape
+ *  was a bare genesisHash string, still tolerated here. */
+function specRequest(kind: ChainKind, payload: unknown): ChainAnnotations {
+  const p = asObj(payload);
+  return {
+    kind,
+    genesisHash: asString(payload) ?? asString(p?.genesisHash),
+  };
+}
+
 /** For header/unpin/continue/stop_op/spec/tx_stop: Result<T, GenericError>
  *  where T isn't interesting enough to annotate beyond success/failure. */
 function simpleResponse(kind: ChainKind, payload: unknown): ChainAnnotations {
@@ -391,44 +383,6 @@ function operationStarterResponse(
   return { kind, outcome: "ok" };
 }
 
-function asObj(v: unknown): Record<string, unknown> | undefined {
-  if (typeof v === "object" && v !== null) {
-    return v as Record<string, unknown>;
-  }
-  return undefined;
-}
-
-function asEnum(v: unknown): EnumValue | undefined {
-  const o = asObj(v);
-  if (o === undefined) {
-    return undefined;
-  }
-  if (typeof o.tag !== "string") {
-    return undefined;
-  }
-  return { tag: o.tag, value: o.value };
-}
-
-function asString(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
-}
-
-/**
- * Unwrap a single-layer version envelope (`{tag: "v1", value: ...}`),
- * returning the inner value. Leaves non-versioned payloads untouched
- * so non-chain methods pass through intact.
- */
-function peelVersion(v: unknown): unknown {
-  const o = asObj(v);
-  if (o === undefined) {
-    return v;
-  }
-  if (typeof o.tag === "string" && /^[vV]\d+$/.test(o.tag) && "value" in o) {
-    return o.value;
-  }
-  return v;
-}
-
 /**
  * Errors arrive as `CallError` variants. `Domain` wraps the method's own
  * versioned error, so peel it to reach `{ reason }`. `MalformedFrame` and
@@ -436,11 +390,14 @@ function peelVersion(v: unknown): unknown {
  * have no payload, so the tag is the best available reason.
  */
 function extractErrorReason(v: unknown): string | undefined {
-  const err = asEnum(v);
-  if (err !== undefined) {
-    switch (err.tag) {
+  const o = asObj(v);
+  if (o === undefined) {
+    return undefined;
+  }
+  if (typeof o.tag === "string") {
+    switch (o.tag) {
       case "Domain": {
-        const domain = asObj(peelVersion(err.value));
+        const domain = asObj(peelVersion(o.value));
         const reason = asString(domain?.reason);
         if (reason !== undefined) {
           return reason;
@@ -449,7 +406,7 @@ function extractErrorReason(v: unknown): string | undefined {
       }
       case "MalformedFrame":
       case "HostFailure": {
-        const reason = asString(asObj(err.value)?.reason);
+        const reason = asString(asObj(o.value)?.reason);
         if (reason !== undefined) {
           return reason;
         }
@@ -457,14 +414,10 @@ function extractErrorReason(v: unknown): string | undefined {
       }
       case "Denied":
       case "Unsupported":
-        return err.tag;
+        return o.tag;
       default:
         break;
     }
-  }
-  const o = asObj(v);
-  if (o === undefined) {
-    return undefined;
   }
   // Older and ad-hoc error shapes: `.payload.reason`, a top-level
   // `.reason`, or an Error's `.message` as a last resort.

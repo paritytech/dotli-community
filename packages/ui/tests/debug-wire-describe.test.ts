@@ -22,22 +22,13 @@ import {
   SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
 import { describeWireFrame, __testing } from "@dotli/ui/debug-wire-describe";
-
-const genesisHash = `0x${"11".repeat(32)}`;
-const blockHash = `0x${"22".repeat(32)}`;
+import { blockHash, genesisHash, unwrap } from "./support.ts";
 
 function payloadBytes(
   codec: { enc: (v: never) => Uint8Array },
   value: unknown,
 ): Uint8Array {
   return codec.enc(value as never);
-}
-
-function unwrap<T>(r: { isErr(): boolean; value: T; error: unknown }): T {
-  if (r.isErr()) {
-    throw r.error;
-  }
-  return r.value;
 }
 
 describe("describeWireFrame", () => {
@@ -293,12 +284,15 @@ describe("chain-family drift guard", () => {
   it.each(__testing.CHAIN_LINKAGE)(
     "As a dotli integrator, the host resolves every codec export linkage row $stem needs for its shape",
     ({ wireTableKey, stem }) => {
-      // Given: the shape (subscription vs call) the wire table declares for this row.
-      const roles = WIRE_TABLE[wireTableKey] as Record<string, number>;
+      // Given: the shape (subscription vs call) the wire table declares for
+      // this row, read through the same discriminant production uses.
+      const roles = WIRE_TABLE[wireTableKey] as Parameters<
+        typeof __testing.isSubscriptionRoles
+      >[0];
 
       // When / Then: a codegen rename of any expected export fails here
       // instead of silently mis-decoding or falling back to raw bytes.
-      if ("start" in roles) {
+      if (__testing.isSubscriptionRoles(roles)) {
         expect(
           __testing.resolveCodec(`VersionedRemoteChain${stem}Request`),
         ).toBeDefined();

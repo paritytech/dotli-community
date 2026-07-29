@@ -6,6 +6,15 @@ import { decodeChainAnnotations } from "../src/chain-decode.ts";
 
 const genesisHash = `0x${"11".repeat(32)}`;
 
+/** The decoded response shape the tap emits: a V1 envelope around a Result. */
+function okV1(value: unknown): unknown {
+  return { tag: "V1", value: { success: true, value } };
+}
+
+function errV1(value: unknown): unknown {
+  return { tag: "V1", value: { success: false, value } };
+}
+
 describe("decodeChainAnnotations", () => {
   it("As a dotli integrator, the host peels the generated codecs' uppercase V1 envelope", () => {
     // Given: a follow-start payload exactly as the tap now emits it.
@@ -82,13 +91,7 @@ describe("decodeChainAnnotations", () => {
   it("As a dotli integrator, the host reports 'ok' for a real header response shape (V1-tagged Result of the bare response struct)", () => {
     // Given: the exact decoded shape `describeWireFrame`'s response codec
     // produces, `indexedTaggedUnion({ V1: [0, Result(bare, CallError(...))] })`.
-    const payload = {
-      tag: "V1",
-      value: {
-        success: true,
-        value: { header: `0x${"22".repeat(32)}` },
-      },
-    };
+    const payload = okV1({ header: `0x${"22".repeat(32)}` });
 
     // When
     const ann = decodeChainAnnotations(
@@ -102,7 +105,7 @@ describe("decodeChainAnnotations", () => {
 
   it("As a dotli integrator, the host reports 'ok' for a void unpin response", () => {
     // Given: Result(_void, ...) decodes success with an undefined value.
-    const payload = { tag: "V1", value: { success: true, value: undefined } };
+    const payload = okV1(undefined);
 
     // When
     const ann = decodeChainAnnotations(
@@ -116,15 +119,9 @@ describe("decodeChainAnnotations", () => {
 
   it("As a dotli integrator, the host reports 'started' with operationId for a struct-wrapped operation-starter response", () => {
     // Given: RemoteChainHeadBodyResponse = { operation: OperationStartedResult }.
-    const payload = {
-      tag: "V1",
-      value: {
-        success: true,
-        value: {
-          operation: { tag: "Started", value: { operationId: "op-1" } },
-        },
-      },
-    };
+    const payload = okV1({
+      operation: { tag: "Started", value: { operationId: "op-1" } },
+    });
 
     // When
     const ann = decodeChainAnnotations(
@@ -142,13 +139,7 @@ describe("decodeChainAnnotations", () => {
 
   it("As a dotli integrator, the host reports 'limit-reached' for a struct-wrapped LimitReached operation-starter response", () => {
     // Given
-    const payload = {
-      tag: "V1",
-      value: {
-        success: true,
-        value: { operation: { tag: "LimitReached" } },
-      },
-    };
+    const payload = okV1({ operation: { tag: "LimitReached" } });
 
     // When
     const ann = decodeChainAnnotations(
@@ -166,16 +157,10 @@ describe("decodeChainAnnotations", () => {
   it("As a dotli integrator, the host reports 'error' with the Domain reason for a real CallError response", () => {
     // Given: CallError<VersionedRemoteChainHeadHeaderError> Domain variant,
     // wrapping the method's own versioned GenericError.
-    const payload = {
-      tag: "V1",
-      value: {
-        success: false,
-        value: {
-          tag: "Domain",
-          value: { tag: "V1", value: { reason: "unknown block" } },
-        },
-      },
-    };
+    const payload = errV1({
+      tag: "Domain",
+      value: { tag: "V1", value: { reason: "unknown block" } },
+    });
 
     // When
     const ann = decodeChainAnnotations(
@@ -193,10 +178,7 @@ describe("decodeChainAnnotations", () => {
 
   it("As a dotli integrator, the host reports 'started' with operationId for a struct-wrapped transaction broadcast response", () => {
     // Given: RemoteChainTransactionBroadcastResponse = { operationId?: string }.
-    const payload = {
-      tag: "V1",
-      value: { success: true, value: { operationId: "op-2" } },
-    };
+    const payload = okV1({ operationId: "op-2" });
 
     // When
     const ann = decodeChainAnnotations(

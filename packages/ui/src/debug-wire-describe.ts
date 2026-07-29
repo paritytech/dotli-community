@@ -94,17 +94,7 @@ const VOID_CODEC = _void as unknown as Codec<unknown>;
 
 /** Turns a codec stem into its tag segment, e.g. `HeadStopOperation` into `head_stop_operation`. */
 function snakeCase(stem: string): string {
-  let out = "";
-  for (let i = 0; i < stem.length; i += 1) {
-    const char = stem[i];
-    const isUpper = char >= "A" && char <= "Z";
-    out += isUpper
-      ? i === 0
-        ? char.toLowerCase()
-        : `_${char.toLowerCase()}`
-      : char;
-  }
-  return out;
+  return stem.replace(/(?!^)([A-Z])/g, "_$1").toLowerCase();
 }
 
 /**
@@ -214,16 +204,29 @@ function buildChainEntries(): Map<number, ChainEntry> {
 // skew window is accepted until the host's truapi dependency catches up.
 const REDACTED_PREFIXES = ["signing", "session", "entropy", "local_storage"];
 
-/** Every other discriminant gets `<lowercased export>_<role>` from the wire table. */
-function buildGenericNames(): Map<number, string> {
-  const names = new Map<number, string>();
+interface GenericEntry {
+  name: string;
+  redacted: boolean;
+}
+
+/**
+ * Every other discriminant gets `<lowercased export>_<role>` from the wire
+ * table. The redaction flag is precomputed here so the per-frame path does
+ * a single map lookup.
+ */
+function buildGenericNames(): Map<number, GenericEntry> {
+  const names = new Map<number, GenericEntry>();
   for (const [exportName, roles] of Object.entries(WIRE_TABLE)) {
     if (typeof roles !== "object") {
       continue;
     }
     for (const [role, id] of Object.entries(roles)) {
       if (typeof id === "number") {
-        names.set(id, `${exportName.toLowerCase()}_${role}`);
+        const name = `${exportName.toLowerCase()}_${role}`;
+        const redacted = REDACTED_PREFIXES.some((prefix) =>
+          name.startsWith(prefix),
+        );
+        names.set(id, { name, redacted });
       }
     }
   }
@@ -231,7 +234,7 @@ function buildGenericNames(): Map<number, string> {
 }
 
 let chainEntries: Map<number, ChainEntry> | null = null;
-let genericNames: Map<number, string> | null = null;
+let genericNames: Map<number, GenericEntry> | null = null;
 
 export function describeWireFrame(
   wireId: number,
@@ -254,14 +257,17 @@ export function describeWireFrame(
     }
   }
 
-  const name = genericNames.get(wireId);
-  if (name === undefined) {
+  const generic = genericNames.get(wireId);
+  if (generic === undefined) {
     return { tag: `wire_${String(wireId)}`, value: { wireId, bytes } };
   }
-  if (REDACTED_PREFIXES.some((prefix) => name.startsWith(prefix))) {
-    return { tag: name, value: { redacted: true, byteLength: bytes.length } };
+  if (generic.redacted) {
+    return {
+      tag: generic.name,
+      value: { redacted: true, byteLength: bytes.length },
+    };
   }
-  return { tag: name, value: { wireId, bytes } };
+  return { tag: generic.name, value: { wireId, bytes } };
 }
 
 // Exposed for the drift-guard test, which walks the linkage table and
@@ -272,4 +278,5 @@ export const __testing = {
   snakeCase,
   resolveCodec,
   buildChainEntries,
+  isSubscriptionRoles,
 };
