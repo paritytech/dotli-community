@@ -30,6 +30,10 @@ function createPreimageLookupSubscribe(
 
     const cached = preimageCache.get(key);
     if (cached) {
+      // Emits the hit and then stays open without ever completing, same as
+      // the polling path after it finds a value. That matches the core's
+      // contract: it consumes lookupPreimage as a long-lived subscription
+      // and cancels it from the product side, never waiting for `done`.
       return createResultStream<Uint8Array | undefined>([cached], () => noop);
     }
 
@@ -58,6 +62,7 @@ function createPreimageLookupSubscribe(
           const cached = preimageCache.get(key);
           if (cached) {
             push(cached);
+            stopPolling();
             return;
           }
 

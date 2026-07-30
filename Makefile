@@ -56,6 +56,15 @@ VALID_ENVS := polkadot dev-polkadot paseo dev-paseo dev-test westend dev-westend
 # config; every other env renders with rate-limiting commented out.
 RATE_LIMITED_ENVS := paseo dev-test
 
+# Optional Sentry tunnel (nginx/snippets/dotli-sentry-tunnel.conf): the
+# ingest host and project id are cut from SENTRY_DSN, which has the shape
+# https://<key>@<ingest-host>/<project-id>. Set SENTRY_DSN in deploy.env or
+# the environment (same value as VITE_SENTRY_DSN in CI).
+SENTRY_DSN ?=
+_sentry_hostpath := $(lastword $(subst @, ,$(SENTRY_DSN)))
+SENTRY_INGEST    := $(firstword $(subst /, ,$(_sentry_hostpath)))
+SENTRY_PROJECT   := $(lastword  $(subst /, ,$(_sentry_hostpath)))
+
 # Default env when none is passed on the command line.
 ENV ?= paseo
 
@@ -148,19 +157,28 @@ deploy: _require-env build
 _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
 	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,\#)' \
-	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL' < nginx/nginx.conf.template
+	SENTRY='$(if $(SENTRY_DSN),,\#)' \
+	SENTRY_INGEST='$(SENTRY_INGEST)' SENTRY_PROJECT='$(SENTRY_PROJECT)' \
+	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template
+
+# Warn (to stderr — render-nginx pipes stdout) instead of failing: envs
+# without Sentry are legitimate, but a silently dead tunnel is not.
+_sentry_warn = @test -n "$(SENTRY_DSN)" || \
+	echo "WARNING: SENTRY_DSN not set — rendering with the Sentry tunnel (/t) disabled." >&2
 
 # Preview the rendered nginx config for ENV on stdout (no remote changes).
 render-nginx: _require-env-name
 	@command -v envsubst >/dev/null || { echo "render-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
+	$(_sentry_warn)
 	@$(_nginx_render)
 
 deploy-nginx: _require-env
 	@command -v envsubst >/dev/null || { echo "deploy-nginx needs 'envsubst' (gettext). Install: brew install gettext / apt-get install gettext-base"; exit 1; }
+	$(_sentry_warn)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
 	$(_nginx_render) > /tmp/$(SITE).nginx
-	rsync -avz --delete nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
+	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
 	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
 	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 

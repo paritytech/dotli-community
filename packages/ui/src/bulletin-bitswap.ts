@@ -12,6 +12,7 @@ import {
   isRemoteChainSupported,
 } from "@dotli/protocol/client";
 import { isSandboxOrigin } from "@dotli/config/config";
+import { getBackend } from "@dotli/config/mode";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
@@ -200,7 +201,13 @@ function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
 
 /** Idempotent. Call once at host startup. */
 export function listenForSandboxBitswap(): void {
-  if (!isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)) {
+  if (getBackend() === "rpc-gateway") {
+    log.warn(
+      "[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.",
+    );
+  } else if (
+    !isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)
+  ) {
     log.warn(
       "[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.",
     );

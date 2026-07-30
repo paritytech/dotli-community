@@ -18,6 +18,7 @@ import type {
 import type { ChainProvider } from "@parity/truapi-host";
 import type { PlatformJsonRpcConnection } from "@parity/truapi-host";
 import { getBackend } from "@dotli/config/mode";
+import { createChainBrokerManager } from "@dotli/protocol/broker";
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -27,6 +28,12 @@ import {
   isCoreRpcChainSupported,
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
+
+// `createSmoldotChainProvider` returns wrappers around singleton smoldot
+// chains. Every wrapper drains the same response queue, so independent core
+// connections must share one broker that assigns responses and subscription
+// notifications to their owning connection.
+const smoldotChainBroker = createChainBrokerManager(createSmoldotChainProvider);
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== "object" || value === null) {
@@ -127,7 +134,7 @@ export function createChainConnect(): ChainProvider["connect"] {
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
     return Promise.resolve(
-      toConnection(createSmoldotChainProvider(genesisHash)),
+      toConnection(smoldotChainBroker.getLocalProvider(genesisHash)),
     );
   };
 }

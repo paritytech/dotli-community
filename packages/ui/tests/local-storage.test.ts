@@ -10,16 +10,19 @@ describe("local-storage host callbacks", () => {
     localStorage.clear();
   });
 
-  it("round-trips product-scoped bytes", async () => {
+  it("As a dotli integrator, the host round-trips product-scoped bytes", async () => {
+    // Given
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();
     const clear = createLocalStorageClear();
 
+    // When
     await write(
       "truapi:product-storage:v1:9:myapp.dot:key",
       new Uint8Array([0, 1, 2, 253, 254, 255]),
     );
 
+    // Then
     expect(
       localStorage.getItem("dotli:truapi:product-storage:v1:9:myapp.dot:key"),
     ).toBe("AAEC/f7/");
@@ -35,7 +38,8 @@ describe("local-storage host callbacks", () => {
     ).toBeUndefined();
   });
 
-  it("writes values larger than a single argument-spread chunk", async () => {
+  it("As a dotli integrator, the host writes values larger than a single argument-spread chunk", async () => {
+    // Given
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();
     const value = Uint8Array.from(
@@ -43,8 +47,10 @@ describe("local-storage host callbacks", () => {
       (_, index) => index % 256,
     );
 
+    // When
     await write("truapi:product-storage:v1:9:myapp.dot:large", value);
 
+    // Then
     expect(
       Array.from(
         (await read("truapi:product-storage:v1:9:myapp.dot:large")) ?? [],

@@ -273,9 +273,11 @@ describe("bridge render lifecycle", () => {
     initBridgeEventListeners(createBlockingModalCoordinator());
   });
 
-  it("disposes a host that resolves after a newer render has started", async () => {
+  it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {
+    // Given
     const { renderIframe } = await import("@dotli/ui/bridge");
 
+    // When
     const first = renderIframe("https://first.example/app", "first");
     await waitForProviderRequests(1);
     const second = renderIframe("https://second.example/app", "second");
@@ -284,14 +286,18 @@ describe("bridge render lifecycle", () => {
     const secondProvider = makeProvider();
     mocks.coreProviderDefers[1].resolve(secondProvider);
     await second;
+
+    // Then
     expect(document.querySelector("iframe")?.dataset.src).toBe(
       "https://second.example/app",
     );
 
+    // When
     const firstProvider = makeProvider();
     mocks.coreProviderDefers[0].resolve(firstProvider);
     await first;
 
+    // Then
     expect(mocks.iframeHosts).toHaveLength(2);
     const firstHost = mocks.iframeHosts.find(
       (host) => host.iframeUrl === "https://first.example/app",
@@ -304,7 +310,8 @@ describe("bridge render lifecycle", () => {
     );
   }, 10_000);
 
-  it("keeps the previous iframe visible while its replacement initializes", async () => {
+  it("As a dotli integrator, the host keeps the previous iframe visible while its replacement initializes", async () => {
+    // Given
     const { renderIframe } = await import("@dotli/ui/bridge");
 
     const first = renderIframe("https://first.example/app", "first");
@@ -316,15 +323,18 @@ describe("bridge render lifecycle", () => {
     const second = renderIframe("https://second.example/app", "second");
     await waitForProviderRequests(2);
 
+    // Then
     expect(firstHost.iframe.isConnected).toBe(true);
     expect(firstHost.dispose).not.toHaveBeenCalled();
     expect(document.querySelector("iframe")?.dataset.src).toBe(
       "https://first.example/app",
     );
 
+    // When
     mocks.coreProviderDefers[1].resolve(makeProvider());
     await second;
 
+    // Then
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
     const app = document.getElementById("app");
     expect(app?.querySelectorAll("iframe")).toHaveLength(1);
@@ -333,7 +343,8 @@ describe("bridge render lifecycle", () => {
     );
   }, 10_000);
 
-  it("keeps the previous app-subdomain iframe visible while its replacement initializes", async () => {
+  it("As a dotli integrator, the host keeps the previous app-subdomain iframe visible while its replacement initializes", async () => {
+    // Given
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
 
     const first = renderAppSubdomain("first-cid", "first");
@@ -345,12 +356,15 @@ describe("bridge render lifecycle", () => {
     const second = renderAppSubdomain("second-cid", "first");
     await waitForProviderRequests(2);
 
+    // Then
     expect(firstHost.iframe.isConnected).toBe(true);
     expect(firstHost.dispose).not.toHaveBeenCalled();
 
+    // When
     mocks.coreProviderDefers[1].resolve(makeProvider());
     await second;
 
+    // Then
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
     const app = document.getElementById("app");
     expect(app?.querySelectorAll("iframe")).toHaveLength(1);
@@ -360,16 +374,19 @@ describe("bridge render lifecycle", () => {
   }, 10_000);
 
   it.each(["/x.dot@evil.com/pay", "/foo.dotify/pay"])(
-    "keeps an adversarial deep path on the app sandbox origin: %s",
+    "As a user, the host keeps an adversarial deep path on the app sandbox origin: %s",
     async (path) => {
+      // Given
       window.history.replaceState(null, "", path);
       const { renderAppSubdomain } = await import("@dotli/ui/bridge");
 
+      // When
       const render = renderAppSubdomain("cid", "first");
       await waitForProviderRequests(1);
       mocks.coreProviderDefers[0].resolve(makeProvider());
       await render;
 
+      // Then
       const created = mocks.iframeHosts[0];
       const iframeUrl = new URL(created.iframeUrl);
       expect(iframeUrl.hostname).toBe("first.app.localhost");
@@ -378,7 +395,8 @@ describe("bridge render lifecycle", () => {
     },
   );
 
-  it("cancels pairing on the active product host", async () => {
+  it("As a dotli integrator, the host cancels pairing on the active product host", async () => {
+    // Given
     const { renderIframe } = await import("@dotli/ui/bridge");
 
     const render = renderIframe("https://product.example/app", "product");
@@ -386,14 +404,18 @@ describe("bridge render lifecycle", () => {
     mocks.coreProviderDefers[0].resolve(makeProvider());
     await render;
 
+    // When
     window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
 
+    // Then
     expect(mocks.coreRuntimes[0].cancelPairing).toHaveBeenCalledTimes(1);
   });
 
-  it("boots the landing auth core to disconnect a stored session without a product", async () => {
+  it("As a dotli integrator, the host boots the landing auth core to disconnect a stored session without a product", async () => {
+    // Given
     await import("@dotli/ui/bridge");
 
+    // When
     window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
     await waitForProviderRequests(1);
 
@@ -401,6 +423,7 @@ describe("bridge render lifecycle", () => {
     mocks.coreProviderDefers[0].resolve(provider);
     await waitForMockCalls(provider.disconnectSession, 1);
 
+    // Then
     expect(provider.disconnectSession).toHaveBeenCalledTimes(1);
   }, 10_000);
 });
@@ -412,7 +435,8 @@ describe("requestCoreLogin", () => {
     document.body.innerHTML = `<div id="app"></div>`;
   });
 
-  it("resolves successful login responses", async () => {
+  it("As a dotli integrator, the host resolves successful login responses", async () => {
+    // Given
     const { requestCoreLogin } = await import("@dotli/ui/bridge");
     const provider = makeLoginProvider({
       onPostMessage(message) {
@@ -425,12 +449,17 @@ describe("requestCoreLogin", () => {
       },
     });
 
-    await expect(requestCoreLogin(provider)).resolves.toBe("Success");
+    // When
+    const login = requestCoreLogin(provider);
+
+    // Then
+    await expect(login).resolves.toBe("Success");
     expect(provider.subscribe).toHaveBeenCalledTimes(1);
     expect(provider.listener).toBeNull();
   });
 
-  it("rejects typed login errors as LoginRequestError", async () => {
+  it("As a dotli integrator, the host rejects typed login errors as LoginRequestError", async () => {
+    // Given
     const { requestCoreLogin } = await import("@dotli/ui/bridge");
     const provider = makeLoginProvider({
       onPostMessage(message) {
@@ -443,8 +472,10 @@ describe("requestCoreLogin", () => {
       },
     });
 
+    // When
     const promise = requestCoreLogin(provider);
 
+    // Then
     await expect(promise).rejects.toThrow("Rejected");
     await expect(promise).rejects.toMatchObject({
       name: "LoginRequestError",
@@ -459,7 +490,8 @@ describe("requestCoreLogin", () => {
     expect(provider.listener).toBeNull();
   });
 
-  it("rejects host failures with the reason as the error message", async () => {
+  it("As a dotli integrator, the host rejects host failures with the reason as the error message", async () => {
+    // Given
     const { requestCoreLogin } = await import("@dotli/ui/bridge");
     const reason = "no free statement-store slot for device registration";
     const provider = makeLoginProvider({
@@ -473,8 +505,10 @@ describe("requestCoreLogin", () => {
       },
     });
 
+    // When
     const promise = requestCoreLogin(provider);
 
+    // Then
     await expect(promise).rejects.toThrow(reason);
     await expect(promise).rejects.toMatchObject({
       name: "LoginRequestError",
@@ -483,7 +517,8 @@ describe("requestCoreLogin", () => {
     expect(provider.listener).toBeNull();
   });
 
-  it("rejects malformed response frames and unsubscribes", async () => {
+  it("As a dotli integrator, the host rejects malformed response frames and unsubscribes", async () => {
+    // Given
     const { requestCoreLogin } = await import("@dotli/ui/bridge");
     const provider = makeLoginProvider({
       onPostMessage() {
@@ -491,11 +526,16 @@ describe("requestCoreLogin", () => {
       },
     });
 
-    await expect(requestCoreLogin(provider)).rejects.toThrow();
+    // When
+    const login = requestCoreLogin(provider);
+
+    // Then
+    await expect(login).rejects.toThrow();
     expect(provider.listener).toBeNull();
   });
 
-  it("rejects send failures and unsubscribes", async () => {
+  it("As a dotli integrator, the host rejects send failures and unsubscribes", async () => {
+    // Given
     const { requestCoreLogin } = await import("@dotli/ui/bridge");
     const provider = makeLoginProvider({
       onPostMessage() {
@@ -503,20 +543,30 @@ describe("requestCoreLogin", () => {
       },
     });
 
-    await expect(requestCoreLogin(provider)).rejects.toThrow("send failed");
+    // When
+    const login = requestCoreLogin(provider);
+
+    // Then
+    await expect(login).rejects.toThrow("send failed");
     expect(provider.listener).toBeNull();
   });
 
-  it("rejects and unsubscribes when the core provider closes", async () => {
+  it("As a dotli integrator, the host rejects and unsubscribes when the core provider closes", async () => {
+    // Given
     const { requestCoreLogin } = await import("@dotli/ui/bridge");
     const provider = makeLoginProvider({});
 
+    // When
     const promise = requestCoreLogin(provider);
+
+    // Then
     expect(provider.listener).not.toBeNull();
     expect(provider.closeListener).not.toBeNull();
 
+    // When
     provider.closeListener?.(new Error("core transport closed"));
 
+    // Then
     await expect(promise).rejects.toThrow("core transport closed");
     expect(provider.listener).toBeNull();
     expect(provider.closeListener).toBeNull();

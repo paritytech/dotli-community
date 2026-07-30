@@ -73,7 +73,7 @@ function requestKey(request: PermissionAuthorizationRequest): string {
 }
 
 describe("getPermissionStatus / setPermissionStatus", () => {
-  it("returns 'ask' by default", async () => {
+  it("As a product, my permissions default to ask", async () => {
     expect(await getPermissionStatus("myapp", "Camera")).toBe("ask");
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("ask");
     expect(await getPermissionStatus("myapp", "IdentityDisclosure")).toBe(
@@ -81,21 +81,45 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     );
   });
 
-  it("round-trips a granted status", async () => {
+  it("As a product, my status defaults to ask when the provider returns fewer statuses than requested", async () => {
+    // Given: a provider that violates the length contract.
+    const unregister = registerPermissionAuthorizationProvider("shortapp", {
+      async getPermissionAuthorizationStatuses() {
+        return [];
+      },
+      async setPermissionAuthorizationStatus() {
+        return;
+      },
+    });
+
+    try {
+      // Then: the missing entry surfaces as "ask", not undefined.
+      expect(await getPermissionStatus("shortapp", "Camera")).toBe("ask");
+    } finally {
+      unregister();
+    }
+  });
+
+  it("As a product, my granted permission status is preserved", async () => {
     await setPermissionStatus("myapp", "Camera", "granted");
     expect(await getPermissionStatus("myapp", "Camera")).toBe("granted");
   });
 
-  it("round-trips a denied status", async () => {
+  it("As a product, my denied permission status is preserved", async () => {
     await setPermissionStatus("myapp", "ChainSubmit", "denied");
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("denied");
   });
 
-  it("uses the core-backed authorization store", async () => {
+  it("As a product, my permission decisions use the core authorization store", async () => {
+    // Given
+    expect(myappStore).toEqual(new Map());
+
+    // When
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
     await setPermissionStatus("myapp", "Camera", "denied");
     await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
 
+    // Then
     expect(myappStore).toEqual(
       new Map([
         ["Remote:ChainSubmit", "Authorized"],
@@ -110,23 +134,31 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     );
   });
 
-  it("reads multiple statuses in one provider call", async () => {
+  it("As a product, my permission statuses are read in one provider call", async () => {
+    // Given
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
     await setPermissionStatus("myapp", "Camera", "denied");
     const callsBeforeRead = myappBatchReads;
 
-    await expect(
-      getPermissionStatuses("myapp", ["ChainSubmit", "Camera", "Microphone"]),
-    ).resolves.toEqual(["granted", "denied", "ask"]);
+    // When
+    const statuses = getPermissionStatuses("myapp", [
+      "ChainSubmit",
+      "Camera",
+      "Microphone",
+    ]);
+
+    // Then
+    await expect(statuses).resolves.toEqual(["granted", "denied", "ask"]);
     expect(myappBatchReads - callsBeforeRead).toBe(1);
   });
 
-  it("isolates grants per product label", async () => {
+  it("As a product, my permission grants are isolated from other products", async () => {
     await setPermissionStatus("myapp", "Camera", "granted");
     expect(await getPermissionStatus("otherapp", "Camera")).toBe("ask");
   });
 
-  it("restores the active provider when a replacement fails", async () => {
+  it("As a product, my active permission provider survives a failed replacement", async () => {
+    // Given
     await setPermissionStatus("myapp", "Camera", "granted");
     const replacementStore: Store = new Map([["Device:Camera", "Denied"]]);
     const unregisterReplacement = registerTestProvider(
@@ -134,51 +166,62 @@ describe("getPermissionStatus / setPermissionStatus", () => {
       replacementStore,
     );
 
+    // Then
     expect(await getPermissionStatus("myapp", "Camera")).toBe("denied");
 
+    // When
     unregisterReplacement();
 
+    // Then
     expect(await getPermissionStatus("myapp", "Camera")).toBe("granted");
   });
 });
 
 describe("resetPermission", () => {
-  it("removes one entry without affecting others on the same label", async () => {
+  it("As a product, I can reset one permission without affecting my others", async () => {
+    // Given
     await setPermissionStatus("myapp", "Camera", "granted");
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
 
+    // When
     await resetPermission("myapp", "Camera");
 
+    // Then
     expect(await getPermissionStatus("myapp", "Camera")).toBe("ask");
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
   });
 
-  it("is a no-op for unknown entries", async () => {
+  it("As a product, resetting an unknown permission leaves my grants unchanged", async () => {
     await resetPermission("myapp", "Camera");
     expect(await getPermissionStatus("myapp", "Camera")).toBe("ask");
   });
 });
 
 describe("hasAnyGrant", () => {
-  it("returns false for a fresh label", async () => {
+  it("As a new product, I have no persisted grants", async () => {
     expect(await hasAnyGrant("myapp")).toBe(false);
   });
 
-  it("returns true after any grant", async () => {
+  it("As a product, I have persisted grants after one permission is allowed", async () => {
     await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
     expect(await hasAnyGrant("myapp")).toBe(true);
   });
 
-  it("returns false when only denials exist", async () => {
+  it("As a product, denied permissions do not count as persisted grants", async () => {
     await setPermissionStatus("myapp", "Camera", "denied");
     await setPermissionStatus("myapp", "ChainSubmit", "denied");
     await setPermissionStatus("myapp", "IdentityDisclosure", "denied");
     expect(await hasAnyGrant("myapp")).toBe(false);
   });
 
-  it("returns false again after the only grant is reset", async () => {
+  it("As a product, I have no persisted grants after resetting my only grant", async () => {
+    // Given
     await setPermissionStatus("myapp", "Camera", "granted");
+
+    // When
     await resetPermission("myapp", "Camera");
+
+    // Then
     expect(await hasAnyGrant("myapp")).toBe(false);
   });
 });
@@ -245,50 +288,71 @@ describe("device permission prompts", () => {
     return reloads;
   }
 
-  it("keeps the iframe alive for notification grants", async () => {
+  it("As a product, my iframe stays alive when notifications are granted", async () => {
     expect(await grantAndCountReloads("Notifications")).toBe(0);
   });
 
-  it("reloads for grants that alter the iframe allow attribute", async () => {
+  it("As a product, my iframe reloads when a grant changes its allow attribute", async () => {
     expect(await grantAndCountReloads("Camera")).toBe(1);
   });
 });
 
 describe("getGrantedDevicePermissions", () => {
-  it("returns only granted device permissions, ignoring core-only grants", async () => {
+  it("As a product, my iframe receives only granted device permissions", async () => {
+    // Given
     await setPermissionStatus("myapp", "Camera", "granted");
     await setPermissionStatus("myapp", "Microphone", "denied");
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
     await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
 
-    expect(await getGrantedDevicePermissions("myapp")).toEqual(["Camera"]);
+    // When
+    const permissions = await getGrantedDevicePermissions("myapp");
+
+    // Then
+    expect(permissions).toEqual(["Camera"]);
   });
 
-  it("returns an empty array when only submit-style grants exist", async () => {
+  it("As a product, submit permissions do not alter my iframe policy", async () => {
+    // Given
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
     await setPermissionStatus("myapp", "PreimageSubmit", "granted");
-    expect(await getGrantedDevicePermissions("myapp")).toEqual([]);
+
+    // When
+    const permissions = await getGrantedDevicePermissions("myapp");
+
+    // Then
+    expect(permissions).toEqual([]);
   });
 });
 
 describe("buildAllowAttribute", () => {
-  it("always includes clipboard-write", async () => {
+  it("As a product, my iframe always receives clipboard-write access", async () => {
     expect(await buildAllowAttribute("myapp")).toBe("clipboard-write");
   });
 
-  it("appends Permissions Policy directives for granted device permissions", async () => {
+  it("As a product, my granted device permissions appear in iframe policy", async () => {
+    // Given
     await setPermissionStatus("myapp", "Camera", "granted");
     await setPermissionStatus("myapp", "Microphone", "granted");
 
+    // When
     // Order follows JSON insertion order, so assert on the directive set.
     const directives = (await buildAllowAttribute("myapp")).split("; ").sort();
+
+    // Then
     expect(directives).toEqual(["camera", "clipboard-write", "microphone"]);
   });
 
-  it("excludes denied device permissions and submit-style grants", async () => {
+  it("As a product, denied and submit permissions stay out of iframe policy", async () => {
+    // Given
     await setPermissionStatus("myapp", "Camera", "denied");
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
-    expect(await buildAllowAttribute("myapp")).toBe("clipboard-write");
+
+    // When
+    const allow = await buildAllowAttribute("myapp");
+
+    // Then
+    expect(allow).toBe("clipboard-write");
   });
 });
 

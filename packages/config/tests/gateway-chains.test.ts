@@ -22,19 +22,19 @@ describe("gateway-supported chains (rpc-gateway mode)", () => {
     setNetworkOverride(NetworkName.PASEO_NEXT_V2);
   });
 
-  it("advertises relay, Asset Hub, and People", () => {
+  it("As a product, the host advertises relay, Asset Hub, and People", () => {
     const hashes = getActiveGatewaySupportedGenesisHashes();
     expect(hashes.has(v2.relay.genesis.toLowerCase())).toBe(true);
     expect(hashes.has(v2.assethub.genesis.toLowerCase())).toBe(true);
     expect(hashes.has(v2.people.genesis.toLowerCase())).toBe(true);
   });
 
-  it("does not advertise the Bulletin chain", () => {
+  it("As a product, the host does not advertise the Bulletin chain", () => {
     const hashes = getActiveGatewaySupportedGenesisHashes();
     expect(hashes.has(v2.bulletin.genesis.toLowerCase())).toBe(false);
   });
 
-  it("includes Bulletin in the host-owned core gateway set", () => {
+  it("As a Rust core runtime, I can access Bulletin through the host gateway set", () => {
     const hashes = new Set(
       getActiveCoreGatewayChains().map((chain) => chain.genesis.toLowerCase()),
     );

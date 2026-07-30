@@ -6,35 +6,25 @@ import {
 } from "@dotli/ui/runtime-config";
 
 describe("labelToProductId", () => {
-  it("maps dotli labels to .dot product ids", () => {
+  it("As a dotli integrator, the host maps dotli labels to .dot product ids", () => {
     expect(labelToProductId("acme")).toBe("acme.dot");
   });
 
-  it("keeps localhost labels stable", () => {
+  it("As a dotli integrator, the host keeps localhost labels stable", () => {
     expect(labelToProductId("localhost:5174")).toBe("localhost:5174");
   });
 });
 
 describe("createTruapiRuntimeConfig", () => {
-  it("accepts an explicit product id for local previews", () => {
+  it("As a dotli integrator, the host accepts an explicit product id for local previews", () => {
     expect(
-      createTruapiRuntimeConfig(
-        "localhost:3000",
-        {
-          origin: "http://localhost:5173",
-        } as Location,
-        "truapi-playground.dot",
-      ).productId,
+      createTruapiRuntimeConfig("localhost:3000", "truapi-playground.dot")
+        .productId,
     ).toBe("truapi-playground.dot");
   });
 
-  it("passes the full host runtime contract to the WASM core", () => {
-    expect(
-      createTruapiRuntimeConfig("acme", {
-        hostname: "host.dot.li",
-        origin: "https://host.dot.li",
-      } as Location),
-    ).toEqual({
+  it("As a dotli integrator, the host passes the full host runtime contract to the WASM core", () => {
+    expect(createTruapiRuntimeConfig("acme")).toEqual({
       productId: "acme.dot",
       host: {
         name: "Polkadot Web",

@@ -4,6 +4,10 @@
 import { test as base, type Page, type Frame } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { STATE_FILE } from "./paths";
+import {
+  E2E_CHAIN_BACKEND,
+  initializeChainBackend,
+} from "../helpers/chain-backend";
 
 const PORT = process.env.PORT ?? "5173";
 const HOST = process.env.E2E_HOST ?? "host-playground";
@@ -139,15 +143,7 @@ export const test = base.extend<
 
       // Mirror the init flags globalSetup used so the page boots into the
       // same backend mode and the restored localStorage stays consistent.
-      await page.addInitScript(() => {
-        try {
-          localStorage.setItem("dotli:mode", "gateway");
-          localStorage.setItem("dotli:chain-backend", "rpc");
-          localStorage.setItem("dotli:content-backend", "ipfs-gateway");
-        } catch {
-          /* ignore */
-        }
-      });
+      await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
 
       // WebSocket frames: statement_submit / broadcast traffic for
       // diagnosing the signing tests. Filtered to avoid chain-head spam.
@@ -179,10 +175,12 @@ export const test = base.extend<
       await page.goto(productHostUrl, {
         timeout: 60_000,
       });
-      await page
-        .getByRole("button", { name: "Switch to Gateway" })
-        .click({ timeout: 5_000 })
-        .catch(() => {});
+      if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+        await page
+          .getByRole("button", { name: "Switch to Gateway" })
+          .click({ timeout: 5_000 })
+          .catch(() => {});
+      }
 
       const restoreStart = Date.now();
       await page

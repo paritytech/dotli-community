@@ -652,7 +652,7 @@ function segmentForGroup(
  * point-in-time system events (boot phases, failover decisions, etc.)
  * still occupy a lane position at the right Y. `pending` is true for
  * flows whose first event is a "start" kind without a matching end
- * event in the buffer. See SYSTEM_TERMINATOR_SUFFIXES.
+ * event in the buffer. See `isSystemFlowTerminator`.
  */
 function systemSegmentForGroup(
   group: StoredSystemEvent[],
@@ -688,22 +688,21 @@ function systemSegmentDetail(
   return `${first.layer}·${String(all.length)} step${all.length === 1 ? "" : "s"}`;
 }
 
-/** Events that close a multi-step system flow. Mirrors the pairs we
- *  document in the detail pane so visual pending state matches intent. */
+/** Exact layer:event names that close a multi-step system flow. */
+const SYSTEM_TERMINATOR_EVENTS: ReadonlySet<string> = new Set([
+  "boot:ready",
+  "boot:landing_page_shown",
+  "bridge:first_outbound",
+  "render:iframe_ready",
+  "sandbox:document_written",
+  "main:monitor_stopped",
+]);
+
+/** Suffixes that close error/completion families without listing every event. */
 const SYSTEM_TERMINATOR_SUFFIXES: readonly string[] = [
-  "ready",
   "failed",
-  "landing_page_shown",
   "completed",
   "terminated",
-  "iframe_ready",
-  // `setup_ready` does not close the bridge flow. It only means the
-  // host is listening, and the product can stay silent for many seconds
-  // after that (iframe still loading, sandbox relay not ready). The
-  // bridge flow stays open until bidirectional traffic is observed via
-  // `first_outbound`.
-  "first_outbound",
-  "document_written",
   "peer_action_processed",
   "peer_action_failed",
   "host_action_response_received",
@@ -712,10 +711,13 @@ const SYSTEM_TERMINATOR_SUFFIXES: readonly string[] = [
   "resolve_failed",
 ];
 
-function isSystemFlowTerminator(ev: StoredSystemEvent): boolean {
+export function isSystemFlowTerminator(ev: StoredSystemEvent): boolean {
   const event = ev.event;
+  if (SYSTEM_TERMINATOR_EVENTS.has(`${ev.layer}:${event}`)) {
+    return true;
+  }
   return SYSTEM_TERMINATOR_SUFFIXES.some(
-    (suf) => event === suf || event.endsWith(`_${suf}`) || event === suf,
+    (suf) => event === suf || event.endsWith(`_${suf}`),
   );
 }
 
