@@ -47,11 +47,6 @@ import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
-// TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
-import {
-  createLegacyNovaChainHeadProvider,
-  createWindowMessageProvider,
-} from "./legacy-host-bridge";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { showNotification } from "./notification";
 
@@ -702,10 +697,6 @@ async function createHost(args: {
   const productId = args.productId ?? labelToProductId(args.label);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
-  // TODO(remove-legacy-nova): `legacyProbeCleanup` (including its two `?.()`
-  // call sites in `dispose()` and the catch block below) exists only for the
-  // legacy probe block tagged further down.
-  let legacyProbeCleanup: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
@@ -731,62 +722,6 @@ async function createHost(args: {
       },
     });
 
-    // DEPRECATED legacy host-API support. Modern products announce themselves
-    // with `{type:"truapi-ready"}` and use the MessagePort wired above. Products
-    // still on the Nova host-api SDK instead post raw SCALE frames (Uint8Array)
-    // to `window.parent`. Detect that first frame and re-pipe the core over a
-    // window-postMessage provider.
-    //
-    // TODO(remove-legacy-nova): once the last legacy Nova product migrates to
-    // `@parity/truapi`, delete this probe block (through the
-    // `legacyProbeCleanup` assignment below), the `legacyProbeCleanup`
-    // declaration and call sites tagged above, the `legacy-host-bridge`
-    // import at the top of this file, and the tagged `legacy-host-bridge.ts`
-    // module itself. Modern products need no probe: the MessagePort from
-    // `onPort` is the only wiring.
-    let probeMode: "pending" | "modern" | "legacy" = "pending";
-    const onProbe = (event: MessageEvent): void => {
-      if (probeMode !== "pending") {
-        return;
-      }
-      const targetWindow = host.iframe.contentWindow;
-      if (
-        !targetWindow ||
-        event.source !== targetWindow ||
-        event.origin !== args.allowedOrigin
-      ) {
-        return;
-      }
-      if (event.data instanceof Uint8Array) {
-        probeMode = "legacy";
-        legacyProbeCleanup?.();
-        // Drop the unused modern MessagePort pipe before rewiring.
-        cleanupProductSide();
-        const windowProvider = createWindowMessageProvider(
-          targetWindow,
-          args.allowedOrigin,
-        );
-        const legacyProvider = createLegacyNovaChainHeadProvider(
-          windowProvider,
-          productId,
-        );
-        productProvider = legacyProvider;
-        disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
-        // Replay the handshake frame the probe just consumed.
-        windowProvider.injectInbound(event.data);
-      } else if (
-        (event.data as { type?: unknown } | null)?.type === "truapi-ready"
-      ) {
-        probeMode = "modern";
-        legacyProbeCleanup?.();
-      }
-    };
-    window.addEventListener("message", onProbe);
-    legacyProbeCleanup = () => {
-      window.removeEventListener("message", onProbe);
-      legacyProbeCleanup = null;
-    };
-
     return {
       iframe: host.iframe,
       requestLogin(reason) {
@@ -800,7 +735,6 @@ async function createHost(args: {
       },
       dispose() {
         unregisterPermissions();
-        legacyProbeCleanup?.();
         cleanupProductSide();
         coreProvider.dispose();
         host.dispose();
@@ -808,7 +742,6 @@ async function createHost(args: {
     };
   } catch (error) {
     unregisterPermissions();
-    legacyProbeCleanup?.();
     cleanupProductSide();
     coreProvider.dispose();
     throw error;

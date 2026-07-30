@@ -78,10 +78,9 @@ export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
 /** Storage key used by the removed Nova host runtime. Its session encoding is
  * incompatible with TrUAPI, so the protocol host deletes this key at boot.
  *
- * TODO(remove-legacy-nova): unlike the product-facing shim sites sharing this
- * tag, this cleanup is gated on returning browsers, not on product migration:
- * delete it (with `LEGACY_SHARED_AUTH_SESSION_KEY` above and
- * `clearLegacySharedAuthSession` in `apps/protocol/src/main.ts`) once stale
+ * TODO(remove-legacy-nova): this cleanup is gated on returning browsers, not
+ * product migration. Delete it (with `LEGACY_SHARED_AUTH_SESSION_KEY` above
+ * and `clearLegacySharedAuthSession` in `apps/protocol/src/main.ts`) once stale
  * `PAPP_*` keys in long-lived browser profiles are no longer a concern. */
 export function buildLegacySharedAuthSessionStorageKey(siteId: SiteId): string {
   return `PAPP_${siteId}_${LEGACY_SHARED_AUTH_SESSION_KEY}`;
