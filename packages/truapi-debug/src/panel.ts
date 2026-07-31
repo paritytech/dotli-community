@@ -375,8 +375,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
 
 const COPY_FLASH_MS = 1200;
 
-// Lucide glyphs (ISC), inlined at the panel's 12px icon size like the
-// dock icons below.
+// Lucide glyphs, inlined like the dock icons below.
 const EXPORT_ICON_SVG = `
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 15V3"/>
@@ -390,20 +389,8 @@ const COPY_ICON_SVG = `
     <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
   </svg>
 `;
-const COPY_OK_ICON_SVG = `
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M20 6 9 17l-5-5"/>
-  </svg>
-`;
-const COPY_FAILED_ICON_SVG = `
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M18 6 6 18"/>
-    <path d="m6 6 12 12"/>
-  </svg>
-`;
 
-/** Serialize the currently *filtered* view — exports match what the
- *  user sees, and the meta block records the filters that applied. */
+/** Exports carry the filtered view — what the user currently sees. */
 function buildFilteredExportJson(state: PanelState, store: EventStore): string {
   const all = store.list();
   const events = all.filter((e) => matches(e, state.filters));
@@ -420,14 +407,10 @@ function buildFilteredExportJson(state: PanelState, store: EventStore): string {
   return buildExport(events, meta);
 }
 
-/** Swap a button's content for a moment (e.g. the ✓ icon after a copy),
- *  disabling it for the duration of the flash and restoring the original
- *  content and enabled state once it elapses. Callers that can fire more
- *  than once in quick succession (e.g. a click handler that awaits a
- *  promise before flashing) must disable the button synchronously at the
- *  start of their handler — otherwise a second invocation before the
- *  first promise settles could re-enter with the flashed content already
- *  showing and capture it as the "original" to restore. */
+/** Swap a button's content for a moment, disabled while it shows.
+ *  Callers that flash after awaiting a promise must disable the button
+ *  synchronously at click time, or a rapid second click could capture
+ *  the flashed content as the "original" to restore. */
 function flashButton(btn: HTMLButtonElement, html: string): void {
   const original = btn.innerHTML;
   btn.innerHTML = html;
@@ -461,10 +444,8 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     const a = document.createElement("a");
     a.href = url;
     a.download = exportFilename(new Date());
-    // Safari can silently abort the download if the anchor isn't attached
-    // to the document when clicked, or if the object URL is revoked
-    // before the click has finished being processed — attach, click,
-    // detach, then revoke on the next tick.
+    // Attach before clicking and revoke on the next tick — Safari can
+    // silently abort the download otherwise.
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -473,26 +454,22 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     }, 0);
   });
   ui.copyBtn.addEventListener("click", () => {
-    // Disable synchronously so a rapid second click can't race the
-    // in-flight writeText() promise and steal the flashed icon as the
-    // "original" content (see flashButton's doc comment).
+    // Disabled synchronously: see flashButton's doc comment.
     ui.copyBtn.disabled = true;
-    // navigator.clipboard is [SecureContext]-only and typed as always
-    // present, but it is genuinely absent when the panel is served over
-    // a non-secure origin (e.g. a plain http:// LAN IP) — cast to admit
-    // that case rather than suppressing the lint rule.
+    // Typed as always present, but absent on non-secure origins
+    // (Clipboard API is [SecureContext]-only).
     const clipboard = navigator.clipboard as Clipboard | undefined;
     if (!clipboard) {
-      flashButton(ui.copyBtn, COPY_FAILED_ICON_SVG);
+      flashButton(ui.copyBtn, "✕");
       return;
     }
     const json = buildFilteredExportJson(state, store);
     clipboard.writeText(json).then(
       () => {
-        flashButton(ui.copyBtn, COPY_OK_ICON_SVG);
+        flashButton(ui.copyBtn, "✓");
       },
       () => {
-        flashButton(ui.copyBtn, COPY_FAILED_ICON_SVG);
+        flashButton(ui.copyBtn, "✕");
       },
     );
   });

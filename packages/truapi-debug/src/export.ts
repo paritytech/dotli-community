@@ -3,10 +3,8 @@
 
 // TrUAPI debug export
 //
-// Pure serialization of stored debug events for file download and
-// clipboard copy. Unlike format.ts (display-oriented, truncated
-// previews), output here is full fidelity: complete hex for
-// Uint8Array, whole strings. No DOM in this module.
+// Serializes stored debug events for file download and clipboard copy.
+// Unlike the display formatters in format.ts, nothing is truncated.
 
 import { toHex } from "@dotli/shared/hex";
 
@@ -14,9 +12,6 @@ import type { StoredEvent } from "./event-store.ts";
 import type { FilterState } from "./filters.ts";
 import { isUint8ArrayLike } from "./format.ts";
 
-/** Context block written alongside the events so an exported file is
- *  self-describing: what page produced it, how full the ring buffer
- *  was, and which filters were active (exports are filtered views). */
 export interface ExportMeta {
   exportedAt: string;
   url: string;
@@ -28,14 +23,6 @@ export interface ExportMeta {
   filters: FilterState;
 }
 
-/**
- * Full-fidelity JSON.stringify replacer:
- * - Uint8Array becomes { __type: "Uint8Array", length, hex } with the
- *   COMPLETE hex string (no preview cap)
- * - bigint becomes a string with trailing "n"
- * - cycles become "[Circular]"
- * - strings are never truncated
- */
 function makeExportReplacer(): (
   this: unknown,
   k: string,
@@ -59,11 +46,6 @@ function makeExportReplacer(): (
   };
 }
 
-/**
- * Serialize events + meta to pretty-printed JSON. Never throws: if an
- * exotic payload defeats the replacer, the result is still a valid
- * JSON document with an `error` field in place of `events`.
- */
 export function buildExport(
   events: readonly StoredEvent[],
   meta: ExportMeta,
@@ -80,8 +62,7 @@ export function buildExport(
   }
 }
 
-/** `dotli-debug-2026-07-31T14-30-00.json` — ISO timestamp with `:`
- *  swapped for `-` (Windows-safe filename). */
+/** `dotli-debug-2026-07-31T14-30-00.json` */
 export function exportFilename(now: Date): string {
   const stamp = now.toISOString().slice(0, 19).replace(/:/g, "-");
   return `dotli-debug-${stamp}.json`;

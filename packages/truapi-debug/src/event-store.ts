@@ -60,7 +60,6 @@ export interface EventStoreConfig {
 type Listener = () => void;
 
 export class EventStore {
-  /** Configured ring-buffer cap; exposed for export metadata. */
   readonly capacity: number;
   private readonly buf: StoredEvent[] = [];
   private paused = false;
