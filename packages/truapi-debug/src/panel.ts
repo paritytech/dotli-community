@@ -29,6 +29,7 @@ import {
 } from "./event-store.ts";
 import { EventStore } from "./event-store.ts";
 import type { DotliDebugBusEvent } from "./dotli-debug-bus.ts";
+import { buildExport, exportFilename, type ExportMeta } from "./export.ts";
 import {
   initialFilterState,
   matches,
@@ -242,6 +243,8 @@ interface PanelUI {
   counts: HTMLSpanElement;
   pauseBtn: HTMLButtonElement;
   clearBtn: HTMLButtonElement;
+  exportBtn: HTMLButtonElement;
+  copyBtn: HTMLButtonElement;
   dockBtn: HTMLButtonElement;
   collapseBtn: HTMLButtonElement;
   closeBtn: HTMLButtonElement;
@@ -268,6 +271,8 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       <span class="td-spacer"></span>
       <button class="td-btn td-pause" type="button">Pause</button>
       <button class="td-btn td-clear" type="button">Clear</button>
+      <button class="td-btn td-btn-icon td-export" type="button" title="Download as JSON" aria-label="Download as JSON">${EXPORT_ICON_SVG}</button>
+      <button class="td-btn td-btn-icon td-copy" type="button" title="Copy to clipboard" aria-label="Copy to clipboard">${COPY_ICON_SVG}</button>
       <button class="td-btn td-btn-icon td-dock" type="button" title="Dock to right" aria-label="Dock to right"></button>
       <button class="td-btn td-btn-icon td-collapse" type="button" title="Collapse">▼</button>
       <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)">×</button>
@@ -320,6 +325,8 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
     counts: panel.querySelector(".td-counts") as HTMLSpanElement,
     pauseBtn: panel.querySelector(".td-pause") as HTMLButtonElement,
     clearBtn: panel.querySelector(".td-clear") as HTMLButtonElement,
+    exportBtn: panel.querySelector(".td-export") as HTMLButtonElement,
+    copyBtn: panel.querySelector(".td-copy") as HTMLButtonElement,
     dockBtn: panel.querySelector(".td-dock") as HTMLButtonElement,
     collapseBtn: panel.querySelector(".td-collapse") as HTMLButtonElement,
     closeBtn: panel.querySelector(".td-close") as HTMLButtonElement,
@@ -366,6 +373,71 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   return ui;
 }
 
+const COPY_FLASH_MS = 1200;
+
+// Lucide glyphs (ISC), inlined at the panel's 12px icon size like the
+// dock icons below.
+const EXPORT_ICON_SVG = `
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15V3"/>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <path d="m7 10 5 5 5-5"/>
+  </svg>
+`;
+const COPY_ICON_SVG = `
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+  </svg>
+`;
+const COPY_OK_ICON_SVG = `
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 6 9 17l-5-5"/>
+  </svg>
+`;
+const COPY_FAILED_ICON_SVG = `
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 6 6 18"/>
+    <path d="m6 6 12 12"/>
+  </svg>
+`;
+
+/** Serialize the currently *filtered* view — exports match what the
+ *  user sees, and the meta block records the filters that applied. */
+function buildFilteredExportJson(state: PanelState, store: EventStore): string {
+  const all = store.list();
+  const events = all.filter((e) => matches(e, state.filters));
+  const meta: ExportMeta = {
+    exportedAt: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    capacity: store.capacity,
+    droppedCount: store.dropped(),
+    totalEvents: all.length,
+    exportedEvents: events.length,
+    filters: state.filters,
+  };
+  return buildExport(events, meta);
+}
+
+/** Swap a button's content for a moment (e.g. the ✓ icon after a copy),
+ *  disabling it for the duration of the flash and restoring the original
+ *  content and enabled state once it elapses. Callers that can fire more
+ *  than once in quick succession (e.g. a click handler that awaits a
+ *  promise before flashing) must disable the button synchronously at the
+ *  start of their handler — otherwise a second invocation before the
+ *  first promise settles could re-enter with the flashed content already
+ *  showing and capture it as the "original" to restore. */
+function flashButton(btn: HTMLButtonElement, html: string): void {
+  const original = btn.innerHTML;
+  btn.innerHTML = html;
+  btn.disabled = true;
+  window.setTimeout(() => {
+    btn.innerHTML = original;
+    btn.disabled = false;
+  }, COPY_FLASH_MS);
+}
+
 function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
   ui.pauseBtn.addEventListener("click", () => {
     const paused = !store.isPaused();
@@ -381,6 +453,48 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     // pane, so without this the previously-selected event's body
     // would linger after clear.
     renderDetail(ui, state, store);
+  });
+  ui.exportBtn.addEventListener("click", () => {
+    const json = buildFilteredExportJson(state, store);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportFilename(new Date());
+    // Safari can silently abort the download if the anchor isn't attached
+    // to the document when clicked, or if the object URL is revoked
+    // before the click has finished being processed — attach, click,
+    // detach, then revoke on the next tick.
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 0);
+  });
+  ui.copyBtn.addEventListener("click", () => {
+    // Disable synchronously so a rapid second click can't race the
+    // in-flight writeText() promise and steal the flashed icon as the
+    // "original" content (see flashButton's doc comment).
+    ui.copyBtn.disabled = true;
+    // navigator.clipboard is [SecureContext]-only and typed as always
+    // present, but it is genuinely absent when the panel is served over
+    // a non-secure origin (e.g. a plain http:// LAN IP) — cast to admit
+    // that case rather than suppressing the lint rule.
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    if (!clipboard) {
+      flashButton(ui.copyBtn, COPY_FAILED_ICON_SVG);
+      return;
+    }
+    const json = buildFilteredExportJson(state, store);
+    clipboard.writeText(json).then(
+      () => {
+        flashButton(ui.copyBtn, COPY_OK_ICON_SVG);
+      },
+      () => {
+        flashButton(ui.copyBtn, COPY_FAILED_ICON_SVG);
+      },
+    );
   });
   ui.collapseBtn.addEventListener("click", () => {
     state.collapsed = !state.collapsed;

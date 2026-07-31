@@ -242,17 +242,26 @@
 .td-btn-icon {
   padding: 2px 8px;
 }
-.td-dock {
+.td-dock,
+.td-export,
+.td-copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #a3a3a3;
 }
-.td-dock:hover {
+.td-dock:hover,
+.td-export:hover,
+.td-copy:hover {
   color: #d4d4d4;
 }
-.td-dock svg {
+.td-dock svg,
+.td-export svg,
+.td-copy svg {
   display: block;
+}
+.td-btn:disabled {
+  cursor: default;
 }
 .td-close {
   background: none;
