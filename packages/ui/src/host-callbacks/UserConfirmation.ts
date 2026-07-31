@@ -1,4 +1,25 @@
-import type { UserConfirmation as UserConfirmationHost } from "@parity/truapi-host";
+import type {
+  AccountAccessReview,
+  AccountAliasReview,
+  CreateProofReview,
+  CreateTransactionReview,
+  IdentityDisclosureReview,
+  PreimageSubmitReview,
+  ResourceAllocationReview,
+  SignPayloadReview,
+  SignRawReview,
+  StatementStoreProductSignReview,
+  UserConfirmation as UserConfirmationHost,
+  UserConfirmationReview,
+} from "@parity/truapi-host";
+import type {
+  AllocatableResource,
+  DerivationIndex,
+  HostSignPayloadData,
+  ProductAccountId,
+  RawPayload,
+  RingLocationJunction,
+} from "@parity/truapi";
 import { showPreimageSubmitModal } from "../preimage-modal";
 import {
   blockingModalAbortError,
@@ -19,39 +40,15 @@ interface ConfirmationField {
   mono?: boolean;
 }
 
-type PublishedUserConfirmationReview = Parameters<
-  Required<UserConfirmationHost>["confirmUserAction"]
->[0];
-
-interface RingContextReview {
-  callingProductId: string;
-  context: { productId: string; suffix: string };
-  ringLocation: {
-    chainId: string;
-    junctions: { tag: string; value: number | string }[];
-  };
-}
-
-interface LegacyAccountAliasReview {
-  requestingProductId: string;
-  targetProductId: string;
-}
-
-type UserConfirmationReview =
-  | PublishedUserConfirmationReview
-  | { tag: "AccountAlias"; value: LegacyAccountAliasReview }
-  | { tag: "AccountAlias"; value: RingContextReview }
-  | {
-      tag: "CreateProof";
-      value: RingContextReview & { message: Uint8Array };
-    };
-
 type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
+
+/** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
+type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;
 
 function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
-  review: UserConfirmationReview,
+  review: ModalReview,
   signal: AbortSignal,
 ): Promise<ConfirmationDecision> {
   throwIfAborted(signal);
@@ -151,24 +148,6 @@ function createField(field: ConfirmationField): HTMLDivElement {
   return group;
 }
 
-function formatReview(review: unknown): string {
-  return JSON.stringify(
-    review,
-    (_key: string, value: unknown): unknown => {
-      if (typeof value === "bigint") {
-        return value.toString();
-      }
-      if (value instanceof Uint8Array) {
-        return `0x${Array.from(value, (byte) =>
-          byte.toString(16).padStart(2, "0"),
-        ).join("")}`;
-      }
-      return value;
-    },
-    2,
-  );
-}
-
 function formatBytes(value: Uint8Array): string {
   return `0x${Array.from(value, (byte) =>
     byte.toString(16).padStart(2, "0"),
@@ -177,79 +156,52 @@ function formatBytes(value: Uint8Array): string {
 
 function confirmationDisplay(
   label: string,
-  review: UserConfirmationReview,
+  review: ModalReview,
 ): { fields: ConfirmationField[] } {
-  if (review.tag === "SignPayload") {
-    return { fields: createSignPayloadFields(label, review.value) };
+  switch (review.tag) {
+    case "SignPayload":
+      return { fields: createSignPayloadFields(label, review.value) };
+    case "SignRaw":
+      return { fields: createSignRawFields(label, review.value) };
+    case "StatementStoreProductSign":
+      return { fields: createStatementSignFields(label, review.value) };
+    case "CreateTransaction":
+      return { fields: createTransactionFields(label, review.value) };
+    case "AccountAlias":
+      return { fields: createRingContextFields(review.value) };
+    case "CreateProof":
+      return { fields: createProofFields(review.value) };
+    case "AccountAccess":
+      return { fields: createAccountAccessFields(review.value) };
+    case "IdentityDisclosure":
+      return { fields: createIdentityDisclosureFields(review.value) };
+    case "ResourceAllocation":
+      return { fields: createResourceAllocationFields(review.value) };
   }
-  if (review.tag === "SignRaw") {
-    return { fields: createSignRawFields(label, review.value) };
-  }
-  if (review.tag === "CreateTransaction") {
-    return { fields: createTransactionFields(label, review.value) };
-  }
-  if (review.tag === "AccountAlias") {
-    return { fields: createAccountAliasFields(review.value) };
-  }
-  if (review.tag === "CreateProof") {
-    return { fields: createProofFields(review.value) };
-  }
-  if (review.tag === "AccountAccess") {
-    return { fields: createAccountAccessFields(review.value) };
-  }
-  if (review.tag === "IdentityDisclosure") {
-    return { fields: createIdentityDisclosureFields(review.value) };
-  }
-  if (review.tag === "ResourceAllocation") {
-    return { fields: createResourceAllocationFields(review.value) };
-  }
-
-  const text = formatReview(review);
-  return {
-    fields: [
-      {
-        label: "Application",
-        value: label.startsWith("localhost:") ? label : `${label}.dot`,
-      },
-      {
-        label: "Request",
-        value: text.length > 180 ? `${text.slice(0, 180)}...` : text,
-      },
-    ],
-  };
 }
 
 function truncateHex(value: string): string {
   return value.length > 80 ? `${value.slice(0, 80)}...` : value;
 }
 
-type SignRawPayload = Extract<
-  UserConfirmationReview,
-  { tag: "SignRaw" }
->["value"]["value"]["payload"];
-
-function formatRawPayload(payload: SignRawPayload): string {
+function formatRawPayload(payload: RawPayload): string {
   return truncateHex(
     payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload,
   );
 }
 
-function formatProductAccount(account: {
-  dotNsIdentifier: string;
-  derivationIndex: number;
-}): string {
-  return `${account.dotNsIdentifier} / ${String(account.derivationIndex)}`;
+function formatDerivationIndex(index: DerivationIndex): string {
+  return index.tag === "Left" ? String(index.value) : index.value;
 }
 
-type SignPayloadData = Extract<
-  UserConfirmationReview,
-  { tag: "SignPayload" }
->["value"]["value"]["payload"];
+function formatProductAccount(account: ProductAccountId): string {
+  return `${account.dotNsIdentifier} / ${formatDerivationIndex(account.derivationIndex)}`;
+}
 
 function createPayloadFields(
   app: string,
   signer: string,
-  payload: SignPayloadData,
+  payload: HostSignPayloadData,
 ): ConfirmationField[] {
   return [
     { label: "App", value: app },
@@ -262,7 +214,7 @@ function createPayloadFields(
 
 function createSignPayloadFields(
   label: string,
-  review: Extract<UserConfirmationReview, { tag: "SignPayload" }>["value"],
+  review: SignPayloadReview,
 ): ConfirmationField[] {
   if (review.tag === "Product") {
     return createPayloadFields(
@@ -277,7 +229,7 @@ function createSignPayloadFields(
 
 function createSignRawFields(
   label: string,
-  review: Extract<UserConfirmationReview, { tag: "SignRaw" }>["value"],
+  review: SignRawReview,
 ): ConfirmationField[] {
   if (review.tag === "Product") {
     return [
@@ -304,10 +256,7 @@ function createSignRawFields(
 
 function createTransactionFields(
   label: string,
-  review: Extract<
-    UserConfirmationReview,
-    { tag: "CreateTransaction" }
-  >["value"],
+  review: CreateTransactionReview,
 ): ConfirmationField[] {
   const payload = review.value;
   const signer =
@@ -324,19 +273,21 @@ function createTransactionFields(
   ];
 }
 
-function formatRingJunction(
-  junction: RingContextReview["ringLocation"]["junctions"][number],
-): string {
+function formatRingJunction(junction: RingLocationJunction): string {
   return `${junction.tag}(${String(junction.value)})`;
 }
 
 function createRingContextFields(
-  review: RingContextReview,
+  review: AccountAliasReview | CreateProofReview,
 ): ConfirmationField[] {
   return [
     { label: "Requesting product", value: review.callingProductId },
     { label: "Context product", value: review.context.productId },
-    { label: "Context suffix", value: review.context.suffix, mono: true },
+    {
+      label: "Context suffix",
+      value: formatDerivationIndex(review.context.suffix),
+      mono: true,
+    },
     { label: "Chain", value: review.ringLocation.chainId, mono: true },
     {
       label: "Ring path",
@@ -345,29 +296,30 @@ function createRingContextFields(
   ];
 }
 
-function createAccountAliasFields(
-  review: Extract<UserConfirmationReview, { tag: "AccountAlias" }>["value"],
-): ConfirmationField[] {
-  if ("ringLocation" in review) {
-    return createRingContextFields(review);
-  }
-  return [
-    { label: "Requesting product", value: review.requestingProductId },
-    { label: "Requested account", value: review.targetProductId },
-  ];
-}
-
-function createProofFields(
-  review: Extract<UserConfirmationReview, { tag: "CreateProof" }>["value"],
-): ConfirmationField[] {
+function createProofFields(review: CreateProofReview): ConfirmationField[] {
   return [
     ...createRingContextFields(review),
     { label: "Message", value: formatBytes(review.message), mono: true },
   ];
 }
 
+function createStatementSignFields(
+  label: string,
+  review: StatementStoreProductSignReview,
+): ConfirmationField[] {
+  return [
+    { label: "App", value: label },
+    { label: "Signer", value: formatProductAccount(review.account) },
+    {
+      label: "Statement",
+      value: truncateHex(formatBytes(review.payload.subarray(0, 41))),
+      mono: true,
+    },
+  ];
+}
+
 function createAccountAccessFields(
-  review: Extract<UserConfirmationReview, { tag: "AccountAccess" }>["value"],
+  review: AccountAccessReview,
 ): ConfirmationField[] {
   return [
     { label: "Requesting product", value: review.requestingProductId },
@@ -376,30 +328,19 @@ function createAccountAccessFields(
 }
 
 function createIdentityDisclosureFields(
-  review: Extract<
-    UserConfirmationReview,
-    { tag: "IdentityDisclosure" }
-  >["value"],
+  review: IdentityDisclosureReview,
 ): ConfirmationField[] {
   return [{ label: "Requesting product", value: review.productId }];
 }
 
-function formatResource(
-  resource: Extract<
-    UserConfirmationReview,
-    { tag: "ResourceAllocation" }
-  >["value"]["resources"][number],
-): string {
+function formatResource(resource: AllocatableResource): string {
   return resource.tag === "SmartContractAllowance"
-    ? `SmartContractAllowance / ${String(resource.value)}`
+    ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
     : resource.tag;
 }
 
 function createResourceAllocationFields(
-  review: Extract<
-    UserConfirmationReview,
-    { tag: "ResourceAllocation" }
-  >["value"],
+  review: ResourceAllocationReview,
 ): ConfirmationField[] {
   return [
     {
@@ -409,12 +350,14 @@ function createResourceAllocationFields(
   ];
 }
 
-function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
+function confirmationCopy(review: ModalReview): ConfirmationCopy {
   switch (review.tag) {
     case "SignPayload":
       return { title: "Sign Transaction", action: "Sign" };
     case "SignRaw":
       return { title: "Sign Message", action: "Sign" };
+    case "StatementStoreProductSign":
+      return { title: "Sign Statement", action: "Sign" };
     case "CreateTransaction":
       return { title: "Sign Transaction", action: "Sign" };
     case "AccountAlias":
@@ -443,17 +386,15 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
       };
     case "ResourceAllocation":
       return { title: "Resource Allocation", action: "Allow" };
-    case "PreimageSubmit":
-      return { title: "Submit Preimage", action: "Allow" };
   }
 }
 
 async function handlePreimageSubmitReview(
-  review: Extract<UserConfirmationReview, { tag: "PreimageSubmit" }>,
+  review: PreimageSubmitReview,
   signal: AbortSignal,
 ): Promise<boolean> {
   try {
-    await showPreimageSubmitModal(Number(review.value.size), signal);
+    await showPreimageSubmitModal(Number(review.size), signal);
     return true;
   } catch {
     throwIfAborted(signal);
@@ -463,7 +404,7 @@ async function handlePreimageSubmitReview(
 
 async function handleConfirmationReview(
   label: string,
-  review: UserConfirmationReview,
+  review: ModalReview,
   signal: AbortSignal,
 ): Promise<boolean> {
   const decision = await showConfirmationModal(
@@ -487,11 +428,10 @@ export function createUserConfirmationAdapters(
 ): Required<UserConfirmationHost> {
   return {
     confirmUserAction: (review) => {
-      const compatibleReview = review as UserConfirmationReview;
       return modalScope.enqueue((signal) =>
-        compatibleReview.tag === "PreimageSubmit"
-          ? handlePreimageSubmitReview(compatibleReview, signal)
-          : handleConfirmationReview(label, compatibleReview, signal),
+        review.tag === "PreimageSubmit"
+          ? handlePreimageSubmitReview(review.value, signal)
+          : handleConfirmationReview(label, review, signal),
       );
     },
   };
