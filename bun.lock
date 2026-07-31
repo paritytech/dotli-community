@@ -5,7 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
-        "smoldot": "3.3.1",
+        "smoldot": "3.3.2",
       },
       "devDependencies": {
         "prettier": "^3.8.4",
@@ -328,7 +328,7 @@
     "esbuild": "^0.28.1",
     "fast-uri": "3.1.4",
     "postcss": "^8.5.24",
-    "smoldot": "3.3.1",
+    "smoldot": "3.3.2",
   },
   "packages": {
     "@apideck/better-ajv-errors": ["@apideck/better-ajv-errors@0.3.7", "", { "dependencies": { "jsonpointer": "^5.0.1", "leven": "^3.1.0" }, "peerDependencies": { "ajv": ">=8" } }, "sha512-TajUJwGWbDwkCx/CZi7tRE8PVB7simCvKJfHUsSdvps+aTM/PDPP4gkLmKnc+x3CE//y9i/nj74GqdL/hwk7Iw=="],
@@ -1521,7 +1521,7 @@
 
     "smob": ["smob@1.6.2", "", {}, "sha512-RQsvleCbF8cVHEv+xuDGaA4pOizFqJ0GgjtMSRo6oP8pnN7WsigHgVGey6aILRBKv4W2YOMHLqbKdnB6hpB9fw=="],
 
-    "smoldot": ["smoldot@3.3.1", "", { "dependencies": { "ws": "^8.8.1" } }, "sha512-Qm2OMrvP343PBIZ/uBRh0sPS3dTWEmbnJIAca/YWHYfouNSbANaz1NxOo7mDl4Ngx2B22u1Yn6oylXMQYp9vkw=="],
+    "smoldot": ["smoldot@3.3.2", "", { "dependencies": { "ws": "^8.8.1" } }, "sha512-Zl4h/0gsw8cfTZzuJ7LV7mtR6QjxltwYjMY7MsVw0oXBXrLK8zyOS6DS9Vjsy57pX1vBMg6UVhHxjbH3W905zA=="],
 
     "sort-keys": ["sort-keys@5.1.0", "", { "dependencies": { "is-plain-obj": "^4.0.0" } }, "sha512-aSbHV0DaBcr7u0PVHXzM6NbZNAtrr9sF6+Qfs9UUVG7Ll3jQ6hHi8F/xqIIcn2rvIVbr0v/2zyjSdwSV47AgLQ=="],
 
