@@ -30,7 +30,7 @@
     "@noble/hashes": "^2.2.0",
     "@ensdomains/content-hash": "^3.0.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
-    "@parity/truapi-provider": "0.1.1-dev-20260715.0",
+    "@parity/truapi-provider": "0.1.1-dev-20260731.0",
     "@polkadot-api/json-rpc-provider-proxy": "^0.4.0",
     "@polkadot-api/substrate-bindings": "0.20.3",
     "@polkadot-api/substrate-client": "0.7.0",
