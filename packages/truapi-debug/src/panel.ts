@@ -31,6 +31,7 @@ import { EventStore } from "./event-store.ts";
 import type { DotliDebugBusEvent } from "./dotli-debug-bus.ts";
 import { buildExport, exportFilename, type ExportMeta } from "./export.ts";
 import {
+  compileQuery,
   initialFilterState,
   matches,
   type DirectionFilter,
@@ -251,6 +252,7 @@ interface PanelUI {
   dirChips: Record<DirectionFilter, HTMLButtonElement>;
   productChipsContainer: HTMLDivElement;
   tagInput: HTMLInputElement;
+  excludeInput: HTMLInputElement;
   tabs: Record<PanelView, HTMLButtonElement>;
   list: HTMLDivElement;
   timeline: HTMLDivElement;
@@ -294,8 +296,12 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
         <div class="td-product-chips"></div>
       </div>
       <div class="td-filter-group">
-        <span class="td-filter-label">tag</span>
-        <input class="td-input td-tag-input" type="search" placeholder="filter by method…" spellcheck="false" autocomplete="off" />
+        <span class="td-filter-label">include</span>
+        <input class="td-input td-tag-input" type="search" placeholder="filter by method…" title="substring or /regex/" spellcheck="false" autocomplete="off" />
+      </div>
+      <div class="td-filter-group">
+        <span class="td-filter-label">exclude</span>
+        <input class="td-input td-exclude-input" type="search" placeholder="hide by method…" title="substring or /regex/" spellcheck="false" autocomplete="off" />
       </div>
     </div>
     <div class="td-body">
@@ -345,6 +351,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       ".td-product-chips",
     ) as HTMLDivElement,
     tagInput: panel.querySelector(".td-tag-input") as HTMLInputElement,
+    excludeInput: panel.querySelector(".td-exclude-input") as HTMLInputElement,
     tabs: {
       list: panel.querySelector(
         '.td-tab[data-view="list"]',
@@ -565,6 +572,18 @@ function wireFilters(ui: PanelUI, state: PanelState, store: EventStore): void {
   }
   ui.tagInput.addEventListener("input", () => {
     state.filters.tagQuery = ui.tagInput.value;
+    ui.tagInput.classList.toggle(
+      "invalid",
+      compileQuery(ui.tagInput.value).invalid,
+    );
+    render(ui, state, store, { fullList: true });
+  });
+  ui.excludeInput.addEventListener("input", () => {
+    state.filters.excludeQuery = ui.excludeInput.value;
+    ui.excludeInput.classList.toggle(
+      "invalid",
+      compileQuery(ui.excludeInput.value).invalid,
+    );
     render(ui, state, store, { fullList: true });
   });
   for (const cb of Array.from(
@@ -1088,7 +1107,7 @@ function filterFingerprint(state: PanelState): string {
     state.filters.product === null
       ? "__null"
       : (state.filters.product ?? "__undef");
-  return `${state.filters.direction}|${product}|${state.filters.tagQuery.trim().toLowerCase()}`;
+  return `${state.filters.direction}|${product}|${state.filters.tagQuery.trim().toLowerCase()}|${state.filters.excludeQuery.trim().toLowerCase()}`;
 }
 
 function renderList(
