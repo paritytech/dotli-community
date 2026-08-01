@@ -36,6 +36,7 @@ describe("createTruapiRuntimeConfig", () => {
       } as Location),
     ).toEqual({
       productId: "acme.dot",
+      executionKind: "App",
       host: {
         name: "Polkadot Web",
         icon: undefined,

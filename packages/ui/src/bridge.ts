@@ -738,7 +738,7 @@ async function createCoreProvider(
       window.location,
       options.productId,
     );
-    const { productId, ...hostConfig } = runtimeConfig;
+    const { productId, executionKind, ...hostConfig } = runtimeConfig;
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),
       createHostCallbacks({
@@ -752,7 +752,7 @@ async function createCoreProvider(
         hostConfig,
       },
     );
-    const provider = await runtime.createProvider({ productId });
+    const provider = await runtime.createProvider({ productId, executionKind });
     return trackCoreProvider(provider, runtime, () => {
       blockingModalScope.dispose();
     });

@@ -30,6 +30,7 @@ export function createTruapiRuntimeConfig(
   void location;
   return {
     productId,
+    executionKind: "App",
     host: {
       name: "Polkadot Web",
       icon: undefined,
