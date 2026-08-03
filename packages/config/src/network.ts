@@ -128,7 +128,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     description: "Product Preview Network",
     relay: {
       genesis:
-        "0x946053e2be0d883a5ae3de0394a683c63e3b1b3b98848feb721b1b127bd4aaf4",
+        "0x8c27ddf678c2ae9bef0efebfc485a9309f3d735c6d3fbb8d947afc3ace0e80f4",
       rpcs: [
         "wss://previewnet.substrate.dev/relay/alice",
         "wss://previewnet.substrate.dev/relay/bob",
@@ -136,18 +136,18 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     },
     assethub: {
       genesis:
-        "0x29f7b15e6227f86b90bf5199b5c872c28649a30e5f15fae6dd8fa9d5d48d6fbb",
+        "0x4d11c803cc6921429e3876638977ad006ea1bba8cd3976a0bca2f164e7026210",
       rpcs: ["wss://previewnet.substrate.dev/asset-hub"],
     },
     bulletin: {
       genesis:
-        "0xf37fa1f1450ea120edbf64c3fc447f671a00e1f1095a698f42eeec073c7ee487",
+        "0x2778b1c94c4362e49a54be57d3056bc714f3712e4486625312704ffb74eb973d",
       rpcs: ["wss://previewnet.substrate.dev/bulletin"],
       ipfsGateways: ["https://previewnet.substrate.dev"],
     },
     people: {
       genesis:
-        "0x3389bc9179d3be32568c67278bd080d05631ac71982d28a3fe545421147b311e",
+        "0x3138c6d4ce58c760047a413c2a930e919b4673a841ab4890de59aac3bd037f3d",
       rpcs: ["wss://previewnet.substrate.dev/people"],
     },
     dotns: {
