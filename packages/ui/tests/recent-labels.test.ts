@@ -75,6 +75,28 @@ describe("recent labels across subdomains", () => {
     expect(await loadRecentLabels()).toEqual(["explore", "staking"]);
   });
 
+  it("seeds the shared list from the mirror when no shared list exists yet", async () => {
+    // Given: a device upgrading from the build that wrote only localStorage
+    localStorage.setItem(KEY, '["explore","staking"]');
+
+    // When
+    const loaded = await loadRecentLabels();
+
+    // Then
+    expect(loaded).toEqual(["explore", "staking"]);
+    expect(sharedList()).toEqual(["explore", "staking"]);
+  });
+
+  it("keeps an empty shared list empty rather than re-seeding removed labels", async () => {
+    // Given: the user removed their last pill, and a stale mirror survives
+    mocks.store.set(KEY, "[]");
+    localStorage.setItem(KEY, '["removed"]');
+
+    // When / Then
+    expect(await loadRecentLabels()).toEqual([]);
+    expect(mirrorList()).toEqual([]);
+  });
+
   it("falls back to the mirror when the shared store is unreachable", async () => {
     // Given
     localStorage.setItem(KEY, '["explore"]');

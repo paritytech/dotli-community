@@ -28,10 +28,17 @@ import { isValidDotLabel } from "@dotli/shared/html";
 import { log } from "@dotli/shared/log";
 import { getSharedChannel } from "./shared-mode";
 
-/** Read the shared list, falling back to this origin's mirror. */
+/**
+ * Read the shared list, falling back to this origin's mirror.
+ *
+ * An absent shared key is seeded from the mirror so a device upgrading from
+ * the pre-shared-store build keeps its list. An empty one is left alone.
+ */
 export async function loadRecentLabels(): Promise<string[]> {
+  const channel = getSharedChannel();
+  let raw: string | null;
   try {
-    return parseRecentLabels(await getSharedChannel().read(RECENT_KEY));
+    raw = await channel.read(RECENT_KEY);
   } catch (err: unknown) {
     log.warn(
       "[dot.li recent] Shared read failed; using per-origin mirror:",
@@ -39,6 +46,26 @@ export async function loadRecentLabels(): Promise<string[]> {
     );
     return getRecentLabels();
   }
+
+  if (raw === null) {
+    const mirror = getRecentLabels();
+    if (mirror.length > 0) {
+      void channel
+        .write(RECENT_KEY, serializeRecentLabels(mirror))
+        .catch((err: unknown) => {
+          log.warn(
+            "[dot.li recent] Migration write failed:",
+            err instanceof Error ? err.message : err,
+          );
+        });
+    }
+    return mirror;
+  }
+
+  const labels = parseRecentLabels(raw);
+  // Warm mirror for a later boot that can't reach the shared store.
+  writeRecentLabels(labels);
+  return labels;
 }
 
 /** Record a resolved label. Only call this after a successful resolution. */
