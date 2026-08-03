@@ -1,3 +1,6 @@
+// TODO(remove-legacy-nova): delete this file together with the tagged
+// `legacy-host-bridge.ts` module it covers.
+
 import { describe, expect, it, vi } from "vitest";
 import {
   decodeWireMessage,
@@ -30,6 +33,7 @@ import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
 } from "@dotli/ui/legacy-host-bridge";
+import { unwrap } from "./support";
 
 const genesisHash = `0x${"11".repeat(32)}` as const;
 const blockHash = `0x${"22".repeat(32)}` as const;
@@ -90,13 +94,6 @@ type FollowBoundRequest = {
     followSubscriptionId: string;
   };
 };
-
-function unwrap<T>(result: { isErr(): boolean; value: T; error: unknown }): T {
-  if (result.isErr()) {
-    throw result.error;
-  }
-  return result.value;
-}
 
 function createHarness(productId?: string): {
   adapted: WireProvider;
@@ -188,7 +185,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
           value: {
             productAccountId: {
               dotNsIdentifier: "localhost:3000.dot",
-              derivationIndex: 0,
+              derivationIndex: { tag: "Left", value: 0 },
             },
           },
         }),
@@ -217,7 +214,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
           value: {
             productAccountId: {
               dotNsIdentifier: "other-product.dot",
-              derivationIndex: 0,
+              derivationIndex: { tag: "Left", value: 0 },
             },
           },
         }),
@@ -463,6 +460,88 @@ describe("createLegacyNovaChainHeadProvider", () => {
         VersionedRemoteChainHeadHeaderRequest,
       ),
     ).toBe("wire-new");
+  });
+
+  it("As a dotli integrator, the host routes each follow-bound request to its own concurrent follow", () => {
+    // Given: two concurrent follows on the same genesis (PAPI opens a fresh
+    // follow during resync before stopping the previous one), which Nova
+    // exposes to the product as follow_0 and follow_1.
+    const harness = createHarness();
+    harness.emit(followStart("wire-follow-a"));
+    harness.emit(followStart("wire-follow-b"));
+
+    const emitHeader = (syntheticId: string, requestId: string): string => {
+      harness.emit(
+        followBoundFrame(
+          requestId,
+          CHAIN_GET_HEAD_HEADER.request,
+          VersionedRemoteChainHeadHeaderRequest,
+          {
+            tag: "V1",
+            value: {
+              genesisHash,
+              followSubscriptionId: syntheticId,
+              hash: blockHash,
+            },
+          },
+        ),
+      );
+      return decodedFollowId(
+        harness.received.at(-1)!,
+        VersionedRemoteChainHeadHeaderRequest,
+      );
+    };
+
+    // Then: each op reaches the follow it is bound to, not the first active.
+    expect(emitHeader("follow_0", "op-0")).toBe("wire-follow-a");
+    expect(emitHeader("follow_1", "op-1")).toBe("wire-follow-b");
+
+    // When the older follow stops, follow_1 ops still reach their follow.
+    harness.emit(followStop("wire-follow-a"));
+
+    // Then
+    expect(emitHeader("follow_1", "op-2")).toBe("wire-follow-b");
+
+    // Then: a synthetic id the shim never saw falls back to the first
+    // active follow instead of passing through unmapped.
+    expect(emitHeader("follow_9", "op-3")).toBe("wire-follow-b");
+  });
+
+  it("As a dotli integrator, the host keeps mirroring Nova's follow numbering across a full stop", () => {
+    // Given: Nova's synthetic counter never resets within a connection, so a
+    // follow started after every earlier follow stopped is follow_1, not
+    // follow_0.
+    const harness = createHarness();
+    harness.emit(followStart("wire-follow-a"));
+    harness.emit(followStop("wire-follow-a"));
+    harness.emit(followStart("wire-follow-b"));
+    harness.emit(followStart("wire-follow-c"));
+
+    const emitHeader = (syntheticId: string, requestId: string): string => {
+      harness.emit(
+        followBoundFrame(
+          requestId,
+          CHAIN_GET_HEAD_HEADER.request,
+          VersionedRemoteChainHeadHeaderRequest,
+          {
+            tag: "V1",
+            value: {
+              genesisHash,
+              followSubscriptionId: syntheticId,
+              hash: blockHash,
+            },
+          },
+        ),
+      );
+      return decodedFollowId(
+        harness.received.at(-1)!,
+        VersionedRemoteChainHeadHeaderRequest,
+      );
+    };
+
+    // Then: ops route by Nova's numbering, not a restarted count.
+    expect(emitHeader("follow_1", "op-0")).toBe("wire-follow-b");
+    expect(emitHeader("follow_2", "op-1")).toBe("wire-follow-c");
   });
 
   it("As a dotli integrator, the host owns and disposes the wrapped provider", () => {

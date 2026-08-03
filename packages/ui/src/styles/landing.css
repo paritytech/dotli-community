@@ -59,6 +59,7 @@
 }
 .landing-nav-form {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   margin-bottom: 2rem;
@@ -77,6 +78,17 @@
 }
 .landing-search-bar:focus-within {
   border-color: rgba(255, 255, 255, 0.55);
+}
+.landing-search-bar--error,
+.landing-search-bar--error:focus-within {
+  border-color: #f87171;
+}
+.landing-nav-error {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #f87171;
+  text-align: center;
 }
 .landing-search-input {
   flex: 1;

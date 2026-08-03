@@ -78,21 +78,54 @@ export async function writeUiStateCache(
   }
 }
 
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+/** Validate a parsed UI-state cache blob field by field. The cache is
+ * host-written same-origin data, but it can be stale from a different code
+ * version or partially corrupted, so a malformed blob degrades to null
+ * (bare connected state) rather than being cast into the typed shape. */
+function parseUiStateCache(parsed: unknown): TruapiSessionUiState | null {
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const state = parsed as Record<string, unknown>;
+  if (
+    state.connected !== true ||
+    !isOptionalString(state.publicKey) ||
+    !isOptionalString(state.identityAccountId) ||
+    !isOptionalString(state.liteUsername) ||
+    !isOptionalString(state.fullUsername) ||
+    !isOptionalString(state.primaryUsername)
+  ) {
+    return null;
+  }
+  return {
+    connected: true,
+    ...(state.publicKey !== undefined ? { publicKey: state.publicKey } : {}),
+    ...(state.identityAccountId !== undefined
+      ? { identityAccountId: state.identityAccountId }
+      : {}),
+    ...(state.liteUsername !== undefined
+      ? { liteUsername: state.liteUsername }
+      : {}),
+    ...(state.fullUsername !== undefined
+      ? { fullUsername: state.fullUsername }
+      : {}),
+    ...(state.primaryUsername !== undefined
+      ? { primaryUsername: state.primaryUsername }
+      : {}),
+  };
+}
+
 async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
   try {
     const raw = await readSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY);
     if (raw === null) {
       return null;
     }
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as TruapiSessionUiState).connected
-    ) {
-      return parsed as TruapiSessionUiState;
-    }
-    return null;
+    return parseUiStateCache(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -153,9 +186,7 @@ async function readCoreStorageValue(
     return decodeStoredBytes(raw, "shared auth session");
   }
   const raw = localStorage.getItem(coreLocalStorageKey(key));
-  return raw === null
-    ? undefined
-    : decodeStoredBytes(raw, `core storage ${key.tag}`);
+  return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
 }
 
 function decodeStoredBytes(
@@ -183,7 +214,10 @@ async function writeCoreStorageValue(
     emitLocalChange();
     return;
   }
-  localStorage.setItem(coreLocalStorageKey(key), bytesToHex(value));
+  localStorage.setItem(
+    coreLocalStorageKey(key),
+    await encodeCoreStorageValue(key, value),
+  );
 }
 
 async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
@@ -211,6 +245,204 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     case "AuthSession":
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
   }
+}
+
+async function encodeCoreStorageValue(
+  key: CoreStorageKey,
+  value: Uint8Array,
+): Promise<string> {
+  if (key.tag === "AllowanceKeys") {
+    const nonce = crypto.getRandomValues(
+      new Uint8Array(ALLOWANCE_NONCE_LENGTH),
+    );
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: nonce },
+        await allowanceStorageKey(),
+        new Uint8Array(value),
+      ),
+    );
+    const stored = new Uint8Array(nonce.length + ciphertext.length);
+    stored.set(nonce);
+    stored.set(ciphertext, nonce.length);
+    return ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+  }
+  return bytesToHex(value);
+}
+
+async function decodeCoreStorageValue(
+  key: CoreStorageKey,
+  raw: string,
+): Promise<Uint8Array | undefined> {
+  if (key.tag !== "AllowanceKeys") {
+    return decodeStoredBytes(raw, `core storage ${key.tag}`);
+  }
+  if (!raw.startsWith(ENCRYPTED_VALUE_PREFIX)) {
+    // Slots written before at-rest encryption shipped hold the plain key
+    // bytes. Re-persist encrypted so the plaintext copy doesn't outlive
+    // this read.
+    const bytes = decodeStoredBytes(raw, `core storage ${key.tag}`);
+    if (bytes === undefined) {
+      return undefined;
+    }
+    log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
+    localStorage.setItem(
+      coreLocalStorageKey(key),
+      await encodeCoreStorageValue(key, bytes),
+    );
+    return bytes;
+  }
+  const bytes = decodeStoredBytes(
+    raw.slice(ENCRYPTED_VALUE_PREFIX.length),
+    `core storage ${key.tag}`,
+  );
+  if (bytes === undefined) {
+    return undefined;
+  }
+  try {
+    return new Uint8Array(
+      await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: bytes.slice(0, ALLOWANCE_NONCE_LENGTH) },
+        await allowanceStorageKey(),
+        bytes.slice(ALLOWANCE_NONCE_LENGTH),
+      ),
+    );
+  } catch (err) {
+    // The slot was written under a key we no longer hold (IndexedDB
+    // cleared while localStorage survived, or a session-ephemeral fallback
+    // key) or the bytes are corrupt. Drop it: returning the raw bytes
+    // would hand ciphertext to the core as key material.
+    log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
+    localStorage.removeItem(coreLocalStorageKey(key));
+    return undefined;
+  }
+}
+
+// Marks a slot as holding the encrypted format. Legacy plaintext slots are
+// bare hex, so the prefix cleanly separates "must decrypt" from "migrate":
+// a decrypt failure never falls back to treating ciphertext as plaintext.
+const ENCRYPTED_VALUE_PREFIX = "enc1:";
+
+// Standard AES-GCM nonce length. A fresh random nonce is drawn per write and
+// stored as the ciphertext prefix: GCM security collapses if a (key, nonce)
+// pair is ever reused.
+const ALLOWANCE_NONCE_LENGTH = 12;
+
+const KEY_DB_NAME = "dotli-core";
+const KEY_DB_STORE = "keys";
+const ALLOWANCE_KEY_ID = "allowance-keys";
+
+let allowanceKeyPromise: Promise<CryptoKey> | undefined;
+
+/**
+ * The at-rest key for AllowanceKeys slots: a random per-install AES key
+ * generated non-extractable and persisted in IndexedDB, so the key material
+ * itself can never be read out of the browser's crypto implementation — a
+ * key derived from bundle data would be computable by anyone. If IndexedDB
+ * is unavailable the key degrades to session-ephemeral: values written then
+ * fail to decrypt after a reload and are dropped like any corrupt slot.
+ */
+function allowanceStorageKey(): Promise<CryptoKey> {
+  allowanceKeyPromise ??= loadOrCreateAllowanceKey().catch((err: unknown) => {
+    log.warn(
+      "[dot.li] falling back to a session-ephemeral allowance storage key:",
+      err,
+    );
+    return generateAllowanceKey();
+  });
+  return allowanceKeyPromise;
+}
+
+function generateAllowanceKey(): Promise<CryptoKey> {
+  return crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+async function loadOrCreateAllowanceKey(): Promise<CryptoKey> {
+  const db = await openKeyDb();
+  try {
+    const existing = await idbGetKey(db);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const key = await generateAllowanceKey();
+    try {
+      await idbAddKey(db, key);
+      return key;
+    } catch (err) {
+      // add() rejects when the slot is already taken: another tab won the
+      // race, so adopt its key instead of splitting the install across two.
+      const winner = await idbGetKey(db);
+      if (winner !== undefined) {
+        return winner;
+      }
+      throw err;
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function openKeyDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(KEY_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(KEY_DB_STORE);
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error("indexedDB open failed"));
+    };
+  });
+}
+
+function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
+  return new Promise((resolve, reject) => {
+    const request = db
+      .transaction(KEY_DB_STORE)
+      .objectStore(KEY_DB_STORE)
+      .get(ALLOWANCE_KEY_ID);
+    request.onsuccess = () => {
+      const value: unknown = request.result;
+      resolve(isCryptoKey(value) ? value : undefined);
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error("indexedDB get failed"));
+    };
+  });
+}
+
+function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(KEY_DB_STORE, "readwrite");
+    tx.objectStore(KEY_DB_STORE).add(key, ALLOWANCE_KEY_ID);
+    tx.oncomplete = () => {
+      resolve();
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error("indexedDB add failed"));
+    };
+    // A commit-time abort (e.g. QuotaExceededError) fires only `abort`;
+    // without this the promise never settles and, being memoized, would
+    // hang every allowance read/write for the session.
+    tx.onabort = () => {
+      reject(tx.error ?? new Error("indexedDB add aborted"));
+    };
+  });
+}
+
+/** `instanceof CryptoKey` is unreliable across realms (and the global is
+ * missing under happy-dom), so validate the stored record structurally. */
+function isCryptoKey(value: unknown): value is CryptoKey {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as CryptoKey).type === "secret"
+  );
 }
 
 function hexNoPrefix(bytes: Uint8Array): string {
