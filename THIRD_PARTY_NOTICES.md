@@ -81,3 +81,7 @@ lightningcss, lightningcss-darwin-arm64
 ## FSL-1.1-MIT
 
 @sentry/cli, @sentry/cli-darwin
+
+## OFL-1.1
+
+DM Serif Display Font

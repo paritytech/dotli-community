@@ -430,7 +430,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm,woff2}"],
         // VitePWA's default treats every file under `assets/` as
         // hash-versioned. The copied wasm-pack bundle keeps stable filenames,
         // so let Workbox attach content revisions to those entries.
