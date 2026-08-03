@@ -1,4 +1,5 @@
 import type { UserConfirmation as UserConfirmationHost } from "@parity/truapi-host";
+import type { DerivationIndex } from "@parity/truapi";
 import { showPreimageSubmitModal } from "../preimage-modal";
 import {
   blockingModalAbortError,
@@ -25,7 +26,7 @@ type PublishedUserConfirmationReview = Parameters<
 
 interface RingContextReview {
   callingProductId: string;
-  context: { productId: string; suffix: string };
+  context: { productId: string; suffix: string | DerivationIndex };
   ringLocation: {
     chainId: string;
     junctions: { tag: string; value: number | string }[];
@@ -236,9 +237,18 @@ function formatRawPayload(payload: SignRawPayload): string {
 
 function formatProductAccount(account: {
   dotNsIdentifier: string;
-  derivationIndex: number;
+  derivationIndex: number | DerivationIndex;
 }): string {
-  return `${account.dotNsIdentifier} / ${String(account.derivationIndex)}`;
+  return `${account.dotNsIdentifier} / ${formatDerivationIndex(account.derivationIndex)}`;
+}
+
+function formatDerivationIndex(
+  derivationIndex: number | string | DerivationIndex,
+): string {
+  if (typeof derivationIndex !== "object") {
+    return String(derivationIndex);
+  }
+  return `${derivationIndex.tag}(${String(derivationIndex.value)})`;
 }
 
 type SignPayloadData = Extract<
@@ -336,7 +346,11 @@ function createRingContextFields(
   return [
     { label: "Requesting product", value: review.callingProductId },
     { label: "Context product", value: review.context.productId },
-    { label: "Context suffix", value: review.context.suffix, mono: true },
+    {
+      label: "Context suffix",
+      value: formatDerivationIndex(review.context.suffix),
+      mono: true,
+    },
     { label: "Chain", value: review.ringLocation.chainId, mono: true },
     {
       label: "Ring path",
@@ -391,7 +405,7 @@ function formatResource(
   >["value"]["resources"][number],
 ): string {
   return resource.tag === "SmartContractAllowance"
-    ? `SmartContractAllowance / ${String(resource.value)}`
+    ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
     : resource.tag;
 }
 
@@ -415,6 +429,8 @@ function confirmationCopy(review: UserConfirmationReview): ConfirmationCopy {
       return { title: "Sign Transaction", action: "Sign" };
     case "SignRaw":
       return { title: "Sign Message", action: "Sign" };
+    case "StatementStoreProductSign":
+      return { title: "Sign Statement", action: "Sign" };
     case "CreateTransaction":
       return { title: "Sign Transaction", action: "Sign" };
     case "AccountAlias":
