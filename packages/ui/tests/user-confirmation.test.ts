@@ -217,6 +217,49 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
+  it("As a dotli integrator, the host renders VRF signing as structured transcript fields", async () => {
+    // Given
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "SignVrf",
+      value: {
+        callingProductId: "truapi-playground.dot",
+        request: {
+          account: {
+            dotNsIdentifier: "other-product.dot",
+            derivationIndex: { tag: "Left", value: 4 },
+          },
+          transcriptLabel: "0x706f703a61697264726f70",
+          items: [
+            { label: "0x646f6d61696e", value: "0x01" },
+            { label: "0x7369676e6572", value: "0x02" },
+          ],
+        },
+      },
+    };
+
+    // When
+    const confirmation = confirmUserAction(review);
+
+    // Then
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Sign VRF Transcript",
+    );
+    expect(modalFields()).toEqual({
+      "Requesting product": "truapi-playground.dot",
+      Signer: "other-product.dot / 4",
+      "Transcript label": "0x706f703a61697264726f70",
+      "Transcript items": "2",
+    });
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
+  });
+
   it("As a dotli integrator, the host renders product transaction creation as structured fields", async () => {
     // Given
     const { confirmUserAction } =
