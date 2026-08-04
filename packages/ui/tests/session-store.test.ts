@@ -193,6 +193,35 @@ describe("session-store host callbacks", () => {
     expect(await readCoreStorage(key)).toBeUndefined();
   });
 
+  it("As a dotli integrator, the host encrypts product auto-signing keys in opaque slots", async () => {
+    // Given
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const key = {
+      tag: "AutoSigningKey",
+      value: { productId: "truapi-playground.dot" },
+    } satisfies CoreStorageKey;
+
+    // When
+    await writeCoreStorage(key, new Uint8Array([5, 6, 7, 8]));
+
+    // Then
+    expect(localStorage.length).toBe(1);
+    const storageKey = localStorage.key(0);
+    expect(storageKey).toMatch(/^dotli:core:auto-signing:[0-9a-f]+$/);
+    expect(storageKey).not.toContain("truapi-playground.dot");
+    expect(localStorage.getItem(storageKey ?? "")).toMatch(/^enc1:0x/);
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
+      5, 6, 7, 8,
+    ]);
+
+    // When
+    await clearCoreStorage(key);
+
+    // Then
+    expect(await readCoreStorage(key)).toBeUndefined();
+  });
+
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();

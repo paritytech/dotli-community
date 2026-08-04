@@ -8,6 +8,7 @@ import type {
   ResourceAllocationReview,
   SignPayloadReview,
   SignRawReview,
+  SignVrfReview,
   StatementStoreProductSignReview,
   UserConfirmation as UserConfirmationHost,
   UserConfirmationReview,
@@ -165,6 +166,8 @@ function confirmationDisplay(
       return { fields: createSignRawFields(label, review.value) };
     case "StatementStoreProductSign":
       return { fields: createStatementSignFields(label, review.value) };
+    case "SignVrf":
+      return { fields: createSignVrfFields(review.value) };
     case "CreateTransaction":
       return { fields: createTransactionFields(label, review.value) };
     case "AccountAlias":
@@ -318,6 +321,19 @@ function createStatementSignFields(
   ];
 }
 
+function createSignVrfFields(review: SignVrfReview): ConfirmationField[] {
+  return [
+    { label: "Requesting product", value: review.callingProductId },
+    { label: "Signer", value: formatProductAccount(review.request.account) },
+    {
+      label: "Transcript label",
+      value: review.request.transcriptLabel,
+      mono: true,
+    },
+    { label: "Transcript items", value: String(review.request.items.length) },
+  ];
+}
+
 function createAccountAccessFields(
   review: AccountAccessReview,
 ): ConfirmationField[] {
@@ -358,6 +374,8 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       return { title: "Sign Message", action: "Sign" };
     case "StatementStoreProductSign":
       return { title: "Sign Statement", action: "Sign" };
+    case "SignVrf":
+      return { title: "Sign VRF Transcript", action: "Sign" };
     case "CreateTransaction":
       return { title: "Sign Transaction", action: "Sign" };
     case "AccountAlias":
