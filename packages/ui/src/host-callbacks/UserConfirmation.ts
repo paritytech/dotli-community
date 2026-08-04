@@ -8,7 +8,6 @@ import type {
   ResourceAllocationReview,
   SignPayloadReview,
   SignRawReview,
-  SignVrfReview,
   StatementStoreProductSignReview,
   UserConfirmation as UserConfirmationHost,
   UserConfirmationReview,
@@ -43,8 +42,11 @@ interface ConfirmationField {
 
 type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
 
-/** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;
+/** Reviews rendered by the generic confirmation modal; other reviews are handled separately. */
+type ModalReview = Exclude<
+  UserConfirmationReview,
+  { tag: "PreimageSubmit" | "SignVrf" }
+>;
 
 function showConfirmationModal(
   label: string,
@@ -166,8 +168,6 @@ function confirmationDisplay(
       return { fields: createSignRawFields(label, review.value) };
     case "StatementStoreProductSign":
       return { fields: createStatementSignFields(label, review.value) };
-    case "SignVrf":
-      return { fields: createSignVrfFields(review.value) };
     case "CreateTransaction":
       return { fields: createTransactionFields(label, review.value) };
     case "AccountAlias":
@@ -321,19 +321,6 @@ function createStatementSignFields(
   ];
 }
 
-function createSignVrfFields(review: SignVrfReview): ConfirmationField[] {
-  return [
-    { label: "Requesting product", value: review.callingProductId },
-    { label: "Signer", value: formatProductAccount(review.request.account) },
-    {
-      label: "Transcript label",
-      value: review.request.transcriptLabel,
-      mono: true,
-    },
-    { label: "Transcript items", value: String(review.request.items.length) },
-  ];
-}
-
 function createAccountAccessFields(
   review: AccountAccessReview,
 ): ConfirmationField[] {
@@ -374,8 +361,6 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       return { title: "Sign Message", action: "Sign" };
     case "StatementStoreProductSign":
       return { title: "Sign Statement", action: "Sign" };
-    case "SignVrf":
-      return { title: "Sign VRF Transcript", action: "Sign" };
     case "CreateTransaction":
       return { title: "Sign Transaction", action: "Sign" };
     case "AccountAlias":
@@ -446,6 +431,12 @@ export function createUserConfirmationAdapters(
 ): Required<UserConfirmationHost> {
   return {
     confirmUserAction: (review) => {
+      // Dotli embeds the pairing-host runtime. RFC-0023 confirmations for
+      // non-AutoSigning VRF requests belong on the paired Account Holder;
+      // this local review is only emitted by the signing-host runtime.
+      if (review.tag === "SignVrf") {
+        return Promise.resolve(false);
+      }
       return modalScope.enqueue((signal) =>
         review.tag === "PreimageSubmit"
           ? handlePreimageSubmitReview(review.value, signal)
