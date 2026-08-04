@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   getRecentLabels,
   addRecentLabel,
+  removeRecentLabel,
   getCachedCid,
   getCachedCidResult,
   setCachedCid,
@@ -57,27 +58,27 @@ describe("addRecentLabel", () => {
     localStorage.clear();
   });
 
-  it("adds a label to empty list", async () => {
-    await addRecentLabel("myapp");
+  it("adds a label to empty list", () => {
+    addRecentLabel("myapp");
     expect(getRecentLabels()).toEqual(["myapp"]);
   });
 
-  it("prepends new label to front", async () => {
+  it("prepends new label to front", () => {
     localStorage.setItem("dotli_recent", '["old"]');
-    await addRecentLabel("new");
+    addRecentLabel("new");
     expect(getRecentLabels()).toEqual(["new", "old"]);
   });
 
-  it("deduplicates existing label (moves to front)", async () => {
+  it("deduplicates existing label (moves to front)", () => {
     localStorage.setItem("dotli_recent", '["a","b","c"]');
-    await addRecentLabel("b");
+    addRecentLabel("b");
     expect(getRecentLabels()).toEqual(["b", "a", "c"]);
   });
 
-  it("limits to MAX_RECENT entries", async () => {
+  it("limits to MAX_RECENT entries", () => {
     const initial = Array.from({ length: 8 }, (_, i) => `label${i}`);
     localStorage.setItem("dotli_recent", JSON.stringify(initial));
-    await addRecentLabel("new");
+    addRecentLabel("new");
     const result = getRecentLabels();
     expect(result).toHaveLength(8);
     expect(result[0]).toBe("new");
@@ -85,10 +86,33 @@ describe("addRecentLabel", () => {
     expect(result).not.toContain("label7");
   });
 
-  it("returns a resolved promise", async () => {
-    const result = addRecentLabel("test");
-    expect(result).toBeInstanceOf(Promise);
-    await expect(result).resolves.toBeUndefined();
+  it("ignores an invalid label", () => {
+    addRecentLabel("Not A Label");
+    expect(getRecentLabels()).toEqual([]);
+  });
+});
+
+describe("removeRecentLabel", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("removes a stored label and keeps the rest in order", () => {
+    localStorage.setItem("dotli_recent", '["a","b","c"]');
+    removeRecentLabel("b");
+    expect(getRecentLabels()).toEqual(["a", "c"]);
+  });
+
+  it("empties the list when the last label is removed", () => {
+    localStorage.setItem("dotli_recent", '["only"]');
+    removeRecentLabel("only");
+    expect(getRecentLabels()).toEqual([]);
+  });
+
+  it("is a no-op for a label that was never stored", () => {
+    localStorage.setItem("dotli_recent", '["a"]');
+    removeRecentLabel("b");
+    expect(getRecentLabels()).toEqual(["a"]);
   });
 });
 

@@ -56,6 +56,7 @@ import {
   setCachedCid,
   recordRevalidateOutcome,
 } from "@dotli/storage/cid-cache";
+import { recordRecentLabel } from "@dotli/ui/recent-labels";
 import { dur, elapsed } from "@dotli/shared/perf";
 import {
   setActiveAppManifest,
@@ -1205,6 +1206,7 @@ async function main(): Promise<void> {
         advancePhase(contentFetchPhase);
         await renderAppSubdomain(cachedCid, label);
       });
+      void recordRecentLabel(label);
       void applyProductBranding(label, chainBackend).catch((err: unknown) => {
         log.warn(
           `[dot.li manifest] branding failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
@@ -1363,6 +1365,9 @@ async function main(): Promise<void> {
     );
 
     if (cid === null) {
+      // No pruning here: a name with no contenthash on the *selected* network
+      // still resolves on another, so dropping its pill would lose good
+      // entries on a network switch. The pill's remove button is the cleanup.
       showNoContentError(label);
       performance.mark("dotli:main:end");
       return;
@@ -1379,6 +1384,7 @@ async function main(): Promise<void> {
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(cid, label);
+    void recordRecentLabel(label);
     void applyProductBranding(label, chainBackend).catch((err: unknown) => {
       log.warn(
         `[dot.li manifest] branding failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,

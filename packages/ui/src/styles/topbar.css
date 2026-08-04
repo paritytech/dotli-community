@@ -831,6 +831,15 @@
 .mode-radio-row:hover {
   background: rgba(255, 255, 255, 0.05);
 }
+.mode-radio-row:has(.mode-radio-input:focus-visible) {
+  outline: 2px solid #737373;
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.mode-popover:focus-visible,
+.permissions-popover:focus-visible {
+  outline: none;
+}
 .mode-radio-row.disabled {
   cursor: not-allowed;
   opacity: 0.55;
