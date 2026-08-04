@@ -8,6 +8,7 @@ import type {
   ResourceAllocationReview,
   SignPayloadReview,
   SignRawReview,
+  SignVrfReview,
   StatementStoreProductSignReview,
   UserConfirmation as UserConfirmationHost,
   UserConfirmationReview,
@@ -42,29 +43,8 @@ interface ConfirmationField {
 
 type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
 
-/** RFC-0023 review accepted before its generated host type is published. */
-export interface Rfc0023SignVrfReview {
-  callingProductId: string;
-  request: {
-    account: ProductAccountId;
-    transcriptLabel: string;
-    items: { label: string; value: string }[];
-  };
-}
-
-export type CompatibleUserConfirmationReview =
-  | UserConfirmationReview
-  | { tag: "SignVrf"; value: Rfc0023SignVrfReview };
-
-interface CompatibleUserConfirmationHost {
-  confirmUserAction(review: CompatibleUserConfirmationReview): Promise<boolean>;
-}
-
 /** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
-type ModalReview = Exclude<
-  CompatibleUserConfirmationReview,
-  { tag: "PreimageSubmit" }
->;
+type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;
 
 function showConfirmationModal(
   label: string,
@@ -341,9 +321,7 @@ function createStatementSignFields(
   ];
 }
 
-function createSignVrfFields(
-  review: Rfc0023SignVrfReview,
-): ConfirmationField[] {
+function createSignVrfFields(review: SignVrfReview): ConfirmationField[] {
   return [
     { label: "Requesting product", value: review.callingProductId },
     { label: "Signer", value: formatProductAccount(review.request.account) },
@@ -465,9 +443,9 @@ async function handleConfirmationReview(
 export function createUserConfirmationAdapters(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
-): Required<UserConfirmationHost> & CompatibleUserConfirmationHost {
+): Required<UserConfirmationHost> {
   return {
-    confirmUserAction: (review: CompatibleUserConfirmationReview) => {
+    confirmUserAction: (review) => {
       return modalScope.enqueue((signal) =>
         review.tag === "PreimageSubmit"
           ? handlePreimageSubmitReview(review.value, signal)

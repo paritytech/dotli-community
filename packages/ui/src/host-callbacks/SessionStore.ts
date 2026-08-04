@@ -19,22 +19,6 @@ import { dispatchAuthState } from "./AuthState";
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
 const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
 
-/** RFC-0023 storage key accepted before its generated host type is published. */
-export type CompatibleCoreStorageKey =
-  | CoreStorageKey
-  | { tag: "AutoSigningKey"; value: { productId: string } };
-
-interface CompatibleCoreStorage {
-  readCoreStorage(
-    key: CompatibleCoreStorageKey,
-  ): Promise<Uint8Array | undefined>;
-  writeCoreStorage(
-    key: CompatibleCoreStorageKey,
-    value: Uint8Array,
-  ): Promise<void>;
-  clearCoreStorage(key: CompatibleCoreStorageKey): Promise<void>;
-}
-
 // JSON cache of the last connected UI state the core reported via
 // `authStateChanged`. Lives in shared auth storage next to the opaque
 // root-domain session blob so boot-time rehydration never has to decode the
@@ -171,23 +155,22 @@ export function emitPersistedSessionUiState(): void {
   })();
 }
 
-export function createSessionStoreAdapters(): CoreStorage &
-  CompatibleCoreStorage {
+export function createSessionStoreAdapters(): CoreStorage {
   return {
-    async readCoreStorage(key: CompatibleCoreStorageKey) {
+    async readCoreStorage(key) {
       return readCoreStorageValue(key);
     },
-    async writeCoreStorage(key: CompatibleCoreStorageKey, value: Uint8Array) {
+    async writeCoreStorage(key, value) {
       await writeCoreStorageValue(key, value);
     },
-    async clearCoreStorage(key: CompatibleCoreStorageKey) {
+    async clearCoreStorage(key) {
       await clearCoreStorageValue(key);
     },
   };
 }
 
 async function readCoreStorageValue(
-  key: CompatibleCoreStorageKey,
+  key: CoreStorageKey,
 ): Promise<Uint8Array | undefined> {
   if (key.tag === "AuthSession") {
     let raw: string | null;
@@ -219,7 +202,7 @@ function decodeStoredBytes(
 }
 
 async function writeCoreStorageValue(
-  key: CompatibleCoreStorageKey,
+  key: CoreStorageKey,
   value: Uint8Array,
 ): Promise<void> {
   if (key.tag === "AuthSession") {
@@ -237,9 +220,7 @@ async function writeCoreStorageValue(
   );
 }
 
-async function clearCoreStorageValue(
-  key: CompatibleCoreStorageKey,
-): Promise<void> {
+async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
   if (key.tag === "AuthSession") {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
@@ -249,7 +230,7 @@ async function clearCoreStorageValue(
   localStorage.removeItem(coreLocalStorageKey(key));
 }
 
-function coreLocalStorageKey(key: CompatibleCoreStorageKey): string {
+function coreLocalStorageKey(key: CoreStorageKey): string {
   switch (key.tag) {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
@@ -261,7 +242,7 @@ function coreLocalStorageKey(key: CompatibleCoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
     case "AutoSigningKey":
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
-        new TextEncoder().encode(key.value.productId),
+        encodeCoreStorageKey(key),
       )}`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
@@ -270,12 +251,12 @@ function coreLocalStorageKey(key: CompatibleCoreStorageKey): string {
   }
 }
 
-function storesSecretMaterial(key: CompatibleCoreStorageKey): boolean {
+function storesSecretMaterial(key: CoreStorageKey): boolean {
   return key.tag === "AllowanceKeys" || key.tag === "AutoSigningKey";
 }
 
 async function encodeCoreStorageValue(
-  key: CompatibleCoreStorageKey,
+  key: CoreStorageKey,
   value: Uint8Array,
 ): Promise<string> {
   if (storesSecretMaterial(key)) {
@@ -298,7 +279,7 @@ async function encodeCoreStorageValue(
 }
 
 async function decodeCoreStorageValue(
-  key: CompatibleCoreStorageKey,
+  key: CoreStorageKey,
   raw: string,
 ): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
