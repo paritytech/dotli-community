@@ -79,15 +79,20 @@ export async function getCachedCid(label: string): Promise<string | null> {
   return result.kind === "hit" ? result.cid : null;
 }
 
-const RECENT_KEY = "dotli_recent";
+export const RECENT_KEY = "dotli_recent";
 const MAX_RECENT = 8;
 
-export function getRecentLabels(): string[] {
+/**
+ * Decode a stored recent list, dropping anything that isn't a usable label.
+ *
+ * Shared with the cross-subdomain transport in `@dotli/ui/recent-labels`,
+ * which holds the same list under the shared-mode store.
+ */
+export function parseRecentLabels(raw: string | null): string[] {
+  if (raw === null || raw === "") {
+    return [];
+  }
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    if (raw === null || raw === "") {
-      return [];
-    }
     const parsed = JSON.parse(raw) as unknown[];
     if (!Array.isArray(parsed)) {
       return [];
@@ -100,22 +105,53 @@ export function getRecentLabels(): string[] {
   }
 }
 
-export function addRecentLabel(label: string): Promise<void> {
-  if (!isValidDotLabel(label)) {
-    return Promise.resolve();
-  }
+export function serializeRecentLabels(labels: string[]): string {
+  return JSON.stringify(labels.slice(0, MAX_RECENT));
+}
+
+/** Put `label` at the front of `labels`, deduplicated and length-capped. */
+export function withRecentLabel(labels: string[], label: string): string[] {
+  return [label, ...labels.filter((l) => l !== label)].slice(0, MAX_RECENT);
+}
+
+/** Read this origin's recent list. The shared store is authoritative. */
+export function getRecentLabels(): string[] {
   try {
-    const recent = getRecentLabels().filter((l) => l !== label);
-    recent.unshift(label);
-    localStorage.setItem(
-      RECENT_KEY,
-      JSON.stringify(recent.slice(0, MAX_RECENT)),
-    );
-    // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable / quota exceeded when appending to a UI-only "recent labels" list. Not worth a metric per page load; defaults keep working.
+    return parseRecentLabels(localStorage.getItem(RECENT_KEY));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Record a label as recently visited in this origin's mirror.
+ *
+ * Call this only once a label has actually resolved. Writing on navigation
+ * intent persisted typos as pills that reproduce "can't be reached" forever.
+ */
+export function addRecentLabel(label: string): void {
+  if (!isValidDotLabel(label)) {
+    return;
+  }
+  writeRecentLabels(withRecentLabel(getRecentLabels(), label));
+}
+
+/** Drop a label from the recent list. Used by the pill's remove affordance. */
+export function removeRecentLabel(label: string): void {
+  const recent = getRecentLabels();
+  if (!recent.includes(label)) {
+    return;
+  }
+  writeRecentLabels(recent.filter((l) => l !== label));
+}
+
+export function writeRecentLabels(labels: string[]): void {
+  try {
+    localStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));
+    // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable / quota exceeded when writing a UI-only "recent labels" list. Not worth a metric per page load; defaults keep working.
   } catch {
     /* non-critical. The recent list is UI decoration */
   }
-  return Promise.resolve();
 }
 
 export async function setCachedCid(label: string, cid: string): Promise<void> {

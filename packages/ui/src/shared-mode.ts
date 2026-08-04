@@ -48,7 +48,7 @@ const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY];
 
 let bootstrapped = false;
 
-interface SharedChannel {
+export interface SharedChannel {
   read: (key: string) => Promise<string | null>;
   write: (key: string, value: string) => Promise<void>;
   clear: (key: string) => Promise<void>;
@@ -101,6 +101,16 @@ function iframeChannel(): SharedChannel {
 }
 
 /**
+ * The channel that reaches the cross-subdomain store on this environment.
+ *
+ * Exposed for state that is written on `<label>.<root>` but read on the bare
+ * root, where per-origin `localStorage` can't carry it (see `recent-labels`).
+ */
+export function getSharedChannel(): SharedChannel {
+  return isLocalhost ? devHttpChannel() : iframeChannel();
+}
+
+/**
  * Hydrate mode preferences from the shared store (iframe in production,
  * preview-server HTTP endpoint in dev) and install a storage adapter
  * that mirrors writes back. Subsequent `getBackend`/`getCacheSettings`
@@ -133,7 +143,7 @@ export async function bootstrapSharedMode(): Promise<void> {
   // Hydrate the cache from per-origin localStorage synchronously so any
   // reader between here and the async overlay still resolves to a real
   // value instead of a missing slot.
-  const channel = isLocalhost ? devHttpChannel() : iframeChannel();
+  const channel = getSharedChannel();
   const cache = new Map<string, string | null>(
     SHARED_KEYS.map((key) => [key, localStorageAdapter.getItem(key)]),
   );
