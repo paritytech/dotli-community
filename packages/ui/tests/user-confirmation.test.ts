@@ -1,10 +1,8 @@
-import type { UserConfirmation } from "@parity/truapi-host";
 import { afterEach, describe, expect, it } from "vitest";
-import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
-
-type UserConfirmationReview = Parameters<
-  Required<UserConfirmation>["confirmUserAction"]
->[0];
+import {
+  createUserConfirmationAdapters,
+  type CompatibleUserConfirmationReview as UserConfirmationReview,
+} from "@dotli/ui/host-callbacks/UserConfirmation";
 
 afterEach(() => {
   document.body.replaceChildren();

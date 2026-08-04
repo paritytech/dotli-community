@@ -6,9 +6,9 @@ import {
   createSessionStoreAdapters,
   emitPersistedSessionUiState,
   onStoredSessionChanged,
+  type CompatibleCoreStorageKey,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
-import type { CoreStorageKey } from "@parity/truapi-host";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -117,7 +117,7 @@ describe("session-store host callbacks", () => {
         productId: "My App",
         request: { tag: "Device", value: "OpenUrl" },
       },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
 
     // When
     await writeCoreStorage(key, new Uint8Array([4]));
@@ -154,7 +154,7 @@ describe("session-store host callbacks", () => {
           },
         },
       },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
 
     // When
     await writeCoreStorage(key, new Uint8Array([7]));
@@ -174,7 +174,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AllowanceKeys",
       value: { sessionId: "session-1" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
 
     // When
     await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
@@ -200,7 +200,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AutoSigningKey",
       value: { productId: "truapi-playground.dot" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
 
     // When
     await writeCoreStorage(key, new Uint8Array([5, 6, 7, 8]));
@@ -228,7 +228,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AllowanceKeys",
       value: { sessionId: "session-1" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
     const storageKey = "dotli:core:allowance-keys:session-1";
 
     // When: the same plaintext is written twice
@@ -252,7 +252,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AllowanceKeys",
       value: { sessionId: "session-1" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
 
     // When
     await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
@@ -289,7 +289,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AllowanceKeys",
       value: { sessionId: "legacy" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
     const storageKey = "dotli:core:allowance-keys:legacy";
     localStorage.setItem(storageKey, "0x01020304");
 
@@ -311,7 +311,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AllowanceKeys",
       value: { sessionId: "session-1" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
     const storageKey = "dotli:core:allowance-keys:session-1";
     await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
     const stored = localStorage.getItem(storageKey) ?? "";
@@ -333,7 +333,7 @@ describe("session-store host callbacks", () => {
     const key = {
       tag: "AllowanceKeys",
       value: { sessionId: "corrupt" },
-    } satisfies CoreStorageKey;
+    } satisfies CompatibleCoreStorageKey;
     localStorage.setItem("dotli:core:allowance-keys:corrupt", "not-hex");
 
     // When

@@ -19,6 +19,22 @@ import { dispatchAuthState } from "./AuthState";
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
 const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
 
+/** RFC-0023 storage key accepted before its generated host type is published. */
+export type CompatibleCoreStorageKey =
+  | CoreStorageKey
+  | { tag: "AutoSigningKey"; value: { productId: string } };
+
+interface CompatibleCoreStorage {
+  readCoreStorage(
+    key: CompatibleCoreStorageKey,
+  ): Promise<Uint8Array | undefined>;
+  writeCoreStorage(
+    key: CompatibleCoreStorageKey,
+    value: Uint8Array,
+  ): Promise<void>;
+  clearCoreStorage(key: CompatibleCoreStorageKey): Promise<void>;
+}
+
 // JSON cache of the last connected UI state the core reported via
 // `authStateChanged`. Lives in shared auth storage next to the opaque
 // root-domain session blob so boot-time rehydration never has to decode the
@@ -155,22 +171,23 @@ export function emitPersistedSessionUiState(): void {
   })();
 }
 
-export function createSessionStoreAdapters(): CoreStorage {
+export function createSessionStoreAdapters(): CoreStorage &
+  CompatibleCoreStorage {
   return {
-    async readCoreStorage(key) {
+    async readCoreStorage(key: CompatibleCoreStorageKey) {
       return readCoreStorageValue(key);
     },
-    async writeCoreStorage(key, value) {
+    async writeCoreStorage(key: CompatibleCoreStorageKey, value: Uint8Array) {
       await writeCoreStorageValue(key, value);
     },
-    async clearCoreStorage(key) {
+    async clearCoreStorage(key: CompatibleCoreStorageKey) {
       await clearCoreStorageValue(key);
     },
   };
 }
 
 async function readCoreStorageValue(
-  key: CoreStorageKey,
+  key: CompatibleCoreStorageKey,
 ): Promise<Uint8Array | undefined> {
   if (key.tag === "AuthSession") {
     let raw: string | null;
@@ -202,7 +219,7 @@ function decodeStoredBytes(
 }
 
 async function writeCoreStorageValue(
-  key: CoreStorageKey,
+  key: CompatibleCoreStorageKey,
   value: Uint8Array,
 ): Promise<void> {
   if (key.tag === "AuthSession") {
@@ -220,7 +237,9 @@ async function writeCoreStorageValue(
   );
 }
 
-async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
+async function clearCoreStorageValue(
+  key: CompatibleCoreStorageKey,
+): Promise<void> {
   if (key.tag === "AuthSession") {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
@@ -230,7 +249,7 @@ async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
   localStorage.removeItem(coreLocalStorageKey(key));
 }
 
-function coreLocalStorageKey(key: CoreStorageKey): string {
+function coreLocalStorageKey(key: CompatibleCoreStorageKey): string {
   switch (key.tag) {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
@@ -242,7 +261,7 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
     case "AutoSigningKey":
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
-        encodeCoreStorageKey(key),
+        new TextEncoder().encode(key.value.productId),
       )}`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
@@ -251,12 +270,12 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
   }
 }
 
-function storesSecretMaterial(key: CoreStorageKey): boolean {
+function storesSecretMaterial(key: CompatibleCoreStorageKey): boolean {
   return key.tag === "AllowanceKeys" || key.tag === "AutoSigningKey";
 }
 
 async function encodeCoreStorageValue(
-  key: CoreStorageKey,
+  key: CompatibleCoreStorageKey,
   value: Uint8Array,
 ): Promise<string> {
   if (storesSecretMaterial(key)) {
@@ -279,7 +298,7 @@ async function encodeCoreStorageValue(
 }
 
 async function decodeCoreStorageValue(
-  key: CoreStorageKey,
+  key: CompatibleCoreStorageKey,
   raw: string,
 ): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
