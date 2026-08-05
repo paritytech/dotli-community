@@ -683,7 +683,12 @@ async function initDirectMode(): Promise<void> {
     setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
-  const { terminateSmoldot, onSmoldotFatal, onLifecycle } = smoldotMod;
+  const { terminateSmoldot, onSmoldotFatal, onLifecycle, onHealth } =
+    smoldotMod;
+
+  // Peer-count polling is only worth the traffic when a loading UI can
+  // observe it. Direct mode is that case; the SharedWorker never enables it.
+  smoldotMod.enableHealthPolling();
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
   // mode has no SharedWorker in the loop, so we post straight up to the
@@ -702,9 +707,10 @@ async function initDirectMode(): Promise<void> {
     }
   });
 
-  // Forward smoldot lifecycle events to the host shell so the loading bar can
-  // advance on real sync signals instead of on log-scraped prose. This iframe
-  // owns the smoldot instance. The host has no direct handle on it.
+  // Forward smoldot lifecycle events and health samples to the host shell
+  // so the loading bar can advance on real sync signals instead of on
+  // log-scraped prose. This iframe owns the smoldot instance. The host has
+  // no direct handle on it.
   onLifecycle((event) => {
     if (window.parent === window) {
       return;
@@ -713,8 +719,24 @@ async function initDirectMode(): Promise<void> {
       {
         namespace: "dotli:protocol",
         kind: "lifecycle",
-        chainName: event.chainName,
+        chain: event.chain,
         lifecycleKind: event.kind,
+        ...(event.reason !== undefined ? { reason: event.reason } : {}),
+      },
+      "*",
+    );
+  });
+  onHealth((event) => {
+    if (window.parent === window) {
+      return;
+    }
+    window.parent.postMessage(
+      {
+        namespace: "dotli:protocol",
+        kind: "health",
+        chain: event.chain,
+        peers: event.peers,
+        isSyncing: event.isSyncing,
       },
       "*",
     );

@@ -25,6 +25,8 @@ import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import {
   isProtocolEnvelope,
+  type ProtocolHealthEnvelope,
+  type ProtocolLifecycleEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
@@ -63,6 +65,10 @@ let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
+const lifecycleListeners = new Set<
+  (event: ProtocolLifecycleEnvelope) => void
+>();
+const healthListeners = new Set<(event: ProtocolHealthEnvelope) => void>();
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -213,6 +219,47 @@ function bindMessageListener(): void {
           const err = new Error(msg.error || "Unknown protocol error");
           err.name = "ProtocolResponseError";
           pending.reject(err);
+        }
+        return;
+      }
+      case "lifecycle": {
+        if (
+          typeof msg.chain !== "string" ||
+          typeof msg.lifecycleKind !== "string"
+        ) {
+          return;
+        }
+        for (const cb of lifecycleListeners) {
+          try {
+            cb(msg);
+          } catch (err: unknown) {
+            log.error(
+              "[dot.li protocol] Lifecycle listener threw:",
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }
+        return;
+      }
+      case "health": {
+        if (
+          typeof msg.chain !== "string" ||
+          !Number.isInteger(msg.peers) ||
+          msg.peers < 0 ||
+          msg.peers > 10_000 ||
+          typeof msg.isSyncing !== "boolean"
+        ) {
+          return;
+        }
+        for (const cb of healthListeners) {
+          try {
+            cb(msg);
+          } catch (err: unknown) {
+            log.error(
+              "[dot.li protocol] Health listener threw:",
+              err instanceof Error ? err.message : err,
+            );
+          }
         }
         return;
       }
@@ -682,6 +729,37 @@ export function subscribeSharedAuthStorage(
   });
   return () => {
     sharedAuthListeners.delete(listener);
+  };
+}
+
+/**
+ * Subscribe to smoldot lifecycle events forwarded by the protocol iframe.
+ * Events arrive only after the origin- and source-gated message listener
+ * validates the envelope, so callers never see spoofable raw messages.
+ * Returns an unsubscribe function.
+ */
+export function onProtocolLifecycle(
+  listener: (event: ProtocolLifecycleEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  lifecycleListeners.add(listener);
+  return () => {
+    lifecycleListeners.delete(listener);
+  };
+}
+
+/**
+ * Subscribe to chain `system_health` samples forwarded by the protocol
+ * iframe during bootstrap. Same gating as `onProtocolLifecycle`.
+ * Returns an unsubscribe function.
+ */
+export function onProtocolHealth(
+  listener: (event: ProtocolHealthEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  healthListeners.add(listener);
+  return () => {
+    healthListeners.delete(listener);
   };
 }
 

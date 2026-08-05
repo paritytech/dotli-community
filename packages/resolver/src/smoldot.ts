@@ -58,25 +58,45 @@ export function onConnectionIssue(cb: ConnectionIssueCallback): () => void {
   };
 }
 
-/** Lifecycle events emitted by smoldot's per-chain broadcaster over the `lifecycle_unstable_follow` JSON-RPC subscription. */
-export type LifecycleKind = "firstPeer" | "bootstrapComplete";
+/**
+ * Lifecycle events emitted by smoldot's per-chain broadcaster over the
+ * `lifecycle_unstable_follow` JSON-RPC subscription. Smoldot emits more
+ * kinds (connecting, modeDecision, warpSyncProgress, warpSyncFinished,
+ * stopped); this allowlist covers only what the loading UI consumes.
+ */
+export type LifecycleKind =
+  | "firstPeer"
+  | "bootstrapComplete"
+  | "stalled"
+  | "recovered";
+const LIFECYCLE_KINDS: ReadonlySet<string> = new Set([
+  "firstPeer",
+  "bootstrapComplete",
+  "stalled",
+  "recovered",
+]);
 export interface LifecycleEvent {
-  chainName: string;
+  /** Logical chain key: "relay", "asset-hub", "bulletin", "people", "custom-relay". */
+  chain: string;
   kind: LifecycleKind;
+  /** Set on `stalled` (and `recovered` as `previously`): why sync stopped progressing. */
+  reason?: string;
 }
 
 type LifecycleCallback = (event: LifecycleEvent) => void;
 const lifecycleListeners = new Set<LifecycleCallback>();
-const lifecycleHistory: LifecycleEvent[] = [];
+// Latest event per (chain, kind), insertion-ordered. Bounded, so late
+// subscribers replay at most kinds x chains events.
+const lifecycleHistory = new Map<string, LifecycleEvent>();
 
 /**
- * Subscribe to smoldot lifecycle events. Late subscribers receive the events
- * emitted so far in the current session (snapshot-on-subscribe), then continue
- * with live events. Returns an unsubscribe function.
+ * Subscribe to smoldot lifecycle events. Late subscribers receive the latest
+ * event per chain and kind (snapshot-on-subscribe), then continue with live
+ * events. Returns an unsubscribe function.
  */
 export function onLifecycle(cb: LifecycleCallback): () => void {
   lifecycleListeners.add(cb);
-  for (const event of lifecycleHistory) {
+  for (const event of lifecycleHistory.values()) {
     try {
       cb(event);
       // eslint-disable-next-line no-restricted-syntax -- defensive replay: one buggy late subscriber must not block registration.
@@ -90,7 +110,14 @@ export function onLifecycle(cb: LifecycleCallback): () => void {
 }
 
 function emitLifecycle(event: LifecycleEvent): void {
-  lifecycleHistory.push(event);
+  // `stalled` and `recovered` describe one condition; keeping both in the
+  // replay history would let a late subscriber end on the outdated half.
+  if (event.kind === "stalled") {
+    lifecycleHistory.delete(`${event.chain}:recovered`);
+  } else if (event.kind === "recovered") {
+    lifecycleHistory.delete(`${event.chain}:stalled`);
+  }
+  lifecycleHistory.set(`${event.chain}:${event.kind}`, event);
   for (const cb of lifecycleListeners) {
     try {
       cb(event);
@@ -99,6 +126,62 @@ function emitLifecycle(event: LifecycleEvent): void {
       /* listener threw */
     }
   }
+}
+
+/** A chain's `system_health` sample, polled during bootstrap. */
+export interface HealthEvent {
+  /** Logical chain key, same namespace as `LifecycleEvent.chain`. */
+  chain: string;
+  peers: number;
+  isSyncing: boolean;
+}
+
+type HealthCallback = (event: HealthEvent) => void;
+const healthListeners = new Set<HealthCallback>();
+const lastHealth = new Map<string, HealthEvent>();
+
+/**
+ * Subscribe to chain health samples. Late subscribers receive the last known
+ * sample per chain, then live changes. Returns an unsubscribe function.
+ */
+export function onHealth(cb: HealthCallback): () => void {
+  healthListeners.add(cb);
+  for (const event of lastHealth.values()) {
+    try {
+      cb(event);
+      // eslint-disable-next-line no-restricted-syntax -- defensive replay: one buggy late subscriber must not block registration.
+    } catch {
+      /* listener threw during replay */
+    }
+  }
+  return () => {
+    healthListeners.delete(cb);
+  };
+}
+
+function emitHealth(event: HealthEvent): void {
+  const prev = lastHealth.get(event.chain);
+  if (prev?.peers === event.peers && prev.isSyncing === event.isSyncing) {
+    return;
+  }
+  lastHealth.set(event.chain, event);
+  for (const cb of healthListeners) {
+    try {
+      cb(event);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast.
+    } catch {
+      /* listener threw */
+    }
+  }
+}
+
+// Health polling is opt-in per process. The protocol iframe's direct mode
+// enables it; the SharedWorker never does, so its long-lived smoldot does
+// not poll for a UI that cannot observe it.
+let healthPollingEnabled = false;
+
+export function enableHealthPolling(): void {
+  healthPollingEnabled = true;
 }
 
 // Smoldot's WASM can panic (e.g., the "Option::unwrap() on a None value"
@@ -155,9 +238,20 @@ const CONNECTION_ISSUE_PATTERNS = [
   "all bootnodes",
 ];
 
-// Reserved id used for our internal `lifecycle_unstable_follow` request.
-// Chosen so it cannot collide with the numeric ids polkadot-api uses.
+// Reserved id prefixes for our internal JSON-RPC requests. Chosen so they
+// cannot collide with the numeric ids polkadot-api uses, and so responses
+// can be recognized in the log stream. The suffix after ":" is the logical
+// chain key, which is how responses are attributed to chains without
+// relying on smoldot's internal chain id.
 const LIFECYCLE_FOLLOW_REQUEST_ID = "__dotli_lifecycle_follow__";
+const HEALTH_REQUEST_ID = "__dotli_health__";
+
+// smoldot's log target is `json-rpc-<chain id from the chain spec>`, while
+// requests are attributed by our logical keys ("relay", "asset-hub", ...).
+// The reply to our follow request carries the logical key in its id and
+// arrives on the chain's log target, which lets us learn the mapping
+// without hardcoding chain-spec ids per network.
+const chainKeyByLogName = new Map<string, string>();
 
 function smoldotLogCallback(
   level: number,
@@ -171,17 +265,20 @@ function smoldotLogCallback(
     log.debug(`[smoldot:${target}] ${message}`);
   }
 
-  // Lifecycle events flow through the chain's JSON-RPC pipe, which is owned by
-  // polkadot-api. Rather than wrap the chain and race for messages, we observe
-  // the payloads passing through smoldot's own debug log stream: every
-  // `json-rpc-<chainName>` target emits the response JSON verbatim. We match
-  // the schema we ourselves define, so this is subscribing to a structured
-  // side-channel, not scraping human prose.
+  // Lifecycle and health payloads flow through the chain's JSON-RPC pipe,
+  // which is owned by polkadot-api. Rather than wrap the chain and race for
+  // messages, we observe the payloads passing through smoldot's own debug
+  // log stream: every response is logged on the `json-rpc-<chain>` target
+  // as `json-rpc-response-yielded; response=<json, truncated at 250 chars>`.
+  // We match schemas we ourselves define (our reserved request ids and the
+  // followEvent notification), so this is a structured side-channel, not
+  // prose scraping.
   if (
     target.startsWith("json-rpc-") &&
-    message.includes("lifecycle_unstable_followEvent")
+    (message.includes("lifecycle_unstable_followEvent") ||
+      message.includes("__dotli_"))
   ) {
-    parseAndEmitLifecycle(target, message);
+    handleSideChannelLine(target, message);
   }
 
   // A panic is terminal with no recovery. Smoldot's log message starts
@@ -210,33 +307,94 @@ function smoldotLogCallback(
   }
 }
 
-function parseAndEmitLifecycle(target: string, message: string): void {
+function handleSideChannelLine(target: string, message: string): void {
   // Smoldot emits the response JSON verbatim after a literal `response=`
-  // prefix in the log line.
+  // key in the log line. Request echoes use `request=` and fall out here.
   const responseStart = message.indexOf("response=");
   if (responseStart === -1) {
     return;
   }
   const jsonPart = message.slice(responseStart + "response=".length);
+  const logName = target.slice("json-rpc-".length);
   try {
     const parsed = JSON.parse(jsonPart) as {
+      id?: string;
       method?: string;
-      params?: { result?: { kind?: LifecycleKind } };
+      result?: unknown;
+      params?: {
+        result?: { kind?: string; reason?: string; previously?: string };
+      };
     };
-    if (parsed.method !== "lifecycle_unstable_followEvent") {
+    if (parsed.method === "lifecycle_unstable_followEvent") {
+      emitLifecycleNotification(logName, parsed.params?.result);
       return;
     }
-    const kind = parsed.params?.result?.kind;
-    if (kind !== "firstPeer" && kind !== "bootstrapComplete") {
+    if (typeof parsed.id !== "string") {
       return;
     }
-    // Strip the `json-rpc-` prefix to get the chain name for the event.
-    const chainName = target.slice("json-rpc-".length);
-    emitLifecycle({ chainName, kind });
-    // eslint-disable-next-line no-restricted-syntax -- best-effort parse of a smoldot debug log line: any non-JSON or unexpected shape is expected and must not spam log.error.
+    if (parsed.id.startsWith(`${LIFECYCLE_FOLLOW_REQUEST_ID}:`)) {
+      // Reply to our follow request: learn which logical chain owns this
+      // log target so notifications (which carry no id) can be attributed.
+      chainKeyByLogName.set(
+        logName,
+        parsed.id.slice(LIFECYCLE_FOLLOW_REQUEST_ID.length + 1),
+      );
+      return;
+    }
+    if (parsed.id.startsWith(`${HEALTH_REQUEST_ID}:`)) {
+      handleHealthResponse(parsed.id, parsed.result);
+    }
+    // eslint-disable-next-line no-restricted-syntax -- best-effort parse of a smoldot debug log line: non-JSON or truncated payloads are expected and must not spam log.error.
   } catch {
-    /* malformed response payload, skip */
+    /* malformed or truncated response payload, skip */
   }
+}
+
+function emitLifecycleNotification(
+  logName: string,
+  result: { kind?: string; reason?: string; previously?: string } | undefined,
+): void {
+  const kind = result?.kind;
+  if (kind === undefined || !LIFECYCLE_KINDS.has(kind)) {
+    return;
+  }
+  const chain = chainKeyByLogName.get(logName) ?? logName;
+  if (kind === "bootstrapComplete") {
+    // The chain is usable; peer-count polling has served its purpose.
+    healthPollers.get(chain)?.stop();
+  }
+  const reason =
+    kind === "stalled"
+      ? result?.reason
+      : kind === "recovered"
+        ? result?.previously
+        : undefined;
+  emitLifecycle({
+    chain,
+    kind: kind as LifecycleKind,
+    ...(typeof reason === "string" ? { reason } : {}),
+  });
+}
+
+function handleHealthResponse(id: string, result: unknown): void {
+  const rest = id.slice(HEALTH_REQUEST_ID.length + 1);
+  const chain = rest.slice(0, rest.lastIndexOf(":"));
+  if (chain === "") {
+    return;
+  }
+  healthPollers.get(chain)?.noteResponse();
+  const health = result as { peers?: unknown; isSyncing?: unknown } | null;
+  if (
+    health === null ||
+    typeof health !== "object" ||
+    typeof health.peers !== "number" ||
+    !Number.isInteger(health.peers) ||
+    health.peers < 0 ||
+    typeof health.isSyncing !== "boolean"
+  ) {
+    return;
+  }
+  emitHealth({ chain, peers: health.peers, isSyncing: health.isSyncing });
 }
 
 let smoldotInstance: SmoldotClient | null = null;
@@ -246,6 +404,7 @@ interface PersistenceEntry {
   tap: ChainDbTap;
   initialTimer: ReturnType<typeof setTimeout>;
   periodicTimer: ReturnType<typeof setInterval>;
+  healthPoller: HealthPoller | null;
 }
 const persistence = new Map<string, PersistenceEntry>();
 
@@ -303,7 +462,12 @@ function schedulePersistence(chainName: string, tap: ChainDbTap): void {
   }, 60_000);
   unrefHandle(initialTimer);
   unrefHandle(periodicTimer);
-  persistence.set(chainName, { tap, initialTimer, periodicTimer });
+  persistence.set(chainName, {
+    tap,
+    initialTimer,
+    periodicTimer,
+    healthPoller: null,
+  });
 }
 
 function teardownPersistence(chainName: string): void {
@@ -313,6 +477,7 @@ function teardownPersistence(chainName: string): void {
   }
   clearTimeout(entry.initialTimer);
   clearInterval(entry.periodicTimer);
+  entry.healthPoller?.stop();
   entry.tap.stop();
   persistence.delete(chainName);
 }
@@ -333,8 +498,14 @@ function attachPersistence(
   // Fire the lifecycle subscription without wrapping the chain object.
   // Polkadot-api consumes `jsonRpcResponses` iteratively and interposing on
   // that path is racy. Notifications are read back from smoldot's own
-  // json-rpc log stream instead (see parseAndEmitLifecycle).
+  // json-rpc log stream instead (see handleSideChannelLine).
   attachLifecycleFollow(chainName, tap.chain);
+  if (healthPollingEnabled) {
+    const entry = persistence.get(chainName);
+    if (entry !== undefined) {
+      entry.healthPoller = startHealthPolling(chainName, tap);
+    }
+  }
   return tap.chain;
 }
 
@@ -353,6 +524,108 @@ function attachLifecycleFollow(chainName: string, chain: SmoldotChain): void {
       `[dot.li smoldot] lifecycle follow send failed for ${chainName}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+interface HealthPoller {
+  stop(): void;
+  noteResponse(): void;
+}
+const healthPollers = new Map<string, HealthPoller>();
+
+const HEALTH_POLL_INTERVAL_MS = 1_000;
+const HEALTH_POLL_TIMEOUT_MS = 2_000;
+const HEALTH_POLL_MAX = 120;
+
+let healthWatchdogArmed = false;
+let healthResponseSeen = false;
+
+/**
+ * Poll `system_health` on a chain's JSON-RPC pipe during bootstrap so the
+ * loading UI can show a live peer count. Sequential by design: the next
+ * poll goes out one interval after the previous response is observed in
+ * the log stream, so a busy chain is never flooded; a 2s timeout resends
+ * when a response never surfaces. Stops on `bootstrapComplete` for the
+ * chain (see emitLifecycleNotification), chain teardown, a dead chain, or
+ * a hard poll cap.
+ */
+function startHealthPolling(chainName: string, tap: ChainDbTap): HealthPoller {
+  let stopped = false;
+  let polls = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const stop = (): void => {
+    stopped = true;
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    healthPollers.delete(chainName);
+  };
+
+  const schedule = (delayMs: number): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(send, delayMs);
+    unrefHandle(timer);
+  };
+
+  const send = (): void => {
+    if (stopped) {
+      return;
+    }
+    if (tap.isStopped() || polls >= HEALTH_POLL_MAX) {
+      stop();
+      return;
+    }
+    polls += 1;
+    try {
+      tap.chain.sendJsonRpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: `${HEALTH_REQUEST_ID}:${chainName}:${String(polls)}`,
+          method: "system_health",
+          params: [],
+        }),
+      );
+    } catch {
+      // The chain was destroyed under us (terminate/remove); polling is
+      // best-effort and simply ends.
+      stop();
+      return;
+    }
+    schedule(HEALTH_POLL_TIMEOUT_MS);
+  };
+
+  const noteResponse = (): void => {
+    healthResponseSeen = true;
+    if (stopped) {
+      return;
+    }
+    schedule(HEALTH_POLL_INTERVAL_MS);
+  };
+
+  // The side-channel depends on smoldot's debug log format staying stable.
+  // If it breaks, lifecycle and health both go silently dead, so surface
+  // one warning per session when the first poll gets no observable reply.
+  if (!healthWatchdogArmed) {
+    healthWatchdogArmed = true;
+    const watchdog = setTimeout(() => {
+      if (!healthResponseSeen) {
+        log.warn(
+          "[dot.li smoldot] health side-channel not observed within 5s; loading detail will not update",
+        );
+      }
+    }, 5_000);
+    unrefHandle(watchdog);
+  }
+
+  const poller = { stop, noteResponse };
+  healthPollers.set(chainName, poller);
+  // Poll immediately: on a warm start the chain bootstraps in well under a
+  // second and a delayed first poll would never produce a sample.
+  send();
+  return poller;
 }
 
 /**
@@ -430,6 +703,12 @@ export function terminateSmoldot(): void {
     /* already destroyed or crashed, safe to ignore */
   }
   teardownAllPersistence();
+  // The next smoldot instance re-learns chain identities and re-emits its
+  // own lifecycle; stale mappings or replayed events from the dead session
+  // would mislabel or suppress the new one's signals.
+  chainKeyByLogName.clear();
+  lifecycleHistory.clear();
+  lastHealth.clear();
   smoldotInstance = null;
   relayChainPromise = null;
   dappAssetHubPromise = null;

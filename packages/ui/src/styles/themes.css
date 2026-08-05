@@ -242,6 +242,13 @@
 [data-theme="light"] .loading-progress-pct {
   color: #333;
 }
+/* Same flip as `#status`: the base rule is `#fff`, which is invisible on the
+   light-theme background. The detail line tracks the headline's colour rather
+   than the percentage's — it carries the stall copy, which is the one message
+   that has to survive a light background. */
+[data-theme="light"] .loading-detail {
+  color: #1a1a1a;
+}
 [data-theme="light"] .spinner {
   border-color: #ddd;
   border-top-color: #333;

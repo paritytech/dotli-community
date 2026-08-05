@@ -31,6 +31,7 @@ import {
   showLanding,
   initPhases,
   advancePhase,
+  setStatusDetail,
   stopStatusTick,
   listenForSandboxStatus,
   showGatewayEscape,
@@ -44,6 +45,8 @@ import {
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
+  onProtocolHealth,
+  onProtocolLifecycle,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -1186,35 +1189,63 @@ async function main(): Promise<void> {
   // scraping log prose. `firstPeer` on the Asset Hub means a peer was
   // discovered, so the sync band can start crawling. `bootstrapComplete`
   // means the first finalized block landed, so the resolver can read
-  // storage. Events are emitted from the protocol iframe, which owns
-  // smoldot, and reach this listener over the postMessage bridge. The
-  // `statusToPhase` log-text path remains as a fallback.
-  // The loading bar tracks Asset Hub sync. Events from other chains are
-  // logged but never advance a phase.
-  const LIFECYCLE_PHASE_CHAIN = "asset-hub";
+  // storage. Health samples put a live peer count under the headline while
+  // the chain bootstraps, and stall events replace it with honest copy.
+  // Events are emitted from the protocol iframe, which owns smoldot, and
+  // arrive through the protocol client's origin- and source-gated listener.
+  // The `statusToPhase` log-text path remains as a fallback.
   if (chainBackend !== "rpc-gateway") {
-    window.addEventListener("message", (event: MessageEvent) => {
-      const data = event.data as Record<string, unknown> | null;
-      if (
-        data === null ||
-        typeof data !== "object" ||
-        data.namespace !== "dotli:protocol" ||
-        data.kind !== "lifecycle"
-      ) {
+    // Only the chains on the resolution critical path may drive the UI.
+    // Bulletin, People, and the custom relay sync in the background; a
+    // stall there is not what the user is waiting on.
+    const uiChains = new Set(["relay", "asset-hub"]);
+    let peerDetail = "";
+    // Once the Asset Hub bootstrap completes, the sync detail is over:
+    // an in-flight health response or a late background stall must not
+    // resurrect it under "Resolving".
+    let syncDetailDone = false;
+    onProtocolHealth((event) => {
+      if (syncDetailDone || event.chain !== "asset-hub") {
         return;
       }
-      const chainName =
-        typeof data.chainName === "string" ? data.chainName : "";
-      const lifecycleKind =
-        typeof data.lifecycleKind === "string" ? data.lifecycleKind : "";
-      log.debug(`[dot.li lifecycle] ${chainName} kind=${lifecycleKind}`);
-      if (!chainName.includes(LIFECYCLE_PHASE_CHAIN)) {
+      peerDetail = `${String(event.peers)} ${event.peers === 1 ? "peer" : "peers"}`;
+      setStatusDetail(peerDetail);
+    });
+    onProtocolLifecycle((event) => {
+      log.debug(
+        `[dot.li lifecycle] ${event.chain} kind=${event.lifecycleKind}`,
+      );
+      if (!uiChains.has(event.chain)) {
         return;
       }
-      if (lifecycleKind === "firstPeer") {
+      if (event.lifecycleKind === "stalled" && !syncDetailDone) {
+        // No trailing ellipsis: the headline already ends in one, and the
+        // spinner and bar sheen carry "in progress". Lowercase and
+        // terminal-punctuation-free to match the "2 peers" readout this line
+        // alternates with.
+        setStatusDetail(
+          event.reason === "noPeers"
+            ? "searching for peers"
+            : "syncing, no progress yet",
+        );
+        return;
+      }
+      if (event.lifecycleKind === "recovered" && !syncDetailDone) {
+        setStatusDetail(peerDetail);
+        return;
+      }
+      if (event.chain !== "asset-hub") {
+        return;
+      }
+      if (event.lifecycleKind === "firstPeer") {
         advancePhase(2);
-      } else if (lifecycleKind === "bootstrapComplete") {
+      } else if (event.lifecycleKind === "bootstrapComplete") {
         advancePhase(3);
+        // The count is meaningless once sync is done; clear rather than
+        // letting a stale number sit under "Resolving".
+        syncDetailDone = true;
+        peerDetail = "";
+        setStatusDetail("");
       }
     });
   }

@@ -129,12 +129,17 @@ body {
   text-align: right;
 }
 
-/* Text block — phase label + terminal log */
+/* Text block — phase label + terminal log.
+   The gap is the tight one: `#loading-detail` is a readout *of* the headline
+   above it and has to sit close enough to read as one unit. `.loading-hint`
+   is a separate, occasional warning and buys its 12px break back with a
+   margin. Three rows spaced equally would read as three peers, which they
+   are not. */
 .loading-text {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   width: 100%;
   max-width: 420px;
   flex-shrink: 0;
@@ -152,6 +157,21 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Live detail line (e.g. peer count) below the status headline */
+/* Live sync readout under the headline. Ranked below `#status` by size,
+   weight, and family — not by tone: it shares the headline's opacity because
+   the stall copy it carries ("searching for peers") is the most reassuring
+   message on the screen, and it cannot be the faintest thing on it.
+   `min-height` reserves the row so the block does not jump when the detail
+   appears mid-sync and is cleared on bootstrap. */
+.loading-detail {
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 11px;
+  color: #fff;
+  opacity: 0.35;
+  text-align: center;
+  min-height: 1.3em;
+}
 /* Slow-step hint (shown below status when a step exceeds its threshold) */
 .loading-hint {
   font-size: 11px;
@@ -161,6 +181,8 @@ body {
   text-align: center;
   transition: opacity 0.3s ease;
   min-height: 1.3em;
+  /* Restores the 12px break the status/detail pair gave up. */
+  margin-top: 6px;
 }
 .loading-hint.visible {
   opacity: 0.5;

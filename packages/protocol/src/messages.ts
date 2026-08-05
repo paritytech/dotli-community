@@ -99,6 +99,33 @@ export interface ProtocolInitFailedEnvelope {
   message: string;
 }
 
+/**
+ * Unsolicited broadcast of a smoldot lifecycle event observed inside the
+ * protocol iframe. `chain` is the resolver's logical chain key ("relay",
+ * "asset-hub", "bulletin", "people", "custom-relay"), not smoldot's
+ * internal chain id. Drives the host loading bar.
+ */
+export interface ProtocolLifecycleEnvelope {
+  namespace: "dotli:protocol";
+  kind: "lifecycle";
+  chain: string;
+  lifecycleKind: string;
+  reason?: string;
+}
+
+/**
+ * Unsolicited broadcast of a chain's `system_health` sample observed inside
+ * the protocol iframe. Emitted only while health polling runs (chain
+ * bootstrap). Drives the live peer count on the host loading screen.
+ */
+export interface ProtocolHealthEnvelope {
+  namespace: "dotli:protocol";
+  kind: "health";
+  chain: string;
+  peers: number;
+  isSyncing: boolean;
+}
+
 // Unsolicited notification from the host iframe to its parent window when a
 // sibling tab writes or clears a shared-auth storage key. Drives cross-tab
 // `StorageAdapter.subscribe` callbacks. See `@dotli/protocol/client`
@@ -122,6 +149,8 @@ export type ProtocolEnvelope =
   | ProtocolReadyEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
+  | ProtocolLifecycleEnvelope
+  | ProtocolHealthEnvelope
   | ProtocolAuthStorageChangedEnvelope;
 
 const VALID_KINDS = new Set([
@@ -133,6 +162,8 @@ const VALID_KINDS = new Set([
   "ready",
   "fatal",
   "init-failed",
+  "lifecycle",
+  "health",
   "auth-storage-changed",
 ]);
 

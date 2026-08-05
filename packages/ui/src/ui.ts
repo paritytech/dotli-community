@@ -129,10 +129,27 @@ export function advancePhase(index: number): void {
     ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
   startProgressCrawl();
 
-  // Update headline
+  // Update headline. Re-arm the slow hint against the new label: the timer
+  // armed for the previous step would otherwise fire with a hint describing
+  // work that already completed.
   const status = document.getElementById("status");
   if (status !== null) {
     status.textContent = label;
+  }
+  armSlowHint(label);
+}
+
+/**
+ * Live detail line under the status headline (e.g. "3 peers"). Deliberately
+ * separate from `#status`: this value changes every second or two during
+ * sync, and `#status` is aria-live, so routing it there would queue a
+ * screen-reader announcement per change. The detail element is aria-hidden
+ * and never touches the slow-hint timer.
+ */
+export function setStatusDetail(detail: string): void {
+  const el = document.getElementById("loading-detail");
+  if (el !== null) {
+    el.textContent = detail;
   }
 }
 
@@ -283,7 +300,10 @@ export function showStatus(message: string): void {
   if (status !== null) {
     status.textContent = message;
   }
+  armSlowHint(message);
+}
 
+function armSlowHint(message: string): void {
   clearSlowWarning();
 
   const threshold = getSlowThreshold(message);
