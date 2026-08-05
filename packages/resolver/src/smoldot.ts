@@ -159,7 +159,6 @@ const CONNECTION_ISSUE_PATTERNS = [
 // Chosen so it cannot collide with the numeric ids polkadot-api uses.
 const LIFECYCLE_FOLLOW_REQUEST_ID = "__dotli_lifecycle_follow__";
 
-
 function smoldotLogCallback(
   level: number,
   target: string,
@@ -178,7 +177,10 @@ function smoldotLogCallback(
   // `json-rpc-<chainName>` target emits the response JSON verbatim. We match
   // the schema we ourselves define, so this is subscribing to a structured
   // side-channel, not scraping human prose.
-  if (target.startsWith("json-rpc-") && message.includes("lifecycle_unstable_followEvent")) {
+  if (
+    target.startsWith("json-rpc-") &&
+    message.includes("lifecycle_unstable_followEvent")
+  ) {
     parseAndEmitLifecycle(target, message);
   }
 

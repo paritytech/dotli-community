@@ -1200,12 +1200,11 @@ async function main(): Promise<void> {
       ) {
         return;
       }
-      const chainName = typeof data.chainName === "string" ? data.chainName : "";
+      const chainName =
+        typeof data.chainName === "string" ? data.chainName : "";
       const lifecycleKind =
         typeof data.lifecycleKind === "string" ? data.lifecycleKind : "";
-      log.warn(
-        `[dot.li lifecycle] ${chainName} kind=${lifecycleKind}`,
-      );
+      log.warn(`[dot.li lifecycle] ${chainName} kind=${lifecycleKind}`);
       if (!chainName.includes("asset-hub")) {
         return;
       }
