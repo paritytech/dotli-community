@@ -1189,6 +1189,9 @@ async function main(): Promise<void> {
   // storage. Events are emitted from the protocol iframe, which owns
   // smoldot, and reach this listener over the postMessage bridge. The
   // `statusToPhase` log-text path remains as a fallback.
+  // The loading bar tracks Asset Hub sync. Events from other chains are
+  // logged but never advance a phase.
+  const LIFECYCLE_PHASE_CHAIN = "asset-hub";
   if (chainBackend !== "rpc-gateway") {
     window.addEventListener("message", (event: MessageEvent) => {
       const data = event.data as Record<string, unknown> | null;
@@ -1204,8 +1207,8 @@ async function main(): Promise<void> {
         typeof data.chainName === "string" ? data.chainName : "";
       const lifecycleKind =
         typeof data.lifecycleKind === "string" ? data.lifecycleKind : "";
-      log.warn(`[dot.li lifecycle] ${chainName} kind=${lifecycleKind}`);
-      if (!chainName.includes("asset-hub")) {
+      log.debug(`[dot.li lifecycle] ${chainName} kind=${lifecycleKind}`);
+      if (!chainName.includes(LIFECYCLE_PHASE_CHAIN)) {
         return;
       }
       if (lifecycleKind === "firstPeer") {

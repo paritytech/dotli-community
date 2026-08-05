@@ -332,8 +332,8 @@ function attachPersistence(
   schedulePersistence(chainName, tap);
   // Fire the lifecycle subscription without wrapping the chain object.
   // Polkadot-api consumes `jsonRpcResponses` iteratively and interposing on
-  // that path is racy. Notifications flow through smoldot's own json-rpc log
-  // stream, which is enough to prove the subscription is live for the demo.
+  // that path is racy. Notifications are read back from smoldot's own
+  // json-rpc log stream instead (see parseAndEmitLifecycle).
   attachLifecycleFollow(chainName, tap.chain);
   return tap.chain;
 }
@@ -368,6 +368,9 @@ export function getSmoldotDirect(): SmoldotClient {
   }
   log.warn("[dot.li smoldot] Creating smoldot via start() (current thread)");
   smoldotInstance = startSmoldotDirect({
+    // Lifecycle detection reads JSON-RPC payloads out of the debug log
+    // stream (parseAndEmitLifecycle). Lowering this level silently
+    // disables lifecycle events.
     maxLogLevel: 5,
     logCallback: smoldotLogCallback,
     // Smoldot's own auto-detection (no-auto-bytecode-browser.js) is buggy
@@ -394,6 +397,9 @@ export function getSmoldot(): SmoldotClient {
   }
   log.warn("[dot.li smoldot] Creating smoldot via startFromWorker()");
   smoldotInstance = startFromWorker(new SmWorker(), {
+    // Lifecycle detection reads JSON-RPC payloads out of the debug log
+    // stream (parseAndEmitLifecycle). Lowering this level silently
+    // disables lifecycle events.
     maxLogLevel: 5,
     logCallback: smoldotLogCallback,
     forbidNonLocalWs: true,
