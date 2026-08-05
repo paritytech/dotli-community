@@ -140,16 +140,37 @@ export function advancePhase(index: number): void {
 }
 
 /**
+ * Current phase index, -1 before the first `advancePhase`. Lets callers
+ * suppress signals that describe a phase the bar has already passed.
+ */
+export function getCurrentPhase(): number {
+  return currentPhase;
+}
+
+/**
  * Live detail line under the status headline (e.g. "3 peers"). Deliberately
  * separate from `#status`: this value changes every second or two during
  * sync, and `#status` is aria-live, so routing it there would queue a
  * screen-reader announcement per change. The detail element is aria-hidden
  * and never touches the slow-hint timer.
+ *
+ * `announce` mirrors the text once into the visually hidden polite region,
+ * for state changes a screen-reader user should hear (stall and recovery
+ * copy) without the per-second count spam.
  */
-export function setStatusDetail(detail: string): void {
+export function setStatusDetail(
+  detail: string,
+  opts: { announce?: boolean } = {},
+): void {
   const el = document.getElementById("loading-detail");
   if (el !== null) {
     el.textContent = detail;
+  }
+  if (opts.announce === true && detail !== "") {
+    const announcer = document.getElementById("loading-announcer");
+    if (announcer !== null && announcer.textContent !== detail) {
+      announcer.textContent = detail;
+    }
   }
 }
 

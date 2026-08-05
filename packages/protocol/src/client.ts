@@ -13,6 +13,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
+import type { LifecycleKind } from "@dotli/resolver/smoldot";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
   getActiveGatewaySupportedGenesisHashes,
@@ -69,6 +70,15 @@ const lifecycleListeners = new Set<
   (event: ProtocolLifecycleEnvelope) => void
 >();
 const healthListeners = new Set<(event: ProtocolHealthEnvelope) => void>();
+// Runtime mirror of the resolver's LifecycleKind union: postMessage data is
+// untrusted, and the envelope type alone cannot reject a spoofed kind. The
+// `satisfies` ties each literal to the union so a typo fails typecheck.
+const LIFECYCLE_ENVELOPE_KINDS = new Set<string>([
+  "firstPeer",
+  "bootstrapComplete",
+  "stalled",
+  "recovered",
+] satisfies LifecycleKind[]);
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -225,7 +235,7 @@ function bindMessageListener(): void {
       case "lifecycle": {
         if (
           typeof msg.chain !== "string" ||
-          typeof msg.lifecycleKind !== "string"
+          !LIFECYCLE_ENVELOPE_KINDS.has(msg.lifecycleKind)
         ) {
           return;
         }

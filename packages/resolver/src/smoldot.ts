@@ -33,6 +33,7 @@ import {
   saveChainDb,
   tapChain,
   type ChainDbTap,
+  type TapIntercept,
 } from "./smoldot-db";
 
 /** The smoldot Client type (shared by `start()` and `startFromWorker()`). */
@@ -175,13 +176,16 @@ function emitHealth(event: HealthEvent): void {
   }
 }
 
-// Health polling is opt-in per process. The protocol iframe's direct mode
-// enables it; the SharedWorker never does, so its long-lived smoldot does
-// not poll for a UI that cannot observe it.
-let healthPollingEnabled = false;
+// Health polling is opt-in per process and per chain. The protocol
+// iframe's direct mode enables it for the chains its loading UI actually
+// reads; the SharedWorker never does, so its long-lived smoldot does not
+// poll for a UI that cannot observe it.
+const healthPollingChains = new Set<string>();
 
-export function enableHealthPolling(): void {
-  healthPollingEnabled = true;
+export function enableHealthPolling(chains: readonly string[]): void {
+  for (const chain of chains) {
+    healthPollingChains.add(chain);
+  }
 }
 
 // Smoldot's WASM can panic (e.g., the "Option::unwrap() on a None value"
@@ -239,19 +243,16 @@ const CONNECTION_ISSUE_PATTERNS = [
 ];
 
 // Reserved id prefixes for our internal JSON-RPC requests. Chosen so they
-// cannot collide with the numeric ids polkadot-api uses, and so responses
-// can be recognized in the log stream. The suffix after ":" is the logical
-// chain key, which is how responses are attributed to chains without
-// relying on smoldot's internal chain id.
+// cannot collide with the numeric ids polkadot-api uses, and so the chain
+// tap can recognize and consume the responses before they reach
+// polkadot-api's provider.
 const LIFECYCLE_FOLLOW_REQUEST_ID = "__dotli_lifecycle_follow__";
 const HEALTH_REQUEST_ID = "__dotli_health__";
 
-// smoldot's log target is `json-rpc-<chain id from the chain spec>`, while
-// requests are attributed by our logical keys ("relay", "asset-hub", ...).
-// The reply to our follow request carries the logical key in its id and
-// arrives on the chain's log target, which lets us learn the mapping
-// without hardcoding chain-spec ids per network.
-const chainKeyByLogName = new Map<string, string>();
+// Subscription id of each chain's `lifecycle_unstable_follow`, learned from
+// the follow reply. Notifications carry no request id, so this is how the
+// tap tells our subscription's events apart from any other traffic.
+const lifecycleSubscriptions = new Map<string, string>();
 
 function smoldotLogCallback(
   level: number,
@@ -263,22 +264,6 @@ function smoldotLogCallback(
     log.warn(`[smoldot:${target}] ${message}`);
   } else {
     log.debug(`[smoldot:${target}] ${message}`);
-  }
-
-  // Lifecycle and health payloads flow through the chain's JSON-RPC pipe,
-  // which is owned by polkadot-api. Rather than wrap the chain and race for
-  // messages, we observe the payloads passing through smoldot's own debug
-  // log stream: every response is logged on the `json-rpc-<chain>` target
-  // as `json-rpc-response-yielded; response=<json, truncated at 250 chars>`.
-  // We match schemas we ourselves define (our reserved request ids and the
-  // followEvent notification), so this is a structured side-channel, not
-  // prose scraping.
-  if (
-    target.startsWith("json-rpc-") &&
-    (message.includes("lifecycle_unstable_followEvent") ||
-      message.includes("__dotli_"))
-  ) {
-    handleSideChannelLine(target, message);
   }
 
   // A panic is terminal with no recovery. Smoldot's log message starts
@@ -307,58 +292,60 @@ function smoldotLogCallback(
   }
 }
 
-function handleSideChannelLine(target: string, message: string): void {
-  // Smoldot emits the response JSON verbatim after a literal `response=`
-  // key in the log line. Request echoes use `request=` and fall out here.
-  const responseStart = message.indexOf("response=");
-  if (responseStart === -1) {
-    return;
-  }
-  const jsonPart = message.slice(responseStart + "response=".length);
-  const logName = target.slice("json-rpc-".length);
-  try {
-    const parsed = JSON.parse(jsonPart) as {
-      id?: string;
-      method?: string;
-      result?: unknown;
-      params?: {
-        result?: { kind?: string; reason?: string; previously?: string };
-      };
-    };
+/**
+ * Response interceptor bound to one chain. Runs inside the chain tap's
+ * pump, so it sees every response in order, untruncated, and can consume
+ * our reserved-id traffic before polkadot-api's provider does.
+ */
+function makeSideChannelIntercept(chainName: string): TapIntercept {
+  return (parsed) => {
+    if (typeof parsed.id === "string") {
+      if (parsed.id.startsWith(`${LIFECYCLE_FOLLOW_REQUEST_ID}:`)) {
+        // Reply to our follow request: remember the subscription id so
+        // notifications (which carry no request id) can be matched below.
+        if (typeof parsed.result === "string") {
+          lifecycleSubscriptions.set(chainName, parsed.result);
+        }
+        return true;
+      }
+      if (parsed.id.startsWith(`${HEALTH_REQUEST_ID}:`)) {
+        handleHealthResponse(chainName, parsed.result);
+        return true;
+      }
+      return false;
+    }
     if (parsed.method === "lifecycle_unstable_followEvent") {
-      emitLifecycleNotification(logName, parsed.params?.result);
-      return;
+      const params = parsed.params as
+        | {
+            subscription?: unknown;
+            result?: { kind?: string; reason?: string; previously?: string };
+          }
+        | undefined;
+      // The follow reply always precedes its notifications, so an unknown
+      // subscription id means the event belongs to someone else: forward it.
+      const subscription = lifecycleSubscriptions.get(chainName);
+      if (
+        params === undefined ||
+        subscription === undefined ||
+        params.subscription !== subscription
+      ) {
+        return false;
+      }
+      emitLifecycleNotification(chainName, params.result);
+      return true;
     }
-    if (typeof parsed.id !== "string") {
-      return;
-    }
-    if (parsed.id.startsWith(`${LIFECYCLE_FOLLOW_REQUEST_ID}:`)) {
-      // Reply to our follow request: learn which logical chain owns this
-      // log target so notifications (which carry no id) can be attributed.
-      chainKeyByLogName.set(
-        logName,
-        parsed.id.slice(LIFECYCLE_FOLLOW_REQUEST_ID.length + 1),
-      );
-      return;
-    }
-    if (parsed.id.startsWith(`${HEALTH_REQUEST_ID}:`)) {
-      handleHealthResponse(parsed.id, parsed.result);
-    }
-    // eslint-disable-next-line no-restricted-syntax -- best-effort parse of a smoldot debug log line: non-JSON or truncated payloads are expected and must not spam log.error.
-  } catch {
-    /* malformed or truncated response payload, skip */
-  }
+    return false;
+  };
 }
 
 function emitLifecycleNotification(
-  logName: string,
+  chain: string,
   result: { kind?: string; reason?: string; previously?: string } | undefined,
 ): void {
   const kind = result?.kind;
   if (kind === undefined || !LIFECYCLE_KINDS.has(kind)) {
     return;
   }
-  const chain = chainKeyByLogName.get(logName) ?? logName;
   if (kind === "bootstrapComplete") {
     // The chain is usable; peer-count polling has served its purpose.
     healthPollers.get(chain)?.stop();
@@ -376,12 +363,8 @@ function emitLifecycleNotification(
   });
 }
 
-function handleHealthResponse(id: string, result: unknown): void {
-  const rest = id.slice(HEALTH_REQUEST_ID.length + 1);
-  const chain = rest.slice(0, rest.lastIndexOf(":"));
-  if (chain === "") {
-    return;
-  }
+function handleHealthResponse(chain: string, result: unknown): void {
+  healthResponseSeen = true;
   healthPollers.get(chain)?.noteResponse();
   const health = result as { peers?: unknown; isSyncing?: unknown } | null;
   if (
@@ -493,14 +476,13 @@ function attachPersistence(
   underlying: SmoldotChain,
 ): SmoldotChain {
   teardownPersistence(chainName);
-  const tap = tapChain(underlying);
+  // The tap intercepts our reserved-id traffic (lifecycle follow, health
+  // polls) in-band and consumes it, so polkadot-api's provider only ever
+  // sees its own requests and subscriptions.
+  const tap = tapChain(underlying, makeSideChannelIntercept(chainName));
   schedulePersistence(chainName, tap);
-  // Fire the lifecycle subscription without wrapping the chain object.
-  // Polkadot-api consumes `jsonRpcResponses` iteratively and interposing on
-  // that path is racy. Notifications are read back from smoldot's own
-  // json-rpc log stream instead (see handleSideChannelLine).
   attachLifecycleFollow(chainName, tap.chain);
-  if (healthPollingEnabled) {
+  if (healthPollingChains.has(chainName)) {
     const entry = persistence.get(chainName);
     if (entry !== undefined) {
       entry.healthPoller = startHealthPolling(chainName, tap);
@@ -598,16 +580,16 @@ function startHealthPolling(chainName: string, tap: ChainDbTap): HealthPoller {
   };
 
   const noteResponse = (): void => {
-    healthResponseSeen = true;
     if (stopped) {
       return;
     }
     schedule(HEALTH_POLL_INTERVAL_MS);
   };
 
-  // The side-channel depends on smoldot's debug log format staying stable.
-  // If it breaks, lifecycle and health both go silently dead, so surface
-  // one warning per session when the first poll gets no observable reply.
+  // The side-channel depends on smoldot answering our reserved-id
+  // requests. If a smoldot bump breaks that, lifecycle and health both go
+  // silently dead, so surface one warning per session when the first poll
+  // gets no observable reply.
   if (!healthWatchdogArmed) {
     healthWatchdogArmed = true;
     const watchdog = setTimeout(() => {
@@ -641,9 +623,6 @@ export function getSmoldotDirect(): SmoldotClient {
   }
   log.warn("[dot.li smoldot] Creating smoldot via start() (current thread)");
   smoldotInstance = startSmoldotDirect({
-    // Lifecycle detection reads JSON-RPC payloads out of the debug log
-    // stream (parseAndEmitLifecycle). Lowering this level silently
-    // disables lifecycle events.
     maxLogLevel: 5,
     logCallback: smoldotLogCallback,
     // Smoldot's own auto-detection (no-auto-bytecode-browser.js) is buggy
@@ -670,9 +649,6 @@ export function getSmoldot(): SmoldotClient {
   }
   log.warn("[dot.li smoldot] Creating smoldot via startFromWorker()");
   smoldotInstance = startFromWorker(new SmWorker(), {
-    // Lifecycle detection reads JSON-RPC payloads out of the debug log
-    // stream (parseAndEmitLifecycle). Lowering this level silently
-    // disables lifecycle events.
     maxLogLevel: 5,
     logCallback: smoldotLogCallback,
     forbidNonLocalWs: true,
@@ -703,10 +679,10 @@ export function terminateSmoldot(): void {
     /* already destroyed or crashed, safe to ignore */
   }
   teardownAllPersistence();
-  // The next smoldot instance re-learns chain identities and re-emits its
-  // own lifecycle; stale mappings or replayed events from the dead session
-  // would mislabel or suppress the new one's signals.
-  chainKeyByLogName.clear();
+  // The next smoldot instance re-subscribes and re-emits its own
+  // lifecycle; stale subscription ids or replayed events from the dead
+  // session would mislabel or suppress the new one's signals.
+  lifecycleSubscriptions.clear();
   lifecycleHistory.clear();
   lastHealth.clear();
   smoldotInstance = null;

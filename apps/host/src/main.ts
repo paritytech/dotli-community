@@ -31,6 +31,7 @@ import {
   showLanding,
   initPhases,
   advancePhase,
+  getCurrentPhase,
   setStatusDetail,
   stopStatusTick,
   listenForSandboxStatus,
@@ -1191,10 +1192,13 @@ async function main(): Promise<void> {
   // means the first finalized block landed, so the resolver can read
   // storage. Health samples put a live peer count under the headline while
   // the chain bootstraps, and stall events replace it with honest copy.
-  // Events are emitted from the protocol iframe, which owns smoldot, and
-  // arrive through the protocol client's origin- and source-gated listener.
-  // The `statusToPhase` log-text path remains as a fallback.
-  if (chainBackend !== "rpc-gateway") {
+  // Events are emitted from the protocol iframe, which owns smoldot in
+  // direct mode, and arrive through the protocol client's origin- and
+  // source-gated listener. The `statusToPhase` log-text path remains as a
+  // fallback. Only direct mode subscribes: in shared-worker mode smoldot
+  // lives in the SharedWorker, which does not forward lifecycle or health
+  // yet, and the gateway has no smoldot at all.
+  if (chainBackend === "smoldot-direct") {
     // Only the chains on the resolution critical path may drive the UI.
     // Bulletin, People, and the custom relay sync in the background; a
     // stall there is not what the user is waiting on.
@@ -1227,11 +1231,12 @@ async function main(): Promise<void> {
           event.reason === "noPeers"
             ? "searching for peers"
             : "syncing, no progress yet",
+          { announce: true },
         );
         return;
       }
       if (event.lifecycleKind === "recovered" && !syncDetailDone) {
-        setStatusDetail(peerDetail);
+        setStatusDetail(peerDetail, { announce: true });
         return;
       }
       if (event.chain !== "asset-hub") {
@@ -1367,22 +1372,30 @@ async function main(): Promise<void> {
           // mapping from status text to ResolvePhase, so we defer to it
           // instead of maintaining a parallel regex here.
           const phase = statusToPhase(msg);
-          if (phase === "relay-chain-adding") {
-            advancePhase(1);
-          } else if (
-            // `asset-hub-connecting` is ~0ms (just createClient), so it shares
-            // the Syncing band rather than getting a slice that makes the bar
-            // jump for no work.
-            phase === "asset-hub-connecting" ||
-            phase === "asset-hub-syncing" ||
-            phase === "asset-hub-ready"
-          ) {
-            advancePhase(2);
-          } else if (phase === "resolving-content") {
-            advancePhase(3);
+          // `asset-hub-connecting` is ~0ms (just createClient), so it shares
+          // the Syncing band rather than getting a slice that makes the bar
+          // jump for no work.
+          const mappedPhase =
+            phase === "relay-chain-adding"
+              ? 1
+              : phase === "asset-hub-connecting" ||
+                  phase === "asset-hub-syncing" ||
+                  phase === "asset-hub-ready"
+                ? 2
+                : phase === "resolving-content"
+                  ? 3
+                  : null;
+          if (mappedPhase !== null) {
+            advancePhase(mappedPhase);
           }
           emitPhase(msg, phase ?? "progress");
-          showStatus(msg);
+          // Lifecycle events usually outrun these status strings. Prose
+          // describing a phase the bar has already passed must not flip
+          // the headline backwards; unmapped messages (bootnode issues,
+          // not-found notices) always show.
+          if (mappedPhase === null || mappedPhase >= getCurrentPhase()) {
+            showStatus(msg);
+          }
         };
         cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
         if (cid === null) {

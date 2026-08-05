@@ -3,30 +3,59 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("polkadot-api/smoldot", () => ({
-  start: vi.fn(() => ({
-    addChain: vi.fn().mockResolvedValue({
+// Queue-backed chain mocks: tests push raw JSON-RPC responses and the
+// chain tap's pump consumes them exactly as it does smoldot's output.
+const chainMocks = vi.hoisted(() => {
+  interface MockChain {
+    sendJsonRpc: ReturnType<typeof vi.fn>;
+    nextJsonRpcResponse: () => Promise<string>;
+    jsonRpcResponses: AsyncGenerator<string>;
+    remove: ReturnType<typeof vi.fn>;
+    push(raw: string): void;
+  }
+  const chains: MockChain[] = [];
+  function makeChain(): MockChain {
+    const queue: string[] = [];
+    const waiters: ((s: string) => void)[] = [];
+    const chain: MockChain = {
       sendJsonRpc: vi.fn(),
-      nextJsonRpcResponse: vi.fn(),
+      nextJsonRpcResponse: () =>
+        new Promise<string>((resolve) => {
+          const next = queue.shift();
+          if (next !== undefined) {
+            resolve(next);
+          } else {
+            waiters.push(resolve);
+          }
+        }),
       jsonRpcResponses: (async function* () {})(),
       remove: vi.fn(),
-    }),
+      push(raw: string) {
+        const waiter = waiters.shift();
+        if (waiter !== undefined) {
+          waiter(raw);
+        } else {
+          queue.push(raw);
+        }
+      },
+    };
+    chains.push(chain);
+    return chain;
+  }
+  return { chains, makeChain };
+});
+
+vi.mock("polkadot-api/smoldot", () => ({
+  start: vi.fn(() => ({
+    addChain: vi.fn(() => Promise.resolve(chainMocks.makeChain())),
   })),
 }));
 
-vi.mock("polkadot-api/smoldot/from-worker", () => {
-  const mockAddChain = vi.fn().mockResolvedValue({
-    sendJsonRpc: vi.fn(),
-    nextJsonRpcResponse: vi.fn(),
-    jsonRpcResponses: (async function* () {})(),
-    remove: vi.fn(),
-  });
-  return {
-    startFromWorker: vi.fn(() => ({
-      addChain: mockAddChain,
-    })),
-  };
-});
+vi.mock("polkadot-api/smoldot/from-worker", () => ({
+  startFromWorker: vi.fn(() => ({
+    addChain: vi.fn(() => Promise.resolve(chainMocks.makeChain())),
+  })),
+}));
 
 vi.mock("polkadot-api/smoldot/worker?worker", () => {
   return { default: class MockWorker {} };
@@ -54,9 +83,8 @@ let onHealth: typeof import("@dotli/resolver/smoldot").onHealth;
 let enableHealthPolling: typeof import("@dotli/resolver/smoldot").enableHealthPolling;
 
 beforeEach(async () => {
-  // The mocked chain object is shared by the module factories above, so its
-  // call history would otherwise leak across tests.
   vi.clearAllMocks();
+  chainMocks.chains.length = 0;
   vi.resetModules();
   const mod = await import("@dotli/resolver/smoldot");
   getSmoldot = mod.getSmoldot;
@@ -65,6 +93,56 @@ beforeEach(async () => {
   onHealth = mod.onHealth;
   enableHealthPolling = mod.enableHealthPolling;
 });
+
+// Let the tap's pump loop drain everything pushed so far.
+async function flush(): Promise<void> {
+  for (let i = 0; i < 25; i++) {
+    await Promise.resolve();
+  }
+}
+
+async function relayMock(): Promise<
+  (typeof chainMocks.chains)[number] & object
+> {
+  await getRelayChain();
+  const chain = chainMocks.chains.at(-1);
+  if (chain === undefined) {
+    throw new Error("relay chain mock was not created");
+  }
+  return chain;
+}
+
+const FOLLOW_REPLY = JSON.stringify({
+  jsonrpc: "2.0",
+  id: "__dotli_lifecycle_follow__:relay",
+  result: "sub-1",
+});
+
+function followEvent(
+  subscription: string,
+  kind: string,
+  extra: Record<string, unknown> = {},
+): string {
+  return JSON.stringify({
+    jsonrpc: "2.0",
+    method: "lifecycle_unstable_followEvent",
+    params: { subscription, result: { kind, ...extra } },
+  });
+}
+
+function healthReply(seq: number, peers: number, isSyncing = true): string {
+  return JSON.stringify({
+    jsonrpc: "2.0",
+    id: `__dotli_health__:relay:${String(seq)}`,
+    result: { isSyncing, peers, shouldHavePeers: true },
+  });
+}
+
+function healthCalls(chain: { sendJsonRpc: ReturnType<typeof vi.fn> }) {
+  return chain.sendJsonRpc.mock.calls
+    .map((call) => call[0] as string)
+    .filter((raw) => raw.includes("system_health"));
+}
 
 describe("getSmoldot", () => {
   it("returns the same instance on repeated calls", () => {
@@ -93,104 +171,71 @@ describe("getRelayChain", () => {
   });
 });
 
-// Grab the logCallback the module hands to smoldot so tests can feed it
-// synthetic json-rpc log lines.
-async function captureLogCallback(): Promise<
-  (level: number, target: string, message: string) => void
-> {
-  getSmoldot();
-  const { startFromWorker } = await import("polkadot-api/smoldot/from-worker");
-  const options = vi.mocked(startFromWorker).mock.lastCall?.[1];
-  if (options?.logCallback === undefined) {
-    throw new Error("logCallback was not passed to startFromWorker");
-  }
-  return options.logCallback;
-}
-
-// Production line shape: smoldot logs every response on the chain's
-// `json-rpc-<id>` target as `json-rpc-response-yielded; response=<json>`.
-function responseLine(payload: unknown): string {
-  return `json-rpc-response-yielded; response=${JSON.stringify(payload)}`;
-}
-
-function followEventLine(
-  kind: string,
-  extra: Record<string, unknown> = {},
-): string {
-  return responseLine({
-    jsonrpc: "2.0",
-    method: "lifecycle_unstable_followEvent",
-    params: { subscription: "lf-1", result: { kind, ...extra } },
-  });
-}
-
-function followReplyLine(logicalKey: string): string {
-  return responseLine({
-    jsonrpc: "2.0",
-    id: `__dotli_lifecycle_follow__:${logicalKey}`,
-    result: "lf-1",
-  });
-}
-
-function healthLine(
-  logicalKey: string,
-  seq: number,
-  peers: number,
-  isSyncing = true,
-): string {
-  return responseLine({
-    jsonrpc: "2.0",
-    id: `__dotli_health__:${logicalKey}:${String(seq)}`,
-    result: { isSyncing, peers, shouldHavePeers: true },
-  });
-}
-
 describe("onLifecycle", () => {
-  it("delivers events keyed by the logical chain once the follow reply is seen", async () => {
-    const logCallback = await captureLogCallback();
+  it("delivers events for the chain once the follow reply is seen", async () => {
+    const chain = await relayMock();
     const events: unknown[] = [];
     onLifecycle((event) => events.push(event));
 
-    logCallback(4, "json-rpc-asset-hub-paseo", followReplyLine("asset-hub"));
-    logCallback(4, "json-rpc-asset-hub-paseo", followEventLine("firstPeer"));
-    logCallback(
-      4,
-      "json-rpc-asset-hub-paseo",
-      followEventLine("bootstrapComplete"),
-    );
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "firstPeer"));
+    chain.push(followEvent("sub-1", "bootstrapComplete"));
+    await flush();
 
     expect(events).toEqual([
-      { chain: "asset-hub", kind: "firstPeer" },
-      { chain: "asset-hub", kind: "bootstrapComplete" },
+      { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "bootstrapComplete" },
     ]);
   });
 
-  it("falls back to the log target name when no follow reply mapped it", async () => {
-    const logCallback = await captureLogCallback();
+  it("forwards notifications from unknown subscriptions to the chain consumer", async () => {
+    const tapped = await getRelayChain();
+    const chain = chainMocks.chains.at(-1);
+    if (chain === undefined) {
+      throw new Error("relay chain mock was not created");
+    }
     const events: unknown[] = [];
     onLifecycle((event) => events.push(event));
 
-    logCallback(4, "json-rpc-asset-hub-paseo", followEventLine("firstPeer"));
+    chain.push(FOLLOW_REPLY);
+    const foreign = followEvent("someone-elses-sub", "firstPeer");
+    chain.push(foreign);
+    await flush();
 
-    expect(events).toEqual([{ chain: "asset-hub-paseo", kind: "firstPeer" }]);
+    expect(events).toEqual([]);
+    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(foreign);
+  });
+
+  it("consumes our traffic so the chain consumer never sees it", async () => {
+    const tapped = await getRelayChain();
+    const chain = chainMocks.chains.at(-1);
+    if (chain === undefined) {
+      throw new Error("relay chain mock was not created");
+    }
+
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "firstPeer"));
+    const papiResponse = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "1-42",
+      result: "0x00",
+    });
+    chain.push(papiResponse);
+    await flush();
+
+    // Only the polkadot-api response comes through; ours were consumed.
+    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(papiResponse);
   });
 
   it("carries the stall reason and the recovery cause", async () => {
-    const logCallback = await captureLogCallback();
+    const chain = await relayMock();
     const events: unknown[] = [];
     onLifecycle((event) => events.push(event));
 
-    logCallback(4, "json-rpc-paseo", followReplyLine("relay"));
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("stalled", { reason: "noPeers" }),
-    );
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("recovered", { previously: "noPeers" }),
-    );
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "stalled", { reason: "noPeers" }));
+    chain.push(followEvent("sub-1", "recovered", { previously: "noPeers" }));
+    await flush();
 
     expect(events).toEqual([
       { chain: "relay", kind: "stalled", reason: "noPeers" },
@@ -199,19 +244,12 @@ describe("onLifecycle", () => {
   });
 
   it("replays only the latest event per chain and kind to a late subscriber", async () => {
-    const logCallback = await captureLogCallback();
-    logCallback(4, "json-rpc-paseo", followReplyLine("relay"));
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("stalled", { reason: "noPeers" }),
-    );
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("stalled", { reason: "syncNoProgress" }),
-    );
-    logCallback(4, "json-rpc-paseo", followEventLine("firstPeer"));
+    const chain = await relayMock();
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "stalled", { reason: "noPeers" }));
+    chain.push(followEvent("sub-1", "stalled", { reason: "syncNoProgress" }));
+    chain.push(followEvent("sub-1", "firstPeer"));
+    await flush();
 
     const events: unknown[] = [];
     onLifecycle((event) => events.push(event));
@@ -223,18 +261,11 @@ describe("onLifecycle", () => {
   });
 
   it("replays only the newer half of a stall and recovery pair", async () => {
-    const logCallback = await captureLogCallback();
-    logCallback(4, "json-rpc-paseo", followReplyLine("relay"));
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("stalled", { reason: "noPeers" }),
-    );
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("recovered", { previously: "noPeers" }),
-    );
+    const chain = await relayMock();
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "stalled", { reason: "noPeers" }));
+    chain.push(followEvent("sub-1", "recovered", { previously: "noPeers" }));
+    await flush();
 
     const events: unknown[] = [];
     onLifecycle((event) => events.push(event));
@@ -244,55 +275,44 @@ describe("onLifecycle", () => {
     ]);
   });
 
-  it("ignores malformed, unknown-kind, and non-lifecycle payloads", async () => {
-    const logCallback = await captureLogCallback();
+  it("ignores kinds outside the allowlist but still consumes them", async () => {
+    const tapped = await getRelayChain();
+    const chain = chainMocks.chains.at(-1);
+    if (chain === undefined) {
+      throw new Error("relay chain mock was not created");
+    }
     const events: unknown[] = [];
     onLifecycle((event) => events.push(event));
 
-    // Mentions the method but carries no response payload.
-    logCallback(4, "json-rpc-paseo", "sent lifecycle_unstable_followEvent");
-    // Request echo, not a response.
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      'json-rpc-request-queued; request={"method":"lifecycle_unstable_followEvent"}',
-    );
-    // Truncated JSON (smoldot caps the logged payload at 250 chars).
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      'json-rpc-response-yielded; response={"method":"lifecycle_unstable_followEvent"',
-    );
-    // A different method that happens to mention the string.
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      followEventLine("firstPeer").replace("followEvent", "followEvent_other"),
-    );
-    // A kind outside the allowlist (smoldot emits more kinds than we consume).
-    logCallback(4, "json-rpc-paseo", followEventLine("warpSyncProgress"));
-    // Right payload on a non json-rpc target.
-    logCallback(4, "sync-service-paseo", followEventLine("firstPeer"));
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "warpSyncProgress", { at: 5, target: 9 }));
+    const papiResponse = JSON.stringify({ jsonrpc: "2.0", id: "1-1" });
+    chain.push(papiResponse);
+    await flush();
 
     expect(events).toEqual([]);
+    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(papiResponse);
   });
 
   it("stops delivering after unsubscribe", async () => {
-    const logCallback = await captureLogCallback();
+    const chain = await relayMock();
     const events: unknown[] = [];
     const unsubscribe = onLifecycle((event) => events.push(event));
 
-    logCallback(4, "json-rpc-paseo", followEventLine("firstPeer"));
+    chain.push(FOLLOW_REPLY);
+    chain.push(followEvent("sub-1", "firstPeer"));
+    await flush();
     unsubscribe();
-    logCallback(4, "json-rpc-paseo", followEventLine("bootstrapComplete"));
+    chain.push(followEvent("sub-1", "bootstrapComplete"));
+    await flush();
 
-    expect(events).toEqual([{ chain: "paseo", kind: "firstPeer" }]);
+    expect(events).toEqual([{ chain: "relay", kind: "firstPeer" }]);
   });
 });
 
 describe("onHealth", () => {
   // Fake timers keep leaked poller resends (2s timeout) from bleeding
-  // between tests through the shared mock chain.
+  // between tests through the mock chains.
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -300,51 +320,43 @@ describe("onHealth", () => {
     vi.useRealTimers();
   });
 
-  async function relaySendJsonRpc(): Promise<ReturnType<typeof vi.fn>> {
-    const { startFromWorker } =
-      await import("polkadot-api/smoldot/from-worker");
-    const client = vi.mocked(startFromWorker).mock.results.at(-1)?.value as {
-      addChain: ReturnType<typeof vi.fn>;
-    };
-    const chain = (await client.addChain.mock.results.at(-1)?.value) as {
-      sendJsonRpc: ReturnType<typeof vi.fn>;
-    };
-    return chain.sendJsonRpc;
-  }
-
-  function healthCalls(sendJsonRpc: ReturnType<typeof vi.fn>): string[] {
-    return sendJsonRpc.mock.calls
-      .map((call) => call[0] as string)
-      .filter((raw) => raw.includes("system_health"));
-  }
-
   it("polls system_health immediately and emits the parsed sample", async () => {
-    enableHealthPolling();
-    const logCallback = await captureLogCallback();
-    await getRelayChain();
-    const sendJsonRpc = await relaySendJsonRpc();
+    enableHealthPolling(["relay"]);
+    const chain = await relayMock();
 
-    const sent = healthCalls(sendJsonRpc);
+    const sent = healthCalls(chain);
     expect(sent.length).toBeGreaterThanOrEqual(1);
     expect(sent[0]).toContain('"id":"__dotli_health__:relay:1"');
 
     const events: unknown[] = [];
     onHealth((event) => events.push(event));
-    logCallback(4, "json-rpc-paseo", healthLine("relay", 1, 3));
+    chain.push(healthReply(1, 3));
+    await flush();
 
     expect(events).toEqual([{ chain: "relay", peers: 3, isSyncing: true }]);
   });
 
+  it("does not poll chains outside the allowlist", async () => {
+    enableHealthPolling(["asset-hub"]);
+    const chain = await relayMock();
+    expect(healthCalls(chain)).toEqual([]);
+  });
+
+  it("does not poll when polling was never enabled", async () => {
+    const chain = await relayMock();
+    expect(healthCalls(chain)).toEqual([]);
+  });
+
   it("emits only when the sample changes", async () => {
-    enableHealthPolling();
-    const logCallback = await captureLogCallback();
-    await getRelayChain();
+    enableHealthPolling(["relay"]);
+    const chain = await relayMock();
 
     const events: unknown[] = [];
     onHealth((event) => events.push(event));
-    logCallback(4, "json-rpc-paseo", healthLine("relay", 1, 2));
-    logCallback(4, "json-rpc-paseo", healthLine("relay", 2, 2));
-    logCallback(4, "json-rpc-paseo", healthLine("relay", 3, 5));
+    chain.push(healthReply(1, 2));
+    chain.push(healthReply(2, 2));
+    chain.push(healthReply(3, 5));
+    await flush();
 
     expect(events).toEqual([
       { chain: "relay", peers: 2, isSyncing: true },
@@ -353,11 +365,11 @@ describe("onHealth", () => {
   });
 
   it("replays the last sample to a late subscriber", async () => {
-    enableHealthPolling();
-    const logCallback = await captureLogCallback();
-    await getRelayChain();
+    enableHealthPolling(["relay"]);
+    const chain = await relayMock();
 
-    logCallback(4, "json-rpc-paseo", healthLine("relay", 1, 4));
+    chain.push(healthReply(1, 4));
+    await flush();
 
     const events: unknown[] = [];
     onHealth((event) => events.push(event));
@@ -365,55 +377,42 @@ describe("onHealth", () => {
   });
 
   it("stops polling once the chain bootstrap completes", async () => {
-    enableHealthPolling();
-    const logCallback = await captureLogCallback();
-    await getRelayChain();
-    const sendJsonRpc = await relaySendJsonRpc();
+    enableHealthPolling(["relay"]);
+    const chain = await relayMock();
 
-    // Map the log target to the logical key, then finish bootstrap.
-    logCallback(4, "json-rpc-paseo", followReplyLine("relay"));
-    logCallback(4, "json-rpc-paseo", healthLine("relay", 1, 3));
-    logCallback(4, "json-rpc-paseo", followEventLine("bootstrapComplete"));
+    chain.push(FOLLOW_REPLY);
+    chain.push(healthReply(1, 3));
+    chain.push(followEvent("sub-1", "bootstrapComplete"));
+    await flush();
 
-    const sentBefore = healthCalls(sendJsonRpc).length;
-    vi.advanceTimersByTime(30_000);
-    expect(healthCalls(sendJsonRpc).length).toBe(sentBefore);
-  });
-
-  it("does not poll when polling was never enabled", async () => {
-    await captureLogCallback();
-    await getRelayChain();
-    const sendJsonRpc = await relaySendJsonRpc();
-    expect(healthCalls(sendJsonRpc)).toEqual([]);
+    const sentBefore = healthCalls(chain).length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(healthCalls(chain).length).toBe(sentBefore);
   });
 
   it("rejects malformed health payloads", async () => {
-    enableHealthPolling();
-    const logCallback = await captureLogCallback();
-    await getRelayChain();
+    enableHealthPolling(["relay"]);
+    const chain = await relayMock();
 
     const events: unknown[] = [];
     onHealth((event) => events.push(event));
     // peers is not an integer
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      responseLine({
+    chain.push(
+      JSON.stringify({
         jsonrpc: "2.0",
         id: "__dotli_health__:relay:1",
         result: { isSyncing: true, peers: "3" },
       }),
     );
-    // result missing (error response)
-    logCallback(
-      4,
-      "json-rpc-paseo",
-      responseLine({
+    // error response, no result
+    chain.push(
+      JSON.stringify({
         jsonrpc: "2.0",
         id: "__dotli_health__:relay:2",
         error: { code: -32000, message: "nope" },
       }),
     );
+    await flush();
 
     expect(events).toEqual([]);
   });

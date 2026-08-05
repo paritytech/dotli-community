@@ -172,6 +172,17 @@ body {
   text-align: center;
   min-height: 1.3em;
 }
+/* Screen-reader-only slot for one-shot loading announcements (stall and
+   recovery copy). The same text shows visually in .loading-detail, which
+   is aria-hidden to keep its per-second count out of the live queue. */
+.loading-announcer {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 /* Slow-step hint (shown below status when a step exceeds its threshold) */
 .loading-hint {
   font-size: 11px;

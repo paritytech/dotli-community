@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { LifecycleKind } from "@dotli/resolver/smoldot";
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
@@ -109,7 +111,7 @@ export interface ProtocolLifecycleEnvelope {
   namespace: "dotli:protocol";
   kind: "lifecycle";
   chain: string;
-  lifecycleKind: string;
+  lifecycleKind: LifecycleKind;
   reason?: string;
 }
 

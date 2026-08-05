@@ -687,8 +687,10 @@ async function initDirectMode(): Promise<void> {
     smoldotMod;
 
   // Peer-count polling is only worth the traffic when a loading UI can
-  // observe it. Direct mode is that case; the SharedWorker never enables it.
-  smoldotMod.enableHealthPolling();
+  // observe it. Direct mode is that case; the SharedWorker never enables
+  // it, and the host only renders the Asset Hub count, so only that chain
+  // polls.
+  smoldotMod.enableHealthPolling(["asset-hub"]);
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
   // mode has no SharedWorker in the loop, so we post straight up to the
