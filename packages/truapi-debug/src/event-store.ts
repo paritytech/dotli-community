@@ -60,7 +60,7 @@ export interface EventStoreConfig {
 type Listener = () => void;
 
 export class EventStore {
-  private readonly capacity: number;
+  readonly capacity: number;
   private readonly buf: StoredEvent[] = [];
   private paused = false;
   private nextSeq = 0;

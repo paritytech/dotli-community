@@ -17,7 +17,7 @@ function hexOf(bytes: Uint8Array, max: number): string {
   return `${toHex(preview)}${bytes.length > max ? "…" : ""}`;
 }
 
-function isUint8ArrayLike(v: unknown): v is Uint8Array {
+export function isUint8ArrayLike(v: unknown): v is Uint8Array {
   if (v instanceof Uint8Array) {
     return true;
   }

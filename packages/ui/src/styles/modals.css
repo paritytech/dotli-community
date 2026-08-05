@@ -20,6 +20,9 @@
   display: flex;
   opacity: 1;
 }
+.auth-modal-backdrop:focus-visible {
+  outline: none;
+}
 @starting-style {
   .auth-modal-backdrop.open {
     opacity: 0;

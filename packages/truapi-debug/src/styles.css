@@ -242,17 +242,26 @@
 .td-btn-icon {
   padding: 2px 8px;
 }
-.td-dock {
+.td-dock,
+.td-export,
+.td-copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #a3a3a3;
 }
-.td-dock:hover {
+.td-dock:hover,
+.td-export:hover,
+.td-copy:hover {
   color: #d4d4d4;
 }
-.td-dock svg {
+.td-dock svg,
+.td-export svg,
+.td-copy svg {
   display: block;
+}
+.td-btn:disabled {
+  cursor: default;
 }
 .td-close {
   background: none;
@@ -268,6 +277,7 @@
 
 .td-filters {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
@@ -314,11 +324,15 @@
   font: inherit;
   font-size: 11px;
   border-radius: 3px;
-  width: 200px;
+  width: 140px;
 }
 .td-input:focus {
   outline: none;
   border-color: #3b82f6;
+}
+.td-input.invalid,
+.td-input.invalid:focus {
+  border-color: #dc2626;
 }
 
 .td-body {

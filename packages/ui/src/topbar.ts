@@ -152,6 +152,11 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
+  modalBackdrop.setAttribute("role", "dialog");
+  modalBackdrop.setAttribute("aria-modal", "true");
+  modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
+  modalBackdrop.tabIndex = -1;
+
   // Auth button: opens modal (logged out) or popover (logged in)
   authButton.addEventListener("click", handleAuthButtonClick);
   authButton.removeAttribute("disabled");
@@ -626,6 +631,13 @@ function initPermissions(): void {
     "permissions-popover-backdrop",
   );
 
+  permissionsButton.setAttribute("aria-haspopup", "dialog");
+  permissionsButton.setAttribute("aria-expanded", "false");
+  permissionsButton.setAttribute("aria-controls", permissionsPopover.id);
+  permissionsPopover.setAttribute("role", "dialog");
+  permissionsPopover.setAttribute("aria-label", "Permissions");
+  permissionsPopover.tabIndex = -1;
+
   permissionsButton.addEventListener("click", () => {
     const willOpen = !permissionsPopover.classList.contains("open");
     setPermissionsPopoverOpen(willOpen);
@@ -726,6 +738,11 @@ function renderPermissionsPopover(): void {
 
 async function renderPermissionsPopoverAsync(token: number): Promise<void> {
   closeOpenDropdown();
+  // A re-render replaces the focused control. Remember it by id so focus
+  // can be restored below, keeping keyboard users anchored.
+  const prevFocusId = permissionsPopoverList.contains(document.activeElement)
+    ? (document.activeElement?.id ?? "")
+    : "";
   permissionsPopoverList.innerHTML = "";
 
   const productLabel = currentProductLabel;
@@ -763,11 +780,12 @@ async function renderPermissionsPopoverAsync(token: number): Promise<void> {
 
     const nameEl = document.createElement("span");
     nameEl.className = "permissions-popover-name";
+    nameEl.id = `permissions-popover-name-${perm.name}`;
     nameEl.textContent = perm.label;
     row.appendChild(nameEl);
 
     row.appendChild(
-      createPermissionDropdown(status, (next) => {
+      createPermissionDropdown(perm, status, (next) => {
         void (async () => {
           if (next === "ask") {
             await resetPermission(productLabel, perm.name);
@@ -798,9 +816,14 @@ async function renderPermissionsPopoverAsync(token: number): Promise<void> {
   footer.className = "permissions-popover-footer";
   footer.textContent = "Changing permissions will reload the app.";
   permissionsPopoverList.appendChild(footer);
+
+  if (prevFocusId !== "") {
+    document.getElementById(prevFocusId)?.focus();
+  }
 }
 
 function createPermissionDropdown(
+  perm: (typeof ALL_PERMISSIONS)[number],
   currentStatus: PermissionStatus,
   onChange: (status: PermissionStatus) => void,
 ): HTMLElement {
@@ -810,13 +833,22 @@ function createPermissionDropdown(
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "permissions-popover-select";
+  trigger.id = `permissions-popover-select-${perm.name}`;
   trigger.setAttribute("aria-haspopup", "listbox");
   trigger.setAttribute("aria-expanded", "false");
 
   const triggerLabel = document.createElement("span");
   triggerLabel.className = "permissions-popover-select-label";
+  triggerLabel.id = `permissions-popover-status-${perm.name}`;
   triggerLabel.textContent = STATUS_LABELS[currentStatus];
   trigger.appendChild(triggerLabel);
+
+  // Name the control "<permission> <status>" so screen readers announce
+  // which permission this select changes, not just its current value.
+  trigger.setAttribute(
+    "aria-labelledby",
+    `permissions-popover-name-${perm.name} ${triggerLabel.id}`,
+  );
 
   const caret = document.createElement("span");
   caret.className = "permissions-popover-select-caret";
@@ -839,6 +871,21 @@ function createPermissionDropdown(
     const menu = document.createElement("div");
     menu.className = "permissions-popover-menu";
     menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", `${perm.label} permission`);
+
+    menu.addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") {
+        return;
+      }
+      ev.preventDefault();
+      const options = Array.from(
+        menu.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+      );
+      const active = document.activeElement;
+      const index = options.findIndex((option) => option === active);
+      const step = ev.key === "ArrowDown" ? 1 : -1;
+      options[(index + step + options.length) % options.length].focus();
+    });
 
     for (const status of STATUS_ORDER) {
       const item = document.createElement("button");
@@ -872,6 +919,7 @@ function createPermissionDropdown(
 
     wrap.appendChild(menu);
     trigger.setAttribute("aria-expanded", "true");
+    menu.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
 
     function onDocClick(ev: MouseEvent): void {
       if (!wrap.contains(ev.target as Node)) {
@@ -887,10 +935,14 @@ function createPermissionDropdown(
     document.addEventListener("keydown", onKeyDown);
 
     openDropdownCleanup = (): void => {
+      const menuHadFocus = menu.contains(document.activeElement);
       menu.remove();
       trigger.setAttribute("aria-expanded", "false");
       document.removeEventListener("click", onDocClick);
       document.removeEventListener("keydown", onKeyDown);
+      if (menuHadFocus) {
+        trigger.focus();
+      }
     };
   });
 
@@ -904,6 +956,13 @@ function initModeToggle(): void {
   // Backdrop is optional. Older host shells that haven't added the element
   // still work, the popover just doesn't get a modal overlay there.
   modePopoverBackdrop = document.getElementById("mode-popover-backdrop");
+
+  modeButton.setAttribute("aria-haspopup", "dialog");
+  modeButton.setAttribute("aria-expanded", "false");
+  modeButton.setAttribute("aria-controls", modePopover.id);
+  modePopover.setAttribute("role", "dialog");
+  modePopover.setAttribute("aria-label", "Settings");
+  modePopover.tabIndex = -1;
 
   // Show the "trusted provider" indicator on the settings button whenever
   // the session is not fully verified, i.e. chain=rpc or content=gateway
@@ -925,6 +984,103 @@ function initModeToggle(): void {
   });
 }
 
+let modePopoverFocusTrap: (() => void) | null = null;
+let permissionsPopoverFocusTrap: (() => void) | null = null;
+let authModalFocusTrap: (() => void) | null = null;
+
+const FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "a[href]",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+/**
+ * Escape, Tab containment, and focus restore for an open popover. Same
+ * lifecycle as the permission dropdowns: attach on open, cleanup on close.
+ */
+function trapPopoverFocus(
+  popover: HTMLElement,
+  trigger: HTMLElement,
+  close: () => void,
+): () => void {
+  const focusables = (): HTMLElement[] =>
+    Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter(
+        // Match native tab order: unchecked radios are reached with arrow
+        // keys inside their group, not with Tab.
+        (el) =>
+          !(
+            el instanceof HTMLInputElement &&
+            el.type === "radio" &&
+            !el.checked
+          ),
+      )
+      .filter(
+        // Skip controls CSS hides, like the sheet close button on desktop.
+        (el) =>
+          typeof el.checkVisibility !== "function" || el.checkVisibility(),
+      );
+
+  function onKeyDown(ev: KeyboardEvent): void {
+    // A popover removed from the document without a close call must not
+    // keep acting on key events.
+    if (!popover.isConnected) {
+      return;
+    }
+    if (ev.key === "Escape") {
+      // An open permission dropdown consumes Escape first. Its own
+      // document handler closes it right after this one returns.
+      if (openDropdownCleanup === null) {
+        close();
+      }
+      return;
+    }
+    if (ev.key !== "Tab") {
+      return;
+    }
+    const items = focusables();
+    if (items.length === 0) {
+      ev.preventDefault();
+      popover.focus();
+      return;
+    }
+    const active = document.activeElement;
+    const inside = active instanceof HTMLElement && popover.contains(active);
+    if (ev.shiftKey) {
+      if (!inside || active === items[0] || active === popover) {
+        ev.preventDefault();
+        items[items.length - 1].focus();
+      }
+    } else if (!inside || active === items[items.length - 1]) {
+      ev.preventDefault();
+      items[0].focus();
+    }
+  }
+
+  document.addEventListener("keydown", onKeyDown);
+  popover.focus();
+
+  return () => {
+    document.removeEventListener("keydown", onKeyDown);
+    // Restore focus unless the user already moved it somewhere else,
+    // e.g. by clicking outside the popover to dismiss it.
+    const active = document.activeElement;
+    if (
+      active === null ||
+      active === document.body ||
+      popover.contains(active)
+    ) {
+      trigger.focus();
+      if (document.activeElement !== trigger) {
+        document.getElementById("more-button")?.focus();
+      }
+    }
+  };
+}
+
 /**
  * Single source of truth for popover open/close. Keeps the backdrop in
  * sync with the popover visibility so "the rest of the page is blocked
@@ -933,8 +1089,15 @@ function initModeToggle(): void {
 function setModePopoverOpen(open: boolean): void {
   modePopover.classList.toggle("open", open);
   modePopoverBackdrop?.classList.toggle("open", open);
+  modeButton.setAttribute("aria-expanded", String(open));
   if (open) {
     renderModePopover();
+    modePopoverFocusTrap ??= trapPopoverFocus(modePopover, modeButton, () => {
+      setModePopoverOpen(false);
+    });
+  } else {
+    modePopoverFocusTrap?.();
+    modePopoverFocusTrap = null;
   }
 }
 
@@ -946,9 +1109,19 @@ function setModePopoverOpen(open: boolean): void {
 function setPermissionsPopoverOpen(open: boolean): void {
   permissionsPopover.classList.toggle("open", open);
   permissionsPopoverBackdrop?.classList.toggle("open", open);
+  permissionsButton.setAttribute("aria-expanded", String(open));
   if (open) {
     renderPermissionsPopover();
+    permissionsPopoverFocusTrap ??= trapPopoverFocus(
+      permissionsPopover,
+      permissionsButton,
+      () => {
+        setPermissionsPopoverOpen(false);
+      },
+    );
   } else {
+    permissionsPopoverFocusTrap?.();
+    permissionsPopoverFocusTrap = null;
     closeOpenDropdown();
   }
 }
@@ -1027,6 +1200,8 @@ function renderModePopover(): void {
       },
     );
     const networkGroup = document.createElement("div");
+    networkGroup.setAttribute("role", "radiogroup");
+    networkGroup.setAttribute("aria-label", "Network");
     leftCol.appendChild(networkGroup);
     const rerenderNetwork = (): void => {
       networkGroup.innerHTML = "";
@@ -1040,6 +1215,11 @@ function renderModePopover(): void {
           (next) => {
             draft.network = next;
             rerenderNetwork();
+            // The rebuild replaced the focused input. Refocus the checked
+            // radio so keyboard arrow navigation survives the re-render.
+            networkGroup
+              .querySelector<HTMLInputElement>("input:checked")
+              ?.focus();
             syncApply();
           },
         );
@@ -1068,6 +1248,8 @@ function renderModePopover(): void {
     ],
   ];
   const chainGroup = document.createElement("div");
+  chainGroup.setAttribute("role", "radiogroup");
+  chainGroup.setAttribute("aria-label", "Backend");
   leftCol.appendChild(chainGroup);
   const sharedWorkerSupported = isSharedWorkerAvailable();
   const rerenderChain = (): void => {
@@ -1088,6 +1270,9 @@ function renderModePopover(): void {
         (next) => {
           draft.chain = next;
           rerenderChain();
+          // The rebuild replaced the focused input. Refocus the checked
+          // radio so keyboard arrow navigation survives the re-render.
+          chainGroup.querySelector<HTMLInputElement>("input:checked")?.focus();
           syncApply();
         },
       );
@@ -2016,6 +2201,7 @@ function renderCacheToggle(
 
   const toggle = document.createElement("button");
   toggle.setAttribute("role", "switch");
+  toggle.setAttribute("aria-label", label);
 
   const track = document.createElement("span");
   track.className = "permissions-toggle-track";
@@ -2083,6 +2269,8 @@ function openModal(
 
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
   modalBackdrop.classList.remove("open");
+  authModalFocusTrap?.();
+  authModalFocusTrap = null;
   currentQrPayload = null;
   modalQr.innerHTML = "";
   const scope = authModalScope;
@@ -2128,6 +2316,13 @@ function ensureAuthModalLease(): void {
           releaseAuthModal = finish;
           signal.addEventListener("abort", finish, { once: true });
           modalBackdrop.classList.add("open");
+          authModalFocusTrap ??= trapPopoverFocus(
+            modalBackdrop,
+            authButton,
+            () => {
+              closeModal();
+            },
+          );
         }),
     )
     .catch(() => {

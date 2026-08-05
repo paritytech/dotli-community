@@ -29,7 +29,9 @@ import {
 } from "./event-store.ts";
 import { EventStore } from "./event-store.ts";
 import type { DotliDebugBusEvent } from "./dotli-debug-bus.ts";
+import { buildExport, exportFilename, type ExportMeta } from "./export.ts";
 import {
+  compileQuery,
   initialFilterState,
   matches,
   type DirectionFilter,
@@ -242,12 +244,15 @@ interface PanelUI {
   counts: HTMLSpanElement;
   pauseBtn: HTMLButtonElement;
   clearBtn: HTMLButtonElement;
+  exportBtn: HTMLButtonElement;
+  copyBtn: HTMLButtonElement;
   dockBtn: HTMLButtonElement;
   collapseBtn: HTMLButtonElement;
   closeBtn: HTMLButtonElement;
   dirChips: Record<DirectionFilter, HTMLButtonElement>;
   productChipsContainer: HTMLDivElement;
   tagInput: HTMLInputElement;
+  excludeInput: HTMLInputElement;
   tabs: Record<PanelView, HTMLButtonElement>;
   list: HTMLDivElement;
   timeline: HTMLDivElement;
@@ -268,6 +273,8 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       <span class="td-spacer"></span>
       <button class="td-btn td-pause" type="button">Pause</button>
       <button class="td-btn td-clear" type="button">Clear</button>
+      <button class="td-btn td-btn-icon td-export" type="button" title="Download as JSON" aria-label="Download as JSON">${EXPORT_ICON_SVG}</button>
+      <button class="td-btn td-btn-icon td-copy" type="button" title="Copy to clipboard" aria-label="Copy to clipboard">${COPY_ICON_SVG}</button>
       <button class="td-btn td-btn-icon td-dock" type="button" title="Dock to right" aria-label="Dock to right"></button>
       <button class="td-btn td-btn-icon td-collapse" type="button" title="Collapse">▼</button>
       <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)">×</button>
@@ -289,8 +296,12 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
         <div class="td-product-chips"></div>
       </div>
       <div class="td-filter-group">
-        <span class="td-filter-label">tag</span>
-        <input class="td-input td-tag-input" type="search" placeholder="filter by method…" spellcheck="false" autocomplete="off" />
+        <span class="td-filter-label">include</span>
+        <input class="td-input td-tag-input" type="search" placeholder="filter by method…" title="substring or /regex/" spellcheck="false" autocomplete="off" />
+      </div>
+      <div class="td-filter-group">
+        <span class="td-filter-label">exclude</span>
+        <input class="td-input td-exclude-input" type="search" placeholder="hide by method…" title="substring or /regex/" spellcheck="false" autocomplete="off" />
       </div>
     </div>
     <div class="td-body">
@@ -320,6 +331,8 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
     counts: panel.querySelector(".td-counts") as HTMLSpanElement,
     pauseBtn: panel.querySelector(".td-pause") as HTMLButtonElement,
     clearBtn: panel.querySelector(".td-clear") as HTMLButtonElement,
+    exportBtn: panel.querySelector(".td-export") as HTMLButtonElement,
+    copyBtn: panel.querySelector(".td-copy") as HTMLButtonElement,
     dockBtn: panel.querySelector(".td-dock") as HTMLButtonElement,
     collapseBtn: panel.querySelector(".td-collapse") as HTMLButtonElement,
     closeBtn: panel.querySelector(".td-close") as HTMLButtonElement,
@@ -338,6 +351,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       ".td-product-chips",
     ) as HTMLDivElement,
     tagInput: panel.querySelector(".td-tag-input") as HTMLInputElement,
+    excludeInput: panel.querySelector(".td-exclude-input") as HTMLInputElement,
     tabs: {
       list: panel.querySelector(
         '.td-tab[data-view="list"]',
@@ -366,6 +380,54 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   return ui;
 }
 
+const COPY_FLASH_MS = 1200;
+
+// Lucide glyphs, inlined like the dock icons below.
+const EXPORT_ICON_SVG = `
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15V3"/>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <path d="m7 10 5 5 5-5"/>
+  </svg>
+`;
+const COPY_ICON_SVG = `
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+  </svg>
+`;
+
+/** Exports carry the filtered view — what the user currently sees. */
+function buildFilteredExportJson(state: PanelState, store: EventStore): string {
+  const all = store.list();
+  const events = all.filter((e) => matches(e, state.filters));
+  const meta: ExportMeta = {
+    exportedAt: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+    capacity: store.capacity,
+    droppedCount: store.dropped(),
+    totalEvents: all.length,
+    exportedEvents: events.length,
+    filters: state.filters,
+  };
+  return buildExport(events, meta);
+}
+
+/** Swap a button's content for a moment, disabled while it shows.
+ *  Callers that flash after awaiting a promise must disable the button
+ *  synchronously at click time, or a rapid second click could capture
+ *  the flashed content as the "original" to restore. */
+function flashButton(btn: HTMLButtonElement, html: string): void {
+  const original = btn.innerHTML;
+  btn.innerHTML = html;
+  btn.disabled = true;
+  window.setTimeout(() => {
+    btn.innerHTML = original;
+    btn.disabled = false;
+  }, COPY_FLASH_MS);
+}
+
 function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
   ui.pauseBtn.addEventListener("click", () => {
     const paused = !store.isPaused();
@@ -381,6 +443,42 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     // pane, so without this the previously-selected event's body
     // would linger after clear.
     renderDetail(ui, state, store);
+  });
+  ui.exportBtn.addEventListener("click", () => {
+    const json = buildFilteredExportJson(state, store);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportFilename(new Date());
+    // Attach before clicking and revoke on the next tick — Safari can
+    // silently abort the download otherwise.
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 0);
+  });
+  ui.copyBtn.addEventListener("click", () => {
+    // Disabled synchronously: see flashButton's doc comment.
+    ui.copyBtn.disabled = true;
+    // Typed as always present, but absent on non-secure origins
+    // (Clipboard API is [SecureContext]-only).
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    if (!clipboard) {
+      flashButton(ui.copyBtn, "✕");
+      return;
+    }
+    const json = buildFilteredExportJson(state, store);
+    clipboard.writeText(json).then(
+      () => {
+        flashButton(ui.copyBtn, "✓");
+      },
+      () => {
+        flashButton(ui.copyBtn, "✕");
+      },
+    );
   });
   ui.collapseBtn.addEventListener("click", () => {
     state.collapsed = !state.collapsed;
@@ -474,6 +572,18 @@ function wireFilters(ui: PanelUI, state: PanelState, store: EventStore): void {
   }
   ui.tagInput.addEventListener("input", () => {
     state.filters.tagQuery = ui.tagInput.value;
+    ui.tagInput.classList.toggle(
+      "invalid",
+      compileQuery(ui.tagInput.value).invalid,
+    );
+    render(ui, state, store, { fullList: true });
+  });
+  ui.excludeInput.addEventListener("input", () => {
+    state.filters.excludeQuery = ui.excludeInput.value;
+    ui.excludeInput.classList.toggle(
+      "invalid",
+      compileQuery(ui.excludeInput.value).invalid,
+    );
     render(ui, state, store, { fullList: true });
   });
   for (const cb of Array.from(
@@ -997,7 +1107,7 @@ function filterFingerprint(state: PanelState): string {
     state.filters.product === null
       ? "__null"
       : (state.filters.product ?? "__undef");
-  return `${state.filters.direction}|${product}|${state.filters.tagQuery.trim().toLowerCase()}`;
+  return `${state.filters.direction}|${product}|${state.filters.tagQuery.trim().toLowerCase()}|${state.filters.excludeQuery.trim().toLowerCase()}`;
 }
 
 function renderList(

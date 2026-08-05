@@ -378,6 +378,15 @@
 [data-theme="light"] .landing-recent-label {
   color: #555;
 }
+[data-theme="light"] .landing-recent-remove {
+  background: #e4e4e4;
+  border-color: #fff;
+  color: #555;
+}
+[data-theme="light"] .landing-recent-remove:hover {
+  background: #d0d0d0;
+  color: #111;
+}
 
 [data-theme="light"] .permissions-popover-header {
   color: rgba(0, 0, 0, 0.5);
