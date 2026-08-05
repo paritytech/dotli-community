@@ -148,12 +148,13 @@ export function advancePhase(index: number): void {
  *
  * This is deliberately not `#status`. The value changes every second or two
  * during sync and `#status` is a live region, so routing it there would
- * queue a screen-reader announcement per change. The detail element is
- * aria-hidden and never touches the slow-hint timer.
+ * queue a screen-reader announcement per change. The detail element carries
+ * no live region of its own, which leaves it readable on demand but never
+ * announced, and it never touches the slow-hint timer.
  *
- * Pass `announce` for the state changes a screen-reader user should hear,
- * such as stall and recovery copy. Those mirror once into a visually hidden
- * polite region, leaving the per-second count silent.
+ * Pass `announce` for the changes worth interrupting a screen-reader user
+ * for, such as the first peer count and the stall and recovery copy. Those
+ * mirror once into a visually hidden polite region.
  */
 export function setStatusDetail(
   detail: string,

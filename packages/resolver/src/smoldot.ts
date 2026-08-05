@@ -271,6 +271,18 @@ function smoldotLogCallback(
     return;
   }
 
+  // Only warnings and errors describe a problem. Everything below that is
+  // smoldot's structured operational logging, and the patterns below match
+  // substrings anywhere in a line, including inside key-value payloads. A
+  // successful `handshake-finished` matched "handshake", a routine
+  // `connection-activity` matched "closed" through its `write_closed=`
+  // field, and `foreground-runtime-call-start` matched too. All three
+  // reached the user as "Bootnode connection issue, <200 chars of smoldot
+  // internals>" in the loading headline on a normal cold start.
+  if (level > 2) {
+    return;
+  }
+
   // Only surface connection-related messages
   const lower = message.toLowerCase();
   const isConnectionIssue =

@@ -205,10 +205,8 @@
   color: #1a1a1a;
 }
 [data-theme="light"] .loading-hint {
-  color: #b45309;
-}
-[data-theme="light"] .loading-hint.visible {
-  opacity: 0.9;
+  /* 6.50:1, where #b45309 was 4.61:1 before the fade and 3.92:1 after. */
+  color: #92400e;
 }
 [data-theme="light"] .loading-gateway-btn {
   border-color: rgba(0, 0, 0, 0.16);
@@ -231,7 +229,9 @@
   background: rgba(0, 0, 0, 0.06);
 }
 [data-theme="light"] .loading-progress-fill {
-  background: rgba(0, 0, 0, 0.35);
+  /* The fill is the state indicator, so it needs 3:1 as a non-text
+     component. 0.35 gave 2.43:1 against the page; 0.5 gives 3.88:1. */
+  background: rgba(0, 0, 0, 0.5);
 }
 /* Loading logo — dark-mode uses `fill: #fff` on the petals, which is
    invisible on the light-theme cream body. Flip to near-black so the
@@ -240,14 +240,16 @@
   fill: #111;
 }
 [data-theme="light"] .loading-progress-pct {
-  color: #333;
+  /* 4.89:1, and kept below the detail line so the ranking survives the
+     flip. #333 would clear AA too, but it would outrank the headline's
+     own secondary line. */
+  color: #6b6b6b;
 }
-/* Same flip as `#status`: the base rule is `#fff`, which is invisible on the
-   light-theme background. The detail line tracks the headline's colour rather
-   than the percentage's — it carries the stall copy, which is the one message
-   that has to survive a light background. */
+/* Same flip as `#status`. The detail line sits between the headline and the
+   percentage, because it carries the stall copy, which is the one message
+   that has to survive a light background. 7.17:1. */
 [data-theme="light"] .loading-detail {
-  color: #1a1a1a;
+  color: #525252;
 }
 [data-theme="light"] .spinner {
   border-color: #ddd;

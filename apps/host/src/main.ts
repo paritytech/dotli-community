@@ -1222,8 +1222,12 @@ async function main(): Promise<void> {
         case "peers":
           if (event.chain === "asset-hub") {
             const count = event.peers ?? 0;
+            const first = peerDetail === "";
             peerDetail = `${String(count)} ${count === 1 ? "peer" : "peers"}`;
-            setStatusDetail(peerDetail);
+            // Announce that peers were found, once. Every later tick is a
+            // silent visual update, so the count stays readable without
+            // queueing an announcement per second.
+            setStatusDetail(peerDetail, { announce: first });
           }
           return;
         case "stalled":
