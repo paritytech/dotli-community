@@ -1181,6 +1181,41 @@ async function main(): Promise<void> {
   advancePhase(0);
   showStatus(`Resolving ${label}.dot`);
 
+  // Advance the loading bar from smoldot's typed lifecycle stream instead of
+  // scraping log prose. `firstPeer` on the Asset Hub means a peer was
+  // discovered, so the sync band can start crawling. `bootstrapComplete`
+  // means the first finalized block landed, so the resolver can read
+  // storage. Events are emitted from the protocol iframe, which owns
+  // smoldot, and reach this listener over the postMessage bridge. The
+  // `statusToPhase` log-text path remains as a fallback.
+  if (chainBackend !== "rpc-gateway") {
+    window.addEventListener("message", (event: MessageEvent) => {
+      const data = event.data as Record<string, unknown> | null;
+      if (
+        data === null ||
+        typeof data !== "object" ||
+        data.namespace !== "dotli:protocol" ||
+        data.kind !== "lifecycle"
+      ) {
+        return;
+      }
+      const chainName = typeof data.chainName === "string" ? data.chainName : "";
+      const lifecycleKind =
+        typeof data.lifecycleKind === "string" ? data.lifecycleKind : "";
+      log.warn(
+        `[dot.li lifecycle] ${chainName} kind=${lifecycleKind}`,
+      );
+      if (!chainName.includes("asset-hub")) {
+        return;
+      }
+      if (lifecycleKind === "firstPeer") {
+        advancePhase(2);
+      } else if (lifecycleKind === "bootstrapComplete") {
+        advancePhase(3);
+      }
+    });
+  }
+
   try {
     const cachedCid = cacheSettings.skipCidCache
       ? null

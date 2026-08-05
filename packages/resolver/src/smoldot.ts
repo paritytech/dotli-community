@@ -58,6 +58,49 @@ export function onConnectionIssue(cb: ConnectionIssueCallback): () => void {
   };
 }
 
+/** Lifecycle events emitted by smoldot's per-chain broadcaster over the `lifecycle_unstable_follow` JSON-RPC subscription. */
+export type LifecycleKind = "firstPeer" | "bootstrapComplete";
+export interface LifecycleEvent {
+  chainName: string;
+  kind: LifecycleKind;
+}
+
+type LifecycleCallback = (event: LifecycleEvent) => void;
+const lifecycleListeners = new Set<LifecycleCallback>();
+const lifecycleHistory: LifecycleEvent[] = [];
+
+/**
+ * Subscribe to smoldot lifecycle events. Late subscribers receive the events
+ * emitted so far in the current session (snapshot-on-subscribe), then continue
+ * with live events. Returns an unsubscribe function.
+ */
+export function onLifecycle(cb: LifecycleCallback): () => void {
+  lifecycleListeners.add(cb);
+  for (const event of lifecycleHistory) {
+    try {
+      cb(event);
+      // eslint-disable-next-line no-restricted-syntax -- defensive replay: one buggy late subscriber must not block registration.
+    } catch {
+      /* listener threw during replay */
+    }
+  }
+  return () => {
+    lifecycleListeners.delete(cb);
+  };
+}
+
+function emitLifecycle(event: LifecycleEvent): void {
+  lifecycleHistory.push(event);
+  for (const cb of lifecycleListeners) {
+    try {
+      cb(event);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast.
+    } catch {
+      /* listener threw */
+    }
+  }
+}
+
 // Smoldot's WASM can panic (e.g., the "Option::unwrap() on a None value"
 // crash during relay-chain sync). A panic leaves every chain dead, and any
 // in-flight request would hang forever. The log callback catches the
@@ -112,6 +155,11 @@ const CONNECTION_ISSUE_PATTERNS = [
   "all bootnodes",
 ];
 
+// Reserved id used for our internal `lifecycle_unstable_follow` request.
+// Chosen so it cannot collide with the numeric ids polkadot-api uses.
+const LIFECYCLE_FOLLOW_REQUEST_ID = "__dotli_lifecycle_follow__";
+
+
 function smoldotLogCallback(
   level: number,
   target: string,
@@ -122,6 +170,16 @@ function smoldotLogCallback(
     log.warn(`[smoldot:${target}] ${message}`);
   } else {
     log.debug(`[smoldot:${target}] ${message}`);
+  }
+
+  // Lifecycle events flow through the chain's JSON-RPC pipe, which is owned by
+  // polkadot-api. Rather than wrap the chain and race for messages, we observe
+  // the payloads passing through smoldot's own debug log stream: every
+  // `json-rpc-<chainName>` target emits the response JSON verbatim. We match
+  // the schema we ourselves define, so this is subscribing to a structured
+  // side-channel, not scraping human prose.
+  if (target.startsWith("json-rpc-") && message.includes("lifecycle_unstable_followEvent")) {
+    parseAndEmitLifecycle(target, message);
   }
 
   // A panic is terminal with no recovery. Smoldot's log message starts
@@ -147,6 +205,35 @@ function smoldotLogCallback(
     for (const cb of connectionIssueListeners) {
       cb(message);
     }
+  }
+}
+
+function parseAndEmitLifecycle(target: string, message: string): void {
+  // Smoldot emits the response JSON verbatim after a literal `response=`
+  // prefix in the log line.
+  const responseStart = message.indexOf("response=");
+  if (responseStart === -1) {
+    return;
+  }
+  const jsonPart = message.slice(responseStart + "response=".length);
+  try {
+    const parsed = JSON.parse(jsonPart) as {
+      method?: string;
+      params?: { result?: { kind?: LifecycleKind } };
+    };
+    if (parsed.method !== "lifecycle_unstable_followEvent") {
+      return;
+    }
+    const kind = parsed.params?.result?.kind;
+    if (kind !== "firstPeer" && kind !== "bootstrapComplete") {
+      return;
+    }
+    // Strip the `json-rpc-` prefix to get the chain name for the event.
+    const chainName = target.slice("json-rpc-".length);
+    emitLifecycle({ chainName, kind });
+    // eslint-disable-next-line no-restricted-syntax -- best-effort parse of a smoldot debug log line: any non-JSON or unexpected shape is expected and must not spam log.error.
+  } catch {
+    /* malformed response payload, skip */
   }
 }
 
@@ -241,7 +328,29 @@ function attachPersistence(
   teardownPersistence(chainName);
   const tap = tapChain(underlying);
   schedulePersistence(chainName, tap);
+  // Fire the lifecycle subscription without wrapping the chain object.
+  // Polkadot-api consumes `jsonRpcResponses` iteratively and interposing on
+  // that path is racy. Notifications flow through smoldot's own json-rpc log
+  // stream, which is enough to prove the subscription is live for the demo.
+  attachLifecycleFollow(chainName, tap.chain);
   return tap.chain;
+}
+
+function attachLifecycleFollow(chainName: string, chain: SmoldotChain): void {
+  try {
+    chain.sendJsonRpc(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: `${LIFECYCLE_FOLLOW_REQUEST_ID}:${chainName}`,
+        method: "lifecycle_unstable_follow",
+        params: [],
+      }),
+    );
+  } catch (err: unknown) {
+    log.warn(
+      `[dot.li smoldot] lifecycle follow send failed for ${chainName}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 /**

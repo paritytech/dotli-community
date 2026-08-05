@@ -683,7 +683,7 @@ async function initDirectMode(): Promise<void> {
     setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
-  const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
+  const { terminateSmoldot, onSmoldotFatal, onLifecycle } = smoldotMod;
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
   // mode has no SharedWorker in the loop, so we post straight up to the
@@ -700,6 +700,24 @@ async function initDirectMode(): Promise<void> {
         "*",
       );
     }
+  });
+
+  // Forward smoldot lifecycle events to the host shell so the loading bar can
+  // advance on real sync signals instead of on log-scraped prose. This iframe
+  // owns the smoldot instance. The host has no direct handle on it.
+  onLifecycle((event) => {
+    if (window.parent === window) {
+      return;
+    }
+    window.parent.postMessage(
+      {
+        namespace: "dotli:protocol",
+        kind: "lifecycle",
+        chainName: event.chainName,
+        lifecycleKind: event.kind,
+      },
+      "*",
+    );
   });
 
   const engine = createEngine({

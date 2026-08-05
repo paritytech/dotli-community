@@ -46,7 +46,8 @@ export type {
 } from "./access-raw-storage";
 export { statusToPhase } from "./access-raw-storage";
 export { getSmoldot, getSmoldotDirect, getRelayChain } from "./smoldot";
-export { onConnectionIssue } from "./smoldot";
+export { onConnectionIssue, onLifecycle } from "./smoldot";
+export type { LifecycleEvent, LifecycleKind } from "./smoldot";
 
 let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
