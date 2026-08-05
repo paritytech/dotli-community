@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { LifecycleKind } from "@dotli/resolver/smoldot";
+import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -102,30 +102,19 @@ export interface ProtocolInitFailedEnvelope {
 }
 
 /**
- * Unsolicited broadcast of a smoldot lifecycle event observed inside the
- * protocol iframe. `chain` is the resolver's logical chain key ("relay",
- * "asset-hub", "bulletin", "people", "custom-relay"), not smoldot's
- * internal chain id. Drives the host loading bar.
+ * Unsolicited broadcast of what a chain reports about its own sync.
+ *
+ * Drives the host loading screen: milestones move the bar, peer counts feed
+ * the detail line under it. Stops arriving once the chain is ready.
  */
-export interface ProtocolLifecycleEnvelope {
+export interface ProtocolChainSyncEnvelope {
   namespace: "dotli:protocol";
-  kind: "lifecycle";
-  chain: string;
-  lifecycleKind: LifecycleKind;
+  kind: "chain-sync";
+  chain: ChainKey;
+  syncKind: ChainSyncKind;
   reason?: string;
-}
-
-/**
- * Unsolicited broadcast of a chain's `system_health` sample observed inside
- * the protocol iframe. Emitted only while health polling runs (chain
- * bootstrap). Drives the live peer count on the host loading screen.
- */
-export interface ProtocolHealthEnvelope {
-  namespace: "dotli:protocol";
-  kind: "health";
-  chain: string;
-  peers: number;
-  isSyncing: boolean;
+  peers?: number;
+  isSyncing?: boolean;
 }
 
 // Unsolicited notification from the host iframe to its parent window when a
@@ -151,8 +140,7 @@ export type ProtocolEnvelope =
   | ProtocolReadyEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
-  | ProtocolLifecycleEnvelope
-  | ProtocolHealthEnvelope
+  | ProtocolChainSyncEnvelope
   | ProtocolAuthStorageChangedEnvelope;
 
 const VALID_KINDS = new Set([
@@ -164,8 +152,7 @@ const VALID_KINDS = new Set([
   "ready",
   "fatal",
   "init-failed",
-  "lifecycle",
-  "health",
+  "chain-sync",
   "auth-storage-changed",
 ]);
 

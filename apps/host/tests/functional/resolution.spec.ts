@@ -37,7 +37,7 @@ test.describe("Resolution across chain backends", () => {
     });
   }
 
-  test(`As a user opening ${DOMAIN}.dot via smoldot-direct, the shell receives live peer counts while syncing`, async ({
+  test(`As a user opening ${DOMAIN}.dot, I am told how many peers the light client found while it syncs`, async ({
     browser,
   }) => {
     // Given
@@ -46,10 +46,10 @@ test.describe("Resolution across chain backends", () => {
     });
 
     try {
-      // Record health envelopes as they reach the host window. On a fast
-      // bootstrap the rendered "N peers" line can appear and clear between
-      // polls, so the envelope is the reliable signal; the visible text is
-      // accepted as an alternative when the sync window is long enough.
+      // Record the counts as they reach the shell. On a fast bootstrap the
+      // rendered "N peers" line can appear and clear between polls, so the
+      // count itself is the reliable signal. The visible text is accepted
+      // as an alternative when the sync window is long enough to show it.
       await page.addInitScript(() => {
         const seen: unknown[] = [];
         (
@@ -76,8 +76,7 @@ test.describe("Resolution across chain backends", () => {
       // When
       await page.goto(BASE_URL, { waitUntil: "commit" });
 
-      // Then: a live peer count flows to the shell during bootstrap, and
-      // resolution still completes.
+      // Then
       const sawPeers = page.waitForFunction(
         () => {
           const seen = (window as unknown as { __dotliHealthSeen?: unknown[] })

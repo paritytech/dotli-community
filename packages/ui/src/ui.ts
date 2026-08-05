@@ -47,6 +47,8 @@ let currentPhase = -1;
 // Progress bar state
 let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
+let statusDetailEl: HTMLElement | null = null;
+let statusAnnouncerEl: HTMLElement | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
 let crawlStep = 0;
@@ -101,6 +103,8 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
+  statusDetailEl = document.getElementById("loading-detail");
+  statusAnnouncerEl = document.getElementById("loading-announcer");
 }
 
 /**
@@ -140,37 +144,31 @@ export function advancePhase(index: number): void {
 }
 
 /**
- * Current phase index, -1 before the first `advancePhase`. Lets callers
- * suppress signals that describe a phase the bar has already passed.
- */
-export function getCurrentPhase(): number {
-  return currentPhase;
-}
-
-/**
- * Live detail line under the status headline (e.g. "3 peers"). Deliberately
- * separate from `#status`: this value changes every second or two during
- * sync, and `#status` is aria-live, so routing it there would queue a
- * screen-reader announcement per change. The detail element is aria-hidden
- * and never touches the slow-hint timer.
+ * Write the live detail line under the status headline, e.g. "3 peers".
  *
- * `announce` mirrors the text once into the visually hidden polite region,
- * for state changes a screen-reader user should hear (stall and recovery
- * copy) without the per-second count spam.
+ * This is deliberately not `#status`. The value changes every second or two
+ * during sync and `#status` is a live region, so routing it there would
+ * queue a screen-reader announcement per change. The detail element is
+ * aria-hidden and never touches the slow-hint timer.
+ *
+ * Pass `announce` for the state changes a screen-reader user should hear,
+ * such as stall and recovery copy. Those mirror once into a visually hidden
+ * polite region, leaving the per-second count silent.
  */
 export function setStatusDetail(
   detail: string,
   opts: { announce?: boolean } = {},
 ): void {
-  const el = document.getElementById("loading-detail");
-  if (el !== null) {
-    el.textContent = detail;
+  if (statusDetailEl !== null) {
+    statusDetailEl.textContent = detail;
   }
-  if (opts.announce === true && detail !== "") {
-    const announcer = document.getElementById("loading-announcer");
-    if (announcer !== null && announcer.textContent !== detail) {
-      announcer.textContent = detail;
-    }
+  if (
+    opts.announce === true &&
+    detail !== "" &&
+    statusAnnouncerEl !== null &&
+    statusAnnouncerEl.textContent !== detail
+  ) {
+    statusAnnouncerEl.textContent = detail;
   }
 }
 
@@ -316,7 +314,16 @@ function clearSlowWarning(): void {
  * Replaces the previous message in place. No new DOM elements are created.
  * Schedules a slow-step hint if the step exceeds its time threshold.
  */
-export function showStatus(message: string): void {
+export function showStatus(
+  message: string,
+  opts: { phase?: number } = {},
+): void {
+  // Callers that know which phase a message describes pass it, so prose
+  // about a step the bar already passed is dropped instead of flipping the
+  // headline backwards. `advancePhase` enforces the same rule for the bar.
+  if (opts.phase !== undefined && opts.phase < currentPhase) {
+    return;
+  }
   const status = document.getElementById("status");
   if (status !== null) {
     status.textContent = message;

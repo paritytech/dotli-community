@@ -31,7 +31,6 @@ import {
   showLanding,
   initPhases,
   advancePhase,
-  getCurrentPhase,
   setStatusDetail,
   stopStatusTick,
   listenForSandboxStatus,
@@ -46,8 +45,7 @@ import {
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
-  onProtocolHealth,
-  onProtocolLifecycle,
+  onProtocolChainSync,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -71,6 +69,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
+import type { ResolvePhase } from "@dotli/resolver/access-raw-storage";
 import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
@@ -1158,6 +1157,16 @@ async function main(): Promise<void> {
   // peers) cap at the band top and let the sheen carry motion rather than
   // inflating the pace. Both smoldot backends share one model. See
   // `advancePhase` mapping below.
+  // Resolver status strings map onto the smoldot phase bands above.
+  // `asset-hub-connecting` is ~0ms (just createClient), so it shares the
+  // Syncing band rather than taking a slice that moves the bar for no work.
+  const PHASE_INDEX: Partial<Record<ResolvePhase, number>> = {
+    "relay-chain-adding": 1,
+    "asset-hub-connecting": 2,
+    "asset-hub-syncing": 2,
+    "asset-hub-ready": 2,
+    "resolving-content": 3,
+  };
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
     { label: startLabel, base: 2, target: 6, expectedMs: 650 },
     { label: "Adding relay chain", base: 6, target: 10, expectedMs: 120 },
@@ -1199,58 +1208,54 @@ async function main(): Promise<void> {
   // lives in the SharedWorker, which does not forward lifecycle or health
   // yet, and the gateway has no smoldot at all.
   if (chainBackend === "smoldot-direct") {
-    // Only the chains on the resolution critical path may drive the UI.
-    // Bulletin, People, and the custom relay sync in the background; a
-    // stall there is not what the user is waiting on.
-    const uiChains = new Set(["relay", "asset-hub"]);
     let peerDetail = "";
-    // Once the Asset Hub bootstrap completes, the sync detail is over:
-    // an in-flight health response or a late background stall must not
+    // Once the Asset Hub bootstrap completes the sync detail is over. A
+    // peer count still in flight, or a late stall on the relay, must not
     // resurrect it under "Resolving".
     let syncDetailDone = false;
-    onProtocolHealth((event) => {
-      if (syncDetailDone || event.chain !== "asset-hub") {
+    onProtocolChainSync((event) => {
+      log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
+      if (syncDetailDone) {
         return;
       }
-      peerDetail = `${String(event.peers)} ${event.peers === 1 ? "peer" : "peers"}`;
-      setStatusDetail(peerDetail);
-    });
-    onProtocolLifecycle((event) => {
-      log.debug(
-        `[dot.li lifecycle] ${event.chain} kind=${event.lifecycleKind}`,
-      );
-      if (!uiChains.has(event.chain)) {
-        return;
-      }
-      if (event.lifecycleKind === "stalled" && !syncDetailDone) {
-        // No trailing ellipsis: the headline already ends in one, and the
-        // spinner and bar sheen carry "in progress". Lowercase and
-        // terminal-punctuation-free to match the "2 peers" readout this line
-        // alternates with.
-        setStatusDetail(
-          event.reason === "noPeers"
-            ? "searching for peers"
-            : "syncing, no progress yet",
-          { announce: true },
-        );
-        return;
-      }
-      if (event.lifecycleKind === "recovered" && !syncDetailDone) {
-        setStatusDetail(peerDetail, { announce: true });
-        return;
-      }
-      if (event.chain !== "asset-hub") {
-        return;
-      }
-      if (event.lifecycleKind === "firstPeer") {
-        advancePhase(2);
-      } else if (event.lifecycleKind === "bootstrapComplete") {
-        advancePhase(3);
-        // The count is meaningless once sync is done; clear rather than
-        // letting a stale number sit under "Resolving".
-        syncDetailDone = true;
-        peerDetail = "";
-        setStatusDetail("");
+      switch (event.syncKind) {
+        case "peers":
+          if (event.chain === "asset-hub") {
+            const count = event.peers ?? 0;
+            peerDetail = `${String(count)} ${count === 1 ? "peer" : "peers"}`;
+            setStatusDetail(peerDetail);
+          }
+          return;
+        case "stalled":
+          // No trailing ellipsis: the headline already ends in one, and the
+          // spinner and bar sheen carry "in progress". Lowercase and
+          // terminal-punctuation-free to match the "2 peers" readout this
+          // line alternates with.
+          setStatusDetail(
+            event.reason === "noPeers"
+              ? "searching for peers"
+              : "syncing, no progress yet",
+            { announce: true },
+          );
+          return;
+        case "recovered":
+          setStatusDetail(peerDetail, { announce: true });
+          return;
+        case "firstPeer":
+          if (event.chain === "asset-hub") {
+            advancePhase(2);
+          }
+          return;
+        case "bootstrapComplete":
+          if (event.chain === "asset-hub") {
+            advancePhase(3);
+            // The count is meaningless once sync is done. Clear it rather
+            // than letting a stale number sit under "Resolving".
+            syncDetailDone = true;
+            peerDetail = "";
+            setStatusDetail("");
+          }
+          return;
       }
     });
   }
@@ -1372,30 +1377,16 @@ async function main(): Promise<void> {
           // mapping from status text to ResolvePhase, so we defer to it
           // instead of maintaining a parallel regex here.
           const phase = statusToPhase(msg);
-          // `asset-hub-connecting` is ~0ms (just createClient), so it shares
-          // the Syncing band rather than getting a slice that makes the bar
-          // jump for no work.
-          const mappedPhase =
-            phase === "relay-chain-adding"
-              ? 1
-              : phase === "asset-hub-connecting" ||
-                  phase === "asset-hub-syncing" ||
-                  phase === "asset-hub-ready"
-                ? 2
-                : phase === "resolving-content"
-                  ? 3
-                  : null;
-          if (mappedPhase !== null) {
+          const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
+          if (mappedPhase !== undefined) {
             advancePhase(mappedPhase);
           }
           emitPhase(msg, phase ?? "progress");
-          // Lifecycle events usually outrun these status strings. Prose
-          // describing a phase the bar has already passed must not flip
-          // the headline backwards; unmapped messages (bootnode issues,
-          // not-found notices) always show.
-          if (mappedPhase === null || mappedPhase >= getCurrentPhase()) {
-            showStatus(msg);
-          }
+          // Sync milestones usually outrun these status strings, so pass
+          // the phase and let `showStatus` drop prose describing a step the
+          // bar already passed. Unmapped messages such as bootnode issues
+          // and not-found notices carry no phase and always show.
+          showStatus(msg, { phase: mappedPhase });
         };
         cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
         if (cid === null) {

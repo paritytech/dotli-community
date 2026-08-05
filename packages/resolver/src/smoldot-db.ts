@@ -165,19 +165,22 @@ export interface ChainDbTap {
   isStopped(): boolean;
 }
 
-/**
- * Response interceptor for traffic the resolver injects on the chain's
- * JSON-RPC pipe (lifecycle follow, health polls). Called for every parsed
- * response before it is forwarded to the chain's regular consumer. Return
- * `true` to consume the message: polkadot-api never sees it, which keeps
- * its provider free of ids and subscriptions it did not create.
- */
-export type TapIntercept = (parsed: {
+/** The fields of a JSON-RPC frame the tap itself looks at. */
+interface ParsedRpcMessage {
   id?: unknown;
   method?: unknown;
   result?: unknown;
   params?: unknown;
-}) => boolean;
+}
+
+/**
+ * Claims responses to requests the resolver injected on the chain's pipe.
+ *
+ * Called for every parsed response before it reaches the chain's regular
+ * consumer. Returning `true` consumes the message, which keeps
+ * polkadot-api's provider free of ids and subscriptions it never created.
+ */
+export type TapIntercept = (parsed: ParsedRpcMessage) => boolean;
 
 interface ExternalWaiter {
   resolve: (s: string) => void;
@@ -233,12 +236,7 @@ export function tapChain(
         return;
       }
       try {
-        const parsed = JSON.parse(raw) as {
-          id?: unknown;
-          method?: unknown;
-          result?: unknown;
-          params?: unknown;
-        };
+        const parsed = JSON.parse(raw) as ParsedRpcMessage;
         if (
           typeof parsed.id === "string" &&
           parsed.id.startsWith(REQUEST_ID_PREFIX)

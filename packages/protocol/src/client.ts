@@ -13,7 +13,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-import type { LifecycleKind } from "@dotli/resolver/smoldot";
+import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
   getActiveGatewaySupportedGenesisHashes,
@@ -26,8 +26,7 @@ import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import {
   isProtocolEnvelope,
-  type ProtocolHealthEnvelope,
-  type ProtocolLifecycleEnvelope,
+  type ProtocolChainSyncEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
@@ -66,19 +65,29 @@ let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
-const lifecycleListeners = new Set<
-  (event: ProtocolLifecycleEnvelope) => void
+const chainSyncListeners = new Set<
+  (event: ProtocolChainSyncEnvelope) => void
 >();
-const healthListeners = new Set<(event: ProtocolHealthEnvelope) => void>();
-// Runtime mirror of the resolver's LifecycleKind union: postMessage data is
-// untrusted, and the envelope type alone cannot reject a spoofed kind. The
-// `satisfies` ties each literal to the union so a typo fails typecheck.
-const LIFECYCLE_ENVELOPE_KINDS = new Set<string>([
+// postMessage data is untrusted and the envelope type alone cannot reject a
+// spoofed field, so both are checked at runtime. The lists are repeated
+// rather than imported because importing a value from the resolver's
+// smoldot module would drag smoldot into every bundle that talks to the
+// protocol. `satisfies` ties each literal to the resolver's type, so a
+// drifting or misspelled entry fails typecheck.
+const CHAIN_KEY_VALUES = new Set<string>([
+  "relay",
+  "custom-relay",
+  "asset-hub",
+  "bulletin",
+  "people",
+] satisfies ChainKey[]);
+const SYNC_KIND_VALUES = new Set<string>([
   "firstPeer",
   "bootstrapComplete",
   "stalled",
   "recovered",
-] satisfies LifecycleKind[]);
+  "peers",
+] satisfies ChainSyncKind[]);
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -188,6 +197,24 @@ function resetProtocolFrameState(reason?: Error): void {
   }
 }
 
+/** Deliver to every listener, so one that throws cannot silence the rest. */
+function broadcast<T>(
+  listeners: ReadonlySet<(event: T) => void>,
+  event: T,
+  label: string,
+): void {
+  for (const listener of listeners) {
+    try {
+      listener(event);
+    } catch (err: unknown) {
+      log.error(
+        `[dot.li protocol] ${label} listener threw:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
 function bindMessageListener(): void {
   if (listenerBound) {
     return;
@@ -232,45 +259,22 @@ function bindMessageListener(): void {
         }
         return;
       }
-      case "lifecycle": {
+      case "chain-sync": {
         if (
-          typeof msg.chain !== "string" ||
-          !LIFECYCLE_ENVELOPE_KINDS.has(msg.lifecycleKind)
+          !CHAIN_KEY_VALUES.has(msg.chain) ||
+          !SYNC_KIND_VALUES.has(msg.syncKind)
         ) {
           return;
         }
-        for (const cb of lifecycleListeners) {
-          try {
-            cb(msg);
-          } catch (err: unknown) {
-            log.error(
-              "[dot.li protocol] Lifecycle listener threw:",
-              err instanceof Error ? err.message : err,
-            );
-          }
-        }
-        return;
-      }
-      case "health": {
         if (
-          typeof msg.chain !== "string" ||
-          !Number.isInteger(msg.peers) ||
-          msg.peers < 0 ||
-          msg.peers > 10_000 ||
-          typeof msg.isSyncing !== "boolean"
+          msg.syncKind === "peers" &&
+          (!Number.isInteger(msg.peers) ||
+            (msg.peers ?? -1) < 0 ||
+            (msg.peers ?? 0) > 10_000)
         ) {
           return;
         }
-        for (const cb of healthListeners) {
-          try {
-            cb(msg);
-          } catch (err: unknown) {
-            log.error(
-              "[dot.li protocol] Health listener threw:",
-              err instanceof Error ? err.message : err,
-            );
-          }
-        }
+        broadcast(chainSyncListeners, msg, "Chain sync");
         return;
       }
       case "fatal":
@@ -351,16 +355,7 @@ function bindMessageListener(): void {
           key: msg.key,
           value: msg.value,
         };
-        for (const listener of sharedAuthListeners) {
-          try {
-            listener(change);
-          } catch (err: unknown) {
-            log.error(
-              "[dot.li protocol] Shared auth listener threw:",
-              err instanceof Error ? err.message : err,
-            );
-          }
-        }
+        broadcast(sharedAuthListeners, change, "Shared auth");
         return;
       }
     }
@@ -743,33 +738,19 @@ export function subscribeSharedAuthStorage(
 }
 
 /**
- * Subscribe to smoldot lifecycle events forwarded by the protocol iframe.
+ * Subscribe to what the chains report about their sync.
+ *
  * Events arrive only after the origin- and source-gated message listener
  * validates the envelope, so callers never see spoofable raw messages.
  * Returns an unsubscribe function.
  */
-export function onProtocolLifecycle(
-  listener: (event: ProtocolLifecycleEnvelope) => void,
+export function onProtocolChainSync(
+  listener: (event: ProtocolChainSyncEnvelope) => void,
 ): () => void {
   bindMessageListener();
-  lifecycleListeners.add(listener);
+  chainSyncListeners.add(listener);
   return () => {
-    lifecycleListeners.delete(listener);
-  };
-}
-
-/**
- * Subscribe to chain `system_health` samples forwarded by the protocol
- * iframe during bootstrap. Same gating as `onProtocolLifecycle`.
- * Returns an unsubscribe function.
- */
-export function onProtocolHealth(
-  listener: (event: ProtocolHealthEnvelope) => void,
-): () => void {
-  bindMessageListener();
-  healthListeners.add(listener);
-  return () => {
-    healthListeners.delete(listener);
+    chainSyncListeners.delete(listener);
   };
 }
 

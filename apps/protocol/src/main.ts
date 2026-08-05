@@ -683,14 +683,16 @@ async function initDirectMode(): Promise<void> {
     setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
-  const { terminateSmoldot, onSmoldotFatal, onLifecycle, onHealth } =
-    smoldotMod;
+  const { terminateSmoldot, onSmoldotFatal, onChainSync } = smoldotMod;
 
-  // Peer-count polling is only worth the traffic when a loading UI can
-  // observe it. Direct mode is that case; the SharedWorker never enables
-  // it, and the host only renders the Asset Hub count, so only that chain
-  // polls.
-  smoldotMod.enableHealthPolling(["asset-hub"]);
+  // Sync reporting is only worth its cost when a loading UI can observe it.
+  // Direct mode is that case and the SharedWorker never enables it. The
+  // host moves the bar on the relay and the Asset Hub, and shows a peer
+  // count for the Asset Hub alone.
+  smoldotMod.enableSyncReporting({
+    milestones: ["relay", "asset-hub"],
+    peerCounts: ["asset-hub"],
+  });
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
   // mode has no SharedWorker in the loop, so we post straight up to the
@@ -709,36 +711,21 @@ async function initDirectMode(): Promise<void> {
     }
   });
 
-  // Forward smoldot lifecycle events and health samples to the host shell
-  // so the loading bar can advance on real sync signals instead of on
-  // log-scraped prose. This iframe owns the smoldot instance. The host has
-  // no direct handle on it.
-  onLifecycle((event) => {
+  // Forward what the chains report about their sync to the host shell, so
+  // the loading screen moves on real signals instead of log-scraped prose.
+  // This iframe owns the smoldot instance. The host has no handle on it.
+  onChainSync((event) => {
     if (window.parent === window) {
       return;
     }
+    const { chain, kind, ...rest } = event;
     window.parent.postMessage(
       {
         namespace: "dotli:protocol",
-        kind: "lifecycle",
-        chain: event.chain,
-        lifecycleKind: event.kind,
-        ...(event.reason !== undefined ? { reason: event.reason } : {}),
-      },
-      "*",
-    );
-  });
-  onHealth((event) => {
-    if (window.parent === window) {
-      return;
-    }
-    window.parent.postMessage(
-      {
-        namespace: "dotli:protocol",
-        kind: "health",
-        chain: event.chain,
-        peers: event.peers,
-        isSyncing: event.isSyncing,
+        kind: "chain-sync",
+        chain,
+        syncKind: kind,
+        ...rest,
       },
       "*",
     );

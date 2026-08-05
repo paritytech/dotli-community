@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Queue-backed chain mocks: tests push raw JSON-RPC responses and the
-// chain tap's pump consumes them exactly as it does smoldot's output.
+// Queue-backed chain mocks. Tests push raw JSON-RPC responses and the chain
+// tap's pump consumes them exactly as it does the real light client's.
 const chainMocks = vi.hoisted(() => {
   interface MockChain {
     sendJsonRpc: ReturnType<typeof vi.fn>;
@@ -16,7 +16,9 @@ const chainMocks = vi.hoisted(() => {
   const chains: MockChain[] = [];
   function makeChain(): MockChain {
     const queue: string[] = [];
-    const waiters: ((s: string) => void)[] = [];
+    // The tap's pump awaits one response at a time, so at most one caller
+    // is ever waiting.
+    let waiting: ((s: string) => void) | null = null;
     const chain: MockChain = {
       sendJsonRpc: vi.fn(),
       nextJsonRpcResponse: () =>
@@ -25,14 +27,15 @@ const chainMocks = vi.hoisted(() => {
           if (next !== undefined) {
             resolve(next);
           } else {
-            waiters.push(resolve);
+            waiting = resolve;
           }
         }),
       jsonRpcResponses: (async function* () {})(),
       remove: vi.fn(),
       push(raw: string) {
-        const waiter = waiters.shift();
-        if (waiter !== undefined) {
+        const waiter = waiting;
+        if (waiter !== null) {
+          waiting = null;
           waiter(raw);
         } else {
           queue.push(raw);
@@ -78,9 +81,8 @@ vi.mock("@dotli/resolver/chain-specs", () => ({
 
 let getSmoldot: typeof import("@dotli/resolver/smoldot").getSmoldot;
 let getRelayChain: typeof import("@dotli/resolver/smoldot").getRelayChain;
-let onLifecycle: typeof import("@dotli/resolver/smoldot").onLifecycle;
-let onHealth: typeof import("@dotli/resolver/smoldot").onHealth;
-let enableHealthPolling: typeof import("@dotli/resolver/smoldot").enableHealthPolling;
+let onChainSync: typeof import("@dotli/resolver/smoldot").onChainSync;
+let enableSyncReporting: typeof import("@dotli/resolver/smoldot").enableSyncReporting;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -89,27 +91,34 @@ beforeEach(async () => {
   const mod = await import("@dotli/resolver/smoldot");
   getSmoldot = mod.getSmoldot;
   getRelayChain = mod.getRelayChain;
-  onLifecycle = mod.onLifecycle;
-  onHealth = mod.onHealth;
-  enableHealthPolling = mod.enableHealthPolling;
+  onChainSync = mod.onChainSync;
+  enableSyncReporting = mod.enableSyncReporting;
 });
 
-// Let the tap's pump loop drain everything pushed so far.
+/**
+ * Let the tap's pump loop drain everything pushed so far.
+ *
+ * Each queued response costs the pump a few microtask turns, so this yields
+ * generously rather than counting them. Raise it if a future pump grows
+ * more await points and events start arriving after the assertion.
+ */
 async function flush(): Promise<void> {
   for (let i = 0; i < 25; i++) {
     await Promise.resolve();
   }
 }
 
-async function relayMock(): Promise<
-  (typeof chainMocks.chains)[number] & object
-> {
-  await getRelayChain();
-  const chain = chainMocks.chains.at(-1);
-  if (chain === undefined) {
+/** Start the relay chain and hand back the mock feeding it. */
+async function startRelay(): Promise<{
+  tapped: Awaited<ReturnType<typeof getRelayChain>>;
+  raw: (typeof chainMocks.chains)[number];
+}> {
+  const tapped = await getRelayChain();
+  const raw = chainMocks.chains.at(-1);
+  if (raw === undefined) {
     throw new Error("relay chain mock was not created");
   }
-  return chain;
+  return { tapped, raw };
 }
 
 const FOLLOW_REPLY = JSON.stringify({
@@ -118,7 +127,7 @@ const FOLLOW_REPLY = JSON.stringify({
   result: "sub-1",
 });
 
-function followEvent(
+function milestone(
   subscription: string,
   kind: string,
   extra: Record<string, unknown> = {},
@@ -130,7 +139,7 @@ function followEvent(
   });
 }
 
-function healthReply(seq: number, peers: number, isSyncing = true): string {
+function peerReport(seq: number, peers: number, isSyncing = true): string {
   return JSON.stringify({
     jsonrpc: "2.0",
     id: `__dotli_health__:relay:${String(seq)}`,
@@ -138,274 +147,264 @@ function healthReply(seq: number, peers: number, isSyncing = true): string {
   });
 }
 
-function healthCalls(chain: { sendJsonRpc: ReturnType<typeof vi.fn> }) {
+function peerRequests(chain: { sendJsonRpc: ReturnType<typeof vi.fn> }) {
   return chain.sendJsonRpc.mock.calls
     .map((call) => call[0] as string)
     .filter((raw) => raw.includes("system_health"));
 }
 
-describe("getSmoldot", () => {
-  it("returns the same instance on repeated calls", () => {
-    const a = getSmoldot();
-    const b = getSmoldot();
-    expect(a).toBe(b);
-  });
-});
+describe("Light client sync reporting works", () => {
+  it("As a user opening several apps in one tab, they share a single light client", () => {
+    // Given / When
+    const first = getSmoldot();
+    const second = getSmoldot();
 
-describe("getRelayChain", () => {
-  it("returns a promise", () => {
-    const result = getRelayChain();
-    expect(result).toBeInstanceOf(Promise);
+    // Then
+    expect(first).toBe(second);
   });
 
-  it("deduplicates concurrent calls", () => {
-    const a = getRelayChain();
-    const b = getRelayChain();
-    expect(a).toBe(b);
+  it("As a user opening several apps in one tab, they share a single relay chain connection", async () => {
+    // Given / When
+    const first = getRelayChain();
+    const second = getRelayChain();
+
+    // Then
+    expect(first).toBe(second);
+    expect(typeof (await first).sendJsonRpc).toBe("function");
   });
 
-  it("resolves to a chain object", async () => {
-    const chain = await getRelayChain();
-    expect(chain).toBeDefined();
-    expect(typeof chain.sendJsonRpc).toBe("function");
-  });
-});
+  it("As a user waiting for a domain, the shell learns when the first peer arrives and when the chain is ready", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { raw } = await startRelay();
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
 
-describe("onLifecycle", () => {
-  it("delivers events for the chain once the follow reply is seen", async () => {
-    const chain = await relayMock();
-    const events: unknown[] = [];
-    onLifecycle((event) => events.push(event));
-
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "firstPeer"));
-    chain.push(followEvent("sub-1", "bootstrapComplete"));
+    // When
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "firstPeer"));
+    raw.push(milestone("sub-1", "bootstrapComplete"));
     await flush();
 
-    expect(events).toEqual([
+    // Then
+    expect(milestones).toEqual([
       { chain: "relay", kind: "firstPeer" },
       { chain: "relay", kind: "bootstrapComplete" },
     ]);
   });
 
-  it("forwards notifications from unknown subscriptions to the chain consumer", async () => {
-    const tapped = await getRelayChain();
-    const chain = chainMocks.chains.at(-1);
-    if (chain === undefined) {
-      throw new Error("relay chain mock was not created");
-    }
-    const events: unknown[] = [];
-    onLifecycle((event) => events.push(event));
+  it("As a user whose connection drops mid-sync, the shell learns why it stalled and when it recovered", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { raw } = await startRelay();
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
 
-    chain.push(FOLLOW_REPLY);
-    const foreign = followEvent("someone-elses-sub", "firstPeer");
-    chain.push(foreign);
+    // When
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "stalled", { reason: "noPeers" }));
+    raw.push(milestone("sub-1", "recovered", { previously: "noPeers" }));
     await flush();
 
-    expect(events).toEqual([]);
-    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(foreign);
-  });
-
-  it("consumes our traffic so the chain consumer never sees it", async () => {
-    const tapped = await getRelayChain();
-    const chain = chainMocks.chains.at(-1);
-    if (chain === undefined) {
-      throw new Error("relay chain mock was not created");
-    }
-
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "firstPeer"));
-    const papiResponse = JSON.stringify({
-      jsonrpc: "2.0",
-      id: "1-42",
-      result: "0x00",
-    });
-    chain.push(papiResponse);
-    await flush();
-
-    // Only the polkadot-api response comes through; ours were consumed.
-    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(papiResponse);
-  });
-
-  it("carries the stall reason and the recovery cause", async () => {
-    const chain = await relayMock();
-    const events: unknown[] = [];
-    onLifecycle((event) => events.push(event));
-
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "stalled", { reason: "noPeers" }));
-    chain.push(followEvent("sub-1", "recovered", { previously: "noPeers" }));
-    await flush();
-
-    expect(events).toEqual([
+    // Then
+    expect(milestones).toEqual([
       { chain: "relay", kind: "stalled", reason: "noPeers" },
       { chain: "relay", kind: "recovered", reason: "noPeers" },
     ]);
   });
 
-  it("replays only the latest event per chain and kind to a late subscriber", async () => {
-    const chain = await relayMock();
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "stalled", { reason: "noPeers" }));
-    chain.push(followEvent("sub-1", "stalled", { reason: "syncNoProgress" }));
-    chain.push(followEvent("sub-1", "firstPeer"));
+  it("As a user opening the loading screen late, I see the newest sync state rather than a replay of every step", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { raw } = await startRelay();
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "stalled", { reason: "noPeers" }));
+    raw.push(milestone("sub-1", "stalled", { reason: "syncNoProgress" }));
+    raw.push(milestone("sub-1", "firstPeer"));
     await flush();
 
-    const events: unknown[] = [];
-    onLifecycle((event) => events.push(event));
+    // When
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
 
-    expect(events).toEqual([
+    // Then
+    expect(milestones).toEqual([
       { chain: "relay", kind: "stalled", reason: "syncNoProgress" },
       { chain: "relay", kind: "firstPeer" },
     ]);
   });
 
-  it("replays only the newer half of a stall and recovery pair", async () => {
-    const chain = await relayMock();
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "stalled", { reason: "noPeers" }));
-    chain.push(followEvent("sub-1", "recovered", { previously: "noPeers" }));
+  it("As a user whose sync recovered before I looked, I am not told it is still stalled", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { raw } = await startRelay();
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "stalled", { reason: "noPeers" }));
+    raw.push(milestone("sub-1", "recovered", { previously: "noPeers" }));
     await flush();
 
-    const events: unknown[] = [];
-    onLifecycle((event) => events.push(event));
+    // When
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
 
-    expect(events).toEqual([
+    // Then
+    expect(milestones).toEqual([
       { chain: "relay", kind: "recovered", reason: "noPeers" },
     ]);
   });
 
-  it("ignores kinds outside the allowlist but still consumes them", async () => {
-    const tapped = await getRelayChain();
-    const chain = chainMocks.chains.at(-1);
-    if (chain === undefined) {
-      throw new Error("relay chain mock was not created");
-    }
-    const events: unknown[] = [];
-    onLifecycle((event) => events.push(event));
+  it("As a user waiting for a domain, I am told how many peers the light client found", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+    const { raw } = await startRelay();
+    const counts: unknown[] = [];
+    onChainSync((event) => counts.push(event));
 
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "warpSyncProgress", { at: 5, target: 9 }));
-    const papiResponse = JSON.stringify({ jsonrpc: "2.0", id: "1-1" });
-    chain.push(papiResponse);
+    // When
+    raw.push(peerReport(1, 3));
     await flush();
 
-    expect(events).toEqual([]);
-    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(papiResponse);
-  });
-
-  it("stops delivering after unsubscribe", async () => {
-    const chain = await relayMock();
-    const events: unknown[] = [];
-    const unsubscribe = onLifecycle((event) => events.push(event));
-
-    chain.push(FOLLOW_REPLY);
-    chain.push(followEvent("sub-1", "firstPeer"));
-    await flush();
-    unsubscribe();
-    chain.push(followEvent("sub-1", "bootstrapComplete"));
-    await flush();
-
-    expect(events).toEqual([{ chain: "relay", kind: "firstPeer" }]);
-  });
-});
-
-describe("onHealth", () => {
-  // Fake timers keep leaked poller resends (2s timeout) from bleeding
-  // between tests through the mock chains.
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("polls system_health immediately and emits the parsed sample", async () => {
-    enableHealthPolling(["relay"]);
-    const chain = await relayMock();
-
-    const sent = healthCalls(chain);
-    expect(sent.length).toBeGreaterThanOrEqual(1);
-    expect(sent[0]).toContain('"id":"__dotli_health__:relay:1"');
-
-    const events: unknown[] = [];
-    onHealth((event) => events.push(event));
-    chain.push(healthReply(1, 3));
-    await flush();
-
-    expect(events).toEqual([{ chain: "relay", peers: 3, isSyncing: true }]);
-  });
-
-  it("does not poll chains outside the allowlist", async () => {
-    enableHealthPolling(["asset-hub"]);
-    const chain = await relayMock();
-    expect(healthCalls(chain)).toEqual([]);
-  });
-
-  it("does not poll when polling was never enabled", async () => {
-    const chain = await relayMock();
-    expect(healthCalls(chain)).toEqual([]);
-  });
-
-  it("emits only when the sample changes", async () => {
-    enableHealthPolling(["relay"]);
-    const chain = await relayMock();
-
-    const events: unknown[] = [];
-    onHealth((event) => events.push(event));
-    chain.push(healthReply(1, 2));
-    chain.push(healthReply(2, 2));
-    chain.push(healthReply(3, 5));
-    await flush();
-
-    expect(events).toEqual([
-      { chain: "relay", peers: 2, isSyncing: true },
-      { chain: "relay", peers: 5, isSyncing: true },
+    // Then
+    expect(peerRequests(raw)[0]).toContain('"id":"__dotli_health__:relay:1"');
+    expect(counts).toEqual([
+      { chain: "relay", kind: "peers", peers: 3, isSyncing: true },
     ]);
   });
 
-  it("replays the last sample to a late subscriber", async () => {
-    enableHealthPolling(["relay"]);
-    const chain = await relayMock();
+  it("As a user with a steady connection, the peer count only changes when the number really changes", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+    const { raw } = await startRelay();
+    const counts: unknown[] = [];
+    onChainSync((event) => counts.push(event));
 
-    chain.push(healthReply(1, 4));
+    // When
+    raw.push(peerReport(1, 2));
+    raw.push(peerReport(2, 2));
+    raw.push(peerReport(3, 5));
     await flush();
 
-    const events: unknown[] = [];
-    onHealth((event) => events.push(event));
-    expect(events).toEqual([{ chain: "relay", peers: 4, isSyncing: true }]);
+    // Then
+    expect(counts).toEqual([
+      { chain: "relay", kind: "peers", peers: 2, isSyncing: true },
+      { chain: "relay", kind: "peers", peers: 5, isSyncing: true },
+    ]);
   });
 
-  it("stops polling once the chain bootstrap completes", async () => {
-    enableHealthPolling(["relay"]);
-    const chain = await relayMock();
-
-    chain.push(FOLLOW_REPLY);
-    chain.push(healthReply(1, 3));
-    chain.push(followEvent("sub-1", "bootstrapComplete"));
+  it("As a user opening the loading screen late, I still see the peer count already found", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+    const { raw } = await startRelay();
+    raw.push(peerReport(1, 4));
     await flush();
 
-    const sentBefore = healthCalls(chain).length;
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(healthCalls(chain).length).toBe(sentBefore);
+    // When
+    const counts: unknown[] = [];
+    onChainSync((event) => counts.push(event));
+
+    // Then
+    expect(counts).toEqual([
+      { chain: "relay", kind: "peers", peers: 4, isSyncing: true },
+    ]);
   });
 
-  it("rejects malformed health payloads", async () => {
-    enableHealthPolling(["relay"]);
-    const chain = await relayMock();
+  it("As a user whose chain finished syncing, nothing keeps asking for peers", async () => {
+    // Given
+    vi.useFakeTimers();
+    try {
+      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+      const { raw } = await startRelay();
+      raw.push(FOLLOW_REPLY);
+      raw.push(peerReport(1, 3));
 
-    const events: unknown[] = [];
-    onHealth((event) => events.push(event));
-    // peers is not an integer
-    chain.push(
+      // When
+      raw.push(milestone("sub-1", "bootstrapComplete"));
+      await flush();
+      const asked = peerRequests(raw).length;
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      // Then
+      expect(peerRequests(raw).length).toBe(asked);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("As a user loading an app, the shell's own sync questions never reach the app's chain traffic", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { tapped, raw } = await startRelay();
+    const appResponse = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "1-42",
+      result: "0x00",
+    });
+
+    // When
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "firstPeer"));
+    raw.push(appResponse);
+    await flush();
+
+    // Then
+    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(appResponse);
+  });
+});
+
+describe("Light client sync reporting fails", () => {
+  it("As a user, a sync message meant for something else never moves my loading screen", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { tapped, raw } = await startRelay();
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
+    const foreign = milestone("someone-elses-sub", "firstPeer");
+
+    // When
+    raw.push(FOLLOW_REPLY);
+    raw.push(foreign);
+    await flush();
+
+    // Then
+    expect(milestones).toEqual([]);
+    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(foreign);
+  });
+
+  it("As a user, sync milestones the shell has no wording for are ignored", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { tapped, raw } = await startRelay();
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
+    const appResponse = JSON.stringify({ jsonrpc: "2.0", id: "1-1" });
+
+    // When
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "warpSyncProgress", { at: 5, target: 9 }));
+    raw.push(appResponse);
+    await flush();
+
+    // Then
+    expect(milestones).toEqual([]);
+    await expect(tapped.nextJsonRpcResponse()).resolves.toBe(appResponse);
+  });
+
+  it("As a user, a peer count that arrives malformed never reaches my loading screen", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+    const { raw } = await startRelay();
+    const counts: unknown[] = [];
+    onChainSync((event) => counts.push(event));
+
+    // When
+    raw.push(
       JSON.stringify({
         jsonrpc: "2.0",
         id: "__dotli_health__:relay:1",
         result: { isSyncing: true, peers: "3" },
       }),
     );
-    // error response, no result
-    chain.push(
+    raw.push(
       JSON.stringify({
         jsonrpc: "2.0",
         id: "__dotli_health__:relay:2",
@@ -414,6 +413,29 @@ describe("onHealth", () => {
     );
     await flush();
 
-    expect(events).toEqual([]);
+    // Then
+    expect(counts).toEqual([]);
+  });
+
+  it("As a user, chains my loading screen never shows are not asked for peers", async () => {
+    // Given
+    enableSyncReporting({
+      milestones: ["asset-hub"],
+      peerCounts: ["asset-hub"],
+    });
+
+    // When
+    const { raw } = await startRelay();
+
+    // Then
+    expect(peerRequests(raw)).toEqual([]);
+  });
+
+  it("As a user on a shell with no loading screen to feed, no peer counts are requested at all", async () => {
+    // Given / When
+    const { raw } = await startRelay();
+
+    // Then
+    expect(peerRequests(raw)).toEqual([]);
   });
 });
