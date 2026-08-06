@@ -53,7 +53,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     description: "Legacy Paseo Next system chains",
     relay: {
       genesis:
-        "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
       rpcs: [
         "wss://paseo-rpc.n.dwellir.com",
         "wss://paseo.dotters.network",
@@ -93,7 +93,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     description: "Upgraded Paseo Next system chains",
     relay: {
       genesis:
-        "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
       rpcs: [
         "wss://paseo-rpc.n.dwellir.com",
         "wss://paseo.dotters.network",
