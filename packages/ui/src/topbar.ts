@@ -17,6 +17,7 @@ import {
 import {
   createRemoteChainProvider,
   isRemoteChainSupported,
+  onProtocolChainSync,
 } from "@dotli/protocol/client";
 import {
   getCacheSettings,
@@ -276,6 +277,7 @@ export function initTopBar(
   // Mode toggle (P2P / Centralized)
   initModeToggle();
   initChainsPopover();
+  watchChainSync();
 
   // Permissions
   initPermissions();
@@ -951,50 +953,118 @@ function createPermissionDropdown(
 }
 
 /**
+ * Live connection state, fed by the chain-sync subscription.
+ *
+ * `lifecycle_unstable_follow` is never unfollowed, so `stalled` and
+ * `recovered` keep arriving long after the load finished. That makes the
+ * status line genuinely live, unlike the peer counts, whose polling stops
+ * once a chain is up and so have to be queried when the panel opens.
+ */
+const chainSyncState = new Map<string, string>();
+let onStatusChange: (() => void) | null = null;
+
+function describeNetworkStatus(): { text: string; tone: string } {
+  const states = [...chainSyncState.values()];
+  if (states.length === 0) {
+    return { text: "Starting", tone: "idle" };
+  }
+  if (states.includes("stalled")) {
+    return { text: "Reconnecting", tone: "warn" };
+  }
+  const settled = states.every(
+    (k) => k === "bootstrapComplete" || k === "recovered",
+  );
+  return settled
+    ? { text: "Connected", tone: "ok" }
+    : { text: "Connecting", tone: "idle" };
+}
+
+function watchChainSync(): void {
+  onProtocolChainSync((event) => {
+    if (event.syncKind === "peers") {
+      return;
+    }
+    chainSyncState.set(event.chain, event.syncKind);
+    onStatusChange?.();
+  });
+}
+
+/**
  * Network popover: what each chain is doing right now.
  *
- * Block heights are queried fresh on every open rather than polled, because
- * the popover is the only thing that reads them and a background poll would
- * keep four chains awake for a panel nobody has looked at.
+ * Heights and peer counts are read fresh on every open rather than polled,
+ * because this panel is the only thing that wants them and a background
+ * poll would keep four chains awake for something nobody has looked at.
  */
 function renderChainsPopover(parent: HTMLElement): void {
   parent.replaceChildren();
   const backend = getBackend();
-  appendSectionHeader(parent, "Light client");
-  renderInfoRow(parent, "smoldot", buildSmoldotVersionLabel());
-  renderInfoRow(
-    parent,
-    "Status",
-    backend === "rpc-gateway" ? "not running (trusted provider)" : "running",
-  );
+
+  appendSectionHeader(parent, "Network");
+  const statusRow = document.createElement("div");
+  statusRow.className = "chains-status";
+  const dot = document.createElement("span");
+  const text = document.createElement("span");
+  statusRow.append(dot, text);
+  parent.appendChild(statusRow);
 
   if (backend === "rpc-gateway") {
+    onStatusChange = null;
+    dot.className = "chains-status-dot is-idle";
+    text.textContent = "Trusted provider, no light client";
     return;
   }
 
+  const paint = (): void => {
+    const { text: label, tone } = describeNetworkStatus();
+    dot.className = `chains-status-dot is-${tone}`;
+    text.textContent = label;
+  };
+  paint();
+  // Keep the line honest while the panel is open, so a chain that stalls
+  // now says so without the user reopening it.
+  onStatusChange = paint;
+
   const cfg = getActiveServicesConfig();
   const chains: [string, string][] = [
-    ["Relay Chain", cfg.relay.genesis],
-    ["Asset Hub", cfg.assethub.genesis],
+    ["Relay", cfg.relay.genesis],
+    ["AssetHub", cfg.assethub.genesis],
     ["Bulletin", cfg.bulletin.genesis],
-    ["People Chain", cfg.people.genesis],
+    ["People", cfg.people.genesis],
   ];
 
-  appendSectionHeader(parent, "Latest finalized block");
-  for (const [label, genesis] of chains) {
-    const row = renderInfoRow(parent, label, "…");
-    void queryFinalizedBlock(genesis).then((n) => {
-      row.update(formatBlock(n));
-    });
+  const table = document.createElement("table");
+  table.className = "chains-table";
+  const head = document.createElement("tr");
+  for (const label of ["", "Peers", "Best block", "Finalized"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.appendChild(th);
   }
+  table.appendChild(head);
 
-  appendSectionHeader(parent, "Peers");
   for (const [label, genesis] of chains) {
-    const row = renderInfoRow(parent, label, "…");
+    const row = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = label;
+    const cells = ["…", "…", "…"].map((v) => {
+      const td = document.createElement("td");
+      td.textContent = v;
+      return td;
+    });
+    row.append(name, ...cells);
+    table.appendChild(row);
+
     void queryPeerCount(genesis).then((n) => {
-      row.update(n === null ? "n/a" : String(n));
+      cells[0].textContent = n === null ? "n/a" : String(n);
+    });
+    void queryChainBlocks(genesis).then((blocks) => {
+      cells[1].textContent = blocks?.best ?? "n/a";
+      cells[2].textContent = blocks?.finalized ?? "n/a";
     });
   }
+  parent.appendChild(table);
 }
 
 /**
@@ -1745,6 +1815,11 @@ function renderDiagnostics(parent: HTMLElement): void {
     );
   }
 
+  // Version only. The per-chain block heights this section used to carry
+  // now live in the network popover, where they can be read live.
+  appendSectionHeader(parent, "@smoldot");
+  renderInfoRow(parent, "smoldot", buildSmoldotVersionLabel());
+
   // The unscoped `polkadot-api` package lives in the same visual section as
   // `@polkadot-api/*`. Same ecosystem, same release cadence, users expect
   // to see it with its siblings rather than at the top of the popover.
@@ -1851,10 +1926,10 @@ function isTruapiDebugEnabled(): boolean {
  *              so the snapshot matches what's actually live right now.
  *    3. Permissions: per-product, omitted on landing where we don't have
  *                    a scoped label to query.
- *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi. The
- *                 live block heights from the @smoldot popover section
- *                 aren't included here because they're noise in a bug
- *                 report. The popover already shows them live. */
+ *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi,
+ *                 with the block heights queried at share time. They are
+ *                 not rendered in this popover any more, they live in the
+ *                 network panel where they can be read live. */
 async function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
@@ -2027,6 +2102,122 @@ function buildSmoldotVersionLabel(): string {
  * stays dynamic so opening the popover is cheap when the user doesn't care
  * about blocks.
  */
+/**
+ * Read a block's own timestamp, so its age is measured by the chain's clock
+ * rather than by when we happened to hear about it.
+ *
+ * `Timestamp::Now` is a plain `u64` of milliseconds under a well-known key,
+ * so this needs no metadata: hash the pallet and item names and decode eight
+ * little-endian bytes.
+ */
+async function queryBlockAgeMs(
+  client: {
+    _request: <R>(method: string, params: unknown[]) => Promise<R>;
+  },
+  blockHash: string,
+): Promise<number | null> {
+  try {
+    const [{ Twox128 }, { mergeUint8, toHex, fromHex }] = await Promise.all([
+      import("@polkadot-api/substrate-bindings"),
+      import("@polkadot-api/utils"),
+    ]);
+    const enc = new TextEncoder();
+    const key = toHex(
+      mergeUint8([
+        Twox128(enc.encode("Timestamp")),
+        Twox128(enc.encode("Now")),
+      ]),
+    );
+    // An empty storage slot comes back as null, which is normal on a chain
+    // whose block has not written the timestamp yet.
+    const raw = await client._request<string | null>("state_getStorage", [
+      key,
+      blockHash,
+    ]);
+    if (raw === null) {
+      return null;
+    }
+    const bytes = fromHex(raw);
+    if (bytes.length < 8) {
+      return null;
+    }
+    const millis = Number(
+      new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      ).getBigUint64(0, true),
+    );
+    const age = Date.now() - millis;
+    return age >= 0 ? age : 0;
+  } catch {
+    return null;
+  }
+}
+
+/** "4s ago", "2m ago". Blank when the chain would not say. */
+function formatAge(ms: number | null): string {
+  if (ms === null) {
+    return "";
+  }
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) {
+    return ` (${String(secs)}s ago)`;
+  }
+  return ` (${String(Math.round(secs / 60))}m ago)`;
+}
+
+/**
+ * Query a chain's best and finalized block, each with the age its own clock
+ * reports. `getBestBlocks` returns the chain from best to finalized, so one
+ * call covers both ends.
+ */
+async function queryChainBlocks(genesisHash: string): Promise<{
+  best: string;
+  finalized: string;
+} | null> {
+  try {
+    if (!isRemoteChainSupported(genesisHash)) {
+      return null;
+    }
+    const provider = createRemoteChainProvider(genesisHash);
+    if (provider === null) {
+      return null;
+    }
+    const papi = await import("polkadot-api");
+    const client = papi.createClient(provider);
+    try {
+      const blocks = await Promise.race([
+        client.getBestBlocks(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("timeout"));
+          }, 10_000);
+        }),
+      ]);
+      const best = blocks.at(0);
+      const finalized = blocks.at(-1);
+      if (best === undefined || finalized === undefined) {
+        return null;
+      }
+      const [bestAge, finalizedAge] = await Promise.all([
+        queryBlockAgeMs(client, best.hash),
+        best.hash === finalized.hash
+          ? Promise.resolve(null)
+          : queryBlockAgeMs(client, finalized.hash),
+      ]);
+      return {
+        best: `${formatBlock(best.number)}${formatAge(bestAge)}`,
+        finalized: `${formatBlock(finalized.number)}${formatAge(best.hash === finalized.hash ? bestAge : finalizedAge)}`,
+      };
+    } finally {
+      client.destroy();
+    }
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Query a chain's current peer count over the same bridge as the block
  * height. Read live on open rather than taken from the loading screen's

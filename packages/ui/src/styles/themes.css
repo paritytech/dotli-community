@@ -251,6 +251,22 @@
   /* 4.89:1 */
   color: #6b6b6b;
 }
+[data-theme="light"] .chains-status {
+  color: #1a1a1a;
+}
+[data-theme="light"] .chains-table tr:first-child th {
+  /* 4.89:1 */
+  color: #6b6b6b;
+  border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .chains-table td,
+[data-theme="light"] .chains-table tr th:first-child {
+  /* 7.17:1 */
+  color: #525252;
+}
+[data-theme="light"] .chains-status-dot.is-idle {
+  background: #6b6b6b;
+}
 [data-theme="light"] .loading-metric dd {
   /* 7.17:1 */
   color: #525252;

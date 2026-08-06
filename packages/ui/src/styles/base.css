@@ -434,3 +434,57 @@ body {
   min-width: 260px;
   padding: 10px 12px;
 }
+
+/* Network panel */
+.chains-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  /* 13.36:1 */
+  color: #d4d4d4;
+  padding: 2px 0 8px;
+}
+.chains-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.chains-status-dot.is-ok {
+  background: #22c55e;
+}
+.chains-status-dot.is-warn {
+  background: #eab308;
+}
+.chains-status-dot.is-idle {
+  background: #8f8f8f;
+}
+.chains-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 10.5px;
+}
+.chains-table th,
+.chains-table td {
+  text-align: right;
+  padding: 3px 0 3px 12px;
+  white-space: nowrap;
+}
+.chains-table tr th:first-child {
+  text-align: left;
+  padding-left: 0;
+  font-weight: 500;
+}
+.chains-table tr:first-child th {
+  /* 6.12:1 */
+  color: #8f8f8f;
+  font-weight: 400;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.chains-table td,
+.chains-table tr th:first-child {
+  /* 7.85:1 */
+  color: #a3a3a3;
+}
