@@ -245,10 +245,14 @@
      own secondary line. */
   color: #6b6b6b;
 }
-/* Same flip as `#status`. The detail line sits between the headline and the
-   percentage, because it carries the stall copy, which is the one message
-   that has to survive a light background. 7.17:1. */
-[data-theme="light"] .loading-detail {
+[data-theme="light"] .loading-status-heading,
+[data-theme="light"] .loading-details-summary,
+[data-theme="light"] .loading-metric dt {
+  /* 4.89:1 */
+  color: #6b6b6b;
+}
+[data-theme="light"] .loading-metric dd {
+  /* 7.17:1 */
   color: #525252;
 }
 [data-theme="light"] .spinner {

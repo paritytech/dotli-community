@@ -32,17 +32,22 @@ import {
   initPhases,
   advancePhase,
   nudgePhaseProgress,
-  setStatusDetail,
+  setLoadingMetrics,
   stopStatusTick,
   listenForSandboxStatus,
   showGatewayEscape,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
-import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
+import {
+  initTopBar,
+  setChainsButtonVisible,
+  wipeOriginState,
+} from "@dotli/ui/topbar";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
   listenForSandboxBitswap,
+  onContentProgress,
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
@@ -1209,100 +1214,78 @@ async function main(): Promise<void> {
   // lives in the SharedWorker, which does not forward lifecycle or health
   // yet, and the gateway has no smoldot at all.
   if (chainBackend === "smoldot-direct") {
-    let peerDetail = "";
-    // Once the Asset Hub bootstrap completes the sync detail is over. A
-    // peer count still in flight, or a late stall on the relay, must not
-    // resurrect it under "Resolving".
-    let syncDetailDone = false;
-    // The relay warps first and the Asset Hub bootstraps on top of it, so
-    // the chain the user is waiting on changes partway through the step.
-    // Peer counts follow that, which is what keeps a number on screen for
-    // the whole step instead of the last a hundred milliseconds of it.
-    let waitingOn: "relay" | "asset-hub" = "relay";
-    const setPeerDetail = (count: number): void => {
-      const first = peerDetail === "";
-      peerDetail = `${String(count)} ${count === 1 ? "peer" : "peers"}`;
-      // Announce that peers were found, once. Every later tick is a silent
-      // visual update, so the count stays readable without queueing an
-      // announcement per second.
-      setStatusDetail(peerDetail, { announce: first });
-    };
+    // The load walks three chains in turn: the relay warps, the Asset Hub
+    // bootstraps on top of it, then Bulletin comes up to serve the content
+    // over bitswap. Only the one being waited on drives the peer count, so
+    // the figure always describes what the user is actually waiting for.
+    let waitingOn: "relay" | "asset-hub" | "bulletin" = "relay";
     onProtocolChainSync((event) => {
       log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
-      if (syncDetailDone) {
-        return;
-      }
       switch (event.syncKind) {
         case "connecting":
-          if (peerDetail === "") {
-            setStatusDetail("connecting to peers");
+          // A chain that just started has no peers yet, and saying so beats
+          // leaving the previous chain's figure on screen.
+          if (event.chain === waitingOn) {
+            setLoadingMetrics({ peers: 0 });
           }
           return;
         case "peers":
           if (event.chain === waitingOn) {
-            setPeerDetail(event.peers ?? 0);
+            setLoadingMetrics({ peers: event.peers ?? 0 });
           }
+          return;
+        case "stalled":
+        case "recovered":
+          // The peer count already tells this story: a stall is a chain
+          // sitting at zero peers, and recovery is the number climbing.
           return;
         case "warpSyncProgress": {
           // The one true percentage smoldot offers. Only relays warp, and
           // only when they have real distance to cover.
           const { at, target } = event;
           if (
-            at === undefined ||
-            target === undefined ||
-            target <= 0 ||
-            at > target
+            at !== undefined &&
+            target !== undefined &&
+            target > 0 &&
+            at <= target
           ) {
-            return;
+            nudgePhaseProgress(at / target);
           }
-          setStatusDetail(
-            `block ${at.toLocaleString()} of ${target.toLocaleString()}`,
-          );
-          nudgePhaseProgress(at / target);
           return;
         }
-        case "warpSyncFinished":
-          // Fills the second of silence between the relay finishing and the
-          // Asset Hub finding its first peer.
-          waitingOn = "asset-hub";
-          peerDetail = "";
-          setStatusDetail("relay ready, reaching Asset Hub");
-          return;
-        case "stalled":
-          // No trailing ellipsis: the headline already ends in one, and the
-          // spinner and bar sheen carry "in progress". Lowercase and
-          // terminal-punctuation-free to match the "2 peers" readout this
-          // line alternates with.
-          setStatusDetail(
-            event.reason === "noPeers"
-              ? "searching for peers"
-              : "syncing, no progress yet",
-            { announce: true },
-          );
-          return;
-        case "recovered":
-          setStatusDetail(peerDetail, { announce: true });
-          return;
         case "firstPeer":
           if (event.chain === "asset-hub") {
             advancePhase(2);
           }
           return;
+        case "warpSyncFinished":
         case "bootstrapComplete":
+          // Hand the count to the next chain in the sequence and reset it, so
+          // a finished chain's figure never lingers under the next one.
           if (event.chain === "relay") {
-            // A relay short enough to skip warp never sends
-            // `warpSyncFinished`, so hand over here too.
             waitingOn = "asset-hub";
-            peerDetail = "";
-          } else {
+            setLoadingMetrics({ peers: 0 });
+          } else if (event.chain === "asset-hub") {
             advancePhase(3);
-            // The count is meaningless once sync is done. Clear it rather
-            // than letting a stale number sit under "Resolving".
-            syncDetailDone = true;
-            peerDetail = "";
-            setStatusDetail("");
+            waitingOn = "bulletin";
+            setLoadingMetrics({ peers: 0 });
           }
           return;
+      }
+    });
+
+    // Every block the sandbox needs is fetched through this window, so the
+    // download reports itself: bytes so far against the total the DAG root
+    // declares.
+    onContentProgress(({ bytesFetched, totalBytes, bytesPerSecond }) => {
+      setLoadingMetrics({
+        bytesPerSecond,
+        ...(totalBytes !== null && totalBytes > 0
+          ? { completed: (bytesFetched / totalBytes) * 100 }
+          : {}),
+      });
+      if (totalBytes !== null && totalBytes > 0) {
+        nudgePhaseProgress(bytesFetched / totalBytes);
       }
     });
   }
@@ -1327,6 +1310,7 @@ async function main(): Promise<void> {
       // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
+        setChainsButtonVisible(true);
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
         await renderAppSubdomain(cachedCid, label);
@@ -1500,6 +1484,7 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
+    setChainsButtonVisible(true);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(cid, label);

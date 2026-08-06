@@ -690,12 +690,13 @@ async function initDirectMode(): Promise<void> {
   // host moves the bar on the relay and the Asset Hub, and shows a peer
   // count for the Asset Hub alone.
   smoldotMod.enableSyncReporting({
-    // The relay warps first and the Asset Hub bootstraps on top of it, so
-    // both are on the critical path the loading screen narrates. Peer
-    // counts come from both: the relay reports one about a second before
-    // the Asset Hub does, and that second is otherwise silent.
-    milestones: ["relay", "asset-hub"],
-    peerCounts: ["relay", "asset-hub"],
+    // All three chains the load waits on, in the order it waits on them.
+    // The relay warps, the Asset Hub bootstraps on top of it, and Bulletin
+    // serves the content over bitswap. Bulletin is not even created until
+    // after the content phase begins, and takes roughly another second and
+    // a half to find a peer, which used to be silent.
+    milestones: ["relay", "asset-hub", "bulletin"],
+    peerCounts: ["relay", "asset-hub", "bulletin"],
   });
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct

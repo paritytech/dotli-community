@@ -134,12 +134,9 @@ body {
   text-align: right;
 }
 
-/* Text block: phase label, live detail, and slow-step hint.
-   The gap is the tight one. `#loading-detail` is a readout of the headline
-   above it and has to sit close enough to read as one unit. `.loading-hint`
-   is a separate, occasional warning and buys its 12px break back with a
-   margin. Three rows spaced equally would read as three peers, which they
-   are not. */
+/* Text block: the status block and the slow-step hint. Both are
+   conditional, so the block collapses to nothing on a fast load and the
+   bar sits alone. */
 .loading-text {
   display: flex;
   flex-direction: column;
@@ -162,31 +159,68 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Live sync readout under the headline.
-   Ranked below `#status` by size, weight, and family rather than by tone.
-   It shares the headline's opacity because the stall copy it carries
-   ("searching for peers") is the most reassuring message on the screen, and
-   it cannot be the faintest thing on it. `min-height` reserves the row so
-   the block does not jump when the detail appears mid-sync and is cleared
-   on bootstrap. */
-.loading-detail {
+/* Status block: held back until the load is slow enough to explain itself.
+   Reserved height is not needed because nothing sits below it but the hint,
+   which is itself conditional. */
+.loading-status {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+  width: 100%;
+}
+.loading-status.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.loading-status-heading {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  /* 6.12:1 */
+  color: #8f8f8f;
+  margin-bottom: 4px;
+}
+.loading-details {
+  margin-top: 12px;
+  text-align: left;
+  display: inline-block;
+  min-width: 190px;
+}
+.loading-details-summary {
+  font-size: 11px;
+  /* 6.12:1 */
+  color: #8f8f8f;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.loading-details-summary::-webkit-details-marker {
+  display: none;
+}
+.loading-details-summary::after {
+  content: " >";
+}
+.loading-details[open] .loading-details-summary::after {
+  content: " v";
+}
+.loading-metrics {
+  margin-top: 8px;
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
   font-size: 11px;
+}
+.loading-metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 2px 0;
+}
+.loading-metric dt {
+  /* 6.12:1 */
+  color: #8f8f8f;
+}
+.loading-metric dd {
   /* 7.85:1 */
   color: #a3a3a3;
-  text-align: center;
-  min-height: 1.3em;
-}
-/* Screen-reader-only slot for one-shot loading announcements (stall and
-   recovery copy). The same text shows visually in .loading-detail, which
-   is aria-hidden to keep its per-second count out of the live queue. */
-.loading-announcer {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 /* Slow-step hint (shown below status when a step exceeds its threshold) */
 .loading-hint {
@@ -386,4 +420,17 @@ body {
 }
 .error-page-domain-tld {
   color: rgba(250, 250, 250, 0.55);
+}
+
+/* Network button: appears once a product is on screen, so the loading view
+   stays as bare as the bar it shows. */
+.topbar-chains-btn {
+  display: none;
+}
+.topbar-chains-btn.visible {
+  display: inline-flex;
+}
+.chains-popover {
+  min-width: 260px;
+  padding: 10px 12px;
 }

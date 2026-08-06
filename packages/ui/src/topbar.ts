@@ -275,6 +275,7 @@ export function initTopBar(
 
   // Mode toggle (P2P / Centralized)
   initModeToggle();
+  initChainsPopover();
 
   // Permissions
   initPermissions();
@@ -947,6 +948,103 @@ function createPermissionDropdown(
   });
 
   return wrap;
+}
+
+/**
+ * Network popover: what each chain is doing right now.
+ *
+ * Block heights are queried fresh on every open rather than polled, because
+ * the popover is the only thing that reads them and a background poll would
+ * keep four chains awake for a panel nobody has looked at.
+ */
+function renderChainsPopover(parent: HTMLElement): void {
+  parent.replaceChildren();
+  const backend = getBackend();
+  appendSectionHeader(parent, "Light client");
+  renderInfoRow(parent, "smoldot", buildSmoldotVersionLabel());
+  renderInfoRow(
+    parent,
+    "Status",
+    backend === "rpc-gateway" ? "not running (trusted provider)" : "running",
+  );
+
+  if (backend === "rpc-gateway") {
+    return;
+  }
+
+  const cfg = getActiveServicesConfig();
+  const chains: [string, string][] = [
+    ["Relay Chain", cfg.relay.genesis],
+    ["Asset Hub", cfg.assethub.genesis],
+    ["Bulletin", cfg.bulletin.genesis],
+    ["People Chain", cfg.people.genesis],
+  ];
+
+  appendSectionHeader(parent, "Latest finalized block");
+  for (const [label, genesis] of chains) {
+    const row = renderInfoRow(parent, label, "…");
+    void queryFinalizedBlock(genesis).then((n) => {
+      row.update(formatBlock(n));
+    });
+  }
+
+  appendSectionHeader(parent, "Peers");
+  for (const [label, genesis] of chains) {
+    const row = renderInfoRow(parent, label, "…");
+    void queryPeerCount(genesis).then((n) => {
+      row.update(n === null ? "n/a" : String(n));
+    });
+  }
+}
+
+/**
+ * Reveal the network button. The host calls this once a product is on
+ * screen, so the icon appears with the app rather than during the load.
+ */
+export function setChainsButtonVisible(visible: boolean): void {
+  document
+    .getElementById("chains-button")
+    ?.classList.toggle("visible", visible);
+}
+
+function initChainsPopover(): void {
+  const button = document.getElementById("chains-button");
+  const popover = document.getElementById("chains-popover");
+  if (button === null || popover === null) {
+    return;
+  }
+  button.setAttribute("aria-haspopup", "dialog");
+  popover.setAttribute("role", "dialog");
+  popover.setAttribute("aria-label", "Network");
+
+  const close = (): void => {
+    popover.classList.remove("open");
+    button.setAttribute("aria-expanded", "false");
+  };
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (popover.classList.contains("open")) {
+      close();
+      return;
+    }
+    renderChainsPopover(popover);
+    popover.classList.add("open");
+    button.setAttribute("aria-expanded", "true");
+  });
+  document.addEventListener("click", (e) => {
+    if (
+      popover.classList.contains("open") &&
+      !popover.contains(e.target as Node) &&
+      e.target !== button
+    ) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      close();
+    }
+  });
 }
 
 function initModeToggle(): void {
@@ -1647,50 +1745,6 @@ function renderDiagnostics(parent: HTMLElement): void {
     );
   }
 
-  // Version is static and cheap. Block numbers are async so the rows start
-  // with an ellipsis placeholder and get swapped in when `chainConnect`
-  // rounds-trip back with a finalized-block header. When the user is on
-  // the RPC chain backend, smoldot isn't running, so hide the per-chain
-  // block rows entirely (the endpoints already appear under Chain) and
-  // keep only the smoldot version so the dependency is still visible.
-  const smoldotInfo: SmoldotInfo = {
-    version: buildSmoldotVersionLabel(),
-    blocks: { relay: "…", assetHub: "…", people: "…" },
-  };
-  const smoldotActive = getBackend() !== "rpc-gateway";
-  appendSectionHeader(parent, "@smoldot");
-  renderInfoRow(parent, "smoldot", smoldotInfo.version);
-  if (smoldotActive) {
-    const relayRow = renderInfoRow(parent, "Relay Chain", "…");
-    const assetHubRow = renderInfoRow(parent, "Asset Hub", "…");
-    const peopleRow = renderInfoRow(parent, "People Chain", "…");
-
-    // Fire all queries. They update their own rows and the shared snapshot
-    // (so the "Share diagnostic" button captures whatever resolved in time).
-    const cfg = getActiveServicesConfig();
-    void queryFinalizedBlock(cfg.relay.genesis).then((n) => {
-      const v = formatBlock(n);
-      relayRow.update(v);
-      smoldotInfo.blocks.relay = v;
-    });
-    void queryFinalizedBlock(cfg.assethub.genesis).then((n) => {
-      const v = formatBlock(n);
-      assetHubRow.update(v);
-      smoldotInfo.blocks.assetHub = v;
-    });
-    void queryFinalizedBlock(cfg.people.genesis).then((n) => {
-      const v = formatBlock(n);
-      peopleRow.update(v);
-      smoldotInfo.blocks.people = v;
-    });
-  } else {
-    // Keep the snapshot tagged as n/a so the Share-diagnostic report is
-    // coherent: smoldot wasn't consulted, don't claim a block height.
-    smoldotInfo.blocks.relay = "n/a";
-    smoldotInfo.blocks.assetHub = "n/a";
-    smoldotInfo.blocks.people = "n/a";
-  }
-
   // The unscoped `polkadot-api` package lives in the same visual section as
   // `@polkadot-api/*`. Same ecosystem, same release cadence, users expect
   // to see it with its siblings rather than at the top of the popover.
@@ -1734,6 +1788,10 @@ function renderDiagnostics(parent: HTMLElement): void {
     "Open a new issue on paritytech/dotli pre-filled with these diagnostics";
   shareBtn.addEventListener("click", () => {
     void (async () => {
+      // Block heights now live in the Network popover, so nothing has them
+      // cached. Query them here, where a report is actually being made,
+      // instead of keeping four chains awake for a panel nobody opened.
+      const smoldotInfo = await collectSmoldotInfo();
       const report = await formatDiagnosticsReport(
         base,
         smoldotInfo,
@@ -1914,6 +1972,29 @@ function backendLabel(b: Backend): string {
   }
 }
 
+/** Gather the smoldot readouts a diagnostic report quotes. */
+async function collectSmoldotInfo(): Promise<SmoldotInfo> {
+  const info: SmoldotInfo = {
+    version: buildSmoldotVersionLabel(),
+    blocks: { relay: "n/a", assetHub: "n/a", people: "n/a" },
+  };
+  if (getBackend() === "rpc-gateway") {
+    return info;
+  }
+  const cfg = getActiveServicesConfig();
+  const [relay, assetHub, people] = await Promise.all([
+    queryFinalizedBlock(cfg.relay.genesis),
+    queryFinalizedBlock(cfg.assethub.genesis),
+    queryFinalizedBlock(cfg.people.genesis),
+  ]);
+  info.blocks = {
+    relay: formatBlock(relay),
+    assetHub: formatBlock(assetHub),
+    people: formatBlock(people),
+  };
+  return info;
+}
+
 interface SmoldotInfo {
   /** Human-facing version label, e.g. "3.0.0 (c33c647)". */
   version: string;
@@ -1946,6 +2027,42 @@ function buildSmoldotVersionLabel(): string {
  * stays dynamic so opening the popover is cheap when the user doesn't care
  * about blocks.
  */
+/**
+ * Query a chain's current peer count over the same bridge as the block
+ * height. Read live on open rather than taken from the loading screen's
+ * stream, which stops sampling once a chain is up and would leave a figure
+ * that is minutes stale. Covers People too, which the loading bar never
+ * waits on and so never reports.
+ */
+async function queryPeerCount(genesisHash: string): Promise<number | null> {
+  try {
+    if (!isRemoteChainSupported(genesisHash)) {
+      return null;
+    }
+    const provider = createRemoteChainProvider(genesisHash);
+    if (provider === null) {
+      return null;
+    }
+    const papi = await import("polkadot-api");
+    const client = papi.createClient(provider);
+    try {
+      const health = await Promise.race([
+        client._request<{ peers?: number }>("system_health", []),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("timeout"));
+          }, 10_000);
+        }),
+      ]);
+      return typeof health.peers === "number" ? health.peers : null;
+    } finally {
+      client.destroy();
+    }
+  } catch {
+    return null;
+  }
+}
+
 async function queryFinalizedBlock(
   genesisHash: string,
 ): Promise<number | null> {

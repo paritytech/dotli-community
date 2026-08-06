@@ -37,7 +37,7 @@ test.describe("Resolution across chain backends", () => {
     });
   }
 
-  test(`As a user opening ${DOMAIN}.dot, I am told how many peers the light client found while it syncs`, async ({
+  test(`As a user opening ${DOMAIN}.dot, I am shown how many peers the light client found`, async ({
     browser,
   }) => {
     // Given
@@ -46,26 +46,27 @@ test.describe("Resolution across chain backends", () => {
     });
 
     try {
-      // Record the counts as they reach the shell. On a fast bootstrap the
-      // rendered "N peers" line can appear and clear between polls, so the
-      // count itself is the reliable signal. The visible text is accepted
-      // as an alternative when the sync window is long enough to show it.
+      // Record the counts as they reach the shell. The rendered figure can
+      // change faster than a poll can catch, so the envelope is the reliable
+      // signal and the visible readout is accepted as an alternative.
       await page.addInitScript(() => {
         const seen: unknown[] = [];
         (
-          window as unknown as { __dotliHealthSeen: unknown[] }
-        ).__dotliHealthSeen = seen;
+          window as unknown as { __dotliPeerCounts: unknown[] }
+        ).__dotliPeerCounts = seen;
         window.addEventListener("message", (event: MessageEvent) => {
           const data = event.data as {
             namespace?: string;
             kind?: string;
+            syncKind?: string;
             peers?: number;
           } | null;
           if (
             data !== null &&
             typeof data === "object" &&
             data.namespace === "dotli:protocol" &&
-            data.kind === "health" &&
+            data.kind === "chain-sync" &&
+            data.syncKind === "peers" &&
             typeof data.peers === "number"
           ) {
             seen.push(data);
@@ -79,13 +80,13 @@ test.describe("Resolution across chain backends", () => {
       // Then
       const sawPeers = page.waitForFunction(
         () => {
-          const seen = (window as unknown as { __dotliHealthSeen?: unknown[] })
-            .__dotliHealthSeen;
+          const seen = (window as unknown as { __dotliPeerCounts?: unknown[] })
+            .__dotliPeerCounts;
           if (seen !== undefined && seen.length > 0) {
             return true;
           }
-          return /\d+ peers?/.test(
-            document.getElementById("loading-detail")?.textContent ?? "",
+          return /[1-9]/.test(
+            document.getElementById("metric-peers")?.textContent ?? "",
           );
         },
         undefined,

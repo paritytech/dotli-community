@@ -47,8 +47,11 @@ let currentPhase = -1;
 // Progress bar state
 let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
-let statusDetailEl: HTMLElement | null = null;
-let statusAnnouncerEl: HTMLElement | null = null;
+let statusBlockEl: HTMLElement | null = null;
+let metricPeersEl: HTMLElement | null = null;
+let metricSpeedEl: HTMLElement | null = null;
+let metricCompletedEl: HTMLElement | null = null;
+let revealTimer: ReturnType<typeof setTimeout> | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
 let crawlStep = 0;
@@ -103,8 +106,43 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
-  statusDetailEl = document.getElementById("loading-detail");
-  statusAnnouncerEl = document.getElementById("loading-announcer");
+  statusBlockEl = document.getElementById("loading-status");
+  metricPeersEl = document.getElementById("metric-peers");
+  metricSpeedEl = document.getElementById("metric-speed");
+  metricCompletedEl = document.getElementById("metric-completed");
+
+  // A load that finishes quickly should never explain itself. Only once it
+  // has run long enough to feel slow does the status block appear.
+  if (revealTimer !== null) {
+    clearTimeout(revealTimer);
+  }
+  revealTimer = setTimeout(() => {
+    statusBlockEl?.classList.add("visible");
+  }, STATUS_REVEAL_MS);
+}
+
+/** How long a load may run before it owes the user an explanation. */
+export const STATUS_REVEAL_MS = 3_000;
+
+/**
+ * Live counters under the status line. Each is written only when supplied,
+ * so a caller can update the peer count without claiming a download speed
+ * it has no reading for.
+ */
+export function setLoadingMetrics(metrics: {
+  peers?: number;
+  bytesPerSecond?: number;
+  completed?: number;
+}): void {
+  if (metrics.peers !== undefined && metricPeersEl !== null) {
+    metricPeersEl.textContent = String(metrics.peers);
+  }
+  if (metrics.bytesPerSecond !== undefined && metricSpeedEl !== null) {
+    metricSpeedEl.textContent = `${(metrics.bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
+  }
+  if (metrics.completed !== undefined && metricCompletedEl !== null) {
+    metricCompletedEl.textContent = `${String(Math.min(100, Math.round(metrics.completed)))} %`;
+  }
 }
 
 /**
@@ -160,36 +198,6 @@ export function nudgePhaseProgress(fraction: number): void {
   const want = base + (target - base) * clamped;
   if (want > currentProgress) {
     setProgress(Math.min(want, target));
-  }
-}
-
-/**
- * Write the live detail line under the status headline, e.g. "3 peers".
- *
- * This is deliberately not `#status`. The value changes every second or two
- * during sync and `#status` is a live region, so routing it there would
- * queue a screen-reader announcement per change. The detail element carries
- * no live region of its own, which leaves it readable on demand but never
- * announced, and it never touches the slow-hint timer.
- *
- * Pass `announce` for the changes worth interrupting a screen-reader user
- * for, such as the first peer count and the stall and recovery copy. Those
- * mirror once into a visually hidden polite region.
- */
-export function setStatusDetail(
-  detail: string,
-  opts: { announce?: boolean } = {},
-): void {
-  if (statusDetailEl !== null) {
-    statusDetailEl.textContent = detail;
-  }
-  if (
-    opts.announce === true &&
-    detail !== "" &&
-    statusAnnouncerEl !== null &&
-    statusAnnouncerEl.textContent !== detail
-  ) {
-    statusAnnouncerEl.textContent = detail;
   }
 }
 
@@ -384,6 +392,14 @@ export function stopStatusTick(): void {
   clearSlowWarning();
 }
 
+/** Cancel the pending status reveal, for a load that finished in time. */
+function cancelStatusReveal(): void {
+  if (revealTimer !== null) {
+    clearTimeout(revealTimer);
+    revealTimer = null;
+  }
+}
+
 /**
  * Remove the loading overlay (logo, progress bar, log).
  * Called when the app is fully loaded and the iframe is ready.
@@ -391,6 +407,7 @@ export function stopStatusTick(): void {
 export function dismissLoading(): void {
   completeProgress();
   clearSlowWarning();
+  cancelStatusReveal();
   const loading = document.querySelector<HTMLElement>("#app > .loading");
   if (loading !== null) {
     loading.style.transition = "opacity 0.3s ease";
