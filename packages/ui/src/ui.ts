@@ -6,7 +6,7 @@
 // Status messages, error states, and landing page.
 // No heavy dependencies, kept in the eager bundle.
 
-import { getRecentLabels, addRecentLabel } from "@dotli/storage/cid-cache";
+import { loadRecentLabels, forgetRecentLabel } from "./recent-labels";
 import { BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";
 import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
@@ -605,10 +605,9 @@ export function showLanding(): void {
       input.focus();
       return;
     }
-    const url = dotUrl(name);
-    void addRecentLabel(name).finally(() => {
-      window.location.href = url;
-    });
+    // Recents are written after the name resolves, not here: a typo used to be
+    // persisted as a pill that reproduced the failure on every future click.
+    window.location.href = dotUrl(name);
   });
 
   input.addEventListener("input", clearNavError);
@@ -626,20 +625,112 @@ export function showLanding(): void {
     }
   }
 
-  // Show recently visited .dot sites
-  const labels = getRecentLabels();
-  if (labels.length > 0) {
-    const container = document.getElementById("dotli-recent");
-    if (container) {
-      container.removeAttribute("hidden");
-      const items = labels
-        .map((label) => {
-          return `<a href="${escapeHtml(dotUrl(label))}" class="landing-recent-pill">
-            <span class="landing-recent-label">${escapeHtml(label)}<span class="landing-tld">.dot</span></span>
-          </a>`;
-        })
-        .join("");
-      container.innerHTML = `<div class="landing-recent-list">${items}</div>`;
-    }
+  // Show recently visited .dot sites. The list is written on the subdomain
+  // that resolved, so it comes from the cross-subdomain store, not this
+  // origin's localStorage.
+  void loadRecentLabels().then((labels) => {
+    renderRecentPills(labels);
+  });
+}
+
+function renderRecentPills(labels: string[]): void {
+  const container = document.getElementById("dotli-recent");
+  if (container === null || labels.length === 0) {
+    return;
   }
+  const items = labels
+    .map((label) => {
+      const safe = escapeHtml(label);
+      return `<span class="landing-recent-item" data-label="${safe}">
+        <a href="${escapeHtml(dotUrl(label))}" class="landing-recent-pill">
+          <span class="landing-recent-label">${safe}<span class="landing-tld">.dot</span></span>
+        </a>
+        <button type="button" class="landing-recent-remove" aria-label="Remove ${safe}.dot from recently visited" title="Remove">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+        </button>
+      </span>`;
+    })
+    .join("");
+  container.innerHTML = `<div class="landing-recent-list">${items}</div>`;
+  container.removeAttribute("hidden");
+  bindRecentRemoval(container);
+}
+
+// Touch has no hover, so a long press on a pill reveals its remove button
+// instead of navigating.
+const RECENT_LONG_PRESS_MS = 450;
+
+function bindRecentRemoval(container: HTMLElement): void {
+  const items = (): HTMLElement[] =>
+    Array.from(container.querySelectorAll<HTMLElement>(".landing-recent-item"));
+  const clearRevealed = (except?: HTMLElement): void => {
+    for (const item of items()) {
+      if (item !== except) {
+        item.classList.remove("is-removable");
+      }
+    }
+  };
+
+  container.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const item = target.closest<HTMLElement>(".landing-recent-item");
+    if (!item) {
+      return;
+    }
+    const label = item.dataset.label;
+    if (target.closest(".landing-recent-remove") !== null) {
+      e.preventDefault();
+      if (label !== undefined) {
+        void forgetRecentLabel(label);
+      }
+      item.remove();
+      if (items().length === 0) {
+        container.hidden = true;
+        container.innerHTML = "";
+      }
+      return;
+    }
+    // A long press revealed the remove button, so swallow the tap that ends it
+    // rather than navigating to the site the user was about to forget.
+    if (item.classList.contains("is-removable")) {
+      e.preventDefault();
+    }
+  });
+
+  let pressTimer: ReturnType<typeof setTimeout> | null = null;
+  const cancelPress = (): void => {
+    if (pressTimer !== null) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  };
+
+  container.addEventListener(
+    "touchstart",
+    (e) => {
+      const item = (e.target as HTMLElement).closest<HTMLElement>(
+        ".landing-recent-item",
+      );
+      if (!item || item.classList.contains("is-removable")) {
+        return;
+      }
+      cancelPress();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        item.classList.add("is-removable");
+        clearRevealed(item);
+      }, RECENT_LONG_PRESS_MS);
+    },
+    { passive: true },
+  );
+  container.addEventListener("touchmove", cancelPress, { passive: true });
+  container.addEventListener("touchend", cancelPress, { passive: true });
+  container.addEventListener("touchcancel", cancelPress, { passive: true });
+
+  // Tapping anywhere else puts the revealed pills back.
+  document.addEventListener("pointerdown", (e) => {
+    if (!container.contains(e.target as Node)) {
+      clearRevealed();
+    }
+  });
 }

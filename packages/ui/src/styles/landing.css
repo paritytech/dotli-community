@@ -138,6 +138,10 @@
   justify-content: center;
   gap: 8px;
 }
+.landing-recent-item {
+  position: relative;
+  display: inline-flex;
+}
 .landing-recent-pill {
   display: inline-flex;
   align-items: center;
@@ -146,6 +150,8 @@
   background: #151515;
   border: 1px solid #2a2a2a;
   border-radius: 20px;
+  -webkit-touch-callout: none;
+  user-select: none;
   transition:
     border-color 0.15s,
     background 0.15s;
@@ -158,6 +164,43 @@
   font-size: 0.75rem;
   color: #999;
   white-space: nowrap;
+}
+.landing-recent-remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: #2a2a2a;
+  border: 1px solid #0a0a0a;
+  border-radius: 50%;
+  color: #ccc;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+}
+.landing-recent-item:hover .landing-recent-remove,
+.landing-recent-item:focus-within .landing-recent-remove,
+.landing-recent-item.is-removable .landing-recent-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+.landing-recent-remove:hover {
+  background: #444;
+  color: #fff;
+}
+@media (hover: none) {
+  .landing-recent-remove {
+    width: 20px;
+    height: 20px;
+  }
 }
 .landing-footer {
   flex-shrink: 0;

@@ -390,7 +390,7 @@ export default defineConfig({
         // the waiting SW to sit idle until the user opts in.
         skipWaiting: false,
         clientsClaim: false,
-        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,
         // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
         // reach the browser.
         navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/],

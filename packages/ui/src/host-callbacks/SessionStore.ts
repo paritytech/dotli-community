@@ -240,6 +240,10 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       )}`;
     case "AllowanceKeys":
       return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
+    case "AutoSigningKey":
+      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case "AuthSession":
@@ -247,18 +251,22 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
   }
 }
 
+function storesSecretMaterial(key: CoreStorageKey): boolean {
+  return key.tag === "AllowanceKeys" || key.tag === "AutoSigningKey";
+}
+
 async function encodeCoreStorageValue(
   key: CoreStorageKey,
   value: Uint8Array,
 ): Promise<string> {
-  if (key.tag === "AllowanceKeys") {
+  if (storesSecretMaterial(key)) {
     const nonce = crypto.getRandomValues(
-      new Uint8Array(ALLOWANCE_NONCE_LENGTH),
+      new Uint8Array(CORE_SECRET_NONCE_LENGTH),
     );
     const ciphertext = new Uint8Array(
       await crypto.subtle.encrypt(
         { name: "AES-GCM", iv: nonce },
-        await allowanceStorageKey(),
+        await coreSecretStorageKey(),
         new Uint8Array(value),
       ),
     );
@@ -274,7 +282,7 @@ async function decodeCoreStorageValue(
   key: CoreStorageKey,
   raw: string,
 ): Promise<Uint8Array | undefined> {
-  if (key.tag !== "AllowanceKeys") {
+  if (!storesSecretMaterial(key)) {
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
   }
   if (!raw.startsWith(ENCRYPTED_VALUE_PREFIX)) {
@@ -302,9 +310,9 @@ async function decodeCoreStorageValue(
   try {
     return new Uint8Array(
       await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: bytes.slice(0, ALLOWANCE_NONCE_LENGTH) },
-        await allowanceStorageKey(),
-        bytes.slice(ALLOWANCE_NONCE_LENGTH),
+        { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
+        await coreSecretStorageKey(),
+        bytes.slice(CORE_SECRET_NONCE_LENGTH),
       ),
     );
   } catch (err) {
@@ -326,48 +334,48 @@ const ENCRYPTED_VALUE_PREFIX = "enc1:";
 // Standard AES-GCM nonce length. A fresh random nonce is drawn per write and
 // stored as the ciphertext prefix: GCM security collapses if a (key, nonce)
 // pair is ever reused.
-const ALLOWANCE_NONCE_LENGTH = 12;
+const CORE_SECRET_NONCE_LENGTH = 12;
 
 const KEY_DB_NAME = "dotli-core";
 const KEY_DB_STORE = "keys";
-const ALLOWANCE_KEY_ID = "allowance-keys";
+const CORE_SECRET_KEY_ID = "allowance-keys";
 
-let allowanceKeyPromise: Promise<CryptoKey> | undefined;
+let coreSecretKeyPromise: Promise<CryptoKey> | undefined;
 
 /**
- * The at-rest key for AllowanceKeys slots: a random per-install AES key
+ * The at-rest key for core signing-secret slots: a random per-install AES key
  * generated non-extractable and persisted in IndexedDB, so the key material
  * itself can never be read out of the browser's crypto implementation — a
  * key derived from bundle data would be computable by anyone. If IndexedDB
  * is unavailable the key degrades to session-ephemeral: values written then
  * fail to decrypt after a reload and are dropped like any corrupt slot.
  */
-function allowanceStorageKey(): Promise<CryptoKey> {
-  allowanceKeyPromise ??= loadOrCreateAllowanceKey().catch((err: unknown) => {
+function coreSecretStorageKey(): Promise<CryptoKey> {
+  coreSecretKeyPromise ??= loadOrCreateCoreSecretKey().catch((err: unknown) => {
     log.warn(
-      "[dot.li] falling back to a session-ephemeral allowance storage key:",
+      "[dot.li] falling back to a session-ephemeral core-secret storage key:",
       err,
     );
-    return generateAllowanceKey();
+    return generateCoreSecretKey();
   });
-  return allowanceKeyPromise;
+  return coreSecretKeyPromise;
 }
 
-function generateAllowanceKey(): Promise<CryptoKey> {
+function generateCoreSecretKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
     "encrypt",
     "decrypt",
   ]);
 }
 
-async function loadOrCreateAllowanceKey(): Promise<CryptoKey> {
+async function loadOrCreateCoreSecretKey(): Promise<CryptoKey> {
   const db = await openKeyDb();
   try {
     const existing = await idbGetKey(db);
     if (existing !== undefined) {
       return existing;
     }
-    const key = await generateAllowanceKey();
+    const key = await generateCoreSecretKey();
     try {
       await idbAddKey(db, key);
       return key;
@@ -405,7 +413,7 @@ function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
     const request = db
       .transaction(KEY_DB_STORE)
       .objectStore(KEY_DB_STORE)
-      .get(ALLOWANCE_KEY_ID);
+      .get(CORE_SECRET_KEY_ID);
     request.onsuccess = () => {
       const value: unknown = request.result;
       resolve(isCryptoKey(value) ? value : undefined);
@@ -419,7 +427,7 @@ function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
 function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(KEY_DB_STORE, "readwrite");
-    tx.objectStore(KEY_DB_STORE).add(key, ALLOWANCE_KEY_ID);
+    tx.objectStore(KEY_DB_STORE).add(key, CORE_SECRET_KEY_ID);
     tx.oncomplete = () => {
       resolve();
     };

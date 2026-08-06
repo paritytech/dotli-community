@@ -135,7 +135,7 @@ describe("user confirmation modal", () => {
         value: {
           account: {
             dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: 2,
+            derivationIndex: { tag: "Left", value: 2 },
           },
           payload: {
             blockHash:
@@ -217,6 +217,49 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
+  it("As a dotli integrator, the host renders VRF signing as structured transcript fields", async () => {
+    // Given
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "SignVrf",
+      value: {
+        callingProductId: "truapi-playground.dot",
+        request: {
+          account: {
+            dotNsIdentifier: "other-product.dot",
+            derivationIndex: { tag: "Left", value: 4 },
+          },
+          transcriptLabel: "0x706f703a61697264726f70",
+          items: [
+            { label: "0x646f6d61696e", value: "0x01" },
+            { label: "0x7369676e6572", value: "0x02" },
+          ],
+        },
+      },
+    };
+
+    // When
+    const confirmation = confirmUserAction(review);
+
+    // Then
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Sign VRF Transcript",
+    );
+    expect(modalFields()).toEqual({
+      "Requesting product": "truapi-playground.dot",
+      Signer: "other-product.dot / 4",
+      "Transcript label": "0x706f703a61697264726f70",
+      "Transcript items": "2",
+    });
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
+  });
+
   it("As a dotli integrator, the host renders product transaction creation as structured fields", async () => {
     // Given
     const { confirmUserAction } =
@@ -228,7 +271,7 @@ describe("user confirmation modal", () => {
         value: {
           signer: {
             dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: 3,
+            derivationIndex: { tag: "Left", value: 3 },
           },
           genesisHash:
             "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
@@ -304,7 +347,7 @@ describe("user confirmation modal", () => {
         callingProductId: "truapi-playground.dot",
         context: {
           productId: "truapix-playground.dot",
-          suffix: "0x00",
+          suffix: { tag: "Left", value: 0 },
         },
         ringLocation: {
           chainId:
@@ -325,7 +368,7 @@ describe("user confirmation modal", () => {
     expect(fields).toEqual({
       "Requesting product": "truapi-playground.dot",
       "Context product": "truapix-playground.dot",
-      "Context suffix": "0x00",
+      "Context suffix": "0",
       Chain:
         "0x0000000000000000000000000000000000000000000000000000000000000000",
       "Ring path": "PalletInstance(42)",
@@ -344,32 +387,6 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders the published account alias review shape", async () => {
-    // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
-    // When
-    const confirmation = confirmUserAction({
-      tag: "AccountAlias",
-      value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
-      },
-    });
-
-    // Then
-    expect(modalFields()).toEqual({
-      "Requesting product": "truapi-playground.dot",
-      "Requested account": "other-product.dot",
-    });
-
-    // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
-
-    // Then
-    await expect(confirmation).resolves.toBe(true);
-  });
-
   it("As a dotli integrator, the host renders proof permission as structured ring fields", async () => {
     // Given
     const { confirmUserAction } =
@@ -380,7 +397,7 @@ describe("user confirmation modal", () => {
         callingProductId: "truapi-playground.dot",
         context: {
           productId: "truapix-playground.dot",
-          suffix: "0x00",
+          suffix: { tag: "Left", value: 0 },
         },
         ringLocation: {
           chainId:
@@ -401,7 +418,7 @@ describe("user confirmation modal", () => {
     expect(modalFields()).toEqual({
       "Requesting product": "truapi-playground.dot",
       "Context product": "truapix-playground.dot",
-      "Context suffix": "0x00",
+      "Context suffix": "0",
       Chain:
         "0x0000000000000000000000000000000000000000000000000000000000000000",
       "Ring path": "PalletInstance(42)",
