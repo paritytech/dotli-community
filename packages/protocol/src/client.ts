@@ -13,7 +13,6 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
   getActiveGatewaySupportedGenesisHashes,
@@ -25,6 +24,7 @@ import { log } from "@dotli/shared/log";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import {
+  isChainSyncPayloadValid,
   isProtocolEnvelope,
   type ProtocolChainSyncEnvelope,
   type ProtocolRequestEnvelope,
@@ -68,26 +68,6 @@ const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
-// postMessage data is untrusted and the envelope type alone cannot reject a
-// spoofed field, so both are checked at runtime. The lists are repeated
-// rather than imported because importing a value from the resolver's
-// smoldot module would drag smoldot into every bundle that talks to the
-// protocol. `satisfies` ties each literal to the resolver's type, so a
-// drifting or misspelled entry fails typecheck.
-const CHAIN_KEY_VALUES = new Set<string>([
-  "relay",
-  "custom-relay",
-  "asset-hub",
-  "bulletin",
-  "people",
-] satisfies ChainKey[]);
-const SYNC_KIND_VALUES = new Set<string>([
-  "firstPeer",
-  "bootstrapComplete",
-  "stalled",
-  "recovered",
-  "peers",
-] satisfies ChainSyncKind[]);
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -260,18 +240,7 @@ function bindMessageListener(): void {
         return;
       }
       case "chain-sync": {
-        if (
-          !CHAIN_KEY_VALUES.has(msg.chain) ||
-          !SYNC_KIND_VALUES.has(msg.syncKind)
-        ) {
-          return;
-        }
-        if (
-          msg.syncKind === "peers" &&
-          (!Number.isInteger(msg.peers) ||
-            (msg.peers ?? -1) < 0 ||
-            (msg.peers ?? 0) > 10_000)
-        ) {
+        if (!isChainSyncPayloadValid(msg)) {
           return;
         }
         broadcast(chainSyncListeners, msg, "Chain sync");

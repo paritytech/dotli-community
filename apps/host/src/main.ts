@@ -31,6 +31,7 @@ import {
   showLanding,
   initPhases,
   advancePhase,
+  nudgePhaseProgress,
   setStatusDetail,
   stopStatusTick,
   listenForSandboxStatus,
@@ -1213,22 +1214,59 @@ async function main(): Promise<void> {
     // peer count still in flight, or a late stall on the relay, must not
     // resurrect it under "Resolving".
     let syncDetailDone = false;
+    // The relay warps first and the Asset Hub bootstraps on top of it, so
+    // the chain the user is waiting on changes partway through the step.
+    // Peer counts follow that, which is what keeps a number on screen for
+    // the whole step instead of the last a hundred milliseconds of it.
+    let waitingOn: "relay" | "asset-hub" = "relay";
+    const setPeerDetail = (count: number): void => {
+      const first = peerDetail === "";
+      peerDetail = `${String(count)} ${count === 1 ? "peer" : "peers"}`;
+      // Announce that peers were found, once. Every later tick is a silent
+      // visual update, so the count stays readable without queueing an
+      // announcement per second.
+      setStatusDetail(peerDetail, { announce: first });
+    };
     onProtocolChainSync((event) => {
       log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
       if (syncDetailDone) {
         return;
       }
       switch (event.syncKind) {
-        case "peers":
-          if (event.chain === "asset-hub") {
-            const count = event.peers ?? 0;
-            const first = peerDetail === "";
-            peerDetail = `${String(count)} ${count === 1 ? "peer" : "peers"}`;
-            // Announce that peers were found, once. Every later tick is a
-            // silent visual update, so the count stays readable without
-            // queueing an announcement per second.
-            setStatusDetail(peerDetail, { announce: first });
+        case "connecting":
+          if (peerDetail === "") {
+            setStatusDetail("connecting to peers");
           }
+          return;
+        case "peers":
+          if (event.chain === waitingOn) {
+            setPeerDetail(event.peers ?? 0);
+          }
+          return;
+        case "warpSyncProgress": {
+          // The one true percentage smoldot offers. Only relays warp, and
+          // only when they have real distance to cover.
+          const { at, target } = event;
+          if (
+            at === undefined ||
+            target === undefined ||
+            target <= 0 ||
+            at > target
+          ) {
+            return;
+          }
+          setStatusDetail(
+            `block ${at.toLocaleString()} of ${target.toLocaleString()}`,
+          );
+          nudgePhaseProgress(at / target);
+          return;
+        }
+        case "warpSyncFinished":
+          // Fills the second of silence between the relay finishing and the
+          // Asset Hub finding its first peer.
+          waitingOn = "asset-hub";
+          peerDetail = "";
+          setStatusDetail("relay ready, reaching Asset Hub");
           return;
         case "stalled":
           // No trailing ellipsis: the headline already ends in one, and the
@@ -1251,7 +1289,12 @@ async function main(): Promise<void> {
           }
           return;
         case "bootstrapComplete":
-          if (event.chain === "asset-hub") {
+          if (event.chain === "relay") {
+            // A relay short enough to skip warp never sends
+            // `warpSyncFinished`, so hand over here too.
+            waitingOn = "asset-hub";
+            peerDetail = "";
+          } else {
             advancePhase(3);
             // The count is meaningless once sync is done. Clear it rather
             // than letting a stale number sit under "Resolving".

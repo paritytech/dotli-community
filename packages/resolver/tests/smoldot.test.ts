@@ -193,6 +193,30 @@ describe("Light client sync reporting works", () => {
     ]);
   });
 
+  it("As a user on a chain with real catching up to do, the shell learns how far along the warp is", async () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const { raw } = await startRelay();
+    const milestones: unknown[] = [];
+    onChainSync((event) => milestones.push(event));
+
+    // When
+    raw.push(FOLLOW_REPLY);
+    raw.push(milestone("sub-1", "connecting"));
+    raw.push(milestone("sub-1", "warpSyncProgress", { at: 20, target: 100 }));
+    raw.push(milestone("sub-1", "warpSyncProgress", { at: 75, target: 100 }));
+    raw.push(milestone("sub-1", "warpSyncFinished", { finalized: 100 }));
+    await flush();
+
+    // Then
+    expect(milestones).toEqual([
+      { chain: "relay", kind: "connecting" },
+      { chain: "relay", kind: "warpSyncProgress", at: 20, target: 100 },
+      { chain: "relay", kind: "warpSyncProgress", at: 75, target: 100 },
+      { chain: "relay", kind: "warpSyncFinished", finalized: 100 },
+    ]);
+  });
+
   it("As a user whose connection drops mid-sync, the shell learns why it stalled and when it recovered", async () => {
     // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
@@ -380,7 +404,8 @@ describe("Light client sync reporting fails", () => {
 
     // When
     raw.push(FOLLOW_REPLY);
-    raw.push(milestone("sub-1", "warpSyncProgress", { at: 5, target: 9 }));
+    // `modeDecision` is real and we deliberately have nothing to say about it.
+    raw.push(milestone("sub-1", "modeDecision", { mode: "warpSync" }));
     raw.push(appResponse);
     await flush();
 

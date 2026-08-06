@@ -72,10 +72,13 @@ export type ChainKey = (typeof CHAIN_KEYS)[number];
 /**
  * What a chain reports about its own sync.
  *
- * Smoldot emits more milestones than these (connecting, modeDecision,
- * warpSyncProgress, warpSyncFinished, stopped). The list covers only what
- * the loading UI consumes. `peers` is our own addition, sampled while the
- * chain bootstraps rather than reported by smoldot.
+ * Smoldot emits two more milestones (modeDecision and stopped) that the
+ * loading UI has nothing to say about. `peers` is our own addition, sampled
+ * while the chain bootstraps rather than reported by smoldot.
+ *
+ * `warpSyncProgress` is the only true percentage in here, and it only
+ * arrives when a relay has a real warp distance to cover. Short-lived test
+ * networks jump straight to `warpSyncFinished`.
  */
 export const CHAIN_SYNC_KINDS = [
   "firstPeer",
@@ -83,6 +86,9 @@ export const CHAIN_SYNC_KINDS = [
   "stalled",
   "recovered",
   "peers",
+  "connecting",
+  "warpSyncProgress",
+  "warpSyncFinished",
 ] as const;
 export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
 
@@ -99,6 +105,12 @@ export interface ChainSyncEvent {
   peers?: number;
   /** Whether the chain is still catching up, on `peers`. */
   isSyncing?: boolean;
+  /** Block the warp has proven so far, on `warpSyncProgress`. */
+  at?: number;
+  /** Block the warp is heading for, on `warpSyncProgress`. */
+  target?: number;
+  /** Block the warp settled on, on `warpSyncFinished`. */
+  finalized?: number;
 }
 
 type SyncCallback = (event: ChainSyncEvent) => void;
@@ -357,10 +369,16 @@ function emitMilestone(
     persistence.get(chain)?.healthPoller?.stop();
   }
   const reason = kind === "stalled" ? result?.reason : result?.previously;
+  const heights = result as unknown as Record<string, unknown>;
   emitChainSync({
     chain,
     kind,
     ...(typeof reason === "string" ? { reason } : {}),
+    ...(typeof heights.at === "number" ? { at: heights.at } : {}),
+    ...(typeof heights.target === "number" ? { target: heights.target } : {}),
+    ...(typeof heights.finalized === "number"
+      ? { finalized: heights.finalized }
+      : {}),
   });
 }
 

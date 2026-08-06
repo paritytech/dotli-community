@@ -144,6 +144,26 @@ export function advancePhase(index: number): void {
 }
 
 /**
+ * Pull the bar to a real fraction of the current phase's band.
+ *
+ * The crawl paces the band on a guess at how long the step takes. When a
+ * step reports true progress, this moves the bar to where the work actually
+ * is. Monotonic and clamped to the band, so a late or noisy signal can
+ * never rewind the bar or push it into the next phase's territory.
+ */
+export function nudgePhaseProgress(fraction: number): void {
+  if (!Number.isFinite(fraction) || currentPhase < 0) {
+    return;
+  }
+  const { base, target } = phases[currentPhase];
+  const clamped = Math.max(0, Math.min(1, fraction));
+  const want = base + (target - base) * clamped;
+  if (want > currentProgress) {
+    setProgress(Math.min(want, target));
+  }
+}
+
+/**
  * Write the live detail line under the status headline, e.g. "3 peers".
  *
  * This is deliberately not `#status`. The value changes every second or two
