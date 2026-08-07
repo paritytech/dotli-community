@@ -393,7 +393,7 @@ function stopStageMessages(): void {
   cancelTyping();
 }
 
-/** Report what the light client itself is doing, e.g. "syncing Asset Hub". */
+/** Report what the light client itself is doing, e.g. "AssetHub ready". */
 export function setLifecycleStatus(text: string): void {
   const el = document.getElementById("metric-lifecycle");
   if (el !== null) {

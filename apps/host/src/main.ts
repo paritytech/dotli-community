@@ -188,7 +188,7 @@ const blockingModalCoordinator = createBlockingModalCoordinator();
 const CHAIN_NAMES: Record<ChainKey, string> = {
   relay: "Polkadot",
   "custom-relay": "Relay",
-  "asset-hub": "Asset Hub",
+  "asset-hub": "AssetHub",
   bulletin: "Bulletin",
   people: "People",
 };
