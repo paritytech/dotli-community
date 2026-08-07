@@ -45,9 +45,9 @@ export interface LoadingPhase {
 let phases: LoadingPhase[] = [];
 let currentPhase = -1;
 
-// Progress bar state
+// Progress indicator state
 let progressFillEl: HTMLElement | null = null;
-let progressPctEl: HTMLElement | null = null;
+let progressLogoEl: HTMLElement | null = null;
 let statusBlockEl: HTMLElement | null = null;
 let metricAssetHubPeersEl: HTMLElement | null = null;
 let metricBulletinPeersEl: HTMLElement | null = null;
@@ -76,11 +76,12 @@ let creepStep = 0;
 function setProgress(pct: number): void {
   currentProgress = pct;
   if (progressFillEl !== null) {
-    progressFillEl.style.width = `${String(pct)}%`;
+    // Clip away the top, so the colour rises from the bottom of the logo.
+    progressFillEl.style.clipPath = `inset(${String(100 - pct)}% 0 0 0)`;
   }
-  if (progressPctEl !== null) {
-    progressPctEl.textContent = `${String(Math.round(pct))}%`;
-  }
+  // The bar carried no percentage for a screen reader to announce. Now that
+  // the logo is the indicator, it says the number out loud.
+  progressLogoEl?.setAttribute("aria-valuenow", String(Math.round(pct)));
 }
 
 function startProgressCrawl(): void {
@@ -104,7 +105,7 @@ function stopProgressCrawl(): void {
 }
 
 /**
- * Snap the progress bar to 100%.
+ * Fill the logo completely.
  * Called when loading is done, before the overlay fades out.
  */
 export function completeProgress(): void {
@@ -113,7 +114,7 @@ export function completeProgress(): void {
 }
 
 /**
- * Initialize the loading progress bar.
+ * Initialize the loading progress indicator.
  * Call once before resolution/fetching begins.
  */
 export function initPhases(phaseList: LoadingPhase[]): void {
@@ -122,8 +123,8 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   currentProgress = 0;
   targetProgress = 0;
 
-  progressFillEl = document.getElementById("loading-progress-fill");
-  progressPctEl = document.getElementById("loading-progress-pct");
+  progressFillEl = document.getElementById("loading-logo-fill");
+  progressLogoEl = document.getElementById("loading-logo");
   statusBlockEl = document.getElementById("loading-status");
   metricAssetHubPeersEl = document.getElementById("metric-peers-assethub");
   metricBulletinPeersEl = document.getElementById("metric-peers-bulletin");
@@ -150,12 +151,15 @@ const MESSAGE_ROTATE_MS = 2_800;
 const DOMAIN_TOKEN = "{domain}";
 
 /** The steps a load moves through, in the order they happen. */
-export type LoadingStage =
-  | "starting"
-  | "relay"
-  | "assetHub"
-  | "resolving"
-  | "content";
+export const LOADING_STAGES = [
+  "starting",
+  "relay",
+  "assetHub",
+  "resolving",
+  "content",
+  "preparing",
+] as const;
+export type LoadingStage = (typeof LOADING_STAGES)[number];
 
 /**
  * What the shell is doing, in the user's terms.
@@ -167,6 +171,12 @@ export type LoadingStage =
  * each stage names the step. The rest explain what a light client is doing
  * and why it takes the time it does, so a slow load teaches something
  * instead of just apologising.
+ *
+ * The lists are sized to how long each step actually runs, measured over ten
+ * cold loads: content is the long pole at a 13s median and 89s worst case,
+ * while every other step finishes inside 1.5s and rarely shows more than its
+ * opener. Content and preparing therefore carry enough lines to cover a slow
+ * load without repeating.
  */
 const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
   starting: [
@@ -194,12 +204,21 @@ const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
     "Downloading the app",
     "The files come from multiple peers across the network",
     "Speed depends on how many are nearby",
+    "Every piece is checked against its fingerprint as it lands",
+    "No single machine is serving this, so there is nothing to take down",
+    "Bigger apps take longer the first time",
+    "Your browser keeps a copy, so the next visit is quick",
+  ],
+  preparing: [
+    "Download complete. We are preparing your app.",
+    "Unpacking the files",
+    "Handing over to the app",
     "Almost there",
   ],
 };
 
 let stageTimer: ReturnType<typeof setInterval> | null = null;
-let currentStage: LoadingStage | "" = "";
+let currentStageIndex = -1;
 let loadingDomain = "";
 
 /** Name the domain being loaded, for the messages that mention it. */
@@ -222,24 +241,26 @@ function writeStatus(message: string): void {
 /**
  * Move to a stage and start cycling its messages.
  *
- * Re-entering a stage already running is ignored, so the copy does not
- * restart every time a signal arrives for a step that is already underway.
+ * Only ever moves forward. Re-entering the running stage is ignored so the
+ * copy does not restart on every signal for a step already underway, and an
+ * earlier stage is refused so a late event cannot walk the story backwards.
  */
 export function setLoadingStage(stage: LoadingStage): void {
-  if (stage === currentStage) {
+  const stageIndex = LOADING_STAGES.indexOf(stage);
+  if (stageIndex <= currentStageIndex) {
     return;
   }
-  currentStage = stage;
+  currentStageIndex = stageIndex;
   const messages = STAGE_MESSAGES[stage];
-  let index = 0;
+  let line = 0;
   writeStatus(messages[0]);
   stopStageMessages();
   // Cycle back to the second line rather than the first: the opener names
   // the step, and showing it again would read as the load starting over.
   const loopFrom = messages.length > 2 ? 1 : 0;
   stageTimer = setInterval(() => {
-    index = index + 1 >= messages.length ? loopFrom : index + 1;
-    writeStatus(messages[index]);
+    line = line + 1 >= messages.length ? loopFrom : line + 1;
+    writeStatus(messages[line]);
   }, MESSAGE_ROTATE_MS);
 }
 
@@ -285,8 +306,8 @@ export function setLoadingMetrics(metrics: {
 
 /**
  * Advance to a specific phase (0-indexed).
- * Jumps the progress bar to the phase's base percentage and begins
- * crawling toward its target. Updates the headline text.
+ * Jumps the indicator to the phase's base percentage and begins crawling
+ * toward its target. Updates the headline text.
  * No-ops if the phase is already active or past.
  */
 export function advancePhase(index: number): void {

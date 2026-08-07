@@ -33,6 +33,7 @@ import {
   nudgePhaseProgress,
   setLoadingMetrics,
   setLoadingDomain,
+  setLoadingStage,
   setLifecycleStatus,
   stopStatusTick,
   listenForSandboxStatus,
@@ -1352,6 +1353,14 @@ async function main(): Promise<void> {
       // said the same thing twice.
       if (totalBytes !== null && totalBytes > 0) {
         nudgePhaseProgress(bytesFetched / totalBytes);
+        // The tail of the load is the sandbox unpacking the archive and
+        // painting, which used to hide behind download copy while the bar
+        // crept. Only blocks relayed for the sandbox are counted here, and
+        // the sandbox is mounted after the content phase begins, so this
+        // cannot fire while an earlier step is still on screen.
+        if (bytesFetched >= totalBytes) {
+          setLoadingStage("preparing");
+        }
       }
     });
   }
