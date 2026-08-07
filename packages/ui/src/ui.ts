@@ -52,6 +52,7 @@ let statusBlockEl: HTMLElement | null = null;
 let metricAssetHubPeersEl: HTMLElement | null = null;
 let metricBulletinPeersEl: HTMLElement | null = null;
 let metricSpeedEl: HTMLElement | null = null;
+let metricCompletedEl: HTMLElement | null = null;
 let revealTimer: ReturnType<typeof setTimeout> | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
@@ -120,6 +121,8 @@ export function completeProgress(): void {
 export function initPhases(phaseList: LoadingPhase[]): void {
   phases = phaseList;
   currentPhase = -1;
+  currentStageIndex = -1;
+  openingLine = true;
   currentProgress = 0;
   targetProgress = 0;
 
@@ -129,6 +132,7 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   metricAssetHubPeersEl = document.getElementById("metric-peers-assethub");
   metricBulletinPeersEl = document.getElementById("metric-peers-bulletin");
   metricSpeedEl = document.getElementById("metric-speed");
+  metricCompletedEl = document.getElementById("metric-completed");
 
   // A load that finishes quickly should never explain itself. Only once it
   // has run long enough to feel slow does the status block appear.
@@ -138,14 +142,23 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   revealTimer = setTimeout(() => {
     statusBlockEl?.classList.add("visible");
   }, STATUS_REVEAL_MS);
+
+  // Start narrating here rather than waiting for the first `advancePhase`,
+  // which lands a couple of seconds later once the protocol frame is up. The
+  // markup already shows this stage's opening line, so nothing moves on
+  // screen; what matters is that the rotation clock starts when the line
+  // first becomes visible, not when the resolver gets going. Without this the
+  // opener sat for over five seconds on a cold load.
+  setLoadingStage("starting");
 }
 
 /** How long a load may run before it owes the user an explanation. */
 export const STATUS_REVEAL_MS = 3_000;
 
-// No sentence may hold the screen longer than three seconds. Set just under
-// it so a tick that lands late still clears the bar.
-const MESSAGE_ROTATE_MS = 2_800;
+// No sentence holds the screen longer than three seconds. The turnover
+// animation runs inside this, so the finished sentence is actually still for
+// the last ~0.85s of it.
+const MESSAGE_ROTATE_MS = 3_000;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = "{domain}";
@@ -221,8 +234,10 @@ const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
   ],
 };
 
-let stageTimer: ReturnType<typeof setInterval> | null = null;
+let stageTimer: ReturnType<typeof setTimeout> | null = null;
 let currentStageIndex = -1;
+/** True until the first stage turn, which the markup already painted. */
+let openingLine = true;
 let loadingDomain = "";
 
 /** Name the domain being loaded, for the messages that mention it. */
@@ -231,17 +246,38 @@ export function setLoadingDomain(domain: string): void {
 }
 
 // The old line is deleted a character at a time and the new one typed in.
-// Both are given a fixed budget rather than a per-character delay, so a long
-// sentence animates at the same pace as a short one and always lands well
-// inside the rotation interval.
-const ERASE_MS = 260;
-const TYPE_MS = 620;
+// Both get a fixed budget rather than a per-character delay, so a long
+// sentence animates at the same pace as a short one and always lands inside
+// the rotation interval. Together they take a little over two thirds of it,
+// which is as slow as the typing can go and still leave the finished
+// sentence sitting still long enough to be read.
+const ERASE_MS = 600;
+const TYPE_MS = 1_550;
 let typingFrame: number | null = null;
+let pendingMessage: string | null = null;
+
+/**
+ * Slow at both ends, quickest in the middle.
+ *
+ * A constant character rate is what made the change feel frantic: characters
+ * appeared and vanished at full speed the instant a sentence turned over.
+ * Easing means each sentence starts and finishes gently, and only the
+ * unremarkable middle runs fast.
+ */
+function easeInOut(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+}
 
 function cancelTyping(): void {
+  pendingMessage = null;
   if (typingFrame !== null) {
     cancelAnimationFrame(typingFrame);
     typingFrame = null;
+    // An interrupted fade would otherwise leave the line stranded dim.
+    const status = document.getElementById("status");
+    if (status !== null) {
+      status.style.opacity = "1";
+    }
   }
 }
 
@@ -256,14 +292,23 @@ function writeStatus(message: string): void {
     DOMAIN_TOKEN,
     loadingDomain === "" ? "the name" : `${loadingDomain}.dot`,
   );
-  const previous = status.textContent;
-  cancelTyping();
   // Screen readers get the whole sentence once, from an element the typing
   // never touches.
   const announce = document.getElementById("status-sr");
   if (announce !== null) {
     announce.textContent = next;
   }
+  // A sentence already being typed is left to finish. Stages turn over faster
+  // than a line takes to render on a quick load, and cutting one off mid-word
+  // meant a step's opening line was never actually read: the screen went
+  // straight from "Reaching out" to the download copy. Only the newest
+  // waiting sentence is kept, so the queue can never fall behind by more
+  // than one.
+  if (typingFrame !== null) {
+    pendingMessage = next;
+    return;
+  }
+  const previous = status.textContent;
   if (next === previous || prefersReducedMotion()) {
     status.textContent = next;
     return;
@@ -272,14 +317,30 @@ function writeStatus(message: string): void {
   const step = (now: number): void => {
     const elapsedMs = now - start;
     if (elapsedMs < ERASE_MS) {
-      const keep = Math.ceil(previous.length * (1 - elapsedMs / ERASE_MS));
-      status.textContent = previous.slice(0, keep);
+      const gone = easeInOut(elapsedMs / ERASE_MS);
+      status.textContent = previous.slice(
+        0,
+        Math.ceil(previous.length * (1 - gone)),
+      );
+      // Dims as it empties and brightens as the new line arrives, so the
+      // turnover reads as one settling motion rather than a text scramble.
+      // Only a shallow dip: this block's contrast is built on solid colours
+      // precisely because opacity once sank it below AA, and 0.75 of #d4d4d4
+      // is still 7.5:1 against the page.
+      status.style.opacity = String(1 - 0.25 * gone);
     } else if (elapsedMs < ERASE_MS + TYPE_MS) {
-      const typed = Math.ceil(next.length * ((elapsedMs - ERASE_MS) / TYPE_MS));
-      status.textContent = next.slice(0, typed);
+      const shown = easeInOut((elapsedMs - ERASE_MS) / TYPE_MS);
+      status.textContent = next.slice(0, Math.ceil(next.length * shown));
+      status.style.opacity = String(0.75 + 0.25 * shown);
     } else {
       status.textContent = next;
+      status.style.opacity = "1";
       typingFrame = null;
+      if (pendingMessage !== null) {
+        const queued = pendingMessage;
+        pendingMessage = null;
+        writeStatus(queued);
+      }
       return;
     }
     typingFrame = requestAnimationFrame(step);
@@ -307,15 +368,26 @@ export function setLoadingStage(stage: LoadingStage): void {
   // Cycle back to the second line rather than the first: the opener names
   // the step, and showing it again would read as the load starting over.
   const loopFrom = messages.length > 2 ? 1 : 0;
-  stageTimer = setInterval(() => {
+  // The opening line is in the markup, so it has been on screen since the
+  // page painted while this code waited on the protocol frame. Its turn is
+  // therefore due three seconds after the page appeared, not three seconds
+  // from here. Measured cold, that gap was 2.8s, and charging it to the
+  // first message left it up for 5.6s. Later turns get the full interval.
+  const firstDelay = openingLine
+    ? Math.max(500, MESSAGE_ROTATE_MS - performance.now())
+    : MESSAGE_ROTATE_MS;
+  openingLine = false;
+  const turn = (): void => {
     line = line + 1 >= messages.length ? loopFrom : line + 1;
     writeStatus(messages[line]);
-  }, MESSAGE_ROTATE_MS);
+    stageTimer = setTimeout(turn, MESSAGE_ROTATE_MS);
+  };
+  stageTimer = setTimeout(turn, firstDelay);
 }
 
 function stopStageMessages(): void {
   if (stageTimer !== null) {
-    clearInterval(stageTimer);
+    clearTimeout(stageTimer);
     stageTimer = null;
   }
   cancelTyping();
@@ -342,6 +414,7 @@ export function setLoadingMetrics(metrics: {
   assetHubPeers?: number;
   bulletinPeers?: number;
   bytesPerSecond?: number;
+  completedFraction?: number;
 }): void {
   if (metrics.assetHubPeers !== undefined && metricAssetHubPeersEl !== null) {
     metricAssetHubPeersEl.textContent = String(metrics.assetHubPeers);
@@ -351,6 +424,10 @@ export function setLoadingMetrics(metrics: {
   }
   if (metrics.bytesPerSecond !== undefined && metricSpeedEl !== null) {
     metricSpeedEl.textContent = `${(metrics.bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
+  }
+  if (metrics.completedFraction !== undefined && metricCompletedEl !== null) {
+    const pct = Math.min(100, Math.max(0, metrics.completedFraction * 100));
+    metricCompletedEl.textContent = `${String(Math.round(pct))} %`;
   }
 }
 

@@ -1352,6 +1352,7 @@ async function main(): Promise<void> {
       // a percentage belongs. Printing the same number as text alongside it
       // said the same thing twice.
       if (totalBytes !== null && totalBytes > 0) {
+        setLoadingMetrics({ completedFraction: bytesFetched / totalBytes });
         nudgePhaseProgress(bytesFetched / totalBytes);
         // The tail of the load is the sandbox unpacking the archive and
         // painting, which used to hide behind download copy while the bar

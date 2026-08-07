@@ -414,17 +414,15 @@ body {
 .topbar-chains-btn.visible {
   display: inline-flex;
 }
+/* Settings owns the popover recipe: 6px on the shell from `.more-popover`,
+   and each child carries its own inset. This panel keeps that rather than
+   padding the shell, so the two popovers have identical edges. The children
+   below therefore repeat `.mode-popover-section`'s 14px. It has to be margin
+   on the table: padding on a `border-collapse` table does not move its
+   cells, so a padded table would sit left of the heading. */
 .chains-popover {
   min-width: 300px;
-  /* The inset lives here rather than on the rows: padding on a
-     border-collapse table does not move its cells, so the table would drift
-     left of the heading. Section headers carry their own 14px, zeroed just
-     below so everything shares this one edge. */
-  padding: 10px 14px 14px;
-}
-.chains-popover .mode-popover-section {
-  padding-left: 0;
-  padding-right: 0;
+  padding-bottom: 8px;
 }
 
 /* Network panel */
@@ -435,8 +433,7 @@ body {
   font-size: 12px;
   /* 13.36:1 */
   color: #d4d4d4;
-  padding-top: 2px;
-  padding-bottom: 10px;
+  padding: 2px 14px 10px;
 }
 .chains-status-dot {
   width: 8px;
@@ -454,8 +451,8 @@ body {
   background: #8f8f8f;
 }
 .chains-table {
-  width: 100%;
-  margin-top: 2px;
+  width: calc(100% - 28px);
+  margin: 2px 14px 0;
   border-collapse: collapse;
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
   font-size: 11px;
