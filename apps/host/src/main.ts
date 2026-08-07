@@ -1232,6 +1232,9 @@ async function main(): Promise<void> {
       target: 95,
       expectedMs: 10000,
       stage: "content",
+      // The download counts its own bytes against the total the DAG root
+      // declares, so this band is driven by that rather than by the clock.
+      reportsProgress: true,
     },
   ];
   if (chainBackend === "smoldot-shared-worker") {
@@ -1262,6 +1265,7 @@ async function main(): Promise<void> {
         target: 95,
         expectedMs: 10000,
         stage: "content",
+        reportsProgress: true,
       },
     ]);
   }

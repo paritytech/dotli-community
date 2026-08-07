@@ -41,6 +41,14 @@ export interface LoadingPhase {
   expectedMs: number;
   /** Which set of messages narrates this phase. */
   stage: LoadingStage;
+  /**
+   * This step publishes a true percentage, so the indicator waits for it.
+   *
+   * Without this the crawl guessed its way to 84% during the first seconds
+   * of a download and then had nowhere to go, because the real figure that
+   * followed was lower and the indicator never moves backwards.
+   */
+  reportsProgress?: boolean;
 }
 let phases: LoadingPhase[] = [];
 let currentPhase = -1;
@@ -73,6 +81,24 @@ const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 let creepCeiling = 0;
 let creepStep = 0;
+/** True while the current step is reporting a real percentage of its own. */
+let phaseReportsProgress = false;
+let progressGraceTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * How long a step that promised a real percentage gets to deliver one.
+ *
+ * If it stays silent past this the crawl takes over, so a missing byte total
+ * leaves the indicator parked rather than guessing.
+ */
+const PROGRESS_GRACE_MS = 3_000;
+
+function clearProgressGrace(): void {
+  if (progressGraceTimer !== null) {
+    clearTimeout(progressGraceTimer);
+    progressGraceTimer = null;
+  }
+}
 
 function setProgress(pct: number): void {
   currentProgress = pct;
@@ -88,6 +114,14 @@ function setProgress(pct: number): void {
 function startProgressCrawl(): void {
   stopProgressCrawl();
   progressInterval = setInterval(() => {
+    // A step that reports a real percentage owns the indicator outright. The
+    // crawl and the creep are both guesses at how long a step takes, and on a
+    // download slower than the estimate they ran the logo to nearly full
+    // while the readout underneath still said 58%. Nothing that guesses may
+    // move the indicator past something that knows.
+    if (phaseReportsProgress) {
+      return;
+    }
     if (currentProgress < targetProgress) {
       setProgress(Math.min(currentProgress + crawlStep, targetProgress));
       return;
@@ -125,6 +159,8 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   openingLine = true;
   currentProgress = 0;
   targetProgress = 0;
+  phaseReportsProgress = false;
+  clearProgressGrace();
 
   progressFillEl = document.getElementById("loading-logo-fill");
   progressLogoEl = document.getElementById("loading-logo");
@@ -155,10 +191,12 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 /** How long a load may run before it owes the user an explanation. */
 export const STATUS_REVEAL_MS = 3_000;
 
-// No sentence holds the screen longer than three seconds. The turnover
-// animation runs inside this, so the finished sentence is actually still for
-// the last ~0.85s of it.
-const MESSAGE_ROTATE_MS = 3_000;
+// How often the line turns over. Longer than the three seconds a *static*
+// message is allowed, because most of this window is the turnover animation
+// rather than a still sentence: 3s of characters moving, then ~1.5s at rest.
+// A slower, calmer type-in cannot fit inside a 3s cycle and still leave the
+// finished sentence up long enough to read.
+const MESSAGE_ROTATE_MS = 4_500;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = "{domain}";
@@ -248,11 +286,11 @@ export function setLoadingDomain(domain: string): void {
 // The old line is deleted a character at a time and the new one typed in.
 // Both get a fixed budget rather than a per-character delay, so a long
 // sentence animates at the same pace as a short one and always lands inside
-// the rotation interval. Together they take a little over two thirds of it,
-// which is as slow as the typing can go and still leave the finished
-// sentence sitting still long enough to be read.
-const ERASE_MS = 600;
-const TYPE_MS = 1_550;
+// the rotation interval. At these durations a full-length sentence types at
+// roughly 24 characters a second, which reads as deliberate rather than
+// frantic, and clears away faster than it arrives.
+const ERASE_MS = 800;
+const TYPE_MS = 2_200;
 let typingFrame: number | null = null;
 let pendingMessage: string | null = null;
 
@@ -363,8 +401,11 @@ export function setLoadingStage(stage: LoadingStage): void {
   currentStageIndex = stageIndex;
   const messages = STAGE_MESSAGES[stage];
   let line = 0;
+  // Only the rotation clock is stopped here. Cancelling the typing as well
+  // would kill the animation this very line was just queued behind and drop
+  // the queue with it, stranding the headline on a half-typed word.
+  stopStageTimer();
   writeStatus(messages[0]);
-  stopStageMessages();
   // Cycle back to the second line rather than the first: the opener names
   // the step, and showing it again would read as the load starting over.
   const loopFrom = messages.length > 2 ? 1 : 0;
@@ -385,11 +426,16 @@ export function setLoadingStage(stage: LoadingStage): void {
   stageTimer = setTimeout(turn, firstDelay);
 }
 
-function stopStageMessages(): void {
+function stopStageTimer(): void {
   if (stageTimer !== null) {
     clearTimeout(stageTimer);
     stageTimer = null;
   }
+}
+
+/** Stop narrating entirely: no more turns, and no line half-written. */
+function stopStageMessages(): void {
+  stopStageTimer();
   cancelTyping();
 }
 
@@ -444,7 +490,19 @@ export function advancePhase(index: number): void {
   currentPhase = index;
 
   // Update progress bar
-  const { base, target, label, expectedMs } = phases[index];
+  const { base, target, label, expectedMs, reportsProgress } = phases[index];
+  // Each step has to earn the indicator back: the previous step's real
+  // percentage says nothing about this one. A step that publishes its own
+  // figure holds the indicator at its band base until the figure arrives,
+  // rather than crawling somewhere the real number cannot then reach.
+  clearProgressGrace();
+  phaseReportsProgress = reportsProgress === true;
+  if (phaseReportsProgress) {
+    progressGraceTimer = setTimeout(() => {
+      phaseReportsProgress = false;
+      progressGraceTimer = null;
+    }, PROGRESS_GRACE_MS);
+  }
   if (base > currentProgress) {
     setProgress(base);
   }
@@ -459,9 +517,17 @@ export function advancePhase(index: number): void {
   // for the last one. Borrowing at most one band keeps a single slow step
   // from eating the whole bar, and `advancePhase` never moves the bar
   // backwards, so the next step simply carries on from wherever the creep
-  // reached.
+  // reached. A band that reports a real percentage lends nothing: creeping
+  // into it would leave the indicator sitting above the figure that step is
+  // about to publish, which is how the logo came to look full at 58%.
   const next = phases[index + 1] as LoadingPhase | undefined;
-  creepCeiling = Math.min(next?.target ?? CREEP_CEILING, CREEP_CEILING);
+  const lentCeiling =
+    next === undefined
+      ? CREEP_CEILING
+      : next.reportsProgress === true
+        ? next.base
+        : next.target;
+  creepCeiling = Math.min(lentCeiling, CREEP_CEILING);
   creepStep =
     (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) /
     Math.max(CREEP_MS, CRAWL_TICK_MS);
@@ -475,12 +541,13 @@ export function advancePhase(index: number): void {
 }
 
 /**
- * Pull the bar to a real fraction of the current phase's band.
+ * Pull the indicator to a real fraction of the current phase's band.
  *
- * The crawl paces the band on a guess at how long the step takes. When a
- * step reports true progress, this moves the bar to where the work actually
- * is. Monotonic and clamped to the band, so a late or noisy signal can never
- * rewind the bar, including past a point the overrun creep has reached.
+ * The crawl paces the band on a guess at how long the step takes. A step that
+ * reports true progress takes the indicator over for as long as it has
+ * something to say, so the logo tracks the download rather than the clock.
+ * Monotonic and clamped to the band, so a late or noisy signal can never
+ * rewind the indicator.
  */
 export function nudgePhaseProgress(fraction: number): void {
   if (!Number.isFinite(fraction) || currentPhase < 0) {
@@ -488,6 +555,11 @@ export function nudgePhaseProgress(fraction: number): void {
   }
   const { base, target } = phases[currentPhase];
   const clamped = Math.max(0, Math.min(1, fraction));
+  clearProgressGrace();
+  // Once the step's own work is finished there is no true number left to
+  // respect, so the creep takes over again and carries the indicator through
+  // the tail. That tail is the sandbox unpacking, which reports nothing.
+  phaseReportsProgress = clamped < 1;
   const want = base + (target - base) * clamped;
   if (want > currentProgress) {
     setProgress(Math.min(want, target));
