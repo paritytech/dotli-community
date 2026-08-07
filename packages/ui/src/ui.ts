@@ -8,7 +8,6 @@
 
 import { loadRecentLabels, forgetRecentLabel } from "./recent-labels";
 import { BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
-import { getBackend } from "@dotli/config/mode";
 import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
 import type { DotLabelResult } from "@dotli/shared/html";
 
@@ -40,6 +39,8 @@ export interface LoadingPhase {
   base: number;
   target: number;
   expectedMs: number;
+  /** Which set of messages narrates this phase. */
+  stage: LoadingStage;
 }
 let phases: LoadingPhase[] = [];
 let currentPhase = -1;
@@ -48,9 +49,9 @@ let currentPhase = -1;
 let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
 let statusBlockEl: HTMLElement | null = null;
-let metricPeersEl: HTMLElement | null = null;
+let metricAssetHubPeersEl: HTMLElement | null = null;
+let metricBulletinPeersEl: HTMLElement | null = null;
 let metricSpeedEl: HTMLElement | null = null;
-let metricCompletedEl: HTMLElement | null = null;
 let revealTimer: ReturnType<typeof setTimeout> | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
@@ -58,6 +59,20 @@ let crawlStep = 0;
 let progressInterval: ReturnType<typeof setInterval> | null = null;
 
 const CRAWL_TICK_MS = 200;
+
+// A band that runs longer than its estimate used to leave the bar frozen at
+// the band top: the worst case was the last one, which reached 95% and sat
+// there for up to 6s while the sandbox unpacked and painted. When a band is
+// exhausted the bar creeps on into the next band's space, which is free
+// because the step that owns it has not started. The creep is slow enough to
+// read as waiting rather than as a second, faster load, and it stops short
+// of 100 so only a finished load can fill the bar.
+// Paced so the displayed whole number keeps changing every few seconds
+// rather than only twice over the whole creep.
+const CREEP_CEILING = 99;
+const CREEP_MS = 10_000;
+let creepCeiling = 0;
+let creepStep = 0;
 
 function setProgress(pct: number): void {
   currentProgress = pct;
@@ -74,6 +89,10 @@ function startProgressCrawl(): void {
   progressInterval = setInterval(() => {
     if (currentProgress < targetProgress) {
       setProgress(Math.min(currentProgress + crawlStep, targetProgress));
+      return;
+    }
+    if (currentProgress < creepCeiling) {
+      setProgress(Math.min(currentProgress + creepStep, creepCeiling));
     }
   }, CRAWL_TICK_MS);
 }
@@ -107,9 +126,9 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
   statusBlockEl = document.getElementById("loading-status");
-  metricPeersEl = document.getElementById("metric-peers");
+  metricAssetHubPeersEl = document.getElementById("metric-peers-assethub");
+  metricBulletinPeersEl = document.getElementById("metric-peers-bulletin");
   metricSpeedEl = document.getElementById("metric-speed");
-  metricCompletedEl = document.getElementById("metric-completed");
 
   // A load that finishes quickly should never explain itself. Only once it
   // has run long enough to feel slow does the status block appear.
@@ -124,24 +143,130 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 /** How long a load may run before it owes the user an explanation. */
 export const STATUS_REVEAL_MS = 3_000;
 
+// No sentence may hold the screen longer than three seconds. Set just under
+// it so a tick that lands late still clears the bar.
+const MESSAGE_ROTATE_MS = 2_800;
+
+/** The steps a load moves through, in the order they happen. */
+export type LoadingStage =
+  | "starting"
+  | "relay"
+  | "assetHub"
+  | "resolving"
+  | "content";
+
 /**
- * Live counters under the status line. Each is written only when supplied,
- * so a caller can update the peer count without claiming a download speed
- * it has no reading for.
+ * What the shell is doing, in the user's terms.
+ *
+ * The headline used to print the resolver's own prose, which is where
+ * "Walking dag-pb via bitswap..." came from. These say the same thing in
+ * plain words. Each stage carries several lines because a step can run for
+ * half a minute, and one frozen sentence reads as a hang. The first line of
+ * each stage names the step. The rest explain what a light client is doing
+ * and why it takes the time it does, so a slow load teaches something
+ * instead of just apologising.
+ */
+const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
+  starting: [
+    "Starting up",
+    "This page checks the blockchain itself, with no server in between",
+    "That takes a few seconds the first time",
+  ],
+  relay: [
+    "Connecting to Polkadot",
+    "Looking for other computers on the network to talk to",
+    "Your browser is running a small node of its own",
+  ],
+  assetHub: [
+    "Looking up the name",
+    "Catching up with the latest blocks",
+    "The name and its address are being read from the chain",
+    "This is the slow part, and it is faster next time",
+  ],
+  resolving: [
+    "Found the name",
+    "Reading the address it points at",
+    "The chain proved this answer, so it cannot be faked",
+  ],
+  content: [
+    "Downloading the app",
+    "The files come from other people on the network, piece by piece",
+    "Speed depends on how many of them are nearby",
+    "Almost there",
+  ],
+};
+
+let stageTimer: ReturnType<typeof setInterval> | null = null;
+let currentStage: LoadingStage | "" = "";
+
+function writeStatus(message: string): void {
+  const status = document.getElementById("status");
+  if (status !== null) {
+    status.textContent = message;
+  }
+}
+
+/**
+ * Move to a stage and start cycling its messages.
+ *
+ * Re-entering a stage already running is ignored, so the copy does not
+ * restart every time a signal arrives for a step that is already underway.
+ */
+export function setLoadingStage(stage: LoadingStage): void {
+  if (stage === currentStage) {
+    return;
+  }
+  currentStage = stage;
+  const messages = STAGE_MESSAGES[stage];
+  let index = 0;
+  writeStatus(messages[0]);
+  stopStageMessages();
+  // Cycle back to the second line rather than the first: the opener names
+  // the step, and showing it again would read as the load starting over.
+  const loopFrom = messages.length > 2 ? 1 : 0;
+  stageTimer = setInterval(() => {
+    index = index + 1 >= messages.length ? loopFrom : index + 1;
+    writeStatus(messages[index]);
+  }, MESSAGE_ROTATE_MS);
+}
+
+function stopStageMessages(): void {
+  if (stageTimer !== null) {
+    clearInterval(stageTimer);
+    stageTimer = null;
+  }
+}
+
+/** Report what the light client itself is doing, e.g. "syncing Asset Hub". */
+export function setLifecycleStatus(text: string): void {
+  const el = document.getElementById("metric-lifecycle");
+  if (el !== null) {
+    el.textContent = text;
+  }
+}
+
+/**
+ * Live counters under the status line.
+ *
+ * Each is written only when supplied, and each starts as an em dash rather
+ * than a zero: before the download begins there is no speed to report, and
+ * "0 MB/s" reads as broken where "not yet" reads as honest. Peers are per
+ * chain because one shared figure had to be blanked at every handover,
+ * which put a zero on screen at the moments the load looked slowest.
  */
 export function setLoadingMetrics(metrics: {
-  peers?: number;
+  assetHubPeers?: number;
+  bulletinPeers?: number;
   bytesPerSecond?: number;
-  completed?: number;
 }): void {
-  if (metrics.peers !== undefined && metricPeersEl !== null) {
-    metricPeersEl.textContent = String(metrics.peers);
+  if (metrics.assetHubPeers !== undefined && metricAssetHubPeersEl !== null) {
+    metricAssetHubPeersEl.textContent = String(metrics.assetHubPeers);
+  }
+  if (metrics.bulletinPeers !== undefined && metricBulletinPeersEl !== null) {
+    metricBulletinPeersEl.textContent = String(metrics.bulletinPeers);
   }
   if (metrics.bytesPerSecond !== undefined && metricSpeedEl !== null) {
     metricSpeedEl.textContent = `${(metrics.bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
-  }
-  if (metrics.completed !== undefined && metricCompletedEl !== null) {
-    metricCompletedEl.textContent = `${String(Math.min(100, Math.round(metrics.completed)))} %`;
   }
 }
 
@@ -169,16 +294,23 @@ export function advancePhase(index: number): void {
   // steadily through a long sync instead of stalling near the top.
   crawlStep =
     ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
+  // Headroom for a band that overruns: the next band's space, or the ceiling
+  // for the last one. Borrowing at most one band keeps a single slow step
+  // from eating the whole bar, and `advancePhase` never moves the bar
+  // backwards, so the next step simply carries on from wherever the creep
+  // reached.
+  const next = phases[index + 1] as LoadingPhase | undefined;
+  creepCeiling = Math.min(next?.target ?? CREEP_CEILING, CREEP_CEILING);
+  creepStep =
+    (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) /
+    Math.max(CREEP_MS, CRAWL_TICK_MS);
   startProgressCrawl();
 
-  // Update headline. Re-arm the slow hint against the new label: the timer
-  // armed for the previous step would otherwise fire with a hint describing
-  // work that already completed.
-  const status = document.getElementById("status");
-  if (status !== null) {
-    status.textContent = label;
-  }
-  armSlowHint(label);
+  // The headline is the stage's, not the phase label's: the label names the
+  // band for whoever reads this table, the stage speaks to the user. Several
+  // phases can share one stage, and re-entering a running stage is a no-op.
+  void label;
+  setLoadingStage(phases[index].stage);
 }
 
 /**
@@ -186,8 +318,8 @@ export function advancePhase(index: number): void {
  *
  * The crawl paces the band on a guess at how long the step takes. When a
  * step reports true progress, this moves the bar to where the work actually
- * is. Monotonic and clamped to the band, so a late or noisy signal can
- * never rewind the bar or push it into the next phase's territory.
+ * is. Monotonic and clamped to the band, so a late or noisy signal can never
+ * rewind the bar, including past a point the overrun creep has reached.
  */
 export function nudgePhaseProgress(fraction: number): void {
   if (!Number.isFinite(fraction) || currentPhase < 0) {
@@ -251,79 +383,9 @@ export function showGatewayEscape(
   };
 }
 
-// Single-line status. Updates #status in place. Shows a slow-step
-// hint when a step exceeds its time threshold.
-
-// Per-step timeout thresholds (seconds). If a step exceeds its
-// limit, a contextual hint fades in below the status line.
-type SlowHint = string | { smoldot: string; rpc: string };
-const SLOW_THRESHOLDS: Record<string, { secs: number; hint: SlowHint }> = {
-  "Starting light client": {
-    secs: 8,
-    hint: "The smoldot light client is slow to initialize — could be a network issue",
-  },
-  "Adding Paseo relay chain": {
-    secs: 10,
-    hint: "Paseo relay chain bootstrap is stalled — smoldot may be having trouble reaching bootnodes",
-  },
-  "Connecting to Asset Hub": {
-    secs: 12,
-    hint: "Asset Hub parachain connection is taking long — the chain may be congested or peers unavailable",
-  },
-  Syncing: {
-    secs: 15,
-    hint: "Asset Hub sync is slow — smoldot is still catching up to the latest finalized block on the Paseo relay chain",
-  },
-  Resolving: {
-    secs: 10,
-    hint: {
-      smoldot: "Smoldot is still catching up on the Paseo relay chain",
-      rpc: "The RPC endpoint is slow to answer the resolver query",
-    },
-  },
-  "Connecting to peers": {
-    secs: 10,
-    hint: "Helia P2P peer discovery is slow — WebRTC relay nodes may be unreachable",
-  },
-  "Fetching content via P2P": {
-    secs: 15,
-    hint: "P2P content transfer is slow — the content may have few seeders on the Bulletin network",
-  },
-  "Fetching directory via P2P": {
-    secs: 15,
-    hint: "Directory fetch is slow — multi-file archives take longer over P2P",
-  },
-  "Initializing P2P client": {
-    secs: 8,
-    hint: "Helia startup is stalled — WASM or WebRTC initialization may be blocked",
-  },
-};
-
-function resolveHint(hint: SlowHint): string {
-  if (typeof hint === "string") {
-    return hint;
-  }
-  return getBackend() === "rpc-gateway" ? hint.rpc : hint.smoldot;
-}
-
-function getSlowThreshold(
-  message: string,
-): { secs: number; hint: string } | null {
-  for (const [key, value] of Object.entries(SLOW_THRESHOLDS)) {
-    if (message.startsWith(key) || message.includes(key.toLowerCase())) {
-      return { secs: value.secs, hint: resolveHint(value.hint) };
-    }
-  }
-  return { secs: 20, hint: "This is taking longer than expected" };
-}
-
-let slowTimer: ReturnType<typeof setTimeout> | null = null;
+// Single-line status. Updates #status in place.
 
 function clearSlowWarning(): void {
-  if (slowTimer !== null) {
-    clearTimeout(slowTimer);
-    slowTimer = null;
-  }
   const hint = document.getElementById("loading-hint");
   if (hint !== null) {
     // Remove only the text span, preserve any gateway button
@@ -335,52 +397,6 @@ function clearSlowWarning(): void {
     if (hint.querySelector(".loading-gateway-btn") === null) {
       hint.classList.remove("visible");
     }
-  }
-}
-
-/**
- * Update the single status line below the progress bar.
- * Replaces the previous message in place. No new DOM elements are created.
- * Schedules a slow-step hint if the step exceeds its time threshold.
- */
-export function showStatus(
-  message: string,
-  opts: { phase?: number } = {},
-): void {
-  // Callers that know which phase a message describes pass it, so prose
-  // about a step the bar already passed is dropped instead of flipping the
-  // headline backwards. `advancePhase` enforces the same rule for the bar.
-  if (opts.phase !== undefined && opts.phase < currentPhase) {
-    return;
-  }
-  const status = document.getElementById("status");
-  if (status !== null) {
-    status.textContent = message;
-  }
-  armSlowHint(message);
-}
-
-function armSlowHint(message: string): void {
-  clearSlowWarning();
-
-  const threshold = getSlowThreshold(message);
-  if (threshold !== null) {
-    slowTimer = setTimeout(() => {
-      const hint = document.getElementById("loading-hint");
-      if (hint !== null) {
-        // Remove previous text span if any
-        const existing = hint.querySelector(".loading-hint-text");
-        if (existing !== null) {
-          existing.remove();
-        }
-        // Insert text as a span so it doesn't wipe the gateway button
-        const span = document.createElement("span");
-        span.className = "loading-hint-text";
-        span.textContent = threshold.hint;
-        hint.insertBefore(span, hint.firstChild);
-        hint.classList.add("visible");
-      }
-    }, threshold.secs * 1000);
   }
 }
 
@@ -408,6 +424,7 @@ export function dismissLoading(): void {
   completeProgress();
   clearSlowWarning();
   cancelStatusReveal();
+  stopStageMessages();
   const loading = document.querySelector<HTMLElement>("#app > .loading");
   if (loading !== null) {
     loading.style.transition = "opacity 0.3s ease";
@@ -445,9 +462,9 @@ export function listenForSandboxStatus(): void {
     if (!isSandboxOrigin(event.origin)) {
       return;
     }
-    if (typeof data.message === "string") {
-      showStatus(data.message);
-    }
+    // The sandbox's own progress prose is written for a developer reading
+    // the console, so it is left there. The stage messages narrate this step
+    // to the user, and `done` is the part the loading screen acts on.
     if (data.done === true) {
       dismissLoading();
     }

@@ -172,41 +172,16 @@ body {
   opacity: 1;
   pointer-events: auto;
 }
-.loading-status-heading {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  /* 6.12:1 */
-  color: #8f8f8f;
-  margin-bottom: 4px;
-}
-.loading-details {
-  margin-top: 12px;
-  text-align: left;
-  display: inline-block;
-  min-width: 190px;
-}
-.loading-details-summary {
-  font-size: 11px;
-  /* 6.12:1 */
-  color: #8f8f8f;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-.loading-details-summary::-webkit-details-marker {
-  display: none;
-}
-.loading-details-summary::after {
-  content: " >";
-}
-.loading-details[open] .loading-details-summary::after {
-  content: " v";
-}
 .loading-metrics {
-  margin-top: 8px;
+  margin-top: 10px;
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
   font-size: 11px;
+  /* The loading block is centred, so the list centres as a unit while its
+     own rows stay left-aligned. Without this the "Peers" heading floats in
+     the middle of the column. */
+  display: inline-block;
+  text-align: left;
+  min-width: 200px;
 }
 .loading-metric {
   display: flex;
@@ -214,13 +189,25 @@ body {
   gap: 24px;
   padding: 2px 0;
 }
-.loading-metric dt {
+.loading-metric dt,
+.loading-metric span:first-child {
   /* 6.12:1 */
   color: #8f8f8f;
 }
-.loading-metric dd {
+.loading-metric dd,
+.loading-metric span:last-child {
   /* 7.85:1 */
   color: #a3a3a3;
+}
+/* Peers is a heading over its chains rather than a row of its own, so the
+   chain names sit under it and the numbers keep the same right edge. */
+.loading-metric-peers > dt {
+  /* 6.12:1 */
+  color: #8f8f8f;
+  padding: 2px 0;
+}
+.loading-metric-peers > dd {
+  margin-left: 12px;
 }
 /* Slow-step hint (shown below status when a step exceeds its threshold) */
 .loading-hint {
@@ -431,8 +418,16 @@ body {
   display: inline-flex;
 }
 .chains-popover {
-  min-width: 260px;
-  padding: 10px 12px;
+  min-width: 300px;
+  /* The inset lives here rather than on the rows: padding on a
+     border-collapse table does not move its cells, so the table would drift
+     left of the heading. Section headers carry their own 14px, zeroed just
+     below so everything shares this one edge. */
+  padding: 10px 14px 14px;
+}
+.chains-popover .mode-popover-section {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* Network panel */
@@ -443,7 +438,8 @@ body {
   font-size: 12px;
   /* 13.36:1 */
   color: #d4d4d4;
-  padding: 2px 0 8px;
+  padding-top: 2px;
+  padding-bottom: 10px;
 }
 .chains-status-dot {
   width: 8px;
@@ -462,14 +458,15 @@ body {
 }
 .chains-table {
   width: 100%;
+  margin-top: 2px;
   border-collapse: collapse;
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .chains-table th,
 .chains-table td {
   text-align: right;
-  padding: 3px 0 3px 12px;
+  padding: 4px 0 4px 12px;
   white-space: nowrap;
 }
 .chains-table tr th:first-child {

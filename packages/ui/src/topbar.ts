@@ -962,6 +962,17 @@ function createPermissionDropdown(
  */
 const chainSyncState = new Map<string, string>();
 let onStatusChange: (() => void) | null = null;
+let chainsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+/** How often the open panel re-reads peers and heights. */
+const CHAINS_REFRESH_MS = 6_000;
+
+function stopChainsRefresh(): void {
+  if (chainsRefreshTimer !== null) {
+    clearInterval(chainsRefreshTimer);
+    chainsRefreshTimer = null;
+  }
+}
 
 function describeNetworkStatus(): { text: string; tone: string } {
   const states = [...chainSyncState.values()];
@@ -1043,6 +1054,7 @@ function renderChainsPopover(parent: HTMLElement): void {
   }
   table.appendChild(head);
 
+  const refreshers: (() => void)[] = [];
   for (const [label, genesis] of chains) {
     const row = document.createElement("tr");
     const name = document.createElement("th");
@@ -1056,15 +1068,29 @@ function renderChainsPopover(parent: HTMLElement): void {
     row.append(name, ...cells);
     table.appendChild(row);
 
-    void queryPeerCount(genesis).then((n) => {
-      cells[0].textContent = n === null ? "n/a" : String(n);
-    });
-    void queryChainBlocks(genesis).then((blocks) => {
-      cells[1].textContent = blocks?.best ?? "n/a";
-      cells[2].textContent = blocks?.finalized ?? "n/a";
-    });
+    const refresh = (): void => {
+      void queryPeerCount(genesis).then((n) => {
+        cells[0].textContent = n === null ? "n/a" : String(n);
+      });
+      void queryChainBlocks(genesis).then((blocks) => {
+        cells[1].textContent = blocks?.best ?? "n/a";
+        cells[2].textContent = blocks?.finalized ?? "n/a";
+      });
+    };
+    refresh();
+    refreshers.push(refresh);
   }
   parent.appendChild(table);
+
+  // Heights and ages go stale within a block, so keep re-reading while the
+  // panel is on screen. The interval is cleared on close, which is what
+  // keeps this from waking four chains for a panel nobody is looking at.
+  stopChainsRefresh();
+  chainsRefreshTimer = setInterval(() => {
+    for (const refresh of refreshers) {
+      refresh();
+    }
+  }, CHAINS_REFRESH_MS);
 }
 
 /**
@@ -1090,6 +1116,8 @@ function initChainsPopover(): void {
   const close = (): void => {
     popover.classList.remove("open");
     button.setAttribute("aria-expanded", "false");
+    stopChainsRefresh();
+    onStatusChange = null;
   };
   button.addEventListener("click", (e) => {
     e.stopPropagation();

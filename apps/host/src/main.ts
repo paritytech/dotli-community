@@ -25,7 +25,6 @@ import {
   captureException,
 } from "@dotli/metrics/sentry";
 import {
-  showStatus,
   showError,
   showNoContentError,
   showLanding,
@@ -33,11 +32,13 @@ import {
   advancePhase,
   nudgePhaseProgress,
   setLoadingMetrics,
+  setLifecycleStatus,
   stopStatusTick,
   listenForSandboxStatus,
   showGatewayEscape,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
+import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
 import {
   initTopBar,
   setChainsButtonVisible,
@@ -178,6 +179,27 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 const T0 = performance.now();
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
 const blockingModalCoordinator = createBlockingModalCoordinator();
+
+// Names for the light-client row on the loading screen. Full records rather
+// than lookups with a fallback, so adding a chain or a milestone upstream
+// fails typecheck here instead of printing a blank.
+const CHAIN_NAMES: Record<ChainKey, string> = {
+  relay: "Polkadot",
+  "custom-relay": "Relay",
+  "asset-hub": "Asset Hub",
+  bulletin: "Bulletin",
+  people: "People",
+};
+const LIFECYCLE_WORDS: Record<ChainSyncKind, string> = {
+  connecting: "connecting",
+  firstPeer: "found a peer",
+  warpSyncProgress: "syncing",
+  warpSyncFinished: "synced",
+  bootstrapComplete: "ready",
+  stalled: "waiting for peers",
+  recovered: "reconnected",
+  peers: "connected",
+};
 
 function parseLocalProductIdOverride(): string | undefined {
   if (!isLocalhost) {
@@ -1174,11 +1196,41 @@ async function main(): Promise<void> {
     "resolving-content": 3,
   };
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
-    { label: startLabel, base: 2, target: 6, expectedMs: 650 },
-    { label: "Adding relay chain", base: 6, target: 10, expectedMs: 120 },
-    { label: "Syncing Asset Hub", base: 10, target: 55, expectedMs: 6500 },
-    { label: "Resolving", base: 55, target: 62, expectedMs: 1200 },
-    { label: "Fetching content", base: 62, target: 95, expectedMs: 10000 },
+    {
+      label: startLabel,
+      base: 2,
+      target: 6,
+      expectedMs: 650,
+      stage: "starting",
+    },
+    {
+      label: "Adding relay chain",
+      base: 6,
+      target: 10,
+      expectedMs: 120,
+      stage: "relay",
+    },
+    {
+      label: "Syncing Asset Hub",
+      base: 10,
+      target: 55,
+      expectedMs: 6500,
+      stage: "assetHub",
+    },
+    {
+      label: "Resolving",
+      base: 55,
+      target: 62,
+      expectedMs: 1200,
+      stage: "resolving",
+    },
+    {
+      label: "Fetching content",
+      base: 62,
+      target: 95,
+      expectedMs: 10000,
+      stage: "content",
+    },
   ];
   if (chainBackend === "smoldot-shared-worker") {
     initPhases(smoldotPhases("Starting Worker"));
@@ -1188,9 +1240,27 @@ async function main(): Promise<void> {
     // Gateway path resolves over RPC with no smoldot sync, then fetches
     // content the same way every backend does.
     initPhases([
-      { label: "Connecting", base: 5, target: 50, expectedMs: 1200 },
-      { label: "Resolving", base: 50, target: 62, expectedMs: 1200 },
-      { label: "Fetching content", base: 62, target: 95, expectedMs: 10000 },
+      {
+        label: "Connecting",
+        base: 5,
+        target: 50,
+        expectedMs: 1200,
+        stage: "relay",
+      },
+      {
+        label: "Resolving",
+        base: 50,
+        target: 62,
+        expectedMs: 1200,
+        stage: "resolving",
+      },
+      {
+        label: "Fetching content",
+        base: 62,
+        target: 95,
+        expectedMs: 10000,
+        stage: "content",
+      },
     ]);
   }
   // Content fetch (bitswap/IPFS) runs in the sandbox after the CID resolves and
@@ -1199,7 +1269,6 @@ async function main(): Promise<void> {
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   advancePhase(0);
-  showStatus(`Resolving ${label}.dot`);
 
   // Advance the loading bar from smoldot's typed lifecycle stream instead of
   // scraping log prose. `firstPeer` on the Asset Hub means a peer was
@@ -1214,30 +1283,28 @@ async function main(): Promise<void> {
   // lives in the SharedWorker, which does not forward lifecycle or health
   // yet, and the gateway has no smoldot at all.
   if (chainBackend === "smoldot-direct") {
-    // The load walks three chains in turn: the relay warps, the Asset Hub
-    // bootstraps on top of it, then Bulletin comes up to serve the content
-    // over bitswap. Only the one being waited on drives the peer count, so
-    // the figure always describes what the user is actually waiting for.
-    let waitingOn: "relay" | "asset-hub" | "bulletin" = "relay";
+    // Peers are reported per chain rather than as one figure for whichever
+    // chain is currently being waited on. A single figure had to be blanked
+    // at every handover, which put a zero on screen at exactly the moments
+    // the load looked slowest.
     onProtocolChainSync((event) => {
       log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
+      // One row reports what smoldot itself says it is doing, so a load that
+      // looks stuck can be told apart from one that is quietly working.
+      // Health samples are excluded: they arrive every second and would
+      // overwrite the milestone that explains the current state.
+      if (event.syncKind !== "peers") {
+        setLifecycleStatus(
+          `${CHAIN_NAMES[event.chain]} ${LIFECYCLE_WORDS[event.syncKind]}`,
+        );
+      }
       switch (event.syncKind) {
-        case "connecting":
-          // A chain that just started has no peers yet, and saying so beats
-          // leaving the previous chain's figure on screen.
-          if (event.chain === waitingOn) {
-            setLoadingMetrics({ peers: 0 });
-          }
-          return;
         case "peers":
-          if (event.chain === waitingOn) {
-            setLoadingMetrics({ peers: event.peers ?? 0 });
+          if (event.chain === "asset-hub") {
+            setLoadingMetrics({ assetHubPeers: event.peers ?? 0 });
+          } else if (event.chain === "bulletin") {
+            setLoadingMetrics({ bulletinPeers: event.peers ?? 0 });
           }
-          return;
-        case "stalled":
-        case "recovered":
-          // The peer count already tells this story: a stall is a chain
-          // sitting at zero peers, and recovery is the number climbing.
           return;
         case "warpSyncProgress": {
           // The one true percentage smoldot offers. Only relays warp, and
@@ -1258,18 +1325,17 @@ async function main(): Promise<void> {
             advancePhase(2);
           }
           return;
-        case "warpSyncFinished":
         case "bootstrapComplete":
-          // Hand the count to the next chain in the sequence and reset it, so
-          // a finished chain's figure never lingers under the next one.
-          if (event.chain === "relay") {
-            waitingOn = "asset-hub";
-            setLoadingMetrics({ peers: 0 });
-          } else if (event.chain === "asset-hub") {
+          if (event.chain === "asset-hub") {
             advancePhase(3);
-            waitingOn = "bulletin";
-            setLoadingMetrics({ peers: 0 });
           }
+          return;
+        case "connecting":
+        case "stalled":
+        case "recovered":
+        case "warpSyncFinished":
+          // The per-chain peer counts already carry these: a stall is a
+          // chain sitting at zero, and recovery is the number climbing.
           return;
       }
     });
@@ -1278,12 +1344,10 @@ async function main(): Promise<void> {
     // download reports itself: bytes so far against the total the DAG root
     // declares.
     onContentProgress(({ bytesFetched, totalBytes, bytesPerSecond }) => {
-      setLoadingMetrics({
-        bytesPerSecond,
-        ...(totalBytes !== null && totalBytes > 0
-          ? { completed: (bytesFetched / totalBytes) * 100 }
-          : {}),
-      });
+      setLoadingMetrics({ bytesPerSecond });
+      // The download's true fraction drives the bar itself, which is where
+      // a percentage belongs. Printing the same number as text alongside it
+      // said the same thing twice.
       if (totalBytes !== null && totalBytes > 0) {
         nudgePhaseProgress(bytesFetched / totalBytes);
       }
@@ -1413,11 +1477,10 @@ async function main(): Promise<void> {
             advancePhase(mappedPhase);
           }
           emitPhase(msg, phase ?? "progress");
-          // Sync milestones usually outrun these status strings, so pass
-          // the phase and let `showStatus` drop prose describing a step the
-          // bar already passed. Unmapped messages such as bootnode issues
-          // and not-found notices carry no phase and always show.
-          showStatus(msg, { phase: mappedPhase });
+          // These strings are the resolver talking to a developer, which is
+          // how "Walking dag-pb via bitswap..." reached the headline. They
+          // stay in the debug stream and move the bar; the stage messages
+          // say the same thing to the user.
         };
         cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
         if (cid === null) {
@@ -1437,7 +1500,6 @@ async function main(): Promise<void> {
         await import("@dotli/resolver/rpc-resolve");
       const onResolveProgress = (msg: string): void => {
         emitPhase(msg, "progress");
-        showStatus(msg);
       };
       cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
       if (cid === null) {

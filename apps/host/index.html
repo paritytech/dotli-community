@@ -416,28 +416,33 @@
           <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
         </div>
         <div class="loading-text" id="loading-text">
-          <!-- Held back until the load has run long enough to be
-                         worth explaining. A fast load shows only the bar. -->
+          <!-- Held back until the load has run long enough to be worth
+               explaining. A fast load shows only the bar. -->
           <div class="loading-status" id="loading-status">
-            <p class="loading-status-heading">Status</p>
-            <p id="status" aria-live="polite">Reaching out</p>
-            <details class="loading-details" id="loading-details">
-              <summary class="loading-details-summary">Details</summary>
-              <dl class="loading-metrics">
-                <div class="loading-metric">
-                  <dt>Peers</dt>
-                  <dd id="metric-peers">0</dd>
-                </div>
-                <div class="loading-metric">
-                  <dt>Speed</dt>
-                  <dd id="metric-speed">0 MB/s</dd>
-                </div>
-                <div class="loading-metric">
-                  <dt>Completed</dt>
-                  <dd id="metric-completed">0 %</dd>
-                </div>
-              </dl>
-            </details>
+            <p id="status" aria-live="polite">Starting up</p>
+            <dl class="loading-metrics">
+              <div class="loading-metric-peers">
+                <dt>Peers</dt>
+                <dd>
+                  <div class="loading-metric">
+                    <span>AssetHub</span>
+                    <span id="metric-peers-assethub">&mdash;</span>
+                  </div>
+                  <div class="loading-metric">
+                    <span>Bulletin</span>
+                    <span id="metric-peers-bulletin">&mdash;</span>
+                  </div>
+                </dd>
+              </div>
+              <div class="loading-metric">
+                <dt>Speed</dt>
+                <dd id="metric-speed">&mdash;</dd>
+              </div>
+              <div class="loading-metric">
+                <dt>Light client</dt>
+                <dd id="metric-lifecycle">starting</dd>
+              </div>
+            </dl>
           </div>
           <p class="loading-hint" id="loading-hint"></p>
         </div>
