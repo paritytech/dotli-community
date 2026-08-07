@@ -66,9 +66,8 @@ const CRAWL_TICK_MS = 200;
 // exhausted the bar creeps on into the next band's space, which is free
 // because the step that owns it has not started. The creep is slow enough to
 // read as waiting rather than as a second, faster load, and it stops short
-// of 100 so only a finished load can fill the bar.
-// Paced so the displayed whole number keeps changing every few seconds
-// rather than only twice over the whole creep.
+// of 100 so only a finished load can fill the bar. Paced so the displayed
+// whole number keeps changing every few seconds rather than twice in total.
 const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 let creepCeiling = 0;
@@ -147,6 +146,9 @@ export const STATUS_REVEAL_MS = 3_000;
 // it so a tick that lands late still clears the bar.
 const MESSAGE_ROTATE_MS = 2_800;
 
+/** Placeholder swapped for the domain being loaded when a message is shown. */
+const DOMAIN_TOKEN = "{domain}";
+
 /** The steps a load moves through, in the order they happen. */
 export type LoadingStage =
   | "starting"
@@ -168,41 +170,52 @@ export type LoadingStage =
  */
 const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
   starting: [
-    "Starting up",
-    "This page checks the blockchain itself, with no server in between",
+    "Reaching out",
+    "This page is verified by a network, with no one in between",
     "That takes a few seconds the first time",
   ],
   relay: [
     "Connecting to Polkadot",
     "Looking for other computers on the network to talk to",
-    "Your browser is running a small node of its own",
+    "Your browser does the checking itself, not a server",
   ],
   assetHub: [
-    "Looking up the name",
+    `Looking up ${DOMAIN_TOKEN}`,
     "Catching up with the latest blocks",
-    "The name and its address are being read from the chain",
+    "The name and its address come from the network itself",
     "This is the slow part, and it is faster next time",
   ],
   resolving: [
-    "Found the name",
+    "I found it",
     "Reading the address it points at",
-    "The chain proved this answer, so it cannot be faked",
+    "The network proved this answer, so it cannot be faked",
   ],
   content: [
     "Downloading the app",
-    "The files come from other people on the network, piece by piece",
-    "Speed depends on how many of them are nearby",
+    "The files come from multiple peers across the network",
+    "Speed depends on how many are nearby",
     "Almost there",
   ],
 };
 
 let stageTimer: ReturnType<typeof setInterval> | null = null;
 let currentStage: LoadingStage | "" = "";
+let loadingDomain = "";
+
+/** Name the domain being loaded, for the messages that mention it. */
+export function setLoadingDomain(domain: string): void {
+  loadingDomain = domain;
+}
 
 function writeStatus(message: string): void {
   const status = document.getElementById("status");
   if (status !== null) {
-    status.textContent = message;
+    // Falls back to "the name" when no domain has been set, which is the
+    // preview and local-target paths where there is no `.dot` to name.
+    status.textContent = message.replace(
+      DOMAIN_TOKEN,
+      loadingDomain === "" ? "the name" : `${loadingDomain}.dot`,
+    );
   }
 }
 

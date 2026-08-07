@@ -32,6 +32,7 @@ import {
   advancePhase,
   nudgePhaseProgress,
   setLoadingMetrics,
+  setLoadingDomain,
   setLifecycleStatus,
   stopStatusTick,
   listenForSandboxStatus,
@@ -1268,6 +1269,7 @@ async function main(): Promise<void> {
   // It is always the last phase; advance to it just before handing off to the
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
+  setLoadingDomain(label);
   advancePhase(0);
 
   // Advance the loading bar from smoldot's typed lifecycle stream instead of
