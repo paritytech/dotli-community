@@ -33,6 +33,12 @@ vi.mock("@dotli/protocol/client", () => ({
       sharedAuth.listeners.delete(listener);
     };
   },
+  // The topbar subscribes at init so its network panel can show a live
+  // status. No test drives chain events, so this just has to exist and
+  // hand back an unsubscribe.
+  onProtocolChainSync: () => () => {
+    /* no chain events in these tests */
+  },
 }));
 
 async function flushMicrotasks(): Promise<void> {
