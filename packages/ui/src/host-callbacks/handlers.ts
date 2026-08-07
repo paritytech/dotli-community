@@ -19,6 +19,7 @@ import {
 import { createPreimageAdapters } from "./Preimage";
 import { createChainConnect } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
+import { createSupportedChains } from "./SupportedChains";
 import { createThemeSubscribe } from "./Theme";
 import { createAuthStateChanged } from "./AuthState";
 import { createSessionStoreAdapters } from "./SessionStore";
@@ -62,7 +63,10 @@ export function createHostCallbacks(
       blockingModalScope,
       promptLimiter,
     ),
-    features: { featureSupported: createFeatureSupported() },
+    features: {
+      featureSupported: createFeatureSupported(),
+      supportedChains: createSupportedChains(),
+    },
     productStorage: {
       read: createLocalStorageRead(),
       write: createLocalStorageWrite(),
