@@ -76,8 +76,8 @@ let creepStep = 0;
 function setProgress(pct: number): void {
   currentProgress = pct;
   if (progressFillEl !== null) {
-    // Clip away the top, so the colour rises from the bottom of the logo.
-    progressFillEl.style.clipPath = `inset(${String(100 - pct)}% 0 0 0)`;
+    // Clip away the right, so the colour sweeps in from the left edge.
+    progressFillEl.style.clipPath = `inset(0 ${String(100 - pct)}% 0 0)`;
   }
   // The bar carried no percentage for a screen reader to announce. Now that
   // the logo is the indicator, it says the number out loud.
@@ -149,6 +149,10 @@ const MESSAGE_ROTATE_MS = 2_800;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = "{domain}";
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 /** The steps a load moves through, in the order they happen. */
 export const LOADING_STAGES = [
@@ -226,16 +230,61 @@ export function setLoadingDomain(domain: string): void {
   loadingDomain = domain;
 }
 
+// The old line is deleted a character at a time and the new one typed in.
+// Both are given a fixed budget rather than a per-character delay, so a long
+// sentence animates at the same pace as a short one and always lands well
+// inside the rotation interval.
+const ERASE_MS = 260;
+const TYPE_MS = 620;
+let typingFrame: number | null = null;
+
+function cancelTyping(): void {
+  if (typingFrame !== null) {
+    cancelAnimationFrame(typingFrame);
+    typingFrame = null;
+  }
+}
+
 function writeStatus(message: string): void {
   const status = document.getElementById("status");
-  if (status !== null) {
-    // Falls back to "the name" when no domain has been set, which is the
-    // preview and local-target paths where there is no `.dot` to name.
-    status.textContent = message.replace(
-      DOMAIN_TOKEN,
-      loadingDomain === "" ? "the name" : `${loadingDomain}.dot`,
-    );
+  if (status === null) {
+    return;
   }
+  // Falls back to "the name" when no domain has been set, which is the
+  // preview and local-target paths where there is no `.dot` to name.
+  const next = message.replace(
+    DOMAIN_TOKEN,
+    loadingDomain === "" ? "the name" : `${loadingDomain}.dot`,
+  );
+  const previous = status.textContent;
+  cancelTyping();
+  // Screen readers get the whole sentence once, from an element the typing
+  // never touches.
+  const announce = document.getElementById("status-sr");
+  if (announce !== null) {
+    announce.textContent = next;
+  }
+  if (next === previous || prefersReducedMotion()) {
+    status.textContent = next;
+    return;
+  }
+  const start = performance.now();
+  const step = (now: number): void => {
+    const elapsedMs = now - start;
+    if (elapsedMs < ERASE_MS) {
+      const keep = Math.ceil(previous.length * (1 - elapsedMs / ERASE_MS));
+      status.textContent = previous.slice(0, keep);
+    } else if (elapsedMs < ERASE_MS + TYPE_MS) {
+      const typed = Math.ceil(next.length * ((elapsedMs - ERASE_MS) / TYPE_MS));
+      status.textContent = next.slice(0, typed);
+    } else {
+      status.textContent = next;
+      typingFrame = null;
+      return;
+    }
+    typingFrame = requestAnimationFrame(step);
+  };
+  typingFrame = requestAnimationFrame(step);
 }
 
 /**
@@ -269,6 +318,7 @@ function stopStageMessages(): void {
     clearInterval(stageTimer);
     stageTimer = null;
   }
+  cancelTyping();
 }
 
 /** Report what the light client itself is doing, e.g. "syncing Asset Hub". */

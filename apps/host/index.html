@@ -435,7 +435,12 @@
           <!-- Held back until the load has run long enough to be worth
                explaining. A fast load shows only the bar. -->
           <div class="loading-status" id="loading-status">
-            <p id="status" aria-live="polite">Reaching out</p>
+            <!-- The visible line is typed a character at a time, which
+                 would make a live region announce every partial string, so
+                 the announcement is split into its own hidden element that
+                 only ever receives whole sentences. -->
+            <p id="status" aria-hidden="true">Reaching out</p>
+            <p class="sr-only" id="status-sr" aria-live="polite"></p>
             <dl class="loading-metrics">
               <div class="loading-metric-peers">
                 <dt>Peers</dt>
