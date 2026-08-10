@@ -7,6 +7,7 @@ import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
+import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
 // `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
@@ -142,7 +143,13 @@ export default defineConfig({
   base: process.env.VITE_APP_URL
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
-  plugins: [wasm(), preloadCriticalAssets(), buildServiceWorker(), sentry()],
+  plugins: [
+    wasm(),
+    runtimeNetworkConfigScript(),
+    preloadCriticalAssets(),
+    buildServiceWorker(),
+    sentry(),
+  ],
   resolve: {
     alias: {
       ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),
