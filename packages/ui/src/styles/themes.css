@@ -204,27 +204,6 @@
 [data-theme="light"] #status {
   color: #1a1a1a;
 }
-[data-theme="light"] .loading-hint {
-  /* 6.50:1, where #b45309 was 4.61:1 before the fade and 3.92:1 after. */
-  color: #92400e;
-}
-[data-theme="light"] .loading-gateway-btn {
-  border-color: rgba(0, 0, 0, 0.16);
-  background: rgba(0, 0, 0, 0.03);
-  color: rgba(0, 0, 0, 0.85);
-}
-[data-theme="light"] .loading-gateway-btn:hover {
-  border-color: rgba(0, 0, 0, 0.32);
-  background: rgba(0, 0, 0, 0.06);
-  color: #111;
-}
-[data-theme="light"] .loading-gateway-btn-icon {
-  background: rgba(0, 0, 0, 0.06);
-  color: #0a0a0a;
-}
-[data-theme="light"] .loading-gateway-btn-sub {
-  color: rgba(0, 0, 0, 0.55);
-}
 [data-theme="light"] .loading-progress-bar {
   background: rgba(0, 0, 0, 0.06);
 }

@@ -38,7 +38,6 @@ import {
   setLifecycleStatus,
   stopStatusTick,
   listenForSandboxStatus,
-  showGatewayEscape,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
@@ -1537,41 +1536,29 @@ async function main(): Promise<void> {
       log.warn(
         `[dot.li resolve] path=smoldot (trustless light-client) (${elapsed(T0)})`,
       );
-      // After 10s of slow loading on the verified path, surface a one-click
-      // escape to the gateway backend. The user trades the light-client
-      // verification badge for a faster, trust-based load.
-      const cancelGatewayEscape = showGatewayEscape(() => {
-        m.count(S.GATEWAY_ESCAPE, { from_backend: chainBackend });
-        switchBackendAndReload("rpc-gateway");
-      });
-
-      try {
-        const { statusToPhase } = await import("@dotli/resolver/resolve");
-        const onResolveProgress = (msg: string): void => {
-          // Progress events arrive as opaque strings across the iframe
-          // boundary. The resolver package owns the authoritative
-          // mapping from status text to ResolvePhase, so we defer to it
-          // instead of maintaining a parallel regex here.
-          const phase = statusToPhase(msg);
-          const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
-          if (mappedPhase !== undefined) {
-            advancePhase(mappedPhase);
-          }
-          emitPhase(msg, phase ?? "progress");
-          // These strings are the resolver talking to a developer, which is
-          // how "Walking dag-pb via bitswap..." reached the headline. They
-          // stay in the debug stream and move the bar; the stage messages
-          // say the same thing to the user.
-        };
-        cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
-        if (cid === null) {
-          cid = await resolveDotNameRemote(label, onResolveProgress);
-          log.warn(
-            `[dot.li resolve] fallback ${label}.dot contenthash -> ${cid ?? "null"}`,
-          );
+      const { statusToPhase } = await import("@dotli/resolver/resolve");
+      const onResolveProgress = (msg: string): void => {
+        // Progress events arrive as opaque strings across the iframe
+        // boundary. The resolver package owns the authoritative mapping from
+        // status text to ResolvePhase, so we defer to it instead of
+        // maintaining a parallel regex here.
+        const phase = statusToPhase(msg);
+        const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
+        if (mappedPhase !== undefined) {
+          advancePhase(mappedPhase);
         }
-      } finally {
-        cancelGatewayEscape();
+        emitPhase(msg, phase ?? "progress");
+        // These strings are the resolver talking to a developer, which is how
+        // "Walking dag-pb via bitswap..." reached the headline. They stay in
+        // the debug stream and move the bar; the stage messages say the same
+        // thing to the user.
+      };
+      cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
+      if (cid === null) {
+        cid = await resolveDotNameRemote(label, onResolveProgress);
+        log.warn(
+          `[dot.li resolve] fallback ${label}.dot contenthash -> ${cid ?? "null"}`,
+        );
       }
     } else {
       log.warn(
