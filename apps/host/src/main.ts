@@ -31,6 +31,7 @@ import {
   initPhases,
   advancePhase,
   nudgePhaseProgress,
+  releasePhaseProgress,
   setLoadingMetrics,
   setLoadingDomain,
   setLoadingStage,
@@ -55,6 +56,7 @@ import {
 import {
   ensureProtocolFrame,
   onProtocolChainSync,
+  onProtocolNetBytes,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -1197,6 +1199,9 @@ async function main(): Promise<void> {
     "asset-hub-ready": 2,
     "resolving-content": 3,
   };
+  // Only direct mode relays the sandbox's bitswap traffic through this window,
+  // so it is the only backend that can report a download percentage.
+  const countsContentBytes = chainBackend === "smoldot-direct";
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
     {
       label: startLabel,
@@ -1234,7 +1239,10 @@ async function main(): Promise<void> {
       stage: "content",
       // The download counts its own bytes against the total the DAG root
       // declares, so this band is driven by that rather than by the clock.
-      reportsProgress: true,
+      // Only where something is actually counting: a band that waits for a
+      // percentage nobody will send would hold the indicator at 62 for the
+      // whole fetch.
+      reportsProgress: countsContentBytes,
     },
   ];
   if (chainBackend === "smoldot-shared-worker") {
@@ -1265,7 +1273,9 @@ async function main(): Promise<void> {
         target: 95,
         expectedMs: 10000,
         stage: "content",
-        reportsProgress: true,
+        // No `reportsProgress` here. Gateway mode pulls the archive over HTTP
+        // from the sandbox, so nothing counts its bytes through this window
+        // and there would be no percentage for the indicator to wait on.
       },
     ]);
   }
@@ -1307,7 +1317,12 @@ async function main(): Promise<void> {
       }
       switch (event.syncKind) {
         case "peers":
-          if (event.chain === "asset-hub") {
+          // The relay's count stops updating once it is bootstrapped, because
+          // the health poll stops with it, so that row is a snapshot of the
+          // peers it settled on rather than a live figure.
+          if (event.chain === "relay") {
+            setLoadingMetrics({ relayPeers: event.peers ?? 0 });
+          } else if (event.chain === "asset-hub") {
             setLoadingMetrics({ assetHubPeers: event.peers ?? 0 });
           } else if (event.chain === "bulletin") {
             setLoadingMetrics({ bulletinPeers: event.peers ?? 0 });
@@ -1347,16 +1362,54 @@ async function main(): Promise<void> {
       }
     });
 
+    // Speed is the whole load's throughput, not one step's. The chain sync
+    // dominates the first half of a cold load and the archive download the
+    // second, so both are added up and the rate is taken over a short
+    // trailing window. Reporting only the archive left the readout at zero
+    // for the seconds the light client was working hardest.
+    let chainBytes = 0;
+    let contentBytes = 0;
+    // Seeded at the page's own start with nothing downloaded, which is true
+    // and means the first report from the protocol frame already has a second
+    // reading to be measured against. Without it the readout stayed blank
+    // until the frame's second message.
+    const samples: { at: number; total: number }[] = [{ at: 0, total: 0 }];
+    const SPEED_WINDOW_MS = 3_000;
+    const reportSpeed = (): void => {
+      const now = performance.now();
+      samples.push({ at: now, total: chainBytes + contentBytes });
+      while (samples.length > 1 && now - samples[0].at > SPEED_WINDOW_MS) {
+        samples.shift();
+      }
+      const oldest = samples[0];
+      const span = now - oldest.at;
+      if (span > 0) {
+        setLoadingMetrics({
+          bytesPerSecond:
+            ((chainBytes + contentBytes - oldest.total) / span) * 1000,
+        });
+      }
+    };
+    onProtocolNetBytes(({ received }) => {
+      chainBytes = received;
+      reportSpeed();
+    });
+
     // Every block the sandbox needs is fetched through this window, so the
     // download reports itself: bytes so far against the total the DAG root
     // declares.
-    onContentProgress(({ bytesFetched, totalBytes, bytesPerSecond }) => {
-      setLoadingMetrics({ bytesPerSecond });
+    onContentProgress(({ bytesFetched, totalBytes }) => {
+      contentBytes = bytesFetched;
+      reportSpeed();
       // The download's true fraction drives the bar itself, which is where
       // a percentage belongs. Printing the same number as text alongside it
       // said the same thing twice.
+      if (totalBytes === null) {
+        // Bytes are arriving but the DAG root declared no total, so there is
+        // no percentage to be had. Hand the indicator back to the clock.
+        releasePhaseProgress();
+      }
       if (totalBytes !== null && totalBytes > 0) {
-        setLoadingMetrics({ completedFraction: bytesFetched / totalBytes });
         nudgePhaseProgress(bytesFetched / totalBytes);
         // The tail of the load is the sandbox unpacking the archive and
         // painting, which used to hide behind download copy while the bar

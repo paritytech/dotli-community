@@ -122,6 +122,18 @@ export interface ProtocolChainSyncEnvelope {
   finalized?: number;
 }
 
+/**
+ * Running total of bytes the light client has pulled off the network.
+ *
+ * Cumulative rather than a rate, so a dropped message costs nothing and the
+ * host can pick whatever averaging window it wants.
+ */
+export interface ProtocolNetBytesEnvelope {
+  namespace: "dotli:protocol";
+  kind: "net-bytes";
+  received: number;
+}
+
 // Unsolicited notification from the host iframe to its parent window when a
 // sibling tab writes or clears a shared-auth storage key. Drives cross-tab
 // `StorageAdapter.subscribe` callbacks. See `@dotli/protocol/client`
@@ -146,6 +158,7 @@ export type ProtocolEnvelope =
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
   | ProtocolChainSyncEnvelope
+  | ProtocolNetBytesEnvelope
   | ProtocolAuthStorageChangedEnvelope;
 
 const VALID_KINDS = new Set([
@@ -158,6 +171,7 @@ const VALID_KINDS = new Set([
   "fatal",
   "init-failed",
   "chain-sync",
+  "net-bytes",
   "auth-storage-changed",
 ]);
 

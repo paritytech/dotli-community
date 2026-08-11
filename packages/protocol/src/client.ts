@@ -27,6 +27,7 @@ import {
   isChainSyncPayloadValid,
   isProtocolEnvelope,
   type ProtocolChainSyncEnvelope,
+  type ProtocolNetBytesEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
@@ -68,6 +69,7 @@ const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
+const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -244,6 +246,15 @@ function bindMessageListener(): void {
           return;
         }
         broadcast(chainSyncListeners, msg, "Chain sync");
+        return;
+      }
+      case "net-bytes": {
+        // Cumulative and monotonic by construction, so anything else is
+        // spoofed traffic rather than a stale message.
+        if (!Number.isFinite(msg.received) || msg.received < 0) {
+          return;
+        }
+        broadcast(netBytesListeners, msg, "Net bytes");
         return;
       }
       case "fatal":
@@ -720,6 +731,17 @@ export function onProtocolChainSync(
   chainSyncListeners.add(listener);
   return () => {
     chainSyncListeners.delete(listener);
+  };
+}
+
+/** Subscribe to the light client's running byte total. */
+export function onProtocolNetBytes(
+  listener: (event: ProtocolNetBytesEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  netBytesListeners.add(listener);
+  return () => {
+    netBytesListeners.delete(listener);
   };
 }
 

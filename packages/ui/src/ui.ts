@@ -57,6 +57,7 @@ let currentPhase = -1;
 let progressFillEl: HTMLElement | null = null;
 let progressLogoEl: HTMLElement | null = null;
 let statusBlockEl: HTMLElement | null = null;
+let metricRelayPeersEl: HTMLElement | null = null;
 let metricAssetHubPeersEl: HTMLElement | null = null;
 let metricBulletinPeersEl: HTMLElement | null = null;
 let metricSpeedEl: HTMLElement | null = null;
@@ -81,24 +82,8 @@ const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 let creepCeiling = 0;
 let creepStep = 0;
-/** True while the current step is reporting a real percentage of its own. */
+/** True while the current step owes the indicator a real percentage. */
 let phaseReportsProgress = false;
-let progressGraceTimer: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * How long a step that promised a real percentage gets to deliver one.
- *
- * If it stays silent past this the crawl takes over, so a missing byte total
- * leaves the indicator parked rather than guessing.
- */
-const PROGRESS_GRACE_MS = 3_000;
-
-function clearProgressGrace(): void {
-  if (progressGraceTimer !== null) {
-    clearTimeout(progressGraceTimer);
-    progressGraceTimer = null;
-  }
-}
 
 function setProgress(pct: number): void {
   currentProgress = pct;
@@ -109,6 +94,12 @@ function setProgress(pct: number): void {
   // The bar carried no percentage for a screen reader to announce. Now that
   // the logo is the indicator, it says the number out loud.
   progressLogoEl?.setAttribute("aria-valuenow", String(Math.round(pct)));
+  // Completed is the whole load, which is the same number the logo is
+  // drawing. Writing it here rather than from the download means the two can
+  // never disagree, and it covers the steps before the download starts.
+  if (metricCompletedEl !== null) {
+    metricCompletedEl.textContent = `${String(Math.round(pct))} %`;
+  }
 }
 
 function startProgressCrawl(): void {
@@ -160,11 +151,11 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   currentProgress = 0;
   targetProgress = 0;
   phaseReportsProgress = false;
-  clearProgressGrace();
 
   progressFillEl = document.getElementById("loading-logo-fill");
   progressLogoEl = document.getElementById("loading-logo");
   statusBlockEl = document.getElementById("loading-status");
+  metricRelayPeersEl = document.getElementById("metric-peers-relay");
   metricAssetHubPeersEl = document.getElementById("metric-peers-assethub");
   metricBulletinPeersEl = document.getElementById("metric-peers-bulletin");
   metricSpeedEl = document.getElementById("metric-speed");
@@ -457,11 +448,14 @@ export function setLifecycleStatus(text: string): void {
  * which put a zero on screen at the moments the load looked slowest.
  */
 export function setLoadingMetrics(metrics: {
+  relayPeers?: number;
   assetHubPeers?: number;
   bulletinPeers?: number;
   bytesPerSecond?: number;
-  completedFraction?: number;
 }): void {
+  if (metrics.relayPeers !== undefined && metricRelayPeersEl !== null) {
+    metricRelayPeersEl.textContent = String(metrics.relayPeers);
+  }
   if (metrics.assetHubPeers !== undefined && metricAssetHubPeersEl !== null) {
     metricAssetHubPeersEl.textContent = String(metrics.assetHubPeers);
   }
@@ -470,10 +464,6 @@ export function setLoadingMetrics(metrics: {
   }
   if (metrics.bytesPerSecond !== undefined && metricSpeedEl !== null) {
     metricSpeedEl.textContent = `${(metrics.bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
-  }
-  if (metrics.completedFraction !== undefined && metricCompletedEl !== null) {
-    const pct = Math.min(100, Math.max(0, metrics.completedFraction * 100));
-    metricCompletedEl.textContent = `${String(Math.round(pct))} %`;
   }
 }
 
@@ -495,14 +485,7 @@ export function advancePhase(index: number): void {
   // percentage says nothing about this one. A step that publishes its own
   // figure holds the indicator at its band base until the figure arrives,
   // rather than crawling somewhere the real number cannot then reach.
-  clearProgressGrace();
   phaseReportsProgress = reportsProgress === true;
-  if (phaseReportsProgress) {
-    progressGraceTimer = setTimeout(() => {
-      phaseReportsProgress = false;
-      progressGraceTimer = null;
-    }, PROGRESS_GRACE_MS);
-  }
   if (base > currentProgress) {
     setProgress(base);
   }
@@ -555,7 +538,6 @@ export function nudgePhaseProgress(fraction: number): void {
   }
   const { base, target } = phases[currentPhase];
   const clamped = Math.max(0, Math.min(1, fraction));
-  clearProgressGrace();
   // Once the step's own work is finished there is no true number left to
   // respect, so the creep takes over again and carries the indicator through
   // the tail. That tail is the sandbox unpacking, which reports nothing.
@@ -564,6 +546,23 @@ export function nudgePhaseProgress(fraction: number): void {
   if (want > currentProgress) {
     setProgress(Math.min(want, target));
   }
+}
+
+/**
+ * Give the indicator back to the clock.
+ *
+ * A step that declared `reportsProgress` holds the indicator until it can say
+ * where the work is. If it turns out it cannot, because the download has no
+ * declared total to measure against, it says so here and the crawl resumes.
+ *
+ * This is deliberately not a timeout. A timeout fired whether or not anything
+ * was happening: a load whose content chain never found a peer had the crawl
+ * walk the logo to 99% and sit there for 49 seconds at 0.0 MB/s, claiming the
+ * load was all but done while nothing at all was being downloaded. Holding
+ * still is the honest answer, and the status row says why.
+ */
+export function releasePhaseProgress(): void {
+  phaseReportsProgress = false;
 }
 
 export const GATEWAY_ESCAPE_DELAY_MS = 10_000;

@@ -14,6 +14,15 @@ import {
   installGlobalErrorHandlers,
   captureException,
 } from "@dotli/metrics/sentry";
+import {
+  chainBytesReceived,
+  installByteMeter,
+} from "@dotli/resolver/byte-meter";
+
+// Before anything opens a socket. smoldot's transports are the bulk of a
+// cold load's traffic and are invisible to resource timing, so the loading
+// screen's speed readout has no other source for them.
+installByteMeter();
 
 // Do NOT silently reload on chunk preload failure. The protocol iframe is
 // hidden and has no UI of its own, so it surfaces the failure to the parent
@@ -735,6 +744,30 @@ async function initDirectMode(): Promise<void> {
       "*",
     );
   });
+
+  // Feed the host's speed readout. Cumulative totals on a fixed tick rather
+  // than a rate, so the host owns the averaging and a dropped message just
+  // widens one window.
+  if (window.parent !== window) {
+    const postBytes = (): void => {
+      window.parent.postMessage(
+        {
+          namespace: "dotli:protocol",
+          kind: "net-bytes",
+          received: chainBytesReceived(),
+        },
+        "*",
+      );
+    };
+    // Send a baseline straight away. A rate needs two readings, so waiting a
+    // full tick for the first one delayed the whole readout by 500ms on top
+    // of the time this iframe took to boot.
+    postBytes();
+    const reportBytes = setInterval(postBytes, 500);
+    window.addEventListener("pagehide", () => {
+      clearInterval(reportBytes);
+    });
+  }
 
   const engine = createEngine({
     createChainProvider,
