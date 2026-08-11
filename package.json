@@ -35,12 +35,12 @@
     "packages/*"
   ],
   "dependencies": {
-    "smoldot": "3.3.3-dev-20260805.0"
+    "smoldot": "3.4.1-dev-20260811.0"
   },
   "overrides": {
     "@parity/truapi": "0.7.0",
     "fast-uri": "3.1.5",
-    "smoldot": "3.3.3-dev-20260805.0",
+    "smoldot": "3.4.1-dev-20260811.0",
     "esbuild": "^0.28.1",
     "brace-expansion": "^5.0.9",
     "postcss": "^8.5.24"
