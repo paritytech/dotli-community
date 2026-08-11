@@ -12,7 +12,7 @@
 
 import type { Features } from "@parity/truapi-host";
 import type { ChainIdentifier } from "@parity/truapi";
-import { hexToBytes } from "@parity/truapi/scale";
+import { toHexString } from "@parity/truapi/scale";
 import { getBackend } from "@dotli/config/mode";
 import { getActiveServicesConfig, getNetwork } from "@dotli/config/network";
 import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/chains";
@@ -40,7 +40,7 @@ export function createSupportedChains(): Features["supportedChains"] {
         .filter(({ genesis }) => isSupported(genesis))
         .map(({ identifier, genesis }) => ({
           identifier,
-          genesisHash: hexToBytes(genesis),
+          genesisHash: toHexString(genesis),
         })),
     });
   };

@@ -44,9 +44,9 @@ export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   const primaryUsername = info.fullUsername ?? info.liteUsername;
   return {
     connected: true,
-    publicKey: bytesToHex(info.publicKey),
+    publicKey: info.publicKey,
     ...(info.identityAccountId !== undefined
-      ? { identityAccountId: bytesToHex(info.identityAccountId) }
+      ? { identityAccountId: info.identityAccountId }
       : {}),
     ...(info.liteUsername !== undefined
       ? { liteUsername: info.liteUsername }
@@ -244,6 +244,10 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
+    // Wallet-bound capabilities for the active pairing: one slot, unlike the
+    // legacy per-product `AutoSigningKey` above.
+    case "AutoSigningKeys":
+      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case "AuthSession":
@@ -252,7 +256,11 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
 }
 
 function storesSecretMaterial(key: CoreStorageKey): boolean {
-  return key.tag === "AllowanceKeys" || key.tag === "AutoSigningKey";
+  return (
+    key.tag === "AllowanceKeys" ||
+    key.tag === "AutoSigningKey" ||
+    key.tag === "AutoSigningKeys"
+  );
 }
 
 async function encodeCoreStorageValue(
