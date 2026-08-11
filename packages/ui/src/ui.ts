@@ -55,13 +55,13 @@ let currentPhase = -1;
 
 // Progress indicator state
 let progressFillEl: HTMLElement | null = null;
-let progressLogoEl: HTMLElement | null = null;
+let progressPctEl: HTMLElement | null = null;
+let progressBarEl: HTMLElement | null = null;
 let statusBlockEl: HTMLElement | null = null;
 let metricRelayPeersEl: HTMLElement | null = null;
 let metricAssetHubPeersEl: HTMLElement | null = null;
 let metricBulletinPeersEl: HTMLElement | null = null;
 let metricSpeedEl: HTMLElement | null = null;
-let metricCompletedEl: HTMLElement | null = null;
 let revealTimer: ReturnType<typeof setTimeout> | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
@@ -82,18 +82,13 @@ let phaseReportsProgress = false;
 function setProgress(pct: number): void {
   currentProgress = pct;
   if (progressFillEl !== null) {
-    // Clip away the right, so the colour sweeps in from the left edge.
-    progressFillEl.style.clipPath = `inset(0 ${String(100 - pct)}% 0 0)`;
+    progressFillEl.style.width = `${String(pct)}%`;
   }
-  // The bar carried no percentage for a screen reader to announce. Now that
-  // the logo is the indicator, it says the number out loud.
-  progressLogoEl?.setAttribute("aria-valuenow", String(Math.round(pct)));
-  // Completed is the whole load, which is the same number the logo is
-  // drawing. Writing it here rather than from the download means the two can
-  // never disagree, and it covers the steps before the download starts.
-  if (metricCompletedEl !== null) {
-    metricCompletedEl.textContent = `${String(Math.round(pct))} %`;
+  if (progressPctEl !== null) {
+    progressPctEl.textContent = `${String(Math.round(pct))}%`;
   }
+  // The bar itself carries no value for a screen reader, so the wrapper does.
+  progressBarEl?.setAttribute("aria-valuenow", String(Math.round(pct)));
 }
 
 function startProgressCrawl(): void {
@@ -125,7 +120,7 @@ function stopProgressCrawl(): void {
 }
 
 /**
- * Fill the logo completely.
+ * Snap the progress bar to 100%.
  * Called when loading is done, before the overlay fades out.
  */
 export function completeProgress(): void {
@@ -146,14 +141,14 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   targetProgress = 0;
   phaseReportsProgress = false;
 
-  progressFillEl = document.getElementById("loading-logo-fill");
-  progressLogoEl = document.getElementById("loading-logo");
+  progressFillEl = document.getElementById("loading-progress-fill");
+  progressPctEl = document.getElementById("loading-progress-pct");
+  progressBarEl = document.getElementById("loading-progress");
   statusBlockEl = document.getElementById("loading-status");
   metricRelayPeersEl = document.getElementById("metric-peers-relay");
   metricAssetHubPeersEl = document.getElementById("metric-peers-assethub");
   metricBulletinPeersEl = document.getElementById("metric-peers-bulletin");
   metricSpeedEl = document.getElementById("metric-speed");
-  metricCompletedEl = document.getElementById("metric-completed");
 
   // A load that finishes quickly should never explain itself. Only once it
   // has run long enough to feel slow does the status block appear.
@@ -174,8 +169,8 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 export const STATUS_REVEAL_MS = 3_000;
 
 // How often the line turns over. Most of this window is the turnover
-// animation, so the finished sentence itself is only still for the last ~1.5s.
-const MESSAGE_ROTATE_MS = 4_500;
+// animation, so the finished sentence itself is only still for the last ~2.7s.
+const MESSAGE_ROTATE_MS = 6_500;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = "{domain}";
@@ -255,8 +250,8 @@ export function setLoadingDomain(domain: string): void {
 // A fixed budget rather than a per-character delay, so a long sentence
 // animates at the same pace as a short one and always lands inside the
 // rotation interval.
-const ERASE_MS = 800;
-const TYPE_MS = 2_200;
+const ERASE_MS = 1_000;
+const TYPE_MS = 2_800;
 let typingFrame: number | null = null;
 let pendingMessage: string | null = null;
 

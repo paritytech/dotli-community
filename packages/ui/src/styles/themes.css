@@ -225,15 +225,25 @@
 [data-theme="light"] .loading-gateway-btn-sub {
   color: rgba(0, 0, 0, 0.55);
 }
-/* Loading logo. The dark theme fills with #fff, which is invisible on the
-   light-theme cream body, so both layers flip. The filled layer is the state
-   indicator and needs 3:1 as a non-text component: #111 on #f5f5f5 clears
-   that with room to spare. The empty layer is the track, so it stays faint. */
-[data-theme="light"] .loading-logo-empty {
-  fill: rgba(0, 0, 0, 0.12);
+[data-theme="light"] .loading-progress-bar {
+  background: rgba(0, 0, 0, 0.06);
 }
-[data-theme="light"] .loading-logo-fill {
+[data-theme="light"] .loading-progress-fill {
+  /* The fill is the state indicator, so it needs 3:1 as a non-text
+     component. 0.35 gave 2.43:1 against the page; 0.5 gives 3.88:1. */
+  background: rgba(0, 0, 0, 0.5);
+}
+/* Loading logo — dark-mode uses `fill: #fff` on the petals, which is
+   invisible on the light-theme cream body. Flip to near-black so the
+   animated logo actually shows during cold starts. */
+[data-theme="light"] .loading-petal {
   fill: #111;
+}
+[data-theme="light"] .loading-progress-pct {
+  /* 4.89:1, and kept below the detail line so the ranking survives the
+     flip. #333 would clear AA too, but it would outrank the headline's
+     own secondary line. */
+  color: #6b6b6b;
 }
 [data-theme="light"] .loading-status-heading,
 [data-theme="light"] .loading-details-summary,
