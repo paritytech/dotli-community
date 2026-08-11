@@ -993,7 +993,7 @@ function describeNetworkStatus(): { text: string; tone: string } {
     (k) => k === "bootstrapComplete" || k === "recovered",
   );
   return settled
-    ? { text: "Connected", tone: "ok" }
+    ? { text: "Your connection is good", tone: "ok" }
     : { text: "Connecting", tone: "idle" };
 }
 
@@ -2197,15 +2197,16 @@ async function queryBlockAgeMs(
 }
 
 /** "4s ago", "2m ago". Blank when the chain would not say. */
-function formatAge(ms: number | null): string {
+/** How long ago a block landed, or null when its timestamp is unreadable. */
+function formatAge(ms: number | null): string | null {
   if (ms === null) {
-    return "";
+    return null;
   }
   const secs = Math.round(ms / 1000);
   if (secs < 60) {
-    return ` (${String(secs)}s ago)`;
+    return `${String(secs)}s ago`;
   }
-  return ` (${String(Math.round(secs / 60))}m ago)`;
+  return `${String(Math.round(secs / 60))}m ago`;
 }
 
 /**
@@ -2278,8 +2279,10 @@ async function queryChainStatus(genesisHash: string): Promise<{
       ).catch(() => [null, null]);
       return {
         peers: typeof health?.peers === "number" ? health.peers : null,
-        best: `${formatBlock(best.number)}${formatAge(bestAge)}`,
-        finalized: `${formatBlock(finalized.number)}${formatAge(best.hash === finalized.hash ? bestAge : finalizedAge)}`,
+        best: formatAge(bestAge),
+        finalized: formatAge(
+          best.hash === finalized.hash ? bestAge : finalizedAge,
+        ),
       };
     } finally {
       client.destroy();
