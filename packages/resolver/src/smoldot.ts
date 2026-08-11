@@ -358,7 +358,16 @@ function makeSideChannelIntercept(chain: ChainKey): TapIntercept {
 
 function emitMilestone(
   chain: ChainKey,
-  result: { kind?: string; reason?: string; previously?: string } | undefined,
+  result:
+    | {
+        kind?: string;
+        reason?: string;
+        previously?: string;
+        at?: number;
+        target?: number;
+        finalized?: number;
+      }
+    | undefined,
 ): void {
   const kind = result?.kind;
   if (kind === undefined || kind === "peers" || !isSyncKind(kind)) {
@@ -369,15 +378,14 @@ function emitMilestone(
     persistence.get(chain)?.healthPoller?.stop();
   }
   const reason = kind === "stalled" ? result?.reason : result?.previously;
-  const heights = result as unknown as Record<string, unknown>;
   emitChainSync({
     chain,
     kind,
     ...(typeof reason === "string" ? { reason } : {}),
-    ...(typeof heights.at === "number" ? { at: heights.at } : {}),
-    ...(typeof heights.target === "number" ? { target: heights.target } : {}),
-    ...(typeof heights.finalized === "number"
-      ? { finalized: heights.finalized }
+    ...(typeof result?.at === "number" ? { at: result.at } : {}),
+    ...(typeof result?.target === "number" ? { target: result.target } : {}),
+    ...(typeof result?.finalized === "number"
+      ? { finalized: result.finalized }
       : {}),
   });
 }

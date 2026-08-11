@@ -966,6 +966,13 @@ let chainsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 /** How often the open panel re-reads peers and heights. */
 const CHAINS_REFRESH_MS = 6_000;
+/**
+ * Budget for each step of a chain's read.
+ *
+ * Three steps run in sequence, so this is sized to keep the whole read inside
+ * the refresh interval and stop ticks stacking up on a slow chain.
+ */
+const CHAIN_QUERY_TIMEOUT_MS = 1_800;
 
 function stopChainsRefresh(): void {
   if (chainsRefreshTimer !== null) {
@@ -1025,6 +1032,12 @@ function renderChainsPopover(parent: HTMLElement): void {
     text.textContent = "Trusted provider, no light client";
     return;
   }
+  if (backend === "smoldot-shared-worker") {
+    onStatusChange = null;
+    dot.className = "chains-status-dot is-idle";
+    text.textContent = "Light client in a shared worker";
+    return;
+  }
 
   const paint = (): void => {
     const { text: label, tone } = describeNetworkStatus();
@@ -1069,12 +1082,10 @@ function renderChainsPopover(parent: HTMLElement): void {
     table.appendChild(row);
 
     const refresh = (): void => {
-      void queryPeerCount(genesis).then((n) => {
-        cells[0].textContent = n === null ? "n/a" : String(n);
-      });
-      void queryChainBlocks(genesis).then((blocks) => {
-        cells[1].textContent = blocks?.best ?? "n/a";
-        cells[2].textContent = blocks?.finalized ?? "n/a";
+      void queryChainStatus(genesis).then(({ peers, best, finalized }) => {
+        cells[0].textContent = peers === null ? "n/a" : String(peers);
+        cells[1].textContent = best ?? "n/a";
+        cells[2].textContent = finalized ?? "n/a";
       });
     };
     refresh();
@@ -1119,8 +1130,10 @@ function initChainsPopover(): void {
     stopChainsRefresh();
     onStatusChange = null;
   };
-  button.addEventListener("click", (e) => {
-    e.stopPropagation();
+  // No `stopPropagation`. The shared outside-click closer has to see this
+  // click to shut Settings, which sits at the same fixed position and would
+  // otherwise render on top of this panel.
+  button.addEventListener("click", () => {
     if (popover.classList.contains("open")) {
       close();
       return;
@@ -2200,41 +2213,71 @@ function formatAge(ms: number | null): string {
  * reports. `getBestBlocks` returns the chain from best to finalized, so one
  * call covers both ends.
  */
-async function queryChainBlocks(genesisHash: string): Promise<{
-  best: string;
-  finalized: string;
-} | null> {
+/** Reject after `ms`, and clear the timer as soon as the race settles. */
+async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("timeout"));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Everything the network panel shows for one chain, over a single client.
+ *
+ * Peers and heights used to be read by two functions that each stood up their
+ * own client, so an open panel churned eight of them every refresh. The
+ * budget is under the refresh interval so ticks cannot overlap.
+ */
+async function queryChainStatus(genesisHash: string): Promise<{
+  peers: number | null;
+  best: string | null;
+  finalized: string | null;
+}> {
+  const empty = { peers: null, best: null, finalized: null };
   try {
     if (!isRemoteChainSupported(genesisHash)) {
-      return null;
+      return empty;
     }
     const provider = createRemoteChainProvider(genesisHash);
     if (provider === null) {
-      return null;
+      return empty;
     }
     const papi = await import("polkadot-api");
     const client = papi.createClient(provider);
     try {
-      const blocks = await Promise.race([
+      const health = await withTimeout(
+        client._request<{ peers?: number }>("system_health", []),
+        CHAIN_QUERY_TIMEOUT_MS,
+      ).catch(() => null);
+      const blocks = await withTimeout(
         client.getBestBlocks(),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error("timeout"));
-          }, 10_000);
-        }),
-      ]);
-      const best = blocks.at(0);
-      const finalized = blocks.at(-1);
+        CHAIN_QUERY_TIMEOUT_MS,
+      ).catch(() => null);
+      const best = blocks?.at(0);
+      const finalized = blocks?.at(-1);
       if (best === undefined || finalized === undefined) {
-        return null;
+        return { ...empty, peers: health?.peers ?? null };
       }
-      const [bestAge, finalizedAge] = await Promise.all([
-        queryBlockAgeMs(client, best.hash),
-        best.hash === finalized.hash
-          ? Promise.resolve(null)
-          : queryBlockAgeMs(client, finalized.hash),
-      ]);
+      const [bestAge, finalizedAge] = await withTimeout(
+        Promise.all([
+          queryBlockAgeMs(client, best.hash),
+          best.hash === finalized.hash
+            ? Promise.resolve(null)
+            : queryBlockAgeMs(client, finalized.hash),
+        ]),
+        CHAIN_QUERY_TIMEOUT_MS,
+      ).catch(() => [null, null]);
       return {
+        peers: typeof health?.peers === "number" ? health.peers : null,
         best: `${formatBlock(best.number)}${formatAge(bestAge)}`,
         finalized: `${formatBlock(finalized.number)}${formatAge(best.hash === finalized.hash ? bestAge : finalizedAge)}`,
       };
@@ -2242,43 +2285,7 @@ async function queryChainBlocks(genesisHash: string): Promise<{
       client.destroy();
     }
   } catch {
-    return null;
-  }
-}
-
-/**
- * Query a chain's current peer count over the same bridge as the block
- * height. Read live on open rather than taken from the loading screen's
- * stream, which stops sampling once a chain is up and would leave a figure
- * that is minutes stale. Covers People too, which the loading bar never
- * waits on and so never reports.
- */
-async function queryPeerCount(genesisHash: string): Promise<number | null> {
-  try {
-    if (!isRemoteChainSupported(genesisHash)) {
-      return null;
-    }
-    const provider = createRemoteChainProvider(genesisHash);
-    if (provider === null) {
-      return null;
-    }
-    const papi = await import("polkadot-api");
-    const client = papi.createClient(provider);
-    try {
-      const health = await Promise.race([
-        client._request<{ peers?: number }>("system_health", []),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error("timeout"));
-          }, 10_000);
-        }),
-      ]);
-      return typeof health.peers === "number" ? health.peers : null;
-    } finally {
-      client.destroy();
-    }
-  } catch {
-    return null;
+    return empty;
   }
 }
 

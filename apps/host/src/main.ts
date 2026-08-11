@@ -1320,12 +1320,23 @@ async function main(): Promise<void> {
           // The relay's count stops updating once it is bootstrapped, because
           // the health poll stops with it, so that row is a snapshot of the
           // peers it settled on rather than a live figure.
+          if (event.peers === undefined) {
+            return;
+          }
           if (event.chain === "relay") {
-            setLoadingMetrics({ relayPeers: event.peers ?? 0 });
+            setLoadingMetrics({ relayPeers: event.peers });
           } else if (event.chain === "asset-hub") {
-            setLoadingMetrics({ assetHubPeers: event.peers ?? 0 });
+            setLoadingMetrics({ assetHubPeers: event.peers });
           } else if (event.chain === "bulletin") {
-            setLoadingMetrics({ bulletinPeers: event.peers ?? 0 });
+            setLoadingMetrics({ bulletinPeers: event.peers });
+            if (event.peers > 0) {
+              // The download can start, so the clock is a fair fallback from
+              // here. Holding is only honest while there is no peer to fetch
+              // from: an archive served from the sandbox's own cache never
+              // asks this window for a block, and would otherwise sit at the
+              // band base until the app painted.
+              releasePhaseProgress();
+            }
           }
           return;
         case "warpSyncProgress": {
@@ -1333,12 +1344,13 @@ async function main(): Promise<void> {
           // only when they have real distance to cover.
           const { at, target } = event;
           if (
+            (event.chain === "relay" || event.chain === "custom-relay") &&
             at !== undefined &&
             target !== undefined &&
             target > 0 &&
             at <= target
           ) {
-            nudgePhaseProgress(at / target);
+            nudgePhaseProgress(at / target, "relay");
           }
           return;
         }
@@ -1410,7 +1422,7 @@ async function main(): Promise<void> {
         releasePhaseProgress();
       }
       if (totalBytes !== null && totalBytes > 0) {
-        nudgePhaseProgress(bytesFetched / totalBytes);
+        nudgePhaseProgress(bytesFetched / totalBytes, "content");
         // The tail of the load is the sandbox unpacking the archive and
         // painting, which used to hide behind download copy while the bar
         // crept. Only blocks relayed for the sandbox are counted here, and

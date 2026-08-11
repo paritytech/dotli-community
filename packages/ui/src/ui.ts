@@ -70,14 +70,8 @@ let progressInterval: ReturnType<typeof setInterval> | null = null;
 
 const CRAWL_TICK_MS = 200;
 
-// A band that runs longer than its estimate used to leave the bar frozen at
-// the band top: the worst case was the last one, which reached 95% and sat
-// there for up to 6s while the sandbox unpacked and painted. When a band is
-// exhausted the bar creeps on into the next band's space, which is free
-// because the step that owns it has not started. The creep is slow enough to
-// read as waiting rather than as a second, faster load, and it stops short
-// of 100 so only a finished load can fill the bar. Paced so the displayed
-// whole number keeps changing every few seconds rather than twice in total.
+// Where an exhausted band creeps on to, and how long it takes. Stops short
+// of 100 so only a finished load can fill the indicator.
 const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 let creepCeiling = 0;
@@ -170,23 +164,17 @@ export function initPhases(phaseList: LoadingPhase[]): void {
     statusBlockEl?.classList.add("visible");
   }, STATUS_REVEAL_MS);
 
-  // Start narrating here rather than waiting for the first `advancePhase`,
-  // which lands a couple of seconds later once the protocol frame is up. The
-  // markup already shows this stage's opening line, so nothing moves on
-  // screen; what matters is that the rotation clock starts when the line
-  // first becomes visible, not when the resolver gets going. Without this the
-  // opener sat for over five seconds on a cold load.
+  // Not on the first `advancePhase`, which lands seconds later once the
+  // protocol frame is up. The markup already shows this stage's opening line,
+  // so the rotation clock has to start from when that line became visible.
   setLoadingStage("starting");
 }
 
 /** How long a load may run before it owes the user an explanation. */
 export const STATUS_REVEAL_MS = 3_000;
 
-// How often the line turns over. Longer than the three seconds a *static*
-// message is allowed, because most of this window is the turnover animation
-// rather than a still sentence: 3s of characters moving, then ~1.5s at rest.
-// A slower, calmer type-in cannot fit inside a 3s cycle and still leave the
-// finished sentence up long enough to read.
+// How often the line turns over. Most of this window is the turnover
+// animation, so the finished sentence itself is only still for the last ~1.5s.
 const MESSAGE_ROTATE_MS = 4_500;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
@@ -210,19 +198,9 @@ export type LoadingStage = (typeof LOADING_STAGES)[number];
 /**
  * What the shell is doing, in the user's terms.
  *
- * The headline used to print the resolver's own prose, which is where
- * "Walking dag-pb via bitswap..." came from. These say the same thing in
- * plain words. Each stage carries several lines because a step can run for
- * half a minute, and one frozen sentence reads as a hang. The first line of
- * each stage names the step. The rest explain what a light client is doing
- * and why it takes the time it does, so a slow load teaches something
- * instead of just apologising.
- *
- * The lists are sized to how long each step actually runs, measured over ten
- * cold loads: content is the long pole at a 13s median and 89s worst case,
- * while every other step finishes inside 1.5s and rarely shows more than its
- * opener. Content and preparing therefore carry enough lines to cover a slow
- * load without repeating.
+ * The first line of each stage names the step. The rest explain what a light
+ * client is doing, and only a slow load reaches them. List lengths follow how
+ * long each step runs, so the long ones do not repeat.
  */
 const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
   starting: [
@@ -274,25 +252,15 @@ export function setLoadingDomain(domain: string): void {
   loadingDomain = domain;
 }
 
-// The old line is deleted a character at a time and the new one typed in.
-// Both get a fixed budget rather than a per-character delay, so a long
-// sentence animates at the same pace as a short one and always lands inside
-// the rotation interval. At these durations a full-length sentence types at
-// roughly 24 characters a second, which reads as deliberate rather than
-// frantic, and clears away faster than it arrives.
+// A fixed budget rather than a per-character delay, so a long sentence
+// animates at the same pace as a short one and always lands inside the
+// rotation interval.
 const ERASE_MS = 800;
 const TYPE_MS = 2_200;
 let typingFrame: number | null = null;
 let pendingMessage: string | null = null;
 
-/**
- * Slow at both ends, quickest in the middle.
- *
- * A constant character rate is what made the change feel frantic: characters
- * appeared and vanished at full speed the instant a sentence turned over.
- * Easing means each sentence starts and finishes gently, and only the
- * unremarkable middle runs fast.
- */
+/** Slow at both ends, quickest in the middle. */
 function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
@@ -400,11 +368,9 @@ export function setLoadingStage(stage: LoadingStage): void {
   // Cycle back to the second line rather than the first: the opener names
   // the step, and showing it again would read as the load starting over.
   const loopFrom = messages.length > 2 ? 1 : 0;
-  // The opening line is in the markup, so it has been on screen since the
-  // page painted while this code waited on the protocol frame. Its turn is
-  // therefore due three seconds after the page appeared, not three seconds
-  // from here. Measured cold, that gap was 2.8s, and charging it to the
-  // first message left it up for 5.6s. Later turns get the full interval.
+  // The opening line has been on screen since the page painted, so its turn
+  // is due relative to that, not to whenever this ran. Later turns get the
+  // full interval.
   const firstDelay = openingLine
     ? Math.max(500, MESSAGE_ROTATE_MS - performance.now())
     : MESSAGE_ROTATE_MS;
@@ -441,11 +407,8 @@ export function setLifecycleStatus(text: string): void {
 /**
  * Live counters under the status line.
  *
- * Each is written only when supplied, and each starts as an em dash rather
- * than a zero: before the download begins there is no speed to report, and
- * "0 MB/s" reads as broken where "not yet" reads as honest. Peers are per
- * chain because one shared figure had to be blanked at every handover,
- * which put a zero on screen at the moments the load looked slowest.
+ * Each is written only when supplied, so a value stays blank until there is
+ * something true to put there. A zero would read as broken.
  */
 export function setLoadingMetrics(metrics: {
   relayPeers?: number;
@@ -463,7 +426,13 @@ export function setLoadingMetrics(metrics: {
     metricBulletinPeersEl.textContent = String(metrics.bulletinPeers);
   }
   if (metrics.bytesPerSecond !== undefined && metricSpeedEl !== null) {
-    metricSpeedEl.textContent = `${(metrics.bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
+    // Chain sync runs at tens of kB/s, which rounded to "0.0 MB/s" and read
+    // as nothing happening.
+    const perSecond = metrics.bytesPerSecond;
+    metricSpeedEl.textContent =
+      perSecond < 1_048_576
+        ? `${String(Math.round(perSecond / 1024))} kB/s`
+        : `${(perSecond / 1_048_576).toFixed(1)} MB/s`;
   }
 }
 
@@ -497,12 +466,9 @@ export function advancePhase(index: number): void {
   crawlStep =
     ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
   // Headroom for a band that overruns: the next band's space, or the ceiling
-  // for the last one. Borrowing at most one band keeps a single slow step
-  // from eating the whole bar, and `advancePhase` never moves the bar
-  // backwards, so the next step simply carries on from wherever the creep
-  // reached. A band that reports a real percentage lends nothing: creeping
-  // into it would leave the indicator sitting above the figure that step is
-  // about to publish, which is how the logo came to look full at 58%.
+  // for the last one. A band that reports a real percentage lends nothing,
+  // since creeping into it would put the indicator above the figure that step
+  // is about to publish.
   const next = phases[index + 1] as LoadingPhase | undefined;
   const lentCeiling =
     next === undefined
@@ -524,24 +490,35 @@ export function advancePhase(index: number): void {
 }
 
 /**
- * Pull the indicator to a real fraction of the current phase's band.
+ * Pull the indicator to a real fraction of the band `stage` owns.
  *
- * The crawl paces the band on a guess at how long the step takes. A step that
- * reports true progress takes the indicator over for as long as it has
- * something to say, so the logo tracks the download rather than the clock.
- * Monotonic and clamped to the band, so a late or noisy signal can never
- * rewind the indicator.
+ * Takes the indicator over from the crawl for as long as that step has
+ * something to say. Monotonic and clamped to the band, so a late or noisy
+ * signal can never rewind it.
+ *
+ * The `stage` is checked against the running one, so a signal cannot drive a
+ * band it does not own. The relay's warp fraction arriving mid-sync used to
+ * both move the Asset Hub band and freeze its crawl.
  */
-export function nudgePhaseProgress(fraction: number): void {
+export function nudgePhaseProgress(
+  fraction: number,
+  stage: LoadingStage,
+): void {
   if (!Number.isFinite(fraction) || currentPhase < 0) {
     return;
   }
-  const { base, target } = phases[currentPhase];
+  const phase = phases[currentPhase];
+  if (phase.stage !== stage) {
+    return;
+  }
+  const { base, target } = phase;
   const clamped = Math.max(0, Math.min(1, fraction));
-  // Once the step's own work is finished there is no true number left to
-  // respect, so the creep takes over again and carries the indicator through
-  // the tail. That tail is the sandbox unpacking, which reports nothing.
-  phaseReportsProgress = clamped < 1;
+  // Only a band that asked to be driven this way may suppress the crawl, and
+  // only until its own work is done. After that the creep carries the
+  // indicator through the tail, which nothing reports on.
+  if (phase.reportsProgress === true) {
+    phaseReportsProgress = clamped < 1;
+  }
   const want = base + (target - base) * clamped;
   if (want > currentProgress) {
     setProgress(Math.min(want, target));
@@ -552,14 +529,11 @@ export function nudgePhaseProgress(fraction: number): void {
  * Give the indicator back to the clock.
  *
  * A step that declared `reportsProgress` holds the indicator until it can say
- * where the work is. If it turns out it cannot, because the download has no
- * declared total to measure against, it says so here and the crawl resumes.
+ * where the work is. This is how it admits it never will.
  *
- * This is deliberately not a timeout. A timeout fired whether or not anything
- * was happening: a load whose content chain never found a peer had the crawl
- * walk the logo to 99% and sit there for 49 seconds at 0.0 MB/s, claiming the
- * load was all but done while nothing at all was being downloaded. Holding
- * still is the honest answer, and the status row says why.
+ * Deliberately not a timeout. A timeout fired whether or not anything was
+ * happening, so a load whose content chain never found a peer still crept to
+ * 99% and sat there claiming to be nearly done.
  */
 export function releasePhaseProgress(): void {
   phaseReportsProgress = false;
@@ -635,8 +609,11 @@ function clearSlowWarning(): void {
 /**
  * Stop the progress crawl and clear any slow warning (call when loading is done).
  */
+/** Stop everything the loading screen has running. */
 export function stopStatusTick(): void {
   stopProgressCrawl();
+  stopStageMessages();
+  cancelStatusReveal();
   clearSlowWarning();
 }
 
@@ -724,6 +701,9 @@ export function showError(
   detail?: string,
   action?: ErrorAction | ErrorAction[] | (() => void),
 ): void {
+  // The markup below replaces the loading screen, so its timers have nothing
+  // left to write to.
+  stopStatusTick();
   if (typeof action === "function") {
     action = { label: "Retry", onClick: action };
   }

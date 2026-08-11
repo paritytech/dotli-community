@@ -4,16 +4,10 @@
 /**
  * Count every byte the light client pulls off the network.
  *
- * The loading screen reports a download speed, and the only figure available
- * to it used to be the app archive coming over bitswap. That is the last step
- * of a load; for the seconds before it the chain sync is doing all the work
- * and the readout sat at zero.
- *
- * smoldot opens its own sockets from inside its own JS, so there is no
- * handle to ask. Resource timing does not cover WebSocket or WebRTC either.
- * The one place the bytes are visible is the constructor, so this wraps the
- * two transports smoldot uses and tallies what arrives. Install it before
- * smoldot starts or its already-open connections go uncounted.
+ * smoldot opens its own sockets from inside its own JS, and resource timing
+ * covers neither WebSocket nor WebRTC, so the constructor is the only place
+ * the bytes are visible. Install this before smoldot starts, or connections
+ * it already opened go uncounted.
  */
 
 let received = 0;

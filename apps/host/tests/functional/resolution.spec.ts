@@ -85,8 +85,11 @@ test.describe("Resolution across chain backends", () => {
           if (seen !== undefined && seen.length > 0) {
             return true;
           }
-          return /[1-9]/.test(
-            document.getElementById("metric-peers")?.textContent ?? "",
+          return ["relay", "assethub", "bulletin"].some((chain) =>
+            /[1-9]/.test(
+              document.getElementById(`metric-peers-${chain}`)?.textContent ??
+                "",
+            ),
           );
         },
         undefined,
