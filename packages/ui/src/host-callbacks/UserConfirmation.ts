@@ -194,7 +194,7 @@ function formatRawPayload(payload: RawPayload): string {
 }
 
 function formatDerivationIndex(index: DerivationIndex): string {
-  return index.tag === "Left" ? String(index.value) : index.value;
+  return index.tag === "Index" ? String(index.value) : index.value;
 }
 
 function formatProductAccount(account: ProductAccountId): string {
