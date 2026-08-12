@@ -52,6 +52,30 @@ describe("config constants", () => {
     });
   });
 
+  describe("dotns TLD", () => {
+    // Mirrors DOTNS_TLDS in truapi's truapi-platform. The core gates
+    // `productId` on its own hardcoded list, so a TLD configured here that the
+    // core does not know cannot load a product at all.
+    const CORE_ACCEPTED_TLDS = ["dot", "paseo"];
+
+    it("every network declares a bare lowercase TLD the truapi core accepts", () => {
+      for (const [name, cfg] of Object.entries(
+        NETWORK_NAME_TO_SERVICES_CONFIG,
+      )) {
+        const tld = cfg.dotns.TLD;
+        expect(tld, `${name} TLD must be non-empty`).not.toBe("");
+        expect(tld, `${name} TLD must be lowercase`).toBe(tld.toLowerCase());
+        expect(tld, `${name} TLD must not carry a leading dot`).not.toMatch(
+          /^\./,
+        );
+        expect(
+          CORE_ACCEPTED_TLDS,
+          `${name} TLD ${tld} is not in the core's DOTNS_TLDS`,
+        ).toContain(tld);
+      }
+    });
+  });
+
   describe("IPFS gateways", () => {
     it("V1 first gateway is a valid HTTPS URL", () => {
       expect(
