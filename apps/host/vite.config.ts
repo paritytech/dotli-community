@@ -357,6 +357,9 @@ function findTruapiWasmWebBundle(): string {
 function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
   const dotliRoot = resolve(import.meta.dirname, "../..");
   return [
+    // Vendored core carrying the `.paseo` productId fix, which no published
+    // release has yet. See vendor/truapi-host-wasm/README.md.
+    resolve(dotliRoot, "vendor/truapi-host-wasm/web"),
     // Prefer the package that @dotli/ui actually declares. Walking above the
     // dotli checkout can accidentally pick up an unrelated ancestor checkout
     // (notably TrUAPI's workspace package when dotli is a submodule).
