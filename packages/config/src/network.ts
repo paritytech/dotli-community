@@ -55,7 +55,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     description: "Legacy Paseo Next system chains",
     relay: {
       genesis:
-        "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
       rpcs: [
         "wss://paseo-rpc.n.dwellir.com",
         "wss://paseo.dotters.network",
@@ -96,7 +96,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     description: "Upgraded Paseo Next system chains",
     relay: {
       genesis:
-        "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
       rpcs: [
         "wss://paseo-rpc.n.dwellir.com",
         "wss://paseo.dotters.network",
@@ -106,7 +106,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     },
     assethub: {
       genesis:
-        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+        "0x23e730eb1c6fecae09c917439a5038cb6122d0d48980e8b9bbf0ff56f94a2ca6",
       rpcs: ["wss://paseo-asset-hub-next-rpc.polkadot.io"],
     },
     bulletin: {
@@ -117,7 +117,7 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     },
     people: {
       genesis:
-        "0xc5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
+        "0x89a63b11fef2c0273fc72c0d864da0793a665dade5db153e0cab995348c5440f",
       rpcs: ["wss://paseo-people-next-system-rpc.polkadot.io"],
     },
     dotns: {
