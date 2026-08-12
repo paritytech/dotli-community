@@ -43,7 +43,7 @@ describe("config constants", () => {
   describe("dotns storage slots", () => {
     it("every network exposes non-negative REGISTRY_RECORDS and CONTENTHASH slots", () => {
       for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
-        const slots = cfg.dotns.storageSlots;
+        const slots = cfg.dotns.STORAGE_SLOTS;
         expect(Number.isInteger(slots.REGISTRY_RECORDS)).toBe(true);
         expect(slots.REGISTRY_RECORDS).toBeGreaterThanOrEqual(0);
         expect(Number.isInteger(slots.CONTENTHASH)).toBe(true);

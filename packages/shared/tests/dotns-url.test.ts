@@ -265,26 +265,58 @@ describe("isDotDomain", () => {
 // `.paseo`, previewnet stays on `.dot`. The parser must follow the active
 // network, otherwise a Paseo deployment silently treats every product URL as a
 // regular website (and a `.dot` name resolves against the wrong namehash).
-describe("dotNS TLD follows the active network", () => {
+describe("dotNS TLD per network", () => {
   afterEach(() => {
     setNetworkOverride("previewnet");
   });
 
-  it("accepts .paseo and rejects .dot on Paseo Next V2", () => {
+  it("As a user on Paseo Next V2, I open a .paseo name and reach the product", () => {
+    // Given
     setNetworkOverride("paseo-next-v2");
-    expect(dotNsUrl.isDotDomain("mytestapp.paseo")).toBe(true);
-    expect(dotNsUrl.isDotDomain("mytestapp.dot")).toBe(false);
-    expect(dotNsUrl.parseDotNsDomain("mytestapp.paseo/some/path")).toEqual({
+
+    // When
+    const parsed = dotNsUrl.parseDotNsDomain("mytestapp.paseo/some/path");
+
+    // Then
+    expect(parsed).toEqual({
       identifier: "mytestapp.paseo",
       pathname: "some/path",
     });
-    expect(dotNsUrl.parseDotNsDomain("mytestapp.paseo.li")).toBeNull();
   });
 
-  it("accepts .dot and rejects .paseo on previewnet", () => {
+  it("As a user on Paseo Next V2, I open a .dot name and get a regular website", () => {
+    // Given
+    setNetworkOverride("paseo-next-v2");
+
+    // When
+    const isProduct = dotNsUrl.isDotDomain("mytestapp.dot");
+
+    // Then
+    expect(isProduct).toBe(false);
+  });
+
+  it("As a user on Paseo Next V2, the gateway host paseo.li is not a product", () => {
+    // Given
+    setNetworkOverride("paseo-next-v2");
+
+    // When
+    const parsed = dotNsUrl.parseDotNsDomain("mytestapp.paseo.li");
+
+    // Then
+    expect(parsed).toBeNull();
+  });
+
+  it("As a user on previewnet, a .dot name is a product and a .paseo name is not", () => {
+    // Given
     setNetworkOverride("previewnet");
-    expect(dotNsUrl.isDotDomain("mytestapp.dot")).toBe(true);
-    expect(dotNsUrl.isDotDomain("mytestapp.paseo")).toBe(false);
+
+    // When
+    const dot = dotNsUrl.isDotDomain("mytestapp.dot");
+    const paseo = dotNsUrl.isDotDomain("mytestapp.paseo");
+
+    // Then
+    expect(dot).toBe(true);
+    expect(paseo).toBe(false);
   });
 });
 

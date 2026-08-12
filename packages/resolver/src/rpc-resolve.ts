@@ -148,11 +148,11 @@ export async function resolveDotNameViaRpc(
   onStatus?: StatusCallback,
 ): Promise<string | null> {
   log.warn(
-    `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.tld} via JSON-RPC (trusted node, smoldot bypassed)`,
+    `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
   );
   const api = await ensureClient(onStatus);
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
   const node = namehash(domain);
 
   onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
@@ -163,7 +163,7 @@ export async function resolveDotNameViaRpc(
     api,
     dotns.DOTNS_CONTENT_RESOLVER,
     node,
-    dotns.storageSlots.CONTENTHASH,
+    dotns.STORAGE_SLOTS.CONTENTHASH,
   );
 
   log.warn(
@@ -229,7 +229,7 @@ export async function resolveOwnerViaRpc(
 ): Promise<string | null> {
   const api = await ensureClient();
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
   const node = namehash(domain);
 
   const dotns = getActiveServicesConfig().dotns;
@@ -237,7 +237,7 @@ export async function resolveOwnerViaRpc(
     api,
     dotns.DOTNS_REGISTRY,
     node,
-    dotns.storageSlots.REGISTRY_RECORDS,
+    dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
   );
 }
 

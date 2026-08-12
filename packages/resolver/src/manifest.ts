@@ -55,14 +55,14 @@ export async function readRootManifest(
   dotns: DotnsContracts,
   label: string,
 ): Promise<ManifestResult<RootManifest>> {
-  const slot = dotns.storageSlots.TEXT_RECORDS;
+  const slot = dotns.STORAGE_SLOTS.TEXT_RECORDS;
   if (slot === undefined) {
     return { kind: "unsupported", reason: "TEXT_RECORDS slot not configured" };
   }
   return readManifestText(
     api,
     dotns,
-    namehash(`${label}.${dotns.tld}`),
+    namehash(`${label}.${dotns.TLD}`),
     ROOT_MANIFEST_KEY,
     slot,
     "root",
@@ -84,14 +84,14 @@ export async function readExecutableManifest(
   label: string,
   kind: ExecutableKind,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  const slot = dotns.storageSlots.TEXT_RECORDS;
+  const slot = dotns.STORAGE_SLOTS.TEXT_RECORDS;
   if (slot === undefined) {
     return { kind: "unsupported", reason: "TEXT_RECORDS slot not configured" };
   }
   const result = await readManifestText(
     api,
     dotns,
-    namehash(`${kind}.${label}.${dotns.tld}`),
+    namehash(`${kind}.${label}.${dotns.TLD}`),
     EXECUTABLE_MANIFEST_KEY,
     slot,
     kind,
@@ -101,7 +101,7 @@ export async function readExecutableManifest(
     return {
       kind: "invalid",
       errors: [
-        `executable manifest kind '${result.value.kind}' does not match subname '${kind}.${label}.${dotns.tld}'`,
+        `executable manifest kind '${result.value.kind}' does not match subname '${kind}.${label}.${dotns.TLD}'`,
       ],
     };
   }

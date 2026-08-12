@@ -22,16 +22,9 @@ export interface DotnsStorageSlots {
 export interface DotnsContracts {
   readonly DOTNS_REGISTRY: `0x${string}`;
   readonly DOTNS_CONTENT_RESOLVER: `0x${string}`;
-  readonly storageSlots: DotnsStorageSlots;
-  /**
-   * Bare TLD label this network's dotNS deployment registers names under, e.g.
-   * `dot` or `paseo`. It used to be a compile-time constant in the contracts,
-   * so every network rendered `<label>.dot`; dotns #218 moved it onto
-   * `DotnsProtocolRegistry`, fixed at initialisation, and Paseo Next V2
-   * initialised with `paseo`. It is part of the namehash, so getting it wrong
-   * reads the wrong storage slot rather than failing loudly.
-   */
-  readonly tld: string;
+  readonly STORAGE_SLOTS: DotnsStorageSlots;
+  /** Bare TLD label this network registers names under, e.g. `dot` or `paseo`. */
+  readonly TLD: string;
 }
 
 export interface ChainService {
@@ -94,8 +87,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     dotns: {
       DOTNS_REGISTRY: "0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f",
       DOTNS_CONTENT_RESOLVER: "0x7756DF72CBc7f062e7403cD59e45fBc78bed1cD7",
-      storageSlots: { REGISTRY_RECORDS: 0, CONTENTHASH: 1 },
-      tld: "dot",
+      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 1 },
+      TLD: "dot",
     },
   },
   [NetworkName.PASEO_NEXT_V2]: {
@@ -130,8 +123,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     dotns: {
       DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
       DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
-      storageSlots: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
-      tld: "paseo",
+      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
+      TLD: "paseo",
     },
   },
   [NetworkName.PREVIEW_NET]: {
@@ -164,8 +157,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
     dotns: {
       DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
       DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
-      storageSlots: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
-      tld: "dot",
+      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
+      TLD: "dot",
     },
   },
 };
@@ -261,7 +254,7 @@ export function setNetwork(network: Network): void {
 
 /** Bare TLD label for the active network, e.g. `"paseo"` on Paseo Next V2. */
 export function getActiveTld(): string {
-  return getActiveServicesConfig().dotns.tld;
+  return getActiveServicesConfig().dotns.TLD;
 }
 
 /** The active TLD with its leading dot, e.g. `".paseo"`. */

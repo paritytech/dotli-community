@@ -377,7 +377,7 @@ export async function resolveDotName(
 ): Promise<string | null> {
   const api = await ensureClient(onStatus, onPhase);
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
   const node = namehash(domain);
 
   onPhase?.("resolving-content");
@@ -390,7 +390,7 @@ export async function resolveDotName(
       api,
       dotns.DOTNS_CONTENT_RESOLVER,
       node,
-      dotns.storageSlots.CONTENTHASH,
+      dotns.STORAGE_SLOTS.CONTENTHASH,
     ),
   );
   m.measure(S.RESOLVE_STORAGE_READ, performance.now() - contentStart);
@@ -446,7 +446,7 @@ export async function resolveRootManifest(
 export async function resolveOwner(label: string): Promise<string | null> {
   const api = await ensureClient();
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
   const node = namehash(domain);
 
   const dotns = getActiveServicesConfig().dotns;
@@ -454,6 +454,6 @@ export async function resolveOwner(label: string): Promise<string | null> {
     api,
     dotns.DOTNS_REGISTRY,
     node,
-    dotns.storageSlots.REGISTRY_RECORDS,
+    dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
   );
 }
