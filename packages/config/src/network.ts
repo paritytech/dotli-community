@@ -252,29 +252,20 @@ export function setNetwork(network: Network): void {
   }
 }
 
-/** Bare TLD label for the active network, e.g. `"paseo"` on Paseo Next V2. */
-export function getActiveTld(): string {
-  return getActiveServicesConfig().dotns.TLD;
-}
-
-/** The active TLD with its leading dot, e.g. `".paseo"`. */
+/**
+ * The active TLD with its leading dot, e.g. `".paseo"`.
+ *
+ * Each TLD must also be in `DOTNS_TLDS` in truapi's `truapi-platform`, which
+ * gates `productId` with its own hardcoded list. A network whose TLD the core
+ * does not know cannot load a product until the core ships it.
+ */
 export function getActiveTldSuffix(): string {
-  return `.${getActiveTld()}`;
+  return `.${getActiveServicesConfig().dotns.TLD}`;
 }
 
-/** `"myapp"` → `"myapp.paseo"`. An already-suffixed name is returned unchanged. */
+/** `"myapp"` → `"myapp.paseo"`. Callers pass a bare label. */
 export function withActiveTld(label: string): string {
-  return label.toLowerCase().endsWith(getActiveTldSuffix())
-    ? label
-    : `${label}${getActiveTldSuffix()}`;
-}
-
-/** `"myapp.paseo"` → `"myapp"`. A name without the suffix is returned unchanged. */
-export function stripActiveTld(name: string): string {
-  const suffix = getActiveTldSuffix();
-  return name.toLowerCase().endsWith(suffix)
-    ? name.slice(0, -suffix.length)
-    : name;
+  return `${label}${getActiveTldSuffix()}`;
 }
 
 /** Full service config for the active network. */
