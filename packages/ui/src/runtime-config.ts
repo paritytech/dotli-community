@@ -1,10 +1,10 @@
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { getActiveServicesConfig, withActiveTld } from "@dotli/config/network";
 import type { ProductRuntimeConfig } from "@parity/truapi-host";
 
 declare const __DOTLI_VERSION__: string | undefined;
 
 export function labelToProductId(label: string): string {
-  return label.startsWith("localhost:") ? label : `${label}.dot`;
+  return label.startsWith("localhost:") ? label : withActiveTld(label);
 }
 
 function getPlatformType(userAgent: string = navigator.userAgent): string {

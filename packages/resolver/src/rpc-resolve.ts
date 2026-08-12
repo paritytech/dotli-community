@@ -148,11 +148,11 @@ export async function resolveDotNameViaRpc(
   onStatus?: StatusCallback,
 ): Promise<string | null> {
   log.warn(
-    `[dot.li rpc-resolve] resolving ${label}.dot via JSON-RPC (trusted node, smoldot bypassed)`,
+    `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.tld} via JSON-RPC (trusted node, smoldot bypassed)`,
   );
   const api = await ensureClient(onStatus);
 
-  const domain = `${label}.dot`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
   const node = namehash(domain);
 
   onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
@@ -196,7 +196,7 @@ export async function resolveDotNameViaRpc(
 }
 
 /**
- * Read the executable manifest at `<kind>.<label>.dot` over the gateway
+ * Read the executable manifest at `<kind>.<label>.<tld>` over the gateway
  * RPC client.
  *
  * The return shape matches the smoldot path so the host shell can branch
@@ -211,7 +211,7 @@ export async function resolveExecutableManifestViaRpc(
   return readExecutableManifest(api, dotns, label, kind);
 }
 
-/** Gateway-backed reader for the root manifest at `<label>.dot`. */
+/** Gateway-backed reader for the root manifest at `<label>.<tld>`. */
 export async function resolveRootManifestViaRpc(
   label: string,
 ): Promise<ManifestResult<RootManifest>> {
@@ -229,7 +229,7 @@ export async function resolveOwnerViaRpc(
 ): Promise<string | null> {
   const api = await ensureClient();
 
-  const domain = `${label}.dot`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
   const node = namehash(domain);
 
   const dotns = getActiveServicesConfig().dotns;

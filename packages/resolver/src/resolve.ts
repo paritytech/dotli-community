@@ -377,7 +377,7 @@ export async function resolveDotName(
 ): Promise<string | null> {
   const api = await ensureClient(onStatus, onPhase);
 
-  const domain = `${label}.dot`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
   const node = namehash(domain);
 
   onPhase?.("resolving-content");
@@ -419,7 +419,7 @@ export async function resolveDotName(
 }
 
 /**
- * Read the executable manifest at `<kind>.<label>.dot` over the resolver's
+ * Read the executable manifest at `<kind>.<label>.<tld>` over the resolver's
  * shared smoldot client.
  *
  * Returns a discriminated result so the host can distinguish "no manifest",
@@ -434,7 +434,7 @@ export async function resolveExecutableManifest(
   return readExecutableManifest(api, dotns, label, kind);
 }
 
-/** Smoldot-backed reader for the root manifest at `<label>.dot`. */
+/** Smoldot-backed reader for the root manifest at `<label>.<tld>`. */
 export async function resolveRootManifest(
   label: string,
 ): Promise<ManifestResult<RootManifest>> {
@@ -446,7 +446,7 @@ export async function resolveRootManifest(
 export async function resolveOwner(label: string): Promise<string | null> {
   const api = await ensureClient();
 
-  const domain = `${label}.dot`;
+  const domain = `${label}.${getActiveServicesConfig().dotns.tld}`;
   const node = namehash(domain);
 
   const dotns = getActiveServicesConfig().dotns;

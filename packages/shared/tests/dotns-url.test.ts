@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { setNetworkOverride } from "@dotli/config/network";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
 describe("parseDotNsDomain", () => {
@@ -257,6 +258,33 @@ describe("isDotDomain", () => {
 
   it("returns false for localhost", () => {
     expect(dotNsUrl.isDotDomain("localhost")).toBe(false);
+  });
+});
+
+// The TLD is per-network since dotns #218: Paseo Next V2 registers names under
+// `.paseo`, previewnet stays on `.dot`. The parser must follow the active
+// network, otherwise a Paseo deployment silently treats every product URL as a
+// regular website (and a `.dot` name resolves against the wrong namehash).
+describe("dotNS TLD follows the active network", () => {
+  afterEach(() => {
+    setNetworkOverride("previewnet");
+  });
+
+  it("accepts .paseo and rejects .dot on Paseo Next V2", () => {
+    setNetworkOverride("paseo-next-v2");
+    expect(dotNsUrl.isDotDomain("mytestapp.paseo")).toBe(true);
+    expect(dotNsUrl.isDotDomain("mytestapp.dot")).toBe(false);
+    expect(dotNsUrl.parseDotNsDomain("mytestapp.paseo/some/path")).toEqual({
+      identifier: "mytestapp.paseo",
+      pathname: "some/path",
+    });
+    expect(dotNsUrl.parseDotNsDomain("mytestapp.paseo.li")).toBeNull();
+  });
+
+  it("accepts .dot and rejects .paseo on previewnet", () => {
+    setNetworkOverride("previewnet");
+    expect(dotNsUrl.isDotDomain("mytestapp.dot")).toBe(true);
+    expect(dotNsUrl.isDotDomain("mytestapp.paseo")).toBe(false);
   });
 });
 

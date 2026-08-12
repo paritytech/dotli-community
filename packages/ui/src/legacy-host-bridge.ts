@@ -14,6 +14,7 @@
 // `tests/legacy-host-bridge.test.ts`. Nothing in the modern MessagePort path
 // or the Rust core depends on anything here.
 
+import { withActiveTld } from "@dotli/config/network";
 import {
   decodeWireMessage,
   encodeWireMessage,
@@ -182,7 +183,14 @@ export function createLegacyNovaChainHeadProvider(
       try {
         const request = VersionedHostAccountGetRequest.dec(payload.value);
         const productAccountId = request.value.productAccountId;
-        if (productAccountId.dotNsIdentifier === `${localProductId}.dot`) {
+        // The legacy core hardcodes `.dot`; a current one appends the active
+        // network's TLD. Accept either, otherwise a localhost product on a
+        // `.paseo` deployment stops matching and never gets its account.
+        const suffixed = new Set([
+          `${localProductId}.dot`,
+          withActiveTld(localProductId),
+        ]);
+        if (suffixed.has(productAccountId.dotNsIdentifier)) {
           productAccountId.dotNsIdentifier = localProductId;
           const encoded = encodeWireMessage({
             requestId,

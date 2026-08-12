@@ -200,6 +200,35 @@ describe("createLegacyNovaChainHeadProvider", () => {
     ).toBe("localhost:3000");
   });
 
+  it("As a dotli integrator, the host normalizes the active network's TLD suffix for a localhost product account", () => {
+    // Given
+    const harness = createHarness("localhost:3000");
+
+    // When
+    harness.emit(
+      frame(
+        "account-request",
+        ACCOUNT_GET_ACCOUNT.request,
+        VersionedHostAccountGetRequest.enc({
+          tag: "V1",
+          value: {
+            productAccountId: {
+              dotNsIdentifier: "localhost:3000.paseo",
+              derivationIndex: { tag: "Left", value: 0 },
+            },
+          },
+        }),
+      ),
+    );
+
+    // Then
+    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    expect(
+      VersionedHostAccountGetRequest.dec(decoded.payload.value).value
+        .productAccountId.dotNsIdentifier,
+    ).toBe("localhost:3000");
+  });
+
   it("As a dotli integrator, the host does not rewrite an explicitly requested different product account", () => {
     // Given
     const harness = createHarness("localhost:3000");

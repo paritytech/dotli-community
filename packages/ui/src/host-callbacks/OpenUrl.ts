@@ -4,10 +4,11 @@
 
 import type { Navigation } from "@parity/truapi-host";
 import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
+import { stripActiveTld } from "@dotli/config/network";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
 function identifierToLabel(identifier: string): string {
-  return identifier.slice(0, -".dot".length);
+  return stripActiveTld(identifier);
 }
 
 function buildDotTargetUrl(label: string, pathname: string): string {
