@@ -38,7 +38,7 @@
     "smoldot": "3.3.2"
   },
   "overrides": {
-    "@parity/truapi": "0.8.0",
+    "@parity/truapi": "0.9.0",
     "fast-uri": "3.1.5",
     "smoldot": "3.3.2",
     "esbuild": "^0.28.1",

@@ -248,6 +248,14 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     // legacy per-product `AutoSigningKey` above.
     case "AutoSigningKeys":
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
+    // RFC-0024 ring snapshot, keyed by its root public key so several rings
+    // can coexist. Public data, hence no encryption below.
+    case "RingVrfRegistry":
+      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
+    case "StatementRenewalTargets":
+      return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case "AuthSession":
