@@ -22,7 +22,9 @@ export interface DotnsStorageSlots {
 export interface DotnsContracts {
   readonly DOTNS_REGISTRY: `0x${string}`;
   readonly DOTNS_CONTENT_RESOLVER: `0x${string}`;
-  readonly storageSlots: DotnsStorageSlots;
+  readonly STORAGE_SLOTS: DotnsStorageSlots;
+  /** Bare TLD label this network registers names under, e.g. `dot` or `paseo`. */
+  readonly TLD: string;
 }
 
 export interface ChainService {
@@ -50,7 +52,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     description: "Legacy Paseo Next system chains",
     relay: {
       genesis:
-        "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
       rpcs: [
         "wss://paseo-rpc.n.dwellir.com",
         "wss://paseo.dotters.network",
@@ -82,7 +84,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     dotns: {
       DOTNS_REGISTRY: "0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f",
       DOTNS_CONTENT_RESOLVER: "0x7756DF72CBc7f062e7403cD59e45fBc78bed1cD7",
-      storageSlots: { REGISTRY_RECORDS: 0, CONTENTHASH: 1 },
+      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 1 },
+      TLD: "dot",
     },
   },
   [NetworkName.PASEO_NEXT_V2]: {
@@ -90,7 +93,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     description: "Upgraded Paseo Next system chains",
     relay: {
       genesis:
-        "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
       rpcs: [
         "wss://paseo-rpc.n.dwellir.com",
         "wss://paseo.dotters.network",
@@ -100,7 +103,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+        "0x23e730eb1c6fecae09c917439a5038cb6122d0d48980e8b9bbf0ff56f94a2ca6",
       rpcs: ["wss://paseo-asset-hub-next-rpc.polkadot.io"],
     },
     bulletin: {
@@ -111,13 +114,14 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     people: {
       genesis:
-        "0xc5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
+        "0x89a63b11fef2c0273fc72c0d864da0793a665dade5db153e0cab995348c5440f",
       rpcs: ["wss://paseo-people-next-system-rpc.polkadot.io"],
     },
     dotns: {
-      DOTNS_REGISTRY: "0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc",
-      DOTNS_CONTENT_RESOLVER: "0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64",
-      storageSlots: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
+      DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
+      DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
+      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
+      TLD: "paseo",
     },
   },
   [NetworkName.PREVIEW_NET]: {
@@ -150,7 +154,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     dotns: {
       DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
       DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
-      storageSlots: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
+      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
+      TLD: "dot",
     },
   },
 };
@@ -490,6 +495,22 @@ export function setNetwork(network: Network): void {
   } catch {
     /* localStorage unavailable */
   }
+}
+
+/**
+ * The active TLD with its leading dot, e.g. `".paseo"`.
+ *
+ * Each TLD must also be in `DOTNS_TLDS` in truapi's `truapi-platform`, which
+ * gates `productId` with its own hardcoded list. A network whose TLD the core
+ * does not know cannot load a product until the core ships it.
+ */
+export function getActiveTldSuffix(): string {
+  return `.${getActiveServicesConfig().dotns.TLD}`;
+}
+
+/** Appends the active TLD to a bare label, giving `myapp.paseo`. */
+export function withActiveTld(label: string): string {
+  return `${label}${getActiveTldSuffix()}`;
 }
 
 /** Full service config for the active network. */

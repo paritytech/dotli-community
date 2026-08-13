@@ -185,7 +185,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
           value: {
             productAccountId: {
               dotNsIdentifier: "localhost:3000.dot",
-              derivationIndex: { tag: "Left", value: 0 },
+              derivationIndex: { tag: "Index", value: 0 },
             },
           },
         }),
@@ -214,7 +214,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
           value: {
             productAccountId: {
               dotNsIdentifier: "other-product.dot",
-              derivationIndex: { tag: "Left", value: 0 },
+              derivationIndex: { tag: "Index", value: 0 },
             },
           },
         }),

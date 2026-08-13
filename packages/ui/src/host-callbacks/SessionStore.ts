@@ -44,9 +44,9 @@ export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   const primaryUsername = info.fullUsername ?? info.liteUsername;
   return {
     connected: true,
-    publicKey: bytesToHex(info.publicKey),
+    publicKey: info.publicKey,
     ...(info.identityAccountId !== undefined
-      ? { identityAccountId: bytesToHex(info.identityAccountId) }
+      ? { identityAccountId: info.identityAccountId }
       : {}),
     ...(info.liteUsername !== undefined
       ? { liteUsername: info.liteUsername }
@@ -244,6 +244,18 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
+    // Wallet-bound capabilities for the active pairing: one slot, unlike the
+    // legacy per-product `AutoSigningKey` above.
+    case "AutoSigningKeys":
+      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
+    // Keyed by root public key so several rings can coexist. The snapshot is
+    // public, so it is not treated as secret material below.
+    case "RingVrfRegistry":
+      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
+    case "StatementRenewalTargets":
+      return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case "AuthSession":
@@ -252,7 +264,11 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
 }
 
 function storesSecretMaterial(key: CoreStorageKey): boolean {
-  return key.tag === "AllowanceKeys" || key.tag === "AutoSigningKey";
+  return (
+    key.tag === "AllowanceKeys" ||
+    key.tag === "AutoSigningKey" ||
+    key.tag === "AutoSigningKeys"
+  );
 }
 
 async function encodeCoreStorageValue(

@@ -135,7 +135,7 @@ describe("user confirmation modal", () => {
         value: {
           account: {
             dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: { tag: "Left", value: 2 },
+            derivationIndex: { tag: "Index", value: 2 },
           },
           payload: {
             blockHash:
@@ -228,7 +228,7 @@ describe("user confirmation modal", () => {
         request: {
           account: {
             dotNsIdentifier: "other-product.dot",
-            derivationIndex: { tag: "Left", value: 4 },
+            derivationIndex: { tag: "Index", value: 4 },
           },
           transcriptLabel: "0x706f703a61697264726f70",
           items: [
@@ -271,7 +271,7 @@ describe("user confirmation modal", () => {
         value: {
           signer: {
             dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: { tag: "Left", value: 3 },
+            derivationIndex: { tag: "Index", value: 3 },
           },
           genesisHash:
             "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
@@ -347,7 +347,7 @@ describe("user confirmation modal", () => {
         callingProductId: "truapi-playground.dot",
         context: {
           productId: "truapix-playground.dot",
-          suffix: { tag: "Left", value: 0 },
+          suffix: { tag: "Index", value: 0 },
         },
         ringLocation: {
           chainId:
@@ -397,7 +397,7 @@ describe("user confirmation modal", () => {
         callingProductId: "truapi-playground.dot",
         context: {
           productId: "truapix-playground.dot",
-          suffix: { tag: "Left", value: 0 },
+          suffix: { tag: "Index", value: 0 },
         },
         ringLocation: {
           chainId:

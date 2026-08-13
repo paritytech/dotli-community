@@ -36,7 +36,7 @@ import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Network,
 } from "@dotli/config/network";
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { getActiveServicesConfig, withActiveTld } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
 import {
   ALL_PERMISSIONS,
@@ -2245,13 +2245,13 @@ function openModal(
   // mode rendering a local dev server directly (apps/host/src/main.ts
   // localhost-proxy branch). Show it as-is. Deployed dotNs products
   // served via `<label>.localhost:<port>` still pass through as the bare
-  // label and get the ".dot" suffix.
+  // label and get the active network's TLD suffix.
   let productLabel = "";
   if (label !== undefined && label.length > 0) {
     productLabel =
       label.startsWith("localhost:") || options.dotSuffix === false
         ? label
-        : `${label}.dot`;
+        : withActiveTld(label);
   }
   modalTitle.innerHTML =
     productLabel.length > 0
