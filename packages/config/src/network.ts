@@ -263,7 +263,7 @@ export function getActiveTldSuffix(): string {
   return `.${getActiveServicesConfig().dotns.TLD}`;
 }
 
-/** `"myapp"` → `"myapp.paseo"`. Callers pass a bare label. */
+/** Appends the active TLD to a bare label, giving `myapp.paseo`. */
 export function withActiveTld(label: string): string {
   return `${label}${getActiveTldSuffix()}`;
 }

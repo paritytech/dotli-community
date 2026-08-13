@@ -591,9 +591,8 @@ export function showLanding(): void {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    // The placeholder and the adjacent label both show the active TLD, so
-    // accept a name typed with it. `validateDotLabel` rejects any dot, so
-    // leaving a suffix on would fail the very input the UI invites.
+    // The placeholder shows the active TLD, and `validateDotLabel` rejects any
+    // dot, so a name typed with the suffix has to lose it here.
     const typed = input.value.trim().toLowerCase();
     const suffix = getActiveTldSuffix();
     const name = typed.endsWith(suffix)

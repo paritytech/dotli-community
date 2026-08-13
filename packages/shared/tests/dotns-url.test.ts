@@ -261,10 +261,10 @@ describe("isDotDomain", () => {
   });
 });
 
-// The TLD is per-network since dotns #218: Paseo Next V2 registers names under
-// `.paseo`, previewnet stays on `.dot`. The parser must follow the active
-// network, otherwise a Paseo deployment silently treats every product URL as a
-// regular website (and a `.dot` name resolves against the wrong namehash).
+// Paseo Next V2 registers names under `.paseo`, previewnet stays on `.dot`. The
+// parser must follow the active network, otherwise a Paseo deployment silently
+// treats every product URL as a regular website, and a `.dot` name resolves
+// against the wrong namehash.
 describe("dotNS TLD per network", () => {
   afterEach(() => {
     setNetworkOverride("previewnet");

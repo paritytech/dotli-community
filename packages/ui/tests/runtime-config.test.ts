@@ -17,9 +17,8 @@ describe("labelToProductId", () => {
     expect(labelToProductId("acme")).toBe("acme.paseo");
   });
 
-  // dotns #218 made the TLD per-network. A product id built with the wrong one
-  // hashes to a different dotNS node, so the host would read an empty record
-  // instead of failing loudly.
+  // A product id built with the wrong TLD hashes to a different dotNS node, so
+  // the host would read an empty record instead of failing loudly.
   it("As a dotli integrator, the host maps the same label to .dot on previewnet", () => {
     setNetworkOverride("previewnet");
     expect(labelToProductId("acme")).toBe("acme.dot");

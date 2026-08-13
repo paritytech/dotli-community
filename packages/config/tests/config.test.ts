@@ -53,9 +53,7 @@ describe("config constants", () => {
   });
 
   describe("dotns TLD", () => {
-    // Mirrors DOTNS_TLDS in truapi's truapi-platform. The core gates
-    // `productId` on its own hardcoded list, so a TLD configured here that the
-    // core does not know cannot load a product at all.
+    // Mirrors `DOTNS_TLDS` in truapi's `truapi-platform`.
     const CORE_ACCEPTED_TLDS = ["dot", "paseo"];
 
     it("every network declares a bare lowercase TLD the truapi core accepts", () => {

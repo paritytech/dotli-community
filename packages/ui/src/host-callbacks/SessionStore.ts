@@ -248,8 +248,8 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     // legacy per-product `AutoSigningKey` above.
     case "AutoSigningKeys":
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
-    // RFC-0024 ring snapshot, keyed by its root public key so several rings
-    // can coexist. Public data, hence no encryption below.
+    // Keyed by root public key so several rings can coexist. The snapshot is
+    // public, so it is not treated as secret material below.
     case "RingVrfRegistry":
       return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(
         encodeCoreStorageKey(key),
