@@ -298,10 +298,12 @@ function setTopbarVisible(visible: boolean): void {
   const iframe = document.querySelector("iframe");
   topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
   if (iframe) {
-    iframe.style.top = visible ? "var(--topbar-height, 56px)" : "0";
+    // With the bar hidden the product still starts below the status bar: it
+    // cannot pad for the insets itself, because they read as 0 in an iframe.
+    iframe.style.top = visible ? "var(--topbar-height)" : "var(--safe-top)";
     iframe.style.height = visible
-      ? "calc(100vh - var(--topbar-height, 56px))"
-      : "100vh";
+      ? "calc(100vh - var(--topbar-height) - var(--safe-bottom))"
+      : "calc(100vh - var(--safe-top) - var(--safe-bottom))";
   }
   window.dispatchEvent(
     new CustomEvent<boolean>("topbar:visibility", { detail: visible }),

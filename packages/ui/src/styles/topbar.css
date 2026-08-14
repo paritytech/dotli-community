@@ -20,10 +20,7 @@
 }
 
 /* ── Top Bar ────────────────────────────── */
-:root {
-  --topbar-height: calc(56px + env(safe-area-inset-top, 0px));
-}
-
+/* --topbar-height and the --safe-* insets are defined in base.css. */
 #topbar {
   position: fixed;
   top: 0;
@@ -36,7 +33,9 @@
   background: rgb(30, 30, 30);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding: env(safe-area-inset-top, 0px) 14px 0;
+  /* In landscape the side insets clear the notch and the rounded corners. */
+  padding: var(--safe-top) calc(14px + var(--safe-right)) 0
+    calc(14px + var(--safe-left));
   z-index: 1000;
 }
 .topbar-left {
@@ -138,7 +137,7 @@
   gap: 2px;
   position: fixed;
   top: var(--topbar-height);
-  right: 12px;
+  right: calc(12px + var(--safe-right));
   min-width: 180px;
   background: rgb(34, 34, 34);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -502,7 +501,7 @@
   display: none;
   position: fixed;
   top: calc(var(--topbar-height) + 4px);
-  right: 12px;
+  right: calc(12px + var(--safe-right));
   width: 220px;
   background: rgba(18, 18, 18, 0.92);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -615,12 +614,12 @@
   /* Overlaps the bottom of the topbar by a few pixels so the popover
      visually attaches to the button instead of floating with a gap. */
   top: var(--topbar-height);
-  right: 12px;
+  right: calc(12px + var(--safe-right));
   width: 620px;
-  max-width: calc(100vw - 24px);
-  /* `dvh` tracks the visible area as mobile browser
-     chrome shows/hides. */
-  max-height: calc(100dvh - var(--topbar-height) - 4px);
+  max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+  /* `--content-height` is dvh-based, so it tracks the visible area as mobile
+     browser chrome shows/hides, and it already excludes the home indicator. */
+  max-height: calc(var(--content-height) - 4px);
   overflow-y: auto;
   background: rgba(20, 20, 20, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -688,7 +687,7 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    padding: calc(12px + var(--safe-top)) 14px 12px;
     background: rgba(20, 20, 20, 0.92);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     backdrop-filter: blur(24px) saturate(180%);
@@ -719,7 +718,7 @@
     bottom: 0;
     z-index: 1;
     margin-top: auto;
-    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    padding: 12px 14px calc(12px + var(--safe-bottom));
     background: rgba(20, 20, 20, 0.92);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     backdrop-filter: blur(24px) saturate(180%);
@@ -1092,7 +1091,7 @@
   /* Matches `.mode-popover` — overlaps the topbar bottom so the popover
      visually attaches to its trigger button. */
   top: var(--topbar-height);
-  right: 12px;
+  right: calc(12px + var(--safe-right));
   width: 340px;
   background: rgba(20, 20, 20, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(180%);

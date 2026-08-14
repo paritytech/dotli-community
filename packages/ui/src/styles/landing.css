@@ -9,14 +9,17 @@
   align-items: center;
   min-height: 100dvh;
   font-family: system-ui, sans-serif;
-  padding: 2rem;
+  padding: calc(2rem + var(--safe-top)) calc(2rem + var(--safe-right))
+    calc(2rem + var(--safe-bottom)) calc(2rem + var(--safe-left));
   background: #0a0a0a;
   color: #e0e0e0;
 }
+/* The landing route hides the topbar, so these buttons are the ones that would
+   sit under the status bar in an installed PWA. */
 .landing-auth {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: calc(16px + var(--safe-top));
+  right: calc(16px + var(--safe-right));
   display: flex;
   gap: 8px;
   align-items: center;

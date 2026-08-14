@@ -414,9 +414,12 @@ function applyIframeStyling(
   iframe: HTMLIFrameElement,
   opts: { topbarOffset: boolean },
 ): void {
+  // The viewport covers the whole display, so the host has to hand the product
+  // a rectangle clear of the status bar and the home indicator. The product
+  // cannot do it itself, because the insets read as 0 inside an iframe.
   iframe.style.cssText = opts.topbarOffset
-    ? "position:fixed;top:var(--topbar-height, 56px);left:0;width:100%;height:calc(100vh - var(--topbar-height, 56px));border:none;margin:0;padding:0;"
-    : "position:fixed;top:0;left:0;width:100%;height:100vh;border:none;margin:0;padding:0;";
+    ? "position:fixed;top:var(--topbar-height);left:0;width:100%;height:calc(100vh - var(--topbar-height) - var(--safe-bottom));border:none;margin:0;padding:0;"
+    : "position:fixed;top:var(--safe-top);left:0;width:100%;height:calc(100vh - var(--safe-top) - var(--safe-bottom));border:none;margin:0;padding:0;";
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 }
