@@ -24,7 +24,7 @@ function ensureBanner(): HTMLElement {
   el.textContent = "You are offline";
   el.style.cssText = [
     topbar ? "position: absolute" : "position: fixed",
-    topbar ? "top: 100%" : "top: 56px",
+    topbar ? "top: 100%" : "top: var(--topbar-height, 56px)",
     "left: 0",
     "right: 0",
     "z-index: 999",

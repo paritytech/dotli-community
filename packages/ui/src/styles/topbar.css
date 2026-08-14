@@ -20,19 +20,23 @@
 }
 
 /* ── Top Bar ────────────────────────────── */
+:root {
+  --topbar-height: calc(56px + env(safe-area-inset-top, 0px));
+}
+
 #topbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: var(--topbar-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   background: rgb(30, 30, 30);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 0 14px;
+  padding: env(safe-area-inset-top, 0px) 14px 0;
   z-index: 1000;
 }
 .topbar-left {
@@ -133,7 +137,7 @@
   flex-direction: column;
   gap: 2px;
   position: fixed;
-  top: 56px;
+  top: var(--topbar-height);
   right: 12px;
   min-width: 180px;
   background: rgb(34, 34, 34);
@@ -497,7 +501,7 @@
 .user-popover {
   display: none;
   position: fixed;
-  top: 60px;
+  top: calc(var(--topbar-height) + 4px);
   right: 12px;
   width: 220px;
   background: rgba(18, 18, 18, 0.92);
@@ -585,7 +589,7 @@
 .mode-popover-backdrop {
   display: none;
   position: fixed;
-  top: 56px;
+  top: var(--topbar-height);
   left: 0;
   right: 0;
   bottom: 0;
@@ -610,13 +614,13 @@
   position: fixed;
   /* Overlaps the bottom of the topbar by a few pixels so the popover
      visually attaches to the button instead of floating with a gap. */
-  top: 56px;
+  top: var(--topbar-height);
   right: 12px;
   width: 620px;
   max-width: calc(100vw - 24px);
   /* `dvh` tracks the visible area as mobile browser
      chrome shows/hides. */
-  max-height: calc(100dvh - 60px);
+  max-height: calc(100dvh - var(--topbar-height) - 4px);
   overflow-y: auto;
   background: rgba(20, 20, 20, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -1062,7 +1066,7 @@
 .permissions-popover-backdrop {
   display: none;
   position: fixed;
-  top: 56px;
+  top: var(--topbar-height);
   left: 0;
   right: 0;
   bottom: 0;
@@ -1087,7 +1091,7 @@
   position: fixed;
   /* Matches `.mode-popover` — overlaps the topbar bottom so the popover
      visually attaches to its trigger button. */
-  top: 56px;
+  top: var(--topbar-height);
   right: 12px;
   width: 340px;
   background: rgba(20, 20, 20, 0.82);

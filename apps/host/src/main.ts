@@ -298,8 +298,10 @@ function setTopbarVisible(visible: boolean): void {
   const iframe = document.querySelector("iframe");
   topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
   if (iframe) {
-    iframe.style.top = visible ? "56px" : "0";
-    iframe.style.height = visible ? "calc(100vh - 56px)" : "100vh";
+    iframe.style.top = visible ? "var(--topbar-height, 56px)" : "0";
+    iframe.style.height = visible
+      ? "calc(100vh - var(--topbar-height, 56px))"
+      : "100vh";
   }
   window.dispatchEvent(
     new CustomEvent<boolean>("topbar:visibility", { detail: visible }),
