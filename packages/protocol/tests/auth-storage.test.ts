@@ -25,16 +25,48 @@ describe("shared auth and mode storage helpers", () => {
 
   const originCases: OriginCase[] = [
     { origin: "https://dot.li", allowed: true, reason: "root host shell" },
-    { origin: "https://browse.dot.li", allowed: true, reason: "browse subdomain" },
-    { origin: "https://host-playground.dot.li", allowed: true, reason: "playground subdomain" },
+    {
+      origin: "https://browse.dot.li",
+      allowed: true,
+      reason: "browse subdomain",
+    },
+    {
+      origin: "https://host-playground.dot.li",
+      allowed: true,
+      reason: "playground subdomain",
+    },
     { origin: "https://host.dot.li", allowed: true, reason: "host subdomain" },
-    { origin: "https://bafy.app.dot.li", allowed: false, reason: "app subdomain" },
+    {
+      origin: "https://bafy.app.dot.li",
+      allowed: false,
+      reason: "app subdomain",
+    },
     { origin: "https://app.dot.li", allowed: false, reason: "app root" },
-    { origin: "https://evil.example.com", allowed: false, reason: "foreign domain" },
-    { origin: "http://localhost:5173", allowed: true, reason: "localhost port" },
-    { origin: "http://browse.localhost:5173", allowed: true, reason: "browse localhost" },
-    { origin: "http://host.localhost:5173", allowed: true, reason: "host localhost" },
-    { origin: "http://bafy.app.localhost:5173", allowed: false, reason: "app localhost" },
+    {
+      origin: "https://evil.example.com",
+      allowed: false,
+      reason: "foreign domain",
+    },
+    {
+      origin: "http://localhost:5173",
+      allowed: true,
+      reason: "localhost port",
+    },
+    {
+      origin: "http://browse.localhost:5173",
+      allowed: true,
+      reason: "browse localhost",
+    },
+    {
+      origin: "http://host.localhost:5173",
+      allowed: true,
+      reason: "host localhost",
+    },
+    {
+      origin: "http://bafy.app.localhost:5173",
+      allowed: false,
+      reason: "app localhost",
+    },
     { origin: "http://dot.li", allowed: false, reason: "insecure http remote" },
     { origin: "not a url", allowed: false, reason: "malformed url string" },
   ];

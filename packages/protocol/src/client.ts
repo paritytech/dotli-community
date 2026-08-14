@@ -500,7 +500,10 @@ const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
 };
 
 interface RequestBudget {
-  guard: <T>(phase: ProtocolRequestTimeoutPhase, work: Promise<T>) => Promise<T>;
+  guard: <T>(
+    phase: ProtocolRequestTimeoutPhase,
+    work: Promise<T>,
+  ) => Promise<T>;
   release: () => void;
 }
 
@@ -519,7 +522,11 @@ function startRequestBudget(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      m.count(S.PROTOCOL_REQUEST, { outcome: "timeout", method, phase: spentOn });
+      m.count(S.PROTOCOL_REQUEST, {
+        outcome: "timeout",
+        method,
+        phase: spentOn,
+      });
       reject(new ProtocolRequestTimeoutError(method, timeoutMs, spentOn));
     }, timeoutMs);
   });

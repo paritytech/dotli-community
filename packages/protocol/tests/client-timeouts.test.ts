@@ -271,9 +271,7 @@ describe("Keeping a protocol request inside the time limit it promises", () => {
       await frame.boot();
 
       // When
-      const request = frame
-        .requests()
-        .find((r) => r.method === expectedMethod);
+      const request = frame.requests().find((r) => r.method === expectedMethod);
       expect(request).toBeDefined();
       frame.respond(request!.id, mockResult);
 
