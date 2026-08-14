@@ -148,7 +148,8 @@ describe("Keeping a protocol request inside the time limit it promises", () => {
       }
 
       // When the promised limit has all but elapsed
-      await vi.advanceTimersByTimeAsync(limitMs - opensAfterMs - 1);
+      const alreadyElapsed = opensAfterMs ?? 0;
+      await vi.advanceTimersByTimeAsync(limitMs - alreadyElapsed - 1);
       expect(settled()).toBe(false);
 
       // Then the last millisecond of the limit ends the wait, naming the

@@ -142,10 +142,10 @@ function resolveProtocolReady(): void {
  * was wrong and need a clean restart before chain operations run.
  *
  * Side effects callers should be aware of:
- *   - Any in-flight `postRequest()` whose response hasn't arrived will be
- *     orphaned: it rejects once whatever is left of its call-time budget runs
- *     out, not after a fresh per-method window. Callers that have outstanding
- *     work should expect those rejections.
+ *   - Any in-flight timed `postRequest()` whose response hasn't arrived will
+ *     be orphaned: it rejects once whatever is left of its call-time budget
+ *     runs out, not after a fresh per-method window. Callers that have
+ *     outstanding work should expect those rejections.
  *   - Any `waitForProtocolReady()` waiter is rejected immediately rather
  *     than waiting for `IFRAME_READY_TIMEOUT_MS`.
  *   - In `shared-worker` mode, removing the iframe drops its
@@ -500,10 +500,13 @@ const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
 };
 
 interface RequestBudget {
-  /** Settle with `work`, or reject once the call-time budget is spent. */
-  guard: <T>(work: Promise<T>) => Promise<T>;
-  /** Record which wait is running, so a rejection can attribute the time. */
-  enterPhase: (next: ProtocolRequestTimeoutPhase) => void;
+  /**
+   * Wait for `work` under the remaining budget, blaming `phase` if it runs out.
+   *
+   * The phase travels with the wait it describes, so a rejection can never
+   * name a wait the request was not in.
+   */
+  guard: <T>(phase: ProtocolRequestTimeoutPhase, work: Promise<T>) => Promise<T>;
   /** Stop the timer once the request settles. */
   release: () => void;
 }
@@ -529,11 +532,14 @@ function startRequestBudget(
     }, timeoutMs);
   });
   return {
-    // Promise.race attaches a handler to both operands, so a frame promise
-    // this caller stops waiting on cannot become an unhandled rejection.
-    guard: <T>(work: Promise<T>): Promise<T> => Promise.race([work, expiry]),
-    enterPhase: (next: ProtocolRequestTimeoutPhase): void => {
+    guard: <T>(
+      next: ProtocolRequestTimeoutPhase,
+      work: Promise<T>,
+    ): Promise<T> => {
       phase = next;
+      // Promise.race attaches a handler to both operands, so a frame promise
+      // this caller stops waiting on cannot become an unhandled rejection.
+      return Promise.race([work, expiry]);
     },
     release: (): void => {
       clearTimeout(timer);
@@ -606,27 +612,26 @@ async function postRequest<M extends ProtocolRequestMethod>(
   // in creation order, so a budget that ties with the iframe load timeout still
   // reports itself rather than the load failure.
   const budget = startRequestBudget(method, timeoutMs);
-  let sentId: string | null = null;
   try {
-    await budget.guard(ensureHostFrame());
+    await budget.guard("load", ensureHostFrame());
     if (needsProtocolReady) {
-      budget.enterPhase("ready");
-      await budget.guard(ensureProtocolFrame());
+      await budget.guard("ready", ensureProtocolFrame());
     }
     const frameWindow = protocolIframe?.contentWindow;
     if (!frameWindow) {
       throw new Error("Shared protocol iframe is unavailable");
     }
 
-    budget.enterPhase("reply");
     const stopReq = m.timer(S.PROTOCOL_REQUEST);
     const sent = sendRequest(frameWindow, method, payload, onProgress);
-    sentId = sent.id;
     try {
-      const value = await budget.guard(sent.reply);
+      const value = await budget.guard("reply", sent.reply);
       stopReq();
       return value;
     } catch (error: unknown) {
+      // The listener drops the entry when a reply lands. Nothing will arrive
+      // now, so this is the only path that has to drop it.
+      pendingRequests.delete(sent.id);
       // A spent budget still describes a roundtrip the histogram should carry.
       // A fatal envelope or a response error does not, which matches the
       // pre-existing behaviour of recording no sample on those paths.
@@ -637,9 +642,6 @@ async function postRequest<M extends ProtocolRequestMethod>(
     }
   } finally {
     budget.release();
-    if (sentId !== null) {
-      pendingRequests.delete(sentId);
-    }
   }
 }
 
