@@ -19,7 +19,4 @@ export {
 } from "./time";
 export { createTestDApp, type DAppDriver } from "./dapp";
 export { installProtocolFrame, type ProtocolFrame } from "./frame";
-export {
-  createProviderHarness,
-  type ProviderHarness,
-} from "./broker";
+export { createProviderHarness, type ProviderHarness } from "./broker";
