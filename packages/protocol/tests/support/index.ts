@@ -5,6 +5,7 @@ export * as RpcSupport from "./rpc";
 export * as TimeSupport from "./time";
 export * as DAppSupport from "./dapp";
 export * as FrameSupport from "./frame";
+export * as BrokerSupport from "./broker";
 
 // Convenience domain names for idiomatic import styles:
 export { Rpc } from "./rpc";
@@ -18,3 +19,7 @@ export {
 } from "./time";
 export { createTestDApp, type DAppDriver } from "./dapp";
 export { installProtocolFrame, type ProtocolFrame } from "./frame";
+export {
+  createProviderHarness,
+  type ProviderHarness,
+} from "./broker";
