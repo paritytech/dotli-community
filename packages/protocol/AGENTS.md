@@ -11,7 +11,7 @@
    - Do not parse raw wire JSON strings inside test scenarios.
 
 3. **Deterministic Virtual Time**:
-   - Synchronize using `settleWithin`, `until`, `bootAndConnect`, and `clock()`.
+   - Synchronize using `settleWithin`, `until`, and `bootAndConnect`.
    - Do not chain ad-hoc `elapse(1)` ticks or unanchored timeouts.
 
 4. **Test Quality & Value**:
