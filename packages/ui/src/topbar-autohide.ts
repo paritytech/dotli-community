@@ -18,6 +18,9 @@ const FIRST_CONTROL_SELECTOR = "a[href], button:not([disabled])";
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = "Alt+Shift+T";
 
+/** The always-reachable reveal control, one Tab past the app frame. */
+export const TOPBAR_REVEAL_BUTTON_ID = "topbar-reveal";
+
 // Popovers and the pairing modal belong to the bar but render outside
 // #topbar, so focus or an open state in one of them counts as "in the bar".
 const TOPBAR_SURFACE_IDS = [
@@ -33,6 +36,7 @@ const OPEN_SURFACE_IDS = [...TOPBAR_SURFACE_IDS, "more-popover"];
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
 let hoverStrip: HTMLElement | null = null;
+let revealButton: HTMLButtonElement | null = null;
 let armed = false;
 let visible = true;
 let appFrameOverlaid = false;
@@ -122,7 +126,7 @@ function topbarHoldsFocus(): boolean {
   if (active === null) {
     return false;
   }
-  if (getTopbar()?.contains(active) === true) {
+  if (getTopbar()?.contains(active) === true || active === revealButton) {
     return true;
   }
   return TOPBAR_SURFACE_IDS.some(
@@ -223,6 +227,41 @@ function syncFocus(): void {
   }
 }
 
+/**
+ * A skip-link style control appended after the app frame, so one forward Tab
+ * out of the dApp reaches the bar. Keys pressed inside the cross-origin frame
+ * never reach this document, which rules out a shortcut-only recovery.
+ */
+function createRevealButton(signal: AbortSignal): void {
+  revealButton = document.createElement("button");
+  revealButton.type = "button";
+  revealButton.id = TOPBAR_REVEAL_BUTTON_ID;
+  revealButton.className = "topbar-reveal";
+  revealButton.textContent = "Show browser bar";
+  revealButton.setAttribute("aria-keyshortcuts", TOPBAR_REVEAL_SHORTCUT);
+  revealButton.setAttribute("aria-controls", "topbar");
+  // Directly after the app container, so tabbing out of the dApp reaches it
+  // before the toasts and debug chrome that also live at the end of body.
+  const appContainer = document.getElementById("app");
+  if (appContainer !== null) {
+    appContainer.after(revealButton);
+  } else {
+    document.body.appendChild(revealButton);
+  }
+
+  // Focus alone reveals the bar, so a passing Tab already shows what the
+  // control does. Activating it hands focus to the bar's first control.
+  revealButton.addEventListener("focus", reveal, { signal });
+  revealButton.addEventListener(
+    "click",
+    () => {
+      reveal();
+      focusFirstControl();
+    },
+    { signal },
+  );
+}
+
 function bindListeners(): void {
   const topbar = getTopbar();
   if (listeners !== null || topbar === null) {
@@ -238,6 +277,8 @@ function bindListeners(): void {
   hoverStrip.style.cssText = `position:fixed;top:0;left:0;right:0;height:${HOVER_STRIP_HEIGHT};z-index:999;`;
   document.body.appendChild(hoverStrip);
   hoverStrip.addEventListener("mouseenter", reveal, { signal });
+
+  createRevealButton(signal);
 
   topbar.addEventListener("mouseenter", reveal, { signal });
   topbar.addEventListener(
@@ -285,6 +326,9 @@ export function armTopbarAutoHide(): void {
   topbar.setAttribute("aria-keyshortcuts", TOPBAR_REVEAL_SHORTCUT);
   applySlideTransition();
   bindListeners();
+  if (revealButton !== null) {
+    revealButton.hidden = false;
+  }
   scheduleHide();
 }
 
@@ -293,6 +337,11 @@ export function pinTopbarVisible(): void {
   armed = false;
   cancelHide();
   getTopbar()?.removeAttribute("aria-keyshortcuts");
+  // A pinned bar needs no reveal control, and a stray tab stop would just
+  // sit in the way.
+  if (revealButton !== null) {
+    revealButton.hidden = true;
+  }
   if (appFrameOverlaid) {
     appFrameOverlaid = false;
     applyAppFrameGeometry();
@@ -310,5 +359,7 @@ export function disposeTopbarAutoHide(): void {
   listeners = null;
   hoverStrip?.remove();
   hoverStrip = null;
+  revealButton?.remove();
+  revealButton = null;
   visible = true;
 }

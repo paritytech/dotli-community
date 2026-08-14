@@ -15,7 +15,10 @@ function installTopbarDom(): void {
     <div class="mode-popover" id="mode-popover"></div>
     <div class="permissions-popover" id="permissions-popover"></div>
     <div class="auth-modal-backdrop" id="auth-modal-backdrop"></div>
-    <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100vh - 56px)"></iframe>
+    <div id="app">
+      <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100vh - 56px)"></iframe>
+    </div>
+    <a id="toast" href="/">a toast that also lives after the app</a>
   `;
 }
 
@@ -174,10 +177,50 @@ describe("topbar auto-hide reveal", () => {
     expect(topbar().contains(document.activeElement)).toBe(false);
   });
 
+  it("As a keyboard user, the reveal button sits after the app frame in tab order", async () => {
+    // Given
+    const { armTopbarAutoHide, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
+    armTopbarAutoHide();
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    const button = document.getElementById(TOPBAR_REVEAL_BUTTON_ID);
+
+    // Then it is focusable and sits between the frame and the toasts, so one
+    // forward Tab out of the dApp reaches it
+    expect(button?.tagName).toBe("BUTTON");
+    expect(
+      appFrame().compareDocumentPosition(button as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      (document.getElementById("toast") as Node).compareDocumentPosition(
+        button as Node,
+      ) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+
+    // When
+    (button as HTMLElement).focus();
+    (button as HTMLElement).dispatchEvent(new FocusEvent("focus"));
+
+    // Then focus alone reveals the bar and holds it there
+    expect(isHidden()).toBe(false);
+    vi.advanceTimersByTime(HIDE_DELAY_MS * 2);
+    expect(isHidden()).toBe(false);
+
+    // When
+    (button as HTMLButtonElement).click();
+
+    // Then
+    expect(document.activeElement?.id).toBe("topbar-home");
+  });
+
   it("As a dotli integrator, the bar advertises its reveal shortcut while armed", async () => {
     // Given
-    const { armTopbarAutoHide, pinTopbarVisible, TOPBAR_REVEAL_SHORTCUT } =
-      await loadAutoHide();
+    const {
+      armTopbarAutoHide,
+      pinTopbarVisible,
+      TOPBAR_REVEAL_SHORTCUT,
+      TOPBAR_REVEAL_BUTTON_ID,
+    } = await loadAutoHide();
 
     // When
     armTopbarAutoHide();
@@ -192,6 +235,9 @@ describe("topbar auto-hide reveal", () => {
 
     // Then
     expect(topbar().hasAttribute("aria-keyshortcuts")).toBe(false);
+    expect(
+      (document.getElementById(TOPBAR_REVEAL_BUTTON_ID) as HTMLElement).hidden,
+    ).toBe(true);
   });
 });
 

@@ -19,6 +19,28 @@
   }
 }
 
+.topbar-reveal {
+  position: fixed;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgb(30, 30, 30);
+  color: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 1001;
+}
+.topbar-reveal:focus {
+  top: 64px;
+  outline: 2px solid rgba(255, 255, 255, 0.75);
+  outline-offset: 2px;
+}
+
 /* ── Top Bar ────────────────────────────── */
 #topbar {
   position: fixed;
