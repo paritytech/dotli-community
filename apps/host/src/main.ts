@@ -298,12 +298,15 @@ function setTopbarVisible(visible: boolean): void {
   const iframe = document.querySelector("iframe");
   topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
   if (iframe) {
-    // With the bar hidden the product still starts below the status bar: it
-    // cannot pad for the insets itself, because they read as 0 in an iframe.
-    iframe.style.top = visible ? "var(--topbar-height)" : "var(--safe-top)";
+    // With the bar hidden the product still starts below the status bar. The
+    // host owns this box, so it is the only place that can reserve the insets.
+    // Fallbacks because these are inline styles, matching applyIframeStyling.
+    iframe.style.top = visible
+      ? "var(--topbar-height, 56px)"
+      : "var(--safe-top, 0px)";
     iframe.style.height = visible
-      ? "calc(100vh - var(--topbar-height) - var(--safe-bottom))"
-      : "calc(100vh - var(--safe-top) - var(--safe-bottom))";
+      ? "calc(100vh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))"
+      : "calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px))";
   }
   window.dispatchEvent(
     new CustomEvent<boolean>("topbar:visibility", { detail: visible }),

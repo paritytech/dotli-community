@@ -12,9 +12,10 @@
 
 /* ── Layout tokens ──────────────────────── */
 /* The host sets `viewport-fit=cover`, so the viewport spans the whole display
-   and every edge needs its own inset. These stay zero on hardware without
-   cutouts, and inside an iframe, so the same rules work everywhere. Defined
-   here rather than in topbar.css because base.css consumes them too. */
+   and every edge needs its own inset. `env()` carries the 0px fallback here, so
+   rules in this stylesheet use the tokens bare. Inline styles set from JS repeat
+   a px fallback instead, because they do not ship with this file. Defined here
+   rather than in topbar.css because base.css consumes them too. */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);

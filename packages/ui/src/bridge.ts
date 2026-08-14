@@ -414,12 +414,17 @@ function applyIframeStyling(
   iframe: HTMLIFrameElement,
   opts: { topbarOffset: boolean },
 ): void {
-  // The viewport covers the whole display, so the host has to hand the product
-  // a rectangle clear of the status bar and the home indicator. The product
-  // cannot do it itself, because the insets read as 0 inside an iframe.
+  // The host viewport covers the whole display, so this box is what keeps the
+  // product clear of the status bar, the home indicator and the sensor housing.
+  // The host owns the iframe's geometry, so it is the only place that can do it.
+  // Inset styles carry px fallbacks because they are inline: unlike the rules in
+  // styles.css, they do not ship in the same file that defines the tokens.
+  const left = "left:var(--safe-left, 0px)";
+  const width =
+    "width:calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
   iframe.style.cssText = opts.topbarOffset
-    ? "position:fixed;top:var(--topbar-height);left:0;width:100%;height:calc(100vh - var(--topbar-height) - var(--safe-bottom));border:none;margin:0;padding:0;"
-    : "position:fixed;top:var(--safe-top);left:0;width:100%;height:calc(100vh - var(--safe-top) - var(--safe-bottom));border:none;margin:0;padding:0;";
+    ? `position:fixed;top:var(--topbar-height, 56px);${left};${width};height:calc(100vh - var(--topbar-height, 56px) - var(--safe-bottom, 0px));border:none;margin:0;padding:0;`
+    : `position:fixed;top:var(--safe-top, 0px);${left};${width};height:calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px));border:none;margin:0;padding:0;`;
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 }
