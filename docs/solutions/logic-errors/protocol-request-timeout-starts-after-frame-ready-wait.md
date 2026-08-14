@@ -148,5 +148,4 @@ No existing timeout constant was reduced, and `warmup` remains exempt from any b
 ## Related Issues
 
 - Issue #166 — the defect this documents.
-- `docs/plans/2026-08-14-1856-fix-protocol-request-call-time-budget-plan.md` — the plan for this fix.
 - `docs/smoldot.md` — describes `createRemoteChainProvider` and the protocol iframe.
