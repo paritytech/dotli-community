@@ -38,5 +38,27 @@
         "5A:A3:A6:D7:C8:F2:DE:24:2C:B0:E9:77:62:E2:E5:52:5B:0A:49:89:90:AF:E8:50:63:55:B6:F4:CB:31:27:5C"
       ]
     }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.parity.brevity",
+      "sha256_cert_fingerprints": [
+        "7B:47:1D:1B:BC:16:F8:FD:81:1F:09:AC:E1:C0:54:1B:A4:62:E6:26:7A:2B:7B:6A:BB:EC:3F:6D:FB:EA:30:61",
+        "3D:61:14:F8:3E:A1:C2:32:A5:D2:72:85:2B:E7:B4:7E:A5:E1:97:B6:DB:58:53:81:E6:AC:4B:6A:39:BF:7E:D6"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.parity.brevity.dev",
+      "sha256_cert_fingerprints": [
+        "7B:47:1D:1B:BC:16:F8:FD:81:1F:09:AC:E1:C0:54:1B:A4:62:E6:26:7A:2B:7B:6A:BB:EC:3F:6D:FB:EA:30:61",
+        "3D:61:14:F8:3E:A1:C2:32:A5:D2:72:85:2B:E7:B4:7E:A5:E1:97:B6:DB:58:53:81:E6:AC:4B:6A:39:BF:7E:D6"
+      ]
+    }
   }
 ]
