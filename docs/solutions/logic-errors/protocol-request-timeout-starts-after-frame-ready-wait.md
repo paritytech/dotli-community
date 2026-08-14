@@ -52,8 +52,7 @@ tags:
 
 One timer, armed at call time, raced against each phase in turn.
 
-`startRequestBudget` (`client.ts:514`) creates a single `setTimeout` and returns a `RequestBudget` (`client.ts:502-505`) whose `guard(phase, work)` records which wait is running and races it against the shared expiry, and whose `release()` clears the timer (`client.ts:534-536`).
-
+`startRequestBudget` (`client.ts:516`) creates a single `setTimeout` and returns a `RequestBudget` (`client.ts:501-507`) whose `guard(phase, work)` records which wait is running and races it against the shared expiry, and whose `release()` clears the timer (`client.ts:540-542`).
 Before — the frame wait precedes the timer entirely:
 
 ```ts
@@ -89,7 +88,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
 }
 ```
 
-After — the budget is armed first and covers every wait (`client.ts:606-621`):
+After — the budget is armed first and covers every wait (`client.ts:605-632`):
 
 ```ts
 const budget = startRequestBudget(method, timeoutMs);
@@ -117,12 +116,13 @@ try {
 Four further pieces:
 
 - **A typed rejection.** `ProtocolRequestTimeoutError` (`packages/protocol/src/errors.ts:34`) carries `method`, `timeoutMs`, and a `phase` of `"load" | "ready" | "reply"` (`errors.ts:19`), rendered into the message from `PHASE_DESCRIPTIONS` (`errors.ts:21-25`). The phase is read when the timer fires, so it names the wait that actually consumed the budget rather than the wait the caller happened to start in.
-- **The provider stops stacking.** `createRemoteChainProvider` (`client.ts:804`) now calls `postRequest("chainConnect", …)` directly (`client.ts:821`). The request already performs both frame waits, so the previous outer `ensureProtocolFrame()` was redundant as well as unbounded.
-- **Failures record no duration.** `recordRoundtrip()` fires only on a completed roundtrip (`client.ts:617`). Because the budget starts at the call and this timer starts at the reply, sampling on a timeout would write the leftover budget — a 90 second failure landing as a 3 second sample in a series with no `outcome` attribute to filter on.
+- **The provider stops stacking.** `createRemoteChainProvider` (`client.ts:810`) now calls `postRequest("chainConnect", …)` directly (`client.ts:827`). The request already performs both frame waits, so the previous outer `ensureProtocolFrame()` was redundant as well as unbounded.
+- **Failures record no duration.** `recordRoundtrip()` fires only on a completed roundtrip (`client.ts:624`). Because the budget starts at the call and this timer starts at the reply, sampling on a timeout would write the leftover budget — a 90 second failure landing as a 3 second sample in a series with no `outcome` attribute to filter on.
+- **Teardown drains in-flight requests.** `resetProtocolFrameState` (`client.ts:161`) now drains and rejects `pendingRequests` immediately with `"Protocol frame state reset before reply"`, eliminating orphaned callers when a frame resets after ready.
+- **Source-window guard hardened.** `bindMessageListener` (`client.ts:204`) verifies `!frameWindow || event.source !== frameWindow`, ensuring post-teardown messages with a valid origin are dropped.
 - **Dual-Driver test architecture.** Tests are structured into domain-focused suites in `packages/protocol/tests/` (`client-timeouts.test.ts`, `client-precedence.test.ts`, `client-chain-provider.test.ts`) driven by `DAppDriver` and `ProtocolFrame` doubles (`packages/protocol/tests/support/`), removing inline packet parsing and unencapsulated tick delays.
 
-Consumers that mapped the timeout by message text were updated to match the type: `describeError` (`apps/host/src/errors.ts:45`) now tests `err instanceof ProtocolRequestTimeoutError` alongside the existing text match (`apps/host/src/errors.ts:90-92`), keeping the string branch for foreign timeouts that still need it.
-
+Consumers that mapped the timeout by message text were updated to match the type and phase: `describeError` (`apps/host/src/errors.ts:45`) tests `err instanceof ProtocolRequestTimeoutError`, mapping `load` and `ready` phases to `HOST_ERRORS.SW_TIMED_OUT` (`apps/host/src/errors.ts:90-93`) and generic timeout copy otherwise (`apps/host/src/errors.ts:95-105`).
 No existing timeout constant was reduced, and `warmup` remains exempt from any budget (`client.ts:492-493`) because it waits on chain sync.
 
 ## Why This Works
@@ -136,8 +136,9 @@ No existing timeout constant was reduced, and `warmup` remains exempt from any b
 ## Prevention
 
 - **A green suite is not evidence that a cleanup invariant is defended.** Deleting `budget.release()` left the suite fully green, and so did deleting `pendingRequests.delete(sent.id)`. Both mutations ship real damage: an undisarmed timer emits a spurious timeout count after the request already succeeded, and a missing delete leaks a pending entry holding the caller's progress callback. Assert cleanup through observable behaviour:
-  - after a request resolves on a healthy frame, `expect(vi.getTimerCount()).toBe(0)` (`packages/protocol/tests/client-timeouts.test.ts:251`);
-  - after a reply-phase timeout, deliver a late `progress` envelope for that request's id and assert the caller's callback was not invoked (`packages/protocol/tests/client-timeouts.test.ts:273`).
+  - after a request resolves on a healthy frame, `expect(vi.getTimerCount()).toBe(0)` (`packages/protocol/tests/client-timeouts.test.ts:280`);
+  - after a reply-phase timeout, deliver a late `progress` envelope for that request's id and assert the caller's callback was not invoked (`packages/protocol/tests/client-timeouts.test.ts:316`).
+  - after frame reset while a request is in flight, assert the request rejects immediately without timing out (`packages/protocol/tests/client-precedence.test.ts:153`).
 - **Probe the gate with mutations before trusting it.** Apply one mutation at a time to the real source, run the suite, restore. Six mutations each need a named failing scenario: dropping the timer disarm, dropping the pending-entry delete, restoring the provider's unbudgeted wait, arming the budget after the frame wait, giving `warmup` a budget, and relabelling a crash as the caller's own timeout. A mutation that leaves the suite green names a scenario that defends nothing.
 - **Encapsulate protocol test plumbing behind Dual-Driver doubles.** Avoid inline JSON-RPC packet parsing (`JSON.parse(...)`) and multi-tick delays (`await elapse(1)`) in test scenarios. Use domain drivers (`createTestDApp`, `installProtocolFrame`) and temporal synchronization primitives (`settleWithin`, `until`, `bootAndConnect`).
 - **A per-operation budget must cover the setup it depends on.** When an operation advertises a timeout, audit every `await` that precedes the timer for its own budget. The pattern to grep for is an unbudgeted readiness wait followed by a budgeted call: `await ensureX(); await withTimeout(op)`. Prefer letting the budgeted call own the readiness wait.
