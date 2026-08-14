@@ -1088,7 +1088,7 @@
 .permissions-popover {
   display: none;
   position: fixed;
-  /* Matches `.mode-popover` — overlaps the topbar bottom so the popover
+  /* Matches `.mode-popover`. Overlaps the topbar bottom so the popover
      visually attaches to its trigger button. */
   top: var(--topbar-height);
   right: calc(12px + var(--safe-right));

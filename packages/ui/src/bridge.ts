@@ -410,15 +410,19 @@ function getDeepPath(): string {
   return p + search + hash;
 }
 
+/**
+ * Pin the product iframe to the area left over by the host chrome.
+ *
+ * The host viewport covers the whole display, so this box is what keeps the
+ * product clear of the status bar, the home indicator and the sensor housing.
+ * The host owns the iframe's geometry, so it is the only place that can do it.
+ * The inset values carry px fallbacks because they are set inline. Unlike the
+ * rules in `styles.css`, they do not ship with the file that defines the tokens.
+ */
 function applyIframeStyling(
   iframe: HTMLIFrameElement,
   opts: { topbarOffset: boolean },
 ): void {
-  // The host viewport covers the whole display, so this box is what keeps the
-  // product clear of the status bar, the home indicator and the sensor housing.
-  // The host owns the iframe's geometry, so it is the only place that can do it.
-  // Inset styles carry px fallbacks because they are inline: unlike the rules in
-  // styles.css, they do not ship in the same file that defines the tokens.
   const left = "left:var(--safe-left, 0px)";
   const width =
     "width:calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
