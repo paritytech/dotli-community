@@ -1,6 +1,7 @@
 ---
 title: Protocol request timeout started after the frame-ready wait, not at the call
 date: 2026-08-14
+last_updated: 2026-08-14
 category: logic-errors
 module: packages/protocol
 problem_type: logic_error
@@ -23,6 +24,7 @@ tags:
   - metrics
   - mutation-testing
   - error-handling
+  - dual-driver-dsl
 ---
 
 # Protocol request timeout started after the frame-ready wait, not at the call
@@ -112,11 +114,12 @@ try {
 }
 ```
 
-Three further pieces:
+Four further pieces:
 
 - **A typed rejection.** `ProtocolRequestTimeoutError` (`packages/protocol/src/errors.ts:34`) carries `method`, `timeoutMs`, and a `phase` of `"load" | "ready" | "reply"` (`errors.ts:19`), rendered into the message from `PHASE_DESCRIPTIONS` (`errors.ts:21-25`). The phase is read when the timer fires, so it names the wait that actually consumed the budget rather than the wait the caller happened to start in.
 - **The provider stops stacking.** `createRemoteChainProvider` (`client.ts:804`) now calls `postRequest("chainConnect", …)` directly (`client.ts:821`). The request already performs both frame waits, so the previous outer `ensureProtocolFrame()` was redundant as well as unbounded.
 - **Failures record no duration.** `recordRoundtrip()` fires only on a completed roundtrip (`client.ts:617`). Because the budget starts at the call and this timer starts at the reply, sampling on a timeout would write the leftover budget — a 90 second failure landing as a 3 second sample in a series with no `outcome` attribute to filter on.
+- **Dual-Driver test architecture.** Tests are structured into domain-focused suites in `packages/protocol/tests/` (`client-timeouts.test.ts`, `client-precedence.test.ts`, `client-chain-provider.test.ts`) driven by `DAppDriver` and `ProtocolFrame` doubles (`packages/protocol/tests/support/`), removing inline packet parsing and unencapsulated tick delays.
 
 Consumers that mapped the timeout by message text were updated to match the type: `describeError` (`apps/host/src/errors.ts:45`) now tests `err instanceof ProtocolRequestTimeoutError` alongside the existing text match (`apps/host/src/errors.ts:90-92`), keeping the string branch for foreign timeouts that still need it.
 
@@ -133,9 +136,10 @@ No existing timeout constant was reduced, and `warmup` remains exempt from any b
 ## Prevention
 
 - **A green suite is not evidence that a cleanup invariant is defended.** Deleting `budget.release()` left the suite fully green, and so did deleting `pendingRequests.delete(sent.id)`. Both mutations ship real damage: an undisarmed timer emits a spurious timeout count after the request already succeeded, and a missing delete leaks a pending entry holding the caller's progress callback. Assert cleanup through observable behaviour:
-  - after a request resolves on a healthy frame, `expect(vi.getTimerCount()).toBe(0)` (`packages/protocol/tests/client.test.ts:317`);
-  - after a reply-phase timeout, deliver a late `progress` envelope for that request's id and assert the caller's callback was not invoked (`packages/protocol/tests/client.test.ts:294`).
-- **Probe the gate with mutations before trusting it.** Apply one mutation at a time to the real source, run the suite, restore. Six mutations each need a named failing scenario: dropping the timer disarm, dropping the pending-entry delete, restoring the provider's unbudgeted wait, arming the budget after the frame wait, giving `warmup` a budget, and relabelling a crash as the caller's own timeout. A mutation that leaves the suite green names a scenario that defends nothing. Beware writing a no-op mutation — `throw cond ? error : error` changes nothing and its green run means nothing.
+  - after a request resolves on a healthy frame, `expect(vi.getTimerCount()).toBe(0)` (`packages/protocol/tests/client-timeouts.test.ts:251`);
+  - after a reply-phase timeout, deliver a late `progress` envelope for that request's id and assert the caller's callback was not invoked (`packages/protocol/tests/client-timeouts.test.ts:273`).
+- **Probe the gate with mutations before trusting it.** Apply one mutation at a time to the real source, run the suite, restore. Six mutations each need a named failing scenario: dropping the timer disarm, dropping the pending-entry delete, restoring the provider's unbudgeted wait, arming the budget after the frame wait, giving `warmup` a budget, and relabelling a crash as the caller's own timeout. A mutation that leaves the suite green names a scenario that defends nothing.
+- **Encapsulate protocol test plumbing behind Dual-Driver doubles.** Avoid inline JSON-RPC packet parsing (`JSON.parse(...)`) and multi-tick delays (`await elapse(1)`) in test scenarios. Use domain drivers (`createTestDApp`, `installProtocolFrame`) and temporal synchronization primitives (`settleWithin`, `until`, `bootAndConnect`).
 - **A per-operation budget must cover the setup it depends on.** When an operation advertises a timeout, audit every `await` that precedes the timer for its own budget. The pattern to grep for is an unbudgeted readiness wait followed by a budgeted call: `await ensureX(); await withTimeout(op)`. Prefer letting the budgeted call own the readiness wait.
 - **Never record a duration sample on a failure path in an attribute-less series.** The residual between a call-time budget and a later-started timer reads as a fast success and quietly flatters the percentile it should be inflating.
 - **Attribute a timeout to the phase that consumed it, read at fire time.** Reconstructing the phase from which promise won the race is wrong whenever a shared wait is involved; a mutable cell set by each guard and read inside the timer callback is not.
@@ -144,5 +148,5 @@ No existing timeout constant was reduced, and `warmup` remains exempt from any b
 ## Related Issues
 
 - Issue #166 — the defect this documents.
-- `docs/plans/2026-08-14-1856-fix-protocol-request-call-time-budget-plan.md` — the plan for this fix. Two of its statements were superseded during execution: it scoped the provider's direct `ensureProtocolFrame()` call out of the work on the grounds that such calls "are not requests and cannot produce a request budget", which is true of a bare prefetch but not of this call site, where a request follows immediately. Adversarial review falsified that reasoning and the call site was fixed.
-- `docs/smoldot.md` — describes `createRemoteChainProvider` and the protocol iframe. Its prose states no timeout contract, so nothing there was invalidated, but a note that `chainConnect` is now bounded by its own request budget would be accurate.
+- `docs/plans/2026-08-14-1856-fix-protocol-request-call-time-budget-plan.md` — the plan for this fix.
+- `docs/smoldot.md` — describes `createRemoteChainProvider` and the protocol iframe.
