@@ -1,11 +1,19 @@
 # Protocol Package Instructions
 
-Governs `packages/protocol` postMessage bridge, shared storage, and client-side chain provider.
+## Testing Doctrine
 
-## Package Invariants
+1. **Dual-Driver Double**:
+   - Use `createTestDApp` and `installProtocolFrame` from `tests/support/`.
+   - Never mock DOM elements, iframes, or `window.postMessage` directly inside test files.
 
-| id       | rule                                                                                                                                                                                      | gate                                                                 |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------- |
-| PROTO-T1 | Protocol tests use the dual-driver harness (`createTestDApp` / `installProtocolFrame`) from `tests/support/`; never mock `window.postMessage` or DOM elements inline in test files.       | `! grep -E "addEventListener\(\"message\"                            | contentWindow" packages/protocol/tests/\*.test.ts` |
-| PROTO-T2 | Test scenarios assert on parsed domain getters (`frame.sentRpcRequests()`, `frame.connectionId()`, `dApp.replies()`); never parse raw `chainSend` message strings inside scenario bodies. | `! grep -E "JSON\.parse\(" packages/protocol/tests/*.test.ts`        |
-| PROTO-T3 | Asynchronous scenario synchronization must use virtual timer primitives (`settleWithin`, `until`, `bootAndConnect`); never chain ad-hoc tick yields (`await elapse(1)`).                  | Review of async wait patterns in `packages/protocol/tests/*.test.ts` |
+2. **Domain Getters**:
+   - Assert on parsed domain getters (`frame.sentRpcRequests()`, `frame.connectionId()`, `dApp.replies()`).
+   - Do not parse raw wire JSON strings inside test scenarios.
+
+3. **Deterministic Virtual Time**:
+   - Synchronize using `settleWithin`, `until`, `bootAndConnect`, and `clock()`.
+   - Do not chain ad-hoc `elapse(1)` ticks or unanchored timeouts.
+
+4. **Test Quality & Value**:
+   - Tests must defend observable system contracts and failure boundaries.
+   - Never write constructor-mirroring tests that assert properties passed directly into `new`.
