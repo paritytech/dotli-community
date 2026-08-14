@@ -161,7 +161,11 @@ describe("Error precedence over request timeout budgets", () => {
 
     // Then
     await settleWithin(pending, 1_000);
-    await expect(pending).rejects.toThrow("Protocol frame state reset before reply");
-    await expect(pending).rejects.not.toBeInstanceOf(ProtocolRequestTimeoutError);
+    await expect(pending).rejects.toThrow(
+      "Protocol frame state reset before reply",
+    );
+    await expect(pending).rejects.not.toBeInstanceOf(
+      ProtocolRequestTimeoutError,
+    );
   });
 });
