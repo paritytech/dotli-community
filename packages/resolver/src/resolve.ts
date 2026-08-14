@@ -3,7 +3,7 @@
 
 // dotNS name resolution via direct storage reads
 //
-// Uses polkadot-api with the shared Asset Hub provider from smoldot.ts.
+// Uses polkadot-api with the shared Asset Hub provider from provider.ts.
 
 import {
   createClient,
