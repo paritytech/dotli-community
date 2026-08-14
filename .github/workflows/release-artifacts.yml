@@ -1,0 +1,223 @@
+name: Release artifacts
+
+# Attaches a runnable bundle to the GitHub release and pushes the container image
+# to GHCR, so any released version can be pulled and run locally.
+#
+# Both artifacts are configured the same way at run time, via $DOTLI_NETWORK —
+# see scripts/tarball-readme.md and docs/docker.md.
+#
+# `workflow_dispatch` exists because a tag-triggered run cannot backfill a release
+# that was published before this workflow existed. Pass an existing tag to attach
+# artifacts to it.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach artifacts to (e.g. v0.7.4)"
+        required: true
+        type: string
+
+permissions:
+  contents: write # upload release assets
+  packages: write # push to ghcr.io
+
+concurrency:
+  group: release-artifacts-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+env:
+  # Every built-in network is compiled in; the runtime config's `enabled` list
+  # narrows the selector per run. Deliberately not parameterised — one artifact
+  # has to serve every environment.
+  VITE_NETWORKS: paseo-next-v1,paseo-next-v2,previewnet
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  resolve:
+    name: Resolve tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      latest: ${{ steps.tag.outputs.latest }}
+    steps:
+      - id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          test -n "$TAG" || { echo "No tag to build"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          # `latest` only moves for a real, non-prerelease publish. A manual
+          # backfill of an older tag must not repoint it.
+          if [ -n "$RELEASE_TAG" ] && [ "$IS_PRERELEASE" != "true" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  tarball:
+    name: Bundle tarball
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # build:prod, not build: `compress-dist.ts` only runs there, and without it
+      # the .br/.gz siblings the server negotiates do not exist.
+      #
+      # VITE_RUNTIME_NETWORK_CONFIG is what makes $DOTLI_NETWORK take effect. With
+      # it unset the config script is not injected, and the server would serve a
+      # config the app silently ignores — the worst failure this artifact could
+      # ship, since everything looks fine while pointing at the public chain.
+      - name: Build
+        env:
+          VITE_RUNTIME_NETWORK_CONFIG: "true"
+          VITE_COMMIT_SHA: ${{ github.sha }}
+        run: bun run build:prod
+
+      - name: Assemble tarball
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          OUT="dotli-$VERSION"
+          mkdir -p "$OUT/dist"
+          cp -R apps/host/dist     "$OUT/dist/host"
+          cp -R apps/sandbox/dist  "$OUT/dist/app"
+          cp -R apps/protocol/dist "$OUT/dist/protocol"
+          # node cannot execute TypeScript, so ship the bundled form.
+          bun build scripts/serve.ts --target=node --outfile "$OUT/serve.mjs"
+          cp scripts/tarball-readme.md "$OUT/README.md"
+          sed -i "s/VERSION/$VERSION/g" "$OUT/README.md"
+
+          # Fail rather than publish a bundle whose runtime config is inert.
+          for app in host app protocol; do
+            grep -q 'dotli-network.js' "$OUT/dist/$app/index.html" \
+              || { echo "::error::$app/index.html has no runtime-config script — built without VITE_RUNTIME_NETWORK_CONFIG"; exit 1; }
+          done
+          test -n "$(find "$OUT/dist/host/assets" -name '*.br' -print -quit)" \
+            || { echo "::error::no precompressed assets — built without build:prod"; exit 1; }
+
+          tar czf "$OUT.tar.gz" "$OUT"
+          sha256sum "$OUT.tar.gz" > "$OUT.tar.gz.sha256"
+          ls -lh "$OUT.tar.gz"
+
+      - name: Smoke-test the tarball
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd "dotli-$VERSION"
+          DOTLI_NETWORK='{"enabled":["previewnet"],"networks":{"previewnet":{"label":"smoke"}}}' \
+            PORT=5199 node serve.mjs &
+          SERVER_PID=$!
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null -H 'Host: browse.localhost' http://127.0.0.1:5199/ && break
+            sleep 1
+          done
+          # Each hostname must reach a different build.
+          h=$(curl -fsS -H 'Host: browse.localhost'   http://127.0.0.1:5199/ | grep -o 'index-[^.]*\.js' | head -1)
+          p=$(curl -fsS -H 'Host: host.localhost'     http://127.0.0.1:5199/ | grep -o 'index-[^.]*\.js' | head -1)
+          a=$(curl -fsS -H 'Host: x.app.localhost'    http://127.0.0.1:5199/ | grep -o 'index-[^.]*\.js' | head -1)
+          test "$h" != "$p" && test "$p" != "$a" && test "$h" != "$a" \
+            || { echo "::error::hostname routing did not resolve three distinct builds ($h/$p/$a)"; exit 1; }
+          curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/dotli-network.js | grep -q '"label":"smoke"' \
+            || { echo "::error::DOTLI_NETWORK did not reach the served config"; exit 1; }
+          kill "$SERVER_PID"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          gh release upload "$TAG" \
+            "dotli-$VERSION.tar.gz" "dotli-$VERSION.tar.gz.sha256" \
+            --clobber
+
+  image:
+    name: Image (${{ matrix.arch }})
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners per architecture. Building arm64 under QEMU on an x86
+          # runner works but takes longer than the whole rest of the release,
+          # because bun install and three vite builds are all emulated. If the
+          # arm runner label is unavailable, drop this leg and add
+          # `--platform linux/amd64,linux/arm64` with QEMU to the amd64 one.
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+      # Per-arch tags rather than digests: the two legs write distinct names so
+      # they cannot race, and the manifest job assembles them without having to
+      # pass digests between jobs.
+      - name: Build and push
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE:$VERSION-$ARCH" .
+          docker push "$IMAGE:$VERSION-$ARCH"
+
+  manifest:
+    name: Publish multi-arch tags
+    needs: [resolve, image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+      - name: Create and push manifest list
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          LATEST: ${{ needs.resolve.outputs.latest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "$IMAGE:$VERSION" \
+            "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          if [ "$LATEST" = "true" ]; then
+            docker buildx imagetools create \
+              --tag "$IMAGE:latest" \
+              "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
+          fi
+          docker buildx imagetools inspect "$IMAGE:$VERSION"

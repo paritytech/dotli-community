@@ -15,6 +15,7 @@ import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
+import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -394,6 +395,7 @@ export default defineConfig({
     : "/",
   plugins: [
     wasm(),
+    runtimeNetworkConfigScript(),
     preconnectBootnodes(),
     preloadCriticalAssets(),
     previewCoepHeaders(),

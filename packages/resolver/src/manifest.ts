@@ -4,8 +4,8 @@
 // Product manifest reader.
 //
 // Reads text records off `DOTNS_CONTENT_RESOLVER`. The root manifest sits
-// at `<id>.dot` under the `manifest` key. Each executable manifest sits at
-// `<kind>.<id>.dot` under the `executable` key. The JSON is parsed and
+// at `<id>.<tld>` under the `manifest` key. Each executable manifest sits at
+// `<kind>.<id>.<tld>` under the `executable` key. The JSON is parsed and
 // validated against `./manifest-types.ts`. These calls are read-only and
 // never signed or written.
 //
@@ -43,7 +43,7 @@ export type ManifestResult<T> =
   | { kind: "invalid"; errors: string[] };
 
 /**
- * Read the root manifest at `<label>.dot` text-record key `"manifest"`.
+ * Read the root manifest at `<label>.<tld>` text-record key `"manifest"`.
  *
  * Returns `{ kind: "unsupported" }` when the active network's content
  * resolver has no `TEXT_RECORDS` slot configured. The caller treats this
@@ -55,14 +55,14 @@ export async function readRootManifest(
   dotns: DotnsContracts,
   label: string,
 ): Promise<ManifestResult<RootManifest>> {
-  const slot = dotns.storageSlots.TEXT_RECORDS;
+  const slot = dotns.STORAGE_SLOTS.TEXT_RECORDS;
   if (slot === undefined) {
     return { kind: "unsupported", reason: "TEXT_RECORDS slot not configured" };
   }
   return readManifestText(
     api,
     dotns,
-    namehash(`${label}.dot`),
+    namehash(`${label}.${dotns.TLD}`),
     ROOT_MANIFEST_KEY,
     slot,
     "root",
@@ -71,7 +71,7 @@ export async function readRootManifest(
 }
 
 /**
- * Read the executable manifest at `<kind>.<label>.dot` text-record key
+ * Read the executable manifest at `<kind>.<label>.<tld>` text-record key
  * `"executable"`.
  *
  * Each executable lives on its own well-known subname. The reader rejects
@@ -84,14 +84,14 @@ export async function readExecutableManifest(
   label: string,
   kind: ExecutableKind,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  const slot = dotns.storageSlots.TEXT_RECORDS;
+  const slot = dotns.STORAGE_SLOTS.TEXT_RECORDS;
   if (slot === undefined) {
     return { kind: "unsupported", reason: "TEXT_RECORDS slot not configured" };
   }
   const result = await readManifestText(
     api,
     dotns,
-    namehash(`${kind}.${label}.dot`),
+    namehash(`${kind}.${label}.${dotns.TLD}`),
     EXECUTABLE_MANIFEST_KEY,
     slot,
     kind,
@@ -101,7 +101,7 @@ export async function readExecutableManifest(
     return {
       kind: "invalid",
       errors: [
-        `executable manifest kind '${result.value.kind}' does not match subname '${kind}.${label}.dot'`,
+        `executable manifest kind '${result.value.kind}' does not match subname '${kind}.${label}.${dotns.TLD}'`,
       ],
     };
   }

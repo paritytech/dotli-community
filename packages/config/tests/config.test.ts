@@ -43,11 +43,33 @@ describe("config constants", () => {
   describe("dotns storage slots", () => {
     it("every network exposes non-negative REGISTRY_RECORDS and CONTENTHASH slots", () => {
       for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
-        const slots = cfg.dotns.storageSlots;
+        const slots = cfg.dotns.STORAGE_SLOTS;
         expect(Number.isInteger(slots.REGISTRY_RECORDS)).toBe(true);
         expect(slots.REGISTRY_RECORDS).toBeGreaterThanOrEqual(0);
         expect(Number.isInteger(slots.CONTENTHASH)).toBe(true);
         expect(slots.CONTENTHASH).toBeGreaterThanOrEqual(0);
+      }
+    });
+  });
+
+  describe("dotns TLD", () => {
+    // Mirrors `DOTNS_TLDS` in truapi's `truapi-platform`.
+    const CORE_ACCEPTED_TLDS = ["dot", "paseo"];
+
+    it("every network declares a bare lowercase TLD the truapi core accepts", () => {
+      for (const [name, cfg] of Object.entries(
+        NETWORK_NAME_TO_SERVICES_CONFIG,
+      )) {
+        const tld = cfg.dotns.TLD;
+        expect(tld, `${name} TLD must be non-empty`).not.toBe("");
+        expect(tld, `${name} TLD must be lowercase`).toBe(tld.toLowerCase());
+        expect(tld, `${name} TLD must not carry a leading dot`).not.toMatch(
+          /^\./,
+        );
+        expect(
+          CORE_ACCEPTED_TLDS,
+          `${name} TLD ${tld} is not in the core's DOTNS_TLDS`,
+        ).toContain(tld);
       }
     });
   });

@@ -1,12 +1,26 @@
-import { describe, expect, it } from "vitest";
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  getActiveServicesConfig,
+  setNetworkOverride,
+} from "@dotli/config/network";
 import {
   createTruapiRuntimeConfig,
   labelToProductId,
 } from "@dotli/ui/runtime-config";
 
 describe("labelToProductId", () => {
-  it("As a dotli integrator, the host maps dotli labels to .dot product ids", () => {
+  afterEach(() => {
+    setNetworkOverride("paseo-next-v2");
+  });
+
+  it("As a dotli integrator, the host maps dotli labels to the active network's TLD", () => {
+    expect(labelToProductId("acme")).toBe("acme.paseo");
+  });
+
+  // A product id built with the wrong TLD hashes to a different dotNS node, so
+  // the host would read an empty record instead of failing loudly.
+  it("As a dotli integrator, the host maps the same label to .dot on previewnet", () => {
+    setNetworkOverride("previewnet");
     expect(labelToProductId("acme")).toBe("acme.dot");
   });
 
@@ -25,7 +39,7 @@ describe("createTruapiRuntimeConfig", () => {
 
   it("As a dotli integrator, the host passes the full host runtime contract to the WASM core", () => {
     expect(createTruapiRuntimeConfig("acme")).toEqual({
-      productId: "acme.dot",
+      productId: "acme.paseo",
       host: {
         name: "Polkadot Web",
         icon: undefined,

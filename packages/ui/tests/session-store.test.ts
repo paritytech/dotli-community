@@ -54,22 +54,25 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+// The core reports these as `Bytes32` (hex), so the UI state carries them
+// through unchanged rather than encoding them.
+const SESSION_PUBLIC_KEY =
+  "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const SESSION_IDENTITY_ACCOUNT_ID =
+  "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf";
+
 function connectedSessionUiInfo() {
   return {
-    publicKey: new Uint8Array(Array.from({ length: 32 }, (_, i) => i)),
-    identityAccountId: new Uint8Array(
-      Array.from({ length: 32 }, (_, i) => 0xa0 + i),
-    ),
+    publicKey: SESSION_PUBLIC_KEY,
+    identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
     liteUsername: "pgherveou.04",
   };
 }
 
 const CONNECTED_DETAIL = {
   connected: true,
-  publicKey:
-    "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-  identityAccountId:
-    "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+  publicKey: SESSION_PUBLIC_KEY,
+  identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
   liteUsername: "pgherveou.04",
   primaryUsername: "pgherveou.04",
 };

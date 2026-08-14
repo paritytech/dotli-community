@@ -13,6 +13,7 @@
     "build:prod": "turbo run build:prod",
     "preview": "turbo run build && bun scripts/preview-server.ts",
     "preview:debug": "VITE_APP_DEBUG=true bun preview",
+    "serve": "bun scripts/serve.ts",
     "test": "turbo run test",
     "test:e2e:local": "E2E_PRODUCT_REPO=${E2E_PRODUCT_REPO:-../../../host-playground} E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} bun run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true bun run build && bun run --cwd apps/host test:e2e:local",
     "lint": "turbo run lint",
@@ -38,11 +39,12 @@
     "smoldot": "3.3.2"
   },
   "overrides": {
-    "@parity/truapi": "0.7.0",
+    "@parity/truapi": "0.9.0",
     "fast-uri": "3.1.5",
     "smoldot": "3.3.2",
     "esbuild": "^0.28.1",
     "brace-expansion": "^5.0.9",
-    "postcss": "^8.5.24"
+    "postcss": "^8.5.24",
+    "nanoid": "^3.3.18"
   }
 }

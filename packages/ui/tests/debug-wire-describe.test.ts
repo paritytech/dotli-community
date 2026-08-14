@@ -330,7 +330,7 @@ describe("chain-family drift guard", () => {
     // When
     const derived = [...derivedTagRoots, ...controlOnlyTags];
 
-    // Then: pins the exact current 15-entry legacy vocabulary as a literal
+    // Then: pins the exact current 16-entry legacy vocabulary as a literal
     // snapshot, so it can't drift silently.
     expect(derived).toEqual([
       "remote_chain_head_follow",
@@ -344,6 +344,7 @@ describe("chain-family drift guard", () => {
       "remote_chain_spec_genesis_hash",
       "remote_chain_spec_chain_name",
       "remote_chain_spec_properties",
+      "remote_chain_info",
       "remote_chain_transaction_broadcast",
       "remote_chain_transaction_stop",
       "remote_chain_head_follow_stop",

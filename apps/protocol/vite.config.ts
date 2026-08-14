@@ -6,6 +6,7 @@ import { defineConfig, type Plugin } from "vite";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
+import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 
 const OUT_DIR = "dist";
 
@@ -29,7 +30,7 @@ export default defineConfig({
   base: process.env.VITE_APP_URL
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
-  plugins: [wasm(), sentry()],
+  plugins: [wasm(), runtimeNetworkConfigScript(), sentry()],
   resolve: {
     alias: {
       ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),

@@ -21,7 +21,59 @@ const isLocalEnv =
   hostname.endsWith(".localhost") ||
   hostname === "127.0.0.1";
 
+/**
+ * Explicit base domain from runtime config, for deployments whose hostname has
+ * more than two segments.
+ *
+ * Deriving the registrable root works for `dot.li` and `paseo.li`, but a
+ * deployment at `dotli.ppn-65iw.pdp-stg-scw.parity.io` would derive `parity.io`
+ * and then look for its protocol iframe at `host.parity.io` — the wrong origin
+ * entirely, with `isSandboxOrigin` accepting `*.app.parity.io` to match. Such
+ * hosts must state their base domain instead of having it inferred.
+ *
+ * Read from the same blocking-script global as the network config
+ * (see `RuntimeNetworkConfig` in ./network), so it lands before the module
+ * bundle runs and `BASE_DOMAIN` can stay a plain const. Gated on the same
+ * build-time flag: a build that does not opt into runtime config ignores this,
+ * so the hosted deployments keep deriving as before.
+ *
+ * Must be at least two segments and a suffix of the current hostname. Without
+ * the suffix check, a page could declare any base domain and widen the
+ * cross-origin allowlist to a host it has nothing to do with.
+ */
+function configuredBaseDomain(): string | null {
+  const enabled =
+    ((import.meta as { env?: Record<string, string | undefined> }).env
+      ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
+  if (!enabled) {
+    return null;
+  }
+  const raw = (globalThis as Record<string, unknown>).__DOTLI_NETWORK__;
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const candidate = (raw as { baseDomain?: unknown }).baseDomain;
+  if (candidate === undefined) {
+    return null;
+  }
+  if (typeof candidate !== "string" || candidate.split(".").length < 2) {
+    throw new Error(
+      `[dot.li config] Runtime baseDomain must be a hostname of at least two segments, got ${JSON.stringify(candidate)}.`,
+    );
+  }
+  if (hostname !== candidate && !hostname.endsWith(`.${candidate}`)) {
+    throw new Error(
+      `[dot.li config] Runtime baseDomain "${candidate}" is not a suffix of the current hostname "${hostname}". Refusing to boot: this would key the cross-origin allowlist on a domain this page is not served from.`,
+    );
+  }
+  return candidate;
+}
+
 function deriveBaseDomain(): string {
+  const configured = configuredBaseDomain();
+  if (configured !== null) {
+    return configured;
+  }
   if (isLocalEnv) {
     return "dot.li";
   }

@@ -14,6 +14,9 @@
 
 import { existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
+import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin";
+
+const RUNTIME_CONFIG_PATH = "/dotli-network.js";
 
 const PORT = parseInt(process.env.PORT ?? "5173", 10);
 const ROOT = join(import.meta.dir, "..");
@@ -166,6 +169,19 @@ Bun.serve({
         url.pathname.slice(MODE_SYNC_PREFIX.length),
       );
       return handleModeSync(req, key);
+    }
+
+    // Runtime network config, same path and same $DOTLI_NETWORK variable as the
+    // container. Must come before the static/SPA branches below: the fallback
+    // would answer with index.html, and a 200 of HTML where the injected
+    // <script> expects JavaScript fails as a syntax error, not a missing file.
+    if (url.pathname === RUNTIME_CONFIG_PATH) {
+      return new Response(runtimeNetworkConfigScriptBody(), {
+        headers: {
+          "Content-Type": "application/javascript",
+          "Cache-Control": "no-store",
+        },
+      });
     }
 
     const isProtocol = url.hostname === "host.localhost";
