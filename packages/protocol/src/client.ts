@@ -500,45 +500,35 @@ const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
 };
 
 interface RequestBudget {
-  /**
-   * Wait for `work` under the remaining budget, blaming `phase` if it runs out.
-   *
-   * The phase travels with the wait it describes, so a rejection can never
-   * name a wait the request was not in.
-   */
   guard: <T>(phase: ProtocolRequestTimeoutPhase, work: Promise<T>) => Promise<T>;
-  /** Stop the timer once the request settles. */
   release: () => void;
 }
 
 /**
  * Bound a request from the moment it was made.
  *
- * One timer covers the frame wait and the reply wait, so a caller gets the
- * per-method budget it was promised instead of that budget stacked on top of
- * the frame budgets. The phase is read when the timer fires, so the rejection
- * names the wait that actually consumed the time.
+ * A tie between this budget and a frame budget resolves in this budget's
+ * favour, because equal-expiry timers fire in creation order and this one is
+ * created first.
  */
 function startRequestBudget(
   method: ProtocolRequestMethod,
   timeoutMs: number,
 ): RequestBudget {
-  let phase: ProtocolRequestTimeoutPhase = "load";
+  let spentOn: ProtocolRequestTimeoutPhase = "load";
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      m.count(S.PROTOCOL_REQUEST, { outcome: "timeout", method, phase });
-      reject(new ProtocolRequestTimeoutError(method, timeoutMs, phase));
+      m.count(S.PROTOCOL_REQUEST, { outcome: "timeout", method, phase: spentOn });
+      reject(new ProtocolRequestTimeoutError(method, timeoutMs, spentOn));
     }, timeoutMs);
   });
   return {
     guard: <T>(
-      next: ProtocolRequestTimeoutPhase,
+      phase: ProtocolRequestTimeoutPhase,
       work: Promise<T>,
     ): Promise<T> => {
-      phase = next;
-      // Promise.race attaches a handler to both operands, so a frame promise
-      // this caller stops waiting on cannot become an unhandled rejection.
+      spentOn = phase;
       return Promise.race([work, expiry]);
     },
     release: (): void => {
@@ -580,7 +570,66 @@ function sendRequest<M extends ProtocolRequestMethod>(
   return { id, reply };
 }
 
-async function postRequest<M extends ProtocolRequestMethod>(
+function awaitFrame(needsProtocolReady: boolean): Promise<void> {
+  return needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame();
+}
+
+function requireFrameWindow(): Window {
+  const frameWindow = protocolIframe?.contentWindow;
+  if (!frameWindow) {
+    throw new Error("Shared protocol iframe is unavailable");
+  }
+  return frameWindow;
+}
+
+async function postUnbudgetedRequest<M extends ProtocolRequestMethod>(
+  method: M,
+  payload: ProtocolRequestMap[M],
+  onProgress: ((message: string) => void) | undefined,
+  needsProtocolReady: boolean,
+): Promise<unknown> {
+  await awaitFrame(needsProtocolReady);
+  const recordRoundtrip = m.timer(S.PROTOCOL_REQUEST);
+  const value = await sendRequest(
+    requireFrameWindow(),
+    method,
+    payload,
+    onProgress,
+  ).reply;
+  recordRoundtrip();
+  return value;
+}
+
+async function postBudgetedRequest<M extends ProtocolRequestMethod>(
+  method: M,
+  payload: ProtocolRequestMap[M],
+  onProgress: ((message: string) => void) | undefined,
+  needsProtocolReady: boolean,
+  timeoutMs: number,
+): Promise<unknown> {
+  const budget = startRequestBudget(method, timeoutMs);
+  try {
+    await budget.guard("load", ensureHostFrame());
+    if (needsProtocolReady) {
+      await budget.guard("ready", ensureProtocolFrame());
+    }
+    const frameWindow = requireFrameWindow();
+    const recordRoundtrip = m.timer(S.PROTOCOL_REQUEST);
+    const sent = sendRequest(frameWindow, method, payload, onProgress);
+    try {
+      const value = await budget.guard("reply", sent.reply);
+      recordRoundtrip();
+      return value;
+    } catch (error: unknown) {
+      pendingRequests.delete(sent.id);
+      throw error;
+    }
+  } finally {
+    budget.release();
+  }
+}
+
+function postRequest<M extends ProtocolRequestMethod>(
   method: M,
   payload: ProtocolRequestMap[M],
   onProgress?: (message: string) => void,
@@ -590,59 +639,15 @@ async function postRequest<M extends ProtocolRequestMethod>(
   const timeoutMs = UNTIMED_METHODS.has(method)
     ? null
     : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
-
-  if (timeoutMs === null) {
-    await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
-    const frameWindow = protocolIframe?.contentWindow;
-    if (!frameWindow) {
-      throw new Error("Shared protocol iframe is unavailable");
-    }
-    const stopReq = m.timer(S.PROTOCOL_REQUEST);
-    const value = await sendRequest(
-      frameWindow,
-      method,
-      payload,
-      onProgress,
-    ).reply;
-    stopReq();
-    return value;
-  }
-
-  // Arm the budget before creating the frame promise. Equal-expiry timers fire
-  // in creation order, so a budget that ties with the iframe load timeout still
-  // reports itself rather than the load failure.
-  const budget = startRequestBudget(method, timeoutMs);
-  try {
-    await budget.guard("load", ensureHostFrame());
-    if (needsProtocolReady) {
-      await budget.guard("ready", ensureProtocolFrame());
-    }
-    const frameWindow = protocolIframe?.contentWindow;
-    if (!frameWindow) {
-      throw new Error("Shared protocol iframe is unavailable");
-    }
-
-    const stopReq = m.timer(S.PROTOCOL_REQUEST);
-    const sent = sendRequest(frameWindow, method, payload, onProgress);
-    try {
-      const value = await budget.guard("reply", sent.reply);
-      stopReq();
-      return value;
-    } catch (error: unknown) {
-      // The listener drops the entry when a reply lands. Nothing will arrive
-      // now, so this is the only path that has to drop it.
-      pendingRequests.delete(sent.id);
-      // A spent budget still describes a roundtrip the histogram should carry.
-      // A fatal envelope or a response error does not, which matches the
-      // pre-existing behaviour of recording no sample on those paths.
-      if (error instanceof ProtocolRequestTimeoutError) {
-        stopReq();
-      }
-      throw error;
-    }
-  } finally {
-    budget.release();
-  }
+  return timeoutMs === null
+    ? postUnbudgetedRequest(method, payload, onProgress, needsProtocolReady)
+    : postBudgetedRequest(
+        method,
+        payload,
+        onProgress,
+        needsProtocolReady,
+        timeoutMs,
+      );
 }
 
 export async function warmupProtocol(): Promise<void> {
@@ -817,9 +822,8 @@ export function createRemoteChainProvider(
 
     chainConnections.set(connectionId, remote);
 
-    void ensureProtocolFrame()
-      .then(async () => {
-        await postRequest("chainConnect", { genesisHash, connectionId });
+    void postRequest("chainConnect", { genesisHash, connectionId })
+      .then(() => {
         remote.connected = true;
         for (const message of remote.pendingMessages) {
           void postRequest("chainSend", {

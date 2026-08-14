@@ -4,6 +4,7 @@
 import {
   ProtocolFatalError,
   ProtocolInitFailedError,
+  ProtocolRequestTimeoutError,
 } from "@dotli/protocol/errors";
 
 export const HOST_ERRORS = {
@@ -85,7 +86,11 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
       recovery: "switch-backend",
     };
   }
-  if (msg.includes("timed out") || msg.includes("Timed out")) {
+  if (
+    err instanceof ProtocolRequestTimeoutError ||
+    msg.includes("timed out") ||
+    msg.includes("Timed out")
+  ) {
     return {
       message: isP2p
         ? HOST_ERRORS.LIGHT_CLIENT_TIMEOUT
