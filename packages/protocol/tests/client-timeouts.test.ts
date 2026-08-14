@@ -181,9 +181,12 @@ describe("Keeping a protocol request inside the time limit it promises", () => {
       await driveFrame();
 
       // When
-      await settleWithin(pending, remainingWaitMs);
-
-      // Then
+      const isDone = settled(pending);
+      if (remainingWaitMs > 1) {
+        await elapse(remainingWaitMs - 1);
+        expect(isDone()).toBe(false);
+      }
+      await settleWithin(pending, 10);
       await expect(pending).rejects.toMatchObject({
         name: "ProtocolRequestTimeoutError",
         method: calledMethod,
