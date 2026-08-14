@@ -87,6 +87,12 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
     };
   }
   if (
+    err instanceof ProtocolRequestTimeoutError &&
+    (err.phase === "load" || err.phase === "ready")
+  ) {
+    return { message: HOST_ERRORS.SW_TIMED_OUT, recovery: "switch-backend" };
+  }
+  if (
     err instanceof ProtocolRequestTimeoutError ||
     msg.includes("timed out") ||
     msg.includes("Timed out")
