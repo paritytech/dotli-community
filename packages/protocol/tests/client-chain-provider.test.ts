@@ -90,7 +90,8 @@ describe("Remote chain provider lifecycle and request routing", () => {
   });
 
   it("refuses to create a provider for an unsupported genesis hash", () => {
-    const invalidGenesis = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    const invalidGenesis =
+      "0x0000000000000000000000000000000000000000000000000000000000000000";
     expect(isRemoteChainSupported(invalidGenesis)).toBe(false);
     expect(createRemoteChainProvider(invalidGenesis)).toBeNull();
   });
@@ -106,7 +107,9 @@ describe("Remote chain provider lifecycle and request routing", () => {
     await elapse(1);
 
     // Then: Disconnect request posted to frame
-    const disconnectRequest = frame.requests().find((r) => r.method === "chainDisconnect");
+    const disconnectRequest = frame
+      .requests()
+      .find((r) => r.method === "chainDisconnect");
     expect(disconnectRequest).toBeDefined();
     frame.respond(disconnectRequest!.id, undefined);
     await elapse(1);
@@ -141,7 +144,12 @@ describe("Remote chain provider lifecycle and request routing", () => {
       .filter((r) => r.method === "chainSend")
       .find((r) => {
         const payload = r.payload;
-        if (payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string") {
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "message" in payload &&
+          typeof payload.message === "string"
+        ) {
           return payload.message.includes('"id":12');
         }
         return false;
@@ -193,7 +201,11 @@ describe("Remote chain provider lifecycle and request routing", () => {
     await elapse(1);
 
     // When: Notification request sent (no id)
-    dApp.send({ jsonrpc: "2.0", method: "chainHead_v1_unpin", params: ["token"] });
+    dApp.send({
+      jsonrpc: "2.0",
+      method: "chainHead_v1_unpin",
+      params: ["token"],
+    });
 
     // Then: Only the initial request's messages exist, no error reply emitted
     expect(dApp.replies()).toHaveLength(0);
