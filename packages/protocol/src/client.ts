@@ -164,6 +164,14 @@ function resetProtocolFrameState(reason?: Error): void {
   hostFramePromise = null;
   protocolReadyPromise = null;
   protocolReady = false;
+
+  const rejection =
+    reason ?? new Error("Protocol frame state reset before reply");
+  for (const [id, pending] of pendingRequests) {
+    pendingRequests.delete(id);
+    pending.reject(rejection);
+  }
+
   // Reject any callers blocked on `waitForProtocolReady()` before we drop the
   // resolvers. Otherwise their promises would hang until the 120s timeout.
   const orphaned = pendingReadyResolvers;
@@ -193,11 +201,7 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (
-      frameWindow !== null &&
-      frameWindow !== undefined &&
-      event.source !== frameWindow
-    ) {
+    if (!frameWindow || event.source !== frameWindow) {
       return;
     }
 
@@ -237,11 +241,6 @@ function bindMessageListener(): void {
         // Reject each pending request with the underlying cause so the
         // loading UI fails fast instead of spinning until per-request
         // timeouts.
-        for (const [id, pending] of pendingRequests) {
-          pendingRequests.delete(id);
-          pending.reject(err);
-        }
-
         // Route through the same reset path used by iframe load failures
         // so callers blocked on `waitForProtocolReady()`
         // (`pendingReadyResolvers`) are rejected immediately rather than

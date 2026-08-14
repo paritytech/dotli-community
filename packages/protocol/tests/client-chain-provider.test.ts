@@ -210,4 +210,37 @@ describe("Remote chain provider lifecycle and request routing", () => {
     // Then: Only the initial request's messages exist, no error reply emitted
     expect(dApp.replies()).toHaveLength(0);
   });
+
+  it("discards incoming window messages when protocol frame is not mounted or has no frameWindow", async () => {
+    // Given: Frame is booted, connection established and initial request answered
+    const dApp = createTestDApp();
+    dApp.send(Rpc.request(1));
+    await frame.bootAndConnect();
+    const connId = frame.connectionId();
+    frame.chainMessage(connId, Rpc.response(1, "ok"));
+    await elapse(10);
+
+    // Tear down protocol frame so protocolIframe is null
+    resetProtocolFrame();
+    await elapse(10);
+    const countBefore = dApp.replies().length;
+
+    // When: PostMessage dispatched with valid origin and source=window (not frameWindow)
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        origin: "http://host.localhost:5173",
+        data: {
+          namespace: "dotli:protocol",
+          kind: "chain-message",
+          connectionId: connId,
+          message: JSON.stringify({ jsonrpc: "2.0", id: 2, result: "stale" }),
+        },
+        source: window,
+      }),
+    );
+    await elapse(10);
+
+    // Then: Message is ignored because protocolIframe is null and source !== frameWindow
+    expect(dApp.replies().length).toBe(countBefore);
+  });
 });

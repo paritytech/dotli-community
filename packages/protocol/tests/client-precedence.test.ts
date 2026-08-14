@@ -16,6 +16,7 @@ import {
   resolveExecutableManifestRemote,
   resolveOwnerRemote,
   resolveRootManifestRemote,
+  warmupProtocol,
 } from "@dotli/protocol/client";
 import {
   ProtocolFatalError,
@@ -87,6 +88,10 @@ describe("Error precedence over request timeout budgets", () => {
       name: "resolveRootManifestRemote",
       makeRequest: () => resolveRootManifestRemote("alice"),
     },
+    {
+      name: "warmupProtocol",
+      makeRequest: () => warmupProtocol(),
+    },
   ];
 
   it.each(resetCases)(
@@ -143,4 +148,20 @@ describe("Error precedence over request timeout budgets", () => {
       );
     },
   );
+
+  it("rejects in-flight pending requests when resetProtocolFrame is called after frame is ready", async () => {
+    // Given
+    const pending = resolveDotNameRemote("alice");
+    frame.open();
+    frame.ready();
+    await elapse(1);
+
+    // When
+    resetProtocolFrame();
+
+    // Then
+    await settleWithin(pending, 1_000);
+    await expect(pending).rejects.toThrow("Protocol frame state reset before reply");
+    await expect(pending).rejects.not.toBeInstanceOf(ProtocolRequestTimeoutError);
+  });
 });
