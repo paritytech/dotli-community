@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { withActiveTld } from "@dotli/config/network";
 import {
   isDevicePermission,
   type EnforceablePermissionName,
@@ -138,7 +139,7 @@ export function showPermissionRequestModal(
 
     const productValue = document.createElement("div");
     productValue.className = "signing-field-value";
-    productValue.textContent = `${label}.dot`;
+    productValue.textContent = withActiveTld(label);
     productField.appendChild(productValue);
 
     desc.appendChild(productField);

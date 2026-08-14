@@ -27,7 +27,7 @@ import {
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
-import { getNetwork } from "@dotli/config/network";
+import { getNetwork, withActiveTld } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { log } from "@dotli/shared/log";
@@ -1186,7 +1186,7 @@ export async function renderAppSubdomain(
   }
 
   stopSetup();
-  document.title = `${label}.dot`;
+  document.title = withActiveTld(label);
 
   window.dispatchEvent(
     new CustomEvent("dotli:product-loaded", { detail: { label } }),

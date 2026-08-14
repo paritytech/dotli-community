@@ -27,6 +27,18 @@
                   "/": "/*"
                 }
              ]
+           },
+           {
+             "appIDs": [
+               "P2PX3JU8FT.io.parity.brevity",
+               "P2PX3JU8FT.io.parity.brevity.dev"
+             ],
+             "paths": [ "*" ],
+             "components": [
+                {
+                  "/": "/*"
+                }
+             ]
            }
        ]
    }

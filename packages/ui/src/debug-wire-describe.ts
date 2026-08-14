@@ -68,6 +68,7 @@ const CHAIN_LINKAGE: readonly ChainLinkage[] = [
   { wireTableKey: "CHAIN_GET_SPEC_GENESIS_HASH", stem: "SpecGenesisHash" },
   { wireTableKey: "CHAIN_GET_SPEC_CHAIN_NAME", stem: "SpecChainName" },
   { wireTableKey: "CHAIN_GET_SPEC_PROPERTIES", stem: "SpecProperties" },
+  { wireTableKey: "CHAIN_GET_CHAIN_INFO", stem: "Info" },
   {
     wireTableKey: "CHAIN_BROADCAST_TRANSACTION",
     stem: "TransactionBroadcast",

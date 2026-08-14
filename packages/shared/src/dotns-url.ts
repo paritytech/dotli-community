@@ -3,9 +3,10 @@
 
 // dotNS URL parsing utilities.
 //
-// Parses .dot domain URLs in various formats (bare, with protocol, polkadot://)
-// and identifies products by the canonical `.dot` TLD.
-// URLs with other TLDs (dot.li, paseo.li, google.com, etc.) are regular websites.
+// Parses dotNS domain URLs in various formats (bare, with protocol,
+// polkadot://) and identifies products by the active network's TLD. The TLD is
+// per-network: `.dot` on previewnet, `.paseo` on Paseo Next V2. URLs with any
+// other TLD (dot.li, paseo.li, google.com, etc.) are regular websites.
 //
 // Parse outcomes are discriminated unions. A `null` return would hide
 // whether the input was empty, unparseable, the wrong TLD, a localhost
@@ -20,8 +21,10 @@
 // responsibility. The caller has enough context (which input, which user
 // action) to tag the metric meaningfully.
 
+import { getActiveTldSuffix } from "@dotli/config/network";
+
 export interface DotNsUrl {
-  identifier: string; // e.g. "mytestapp.dot" (always ends with .dot)
+  identifier: string; // e.g. "mytestapp.paseo" (always ends with the active TLD)
   pathname: string; // e.g. "some/path?q=1#h=2" (no leading slash)
 }
 
@@ -33,21 +36,25 @@ export type DotNsUrlResult =
   | { kind: "port-or-userinfo"; hostname: string };
 
 /**
- * `.dot` TLD check, NFC-normalized and case-folded.
+ * dotNS TLD check against the active network, NFC-normalized and case-folded.
  *
- * The `.dot` authority is defined over lowercase ASCII. A hostname
- * arriving via `new URL(...)` might be pre-punycoded or mixed-case.
- * Normalizing here means both `Example.DOT` and `example.dot` hit the
- * same outcome, while genuine IDN labels outside the ASCII range still
- * round-trip through their punycode form.
+ * The TLD authority is defined over lowercase ASCII. A hostname arriving via
+ * `new URL(...)` might be pre-punycoded or mixed-case. Normalizing here means
+ * both `Example.PASEO` and `example.paseo` hit the same outcome, while genuine
+ * IDN labels outside the ASCII range still round-trip through their punycode
+ * form.
  */
 function isDotDomain(domain: string): boolean {
-  return domain.normalize("NFC").toLowerCase().endsWith(".dot");
+  return domain.normalize("NFC").toLowerCase().endsWith(getActiveTldSuffix());
 }
 
 function isProductIdentifier(id: string): boolean {
   const n = id.normalize("NFC").toLowerCase();
-  return n.endsWith(".dot") || n === "localhost" || n.startsWith("localhost:");
+  return (
+    n.endsWith(getActiveTldSuffix()) ||
+    n === "localhost" ||
+    n.startsWith("localhost:")
+  );
 }
 
 function isWebcontainerPreviewHost(host: string): boolean {

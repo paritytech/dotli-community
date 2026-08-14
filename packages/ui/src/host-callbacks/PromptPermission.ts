@@ -3,6 +3,7 @@
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
 
+import { withActiveTld } from "@dotli/config/network";
 import type { Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
@@ -120,7 +121,7 @@ async function decidePromptPermissionWhenActive(
   }
   if (status === "denied") {
     showNotification({
-      label: `${label}.dot`,
+      label: withActiveTld(label),
       text:
         kind === "Device"
           ? `${name} access is blocked. Use the permissions menu in the top bar to change this.`

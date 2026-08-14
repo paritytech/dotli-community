@@ -1,0 +1,120 @@
+# Docker NGINX configuration — plain HTTP, single port, *.localhost.
+#
+# Sibling of nginx.conf.template, which is the deployed TLS profile. Rendered by
+# docker/entrypoint.sh with envsubst; tokens: ${DOMAIN}, ${WEBROOT}, ${PORT}.
+# nginx's own $variables are left intact.
+#
+# KEEP IN SYNC WITH nginx.conf.template, by hand — nothing enforces it. Same
+# server blocks, web roots, snippet includes and locations, except for the
+# runtime network config, which only this profile serves.
+#
+# Differs from the deployed profile only in: plain HTTP on ${PORT} (no
+# certificate in the image, so no ssl_* lines and no HTTP→HTTPS redirect), no
+# rate-limiting and no Sentry tunnel. ${CSP} is the frame-ancestors list, which
+# the entrypoint derives from ${DOMAIN}: on localhost it needs an explicit scheme
+# and a `:*` port wildcard (CSP host-sources are port-sensitive and the container
+# serves a non-default port); on a real domain it is the https origin triple,
+# which is what makes the image usable behind an ingress or reverse proxy.
+#
+# Why *.localhost, why not port 80, and how the runtime config reaches the
+# browser: see docs/docker.md.
+#
+#   host.${DOMAIN}    → protocol build (smoldot, shared chain cache)
+#   *.${DOMAIN}       → host build (topbar, routing shell, bridge)
+#   *.app.${DOMAIN}   → app build (CID from subdomain, P2P fetch, render)
+
+# ────────────────────────────────────────────────────────────
+# Root domain: ${DOMAIN} — Landing page
+# ────────────────────────────────────────────────────────────
+
+server {
+    listen ${PORT};
+    server_name ${DOMAIN};
+
+    root ${WEBROOT}/host;
+    index index.html;
+
+    location = /__preview {
+        set $csp_ancestors "${CSP}";
+        include /etc/nginx/snippets/dotli-headers-iframeable.conf;
+        try_files /index.html =404;
+    }
+
+    include /etc/nginx/snippets/dotli-runtime-network.conf;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# ────────────────────────────────────────────────────────────
+# App build: *.app.${DOMAIN} — CID content fetching & rendering
+# ────────────────────────────────────────────────────────────
+
+server {
+    listen ${PORT};
+    server_name *.app.${DOMAIN};
+
+    set $csp_ancestors "${CSP}";
+    include /etc/nginx/snippets/dotli-headers-iframeable.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
+
+    root ${WEBROOT}/app;
+    index index.html;
+
+    include /etc/nginx/snippets/dotli-assets-iframeable.conf;
+    include /etc/nginx/snippets/dotli-sw-app.conf;
+
+    include /etc/nginx/snippets/dotli-runtime-network.conf;
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
+
+# ────────────────────────────────────────────────────────────
+# Shared protocol build: host.${DOMAIN} — smoldot / shared cache origin
+# ────────────────────────────────────────────────────────────
+
+server {
+    listen ${PORT};
+    server_name host.${DOMAIN};
+
+    set $csp_ancestors "${CSP}";
+    include /etc/nginx/snippets/dotli-headers-iframeable.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
+
+    root ${WEBROOT}/protocol;
+    index index.html;
+
+    include /etc/nginx/snippets/dotli-assets-iframeable.conf;
+
+    include /etc/nginx/snippets/dotli-runtime-network.conf;
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
+
+# ────────────────────────────────────────────────────────────
+# Host build: *.${DOMAIN} — Shell with topbar, routing, bridge
+# ────────────────────────────────────────────────────────────
+
+server {
+    listen ${PORT};
+    server_name *.${DOMAIN};
+
+    include /etc/nginx/snippets/dotli-headers-host.conf;
+    include /etc/nginx/snippets/dotli-precompressed.conf;
+
+    root ${WEBROOT}/host;
+
+    include /etc/nginx/snippets/dotli-assets-host.conf;
+    include /etc/nginx/snippets/dotli-sw-host.conf;
+
+    include /etc/nginx/snippets/dotli-runtime-network.conf;
+
+    location / {
+        try_files $uri /index.html;
+    }
+}

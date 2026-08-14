@@ -12,6 +12,8 @@ import { test } from "./helpers/shared-mode-reset";
 import { findAppFrame } from "../product-frame";
 import { seedBackend, type Backend } from "./fixtures/settings";
 
+import { TLD_SUFFIX } from "../env";
+
 const DOMAIN = process.env.COMBO_DOMAIN ?? "host-playground";
 const PORT = process.env.COMBO_PORT ?? "5173";
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -399,7 +401,9 @@ test("As a user, when I visit a domain that has no content set, I see the approp
     "This app can't be reached",
     { timeout: 10_000 },
   );
-  await expect(page.locator(".error-page-domain")).toHaveText(`${DOMAIN}.dot`);
+  await expect(page.locator(".error-page-domain")).toHaveText(
+    `${DOMAIN}${TLD_SUFFIX}`,
+  );
   await expect(page.locator(".error-page-detail")).toContainText(
     "Check if there is a typo",
   );
