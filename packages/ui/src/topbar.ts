@@ -36,7 +36,7 @@ import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Network,
 } from "@dotli/config/network";
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { getActiveServicesConfig, withActiveTld } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
 import {
   ALL_PERMISSIONS,
@@ -89,6 +89,9 @@ let permissionsPopover: HTMLElement;
 let permissionsPopoverList: HTMLElement;
 let permissionsPopoverBackdrop: HTMLElement | null = null;
 
+let themeButton: HTMLElement | null = null;
+let themePopover: HTMLElement | null = null;
+
 /** The label of the currently loaded product (set via dotli:product-loaded event). */
 let currentProductLabel: string | null = null;
 
@@ -105,35 +108,158 @@ let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
 let releaseAuthModal: (() => void) | null = null;
 
-function getStoredTheme(): "light" | "dark" {
+type ThemePref = "light" | "dark" | "system";
+
+/**
+ * Read the persisted theme preference.
+ *
+ * An absent key means "system" so pre-existing users keep following the OS.
+ */
+function getStoredThemePref(): ThemePref {
   const stored = localStorage.getItem("dotli-theme");
-  if (stored === "light" || stored === "dark") {
+  if (stored === "light" || stored === "dark" || stored === "system") {
     return stored;
   }
-  if (window.matchMedia("(prefers-color-scheme: light)").matches) {
-    return "light";
-  }
-  return "dark";
+  return "system";
 }
 
-function applyTheme(theme: "light" | "dark"): void {
-  document.documentElement.setAttribute("data-theme", theme);
+function resolveTheme(pref: ThemePref): "light" | "dark" {
+  if (pref !== "system") {
+    return pref;
+  }
+  return window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
+
+const THEME_TITLE: Record<ThemePref, string> = {
+  light: "Theme: Light",
+  dark: "Theme: Dark",
+  system: "Theme: System",
+};
+
+function applyThemePref(pref: ThemePref): void {
+  // data-theme-pref drives the toggle icon, data-theme the actual colours.
+  document.documentElement.setAttribute("data-theme-pref", pref);
+  document.documentElement.setAttribute("data-theme", resolveTheme(pref));
   // Notify the Rust bridge to forward the new theme to the
   // embedded dApp.
   window.dispatchEvent(new Event("dotli:theme-changed"));
 }
 
-function initThemeToggle(): void {
-  applyTheme(getStoredTheme());
+function themePopoverOptions(): HTMLButtonElement[] {
+  if (themePopover === null) {
+    return [];
+  }
+  return Array.from(
+    themePopover.querySelectorAll<HTMLButtonElement>(".theme-popover-option"),
+  );
+}
 
-  const btn = document.getElementById("theme-toggle");
-  if (btn === null) {
+function syncThemePopoverChecked(pref: ThemePref): void {
+  for (const option of themePopoverOptions()) {
+    option.setAttribute(
+      "aria-checked",
+      String(option.dataset.themeOption === pref),
+    );
+  }
+}
+
+function setThemePopoverOpen(open: boolean): void {
+  if (themePopover === null || themeButton === null) {
     return;
   }
+  themePopover.classList.toggle("open", open);
+  themeButton.setAttribute("aria-expanded", String(open));
+  if (!open) {
+    return;
+  }
+  // Menu-button pattern: focus lands on the checked option so arrow
+  // keys and Escape work immediately after opening.
+  const options = themePopoverOptions();
+  if (options.length === 0) {
+    return;
+  }
+  const checked = options.find(
+    (option) => option.getAttribute("aria-checked") === "true",
+  );
+  (checked ?? options[0]).focus();
+}
+
+function selectThemePref(pref: ThemePref): void {
+  localStorage.setItem("dotli-theme", pref);
+  applyThemePref(pref);
+  syncThemePopoverChecked(pref);
+  if (themeButton !== null) {
+    themeButton.title = THEME_TITLE[pref];
+  }
+}
+
+function initThemeToggle(): void {
+  applyThemePref(getStoredThemePref());
+
+  window
+    .matchMedia("(prefers-color-scheme: light)")
+    .addEventListener("change", () => {
+      if (getStoredThemePref() === "system") {
+        applyThemePref("system");
+      }
+    });
+
+  themeButton = document.getElementById("theme-toggle");
+  themePopover = document.getElementById("theme-popover");
+  if (themeButton === null || themePopover === null) {
+    return;
+  }
+  const btn = themeButton;
+  const popover = themePopover;
+  btn.title = THEME_TITLE[getStoredThemePref()];
+  syncThemePopoverChecked(getStoredThemePref());
+
   btn.addEventListener("click", () => {
-    const next = getStoredTheme() === "dark" ? "light" : "dark";
-    localStorage.setItem("dotli-theme", next);
-    applyTheme(next);
+    // Don't stop propagation: the document-level close-outside handler
+    // skips this popover because `themeButton.contains(target)` is true.
+    setThemePopoverOpen(!popover.classList.contains("open"));
+  });
+
+  popover.addEventListener("click", (e) => {
+    const option = (e.target as HTMLElement).closest<HTMLButtonElement>(
+      ".theme-popover-option",
+    );
+    if (option === null) {
+      return;
+    }
+    const pref = option.dataset.themeOption;
+    if (pref === "light" || pref === "dark" || pref === "system") {
+      selectThemePref(pref);
+    }
+    setThemePopoverOpen(false);
+    btn.focus();
+  });
+
+  popover.addEventListener("keydown", (e) => {
+    const options = themePopoverOptions();
+    if (options.length === 0) {
+      return;
+    }
+    const index = options.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const delta = e.key === "ArrowDown" ? 1 : -1;
+      options[(index + delta + options.length) % options.length]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      options[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      options[options.length - 1]?.focus();
+    } else if (e.key === "Escape") {
+      setThemePopoverOpen(false);
+      btn.focus();
+    } else if (e.key === "Tab") {
+      // Options are not tabbable (tabindex=-1), so Tab leaves the menu.
+      setThemePopoverOpen(false);
+    }
   });
 }
 
@@ -260,6 +386,15 @@ export function initTopBar(
     ) {
       setPermissionsPopoverOpen(false);
     }
+    if (
+      themePopover !== null &&
+      themeButton !== null &&
+      themePopover.classList.contains("open") &&
+      !themePopover.contains(e.target as Node) &&
+      !themeButton.contains(e.target as Node)
+    ) {
+      setThemePopoverOpen(false);
+    }
   });
 
   // Set logo home link from VITE_APP_URL (defaults to /)
@@ -287,6 +422,7 @@ export function initTopBar(
     userPopover.classList.remove("open");
     setModePopoverOpen(false);
     setPermissionsPopoverOpen(false);
+    setThemePopoverOpen(false);
     morePopover?.classList.remove("open");
     moreButton?.setAttribute("aria-expanded", "false");
   });
@@ -1426,7 +1562,7 @@ async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
-      if (theme === "light" || theme === "dark") {
+      if (theme === "light" || theme === "dark" || theme === "system") {
         localStorage.setItem("dotli-theme", theme);
       }
       // Force every origin to purge regardless of persisted prefs.
@@ -2245,13 +2381,13 @@ function openModal(
   // mode rendering a local dev server directly (apps/host/src/main.ts
   // localhost-proxy branch). Show it as-is. Deployed dotNs products
   // served via `<label>.localhost:<port>` still pass through as the bare
-  // label and get the ".dot" suffix.
+  // label and get the active network's TLD suffix.
   let productLabel = "";
   if (label !== undefined && label.length > 0) {
     productLabel =
       label.startsWith("localhost:") || options.dotSuffix === false
         ? label
-        : `${label}.dot`;
+        : withActiveTld(label);
   }
   modalTitle.innerHTML =
     productLabel.length > 0

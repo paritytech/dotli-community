@@ -4,10 +4,12 @@
 
 import type { Navigation } from "@parity/truapi-host";
 import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
+import { getActiveTldSuffix } from "@dotli/config/network";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
+// Only ever called behind `isDotDomain`, so the suffix is always present.
 function identifierToLabel(identifier: string): string {
-  return identifier.slice(0, -".dot".length);
+  return identifier.slice(0, -getActiveTldSuffix().length);
 }
 
 function buildDotTargetUrl(label: string, pathname: string): string {

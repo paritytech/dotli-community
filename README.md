@@ -263,6 +263,20 @@ A build offers the networks listed in the required `VITE_NETWORKS` env var, set 
 
 All addresses, endpoints, and selector labels live in `packages/config/src/network.ts` (`NETWORK_NAME_TO_SERVICES_CONFIG`).
 
+### Prebuilt bundles
+
+Each release also publishes two prebuilt artifacts, so a forked dev chain can be browsed without building anything. Both take the same network override at **run time**, so one artifact works against any chain:
+
+```bash
+# container
+docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-community:0.7.4
+
+# tarball — needs only node >= 22 or bun
+DOTLI_NETWORK='{…}' node serve.mjs
+```
+
+Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and contract addresses stay fixed at build time, because they are the trust root for name resolution. See [docs/docker.md](docs/docker.md).
+
 ## Security
 
 Before deploying it for real use cases, **you are responsible** for:

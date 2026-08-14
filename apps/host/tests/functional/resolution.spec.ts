@@ -7,7 +7,7 @@
  * Env overrides: DOMAIN, PORT, TIMEOUT_MS
  */
 
-import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
+import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
 import { BACKENDS } from "./fixtures/settings";
@@ -19,7 +19,7 @@ test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
 
 test.describe("Resolution across chain backends", () => {
   for (const backend of BACKENDS) {
-    test(`As a user opening ${DOMAIN}.dot via ${backend}, the shell loads the app`, async ({
+    test(`As a user opening ${DOTNS_NAME} via ${backend}, the shell loads the app`, async ({
       browser,
     }) => {
       // Given

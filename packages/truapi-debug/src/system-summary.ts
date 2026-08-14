@@ -8,6 +8,7 @@
 // renderers (row + timeline tooltip + detail) consistent across event
 // kinds.
 
+import { withActiveTld } from "@dotli/config/network";
 import type { StoredSystemEvent } from "./event-store.ts";
 
 export function summariseSystemEvent(ev: StoredSystemEvent): string {
@@ -44,15 +45,15 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
 
     // resolve
     case "resolve:started":
-      return `Resolving ${str(p.label)}.dot via ${str(p.source)}.`;
+      return `Resolving ${withActiveTld(str(p.label))} via ${str(p.source)}.`;
     case "resolve:phase":
       return `Phase ${str(p.phase)}: ${str(p.message)}`;
     case "resolve:storage_read":
       return `Read dotns contenthash slot (${str(p.bytes)} bytes in ${numMs(p.durationMs)}).`;
     case "resolve:completed":
       return p.cid === null
-        ? `No content set for ${str(p.label)}.dot.`
-        : `Resolved ${str(p.label)}.dot → ${str(p.cid)} in ${numMs(p.durationMs)}.`;
+        ? `No content set for ${withActiveTld(str(p.label))}.`
+        : `Resolved ${withActiveTld(str(p.label))} → ${str(p.cid)} in ${numMs(p.durationMs)}.`;
     case "resolve:failed":
       return `Resolve failed via ${str(p.source)}: ${str(p.reason)}.`;
 

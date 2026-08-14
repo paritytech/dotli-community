@@ -10,6 +10,7 @@ import { loadRecentLabels, forgetRecentLabel } from "./recent-labels";
 import { BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
 import { getBackend } from "@dotli/config/mode";
 import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
+import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
 import type { DotLabelResult } from "@dotli/shared/html";
 
 const app = document.getElementById("app") ?? document.body;
@@ -442,7 +443,7 @@ export function showNoContentError(label: string): void {
         </div>
         <h1 class="error-page-title">This app can't be reached</h1>
         <p class="error-page-detail">
-          Check if there is a typo in <span class="error-page-domain">${safeLabel}<span class="error-page-domain-tld">.dot</span></span>.
+          Check if there is a typo in <span class="error-page-domain">${safeLabel}<span class="error-page-domain-tld">${escapeHtml(getActiveTldSuffix())}</span></span>.
         </p>
       </div>
     </div>
@@ -552,8 +553,8 @@ export function showLanding(): void {
         <p class="landing-subtitle">The decentralized web, in your browser.</p>
         <form id="dotli-nav-form" class="landing-nav-form" autocomplete="off">
           <div class="landing-search-bar" id="dotli-nav-bar">
-            <input id="dotli-nav-input" class="landing-search-input" type="text" placeholder="browse.dot" spellcheck="false" autocomplete="off" aria-label="Search a .dot name" aria-describedby="dotli-nav-error" />
-            <span class="landing-dot-label">.dot</span>
+            <input id="dotli-nav-input" class="landing-search-input" type="text" placeholder="${escapeHtml(withActiveTld("browse"))}" spellcheck="false" autocomplete="off" aria-label="Search a ${escapeHtml(getActiveTldSuffix())} name" aria-describedby="dotli-nav-error" />
+            <span class="landing-dot-label">${escapeHtml(getActiveTldSuffix())}</span>
             <button type="submit" class="landing-go-btn" aria-label="Go">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
@@ -590,10 +591,13 @@ export function showLanding(): void {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const name = input.value
-      .trim()
-      .toLowerCase()
-      .replace(/\.dot$/, "");
+    // The placeholder shows the active TLD, and `validateDotLabel` rejects any
+    // dot, so a name typed with the suffix has to lose it here.
+    const typed = input.value.trim().toLowerCase();
+    const suffix = getActiveTldSuffix();
+    const name = typed.endsWith(suffix)
+      ? typed.slice(0, -suffix.length)
+      : typed;
     const result = validateDotLabel(name);
     if (!result.ok) {
       bar?.classList.add("landing-search-bar--error");
@@ -614,14 +618,18 @@ export function showLanding(): void {
 
   input.focus();
 
-  // Move auth + theme toggle buttons to the landing page top-right
+  // Move the auth and theme buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");
   const authButton = document.getElementById("auth-button");
   const themeToggle = document.getElementById("theme-toggle");
+  const themePopover = document.getElementById("theme-popover");
   if (landingAuth && authButton) {
     landingAuth.appendChild(authButton);
     if (themeToggle) {
       landingAuth.appendChild(themeToggle);
+      if (themePopover) {
+        landingAuth.appendChild(themePopover);
+      }
     }
   }
 
@@ -643,9 +651,9 @@ function renderRecentPills(labels: string[]): void {
       const safe = escapeHtml(label);
       return `<span class="landing-recent-item" data-label="${safe}">
         <a href="${escapeHtml(dotUrl(label))}" class="landing-recent-pill">
-          <span class="landing-recent-label">${safe}<span class="landing-tld">.dot</span></span>
+          <span class="landing-recent-label">${safe}<span class="landing-tld">${escapeHtml(getActiveTldSuffix())}</span></span>
         </a>
-        <button type="button" class="landing-recent-remove" aria-label="Remove ${safe}.dot from recently visited" title="Remove">
+        <button type="button" class="landing-recent-remove" aria-label="Remove ${safe}${escapeHtml(getActiveTldSuffix())} from recently visited" title="Remove">
           <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
         </button>
       </span>`;

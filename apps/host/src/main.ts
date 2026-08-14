@@ -86,7 +86,13 @@ import {
   setCacheSettings,
   type Backend,
 } from "@dotli/config/mode";
-import { NETWORK_KEY, getNetwork, setNetwork } from "@dotli/config/network";
+import {
+  NETWORK_KEY,
+  getActiveTldSuffix,
+  getNetwork,
+  setNetwork,
+  withActiveTld,
+} from "@dotli/config/network";
 import {
   parseSettingsFromSearch,
   writeSettingsToSearch,
@@ -438,7 +444,7 @@ async function applyProductBranding(
       // the loaded app, and is logged so it stays observable in diagnostics.
     } catch (err: unknown) {
       log.warn(
-        `[dot.li manifest] icon fetch failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
+        `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -827,7 +833,7 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
-  if (theme === "light" || theme === "dark") {
+  if (theme === "light" || theme === "dark" || theme === "system") {
     try {
       localStorage.setItem("dotli-theme", theme);
       // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode; theme restore is best-effort.
@@ -1129,7 +1135,7 @@ async function main(): Promise<void> {
     showError("UI failed to initialise", err.message);
     return;
   }
-  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">.dot</span></span></div>`;
+  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
 
   // Listen for status messages from the sandbox iframe so the loading
   // UI continues seamlessly from resolution into content fetching.
@@ -1180,7 +1186,7 @@ async function main(): Promise<void> {
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   advancePhase(0);
-  showStatus(`Resolving ${label}.dot`);
+  showStatus(`Resolving ${withActiveTld(label)}`);
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1209,7 +1215,7 @@ async function main(): Promise<void> {
       void recordRecentLabel(label);
       void applyProductBranding(label, chainBackend).catch((err: unknown) => {
         log.warn(
-          `[dot.li manifest] branding failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
+          `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
         );
       });
       performance.mark("dotli:main:end");
@@ -1320,7 +1326,7 @@ async function main(): Promise<void> {
         if (cid === null) {
           cid = await resolveDotNameRemote(label, onResolveProgress);
           log.warn(
-            `[dot.li resolve] fallback ${label}.dot contenthash -> ${cid ?? "null"}`,
+            `[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? "null"}`,
           );
         }
       } finally {
@@ -1340,7 +1346,7 @@ async function main(): Promise<void> {
       if (cid === null) {
         cid = await resolveDotNameViaRpc(label, onResolveProgress);
         log.warn(
-          `[dot.li resolve] fallback ${label}.dot contenthash -> ${cid ?? "null"}`,
+          `[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? "null"}`,
         );
       }
     }
@@ -1361,7 +1367,7 @@ async function main(): Promise<void> {
     stopStatusTick();
     performance.mark("dotli:resolve:end");
     log.warn(
-      `[dot.li resolve] RESOLVED ${label}.dot via ${chainBackend} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? "null"}`,
+      `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${chainBackend} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? "null"}`,
     );
 
     if (cid === null) {
@@ -1387,7 +1393,7 @@ async function main(): Promise<void> {
     void recordRecentLabel(label);
     void applyProductBranding(label, chainBackend).catch((err: unknown) => {
       log.warn(
-        `[dot.li manifest] branding failed for ${label}.dot: ${err instanceof Error ? err.message : String(err)}`,
+        `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
 
