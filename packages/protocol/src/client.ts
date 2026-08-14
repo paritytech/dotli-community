@@ -570,10 +570,6 @@ function sendRequest<M extends ProtocolRequestMethod>(
   return { id, reply };
 }
 
-function awaitFrame(needsProtocolReady: boolean): Promise<void> {
-  return needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame();
-}
-
 function requireFrameWindow(): Window {
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
@@ -588,7 +584,7 @@ async function postUnbudgetedRequest<M extends ProtocolRequestMethod>(
   onProgress: ((message: string) => void) | undefined,
   needsProtocolReady: boolean,
 ): Promise<unknown> {
-  await awaitFrame(needsProtocolReady);
+  await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const recordRoundtrip = m.timer(S.PROTOCOL_REQUEST);
   const value = await sendRequest(
     requireFrameWindow(),
