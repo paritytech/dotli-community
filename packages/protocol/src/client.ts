@@ -350,21 +350,32 @@ function createHostIframe(): Promise<void> {
     iframe.style.cssText =
       "position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;";
 
+    const trustAsMessageSourceAndAttach = (): void => {
+      protocolIframe = iframe;
+      document.body.appendChild(iframe);
+    };
+
+    const revokeMessageSourceTrustAndRemove = (): void => {
+      if (protocolIframe === iframe) {
+        protocolIframe = null;
+      }
+      iframe.remove();
+    };
+
     const timer = setTimeout(() => {
       cleanup();
-      iframe.remove();
+      revokeMessageSourceTrustAndRemove();
       reject(new Error("Shared host iframe timed out while loading"));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
       cleanup();
-      protocolIframe = iframe;
       resolve();
     };
 
     const onError = (): void => {
       cleanup();
-      iframe.remove();
+      revokeMessageSourceTrustAndRemove();
       reject(new Error("Shared host iframe failed to load"));
     };
 
@@ -376,7 +387,7 @@ function createHostIframe(): Promise<void> {
 
     iframe.addEventListener("load", onLoad, { once: true });
     iframe.addEventListener("error", onError, { once: true });
-    document.body.appendChild(iframe);
+    trustAsMessageSourceAndAttach();
   });
 }
 
