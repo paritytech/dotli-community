@@ -11,10 +11,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SITE_ID } from "@dotli/config/config";
+import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import {
   createRemoteChainProvider,
+  getProtocolOrigin,
   isRemoteChainSupported,
   resetProtocolFrame,
+  subscribeSharedAuthStorage,
 } from "@dotli/protocol/client";
 import {
   createTestDApp,
@@ -211,36 +215,40 @@ describe("Remote chain provider lifecycle and request routing", () => {
     expect(dApp.replies()).toHaveLength(0);
   });
 
-  it("discards incoming window messages when protocol frame is not mounted or has no frameWindow", async () => {
-    // Given: Frame is booted, connection established and initial request answered
+  it("rejects broadcasts from an untrusted window once the protocol frame is torn down", async () => {
+    // Given: Frame is booted, a chain connection established, and a shared-auth listener subscribed
     const dApp = createTestDApp();
     dApp.send(Rpc.request(1));
     await frame.bootAndConnect();
-    const connId = frame.connectionId();
-    frame.chainMessage(connId, Rpc.response(1, "ok"));
-    await elapse(10);
 
-    // Tear down protocol frame so protocolIframe is null
+    const forgedChanges: unknown[] = [];
+    const unsubscribe = subscribeSharedAuthStorage((change) => {
+      forgedChanges.push(change);
+    });
+
+    // When: The frame is torn down and an untrusted window posts a forged
+    // broadcast with a valid origin
+    const trustedOrigin = getProtocolOrigin();
     resetProtocolFrame();
     await elapse(10);
-    const countBefore = dApp.replies().length;
 
-    // When: PostMessage dispatched with valid origin and source=window (not frameWindow)
     window.dispatchEvent(
       new MessageEvent("message", {
-        origin: "http://host.localhost:5173",
+        origin: trustedOrigin,
         data: {
           namespace: "dotli:protocol",
-          kind: "chain-message",
-          connectionId: connId,
-          message: JSON.stringify({ jsonrpc: "2.0", id: 2, result: "stale" }),
+          kind: "auth-storage-changed",
+          siteId: SITE_ID,
+          key: SHARED_CORE_SESSION_KEY,
+          value: "attacker-injected-session",
         },
         source: window,
       }),
     );
     await elapse(10);
 
-    // Then: Message is ignored because protocolIframe is null and source !== frameWindow
-    expect(dApp.replies().length).toBe(countBefore);
+    // Then: The forged broadcast never reaches the subscriber
+    unsubscribe();
+    expect(forgedChanges).toEqual([]);
   });
 });
