@@ -43,6 +43,7 @@ import {
 } from "@dotli/protocol/broker";
 import { serializeError } from "@dotli/shared/errors";
 import { isExecutableKind } from "@dotli/shared/executables";
+import { PROTOCOL_APP_ERRORS } from "./errors";
 
 initSentry("worker");
 installGlobalErrorHandlers("worker");
@@ -485,7 +486,7 @@ async function handleRequest(
         },
       );
       if (connection === null) {
-        throw new Error("Failed to create chain broker");
+        throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
       chainConnections.set(payload.connectionId, connection);
       connectionPorts.set(payload.connectionId, port);

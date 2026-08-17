@@ -103,6 +103,7 @@ import {
   type ProtocolRequestMap,
 } from "@dotli/protocol/messages";
 import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
+import { PROTOCOL_APP_ERRORS } from "./errors";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -582,7 +583,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       m.distribution(S.PROTOCOL_SW_READY, waitMs, "millisecond", {
         outcome: "timeout",
       });
-      reject(new Error("SharedWorker did not signal ready within timeout"));
+      reject(new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
     }, TIMEOUTS.SHARED_WORKER_READY);
 
     function onMessage(event: MessageEvent): void {
@@ -953,7 +954,7 @@ function handleSharedModeRequest(
       assertSharedAuthSiteId(payload.siteId);
       assertSharedModeKey(payload.key);
       if (typeof payload.value !== "string") {
-        throw new Error("Invalid shared mode value");
+        throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_MODE_VALUE);
       }
       localStorage.setItem(
         buildSharedModeStorageKey(payload.siteId, payload.key),
@@ -1056,7 +1057,7 @@ function handleSharedAuthRequest(
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
       if (typeof payload.value !== "string") {
-        throw new Error("Invalid shared auth value");
+        throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_AUTH_VALUE);
       }
       localStorage.setItem(
         buildSharedAuthStorageKey(payload.siteId, payload.key),
@@ -1187,7 +1188,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
 
       case "resolveDotName": {
         if (!options.resolveDotName) {
-          throw new Error("resolveDotName is not served by this protocol mode");
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
         }
         const payload = request.payload as ProtocolRequestMap["resolveDotName"];
         assertStr(payload.label, "label");
@@ -1214,7 +1215,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
 
       case "resolveOwner": {
         if (!options.resolveOwner) {
-          throw new Error("resolveOwner is not served by this protocol mode");
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
         }
         const payload = request.payload as ProtocolRequestMap["resolveOwner"];
         assertStr(payload.label, "label");
@@ -1232,7 +1233,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
       case "resolveExecutableManifest": {
         if (!options.resolveExecutableManifest) {
           throw new Error(
-            "resolveExecutableManifest is not served by this protocol mode",
+            PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED,
           );
         }
         const payload =
@@ -1259,7 +1260,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
       case "resolveRootManifest": {
         if (!options.resolveRootManifest) {
           throw new Error(
-            "resolveRootManifest is not served by this protocol mode",
+            PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED,
           );
         }
         const payload =
@@ -1307,7 +1308,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
           },
         );
         if (connection === null) {
-          throw new Error("Failed to create chain broker");
+          throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
         }
         connections.set(payload.connectionId, connection);
         oc.add(payload.connectionId);

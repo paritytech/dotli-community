@@ -7,7 +7,11 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
-import { ProtocolFatalError, ProtocolInitFailedError } from "./errors";
+import {
+  ProtocolFatalError,
+  PROTOCOL_ERRORS,
+  ProtocolInitFailedError,
+} from "./errors";
 import type {
   ExecutableManifest,
   ManifestResult,
@@ -171,8 +175,7 @@ function resetProtocolFrameState(reason?: Error): void {
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
   if (orphaned.length > 0) {
-    const err =
-      reason ?? new Error("Protocol frame state reset before ready signal");
+    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
     for (const waiter of orphaned) {
       waiter.reject(err);
     }
@@ -381,7 +384,7 @@ function createHostIframe(): Promise<void> {
     const timer = setTimeout(() => {
       cleanup();
       iframe.remove();
-      reject(new Error("Shared host iframe timed out while loading"));
+      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
@@ -393,7 +396,7 @@ function createHostIframe(): Promise<void> {
     const onError = (): void => {
       cleanup();
       iframe.remove();
-      reject(new Error("Shared host iframe failed to load"));
+      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
     function cleanup(): void {
@@ -466,7 +469,7 @@ function waitForProtocolReady(): Promise<void> {
     const timer = setTimeout(() => {
       pendingReadyResolvers = pendingReadyResolvers.filter((w) => w !== waiter);
       stopIframe();
-      reject(new Error("Shared protocol iframe timed out (no ready signal)"));
+      reject(new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT));
     }, IFRAME_READY_TIMEOUT_MS);
 
     pendingReadyResolvers.push(waiter);
@@ -536,7 +539,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
-    throw new Error("Shared protocol iframe is unavailable");
+    throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
   }
 
   const id = createRequestId();

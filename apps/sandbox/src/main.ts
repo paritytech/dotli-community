@@ -49,6 +49,7 @@ import { setNetworkOverride } from "@dotli/config/network";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
+import { SANDBOX_ERRORS } from "./errors";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -311,7 +312,7 @@ async function registerAppServiceWorker({
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error("Service Worker not available after 10s"));
+        reject(new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE));
       }, TIMEOUTS.SW_READY);
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         clearTimeout(timeout);
@@ -357,9 +358,7 @@ async function storeArchiveInSW(
   const archiveReady = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       navigator.serviceWorker.removeEventListener("message", handler);
-      reject(
-        new Error("Service worker did not acknowledge archive within 10s"),
-      );
+      reject(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED));
     }, 10_000);
 
     const handler = (evt: MessageEvent): void => {

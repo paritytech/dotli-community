@@ -119,7 +119,9 @@ import {
 import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
 import {
   describeError,
+  ERROR_TITLES,
   FAILOVER_BTN_LABELS,
+  HOST_ERRORS,
   REFRESH_BTN_LABEL,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
@@ -1151,9 +1153,9 @@ async function main(): Promise<void> {
   // leaving the page in its initial loading state.
   const urlBar = document.getElementById("topbar-url");
   if (urlBar === null) {
-    const err = new Error("Required DOM node missing: #topbar-url");
+    const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
     captureException(err, { surface: "host_main_dom_invariant" });
-    showError("UI failed to initialise", err.message);
+    showError(ERROR_TITLES.UI_INIT_FAILED, err.message);
     return;
   }
   urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
@@ -1707,11 +1709,11 @@ async function main(): Promise<void> {
     });
     const error = describeError(err, chainBackend !== "rpc-gateway");
     if (error.recovery === "none") {
-      showError("Domain can't be reached", error.message);
+      showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message);
       return;
     }
     if (error.recovery === "reload") {
-      showError("Domain can't be reached", error.message, {
+      showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message, {
         label: "Reload",
         onClick: () => {
           window.location.reload();
@@ -1732,7 +1734,7 @@ async function main(): Promise<void> {
       nextBackend === "rpc-gateway"
         ? svg('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>')
         : svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
-    showError("Domain can't be reached", error.message, [
+    showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message, [
       {
         label: REFRESH_BTN_LABEL,
         icon: refreshIcon,
