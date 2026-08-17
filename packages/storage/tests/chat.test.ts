@@ -1,0 +1,83 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import "fake-indexeddb/auto";
+import { describe, it, expect } from "vitest";
+import {
+  appendMessage,
+  createRoom,
+  listMessages,
+  listRooms,
+} from "@dotli/storage/chat";
+
+const textContent = (text: string): unknown => ({
+  tag: "Text",
+  value: { text },
+});
+
+describe("chat rooms", () => {
+  it("As a product, creating a room reports New then Exists", async () => {
+    const room = { productId: "roomstatus.dot", roomId: "main", name: "Main", icon: "" };
+
+    expect(await createRoom(room)).toBe("New");
+    expect(await createRoom(room)).toBe("Exists");
+  });
+
+  it("As a host, rooms are scoped per product", async () => {
+    await createRoom({ productId: "a.dot", roomId: "r", name: "A", icon: "" });
+    await createRoom({ productId: "b.dot", roomId: "r", name: "B", icon: "" });
+
+    const rooms = await listRooms("a.dot");
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].name).toBe("A");
+  });
+});
+
+describe("chat messages", () => {
+  it("As a host, messages come back in insertion order per room", async () => {
+    const base = {
+      productId: "order.dot",
+      author: "product" as const,
+      timestamp: 1,
+    };
+    await appendMessage({
+      ...base,
+      roomId: "main",
+      messageId: "m1",
+      content: textContent("first"),
+    });
+    await appendMessage({
+      ...base,
+      roomId: "other",
+      messageId: "m2",
+      content: textContent("elsewhere"),
+    });
+    await appendMessage({
+      ...base,
+      roomId: "main",
+      messageId: "m3",
+      author: "user",
+      content: textContent("second"),
+    });
+
+    const messages = await listMessages("order.dot", "main");
+    expect(messages.map((m) => m.messageId)).toEqual(["m1", "m3"]);
+    expect(messages[1].author).toBe("user");
+  });
+
+  it("As a host, the message list caps at the latest `limit` entries", async () => {
+    for (let i = 0; i < 5; i++) {
+      await appendMessage({
+        productId: "cap.dot",
+        roomId: "main",
+        messageId: `m${String(i)}`,
+        author: "product",
+        content: textContent(String(i)),
+        timestamp: i,
+      });
+    }
+
+    const messages = await listMessages("cap.dot", "main", 2);
+    expect(messages.map((m) => m.messageId)).toEqual(["m3", "m4"]);
+  });
+});

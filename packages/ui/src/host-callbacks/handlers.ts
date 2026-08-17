@@ -22,6 +22,7 @@ import { createFeatureSupported } from "./FeatureSupported";
 import { createSupportedChains } from "./SupportedChains";
 import { createThemeSubscribe } from "./Theme";
 import { createAuthStateChanged } from "./AuthState";
+import { createChatPlatform } from "./Chat";
 import { createSessionStoreAdapters } from "./SessionStore";
 import { createUserConfirmationAdapters } from "./UserConfirmation";
 import {
@@ -83,5 +84,8 @@ export function createHostCallbacks(
     theme: { subscribeTheme: createThemeSubscribe() },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
+    // Always served; the core itself denies chat calls on non-Chat
+    // executions and without an active session.
+    chat: createChatPlatform(),
   };
 }

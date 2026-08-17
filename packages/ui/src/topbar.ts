@@ -47,6 +47,7 @@ import {
   setPermissionStatus,
   type PermissionStatus,
 } from "./permissions";
+import { initChatPanel } from "./chat/panel";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
@@ -413,6 +414,9 @@ export function initTopBar(
 
   // Permissions
   initPermissions();
+
+  // Product chat button + docked panel
+  initChatPanel();
 
   window.addEventListener("dotli:blocking-modal-active", (event: Event) => {
     const { active } = (event as CustomEvent<{ active: boolean }>).detail;

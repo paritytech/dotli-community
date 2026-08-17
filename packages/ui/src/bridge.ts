@@ -30,6 +30,7 @@ import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork, withActiveTld } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
 import {
   emitDotliDebugEvent,
@@ -53,6 +54,7 @@ import {
   createWindowMessageProvider,
 } from "./legacy-host-bridge";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
+import { registerChatConnection } from "./chat/service";
 import { showNotification } from "./notification";
 
 const noop = (): void => undefined;
@@ -835,6 +837,11 @@ async function createCoreProvider(
       await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
+    // Chat-capable products get a Chat-kind execution so the core serves
+    // their chat calls; everything a Spa connection can do still works.
+    // The capability is primed by the host shell before rendering, so
+    // this await settles from cache or the in-flight manifest read.
+    const chatCapable = await chatCapabilityFor(label);
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),
       createHostCallbacks({
@@ -848,11 +855,20 @@ async function createCoreProvider(
         hostConfig,
       },
     );
-    const provider = await runtime.createProvider({ productId });
+    const provider = await runtime.createProvider({
+      productId,
+      executionKind: chatCapable ? "Chat" : "Spa",
+    });
+    const unregisterChat = chatCapable
+      ? registerChatConnection(productId, {
+          publish: (action) => runtime.publishChatAction(productId, action),
+        })
+      : noop;
     return trackCoreProvider(
       wrapCoreProviderForDebug(provider, options.productId ?? label),
       runtime,
       () => {
+        unregisterChat();
         blockingModalScope.dispose();
       },
     );

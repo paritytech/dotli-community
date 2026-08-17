@@ -62,6 +62,10 @@ import {
   setActiveAppManifest,
   setActiveRootManifest,
 } from "@dotli/shared/active-manifest";
+import {
+  primeChatCapability,
+  setChatCapability,
+} from "@dotli/shared/chat-capability";
 import type {
   ExecutableManifest,
   ManifestResult,
@@ -1028,6 +1032,9 @@ async function main(): Promise<void> {
       urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
+    // Local products carry no worker manifest to read the chat flag from,
+    // so the debug paths enable chat unconditionally for product testing.
+    setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
     await renderIframe(previewTargetUrl, host, {
       productId: productIdOverride,
@@ -1067,6 +1074,7 @@ async function main(): Promise<void> {
       urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
     }
 
+    setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
     await renderIframe(localhostUrl, host, { productId: productIdOverride });
 
@@ -1117,6 +1125,24 @@ async function main(): Promise<void> {
   log.warn(`[dot.li perf] Subdomain detected: "${label}" (${elapsed(T0)})`);
 
   initScheduledNotifications({ label });
+
+  // Resolve the worker manifest's `includes.chat` in parallel with CID
+  // resolution. The bridge awaits this before creating the product's core
+  // provider (it decides the connection's execution kind), and the topbar
+  // uses the announced value to gate the chat button.
+  primeChatCapability(label, async () => {
+    const result =
+      chainBackend === "rpc-gateway"
+        ? await (
+            await import("@dotli/resolver/rpc-resolve")
+          ).resolveExecutableManifestViaRpc(label, "worker")
+        : await resolveExecutableManifestRemote(label, "worker");
+    return (
+      result.kind === "ok" &&
+      result.value.kind === "worker" &&
+      result.value.includes.chat
+    );
+  });
 
   // Pre-load render chunk in parallel (overlap with CID resolution)
   const renderChunkPromise: Promise<RenderChunk> = import("@dotli/ui/bridge");
