@@ -172,6 +172,12 @@
   background: rgba(0, 0, 0, 0.06);
   color: #111;
 }
+[data-theme="light"] .theme-popover-option[aria-checked="true"] {
+  color: #111;
+}
+[data-theme="light"] .theme-popover-option:focus-visible {
+  outline-color: rgba(0, 0, 0, 0.35);
+}
 
 [data-theme="light"] .user-popover-name .label {
   color: rgba(0, 0, 0, 0.55);

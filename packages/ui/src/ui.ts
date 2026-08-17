@@ -201,36 +201,36 @@ export type LoadingStage = (typeof LOADING_STAGES)[number];
 const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
   starting: [
     "Reaching out",
-    "This page is verified by a network, with no one in between",
+    "This page comes from a network, with no one in between",
     "That takes a few seconds the first time",
   ],
   relay: [
     "Connecting to Polkadot",
-    "Looking for other computers on the network to talk to",
+    "Looking for other computers to talk to",
     "Your browser does the checking itself, not a server",
   ],
   assetHub: [
     `Looking up ${DOMAIN_TOKEN}`,
-    "Catching up with the latest blocks",
-    "The name and its address come from the network itself",
+    "Catching up on the newest blocks",
+    "The network itself decides where this name points",
     "This is the slow part, and it is faster next time",
   ],
   resolving: [
-    "I found it",
-    "Reading the address it points at",
+    "Found it",
+    "Reading where the name points",
     "The network proved this answer, so it cannot be faked",
   ],
   content: [
     "Downloading the app",
-    "The files come from multiple peers across the network",
-    "Speed depends on how many are nearby",
+    "The files come from many computers at once",
+    "The more of them are nearby, the faster this goes",
     "Every piece is checked against its fingerprint as it lands",
-    "No single machine is serving this, so there is nothing to take down",
+    "No single computer holds the app, so no one can take it down",
     "Bigger apps take longer the first time",
     "Your browser keeps a copy, so the next visit is quick",
   ],
   preparing: [
-    "Download complete. We are preparing your app.",
+    "Got everything",
     "Unpacking the files",
     "Handing over to the app",
     "Almost there",
@@ -444,8 +444,7 @@ export function advancePhase(index: number): void {
   }
   currentPhase = index;
 
-  // Update progress bar
-  const { base, target, label, expectedMs, reportsProgress } = phases[index];
+  const { base, target, expectedMs, reportsProgress } = phases[index];
   // Each step has to earn the indicator back: the previous step's real
   // percentage says nothing about this one. A step that publishes its own
   // figure holds the indicator at its band base until the figure arrives,
@@ -479,9 +478,8 @@ export function advancePhase(index: number): void {
   startProgressCrawl();
 
   // The headline is the stage's, not the phase label's: the label names the
-  // band for whoever reads this table, the stage speaks to the user. Several
+  // step for us, the stage says it in words the visitor can act on. Adjacent
   // phases can share one stage, and re-entering a running stage is a no-op.
-  void label;
   setLoadingStage(phases[index].stage);
 }
 
@@ -535,9 +533,6 @@ export function releasePhaseProgress(): void {
   phaseReportsProgress = false;
 }
 
-/**
- * Stop the progress crawl and clear any slow warning (call when loading is done).
- */
 /** Stop everything the loading screen has running. */
 export function stopStatusTick(): void {
   stopProgressCrawl();
@@ -859,14 +854,18 @@ export function showLanding(): void {
 
   input.focus();
 
-  // Move auth + theme toggle buttons to the landing page top-right
+  // Move the auth and theme buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");
   const authButton = document.getElementById("auth-button");
   const themeToggle = document.getElementById("theme-toggle");
+  const themePopover = document.getElementById("theme-popover");
   if (landingAuth && authButton) {
     landingAuth.appendChild(authButton);
     if (themeToggle) {
       landingAuth.appendChild(themeToggle);
+      if (themePopover) {
+        landingAuth.appendChild(themePopover);
+      }
     }
   }
 

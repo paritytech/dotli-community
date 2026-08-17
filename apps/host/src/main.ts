@@ -46,6 +46,7 @@ import {
   setChainsButtonVisible,
   wipeOriginState,
 } from "@dotli/ui/topbar";
+import { productIframeBox } from "@dotli/ui/product-iframe-box";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
@@ -230,9 +231,9 @@ function parseLocalProductIdOverride(): string | undefined {
  * Debug-build-only affordance: proxying a visitor's localhost services into the
  * trusted host origin is dangerous on a production deploy, so it is gated behind
  * the build-time `VITE_APP_DEBUG` flag (`DEBUG`). Production builds (flag unset)
- * always return null; only debug builds — local `bun run preview:debug` and the
- * `*.dev` staging deploys — honour a `/localhost:<port>` path. The flag is a
- * compile-time constant, so production never even ships this code path.
+ * always return null. Only debug builds honour a `/localhost:<port>` path,
+ * meaning local `bun run preview:debug` and the `*.dev` staging deploys. The
+ * flag is a compile-time constant, so production never ships this code path.
  *
  * Examples (only in debug builds):
  *   "/localhost:5000"          yields "http://localhost:5000"
@@ -332,8 +333,10 @@ function setTopbarVisible(visible: boolean): void {
   const iframe = document.querySelector("iframe");
   topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
   if (iframe) {
-    iframe.style.top = visible ? "56px" : "0";
-    iframe.style.height = visible ? "calc(100vh - 56px)" : "100vh";
+    // With the bar hidden the product still starts below the status bar.
+    const box = productIframeBox({ topbarOffset: visible });
+    iframe.style.top = box.top;
+    iframe.style.height = box.height;
   }
   window.dispatchEvent(
     new CustomEvent<boolean>("topbar:visibility", { detail: visible }),
@@ -545,7 +548,7 @@ function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
       return { enabled: false, explicit: true };
     }
     return { enabled: DEBUG, explicit: false };
-    // eslint-disable-next-line no-restricted-syntax -- URL/sessionStorage may be unavailable in exotic environments (Safari private mode); fall through to the build-time default.
+    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable in exotic environments such as Safari private mode, so fall through to the build-time default.
   } catch {
     /* ignore */
   }
@@ -683,7 +686,7 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
     }
     try {
       emit(payload);
-      // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder; a malformed event from the sandbox must never break the host.
+      // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder. A malformed event from the sandbox must never break the host.
     } catch {
       /* ignore: a malformed event shouldn't kill the host */
     }
@@ -867,10 +870,10 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
-  if (theme === "light" || theme === "dark") {
+  if (theme === "light" || theme === "dark" || theme === "system") {
     try {
       localStorage.setItem("dotli-theme", theme);
-      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode; theme restore is best-effort.
+      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode, so theme restore is best-effort.
     } catch {
       /* localStorage unavailable */
     }
@@ -878,7 +881,7 @@ async function applyUrlSettings(): Promise<void> {
   try {
     sessionStorage.setItem("dotli:pending-reset:protocol", "1");
     sessionStorage.setItem("dotli:pending-reset:sandbox", "1");
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); cross-origin purges are best-effort, reload below is unconditional.
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so cross-origin purges are best-effort while the reload below is unconditional.
   } catch {
     /* sessionStorage unavailable */
   }
@@ -1014,7 +1017,7 @@ async function main(): Promise<void> {
         pendingProtocolReset = true;
         sessionStorage.removeItem("dotli:pending-reset:protocol");
       }
-      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); reset flag falls back to false which is the safe default.
+      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag falls back to false which is the safe default.
     } catch {
       /* sessionStorage unavailable: skip pending-reset pick up */
     }
@@ -1073,7 +1076,7 @@ async function main(): Promise<void> {
       nextSearch.set(DOTLI_PRODUCT_ID_PARAM, productIdOverride);
     }
     history.replaceState(null, "", `/__preview?${nextSearch.toString()}`);
-    document.title = `${host} — ${SITE_ID}`;
+    document.title = `${host} · ${SITE_ID}`;
     performance.mark("dotli:main:end");
     return;
   }
@@ -1116,7 +1119,7 @@ async function main(): Promise<void> {
         ? "/" + host
         : `/${host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
     );
-    document.title = `${host} — ${SITE_ID}`;
+    document.title = `${host} · ${SITE_ID}`;
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({
       layer: "boot",
@@ -1133,7 +1136,7 @@ async function main(): Promise<void> {
   }
 
   if (label === null) {
-    log.warn(`[dot.li perf] Landing page — no subdomain (${elapsed(T0)})`);
+    log.warn(`[dot.li perf] Landing page, no subdomain (${elapsed(T0)})`);
     showLanding();
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({
@@ -1207,6 +1210,8 @@ async function main(): Promise<void> {
   // Only direct mode relays the sandbox's bitswap traffic through this window,
   // so it is the only backend that can report a download percentage.
   const countsContentBytes = chainBackend === "smoldot-direct";
+  // The label names the step for us. What the visitor reads is the stage's
+  // copy, which says the same thing in words they can act on.
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
     {
       label: startLabel,
@@ -1286,7 +1291,7 @@ async function main(): Promise<void> {
   }
   // Content fetch (bitswap/IPFS) runs in the sandbox after the CID resolves and
   // was previously unrepresented, so the bar sat parked while a 20s+ fetch ran.
-  // It is always the last phase; advance to it just before handing off to the
+  // It is always the last phase, so advance to it just before handing off to the
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   setLoadingDomain(label);

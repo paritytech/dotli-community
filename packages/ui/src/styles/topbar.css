@@ -1,10 +1,11 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — Top bar, URL pill, popovers, auth UI */
+/* dot.li top bar, URL pill, popovers, auth UI */
 
 /* Shared open/close transition for topbar popover menus. Each popover keeps
-   its existing `display: none ↔ block/flex` toggle on `.open`; the transition
+   its existing `display` toggle between none and block or flex on `.open`. The
+   transition
    uses `allow-discrete` so display animates too, and `@starting-style` rules
    defined alongside each popover give the enter direction its initial frame.
    The transform timing function overshoots slightly for a subtle bounce. */
@@ -19,20 +20,23 @@
   }
 }
 
-/* ── Top Bar ────────────────────────────── */
+/* Top Bar */
+/* --topbar-height and the --safe-* insets are defined in base.css. */
 #topbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: var(--topbar-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   background: rgb(30, 30, 30);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 0 14px;
+  /* In landscape the side insets clear the notch and the rounded corners. */
+  padding: var(--safe-top) calc(14px + var(--safe-right)) 0
+    calc(14px + var(--safe-left));
   z-index: 1000;
 }
 .topbar-left {
@@ -133,8 +137,8 @@
   flex-direction: column;
   gap: 2px;
   position: fixed;
-  top: 56px;
-  right: 12px;
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
   min-width: 180px;
   background: rgb(34, 34, 34);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -156,22 +160,42 @@
   opacity: 1;
   transform: scale(1);
 }
-/* Theme icons (main #theme-toggle and the more-row mirror): in dark mode
-   show moon (click to go light), in light mode show sun. CSS switches
-   purely on the `data-theme` attribute on <html>, which is set
-   synchronously by the inline boot script in index.html so both icons
-   never paint at once before JS attaches. */
 #theme-icon-sun,
-.more-row-icon-sun {
+.more-row-icon-sun,
+#theme-icon-system,
+.more-row-icon-system {
   display: none;
 }
-[data-theme="light"] #theme-icon-sun,
-[data-theme="light"] .more-row-icon-sun {
+[data-theme-pref="light"] #theme-icon-sun,
+[data-theme-pref="light"] .more-row-icon-sun {
   display: block;
 }
-[data-theme="light"] #theme-icon-moon,
-[data-theme="light"] .more-row-icon-moon {
+[data-theme-pref="light"] #theme-icon-moon,
+[data-theme-pref="light"] .more-row-icon-moon,
+[data-theme-pref="system"] #theme-icon-moon,
+[data-theme-pref="system"] .more-row-icon-moon {
   display: none;
+}
+[data-theme-pref="system"] #theme-icon-system,
+[data-theme-pref="system"] .more-row-icon-system {
+  display: block;
+}
+.theme-popover {
+  min-width: 150px;
+}
+.theme-popover-option .theme-popover-check {
+  margin-left: auto;
+  visibility: hidden;
+}
+.theme-popover-option[aria-checked="true"] {
+  color: #fff;
+}
+.theme-popover-option[aria-checked="true"] .theme-popover-check {
+  visibility: visible;
+}
+.theme-popover-option:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: -2px;
 }
 @starting-style {
   .more-popover.open {
@@ -219,7 +243,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Flex items default to `min-width: auto` — without this, a long
+  /* Flex items default to `min-width: auto`. Without this, a long
      nowrap pill pushes the right cluster off-screen past `max-width`. */
   min-width: 0;
   max-width: 480px;
@@ -352,7 +376,7 @@
   }
 }
 
-/* ── Verification Shield ────────────────── */
+/* Verification Shield */
 .verification-shield {
   display: block;
   flex-shrink: 0;
@@ -457,7 +481,7 @@
   box-shadow: 0 0 6px rgba(255, 140, 0, 0.45);
 }
 
-/* ── User Badge ─────────────────────────── */
+/* User Badge */
 .user-badge {
   display: flex;
   align-items: center;
@@ -473,12 +497,12 @@
   text-transform: uppercase;
 }
 
-/* ── User Popover ───────────────────────── */
+/* User Popover */
 .user-popover {
   display: none;
   position: fixed;
-  top: 60px;
-  right: 12px;
+  top: calc(var(--topbar-height) + 4px);
+  right: calc(12px + var(--safe-right));
   width: 220px;
   background: rgba(18, 18, 18, 0.92);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -547,7 +571,7 @@
   height: 18px;
 }
 
-/* ── Mode Button & Popover ─────────────── */
+/* Mode Button & Popover */
 #mode-button {
   position: relative;
 }
@@ -565,7 +589,7 @@
 .mode-popover-backdrop {
   display: none;
   position: fixed;
-  top: 56px;
+  top: var(--topbar-height);
   left: 0;
   right: 0;
   bottom: 0;
@@ -590,13 +614,13 @@
   position: fixed;
   /* Overlaps the bottom of the topbar by a few pixels so the popover
      visually attaches to the button instead of floating with a gap. */
-  top: 56px;
-  right: 12px;
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
   width: 620px;
-  max-width: calc(100vw - 24px);
-  /* `dvh` tracks the visible area as mobile browser
-     chrome shows/hides. */
-  max-height: calc(100dvh - 60px);
+  max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+  /* `--content-height` is dvh-based, so it tracks the visible area as mobile
+     browser chrome shows/hides, and it already excludes the home indicator. */
+  max-height: calc(var(--content-height) - 4px);
   overflow-y: auto;
   background: rgba(20, 20, 20, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -664,7 +688,7 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    padding: calc(12px + var(--safe-top)) 14px 12px;
     background: rgba(20, 20, 20, 0.92);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     backdrop-filter: blur(24px) saturate(180%);
@@ -695,7 +719,7 @@
     bottom: 0;
     z-index: 1;
     margin-top: auto;
-    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    padding: 12px 14px calc(12px + var(--safe-bottom));
     background: rgba(20, 20, 20, 0.92);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     backdrop-filter: blur(24px) saturate(180%);
@@ -747,14 +771,14 @@
 .mode-endpoint-row:hover {
   background: #191919;
 }
-/* Non-interactive variant used by Diagnostics — same layout, no feedback. */
+/* Non-interactive variant used by Diagnostics. Same layout, no feedback. */
 .mode-endpoint-row.mode-info-row {
   cursor: default;
 }
 .mode-endpoint-row.mode-info-row:hover {
   background: transparent;
 }
-/* Copyable diagnostic rows — restore hover affordance and signal interactivity. */
+/* Copyable diagnostic rows restore the hover affordance to signal interactivity. */
 .mode-endpoint-row.mode-info-row.mode-info-row-copyable {
   cursor: pointer;
 }
@@ -925,7 +949,7 @@
   font-size: 0.78rem;
   color: #e0e0e0;
 }
-/* Toggle switch (cache rows). Pure-CSS pill switch — track flips colour
+/* Toggle switch (cache rows). Pure-CSS pill switch. The track flips colour
    and the knob translates from left to right when the button gains the
    `.on` class. */
 .permissions-popover-toggle {
@@ -1020,7 +1044,7 @@
   display: block;
 }
 
-/* ── Permissions Button State ───────────── */
+/* Permissions Button State */
 #permissions-button {
   position: relative;
 }
@@ -1036,13 +1060,13 @@
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Permissions Popover ───────────────── */
-/* Backdrop mirrors `.mode-popover-backdrop` — blocks clicks under the
+/* Permissions Popover */
+/* Backdrop mirrors `.mode-popover-backdrop`. Blocks clicks under the
    permissions popover and dismisses it on click. */
 .permissions-popover-backdrop {
   display: none;
   position: fixed;
-  top: 56px;
+  top: var(--topbar-height);
   left: 0;
   right: 0;
   bottom: 0;
@@ -1065,10 +1089,10 @@
 .permissions-popover {
   display: none;
   position: fixed;
-  /* Matches `.mode-popover` — overlaps the topbar bottom so the popover
+  /* Matches `.mode-popover`. Overlaps the topbar bottom so the popover
      visually attaches to its trigger button. */
-  top: 56px;
-  right: 12px;
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
   width: 340px;
   background: rgba(20, 20, 20, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -1211,7 +1235,7 @@
   text-align: center;
 }
 
-/* ── Permission modal additions ─────────── */
+/* Permission modal additions */
 .permission-modal-icon {
   display: flex;
   align-items: center;
