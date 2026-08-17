@@ -275,16 +275,14 @@ function clearSlowWarning(): void {
 }
 
 /**
- * Update the single status line below the progress bar.
- * Replaces the previous message in place. No new DOM elements are created.
- * Schedules a slow-step hint if the step exceeds its time threshold.
+ * Note the step a status message describes, without putting it on screen.
+ *
+ * The slow-step hints are keyed on the resolver's own wording, so they still
+ * need every message. The headline is the phase label's instead. Painting the
+ * raw prose here overwrote that label in the tick it was set, so the labels
+ * never reached the screen at all.
  */
-export function showStatus(message: string): void {
-  const status = document.getElementById("status");
-  if (status !== null) {
-    status.textContent = message;
-  }
-
+export function trackStatus(message: string): void {
   clearSlowWarning();
 
   const threshold = getSlowThreshold(message);
@@ -361,7 +359,7 @@ export function listenForSandboxStatus(): void {
       return;
     }
     if (typeof data.message === "string") {
-      showStatus(data.message);
+      trackStatus(data.message);
     }
     if (data.done === true) {
       dismissLoading();

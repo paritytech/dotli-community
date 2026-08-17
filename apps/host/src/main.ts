@@ -25,7 +25,7 @@ import {
   captureException,
 } from "@dotli/metrics/sentry";
 import {
-  showStatus,
+  trackStatus,
   showError,
   showNoContentError,
   showLanding,
@@ -1160,24 +1160,38 @@ async function main(): Promise<void> {
   // peers) cap at the band top and let the sheen carry motion rather than
   // inflating the pace. Both smoldot backends share one model. See
   // `advancePhase` mapping below.
-  const smoldotPhases = (startLabel: string): LoadingPhase[] => [
-    { label: startLabel, base: 2, target: 6, expectedMs: 650 },
-    { label: "Adding relay chain", base: 6, target: 10, expectedMs: 120 },
-    { label: "Syncing Asset Hub", base: 10, target: 55, expectedMs: 6500 },
-    { label: "Resolving", base: 55, target: 62, expectedMs: 1200 },
-    { label: "Fetching content", base: 62, target: 95, expectedMs: 10000 },
+  // Labels are what the visitor reads while they wait, so they name the step
+  // in their terms rather than ours. Which of the two smoldot backends is
+  // running is not something a visitor can act on, so both open the same way.
+  const smoldotPhases = (): LoadingPhase[] => [
+    { label: "Reaching out", base: 2, target: 6, expectedMs: 650 },
+    { label: "Connecting to Polkadot", base: 6, target: 10, expectedMs: 120 },
+    {
+      label: `Looking up ${withActiveTld(label)}`,
+      base: 10,
+      target: 55,
+      expectedMs: 6500,
+    },
+    { label: "Found it", base: 55, target: 62, expectedMs: 1200 },
+    { label: "Downloading the app", base: 62, target: 95, expectedMs: 10000 },
   ];
-  if (chainBackend === "smoldot-shared-worker") {
-    initPhases(smoldotPhases("Starting Worker"));
-  } else if (chainBackend === "smoldot-direct") {
-    initPhases(smoldotPhases("Starting"));
+  if (
+    chainBackend === "smoldot-shared-worker" ||
+    chainBackend === "smoldot-direct"
+  ) {
+    initPhases(smoldotPhases());
   } else {
     // Gateway path resolves over RPC with no smoldot sync, then fetches
     // content the same way every backend does.
     initPhases([
-      { label: "Connecting", base: 5, target: 50, expectedMs: 1200 },
-      { label: "Resolving", base: 50, target: 62, expectedMs: 1200 },
-      { label: "Fetching content", base: 62, target: 95, expectedMs: 10000 },
+      {
+        label: "Connecting to Polkadot",
+        base: 5,
+        target: 50,
+        expectedMs: 1200,
+      },
+      { label: "Found it", base: 50, target: 62, expectedMs: 1200 },
+      { label: "Downloading the app", base: 62, target: 95, expectedMs: 10000 },
     ]);
   }
   // Content fetch (bitswap/IPFS) runs in the sandbox after the CID resolves and
@@ -1186,7 +1200,7 @@ async function main(): Promise<void> {
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   advancePhase(0);
-  showStatus(`Resolving ${withActiveTld(label)}`);
+  trackStatus(`Resolving ${withActiveTld(label)}`);
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1320,7 +1334,7 @@ async function main(): Promise<void> {
             advancePhase(3);
           }
           emitPhase(msg, phase ?? "progress");
-          showStatus(msg);
+          trackStatus(msg);
         };
         cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
         if (cid === null) {
@@ -1340,7 +1354,7 @@ async function main(): Promise<void> {
         await import("@dotli/resolver/rpc-resolve");
       const onResolveProgress = (msg: string): void => {
         emitPhase(msg, "progress");
-        showStatus(msg);
+        trackStatus(msg);
       };
       cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
       if (cid === null) {
