@@ -1,4 +1,4 @@
-// dot.li — TrUAPI host bridge
+// dot.li TrUAPI host bridge
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
 // product iframe via `@parity/truapi-host`. Each render swaps the running
@@ -45,6 +45,7 @@ import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
+import { productIframeBox } from "./product-iframe-box";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
@@ -269,7 +270,7 @@ function rerenderProduct(product: CurrentProduct): void {
   });
 }
 
-// Listen for device permission grants — reload the iframe so the updated
+// Listen for device permission grants. Reload the iframe so the updated
 // `allow` attribute takes effect. Keep the current iframe visible and surface
 // a retry if replacement host startup fails.
 window.addEventListener("dotli:device-permission-changed", () => {
@@ -410,25 +411,13 @@ function getDeepPath(): string {
   return p + search + hash;
 }
 
-/**
- * Pin the product iframe to the area left over by the host chrome.
- *
- * The host viewport covers the whole display, so this box is what keeps the
- * product clear of the status bar, the home indicator and the sensor housing.
- * The host owns the iframe's geometry, so it is the only place that can do it.
- * The inset values carry px fallbacks because they are set inline. Unlike the
- * rules in `styles.css`, they do not ship with the file that defines the tokens.
- */
+/** Pin the product iframe to the area the host chrome and the insets leave. */
 function applyIframeStyling(
   iframe: HTMLIFrameElement,
   opts: { topbarOffset: boolean },
 ): void {
-  const left = "left:var(--safe-left, 0px)";
-  const width =
-    "width:calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
-  iframe.style.cssText = opts.topbarOffset
-    ? `position:fixed;top:var(--topbar-height, 56px);${left};${width};height:calc(100vh - var(--topbar-height, 56px) - var(--safe-bottom, 0px));border:none;margin:0;padding:0;`
-    : `position:fixed;top:var(--safe-top, 0px);${left};${width};height:calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px));border:none;margin:0;padding:0;`;
+  const box = productIframeBox(opts);
+  iframe.style.cssText = `position:fixed;top:${box.top};left:${box.left};width:${box.width};height:${box.height};border:none;margin:0;padding:0;`;
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 }
@@ -1096,7 +1085,7 @@ export async function renderAppSubdomain(
     }
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); reset flag defaults to false which is the safe state.
   } catch {
-    /* sessionStorage unavailable — skip pending reset */
+    /* sessionStorage unavailable, skip pending reset */
   }
   const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
   if (parsedUrl.origin !== appOrigin) {
@@ -1120,7 +1109,7 @@ export async function renderAppSubdomain(
   }
   const url = parsedUrl.toString();
 
-  // Keep the loading overlay visible — the sandbox will post status
+  // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
   // Only prepare it on the initial render. During a permission refresh the
   // current iframe remains visible until the replacement is ready.

@@ -37,6 +37,7 @@ import {
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
+import { productIframeBox } from "@dotli/ui/product-iframe-box";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
@@ -196,9 +197,9 @@ function parseLocalProductIdOverride(): string | undefined {
  * Debug-build-only affordance: proxying a visitor's localhost services into the
  * trusted host origin is dangerous on a production deploy, so it is gated behind
  * the build-time `VITE_APP_DEBUG` flag (`DEBUG`). Production builds (flag unset)
- * always return null; only debug builds — local `bun run preview:debug` and the
- * `*.dev` staging deploys — honour a `/localhost:<port>` path. The flag is a
- * compile-time constant, so production never even ships this code path.
+ * always return null. Only debug builds honour a `/localhost:<port>` path,
+ * meaning local `bun run preview:debug` and the `*.dev` staging deploys. The
+ * flag is a compile-time constant, so production never ships this code path.
  *
  * Examples (only in debug builds):
  *   "/localhost:5000"          yields "http://localhost:5000"
@@ -298,15 +299,10 @@ function setTopbarVisible(visible: boolean): void {
   const iframe = document.querySelector("iframe");
   topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
   if (iframe) {
-    // With the bar hidden the product still starts below the status bar. The
-    // host owns this box, so it is the only place that can reserve the insets.
-    // Fallbacks because these are inline styles, matching applyIframeStyling.
-    iframe.style.top = visible
-      ? "var(--topbar-height, 56px)"
-      : "var(--safe-top, 0px)";
-    iframe.style.height = visible
-      ? "calc(100vh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))"
-      : "calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px))";
+    // With the bar hidden the product still starts below the status bar.
+    const box = productIframeBox({ topbarOffset: visible });
+    iframe.style.top = box.top;
+    iframe.style.height = box.height;
   }
   window.dispatchEvent(
     new CustomEvent<boolean>("topbar:visibility", { detail: visible }),
@@ -1106,7 +1102,7 @@ async function main(): Promise<void> {
   }
 
   if (label === null) {
-    log.warn(`[dot.li perf] Landing page — no subdomain (${elapsed(T0)})`);
+    log.warn(`[dot.li perf] Landing page, no subdomain (${elapsed(T0)})`);
     showLanding();
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({
