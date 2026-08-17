@@ -1103,12 +1103,12 @@ let chainsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 /** How often the open panel re-reads peers and heights. */
 const CHAINS_REFRESH_MS = 6_000;
 /**
- * Budget for each step of a chain's read.
+ * Budget for each phase of a chain's read.
  *
- * Three steps run in sequence, so this is sized to keep the whole read inside
- * the refresh interval and stop ticks stacking up on a slow chain.
+ * Two phases run in sequence, the peer and height reads together and then the
+ * block ages, so twice this has to stay inside the refresh interval.
  */
-const CHAIN_QUERY_TIMEOUT_MS = 1_800;
+const CHAIN_QUERY_TIMEOUT_MS = 2_600;
 
 function stopChainsRefresh(): void {
   if (chainsRefreshTimer !== null) {
@@ -2394,14 +2394,18 @@ async function queryChainStatus(genesisHash: string): Promise<{
     const papi = await import("polkadot-api");
     const client = papi.createClient(provider);
     try {
-      const health = await withTimeout(
-        client._request<{ peers?: number }>("system_health", []),
-        CHAIN_QUERY_TIMEOUT_MS,
-      ).catch(() => null);
-      const blocks = await withTimeout(
-        client.getBestBlocks(),
-        CHAIN_QUERY_TIMEOUT_MS,
-      ).catch(() => null);
+      // Concurrently, because they are independent reads on one client and
+      // running them in series spent the whole budget before the block heights
+      // came back. That left three of four chains showing no block age at all.
+      const [health, blocks] = await Promise.all([
+        withTimeout(
+          client._request<{ peers?: number }>("system_health", []),
+          CHAIN_QUERY_TIMEOUT_MS,
+        ).catch(() => null),
+        withTimeout(client.getBestBlocks(), CHAIN_QUERY_TIMEOUT_MS).catch(
+          () => null,
+        ),
+      ]);
       const best = blocks?.at(0);
       const finalized = blocks?.at(-1);
       if (best === undefined || finalized === undefined) {
