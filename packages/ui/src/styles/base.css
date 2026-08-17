@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — Base styles: reset, layout, shared components */
+/* dot.li base styles: reset, layout, shared components */
 
 /* ── Reset ──────────────────────────────── */
 * {
@@ -76,7 +76,7 @@ body {
   min-height: var(--content-height);
 }
 
-/* Loading logo spinner — rAF-driven via JS, CSS just sets transform-origin */
+/* Loading logo spinner. rAF-driven via JS, CSS just sets transform-origin. */
 .loading-logo {
   margin-bottom: 32px;
   transition: opacity 0.8s ease;
@@ -146,7 +146,7 @@ body {
   text-align: right;
 }
 
-/* Text block — phase label + terminal log */
+/* Text block: the phase label and the terminal log */
 .loading-text {
   display: flex;
   flex-direction: column;

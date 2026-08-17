@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — Top bar, URL pill, popovers, auth UI */
+/* dot.li top bar, URL pill, popovers, auth UI */
 
 /* Shared open/close transition for topbar popover menus. Each popover keeps
    its existing `display: none ↔ block/flex` toggle on `.open`; the transition
@@ -242,7 +242,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Flex items default to `min-width: auto` — without this, a long
+  /* Flex items default to `min-width: auto`. Without this, a long
      nowrap pill pushes the right cluster off-screen past `max-width`. */
   min-width: 0;
   max-width: 480px;
@@ -770,14 +770,14 @@
 .mode-endpoint-row:hover {
   background: #191919;
 }
-/* Non-interactive variant used by Diagnostics — same layout, no feedback. */
+/* Non-interactive variant used by Diagnostics. Same layout, no feedback. */
 .mode-endpoint-row.mode-info-row {
   cursor: default;
 }
 .mode-endpoint-row.mode-info-row:hover {
   background: transparent;
 }
-/* Copyable diagnostic rows — restore hover affordance and signal interactivity. */
+/* Copyable diagnostic rows restore the hover affordance to signal interactivity. */
 .mode-endpoint-row.mode-info-row.mode-info-row-copyable {
   cursor: pointer;
 }
@@ -948,7 +948,7 @@
   font-size: 0.78rem;
   color: #e0e0e0;
 }
-/* Toggle switch (cache rows). Pure-CSS pill switch — track flips colour
+/* Toggle switch (cache rows). Pure-CSS pill switch. The track flips colour
    and the knob translates from left to right when the button gains the
    `.on` class. */
 .permissions-popover-toggle {
@@ -1060,7 +1060,7 @@
 }
 
 /* ── Permissions Popover ───────────────── */
-/* Backdrop mirrors `.mode-popover-backdrop` — blocks clicks under the
+/* Backdrop mirrors `.mode-popover-backdrop`. Blocks clicks under the
    permissions popover and dismisses it on click. */
 .permissions-popover-backdrop {
   display: none;
