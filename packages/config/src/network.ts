@@ -538,12 +538,12 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
  * Chains advertised to sandboxed dApps in **RPC-gateway** mode: the curated
  * system chains that have configured WSS RPC endpoints. The Bulletin chain is
  * intentionally excluded because its content is served through IPFS gateways.
- * This list controls feature advertisement, not access control: the shared
- * Rust-core connection callback also serves core-owned Bulletin operations.
+ * This list controls feature advertisement, not access control: the protocol
+ * runtime also serves core-owned Bulletin operations.
  *
- * Single source of truth shared by the host's chain-support advertisement
- * (`isRemoteChainSupported`) and the gateway provider factory
- * (`createRpcChainProvider`).
+ * Single source of truth for product-facing gateway feature support. The
+ * protocol runtime uses `getActiveCoreGatewayChains()` for its wider
+ * operational connection set.
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
@@ -555,7 +555,7 @@ export function getActiveGatewaySupportedGenesisHashes(): Set<string> {
   return new Set(getActiveGatewayChains().map((c) => c.genesis.toLowerCase()));
 }
 
-/** Gateway chains accepted by the shared Rust-core connection callback. */
+/** Gateway chains the protocol runtime can open an upstream connection to. */
 export function getActiveCoreGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
   return [...getActiveGatewayChains(), cfg.bulletin].filter(

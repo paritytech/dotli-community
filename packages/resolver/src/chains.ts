@@ -38,33 +38,33 @@ export function isChainSupported(genesisHash: string): boolean {
  * This means no duplicate parachain sync: the resolver's Asset Hub is
  * already synced by the time a dApp loads, so chain queries work immediately.
  */
-export function createChainProvider(
+export function createSmoldotUpstreamProvider(
   genesisHash: string,
 ): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
   const cfg = getActiveServicesConfig();
 
   if (key === cfg.assethub.genesis.toLowerCase()) {
-    log.warn("[dot.li chains] Returning shared Asset Hub provider");
+    log.debug("[dot.li chains] Returning shared Asset Hub provider");
     return getDappAssetHubProvider();
   }
 
   if (key === cfg.relay.genesis.toLowerCase()) {
-    log.warn("[dot.li chains] Returning shared relay chain provider");
+    log.debug("[dot.li chains] Returning shared relay chain provider");
     return getSmProvider(() =>
       getRelayChain().then((chain) => makeNonRemovingChain(chain)),
     );
   }
 
   if (key === cfg.bulletin.genesis.toLowerCase()) {
-    log.warn("[dot.li chains] Returning Bulletin Paseo provider (smoldot)");
+    log.debug("[dot.li chains] Returning Bulletin Paseo provider (smoldot)");
     return getSmProvider(() =>
       getBulletinChain().then((chain) => makeNonRemovingChain(chain)),
     );
   }
 
   if (key === cfg.people.genesis.toLowerCase()) {
-    log.warn("[dot.li chains] Returning People Paseo provider (smoldot)");
+    log.debug("[dot.li chains] Returning People Paseo provider (smoldot)");
     return getSmProvider(() =>
       getPeopleChain().then((chain) => makeNonRemovingChain(chain)),
     );

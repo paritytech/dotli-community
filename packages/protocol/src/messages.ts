@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ChainConnectionErrorCode } from "./errors";
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
@@ -54,6 +56,7 @@ export interface ProtocolErrorEnvelope {
   id: string;
   ok: false;
   error: string;
+  code?: ChainConnectionErrorCode;
 }
 
 export interface ProtocolChainMessageEnvelope {

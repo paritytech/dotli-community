@@ -49,6 +49,7 @@ describe("isProtocolEnvelope", () => {
       id: "test-1",
       ok: false,
       error: "something failed",
+      code: "UPSTREAM_CONNECTION_FAILED",
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });

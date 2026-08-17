@@ -14,10 +14,7 @@ import {
   getActiveAppManifest,
   getActiveRootManifest,
 } from "@dotli/shared/active-manifest";
-import {
-  createRemoteChainProvider,
-  isRemoteChainSupported,
-} from "@dotli/protocol/client";
+import { createRemoteChainProvider } from "@dotli/protocol/client";
 import {
   getCacheSettings,
   setCacheSettings,
@@ -2086,13 +2083,7 @@ async function queryFinalizedBlock(
   genesisHash: string,
 ): Promise<number | null> {
   try {
-    if (!isRemoteChainSupported(genesisHash)) {
-      return null;
-    }
     const provider = createRemoteChainProvider(genesisHash);
-    if (provider === null) {
-      return null;
-    }
     const papi = await import("polkadot-api");
     const client = papi.createClient(provider);
     try {

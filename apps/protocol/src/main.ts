@@ -66,8 +66,8 @@ import {
 // these either. Smoldot for shared-worker mode lives inside
 // `./protocol-shared-worker.ts`, which is already a separate bundle.
 import {
-  createRpcChainProvider,
-  isRpcChainSupported,
+  createRpcUpstreamProvider,
+  isRpcUpstreamSupported,
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
@@ -93,6 +93,10 @@ import {
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
 } from "@dotli/protocol/messages";
+import {
+  ChainConnectionError,
+  toProtocolErrorPayload,
+} from "@dotli/protocol/errors";
 import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
 
 initSentry("host");
@@ -546,6 +550,75 @@ function signalError(message: string): void {
 
 async function initSharedWorkerMode(network: Network): Promise<void> {
   const swStartTime = performance.now();
+  const localPeopleConnectionIds = new Set<string>();
+  let localPeopleEnginePromise: Promise<ProtocolEngine> | null = null;
+
+  function getLocalPeopleEngine(): Promise<ProtocolEngine> {
+    localPeopleEnginePromise ??= Promise.all([
+      import("@dotli/resolver/chains"),
+      import("@dotli/resolver/smoldot"),
+    ]).then(([chains, smoldot]) => {
+      // WebRTC is unavailable in SharedWorkerGlobalScope. Statement Store
+      // peers can be discovered through WebRTC even when chain sync itself
+      // succeeds over WSS, so People must keep smoldot's browser networking
+      // frontend in this protocol iframe. The broker and physical provider
+      // still remain inside the protocol runtime; only cross-tab sharing is
+      // unavailable for this chain.
+      const peopleGenesis =
+        getActiveServicesConfig().people.genesis.toLowerCase();
+      const engine = createEngine({
+        createUpstreamProvider: (genesisHash) =>
+          genesisHash.toLowerCase() === peopleGenesis
+            ? chains.createSmoldotUpstreamProvider(genesisHash)
+            : null,
+        isChainSupported: (genesisHash) =>
+          genesisHash.toLowerCase() === peopleGenesis,
+        onInit: () => {
+          smoldot.getSmoldot();
+        },
+        onCleanup: () => {
+          smoldot.terminateSmoldot();
+        },
+      });
+      smoldot.onSmoldotFatal((message) => {
+        log.error(
+          "[dot.li protocol] Local People smoldot panic detected, signaling fatal",
+        );
+        if (window.parent !== window) {
+          window.parent.postMessage(
+            {
+              namespace: "dotli:protocol",
+              kind: "fatal",
+              message,
+            },
+            "*",
+          );
+        }
+      });
+      return engine;
+    });
+    return localPeopleEnginePromise;
+  }
+
+  function isLocalPeopleRequest(request: ProtocolRequestEnvelope): boolean {
+    if (request.method === "chainConnect") {
+      const payload = request.payload as ProtocolRequestMap["chainConnect"];
+      return (
+        typeof payload.genesisHash === "string" &&
+        payload.genesisHash.toLowerCase() ===
+          getActiveServicesConfig().people.genesis.toLowerCase()
+      );
+    }
+    if (request.method === "chainSend") {
+      const payload = request.payload as ProtocolRequestMap["chainSend"];
+      return localPeopleConnectionIds.has(payload.connectionId);
+    }
+    if (request.method === "chainDisconnect") {
+      const payload = request.payload as ProtocolRequestMap["chainDisconnect"];
+      return localPeopleConnectionIds.has(payload.connectionId);
+    }
+    return false;
+  }
 
   // Vite statically rewrites `new SharedWorker(new URL("./worker.ts",
   // import.meta.url), ...)` to point at the bundled chunk. The `new URL`
@@ -626,12 +699,49 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       return;
     }
 
-    const msg: SWRelayRequest = {
+    if (isLocalPeopleRequest(data)) {
+      const payload = data.payload as { connectionId?: unknown };
+      const connectionId =
+        typeof payload.connectionId === "string" ? payload.connectionId : null;
+      if (data.method === "chainConnect" && connectionId !== null) {
+        localPeopleConnectionIds.add(connectionId);
+      }
+      void getLocalPeopleEngine()
+        .then((engine) =>
+          engine.handleRequest(data, event.origin, (response) => {
+            postToSource(event.source, event.origin, response);
+          }),
+        )
+        .then(() => {
+          if (data.method === "chainDisconnect" && connectionId !== null) {
+            localPeopleConnectionIds.delete(connectionId);
+          }
+        })
+        .catch((error: unknown) => {
+          if (
+            connectionId !== null &&
+            (data.method === "chainConnect" ||
+              data.method === "chainDisconnect")
+          ) {
+            localPeopleConnectionIds.delete(connectionId);
+          }
+          log.error("[dot.li protocol] Local People request failed:", error);
+          postToSource(event.source, event.origin, {
+            namespace: "dotli:protocol",
+            kind: "response",
+            id: data.id,
+            ok: false,
+            ...toProtocolErrorPayload(error),
+          });
+        });
+      return;
+    }
+
+    port.postMessage({
       type: "relay-request",
       envelope: data,
       origin: event.origin,
-    };
-    port.postMessage(msg);
+    } satisfies SWRelayRequest);
   });
 
   // Relay SharedWorker responses back up to the parent.
@@ -655,6 +765,9 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       /* port already closed on unload, safe */
     }
     port.close();
+    void localPeopleEnginePromise?.then((engine) => {
+      engine.cleanup();
+    });
   });
 }
 
@@ -666,12 +779,15 @@ async function initDirectMode(): Promise<void> {
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the smoldot / chain-specs bundle cost (D-1).
-  const [{ createChainProvider, isChainSupported }, resolve, smoldotMod] =
-    await Promise.all([
-      import("@dotli/resolver/chains"),
-      import("@dotli/resolver/resolve"),
-      import("@dotli/resolver/smoldot"),
-    ]);
+  const [
+    { createSmoldotUpstreamProvider, isChainSupported },
+    resolve,
+    smoldotMod,
+  ] = await Promise.all([
+    import("@dotli/resolver/chains"),
+    import("@dotli/resolver/resolve"),
+    import("@dotli/resolver/smoldot"),
+  ]);
   const {
     getRelayChain,
     getSmoldot,
@@ -703,7 +819,7 @@ async function initDirectMode(): Promise<void> {
   });
 
   const engine = createEngine({
-    createChainProvider,
+    createUpstreamProvider: createSmoldotUpstreamProvider,
     isChainSupported,
     onBrokerReady: (broker) => {
       // Route the resolver's Asset Hub reads AND the People warm-keep through
@@ -770,8 +886,8 @@ function initRpcMode(): void {
   );
 
   const engine = createEngine({
-    createChainProvider: createRpcChainProvider,
-    isChainSupported: isRpcChainSupported,
+    createUpstreamProvider: createRpcUpstreamProvider,
+    isChainSupported: isRpcUpstreamSupported,
     // No onInit / onCleanup: the WS provider lifecycle is owned by the
     // broker's `ensureUpstream` / `disconnectAll`.
     // No resolver: gateway-mode resolution doesn't go through this iframe.
@@ -815,7 +931,7 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
           kind: "response",
           id: data.id,
           ok: false,
-          error: serializeError(error),
+          ...toProtocolErrorPayload(error),
         });
       });
   });
@@ -1037,7 +1153,7 @@ interface ProtocolEngine {
 
 interface EngineOptions {
   /** Factory for a `JsonRpcProvider` keyed by genesis hash. */
-  createChainProvider: (genesisHash: string) => JsonRpcProvider | null;
+  createUpstreamProvider: (genesisHash: string) => JsonRpcProvider | null;
   /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
   /** Called once at engine creation, e.g. to kick off smoldot pre-sync. */
@@ -1077,7 +1193,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   const MAX_CONNS = 10;
   const connections = new Map<string, StringJsonRpcConnection>();
   const originConns = new Map<string, Set<string>>();
-  const broker = createChainBrokerManager(options.createChainProvider);
+  const broker = createChainBrokerManager(options.createUpstreamProvider);
   options.onBrokerReady?.(broker);
   options.onInit?.();
 
@@ -1225,22 +1341,36 @@ function createEngine(options: EngineOptions): ProtocolEngine {
           );
         }
         if (!options.isChainSupported(payload.genesisHash)) {
-          throw new Error(`Unsupported chain: ${payload.genesisHash}`);
+          throw new ChainConnectionError(
+            "UNSUPPORTED_CHAIN",
+            `Unsupported chain: ${payload.genesisHash}`,
+          );
         }
-        const connection = broker.connectRemote(
-          payload.genesisHash,
-          payload.connectionId,
-          (message) => {
-            respond({
-              namespace: "dotli:protocol",
-              kind: "chain-message",
-              connectionId: payload.connectionId,
-              message,
-            });
-          },
-        );
+        let connection: StringJsonRpcConnection | null;
+        try {
+          connection = broker.connectRemote(
+            payload.genesisHash,
+            payload.connectionId,
+            (message) => {
+              respond({
+                namespace: "dotli:protocol",
+                kind: "chain-message",
+                connectionId: payload.connectionId,
+                message,
+              });
+            },
+          );
+        } catch (error: unknown) {
+          throw new ChainConnectionError(
+            "UPSTREAM_CONNECTION_FAILED",
+            serializeError(error),
+          );
+        }
         if (connection === null) {
-          throw new Error("Failed to create chain broker");
+          throw new ChainConnectionError(
+            "UPSTREAM_CONNECTION_FAILED",
+            "Failed to create chain broker",
+          );
         }
         connections.set(payload.connectionId, connection);
         oc.add(payload.connectionId);

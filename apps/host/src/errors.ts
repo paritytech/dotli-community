@@ -44,6 +44,12 @@ export interface ErrorDescription {
 export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
   const msg = err instanceof Error ? err.message : String(err);
 
+  // Chunk-load failures want a reload prompt regardless of which side of the
+  // protocol boundary they surface on. The iframe reports them as `fatal`
+  // (its vite:preloadError relay), so this must run before the fatal branch.
+  if (msg.includes("Failed to fetch dynamically imported module")) {
+    return { message: HOST_ERRORS.MODULE_FETCH_FAILED, recovery: "reload" };
+  }
   if (err instanceof ProtocolFatalError) {
     return { message: HOST_ERRORS.FATAL_PANIC, recovery: "switch-backend" };
   }
@@ -55,9 +61,6 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
       message: HOST_ERRORS.CHAIN_SPEC_REJECTED,
       recovery: "switch-backend",
     };
-  }
-  if (msg.includes("Failed to fetch dynamically imported module")) {
-    return { message: HOST_ERRORS.MODULE_FETCH_FAILED, recovery: "reload" };
   }
   if (
     msg.includes("non-IPFS contenthash") ||

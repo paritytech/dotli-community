@@ -775,6 +775,108 @@ describe("createChainBrokerManager", () => {
     });
   });
 
+  it("routes transaction watch events and releases terminal subscriptions", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote("bulletin", "conn-a", (message) =>
+      messages.push(message),
+    );
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "transactionWatch_v1_submitAndWatch",
+        params: ["0x1234"],
+      }),
+    );
+
+    const upstreamRequest = harness.sent[0] as { id: string };
+    harness.emit({
+      jsonrpc: "2.0",
+      id: upstreamRequest.id,
+      result: "upstream-watch",
+    });
+
+    const localToken = (JSON.parse(messages[0] ?? "{}") as { result: string })
+      .result;
+    expect(localToken).not.toBe("upstream-watch");
+
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "transactionWatch_v1_watchEvent",
+      params: {
+        subscription: "upstream-watch",
+        result: { event: "validated" },
+      },
+    });
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "transactionWatch_v1_watchEvent",
+      params: {
+        subscription: "upstream-watch",
+        result: {
+          event: "finalized",
+          block: { hash: "0xabc", index: 0 },
+        },
+      },
+    });
+
+    expect(messages.slice(1).map((message) => JSON.parse(message))).toEqual([
+      {
+        jsonrpc: "2.0",
+        method: "transactionWatch_v1_watchEvent",
+        params: {
+          subscription: localToken,
+          result: { event: "validated" },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "transactionWatch_v1_watchEvent",
+        params: {
+          subscription: localToken,
+          result: {
+            event: "finalized",
+            block: { hash: "0xabc", index: 0 },
+          },
+        },
+      },
+    ]);
+
+    connection?.disconnect();
+    expect(harness.sent).toHaveLength(1);
+  });
+
+  it("unwatches an active transaction when its connection closes", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const connection = manager.connectRemote("bulletin", "conn-a", () => {});
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "transactionWatch_v1_submitAndWatch",
+        params: ["0x1234"],
+      }),
+    );
+    const upstreamRequest = harness.sent[0] as { id: string };
+    harness.emit({
+      jsonrpc: "2.0",
+      id: upstreamRequest.id,
+      result: "upstream-watch",
+    });
+
+    connection?.disconnect();
+
+    expect(harness.sent[1]).toMatchObject({
+      method: "transactionWatch_v1_unwatch",
+      params: ["upstream-watch"],
+    });
+  });
+
   it("forwards exactly one upstream unpin when two sessions unpin the same shared block", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);

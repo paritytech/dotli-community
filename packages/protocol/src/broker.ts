@@ -6,6 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
+import { log } from "@dotli/shared/log";
 
 /**
  * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
@@ -115,6 +116,13 @@ const TOKEN_METHODS = new Map<string, string>([
 const RELEASE_METHODS = new Set<string>(TOKEN_METHODS.values());
 const MAX_EARLY_SUBSCRIPTION_TOKENS = 32;
 const MAX_EARLY_SUBSCRIPTION_EVENTS_PER_TOKEN = 16;
+
+const TERMINAL_TRANSACTION_WATCH_EVENTS = new Set([
+  "finalized",
+  "error",
+  "invalid",
+  "dropped",
+]);
 
 function isJsonRpcObject(
   value: unknown,
@@ -226,7 +234,7 @@ export function requireBrokerLocalProvider(
 
 const BROKER_TAG = "[dot.li broker]";
 function brokerLog(...args: unknown[]): void {
-  console.warn(BROKER_TAG, ...args);
+  log.debug(BROKER_TAG, ...args);
 }
 
 class ChainBroker {
@@ -941,7 +949,13 @@ class ChainBroker {
       });
     }
 
-    if (isJsonRpcObject(eventResult) && eventResult.event === "stop") {
+    if (
+      isJsonRpcObject(eventResult) &&
+      (eventResult.event === "stop" ||
+        (message.method === "transactionWatch_v1_watchEvent" &&
+          typeof eventResult.event === "string" &&
+          TERMINAL_TRANSACTION_WATCH_EVENTS.has(eventResult.event)))
+    ) {
       brokerLog(`Token stopped by upstream: ${upstreamToken}`);
       for (const localToken of localTokens) {
         this.releaseOwnedToken(localToken, false);

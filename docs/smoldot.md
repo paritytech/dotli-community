@@ -12,38 +12,39 @@ dotli embeds the [smoldot](https://github.com/smol-dot/smoldot) Polkadot light c
 
 ## Where smoldot lives
 
-The protocol iframe owns the resolver and sandbox-facing smoldot client. When
-the host backend is set to Light Client, the host shell also starts a smoldot
-client for Rust-core `chain.connect` requests.
+The protocol runtime owns every physical smoldot client. Host code, including
+the Rust Core chain callback, opens logical connections through
+`connectChain()` and cannot construct a smoldot provider directly.
 
 | Origin | Purpose | Triggered by |
 |---|---|---|
-| Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
-| Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/ui/src/host-callbacks/Chain.ts` |
+| Protocol iframe (`host.localhost`, production `paseo.li`) | Direct-mode smoldot, RPC brokering, and the People provider used by SharedWorker mode | `apps/protocol/src/main.ts` |
+| Protocol SharedWorker | Cross-tab smoldot and brokering for Asset Hub, Bulletin, and relay-chain connections | `apps/protocol/src/protocol-shared-worker.ts` |
 
-Both origins construct smoldot through the singletons in
-`packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
-to configured WebSocket endpoints and does not start the host-shell client.
+Both protocol contexts construct smoldot through their realm-local singleton
+in `packages/resolver/src/smoldot.ts`. RPC Gateway mode uses configured
+WebSocket endpoints and does not start smoldot.
 
 ## Smoldot factories
 
-Two factories live in `packages/resolver/src/smoldot.ts`:
+Two client factories live in `packages/resolver/src/smoldot.ts`:
 
-- `getSmoldot()` (line 171) calls `startFromWorker(new SmWorker(), …)`. Smoldot runs in a dedicated Web Worker. Used in iframe main-thread contexts.
-- `getSmoldotDirect()` (line 158) calls `start(…)`. Smoldot runs on the calling thread. Used inside the SharedWorker, where the `Worker` constructor is unavailable.
+- `getSmoldot()` calls `startFromWorker(new SmWorker(), …)`. Smoldot runs in a dedicated Web Worker while its browser networking frontend remains in the protocol iframe.
+- `getSmoldotDirect()` calls `start(…)`. Smoldot runs on the calling thread. It is used inside the SharedWorker, where the `Worker` constructor is unavailable.
 
-Both share the same `smoldotInstance` cell (line 148). Calling either returns the existing client if one is already constructed.
+Both share the same `smoldotInstance` cell within a JavaScript realm. Calling
+either returns the existing client if one is already constructed.
 
 ## Chains
 
-Five chain factories ship in `packages/resolver/src/smoldot.ts`.
+Four chain factories ship in `packages/resolver/src/smoldot.ts`.
 
 | Function | Chain | Purpose | Genesis hash |
 |---|---|---|---|
-| `getRelayChain()` | Paseo relay | Required parent for the parachains below | `PASEO_RELAY_GENESIS` (`config.ts:83`) |
 | `getDappAssetHubChain()` | Asset Hub Paseo | Domain resolution and product queries (single shared chain) | `ASSET_HUB_PASEO_GENESIS` (`config.ts:85`) |
 | `getBulletinChain()` | Bulletin Paseo | Content reads and Rust-core preimage submission | active network config |
 | `getPeopleChain()` | People | Statement-store auth | active network config |
+| `getRelayChain()` | Paseo relay | Required parent for the parachains above | `PASEO_RELAY_GENESIS` (`config.ts:83`) |
 
 There is exactly one Asset Hub chain (`getDappAssetHubChain()`, `smoldot.ts:519`), shared by the resolver and every dApp session through the `ChainBroker`. The broker opens a single follow that is never removed mid-read. The resolver reads through a local broker session (`broker.getLocalProvider(genesis)`, object-wire), and dApp connections attach as remote sessions on the same follow. This replaced the earlier resolver/product chain split. In that split the resolver's chain was released once the CID was cached, so the first dApp connection releasing that follow mid-read produced the `ChainHead disjointed` load failure.
 
@@ -54,7 +55,7 @@ Hub, Bulletin, and People chains.
 
 The protocol iframe parses a `?mode=` URL parameter (`apps/protocol/src/main.ts:318`) and dispatches at `main.ts:443-466`.
 
-- `?mode=shared-worker` opens a `SharedWorker` (`apps/protocol/src/protocol-shared-worker.ts`). Smoldot runs in the worker thread.
+- `?mode=shared-worker` opens a `SharedWorker` (`apps/protocol/src/protocol-shared-worker.ts`). Asset Hub, Bulletin, and relay-chain providers run there and can be shared across tabs. People runs in the protocol iframe because `RTCPeerConnection` is unavailable in `SharedWorkerGlobalScope`; chain sync can succeed over WSS while Statement Store peer discovery still needs WebRTC.
 - `?mode=direct` runs `initDirectMode()` (`main.ts:593`), which dynamic-imports the resolver and runs smoldot on the iframe main thread.
 - `?mode=rpc` runs `initRpcMode()` (`main.ts:658`). No smoldot. Chain calls go to a trusted WSS JSON-RPC endpoint.
 
@@ -62,23 +63,20 @@ The host shell selects the submode from `chainBackend` at `apps/host/src/main.ts
 
 ## Talking to a chain
 
-Sandbox-facing consumers use the cross-origin seam exposed by
-`@dotli/protocol/client`. The host's Rust-core `chain.connect` callback is the
-exception: it imports `@dotli/resolver/chains` and
-`@dotli/resolver/rpc-chain` to honor the selected backend.
+Every host consumer uses the cross-origin seam exposed by
+`@dotli/protocol/client`.
 
 ```ts
 import { createRemoteChainProvider } from "@dotli/protocol/client";
 import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config/config";
 
 const provider = createRemoteChainProvider(ASSET_HUB_PASEO_GENESIS);
-if (provider === null) {
-  throw new Error("Chain not in SUPPORTED_GENESIS_HASHES");
-}
 const client = createClient(provider); // polkadot-api
 ```
 
-`createRemoteChainProvider(genesisHash)` (`packages/protocol/src/client.ts:619`) returns a polkadot-api `JsonRpcProvider` that bridges to the protocol iframe via `chainConnect` / `chainSend` / `chainDisconnect` postMessage envelopes. The protocol iframe's smoldot is the actual backend. Returns `null` if the genesis hash is not in `SUPPORTED_GENESIS_HASHES`.
+`connectChain(genesisHash)` (`packages/protocol/src/client.ts`) opens an asynchronous string-wire connection through the protocol iframe via `chainConnect` / `chainSend` / `chainDisconnect` envelopes. The protocol iframe or SharedWorker owns the broker and physical upstream provider. Rust Core's host callback uses this API directly.
+
+`createRemoteChainProvider(genesisHash)` is the PAPI compatibility adapter over `connectChain()`. It converts PAPI's synchronous object-wire provider contract to the asynchronous string-wire connection without creating another broker or physical provider.
 
 Resolution helpers are pre-built: `resolveDotNameRemote(label)` and `resolveOwnerRemote(label)` at `client.ts:525` and `client.ts:537`. Call these instead of the resolver's local equivalents.
 
@@ -86,7 +84,8 @@ Bulletin preimage submission is built, signed, and submitted entirely by the Rus
 
 ## Persistence
 
-Smoldot persists chain DBs to IndexedDB internally. dotli does not manage save/load. The comment at `smoldot.ts:8-9` is explicit on this.
+dotli periodically extracts smoldot chain databases and persists them to
+IndexedDB through `packages/resolver/src/smoldot-db.ts`.
 
 Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's destination origin. Stale state from the deleted code path stays on disk until the user clears storage. There is no `dotli doctor` command for this today.
 
@@ -100,11 +99,11 @@ Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's 
 ## Owner-only APIs
 
 These resolver-package exports are owner-only and must not be imported outside
-`apps/protocol/`, except for the host chain callback described above:
+`apps/protocol/`:
 
-- `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getDappAssetHubChain`, `getDappAssetHubProvider`, `makeNonRemovingChain`, `getPeopleChainProvider`
-- `chains.ts`: `createChainProvider`, `isChainSupported` (host chain callback only)
+- `chains.ts`: `createSmoldotUpstreamProvider`, `isChainSupported`
 - `resolve.ts` re-exports of `getSmoldot`, `getSmoldotDirect`, `getRelayChain`, `onConnectionIssue` plus the chain-touching helpers `resolveDotName`, `resolveOwner`, `waitForAssetHubFinalized`, `destroyResolverClient`, and `setResolverAssetHubProvider` (the bootstrap seam that points the resolver's Asset Hub reads at the broker's local session)
+- `smoldot.ts`: `getSmoldot`, `getSmoldotDirect`, `terminateSmoldot`, `onSmoldotFatal`, `onConnectionIssue`, `getRelayChain`, `getBulletinChain`, `getPeopleChain`, `getDappAssetHubChain`, `getDappAssetHubProvider`, `makeNonRemovingChain`
 
 ## Adding a new chain
 
@@ -114,11 +113,11 @@ Steps to make a parachain reachable through the protocol iframe. The sequence be
 2. Add a loader in `packages/resolver/src/chain-specs/index.ts`. Mirror `getBulletinPaseoChainSpec`.
 3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
 4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
-5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol/client`; Rust-core access uses the host `chain.connect` callback.
+5. Wire the factory into `createSmoldotUpstreamProvider` in `packages/resolver/src/chains.ts` so the protocol runtime routes the genesis hash to the new chain.
+6. Raw string-wire consumers call `connectChain(<your-genesis>)`. PAPI consumers use `createRemoteChainProvider(<your-genesis>)`. Rust Core uses `connectChain()` through the host callback.
 
-Steps 4 and 5 make a chain reachable from both the protocol broker and the
-host callback. Skip them and the request fails with `"Unsupported chain"`.
+Steps 4 and 5 make a chain reachable through the protocol broker. The request
+fails with `UNSUPPORTED_CHAIN` when the active backend cannot serve it.
 
 ## Related
 
