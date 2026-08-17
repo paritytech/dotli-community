@@ -39,7 +39,7 @@ let hoverStrip: HTMLElement | null = null;
 let revealButton: HTMLButtonElement | null = null;
 let armed = false;
 let visible = true;
-let appFrameOverlaid = false;
+let appFrameTracking = false;
 
 function getTopbar(): HTMLElement | null {
   return document.getElementById("topbar");
@@ -74,19 +74,31 @@ function applySlideTransition(): void {
 }
 
 /**
- * Give the product frame the full viewport from the first hide onward.
- * Resizing it on every reveal relayouts the product document underneath and
- * jumps its content, while sliding the bar over it is compositor only.
+ * While auto-hide is active the frame keeps a constant 100vh layout box and
+ * a transform tracks the bar. Revealing shifts the frame down below the bar,
+ * so the app's top is never covered and, because only the transform changes,
+ * the product document never relayouts. Cost: the app's bottom strip sits
+ * off-screen for the moment the bar is revealed.
  */
 function applyAppFrameGeometry(): void {
   const frame = getAppFrame();
   if (frame === null) {
     return;
   }
-  frame.style.top = appFrameOverlaid ? "0" : TOPBAR_HEIGHT;
-  frame.style.height = appFrameOverlaid
-    ? "100vh"
-    : `calc(100vh - ${TOPBAR_HEIGHT})`;
+  if (appFrameTracking) {
+    frame.style.top = "0";
+    frame.style.height = "100vh";
+    frame.style.transition =
+      reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION;
+    frame.style.transform = visible
+      ? `translateY(${TOPBAR_HEIGHT})`
+      : "translateY(0)";
+  } else {
+    frame.style.top = TOPBAR_HEIGHT;
+    frame.style.height = `calc(100vh - ${TOPBAR_HEIGHT})`;
+    frame.style.transition = "";
+    frame.style.transform = "";
+  }
 }
 
 function setVisible(next: boolean): void {
@@ -99,8 +111,10 @@ function setVisible(next: boolean): void {
   topbar.style.transform = next ? "translateY(0)" : "translateY(-100%)";
   // The hidden bar keeps its tab stops on purpose: tabbing into it is what
   // reveals it again for keyboard users.
-  if (!next && !appFrameOverlaid) {
-    appFrameOverlaid = true;
+  if (!next) {
+    appFrameTracking = true;
+  }
+  if (appFrameTracking) {
     applyAppFrameGeometry();
   }
   window.dispatchEvent(
@@ -308,7 +322,14 @@ function bindListeners(): void {
 
   const reducedMotion = reducedMotionQuery();
   if (typeof reducedMotion?.addEventListener === "function") {
-    reducedMotion.addEventListener("change", applySlideTransition, { signal });
+    reducedMotion.addEventListener(
+      "change",
+      () => {
+        applySlideTransition();
+        applyAppFrameGeometry();
+      },
+      { signal },
+    );
   }
 }
 
@@ -342,8 +363,8 @@ export function pinTopbarVisible(): void {
   if (revealButton !== null) {
     revealButton.hidden = true;
   }
-  if (appFrameOverlaid) {
-    appFrameOverlaid = false;
+  if (appFrameTracking) {
+    appFrameTracking = false;
     applyAppFrameGeometry();
   }
   setVisible(true);

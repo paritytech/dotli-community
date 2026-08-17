@@ -268,23 +268,26 @@ describe("topbar auto-hide motion and layout", () => {
     expect(topbar().style.transition).toContain("transform");
   });
 
-  it("As a dApp user, revealing the bar never resizes the app frame", async () => {
+  it("As a dApp user, revealing the bar shifts the app below it without resizing it", async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     vi.advanceTimersByTime(HIDE_DELAY_MS);
     const hiddenTop = appFrame().style.top;
     const hiddenHeight = appFrame().style.height;
+    expect(appFrame().style.transform).toBe("translateY(0)");
 
     // When
     focusElement(document.getElementById("topbar-home") as HTMLElement);
 
-    // Then the frame keeps the full viewport, so the product never relayouts
+    // Then the layout box is untouched (no relayout) and a transform moves
+    // the frame under the bar, so the app's top content is never covered
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe(hiddenTop);
     expect(appFrame().style.height).toBe(hiddenHeight);
     expect(hiddenTop).toBe("0px");
     expect(hiddenHeight).toBe("100vh");
+    expect(appFrame().style.transform).toBe("translateY(56px)");
   });
 
   it("As a dotli integrator, a re-rendered product frame keeps the hidden-bar geometry", async () => {
@@ -303,6 +306,7 @@ describe("topbar auto-hide motion and layout", () => {
     // Then
     expect(appFrame().style.top).toBe("0px");
     expect(appFrame().style.height).toBe("100vh");
+    expect(appFrame().style.transform).toBe("translateY(0)");
   });
 
   it("As a logged-out user, the bar is pinned and the app frame makes room for it", async () => {
@@ -321,5 +325,6 @@ describe("topbar auto-hide motion and layout", () => {
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe("56px");
     expect(appFrame().style.height).toBe("calc(100vh - 56px)");
+    expect(appFrame().style.transform).toBe("");
   });
 });
