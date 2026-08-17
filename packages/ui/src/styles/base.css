@@ -23,7 +23,6 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --topbar-height: calc(56px + var(--safe-top));
-  /* Everything below the topbar and clear of the home indicator. */
   --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
 }
 :focus-visible {
