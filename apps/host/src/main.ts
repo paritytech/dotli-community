@@ -32,15 +32,20 @@ import {
   advancePhase,
   nudgePhaseProgress,
   releasePhaseProgress,
-  setLoadingMetrics,
   setLoadingDomain,
   setLoadingStage,
-  setLifecycleStatus,
+  setLoadingWarning,
   stopStatusTick,
   listenForSandboxStatus,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
-import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
+import type { ChainSyncKind } from "@dotli/resolver/smoldot";
+import {
+  describeStall,
+  isCriticalChain,
+  STALL_WARNING_MS,
+  type CriticalChain,
+} from "./warnings";
 import {
   initTopBar,
   setChainsButtonVisible,
@@ -189,27 +194,6 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 const T0 = performance.now();
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
 const blockingModalCoordinator = createBlockingModalCoordinator();
-
-// Names for the light-client row on the loading screen. Full records rather
-// than lookups with a fallback, so adding a chain or a milestone upstream
-// fails typecheck here instead of printing a blank.
-const CHAIN_NAMES: Record<ChainKey, string> = {
-  relay: "Polkadot",
-  "custom-relay": "Relay",
-  "asset-hub": "AssetHub",
-  bulletin: "Bulletin",
-  people: "People",
-};
-const LIFECYCLE_WORDS: Record<ChainSyncKind, string> = {
-  connecting: "connecting",
-  firstPeer: "found a peer",
-  warpSyncProgress: "syncing",
-  warpSyncFinished: "synced",
-  bootstrapComplete: "ready",
-  stalled: "waiting for peers",
-  recovered: "reconnected",
-  peers: "connected",
-};
 
 function parseLocalProductIdOverride(): string | undefined {
   if (!isLocalhost) {
@@ -1314,31 +1298,70 @@ async function main(): Promise<void> {
     // chain is currently being waited on. A single figure had to be blanked
     // at every handover, which put a zero on screen at exactly the moments
     // the load looked slowest.
+    // Warn when a chain stops making progress. Every lifecycle event re-arms
+    // that chain's timer, so a chain warns only if it sits in one state past
+    // the threshold. Peers and throughput are recorded as they arrive, so the
+    // warning can say what is happening rather than only that it is slow.
+    const livePeers = new Map<CriticalChain, number>();
+    const stallReason = new Map<CriticalChain, string | undefined>();
+    const stallTimers = new Map<CriticalChain, ReturnType<typeof setTimeout>>();
+    const warned = new Set<CriticalChain>();
+    let liveBytesPerSecond: number | null = null;
+
+    const armStallWatch = (
+      chain: CriticalChain,
+      state: ChainSyncKind,
+    ): void => {
+      const existing = stallTimers.get(chain);
+      if (existing !== undefined) {
+        clearTimeout(existing);
+      }
+      warned.delete(chain);
+      if (warned.size === 0) {
+        setLoadingWarning(null);
+      }
+      if (state === "bootstrapComplete") {
+        stallTimers.delete(chain);
+        return;
+      }
+      stallTimers.set(
+        chain,
+        setTimeout(() => {
+          warned.add(chain);
+          setLoadingWarning(
+            describeStall({
+              chain,
+              state,
+              peers: livePeers.get(chain) ?? null,
+              bytesPerSecond: liveBytesPerSecond,
+              reason: stallReason.get(chain),
+            }),
+          );
+        }, STALL_WARNING_MS),
+      );
+    };
+
     onProtocolChainSync((event) => {
       log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
-      // One row reports what smoldot itself says it is doing, so a load that
-      // looks stuck can be told apart from one that is quietly working.
-      // Health samples are excluded: they arrive every second and would
-      // overwrite the milestone that explains the current state.
-      if (event.syncKind !== "peers") {
-        setLifecycleStatus(
-          `${CHAIN_NAMES[event.chain]} ${LIFECYCLE_WORDS[event.syncKind]}`,
-        );
+      // Health samples are excluded: they arrive every second and would keep
+      // re-arming the watchdog, so a stalled chain would never warn.
+      if (event.syncKind !== "peers" && isCriticalChain(event.chain)) {
+        if (event.syncKind === "stalled") {
+          stallReason.set(event.chain, event.reason);
+        } else {
+          stallReason.delete(event.chain);
+        }
+        armStallWatch(event.chain, event.syncKind);
       }
       switch (event.syncKind) {
         case "peers":
-          // The relay's count stops updating once it is bootstrapped, because
-          // the health poll stops with it, so that row is a snapshot of the
-          // peers it settled on rather than a live figure.
           if (event.peers === undefined) {
             return;
           }
-          if (event.chain === "relay") {
-            setLoadingMetrics({ relayPeers: event.peers });
-          } else if (event.chain === "asset-hub") {
-            setLoadingMetrics({ assetHubPeers: event.peers });
-          } else if (event.chain === "bulletin") {
-            setLoadingMetrics({ bulletinPeers: event.peers });
+          if (isCriticalChain(event.chain)) {
+            livePeers.set(event.chain, event.peers);
+          }
+          if (event.chain === "bulletin") {
             if (event.peers > 0) {
               // The download can start, so the clock is a fair fallback from
               // here. Holding is only honest while there is no peer to fetch
@@ -1406,10 +1429,8 @@ async function main(): Promise<void> {
       const oldest = samples[0];
       const span = now - oldest.at;
       if (span > 0) {
-        setLoadingMetrics({
-          bytesPerSecond:
-            ((chainBytes + contentBytes - oldest.total) / span) * 1000,
-        });
+        liveBytesPerSecond =
+          ((chainBytes + contentBytes - oldest.total) / span) * 1000;
       }
     };
     onProtocolNetBytes(({ received }) => {
@@ -1444,7 +1465,6 @@ async function main(): Promise<void> {
       }
     });
   }
-  setLifecycleStatus(`Resolving ${withActiveTld(label)}`);
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1560,7 +1580,6 @@ async function main(): Promise<void> {
           advancePhase(mappedPhase);
         }
         emitPhase(msg, phase ?? "progress");
-        setLifecycleStatus(msg);
         // These strings are the resolver talking to a developer, which is how
         // "Walking dag-pb via bitswap..." reached the headline. They stay in
         // the debug stream and move the bar. The stage messages say the same

@@ -207,6 +207,10 @@
 [data-theme="light"] .loading h1 {
   color: #111;
 }
+[data-theme="light"] .loading-warning {
+  /* 6.50:1 */
+  color: #92400e;
+}
 [data-theme="light"] #status {
   color: #1a1a1a;
 }

@@ -59,10 +59,6 @@ let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
 let progressBarEl: HTMLElement | null = null;
 let statusBlockEl: HTMLElement | null = null;
-let metricRelayPeersEl: HTMLElement | null = null;
-let metricAssetHubPeersEl: HTMLElement | null = null;
-let metricBulletinPeersEl: HTMLElement | null = null;
-let metricSpeedEl: HTMLElement | null = null;
 let revealTimer: ReturnType<typeof setTimeout> | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
@@ -146,10 +142,6 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   progressPctEl = document.getElementById("loading-progress-pct");
   progressBarEl = document.getElementById("loading-progress");
   statusBlockEl = document.getElementById("loading-status");
-  metricRelayPeersEl = document.getElementById("metric-peers-relay");
-  metricAssetHubPeersEl = document.getElementById("metric-peers-assethub");
-  metricBulletinPeersEl = document.getElementById("metric-peers-bulletin");
-  metricSpeedEl = document.getElementById("metric-speed");
 
   // A load that finishes quickly should never explain itself. Only once it
   // has run long enough to feel slow does the status block appear.
@@ -170,8 +162,8 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 export const STATUS_REVEAL_MS = 3_000;
 
 // How often the line turns over. Most of this window is the turnover
-// animation, so the finished sentence itself is only still for the last ~2.7s.
-const MESSAGE_ROTATE_MS = 6_500;
+// animation, so the finished sentence itself is only still for the last ~4s.
+const MESSAGE_ROTATE_MS = 9_000;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = "{domain}";
@@ -251,8 +243,8 @@ export function setLoadingDomain(domain: string): void {
 // A fixed budget rather than a per-character delay, so a long sentence
 // animates at the same pace as a short one and always lands inside the
 // rotation interval.
-const ERASE_MS = 1_000;
-const TYPE_MS = 2_800;
+const ERASE_MS = 1_400;
+const TYPE_MS = 3_600;
 let typingFrame: number | null = null;
 let pendingMessage: string | null = null;
 
@@ -392,46 +384,6 @@ function stopStageMessages(): void {
   cancelTyping();
 }
 
-/** Report what the light client itself is doing, e.g. "AssetHub ready". */
-export function setLifecycleStatus(text: string): void {
-  const el = document.getElementById("metric-lifecycle");
-  if (el !== null) {
-    el.textContent = text;
-  }
-}
-
-/**
- * Live counters under the status line.
- *
- * Each is written only when supplied, so a value stays blank until there is
- * something true to put there. A zero would read as broken.
- */
-export function setLoadingMetrics(metrics: {
-  relayPeers?: number;
-  assetHubPeers?: number;
-  bulletinPeers?: number;
-  bytesPerSecond?: number;
-}): void {
-  if (metrics.relayPeers !== undefined && metricRelayPeersEl !== null) {
-    metricRelayPeersEl.textContent = String(metrics.relayPeers);
-  }
-  if (metrics.assetHubPeers !== undefined && metricAssetHubPeersEl !== null) {
-    metricAssetHubPeersEl.textContent = String(metrics.assetHubPeers);
-  }
-  if (metrics.bulletinPeers !== undefined && metricBulletinPeersEl !== null) {
-    metricBulletinPeersEl.textContent = String(metrics.bulletinPeers);
-  }
-  if (metrics.bytesPerSecond !== undefined && metricSpeedEl !== null) {
-    // Chain sync runs at tens of kB/s, which rounded to "0.0 MB/s" and read
-    // as nothing happening.
-    const perSecond = metrics.bytesPerSecond;
-    metricSpeedEl.textContent =
-      perSecond < 1_048_576
-        ? `${String(Math.round(perSecond / 1024))} kB/s`
-        : `${(perSecond / 1_048_576).toFixed(1)} MB/s`;
-  }
-}
-
 /**
  * Advance to a specific phase (0-indexed).
  * Jumps the indicator to the phase's base percentage and begins crawling
@@ -538,6 +490,27 @@ export function stopStatusTick(): void {
   stopProgressCrawl();
   stopStageMessages();
   cancelStatusReveal();
+}
+
+/**
+ * Show or clear the stall warning under the sentences.
+ *
+ * Passing null hides it. The host decides when a chain has stopped moving and
+ * what to say, this only renders it.
+ */
+export function setLoadingWarning(message: string | null): void {
+  const row = document.getElementById("loading-warning");
+  const text = document.getElementById("loading-warning-text");
+  if (row === null || text === null) {
+    return;
+  }
+  if (message === null) {
+    row.classList.remove("visible");
+    text.textContent = "";
+    return;
+  }
+  text.textContent = message;
+  row.classList.add("visible");
 }
 
 /** Cancel the pending status reveal, for a load that finished in time. */

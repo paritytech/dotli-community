@@ -299,33 +299,14 @@
                              element that only ever receives whole sentences. -->
                         <p id="status" aria-hidden="true">Reaching out</p>
                         <p class="sr-only" id="status-sr" aria-live="polite"></p>
-                        <dl class="loading-metrics">
-                            <div class="loading-metric">
-                                <dt>Status</dt>
-                                <dd id="metric-lifecycle">starting</dd>
-                            </div>
-                            <div class="loading-metric-peers">
-                                <dt>Peers</dt>
-                                <dd>
-                                    <div class="loading-metric">
-                                        <span>Relay</span>
-                                        <span id="metric-peers-relay">&mdash;</span>
-                                    </div>
-                                    <div class="loading-metric">
-                                        <span>AssetHub</span>
-                                        <span id="metric-peers-assethub">&mdash;</span>
-                                    </div>
-                                    <div class="loading-metric">
-                                        <span>Bulletin</span>
-                                        <span id="metric-peers-bulletin">&mdash;</span>
-                                    </div>
-                                </dd>
-                            </div>
-                            <div class="loading-metric">
-                                <dt>Speed</dt>
-                                <dd id="metric-speed">&mdash;</dd>
-                            </div>
-                        </dl>
+                        <p class="loading-warning" id="loading-warning" role="status">
+                            <svg class="loading-warning-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M8 1.6 15 14H1L8 1.6Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                                <path d="M8 6v3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                                <circle cx="8" cy="11.8" r="0.85" fill="currentColor"/>
+                            </svg>
+                            <span id="loading-warning-text"></span>
+                        </p>
                     </div>
                 </div>
             </div>

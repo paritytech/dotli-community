@@ -200,54 +200,32 @@ body {
   opacity: 1;
   pointer-events: auto;
 }
-.loading-metrics {
-  /* Matches `.loading-progress`'s bottom margin, so the headline sits an
-     equal distance from the bar above it and the readouts below it. */
-  margin-top: 24px;
-  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
-  font-size: 11px;
-  /* The loading block is centred, so the list centres as a unit while its
-     own rows stay left-aligned. Without this the "Peers" heading floats in
-     the middle of the column. */
-  display: inline-block;
+/* Shown only while a chain has stopped making progress, so it must read as
+   information rather than failure. Amber is already AA on both themes. */
+.loading-warning {
+  display: none;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 18px;
+  font-size: 11.5px;
+  line-height: 1.45;
   text-align: left;
-  /* Fixed, not `min-width`. These readouts change while they are on screen,
-     and a box that grows with its content re-centres the whole block every
-     time a value gets longer. Sized to the widest row the readouts can
-     produce, which is "AssetHub waiting for peers" at 243px. */
-  width: 248px;
-  max-width: 100%;
+  /* 10.32:1 */
+  color: #eab308;
+  /* Sized so the longest sentence cannot widen the loading column. */
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
 }
-.loading-metric {
+.loading-warning.visible {
   display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 2px 0;
 }
-.loading-metric dt,
-.loading-metric span:first-child {
-  /* 6.12:1 */
-  color: #8f8f8f;
-}
-.loading-metric dd,
-.loading-metric span:last-child {
-  /* 7.85:1 */
-  color: #a3a3a3;
-  /* Last line of defence: a value wider than the row must clip rather than
-     wrap and shove the rows below it down. */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* Peers is a heading over its chains rather than a row of its own, so the
-   chain names sit under it and the numbers keep the same right edge. */
-.loading-metric-peers > dt {
-  /* 6.12:1 */
-  color: #8f8f8f;
-  padding: 2px 0;
-}
-.loading-metric-peers > dd {
-  margin-left: 12px;
+.loading-warning-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  /* Nudged onto the first line's baseline rather than its box top. */
+  margin-top: 1px;
 }
 
 .accent {
