@@ -1,13 +1,29 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — Base styles: reset, layout, shared components */
+/* dot.li base styles: reset, layout, shared components */
 
-/* ── Reset ──────────────────────────────── */
+/* Reset */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+/* Layout tokens shared by every stylesheet and by the inline styles in JS.
+
+   The host sets `viewport-fit=cover`, so the viewport spans the whole display
+   and every edge needs its own inset. `env()` carries the 0px fallback here, so
+   rules in this stylesheet use the tokens bare. Inline styles set from JS repeat
+   a px fallback instead, because they do not ship with this file. Defined here
+   rather than in topbar.css because base.css consumes them too. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --topbar-height: calc(56px + var(--safe-top));
+  --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
 }
 :focus-visible {
   outline: 2px solid #737373;
@@ -19,7 +35,7 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-/* ── Spinner (shared) ───────────────────── */
+/* Spinner (shared) */
 .spinner {
   width: 24px;
   height: 24px;
@@ -35,13 +51,13 @@ body {
   }
 }
 
-/* ── App Content ────────────────────────── */
+/* App Content */
 #app {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100dvh - 56px);
-  margin-top: 56px;
+  min-height: var(--content-height);
+  margin-top: var(--topbar-height);
   text-align: center;
 }
 /* Scoped to `#app > .loading` because the bare `.loading` class is *also*
@@ -56,10 +72,10 @@ body {
   padding: 0 24px;
   position: relative;
   z-index: 10;
-  min-height: calc(100vh - 56px);
+  min-height: var(--content-height);
 }
 
-/* Loading logo spinner — rAF-driven via JS, CSS just sets transform-origin */
+/* Loading logo spinner. rAF-driven via JS, CSS just sets transform-origin. */
 .loading-logo {
   margin-bottom: 32px;
   transition: opacity 0.8s ease;
@@ -129,7 +145,7 @@ body {
   text-align: right;
 }
 
-/* Text block — phase label + terminal log */
+/* Text block: the phase label and the terminal log */
 .loading-text {
   display: flex;
   flex-direction: column;
@@ -229,7 +245,7 @@ body {
   font-weight: 600;
 }
 
-/* ── Attesting (login spinner) ──────────── */
+/* Attesting (login spinner) */
 .attesting {
   text-align: center;
 }
@@ -239,12 +255,12 @@ body {
   margin-top: 8px;
 }
 
-/* ── Error Page ─────────────────────────── */
+/* Error Page */
 .error-page {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100dvh - 56px);
+  min-height: var(--content-height);
   font-family: system-ui, sans-serif;
 }
 .error-page-inner {
