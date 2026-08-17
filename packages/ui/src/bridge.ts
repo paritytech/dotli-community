@@ -58,8 +58,8 @@ import { showNotification } from "./notification";
 
 const noop = (): void => undefined;
 
-// Eagerly load the iframe host chunk + worker constructor so they're ready
-// by the time we need them. The wasm core lives inside the worker; the host
+// Eagerly load the iframe host chunk and the worker constructor so they're
+// ready by the time we need them. The wasm core lives inside the worker. The host
 // shell only owns the postMessage bridge, keeping smoldot's CPU off the
 // main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
@@ -250,7 +250,7 @@ function rerenderProduct(product: CurrentProduct): void {
         })
       : renderAppSubdomain(product.cid, product.label);
   void render.catch((error: unknown) => {
-    // A newer render superseded this one; its result owns the UI now.
+    // A newer render superseded this one, so its result owns the UI now.
     if (renderGeneration !== expectedGeneration) {
       return;
     }
@@ -395,7 +395,8 @@ async function disconnectTruapiHosts(): Promise<void> {
 }
 
 /**
- * Capture deep link path (pathname + search + hash) to forward into the iframe.
+ * Capture the deep link path, meaning pathname, search and hash, to forward
+ * into the iframe.
  */
 function getDeepPath(): string {
   const { pathname, search, hash } = window.location;
@@ -469,7 +470,7 @@ function pipeProviders(
     for (const unsub of unsubs) {
       try {
         unsub();
-        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort; stale MessagePorts can already be closed while the next cleanup still must run.
+        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort. Stale MessagePorts can already be closed while the next cleanup still must run.
       } catch {
         /* ignore teardown races */
       }
@@ -948,7 +949,7 @@ export async function renderIframe(
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   // Keep the current product visible while the replacement core initializes.
-  // Core startup can take several seconds; removing the old iframe first made
+  // Core startup can take several seconds. Removing the old iframe first made
   // permission-triggered reloads look like a permanently blank application.
   const previousHost = currentHost;
   if (previousHost === null) {
@@ -1023,7 +1024,7 @@ export async function renderIframe(
   }
 
   stopSetup();
-  document.title = `${label} — dot.li`;
+  document.title = `${label} · dot.li`;
 
   window.dispatchEvent(
     new CustomEvent("dotli:product-loaded", { detail: { label } }),
@@ -1043,7 +1044,7 @@ export async function renderIframe(
  *
  * The app context acts as a transparent relay between the host and the dApp
  * iframe. Only the app subdomain itself participates in the TrUAPI
- * MessageChannel; any nested dApp iframe it loads is opaque to the host.
+ * MessageChannel. Any nested dApp iframe it loads is opaque to the host.
  */
 export async function renderAppSubdomain(
   cid: string,
@@ -1075,7 +1076,7 @@ export async function renderAppSubdomain(
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
   // the first sandbox boot after "Save & Apply" wipes its own origin too.
-  // Consume + clear so subsequent navigations (permission reload, etc.)
+  // Consume and clear so subsequent navigations (permission reload, etc.)
   // don't keep triggering resets.
   let fullReset = false;
   try {
@@ -1083,7 +1084,7 @@ export async function renderAppSubdomain(
       fullReset = true;
       sessionStorage.removeItem("dotli:pending-reset:sandbox");
     }
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); reset flag defaults to false which is the safe state.
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag defaults to false which is the safe state.
   } catch {
     /* sessionStorage unavailable, skip pending reset */
   }

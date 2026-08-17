@@ -514,7 +514,7 @@ function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
       return { enabled: false, explicit: true };
     }
     return { enabled: DEBUG, explicit: false };
-    // eslint-disable-next-line no-restricted-syntax -- URL/sessionStorage may be unavailable in exotic environments (Safari private mode); fall through to the build-time default.
+    // eslint-disable-next-line no-restricted-syntax -- URL or sessionStorage may be unavailable in exotic environments such as Safari private mode, so fall through to the build-time default.
   } catch {
     /* ignore */
   }
@@ -652,7 +652,7 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
     }
     try {
       emit(payload);
-      // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder; a malformed event from the sandbox must never break the host.
+      // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder. A malformed event from the sandbox must never break the host.
     } catch {
       /* ignore: a malformed event shouldn't kill the host */
     }
@@ -839,7 +839,7 @@ async function applyUrlSettings(): Promise<void> {
   if (theme === "light" || theme === "dark" || theme === "system") {
     try {
       localStorage.setItem("dotli-theme", theme);
-      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode; theme restore is best-effort.
+      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode, so theme restore is best-effort.
     } catch {
       /* localStorage unavailable */
     }
@@ -847,7 +847,7 @@ async function applyUrlSettings(): Promise<void> {
   try {
     sessionStorage.setItem("dotli:pending-reset:protocol", "1");
     sessionStorage.setItem("dotli:pending-reset:sandbox", "1");
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); cross-origin purges are best-effort, reload below is unconditional.
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so cross-origin purges are best-effort while the reload below is unconditional.
   } catch {
     /* sessionStorage unavailable */
   }
@@ -983,7 +983,7 @@ async function main(): Promise<void> {
         pendingProtocolReset = true;
         sessionStorage.removeItem("dotli:pending-reset:protocol");
       }
-      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); reset flag falls back to false which is the safe default.
+      // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag falls back to false which is the safe default.
     } catch {
       /* sessionStorage unavailable: skip pending-reset pick up */
     }
@@ -1042,7 +1042,7 @@ async function main(): Promise<void> {
       nextSearch.set(DOTLI_PRODUCT_ID_PARAM, productIdOverride);
     }
     history.replaceState(null, "", `/__preview?${nextSearch.toString()}`);
-    document.title = `${host} — ${SITE_ID}`;
+    document.title = `${host} · ${SITE_ID}`;
     performance.mark("dotli:main:end");
     return;
   }
@@ -1085,7 +1085,7 @@ async function main(): Promise<void> {
         ? "/" + host
         : `/${host}?${DOTLI_PRODUCT_ID_PARAM}=${encodeURIComponent(productIdOverride)}`,
     );
-    document.title = `${host} — ${SITE_ID}`;
+    document.title = `${host} · ${SITE_ID}`;
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({
       layer: "boot",
@@ -1185,7 +1185,7 @@ async function main(): Promise<void> {
   }
   // Content fetch (bitswap/IPFS) runs in the sandbox after the CID resolves and
   // was previously unrepresented, so the bar sat parked while a 20s+ fetch ran.
-  // It is always the last phase; advance to it just before handing off to the
+  // It is always the last phase, so advance to it just before handing off to the
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   advancePhase(0);

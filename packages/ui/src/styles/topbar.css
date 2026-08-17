@@ -4,7 +4,8 @@
 /* dot.li top bar, URL pill, popovers, auth UI */
 
 /* Shared open/close transition for topbar popover menus. Each popover keeps
-   its existing `display: none ↔ block/flex` toggle on `.open`; the transition
+   its existing `display` toggle between none and block or flex on `.open`. The
+   transition
    uses `allow-discrete` so display animates too, and `@starting-style` rules
    defined alongside each popover give the enter direction its initial frame.
    The transform timing function overshoots slightly for a subtle bounce. */
@@ -19,7 +20,7 @@
   }
 }
 
-/* ── Top Bar ────────────────────────────── */
+/* Top Bar */
 /* --topbar-height and the --safe-* insets are defined in base.css. */
 #topbar {
   position: fixed;
@@ -375,7 +376,7 @@
   }
 }
 
-/* ── Verification Shield ────────────────── */
+/* Verification Shield */
 .verification-shield {
   display: block;
   flex-shrink: 0;
@@ -480,7 +481,7 @@
   box-shadow: 0 0 6px rgba(255, 140, 0, 0.45);
 }
 
-/* ── User Badge ─────────────────────────── */
+/* User Badge */
 .user-badge {
   display: flex;
   align-items: center;
@@ -496,7 +497,7 @@
   text-transform: uppercase;
 }
 
-/* ── User Popover ───────────────────────── */
+/* User Popover */
 .user-popover {
   display: none;
   position: fixed;
@@ -570,7 +571,7 @@
   height: 18px;
 }
 
-/* ── Mode Button & Popover ─────────────── */
+/* Mode Button & Popover */
 #mode-button {
   position: relative;
 }
@@ -1043,7 +1044,7 @@
   display: block;
 }
 
-/* ── Permissions Button State ───────────── */
+/* Permissions Button State */
 #permissions-button {
   position: relative;
 }
@@ -1059,7 +1060,7 @@
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Permissions Popover ───────────────── */
+/* Permissions Popover */
 /* Backdrop mirrors `.mode-popover-backdrop`. Blocks clicks under the
    permissions popover and dismisses it on click. */
 .permissions-popover-backdrop {
@@ -1234,7 +1235,7 @@
   text-align: center;
 }
 
-/* ── Permission modal additions ─────────── */
+/* Permission modal additions */
 .permission-modal-icon {
   display: flex;
   align-items: center;

@@ -3,7 +3,7 @@
 
 /* dot.li base styles: reset, layout, shared components */
 
-/* ── Reset ──────────────────────────────── */
+/* Reset */
 * {
   margin: 0;
   padding: 0;
@@ -36,7 +36,7 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-/* ── Spinner (shared) ───────────────────── */
+/* Spinner (shared) */
 .spinner {
   width: 24px;
   height: 24px;
@@ -52,7 +52,7 @@ body {
   }
 }
 
-/* ── App Content ────────────────────────── */
+/* App Content */
 #app {
   display: flex;
   align-items: center;
@@ -246,7 +246,7 @@ body {
   font-weight: 600;
 }
 
-/* ── Attesting (login spinner) ──────────── */
+/* Attesting (login spinner) */
 .attesting {
   text-align: center;
 }
@@ -256,7 +256,7 @@ body {
   margin-top: 8px;
 }
 
-/* ── Error Page ─────────────────────────── */
+/* Error Page */
 .error-page {
   display: flex;
   align-items: center;
