@@ -276,7 +276,12 @@
                     <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
                 </div>
                 <div class="loading-text" id="loading-text">
-                    <p id="status" aria-live="polite">Reaching out</p>
+                    <!-- The visible line is typed a character at a time, which
+                         would make a live region announce every partial string,
+                         so the announcement is split into its own hidden
+                         element that only ever receives whole sentences. -->
+                    <p id="status" aria-hidden="true">Reaching out</p>
+                    <p class="sr-only" id="status-sr" aria-live="polite"></p>
                     <p class="loading-hint" id="loading-hint"></p>
                 </div>
             </div>

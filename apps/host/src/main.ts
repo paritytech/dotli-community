@@ -26,6 +26,7 @@ import {
 } from "@dotli/metrics/sentry";
 import {
   trackStatus,
+  setLoadingDomain,
   showError,
   showNoContentError,
   showLanding,
@@ -1160,38 +1161,74 @@ async function main(): Promise<void> {
   // peers) cap at the band top and let the sheen carry motion rather than
   // inflating the pace. Both smoldot backends share one model. See
   // `advancePhase` mapping below.
-  // Labels are what the visitor reads while they wait, so they name the step
-  // in their terms rather than ours. Which of the two smoldot backends is
-  // running is not something a visitor can act on, so both open the same way.
-  const smoldotPhases = (): LoadingPhase[] => [
-    { label: "Reaching out", base: 2, target: 6, expectedMs: 650 },
-    { label: "Connecting to Polkadot", base: 6, target: 10, expectedMs: 120 },
+  // The label names the step for us. What the visitor reads is the stage's
+  // copy, which says the same thing in words they can act on.
+  const smoldotPhases = (startLabel: string): LoadingPhase[] => [
     {
-      label: `Looking up ${withActiveTld(label)}`,
+      label: startLabel,
+      base: 2,
+      target: 6,
+      expectedMs: 650,
+      stage: "starting",
+    },
+    {
+      label: "Adding relay chain",
+      base: 6,
+      target: 10,
+      expectedMs: 120,
+      stage: "relay",
+    },
+    {
+      label: "Syncing Asset Hub",
       base: 10,
       target: 55,
       expectedMs: 6500,
+      stage: "assetHub",
     },
-    { label: "Found it", base: 55, target: 62, expectedMs: 1200 },
-    { label: "Downloading the app", base: 62, target: 95, expectedMs: 10000 },
+    {
+      label: "Resolving",
+      base: 55,
+      target: 62,
+      expectedMs: 1200,
+      stage: "resolving",
+    },
+    {
+      label: "Fetching content",
+      base: 62,
+      target: 95,
+      expectedMs: 10000,
+      stage: "content",
+    },
   ];
-  if (
-    chainBackend === "smoldot-shared-worker" ||
-    chainBackend === "smoldot-direct"
-  ) {
-    initPhases(smoldotPhases());
+  if (chainBackend === "smoldot-shared-worker") {
+    initPhases(smoldotPhases("Starting Worker"));
+  } else if (chainBackend === "smoldot-direct") {
+    initPhases(smoldotPhases("Starting"));
   } else {
     // Gateway path resolves over RPC with no smoldot sync, then fetches
     // content the same way every backend does.
     initPhases([
       {
-        label: "Connecting to Polkadot",
+        label: "Connecting",
         base: 5,
         target: 50,
         expectedMs: 1200,
+        stage: "relay",
       },
-      { label: "Found it", base: 50, target: 62, expectedMs: 1200 },
-      { label: "Downloading the app", base: 62, target: 95, expectedMs: 10000 },
+      {
+        label: "Resolving",
+        base: 50,
+        target: 62,
+        expectedMs: 1200,
+        stage: "resolving",
+      },
+      {
+        label: "Fetching content",
+        base: 62,
+        target: 95,
+        expectedMs: 10000,
+        stage: "content",
+      },
     ]);
   }
   // Content fetch (bitswap/IPFS) runs in the sandbox after the CID resolves and
@@ -1199,6 +1236,7 @@ async function main(): Promise<void> {
   // It is always the last phase; advance to it just before handing off to the
   // sandbox render.
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
+  setLoadingDomain(label);
   advancePhase(0);
   trackStatus(`Resolving ${withActiveTld(label)}`);
 

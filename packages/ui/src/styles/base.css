@@ -148,9 +148,24 @@ body {
   line-height: 1.3;
   text-align: center;
   width: 100%;
-  white-space: nowrap;
+  /* The explanatory lines run past one line at this width, and clipping them
+     to an ellipsis would defeat the point of showing them. Two lines are
+     reserved so the bar above does not shift as a sentence wraps. */
+  text-wrap: balance;
+  min-height: 2.6em;
+}
+/* Off-screen but still announced. `display: none` and `visibility: hidden`
+   would take it out of the accessibility tree too. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 /* Slow-step hint (shown below status when a step exceeds its threshold) */
 .loading-hint {
