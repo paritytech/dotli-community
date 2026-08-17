@@ -57,28 +57,32 @@ function throughput(bytesPerSecond: number | null): string | null {
 }
 
 /**
- * One sentence explaining a stalled chain, built from what is measurable.
+ * One sentence explaining a stalled chain, or null when there is nothing
+ * worth saying.
  *
- * Ordered by how actionable the cause is. No peers is the only condition the
- * visitor can do anything about, by waiting or moving network, so it is
- * checked first. A healthy peer count with data flowing means the chain is
- * simply slow, which is worth saying plainly rather than alarming about.
+ * Null is the common case and it matters. Sitting in one state for a few
+ * seconds is normal: measured on a healthy load, chains dwell in `connecting`
+ * for 3s, 8s and 11s, so a dwell alone is not evidence of trouble. A warning
+ * is earned only by a fact that says something is actually wrong, which means
+ * no peers, smoldot reporting a stall of its own, or a peered chain with no
+ * data moving. Absence of a peer sample is absence of information, not a
+ * problem, and warning about it fired on every single load.
  */
-export function describeStall(facts: StallFacts): string {
+export function describeStall(facts: StallFacts): string | null {
   const what = CHAIN_WORDS[facts.chain];
-  const rate = throughput(facts.bytesPerSecond);
 
   if (facts.reason === "noPeers" || facts.peers === 0) {
     return `Still looking for computers that carry ${what}. Nothing has answered yet.`;
   }
   if (facts.peers === null) {
-    return `Waiting to hear back from the network about ${what}.`;
+    return null;
   }
   const peerWords =
     facts.peers === 1 ? "1 computer" : `${String(facts.peers)} computers`;
   if (facts.reason !== undefined) {
     return `${what} stopped advancing with ${peerWords} connected. Retrying.`;
   }
+  const rate = throughput(facts.bytesPerSecond);
   if (rate === null) {
     return `Connected to ${peerWords} for ${what}, but no data is arriving yet.`;
   }

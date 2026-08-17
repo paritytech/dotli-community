@@ -1329,16 +1329,18 @@ async function main(): Promise<void> {
       stallTimers.set(
         chain,
         setTimeout(() => {
+          const message = describeStall({
+            chain,
+            state,
+            peers: livePeers.get(chain) ?? null,
+            bytesPerSecond: liveBytesPerSecond,
+            reason: stallReason.get(chain),
+          });
+          if (message === null) {
+            return;
+          }
           warned.add(chain);
-          setLoadingWarning(
-            describeStall({
-              chain,
-              state,
-              peers: livePeers.get(chain) ?? null,
-              bytesPerSecond: liveBytesPerSecond,
-              reason: stallReason.get(chain),
-            }),
-          );
+          setLoadingWarning(message);
         }, STALL_WARNING_MS),
       );
     };

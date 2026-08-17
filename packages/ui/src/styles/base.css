@@ -204,21 +204,27 @@ body {
    information rather than failure. Amber is already AA on both themes. */
 .loading-warning {
   display: none;
+  /* Centres the icon and the sentence as one group under the headline. The
+     row fills the column rather than setting its own width, because a box
+     wider than the column cannot be centred by auto margins and drifted left
+     of the centred headline above it. */
+  width: 100%;
+  justify-content: center;
   align-items: flex-start;
   gap: 7px;
   margin-top: 18px;
   font-size: 11.5px;
   line-height: 1.45;
-  text-align: left;
   /* 10.32:1 */
   color: #eab308;
-  /* Sized so the longest sentence cannot widen the loading column. */
-  max-width: 320px;
-  margin-left: auto;
-  margin-right: auto;
 }
 .loading-warning.visible {
   display: flex;
+}
+#loading-warning-text {
+  /* Wraps before it reaches the window edges on a narrow viewport. */
+  max-width: 34ch;
+  text-align: center;
 }
 .loading-warning-icon {
   width: 14px;
