@@ -1143,10 +1143,13 @@ function initChainsPopover(): void {
     button.setAttribute("aria-expanded", "true");
   });
   document.addEventListener("click", (e) => {
+    // `contains` rather than an identity check: the click lands on the globe
+    // SVG inside the button, so comparing against the button itself closed
+    // the panel in the same click that opened it.
     if (
       popover.classList.contains("open") &&
       !popover.contains(e.target as Node) &&
-      e.target !== button
+      !button.contains(e.target as Node)
     ) {
       close();
     }
