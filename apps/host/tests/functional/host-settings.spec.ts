@@ -130,6 +130,9 @@ test.describe("Settings works", () => {
     // Then
     const state = await readChainBackendState(page, "smoldot-direct");
     expect(state.chainBackend).toBe("smoldot-direct");
+    // The link asked for the default mode, and a default axis is stripped from
+    // the address bar, so landing in it leaves a clean URL rather than one
+    // that still names it. See the contract in `packages/config/url-settings`.
     expect(state.url).not.toContain("chainBackend=");
   });
 
@@ -243,6 +246,8 @@ test.describe("Settings works", () => {
     expect(cache.skipWorkerCache).toBe(false);
     expect(state.url).toContain("skipCidCache=1");
     expect(state.url).toContain("skipArchiveCache=1");
+    // The worker cache was left at its default, so it is stripped rather than
+    // written back as `=0`. Only the axes I actually changed travel in the link.
     expect(state.url).not.toContain("skipWorkerCache=");
   });
 
@@ -292,7 +297,10 @@ test.describe("Settings works", () => {
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
         expect(await hostResolveStarted(page)).toBe(true);
-        expect(await hasCachedCid(page, DOMAIN)).toBe(true);
+        // Changing a cache setting wipes this origin, so the entry saved on the
+        // first visit is gone rather than merely ignored, and with the cache off
+        // nothing writes a new one. See the wipe in `applyUrlSettings`.
+        expect(await hasCachedCid(page, DOMAIN)).toBe(false);
       } finally {
         await context.close();
       }
