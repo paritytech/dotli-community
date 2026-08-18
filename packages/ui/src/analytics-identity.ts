@@ -24,7 +24,7 @@ import {
   getAnalyticsUser,
 } from "@dotli/metrics/sentry";
 import { log } from "@dotli/shared/log";
-import { getSharedChannel } from "./shared-mode";
+import type { SharedChannel } from "./shared-mode";
 
 let reconciled = false;
 
@@ -33,8 +33,12 @@ let reconciled = false;
  *
  * Idempotent. Adopts the shared id when there is one, otherwise seeds the
  * shared store from this origin so the next app to boot adopts it instead.
+ * Takes the channel rather than reaching for it, so `shared-mode` can call this
+ * without the two modules importing each other.
  */
-export async function reconcileAnalyticsUser(): Promise<void> {
+export async function reconcileAnalyticsUser(
+  channel: SharedChannel,
+): Promise<void> {
   if (reconciled) {
     return;
   }
@@ -48,7 +52,6 @@ export async function reconcileAnalyticsUser(): Promise<void> {
     return;
   }
 
-  const channel = getSharedChannel();
   let shared: string | null;
   try {
     shared = await channel.read(ANALYTICS_USER_KEY);
@@ -60,7 +63,7 @@ export async function reconcileAnalyticsUser(): Promise<void> {
     return;
   }
 
-  if (shared !== null && shared !== "") {
+  if (shared !== null) {
     if (shared !== local) {
       adoptAnalyticsUser(shared);
     }

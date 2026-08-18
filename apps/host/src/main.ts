@@ -156,18 +156,6 @@ if (!isMobileDevice()) {
 initSentry("host");
 installGlobalErrorHandlers("host");
 
-// Collapse this origin's analytics id onto the shared one. Deliberately not
-// awaited: it costs an iframe round-trip and nothing below depends on it. Every
-// app is its own subdomain, so without this one person counts once per app.
-void import("@dotli/ui/analytics-identity")
-  .then(({ reconcileAnalyticsUser }) => reconcileAnalyticsUser())
-  .catch((err: unknown) => {
-    log.warn(
-      "[dot.li analytics] Identity reconcile skipped:",
-      err instanceof Error ? err.message : err,
-    );
-  });
-
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 
@@ -841,22 +829,13 @@ async function applyUrlSettings(): Promise<void> {
     return;
   }
 
-  // Wipe host origin and signal the other two origins to purge themselves
-  // on their next boot. wipeOriginState clears localStorage, so capture
-  // the theme and the just-written settings and re-persist them.
-  const theme = readRawLocalStorage("dotli-theme");
+  // Wipe host origin and signal the other two origins to purge themselves on
+  // their next boot. The wipe preserves the theme and the analytics id itself,
+  // so only the just-written settings need re-persisting here.
   await wipeOriginState();
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
-  if (theme === "light" || theme === "dark" || theme === "system") {
-    try {
-      localStorage.setItem("dotli-theme", theme);
-      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode, so theme restore is best-effort.
-    } catch {
-      /* localStorage unavailable */
-    }
-  }
   try {
     sessionStorage.setItem("dotli:pending-reset:protocol", "1");
     sessionStorage.setItem("dotli:pending-reset:sandbox", "1");

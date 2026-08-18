@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ANALYTICS_USER_KEY } from "@dotli/metrics/sentry";
 
 vi.mock("@dotli/ui/shared-auth", () => ({
   getSharedAuth: () => ({
@@ -11,7 +12,7 @@ vi.mock("@dotli/ui/shared-auth", () => ({
   }),
 }));
 
-const ANALYTICS_KEY = "dotli:sentry-uuid";
+const ANALYTICS_KEY = ANALYTICS_USER_KEY;
 const ID = "33333333-3333-4333-8333-333333333333";
 
 describe("full reset", () => {
@@ -45,6 +46,21 @@ describe("full reset", () => {
 
     // Then
     expect(localStorage.getItem(ANALYTICS_KEY)).toBeNull();
+    expect(localStorage.getItem("dotli:network")).toBeNull();
+  });
+
+  it("As a dotli user, resetting my settings keeps the colour scheme I chose", async () => {
+    // Given
+    localStorage.setItem("dotli-theme", "light");
+    localStorage.setItem("dotli:network", "paseo");
+    const { wipeOriginState } = await import("@dotli/ui/topbar");
+
+    // When
+    await wipeOriginState();
+
+    // Then
+    // The wipe preserves this now, so callers no longer snapshot it themselves.
+    expect(localStorage.getItem("dotli-theme")).toBe("light");
     expect(localStorage.getItem("dotli:network")).toBeNull();
   });
 });

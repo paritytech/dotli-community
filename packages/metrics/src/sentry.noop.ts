@@ -38,3 +38,10 @@ export function captureException(
 export function isSmoldotEvent(_event: unknown): boolean {
   return false;
 }
+
+/** Nothing to exclude when there are no Sentry integrations to begin with. */
+export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(
+  integrations: T[],
+): T[] {
+  return integrations;
+}

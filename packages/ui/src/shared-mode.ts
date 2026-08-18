@@ -43,6 +43,7 @@ import {
   clearSharedModeStorage,
 } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
+import { reconcileAnalyticsUser } from "./analytics-identity";
 
 const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY];
 
@@ -248,4 +249,10 @@ export async function bootstrapSharedMode(): Promise<void> {
   if (!isLocalhost && getBackend() !== localBackendBeforeBootstrap) {
     resetProtocolFrame();
   }
+
+  // Collapse this origin's analytics id onto the shared one while the channel
+  // is warm. Not awaited, because nothing here depends on the result. Lives
+  // alongside the other shared-store hydration so an app opting into shared
+  // mode does not have to know this mechanism exists.
+  void reconcileAnalyticsUser(getSharedChannel());
 }

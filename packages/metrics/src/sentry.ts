@@ -33,8 +33,15 @@ export type SentrySource = "host" | "worker" | "sandbox";
  */
 export const ANALYTICS_USER_KEY = "dotli:sentry-uuid";
 
+/** `localStorage`, or `null` when the browser refuses to hand it over. */
 function localStorageOrNull(): Storage | null {
-  return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+  try {
+    return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+  } catch {
+    // Reading the property itself throws in Safari private mode and in Firefox
+    // with storage blocked, so this cannot wait until the first getItem.
+    return null;
+  }
 }
 
 /** The analytics id this origin has stored, or `null` if it has none yet. */
@@ -42,8 +49,6 @@ export function getAnalyticsUser(): string | null {
   try {
     return localStorageOrNull()?.getItem(ANALYTICS_USER_KEY) ?? null;
   } catch {
-    // localStorage may be unavailable in Safari private mode. An absent id is
-    // the safe answer, the caller then leaves the Sentry scope untouched.
     return null;
   }
 }
@@ -220,21 +225,15 @@ export function initSentry(source: SentrySource): void {
   // an async read would lose early events. It is per-origin, so the same person
   // on two app subdomains starts with two ids. `reconcileAnalyticsUser` in
   // `@dotli/ui` collapses them once the shared store is reachable.
-  try {
-    const ls = localStorageOrNull();
-    if (ls) {
-      let uuid = ls.getItem(ANALYTICS_USER_KEY);
-      if (uuid === null) {
-        uuid = crypto.randomUUID();
-        ls.setItem(ANALYTICS_USER_KEY, uuid);
-      }
-      Sentry.setUser({ id: uuid });
-    }
-  } catch (err) {
+  //
+  // Without storage there is no stable id to attach. Minting a throwaway one
+  // per page load would report every visit as a separate person, so skip it.
+  if (localStorageOrNull() === null) {
     log.warn(
-      "[dot.li sentry] anonymous user id setup skipped (localStorage unavailable)",
-      err,
+      "[dot.li sentry] anonymous user id skipped (localStorage unavailable)",
     );
+  } else {
+    adoptAnalyticsUser(getAnalyticsUser() ?? crypto.randomUUID());
   }
 
   m.bind(Sentry as unknown as Parameters<typeof m.bind>[0]);
