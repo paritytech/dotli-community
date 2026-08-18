@@ -116,7 +116,7 @@ describe("The network monitor tracks blocks", () => {
 
     // Then
     expect(getNetworkStatus()[0].bars).toEqual([
-      { number: 101, health: "onTime" },
+      { number: 101, health: "onTime", gapMs: relay.blockTimeMs },
     ]);
   });
 
@@ -217,6 +217,22 @@ describe("The network monitor tracks blocks", () => {
     off();
     emit(relayGenesis(), 8);
     expect(calls).toBe(1);
+  });
+
+  it("As a user hovering a bar, the gap that produced it is recorded", () => {
+    // Given
+    const { source, emit } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    const genesis = relayGenesis();
+    emit(genesis, 1);
+
+    // When a block arrives well after the chain's own expectation
+    vi.advanceTimersByTime(15_000);
+    emit(genesis, 2);
+
+    // Then
+    expect(getNetworkStatus()[0].bars[0].gapMs).toBe(15_000);
   });
 
   it("As a page being torn down, every subscription is dropped at once", () => {

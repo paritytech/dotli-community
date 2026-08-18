@@ -90,23 +90,27 @@ export function describeStall(facts: StallFacts): string | null {
 }
 
 /**
- * One sentence for a bar that has stopped moving, or null when the throughput
- * says the load is simply working.
+ * How long a load must have been running before any warning may appear.
+ *
+ * Warnings that arrive in the first seconds read as failure on loads that were
+ * always going to succeed, and a warning that flashes in and out is worse than
+ * none. A condition that fires earlier is held back and shown at this mark if
+ * it still stands.
+ */
+export const WARNING_MIN_LOAD_MS = 5_000;
+
+/**
+ * One sentence for a bar that has stopped moving.
  *
  * The per-chain watchdog cannot cover this: a chain that never reaches a peer
- * emits nothing, so its lifecycle stays quiet while the bar parks. Throughput
- * is the discriminator. Data still arriving means slow, not stuck.
+ * emits nothing, so its lifecycle stays quiet while the bar parks. The message
+ * carries no percentage, because the bar above already shows the live one and
+ * a number baked into a sentence goes stale the moment the bar moves.
  */
-export function describeProgressStall(
-  percent: number,
-  bytesPerSecond: number | null,
-): string | null {
+export function describeProgressStall(bytesPerSecond: number | null): string {
   const rate = throughput(bytesPerSecond);
   if (rate !== null) {
-    return `Still working at ${String(Math.round(percent))}%. Your connection is giving ${rate}, which is slower than this usually needs.`;
+    return `Still downloading at ${rate}. That is slower than this app usually needs, so give it a moment.`;
   }
-  if (bytesPerSecond === null) {
-    return null;
-  }
-  return `Stopped at ${String(Math.round(percent))}%. No data is arriving right now.`;
+  return "Still working. No data is arriving right now, so it may be your connection.";
 }

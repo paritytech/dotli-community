@@ -1136,6 +1136,25 @@ function watchChainSync(): void {
  * and `bestBlocks$` reports every head change rather than whatever a poll
  * happens to catch.
  */
+/**
+ * How a single block's arrival reads on hover.
+ *
+ * The interval comes first because it is the measurement, then how far past the
+ * chain's own expectation it landed. A block inside the expectation has no delay
+ * to report, and saying "0s late" would invite the reader to look for a problem
+ * that is not there.
+ */
+function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
+  const secs = (ms: number): string =>
+    ms < 10_000
+      ? `${(ms / 1000).toFixed(1)}s`
+      : `${String(Math.round(ms / 1000))}s`;
+  const late = gapMs - blockTimeMs;
+  return late <= 0
+    ? `${secs(gapMs)}, on time`
+    : `${secs(gapMs)}, ${secs(late)} late`;
+}
+
 function createBlockSource(): BlockSource {
   return {
     isReachable: (genesis) => isRemoteChainSupported(genesis),
@@ -1253,6 +1272,13 @@ function renderChainsPopover(parent: HTMLElement): void {
       for (const bar of chain.bars) {
         const mark = document.createElement("span");
         mark.className = `chains-bar is-${bar.health}`;
+        // Hovering a bar answers the only question it raises: how late was it.
+        const label = describeBlockDelay(bar.gapMs, chain.blockTimeMs);
+        mark.title = label;
+        mark.setAttribute(
+          "aria-label",
+          `Block ${String(bar.number)}, ${label}`,
+        );
         strip.appendChild(mark);
       }
       if (chain.bars.length === 0) {

@@ -28,6 +28,8 @@ export type BlockHealth = "onTime" | "late" | "veryLate";
 export interface BlockBar {
   readonly number: number;
   readonly health: BlockHealth;
+  /** How long after the previous block this one arrived. */
+  readonly gapMs: number;
 }
 
 export interface ChainStatus {
@@ -107,9 +109,11 @@ function recordBlock(state: ChainState, blockNumber: number): void {
   // The first block of a session has no gap to judge, so it is not coloured
   // against a guess. It still anchors the next one.
   if (state.lastAt !== null) {
+    const gapMs = now - state.lastAt;
     state.bars.push({
       number: blockNumber,
-      health: classifyGap(now - state.lastAt, state.role.blockTimeMs),
+      health: classifyGap(gapMs, state.role.blockTimeMs),
+      gapMs,
     });
     if (state.bars.length > MAX_BARS) {
       state.bars.shift();

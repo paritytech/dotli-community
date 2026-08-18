@@ -622,7 +622,9 @@
      browser chrome shows/hides, and it already excludes the home indicator. */
   max-height: calc(var(--content-height) - 4px);
   overflow-y: auto;
-  background: rgba(20, 20, 20, 0.82);
+  /* Opaque, matching `.more-popover`. Translucency let a light product page
+     bleed through the blur, so this panel read grey beside the network one. */
+  background: rgb(34, 34, 34);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;

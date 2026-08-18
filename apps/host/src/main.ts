@@ -46,6 +46,7 @@ import {
   describeStall,
   isCriticalChain,
   STALL_WARNING_MS,
+  WARNING_MIN_LOAD_MS,
   type CriticalChain,
 } from "./warnings";
 import {
@@ -1312,14 +1313,41 @@ async function main(): Promise<void> {
     const warned = new Set<CriticalChain>();
     let liveBytesPerSecond: number | null = null;
 
-    onProgressStall((pct) => {
+    // Once earned, the warning row stays for the rest of the load and only its
+    // text updates. Clearing it on recovery made it blink in and out as
+    // conditions wavered, which read as worse trouble than the trouble itself.
+    // Nothing may show before the load is old enough to genuinely be slow, so
+    // an early condition is parked and delivered at the eligibility mark if it
+    // still stands.
+    const loadStartedAt = performance.now();
+    let warningShown = false;
+    let pendingWarning: string | null = null;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const showWarning = (message: string): void => {
+      const waitLeft =
+        WARNING_MIN_LOAD_MS - (performance.now() - loadStartedAt);
+      if (waitLeft > 0) {
+        pendingWarning = message;
+        pendingTimer ??= setTimeout(() => {
+          pendingTimer = null;
+          if (pendingWarning !== null) {
+            warningShown = true;
+            setLoadingWarning(pendingWarning);
+          }
+        }, waitLeft);
+        return;
+      }
+      warningShown = true;
+      pendingWarning = null;
+      setLoadingWarning(message);
+    };
+
+    onProgressStall(() => {
       if (warned.size > 0) {
         return;
       }
-      const message = describeProgressStall(pct, liveBytesPerSecond);
-      if (message !== null) {
-        setLoadingWarning(message);
-      }
+      showWarning(describeProgressStall(liveBytesPerSecond));
     });
 
     const armStallWatch = (
@@ -1330,9 +1358,14 @@ async function main(): Promise<void> {
       if (existing !== undefined) {
         clearTimeout(existing);
       }
-      warned.delete(chain);
-      if (warned.size === 0) {
-        setLoadingWarning(null);
+      if (warned.delete(chain) && warned.size === 0) {
+        // The chain recovered, but hiding the row now would make it flash.
+        // Fall back to the general slow-load line, which is still true.
+        if (warningShown) {
+          showWarning(describeProgressStall(liveBytesPerSecond));
+        } else {
+          pendingWarning = null;
+        }
       }
       if (state === "bootstrapComplete") {
         stallTimers.delete(chain);
@@ -1352,7 +1385,7 @@ async function main(): Promise<void> {
             return;
           }
           warned.add(chain);
-          setLoadingWarning(message);
+          showWarning(message);
         }, STALL_WARNING_MS),
       );
     };

@@ -64,17 +64,23 @@ body {
    used as a modifier on in-popover value spans (e.g. the domain info popover's
    "Resolving..." row). Before scoping, the full-viewport `min-height` on the
    span stretched popover rows to viewport height. */
+/* Positioned the way a browser positions its own status pages: a bounded
+   column starting in the upper part of the viewport rather than floating in the
+   dead centre. Chrome's uses `margin: 14vh auto 0` with a 600px cap, and
+   sitting above the midline means the text does not move when a second line
+   wraps in. */
 #app > .loading {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  /* Desktop's product loading screen uses `p-4` on all sides, not just the
-     sides, so a short viewport keeps clearance above the logo. */
-  padding: 16px;
+  justify-content: flex-start;
+  padding: 14vh 16px 16px;
   position: relative;
   z-index: 10;
   min-height: var(--content-height);
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
 }
 
 /* Loading logo spinner. rAF-driven via JS, CSS just sets transform-origin. */
@@ -160,9 +166,8 @@ body {
   align-items: center;
   gap: 6px;
   width: 100%;
-  /* Desktop's `max-w-[342px]`, so a sentence wraps at the same measure and the
-     logo above it lands at the same height. */
-  max-width: 342px;
+  /* Wide enough that the longer explanatory lines take two rows at most. */
+  max-width: 460px;
   flex-shrink: 0;
 }
 /* Off-screen but still announced. `display: none` and `visibility: hidden`
@@ -201,28 +206,29 @@ body {
 /* Shown only while a chain has stopped making progress, so it must read as
    information rather than failure. Amber is already AA on both themes. */
 .loading-warning {
-  display: none;
-  /* Centres the icon and the sentence as one group under the headline. The
-     row fills the column rather than setting its own width, because a box
-     wider than the column cannot be centred by auto margins and drifted left
-     of the centred headline above it. */
+  /* Always laid out, shown by visibility. The slot's height is reserved so
+     the warning appearing or its text rewrapping cannot shift the logo, bar
+     and sentence above it, which is exactly when the screen must look calm. */
+  visibility: hidden;
+  display: flex;
   width: 100%;
   justify-content: center;
   align-items: flex-start;
   gap: 7px;
   margin-top: 18px;
+  min-height: 34px;
   font-size: 11.5px;
   line-height: 1.45;
   /* 10.32:1 */
   color: #eab308;
 }
 .loading-warning.visible {
-  display: flex;
+  visibility: visible;
 }
 #loading-warning-text {
   /* Wraps before it reaches the window edges on a narrow viewport. */
-  max-width: 34ch;
-  text-align: center;
+  max-width: 46ch;
+  text-align: left;
 }
 .loading-warning-icon {
   width: 14px;
@@ -370,8 +376,12 @@ body {
    below therefore repeat `.mode-popover-section`'s 14px. It has to be margin
    on the table: padding on a `border-collapse` table does not move its
    cells, so a padded table would sit left of the heading. */
+/* Fixed, not `min-width`. The bar strips grow as blocks arrive, and a
+   shrink-to-fit popover widened with them, so the panel changed size while the
+   visitor was reading it. */
 .chains-popover {
-  min-width: 300px;
+  width: 320px;
+  max-width: calc(100vw - 24px);
   padding-bottom: 8px;
 }
 
@@ -444,9 +454,14 @@ body {
 }
 .chains-bars-cell {
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 .chains-bars {
   display: flex;
+  /* A flex item defaults to `min-width: auto`, which lets its content set the
+     floor and defeats the clipping below. */
+  min-width: 0;
   /* Newest on the right, and the oldest are the ones clipped when the panel
      runs out of room. */
   flex-direction: row-reverse;
