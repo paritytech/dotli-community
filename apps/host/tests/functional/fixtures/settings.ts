@@ -15,6 +15,19 @@ export const BACKENDS = [
 
 export type Backend = (typeof BACKENDS)[number];
 
+/**
+ * How each network transport is named in a user story.
+ *
+ * Test titles are read by people deciding whether a behaviour is covered, so
+ * they name the transport the way the settings screen does rather than by its
+ * stored value.
+ */
+export const TRANSPORT_LABELS: Record<Backend, string> = {
+  "smoldot-shared-worker": "shared smoldot",
+  "smoldot-direct": "smoldot per app",
+  "rpc-gateway": "trusted provider",
+};
+
 export interface CacheSeed {
   skipCidCache: boolean;
   skipArchiveCache: boolean;

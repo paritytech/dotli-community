@@ -15,7 +15,7 @@ import { chromium, expect, type Page } from "@playwright/test";
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
-import { BACKENDS, seedSettings } from "./fixtures/settings";
+import { BACKENDS, TRANSPORT_LABELS, seedSettings } from "./fixtures/settings";
 import { BROWSER_PERMISSIONS, seedPermissions } from "./fixtures/permissions";
 import { test } from "./helpers/shared-mode-reset";
 
@@ -31,9 +31,9 @@ const SNAPSHOT_WINDOW_MS = 35_000;
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
 
-test.describe("Resolution across chain backends", () => {
+test.describe("Resolution across network transports", () => {
   for (const backend of BACKENDS) {
-    test(`As a user opening ${DOTNS_NAME} via ${backend}, the shell loads the app`, async ({
+    test(`As a user opening ${DOTNS_NAME} on ${TRANSPORT_LABELS[backend]}, the shell loads the app`, async ({
       browser,
     }) => {
       // Given
