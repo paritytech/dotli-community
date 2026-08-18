@@ -14,6 +14,15 @@ import {
   installGlobalErrorHandlers,
   captureException,
 } from "@dotli/metrics/sentry";
+import {
+  chainBytesReceived,
+  installByteMeter,
+} from "@dotli/resolver/byte-meter";
+
+// Before anything opens a socket. smoldot's transports are the bulk of a
+// cold load's traffic and are invisible to resource timing, so the loading
+// screen's speed readout has no other source for them.
+installByteMeter();
 
 // Do NOT silently reload on chunk preload failure. The protocol iframe is
 // hidden and has no UI of its own, so it surfaces the failure to the parent
@@ -94,6 +103,7 @@ import {
   type ProtocolRequestMap,
 } from "@dotli/protocol/messages";
 import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
+import { PROTOCOL_APP_ERRORS } from "./errors";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -573,7 +583,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       m.distribution(S.PROTOCOL_SW_READY, waitMs, "millisecond", {
         outcome: "timeout",
       });
-      reject(new Error("SharedWorker did not signal ready within timeout"));
+      reject(new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
     }, TIMEOUTS.SHARED_WORKER_READY);
 
     function onMessage(event: MessageEvent): void {
@@ -683,7 +693,21 @@ async function initDirectMode(): Promise<void> {
     setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
-  const { terminateSmoldot, onSmoldotFatal } = smoldotMod;
+  const { terminateSmoldot, onSmoldotFatal, onChainSync } = smoldotMod;
+
+  // Sync reporting is only worth its cost when a loading UI can observe it.
+  // Direct mode is that case and the SharedWorker never enables it. The
+  // host moves the bar on the relay and the Asset Hub, and shows a peer
+  // count for the Asset Hub alone.
+  smoldotMod.enableSyncReporting({
+    // All three chains the load waits on, in the order it waits on them.
+    // The relay warps, the Asset Hub bootstraps on top of it, and Bulletin
+    // serves the content over bitswap. Bulletin is not even created until
+    // after the content phase begins, and takes roughly another second and
+    // a half to find a peer, which used to be silent.
+    milestones: ["relay", "asset-hub", "bulletin"],
+    peerCounts: ["relay", "asset-hub", "bulletin"],
+  });
 
   // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
   // mode has no SharedWorker in the loop, so we post straight up to the
@@ -701,6 +725,50 @@ async function initDirectMode(): Promise<void> {
       );
     }
   });
+
+  // Forward what the chains report about their sync to the host shell, so
+  // the loading screen moves on real signals instead of log-scraped prose.
+  // This iframe owns the smoldot instance. The host has no handle on it.
+  onChainSync((event) => {
+    if (window.parent === window) {
+      return;
+    }
+    const { chain, kind, ...rest } = event;
+    window.parent.postMessage(
+      {
+        namespace: "dotli:protocol",
+        kind: "chain-sync",
+        chain,
+        syncKind: kind,
+        ...rest,
+      },
+      "*",
+    );
+  });
+
+  // Feed the host's speed readout. Cumulative totals on a fixed tick rather
+  // than a rate, so the host owns the averaging and a dropped message just
+  // widens one window.
+  if (window.parent !== window) {
+    const postBytes = (): void => {
+      window.parent.postMessage(
+        {
+          namespace: "dotli:protocol",
+          kind: "net-bytes",
+          received: chainBytesReceived(),
+        },
+        "*",
+      );
+    };
+    // Send a baseline straight away. A rate needs two readings, so waiting a
+    // full tick for the first one delayed the whole readout by 500ms on top
+    // of the time this iframe took to boot.
+    postBytes();
+    const reportBytes = setInterval(postBytes, 500);
+    window.addEventListener("pagehide", () => {
+      clearInterval(reportBytes);
+    });
+  }
 
   const engine = createEngine({
     createChainProvider,
@@ -886,7 +954,7 @@ function handleSharedModeRequest(
       assertSharedAuthSiteId(payload.siteId);
       assertSharedModeKey(payload.key);
       if (typeof payload.value !== "string") {
-        throw new Error("Invalid shared mode value");
+        throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_MODE_VALUE);
       }
       localStorage.setItem(
         buildSharedModeStorageKey(payload.siteId, payload.key),
@@ -989,7 +1057,7 @@ function handleSharedAuthRequest(
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
       if (typeof payload.value !== "string") {
-        throw new Error("Invalid shared auth value");
+        throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_AUTH_VALUE);
       }
       localStorage.setItem(
         buildSharedAuthStorageKey(payload.siteId, payload.key),
@@ -1120,7 +1188,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
 
       case "resolveDotName": {
         if (!options.resolveDotName) {
-          throw new Error("resolveDotName is not served by this protocol mode");
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
         }
         const payload = request.payload as ProtocolRequestMap["resolveDotName"];
         assertStr(payload.label, "label");
@@ -1147,7 +1215,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
 
       case "resolveOwner": {
         if (!options.resolveOwner) {
-          throw new Error("resolveOwner is not served by this protocol mode");
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
         }
         const payload = request.payload as ProtocolRequestMap["resolveOwner"];
         assertStr(payload.label, "label");
@@ -1165,7 +1233,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
       case "resolveExecutableManifest": {
         if (!options.resolveExecutableManifest) {
           throw new Error(
-            "resolveExecutableManifest is not served by this protocol mode",
+            PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED,
           );
         }
         const payload =
@@ -1192,7 +1260,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
       case "resolveRootManifest": {
         if (!options.resolveRootManifest) {
           throw new Error(
-            "resolveRootManifest is not served by this protocol mode",
+            PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED,
           );
         }
         const payload =
@@ -1240,7 +1308,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
           },
         );
         if (connection === null) {
-          throw new Error("Failed to create chain broker");
+          throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
         }
         connections.set(payload.connectionId, connection);
         oc.add(payload.connectionId);

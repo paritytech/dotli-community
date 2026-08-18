@@ -7,7 +7,11 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
-import { ProtocolFatalError, ProtocolInitFailedError } from "./errors";
+import {
+  ProtocolFatalError,
+  PROTOCOL_ERRORS,
+  ProtocolInitFailedError,
+} from "./errors";
 import type {
   ExecutableManifest,
   ManifestResult,
@@ -24,7 +28,10 @@ import { log } from "@dotli/shared/log";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import {
+  isChainSyncPayloadValid,
   isProtocolEnvelope,
+  type ProtocolChainSyncEnvelope,
+  type ProtocolNetBytesEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
@@ -63,6 +70,10 @@ let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
+const chainSyncListeners = new Set<
+  (event: ProtocolChainSyncEnvelope) => void
+>();
+const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -164,10 +175,27 @@ function resetProtocolFrameState(reason?: Error): void {
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
   if (orphaned.length > 0) {
-    const err =
-      reason ?? new Error("Protocol frame state reset before ready signal");
+    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
     for (const waiter of orphaned) {
       waiter.reject(err);
+    }
+  }
+}
+
+/** Deliver to every listener, so one that throws cannot silence the rest. */
+function broadcast<T>(
+  listeners: ReadonlySet<(event: T) => void>,
+  event: T,
+  label: string,
+): void {
+  for (const listener of listeners) {
+    try {
+      listener(event);
+    } catch (err: unknown) {
+      log.error(
+        `[dot.li protocol] ${label} listener threw:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 }
@@ -214,6 +242,22 @@ function bindMessageListener(): void {
           err.name = "ProtocolResponseError";
           pending.reject(err);
         }
+        return;
+      }
+      case "chain-sync": {
+        if (!isChainSyncPayloadValid(msg)) {
+          return;
+        }
+        broadcast(chainSyncListeners, msg, "Chain sync");
+        return;
+      }
+      case "net-bytes": {
+        // Cumulative and monotonic by construction, so anything else is
+        // spoofed traffic rather than a stale message.
+        if (!Number.isFinite(msg.received) || msg.received < 0) {
+          return;
+        }
+        broadcast(netBytesListeners, msg, "Net bytes");
         return;
       }
       case "fatal":
@@ -294,16 +338,7 @@ function bindMessageListener(): void {
           key: msg.key,
           value: msg.value,
         };
-        for (const listener of sharedAuthListeners) {
-          try {
-            listener(change);
-          } catch (err: unknown) {
-            log.error(
-              "[dot.li protocol] Shared auth listener threw:",
-              err instanceof Error ? err.message : err,
-            );
-          }
-        }
+        broadcast(sharedAuthListeners, change, "Shared auth");
         return;
       }
     }
@@ -349,7 +384,7 @@ function createHostIframe(): Promise<void> {
     const timer = setTimeout(() => {
       cleanup();
       iframe.remove();
-      reject(new Error("Shared host iframe timed out while loading"));
+      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
@@ -361,7 +396,7 @@ function createHostIframe(): Promise<void> {
     const onError = (): void => {
       cleanup();
       iframe.remove();
-      reject(new Error("Shared host iframe failed to load"));
+      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
     function cleanup(): void {
@@ -434,7 +469,7 @@ function waitForProtocolReady(): Promise<void> {
     const timer = setTimeout(() => {
       pendingReadyResolvers = pendingReadyResolvers.filter((w) => w !== waiter);
       stopIframe();
-      reject(new Error("Shared protocol iframe timed out (no ready signal)"));
+      reject(new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT));
     }, IFRAME_READY_TIMEOUT_MS);
 
     pendingReadyResolvers.push(waiter);
@@ -504,7 +539,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
-    throw new Error("Shared protocol iframe is unavailable");
+    throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
   }
 
   const id = createRequestId();
@@ -682,6 +717,34 @@ export function subscribeSharedAuthStorage(
   });
   return () => {
     sharedAuthListeners.delete(listener);
+  };
+}
+
+/**
+ * Subscribe to what the chains report about their sync.
+ *
+ * Events arrive only after the origin- and source-gated message listener
+ * validates the envelope, so callers never see spoofable raw messages.
+ * Returns an unsubscribe function.
+ */
+export function onProtocolChainSync(
+  listener: (event: ProtocolChainSyncEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  chainSyncListeners.add(listener);
+  return () => {
+    chainSyncListeners.delete(listener);
+  };
+}
+
+/** Subscribe to the light client's running byte total. */
+export function onProtocolNetBytes(
+  listener: (event: ProtocolNetBytesEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  netBytesListeners.add(listener);
+  return () => {
+    netBytesListeners.delete(listener);
   };
 }
 

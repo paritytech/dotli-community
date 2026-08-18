@@ -20,6 +20,18 @@ export const HOST_ERRORS = {
   CHAIN_SPEC_REJECTED:
     "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
+  TOPBAR_URL_NODE_MISSING: "Required DOM node missing: #topbar-url",
+} as const;
+
+/**
+ * Headlines for the full-page error surface.
+ *
+ * The title says which layer gave up, the detail below it says why, so these
+ * stay separate from the `HOST_ERRORS` copy that fills the detail line.
+ */
+export const ERROR_TITLES = {
+  UI_INIT_FAILED: "UI failed to initialise",
+  DOMAIN_UNREACHABLE: "Domain can't be reached",
 } as const;
 
 export const FAILOVER_BTN_LABELS = {

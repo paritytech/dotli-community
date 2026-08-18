@@ -88,6 +88,20 @@
                     </svg>
                 </button>
                 <button
+                    id="chains-button"
+                    class="topbar-btn topbar-chains-btn"
+                    title="Network"
+                    aria-expanded="false"
+                    aria-controls="chains-popover"
+                >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M2 12h20"/>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    </svg>
+                </button>
+                <div class="more-popover chains-popover" id="chains-popover"></div>
+                <button
                     id="permissions-button"
                     class="topbar-btn"
                     title="Permissions"
@@ -269,20 +283,31 @@
                         <path class="loading-petal" d="M209.058 172.038C199.766 192.192 196.547 210.553 201.89 213.01C207.233 215.468 219.114 201.124 228.406 180.969C237.731 160.815 240.917 142.453 235.607 139.996C235.209 139.797 234.778 139.731 234.28 139.731C228.472 139.731 217.654 153.411 209.058 172.038Z"/>
                     </svg>
                 </div>
-                <div class="loading-progress" id="loading-progress">
+                <div class="loading-progress" id="loading-progress" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div class="loading-progress-bar">
                         <div class="loading-progress-fill" id="loading-progress-fill"></div>
                     </div>
                     <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
                 </div>
                 <div class="loading-text" id="loading-text">
-                    <!-- The visible line is typed a character at a time, which
-                         would make a live region announce every partial string,
-                         so the announcement is split into its own hidden
-                         element that only ever receives whole sentences. -->
-                    <p id="status" aria-hidden="true">Reaching out</p>
-                    <p class="sr-only" id="status-sr" aria-live="polite"></p>
-                    <p class="loading-hint" id="loading-hint"></p>
+                    <!-- Held back until the load has run long enough to be
+                         worth explaining. A fast load shows only the bar. -->
+                    <div class="loading-status" id="loading-status">
+                        <!-- The visible line is typed a character at a time, which
+                             would make a live region announce every partial string,
+                             so the announcement is split into its own hidden
+                             element that only ever receives whole sentences. -->
+                        <p id="status" aria-hidden="true">Reaching out</p>
+                        <p class="sr-only" id="status-sr" aria-live="polite"></p>
+                        <p class="loading-warning" id="loading-warning" role="status">
+                            <svg class="loading-warning-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M8 1.6 15 14H1L8 1.6Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                                <path d="M8 6v3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                                <circle cx="8" cy="11.8" r="0.85" fill="currentColor"/>
+                            </svg>
+                            <span id="loading-warning-text"></span>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

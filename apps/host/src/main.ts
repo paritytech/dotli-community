@@ -25,27 +25,46 @@ import {
   captureException,
 } from "@dotli/metrics/sentry";
 import {
-  trackStatus,
-  setLoadingDomain,
   showError,
   showNoContentError,
   showLanding,
   initPhases,
   advancePhase,
+  nudgePhaseProgress,
+  onProgressStall,
+  releasePhaseProgress,
+  setLoadingDomain,
+  setLoadingStage,
+  setLoadingWarning,
   stopStatusTick,
   listenForSandboxStatus,
-  showGatewayEscape,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
-import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
+import type { ChainSyncKind } from "@dotli/resolver/smoldot";
+import {
+  describeProgressStall,
+  describeStall,
+  isCriticalChain,
+  STALL_WARNING_MS,
+  WARNING_MIN_LOAD_MS,
+  type CriticalChain,
+} from "./warnings";
+import {
+  initTopBar,
+  setChainsButtonVisible,
+  wipeOriginState,
+} from "@dotli/ui/topbar";
 import { productIframeBox } from "@dotli/ui/product-iframe-box";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
   listenForSandboxBitswap,
+  onContentProgress,
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
+  onProtocolChainSync,
+  onProtocolNetBytes,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -69,6 +88,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
+import type { ResolvePhase } from "@dotli/resolver/access-raw-storage";
 import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
@@ -102,7 +122,9 @@ import {
 import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
 import {
   describeError,
+  ERROR_TITLES,
   FAILOVER_BTN_LABELS,
+  HOST_ERRORS,
   REFRESH_BTN_LABEL,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
@@ -1134,9 +1156,9 @@ async function main(): Promise<void> {
   // leaving the page in its initial loading state.
   const urlBar = document.getElementById("topbar-url");
   if (urlBar === null) {
-    const err = new Error("Required DOM node missing: #topbar-url");
+    const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
     captureException(err, { surface: "host_main_dom_invariant" });
-    showError("UI failed to initialise", err.message);
+    showError(ERROR_TITLES.UI_INIT_FAILED, err.message);
     return;
   }
   urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
@@ -1164,6 +1186,19 @@ async function main(): Promise<void> {
   // peers) cap at the band top and let the sheen carry motion rather than
   // inflating the pace. Both smoldot backends share one model. See
   // `advancePhase` mapping below.
+  // Resolver status strings map onto the smoldot phase bands above.
+  // `asset-hub-connecting` is ~0ms (just createClient), so it shares the
+  // Syncing band rather than taking a slice that moves the bar for no work.
+  const PHASE_INDEX: Partial<Record<ResolvePhase, number>> = {
+    "relay-chain-adding": 1,
+    "asset-hub-connecting": 2,
+    "asset-hub-syncing": 2,
+    "asset-hub-ready": 2,
+    "resolving-content": 3,
+  };
+  // Only direct mode relays the sandbox's bitswap traffic through this window,
+  // so it is the only backend that can report a download percentage.
+  const countsContentBytes = chainBackend === "smoldot-direct";
   // The label names the step for us. What the visitor reads is the stage's
   // copy, which says the same thing in words they can act on.
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
@@ -1201,6 +1236,12 @@ async function main(): Promise<void> {
       target: 95,
       expectedMs: 10000,
       stage: "content",
+      // The download counts its own bytes against the total the DAG root
+      // declares, so this band is driven by that rather than by the clock.
+      // Only where something is actually counting: a band that waits for a
+      // percentage nobody will send would hold the indicator at 62 for the
+      // whole fetch.
+      reportsProgress: countsContentBytes,
     },
   ];
   if (chainBackend === "smoldot-shared-worker") {
@@ -1231,6 +1272,9 @@ async function main(): Promise<void> {
         target: 95,
         expectedMs: 10000,
         stage: "content",
+        // No `reportsProgress` here. Gateway mode pulls the archive over HTTP
+        // from the sandbox, so nothing counts its bytes through this window
+        // and there would be no percentage for the indicator to wait on.
       },
     ]);
   }
@@ -1241,7 +1285,235 @@ async function main(): Promise<void> {
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   setLoadingDomain(label);
   advancePhase(0);
-  trackStatus(`Resolving ${withActiveTld(label)}`);
+
+  // Advance the loading bar from smoldot's typed lifecycle stream instead of
+  // scraping log prose. `firstPeer` on the Asset Hub means a peer was
+  // discovered, so the sync band can start crawling. `bootstrapComplete`
+  // means the first finalized block landed, so the resolver can read
+  // storage. Health samples put a live peer count under the headline while
+  // the chain bootstraps, and stall events replace it with honest copy.
+  // Events are emitted from the protocol iframe, which owns smoldot in
+  // direct mode, and arrive through the protocol client's origin- and
+  // source-gated listener. The `statusToPhase` log-text path remains as a
+  // fallback. Only direct mode subscribes: in shared-worker mode smoldot
+  // lives in the SharedWorker, which does not forward lifecycle or health
+  // yet, and the gateway has no smoldot at all.
+  if (chainBackend === "smoldot-direct") {
+    // Peers are reported per chain rather than as one figure for whichever
+    // chain is currently being waited on. A single figure had to be blanked
+    // at every handover, which put a zero on screen at exactly the moments
+    // the load looked slowest.
+    // Warn when a chain stops making progress. Every lifecycle event re-arms
+    // that chain's timer, so a chain warns only if it sits in one state past
+    // the threshold. Peers and throughput are recorded as they arrive, so the
+    // warning can say what is happening rather than only that it is slow.
+    const livePeers = new Map<CriticalChain, number>();
+    const stallReason = new Map<CriticalChain, string | undefined>();
+    const stallTimers = new Map<CriticalChain, ReturnType<typeof setTimeout>>();
+    const warned = new Set<CriticalChain>();
+    let liveBytesPerSecond: number | null = null;
+
+    // Once earned, the warning row stays for the rest of the load and only its
+    // text updates. Clearing it on recovery made it blink in and out as
+    // conditions wavered, which read as worse trouble than the trouble itself.
+    // Nothing may show before the load is old enough to genuinely be slow, so
+    // an early condition is parked and delivered at the eligibility mark if it
+    // still stands.
+    const loadStartedAt = performance.now();
+    let warningShown = false;
+    let pendingWarning: string | null = null;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const showWarning = (message: string): void => {
+      const waitLeft =
+        WARNING_MIN_LOAD_MS - (performance.now() - loadStartedAt);
+      if (waitLeft > 0) {
+        pendingWarning = message;
+        pendingTimer ??= setTimeout(() => {
+          pendingTimer = null;
+          if (pendingWarning !== null) {
+            warningShown = true;
+            setLoadingWarning(pendingWarning);
+          }
+        }, waitLeft);
+        return;
+      }
+      warningShown = true;
+      pendingWarning = null;
+      setLoadingWarning(message);
+    };
+
+    onProgressStall(() => {
+      if (warned.size > 0) {
+        return;
+      }
+      showWarning(describeProgressStall(liveBytesPerSecond));
+    });
+
+    const armStallWatch = (
+      chain: CriticalChain,
+      state: ChainSyncKind,
+    ): void => {
+      const existing = stallTimers.get(chain);
+      if (existing !== undefined) {
+        clearTimeout(existing);
+      }
+      if (warned.delete(chain) && warned.size === 0) {
+        // The chain recovered, but hiding the row now would make it flash.
+        // Fall back to the general slow-load line, which is still true.
+        if (warningShown) {
+          showWarning(describeProgressStall(liveBytesPerSecond));
+        } else {
+          pendingWarning = null;
+        }
+      }
+      if (state === "bootstrapComplete") {
+        stallTimers.delete(chain);
+        return;
+      }
+      stallTimers.set(
+        chain,
+        setTimeout(() => {
+          const message = describeStall({
+            chain,
+            state,
+            peers: livePeers.get(chain) ?? null,
+            bytesPerSecond: liveBytesPerSecond,
+            reason: stallReason.get(chain),
+          });
+          if (message === null) {
+            return;
+          }
+          warned.add(chain);
+          showWarning(message);
+        }, STALL_WARNING_MS),
+      );
+    };
+
+    onProtocolChainSync((event) => {
+      log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
+      // Health samples are excluded: they arrive every second and would keep
+      // re-arming the watchdog, so a stalled chain would never warn.
+      if (event.syncKind !== "peers" && isCriticalChain(event.chain)) {
+        if (event.syncKind === "stalled") {
+          stallReason.set(event.chain, event.reason);
+        } else {
+          stallReason.delete(event.chain);
+        }
+        armStallWatch(event.chain, event.syncKind);
+      }
+      switch (event.syncKind) {
+        case "peers":
+          if (event.peers === undefined) {
+            return;
+          }
+          if (isCriticalChain(event.chain)) {
+            livePeers.set(event.chain, event.peers);
+          }
+          if (event.chain === "bulletin") {
+            if (event.peers > 0) {
+              // The download can start, so the clock is a fair fallback from
+              // here. Holding is only honest while there is no peer to fetch
+              // from: an archive served from the sandbox's own cache never
+              // asks this window for a block, and would otherwise sit at the
+              // band base until the app painted.
+              releasePhaseProgress();
+            }
+          }
+          return;
+        case "warpSyncProgress": {
+          // The one true percentage smoldot offers. Only relays warp, and
+          // only when they have real distance to cover.
+          const { at, target } = event;
+          if (
+            (event.chain === "relay" || event.chain === "custom-relay") &&
+            at !== undefined &&
+            target !== undefined &&
+            target > 0 &&
+            at <= target
+          ) {
+            nudgePhaseProgress(at / target, "relay");
+          }
+          return;
+        }
+        case "firstPeer":
+          if (event.chain === "asset-hub") {
+            advancePhase(2);
+          }
+          return;
+        case "bootstrapComplete":
+          if (event.chain === "asset-hub") {
+            advancePhase(3);
+          }
+          return;
+        case "connecting":
+        case "stalled":
+        case "recovered":
+        case "warpSyncFinished":
+          // The per-chain peer counts already carry these: a stall is a
+          // chain sitting at zero, and recovery is the number climbing.
+          return;
+      }
+    });
+
+    // Speed is the whole load's throughput, not one step's. The chain sync
+    // dominates the first half of a cold load and the archive download the
+    // second, so both are added up and the rate is taken over a short
+    // trailing window. Reporting only the archive left the readout at zero
+    // for the seconds the light client was working hardest.
+    let chainBytes = 0;
+    let contentBytes = 0;
+    // Seeded at the page's own start with nothing downloaded, which is true
+    // and means the first report from the protocol frame already has a second
+    // reading to be measured against. Without it the readout stayed blank
+    // until the frame's second message.
+    const samples: { at: number; total: number }[] = [{ at: 0, total: 0 }];
+    const SPEED_WINDOW_MS = 3_000;
+    const reportSpeed = (): void => {
+      const now = performance.now();
+      samples.push({ at: now, total: chainBytes + contentBytes });
+      while (samples.length > 1 && now - samples[0].at > SPEED_WINDOW_MS) {
+        samples.shift();
+      }
+      const oldest = samples[0];
+      const span = now - oldest.at;
+      if (span > 0) {
+        liveBytesPerSecond =
+          ((chainBytes + contentBytes - oldest.total) / span) * 1000;
+      }
+    };
+    onProtocolNetBytes(({ received }) => {
+      chainBytes = received;
+      reportSpeed();
+    });
+
+    // Every block the sandbox needs is fetched through this window, so the
+    // download reports itself: bytes so far against the total the DAG root
+    // declares.
+    onContentProgress(({ bytesFetched, totalBytes }) => {
+      contentBytes = bytesFetched;
+      reportSpeed();
+      // The download's true fraction drives the bar itself, which is where
+      // a percentage belongs. Printing the same number as text alongside it
+      // said the same thing twice.
+      if (totalBytes === null) {
+        // Bytes are arriving but the DAG root declared no total, so there is
+        // no percentage to be had. Hand the indicator back to the clock.
+        releasePhaseProgress();
+      }
+      if (totalBytes !== null && totalBytes > 0) {
+        nudgePhaseProgress(bytesFetched / totalBytes, "content");
+        // The tail of the load is the sandbox unpacking the archive and
+        // painting, which used to hide behind download copy while the bar
+        // crept. Only blocks relayed for the sandbox are counted here, and
+        // the sandbox is mounted after the content phase begins, so this
+        // cannot fire while an earlier step is still on screen.
+        if (bytesFetched >= totalBytes) {
+          setLoadingStage("preparing");
+        }
+      }
+    });
+  }
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1263,6 +1535,7 @@ async function main(): Promise<void> {
       // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
+        setChainsButtonVisible(true);
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
         await renderAppSubdomain(cachedCid, label);
@@ -1344,48 +1617,29 @@ async function main(): Promise<void> {
       log.warn(
         `[dot.li resolve] path=smoldot (trustless light-client) (${elapsed(T0)})`,
       );
-      // After 10s of slow loading on the verified path, surface a one-click
-      // escape to the gateway backend. The user trades the light-client
-      // verification badge for a faster, trust-based load.
-      const cancelGatewayEscape = showGatewayEscape(() => {
-        m.count(S.GATEWAY_ESCAPE, { from_backend: chainBackend });
-        switchBackendAndReload("rpc-gateway");
-      });
-
-      try {
-        const { statusToPhase } = await import("@dotli/resolver/resolve");
-        const onResolveProgress = (msg: string): void => {
-          // Progress events arrive as opaque strings across the iframe
-          // boundary. The resolver package owns the authoritative
-          // mapping from status text to ResolvePhase, so we defer to it
-          // instead of maintaining a parallel regex here.
-          const phase = statusToPhase(msg);
-          if (phase === "relay-chain-adding") {
-            advancePhase(1);
-          } else if (
-            // `asset-hub-connecting` is ~0ms (just createClient), so it shares
-            // the Syncing band rather than getting a slice that makes the bar
-            // jump for no work.
-            phase === "asset-hub-connecting" ||
-            phase === "asset-hub-syncing" ||
-            phase === "asset-hub-ready"
-          ) {
-            advancePhase(2);
-          } else if (phase === "resolving-content") {
-            advancePhase(3);
-          }
-          emitPhase(msg, phase ?? "progress");
-          trackStatus(msg);
-        };
-        cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
-        if (cid === null) {
-          cid = await resolveDotNameRemote(label, onResolveProgress);
-          log.warn(
-            `[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? "null"}`,
-          );
+      const { statusToPhase } = await import("@dotli/resolver/resolve");
+      const onResolveProgress = (msg: string): void => {
+        // Progress events arrive as opaque strings across the iframe
+        // boundary. The resolver package owns the authoritative mapping from
+        // status text to ResolvePhase, so we defer to it instead of
+        // maintaining a parallel regex here.
+        const phase = statusToPhase(msg);
+        const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
+        if (mappedPhase !== undefined) {
+          advancePhase(mappedPhase);
         }
-      } finally {
-        cancelGatewayEscape();
+        emitPhase(msg, phase ?? "progress");
+        // These strings are the resolver talking to a developer, which is how
+        // "Walking dag-pb via bitswap..." reached the headline. They stay in
+        // the debug stream and move the bar. The stage messages say the same
+        // thing to the user.
+      };
+      cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
+      if (cid === null) {
+        cid = await resolveDotNameRemote(label, onResolveProgress);
+        log.warn(
+          `[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? "null"}`,
+        );
       }
     } else {
       log.warn(
@@ -1395,7 +1649,6 @@ async function main(): Promise<void> {
         await import("@dotli/resolver/rpc-resolve");
       const onResolveProgress = (msg: string): void => {
         emitPhase(msg, "progress");
-        trackStatus(msg);
       };
       cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
       if (cid === null) {
@@ -1442,6 +1695,7 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
+    setChainsButtonVisible(true);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(cid, label);
@@ -1502,11 +1756,11 @@ async function main(): Promise<void> {
     });
     const error = describeError(err, chainBackend !== "rpc-gateway");
     if (error.recovery === "none") {
-      showError("Domain can't be reached", error.message);
+      showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message);
       return;
     }
     if (error.recovery === "reload") {
-      showError("Domain can't be reached", error.message, {
+      showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message, {
         label: "Reload",
         onClick: () => {
           window.location.reload();
@@ -1527,7 +1781,7 @@ async function main(): Promise<void> {
       nextBackend === "rpc-gateway"
         ? svg('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>')
         : svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
-    showError("Domain can't be reached", error.message, [
+    showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message, [
       {
         label: REFRESH_BTN_LABEL,
         icon: refreshIcon,

@@ -46,7 +46,19 @@ export type {
 } from "./access-raw-storage";
 export { statusToPhase } from "./access-raw-storage";
 export { getSmoldot, getSmoldotDirect, getRelayChain } from "./smoldot";
-export { onConnectionIssue } from "./smoldot";
+export {
+  onConnectionIssue,
+  onChainSync,
+  enableSyncReporting,
+  CHAIN_KEYS,
+  CHAIN_SYNC_KINDS,
+} from "./smoldot";
+export type {
+  ChainSyncEvent,
+  ChainSyncKind,
+  ChainKey,
+  SyncReportingConfig,
+} from "./smoldot";
 
 let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;

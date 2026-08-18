@@ -9,6 +9,9 @@ import {
   setNetwork,
 } from "@dotli/config/network";
 import {
+  ENVELOPE_CHAIN_KEYS,
+  ENVELOPE_SYNC_KINDS,
+  isChainSyncPayloadValid,
   isProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolResponseEnvelope,
@@ -17,6 +20,7 @@ import {
   type ProtocolChainMessageEnvelope,
   type ProtocolChainHaltEnvelope,
   type ProtocolReadyEnvelope,
+  type ProtocolChainSyncEnvelope,
 } from "@dotli/protocol/messages";
 
 describe("isProtocolEnvelope", () => {
@@ -150,5 +154,77 @@ describe("genesis hash constants", () => {
     for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
       expect(cfg.relay.genesis).toMatch(/^0x[0-9a-f]{64}$/);
     }
+  });
+});
+
+describe("chain-sync envelope validation works", () => {
+  function envelope(
+    over: Partial<ProtocolChainSyncEnvelope> = {},
+  ): ProtocolChainSyncEnvelope {
+    return {
+      namespace: "dotli:protocol",
+      kind: "chain-sync",
+      chain: "relay",
+      syncKind: "firstPeer",
+      ...over,
+    };
+  }
+
+  // This is the drift guard. The resolver owns the vocabulary, and the
+  // validator keeps its own runtime copy so smoldot stays out of every
+  // bundle that talks to the protocol. When the two fell out of step, three
+  // kinds were dropped in silence and the loading screen simply went quiet.
+  it("As a user, every sync milestone the resolver can emit reaches the shell", () => {
+    // Given / When / Then
+    for (const chain of ENVELOPE_CHAIN_KEYS) {
+      for (const syncKind of ENVELOPE_SYNC_KINDS) {
+        expect(
+          isChainSyncPayloadValid(
+            envelope({
+              chain,
+              syncKind,
+              ...(syncKind === "peers" ? { peers: 1 } : {}),
+            }),
+          ),
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("As a user, a spoofed chain or milestone is refused", () => {
+    // Given / When / Then
+    expect(
+      isChainSyncPayloadValid(
+        envelope({
+          chain: "not-a-chain" as (typeof ENVELOPE_CHAIN_KEYS)[number],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isChainSyncPayloadValid(
+        envelope({
+          syncKind: "somethingElse" as (typeof ENVELOPE_SYNC_KINDS)[number],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("As a user, a nonsense peer count or block height is refused", () => {
+    // Given / When / Then
+    for (const peers of [-1, 1.5, 10_001, Number.NaN]) {
+      expect(
+        isChainSyncPayloadValid(envelope({ syncKind: "peers", peers })),
+      ).toBe(false);
+    }
+    expect(
+      isChainSyncPayloadValid(
+        envelope({ syncKind: "warpSyncProgress", at: Number.NaN, target: 10 }),
+      ),
+    ).toBe(false);
+    expect(
+      isChainSyncPayloadValid(
+        envelope({ syncKind: "warpSyncFinished", finalized: -5 }),
+      ),
+    ).toBe(false);
   });
 });

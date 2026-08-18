@@ -165,12 +165,32 @@ export interface ChainDbTap {
   isStopped(): boolean;
 }
 
+/** The fields of a JSON-RPC frame the tap itself looks at. */
+interface ParsedRpcMessage {
+  id?: unknown;
+  method?: unknown;
+  result?: unknown;
+  params?: unknown;
+}
+
+/**
+ * Claims responses to requests the resolver injected on the chain's pipe.
+ *
+ * Called for every parsed response before it reaches the chain's regular
+ * consumer. Returning `true` consumes the message, which keeps
+ * polkadot-api's provider free of ids and subscriptions it never created.
+ */
+export type TapIntercept = (parsed: ParsedRpcMessage) => boolean;
+
 interface ExternalWaiter {
   resolve: (s: string) => void;
   reject: (e: unknown) => void;
 }
 
-export function tapChain(chain: SmoldotChainLike): ChainDbTap {
+export function tapChain(
+  chain: SmoldotChainLike,
+  intercept?: TapIntercept,
+): ChainDbTap {
   const originalNext = chain.nextJsonRpcResponse.bind(chain);
   const originalRemove = chain.remove.bind(chain);
 
@@ -216,7 +236,7 @@ export function tapChain(chain: SmoldotChainLike): ChainDbTap {
         return;
       }
       try {
-        const parsed = JSON.parse(raw) as { id?: unknown; result?: unknown };
+        const parsed = JSON.parse(raw) as ParsedRpcMessage;
         if (
           typeof parsed.id === "string" &&
           parsed.id.startsWith(REQUEST_ID_PREFIX)
@@ -228,7 +248,10 @@ export function tapChain(chain: SmoldotChainLike): ChainDbTap {
             continue;
           }
         }
-        // eslint-disable-next-line no-restricted-syntax -- parse failures fall through to external forwarding.
+        if (intercept?.(parsed) === true) {
+          continue;
+        }
+        // eslint-disable-next-line no-restricted-syntax -- parse or interceptor failures fall through to external forwarding.
       } catch {
         /* forward as-is */
       }

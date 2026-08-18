@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
@@ -99,6 +101,39 @@ export interface ProtocolInitFailedEnvelope {
   message: string;
 }
 
+/**
+ * Unsolicited broadcast of what a chain reports about its own sync.
+ *
+ * Drives the host loading screen: milestones move the bar, peer counts feed
+ * the detail line under it. Stops arriving once the chain is ready.
+ */
+export interface ProtocolChainSyncEnvelope {
+  namespace: "dotli:protocol";
+  kind: "chain-sync";
+  chain: ChainKey;
+  syncKind: ChainSyncKind;
+  reason?: string;
+  peers?: number;
+  isSyncing?: boolean;
+  /** Warp position and destination, on `warpSyncProgress`. */
+  at?: number;
+  target?: number;
+  /** Block the warp settled on, on `warpSyncFinished`. */
+  finalized?: number;
+}
+
+/**
+ * Running total of bytes the light client has pulled off the network.
+ *
+ * Cumulative rather than a rate, so a dropped message costs nothing and the
+ * host can pick whatever averaging window it wants.
+ */
+export interface ProtocolNetBytesEnvelope {
+  namespace: "dotli:protocol";
+  kind: "net-bytes";
+  received: number;
+}
+
 // Unsolicited notification from the host iframe to its parent window when a
 // sibling tab writes or clears a shared-auth storage key. Drives cross-tab
 // `StorageAdapter.subscribe` callbacks. See `@dotli/protocol/client`
@@ -122,6 +157,8 @@ export type ProtocolEnvelope =
   | ProtocolReadyEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
+  | ProtocolChainSyncEnvelope
+  | ProtocolNetBytesEnvelope
   | ProtocolAuthStorageChangedEnvelope;
 
 const VALID_KINDS = new Set([
@@ -133,8 +170,74 @@ const VALID_KINDS = new Set([
   "ready",
   "fatal",
   "init-failed",
+  "chain-sync",
+  "net-bytes",
   "auth-storage-changed",
 ]);
+
+// postMessage data is untrusted and the envelope type alone cannot reject a
+// spoofed field, so the chain and the kind are checked at runtime. The lists
+// are repeated rather than imported because importing a value from the
+// resolver's smoldot module would drag smoldot into every bundle that talks
+// to the protocol.
+//
+// They are written as `Record<T, true>` rather than an array with
+// `satisfies T[]`, because an array only proves every entry is valid and
+// says nothing about the ones missing. A kind added to the resolver and
+// forgotten here would then be dropped in silence. As a record, a missing
+// key fails typecheck, and `chainSyncKinds` in the tests fails too.
+/** Every chain the envelope accepts. Exhaustive against `ChainKey`. */
+export const ENVELOPE_CHAIN_KEYS = Object.keys({
+  relay: true,
+  "custom-relay": true,
+  "asset-hub": true,
+  bulletin: true,
+  people: true,
+} satisfies Record<ChainKey, true>) as ChainKey[];
+
+/** Every milestone the envelope accepts. Exhaustive against `ChainSyncKind`. */
+export const ENVELOPE_SYNC_KINDS = Object.keys({
+  firstPeer: true,
+  bootstrapComplete: true,
+  stalled: true,
+  recovered: true,
+  peers: true,
+  connecting: true,
+  warpSyncProgress: true,
+  warpSyncFinished: true,
+} satisfies Record<ChainSyncKind, true>) as ChainSyncKind[];
+
+const CHAIN_KEY_VALUES = new Set<string>(ENVELOPE_CHAIN_KEYS);
+const SYNC_KIND_VALUES = new Set<string>(ENVELOPE_SYNC_KINDS);
+
+/**
+ * Whether a `chain-sync` envelope carries values the loading UI can trust.
+ *
+ * Rejects unknown chains and kinds, a peer count that is not a sane integer,
+ * and any block height that is not a finite positive number, since those
+ * drive the bar and would render as NaN.
+ */
+export function isChainSyncPayloadValid(
+  msg: ProtocolChainSyncEnvelope,
+): boolean {
+  if (!CHAIN_KEY_VALUES.has(msg.chain) || !SYNC_KIND_VALUES.has(msg.syncKind)) {
+    return false;
+  }
+  if (
+    msg.syncKind === "peers" &&
+    (!Number.isInteger(msg.peers) ||
+      (msg.peers ?? -1) < 0 ||
+      (msg.peers ?? 0) > 10_000)
+  ) {
+    return false;
+  }
+  for (const height of [msg.at, msg.target, msg.finalized]) {
+    if (height !== undefined && (!Number.isFinite(height) || height < 0)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function isProtocolEnvelope(value: unknown): value is ProtocolEnvelope {
   if (

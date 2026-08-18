@@ -6,6 +6,8 @@
 // Shows a modal asking the user for a decryption password.
 // Follows the same DOM pattern as permission-modal.ts and signing.css.
 
+import { UI_ERRORS } from "./errors";
+
 /**
  * Show a password prompt modal. Resolves with the entered password,
  * or rejects if the user cancels.
@@ -107,7 +109,7 @@ export function showPasswordPrompt(opts?: { error?: string }): Promise<string> {
 
     cancelBtn.addEventListener("click", () => {
       cleanup();
-      reject(new Error("User cancelled decryption"));
+      reject(new Error(UI_ERRORS.DECRYPTION_CANCELLED));
     });
 
     // Clicking the backdrop should not dismiss. The user must explicitly

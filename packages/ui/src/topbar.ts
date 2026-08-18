@@ -6,6 +6,15 @@
 // Manages the auth button, QR pairing modal, and user popover.
 // All plain DOM manipulation, no framework.
 //
+import { getActiveChainRoles, type ChainRole } from "@dotli/config/network";
+import {
+  getNetworkStatus,
+  setBlockSource,
+  startNetworkWatch,
+  stopNetworkWatch,
+  subscribeNetwork,
+  type BlockSource,
+} from "@dotli/ui/network-monitor";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
@@ -17,6 +26,7 @@ import {
 import {
   createRemoteChainProvider,
   isRemoteChainSupported,
+  onProtocolChainSync,
 } from "@dotli/protocol/client";
 import {
   getCacheSettings,
@@ -57,6 +67,7 @@ import {
   type BlockingModalCoordinator,
   type BlockingModalScope,
 } from "./blocking-modal-queue";
+import { UI_ERRORS } from "./errors";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -410,6 +421,9 @@ export function initTopBar(
 
   // Mode toggle (P2P / Centralized)
   initModeToggle();
+  setBlockSource(createBlockSource());
+  initChainsPopover();
+  watchChainSync();
 
   // Permissions
   initPermissions();
@@ -1083,6 +1097,355 @@ function createPermissionDropdown(
   });
 
   return wrap;
+}
+
+/**
+ * Live connection state, fed by the chain-sync subscription.
+ *
+ * `lifecycle_unstable_follow` is never unfollowed, so `stalled` and
+ * `recovered` keep arriving long after the load finished. That makes the
+ * status line genuinely live, unlike the peer counts, whose polling stops
+ * once a chain is up and so have to be queried when the panel opens.
+ */
+const chainSyncState = new Map<string, string>();
+let onStatusChange: (() => void) | null = null;
+let unsubscribeNetwork: (() => void) | null = null;
+let pendingTicker: ReturnType<typeof setInterval> | null = null;
+
+function stopPendingTicker(): void {
+  if (pendingTicker !== null) {
+    clearInterval(pendingTicker);
+    pendingTicker = null;
+  }
+}
+
+function watchChainSync(): void {
+  onProtocolChainSync((event) => {
+    if (event.syncKind === "peers") {
+      return;
+    }
+    chainSyncState.set(event.chain, event.syncKind);
+    onStatusChange?.();
+  });
+}
+
+/**
+ * Network popover: what each chain is doing right now.
+ *
+ * Heights and peer counts are read fresh on every open rather than polled,
+ * because this panel is the only thing that wants them and a background
+ * poll would keep four chains awake for something nobody has looked at.
+ */
+/**
+ * Watch each chain's best block over a client held for the session.
+ *
+ * The panel used to stand up and tear down a client per chain on every tick,
+ * paying metadata each time. One client per chain that stays open pays it once,
+ * and `bestBlocks$` reports every head change rather than whatever a poll
+ * happens to catch.
+ */
+/**
+ * How a single block's arrival reads on hover.
+ *
+ * The interval comes first because it is the measurement, then how far past the
+ * chain's own expectation it landed. A block inside the expectation has no delay
+ * to report, and saying "0s late" would invite the reader to look for a problem
+ * that is not there.
+ */
+function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
+  const secs = (ms: number): string =>
+    ms < 10_000
+      ? `${(ms / 1000).toFixed(1)}s`
+      : `${String(Math.round(ms / 1000))}s`;
+  const late = gapMs - blockTimeMs;
+  return late <= 0
+    ? `${secs(gapMs)}, on time`
+    : `${secs(gapMs)}, ${secs(late)} late`;
+}
+
+function createBlockSource(): BlockSource {
+  return {
+    isReachable: (genesis) => isRemoteChainSupported(genesis),
+    subscribe: (genesis, onBlock) => {
+      // A record rather than two locals: the returned unsubscribe runs after
+      // this function has gone, and a plain boolean flipped from there cannot
+      // be seen by the checker.
+      const live = { cancelled: false, teardown: null as (() => void) | null };
+      void (async () => {
+        try {
+          const provider = createRemoteChainProvider(genesis);
+          if (provider === null) {
+            return;
+          }
+          const papi = await import("polkadot-api");
+          const client = papi.createClient(provider);
+          if (live.cancelled) {
+            client.destroy();
+            return;
+          }
+          const sub = client.bestBlocks$.subscribe({
+            next: (blocks) => {
+              const best = blocks.at(0);
+              if (best !== undefined) {
+                onBlock(best.number);
+              }
+            },
+            error: (err: unknown) => {
+              // A dropped chain renders as a gap in its strip, which is the
+              // truth, so this is worth a log line and nothing louder.
+              log.warn(
+                `[dot.li network] block stream for ${genesis.slice(0, 10)} ended: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            },
+          });
+          live.teardown = () => {
+            sub.unsubscribe();
+            client.destroy();
+          };
+        } catch (err: unknown) {
+          log.warn(
+            `[dot.li network] cannot watch ${genesis.slice(0, 10)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
+      return () => {
+        live.cancelled = true;
+        live.teardown?.();
+      };
+    },
+  };
+}
+
+function renderChainsPopover(parent: HTMLElement): void {
+  parent.replaceChildren();
+  const backend = getBackend();
+
+  appendSectionHeader(parent, "Network");
+  const statusRow = document.createElement("div");
+  statusRow.className = "chains-status";
+  const dot = document.createElement("span");
+  const text = document.createElement("span");
+  statusRow.append(dot, text);
+  parent.appendChild(statusRow);
+
+  const trusted = backend === "rpc-gateway";
+
+  const paint = (): void => {
+    const { text: label, tone } = describeLiveNetwork();
+    dot.className = `chains-status-dot is-${tone}`;
+    text.textContent = label;
+  };
+
+  if (trusted) {
+    dot.className = "chains-status-dot is-idle";
+    text.textContent = "Served by a trusted provider, not a light client here";
+  } else {
+    paint();
+  }
+
+  // A labelled strip per chain rather than a table. The peer count is gone: a
+  // raw number told the visitor nothing they could act on, where the bars show
+  // whether blocks are actually arriving.
+  const barCells = new Map<ChainRole, HTMLElement>();
+  const pendingCells = new Map<
+    ChainRole,
+    { ghost: HTMLElement; text: HTMLElement }
+  >();
+  for (const chain of getActiveChainRoles()) {
+    const group = document.createElement("div");
+    group.className = "chains-group";
+    const name = document.createElement("p");
+    name.className = "chains-group-label";
+    name.textContent = chain.label;
+    const bars = document.createElement("div");
+    bars.className = "chains-bars-cell";
+    group.append(name, bars);
+    parent.appendChild(group);
+    barCells.set(chain.role, bars);
+  }
+
+  const renderBars = (): void => {
+    for (const chain of getNetworkStatus()) {
+      const cell = barCells.get(chain.role);
+      if (cell === undefined) {
+        continue;
+      }
+      if (!chain.reachable) {
+        cell.textContent =
+          chain.role === "bulletin" && trusted
+            ? "served over the IPFS gateway"
+            : "no endpoint on this network";
+        cell.classList.add("is-unavailable");
+        continue;
+      }
+      cell.classList.remove("is-unavailable");
+      const strip = document.createElement("div");
+      strip.className = "chains-bars";
+      for (const bar of chain.bars) {
+        const mark = document.createElement("span");
+        mark.className = `chains-bar is-${bar.health}`;
+        // Hovering a bar answers the only question it raises: how late was it.
+        const label = describeBlockDelay(bar.gapMs, chain.blockTimeMs);
+        mark.title = label;
+        mark.setAttribute(
+          "aria-label",
+          `Block ${String(bar.number)}, ${label}`,
+        );
+        strip.appendChild(mark);
+      }
+      if (chain.bars.length === 0) {
+        // A ghost bar and a live estimate instead of static waiting words.
+        // Before the first head nothing is predictable, so no number is shown.
+        // After it, the next block is genuinely due within the chain's own
+        // block time, and the ticker below keeps the estimate current.
+        const ghost = document.createElement("span");
+        ghost.className = "chains-bar chains-bar-pending";
+        const waiting = document.createElement("span");
+        waiting.className = "chains-bars-waiting";
+        strip.append(ghost, waiting);
+        pendingCells.set(chain.role, { ghost, text: waiting });
+      } else {
+        pendingCells.delete(chain.role);
+      }
+      cell.replaceChildren(strip);
+    }
+    updatePending();
+    if (!trusted) {
+      paint();
+    }
+  };
+
+  // Countdown copy is honest by construction: it never shows zero or a
+  // negative. When the estimate passes it swaps to words, and past 3x the
+  // panel's own verdict line escalates, so "due any moment" cannot linger.
+  const updatePending = (): void => {
+    if (pendingCells.size === 0) {
+      return;
+    }
+    for (const chain of getNetworkStatus()) {
+      const pending = pendingCells.get(chain.role);
+      if (pending === undefined) {
+        continue;
+      }
+      if (chain.sinceLast === null) {
+        pending.ghost.classList.add("is-searching");
+        pending.text.textContent = "connecting";
+        continue;
+      }
+      pending.ghost.classList.remove("is-searching");
+      const fraction = Math.min(chain.sinceLast / chain.blockTimeMs, 1);
+      pending.ghost.style.height = `${String(Math.round(20 + fraction * 80))}%`;
+      const leftMs = chain.blockTimeMs - chain.sinceLast;
+      if (leftMs > 0) {
+        pending.text.textContent = `next block in about ${String(Math.ceil(leftMs / 1000))}s`;
+        pending.ghost.classList.remove("is-due");
+      } else {
+        pending.text.textContent = "due any moment";
+        pending.ghost.classList.add("is-due");
+      }
+    }
+  };
+
+  startNetworkWatch();
+  renderBars();
+  unsubscribeNetwork?.();
+  unsubscribeNetwork = subscribeNetwork(renderBars);
+  stopPendingTicker();
+  pendingTicker = setInterval(updatePending, 250);
+}
+
+/**
+ * The overall verdict, from the blocks actually arriving.
+ *
+ * The old line came from lifecycle milestones, which are terminal, so it
+ * latched at whatever it computed when the last chain bootstrapped and kept
+ * saying it after the connection died.
+ */
+function describeLiveNetwork(): { text: string; tone: string } {
+  const chains = getNetworkStatus().filter((c) => c.reachable);
+  if (chains.length === 0) {
+    return { text: "Starting", tone: "idle" };
+  }
+  const started = chains.filter((c) => c.latest !== null);
+  if (started.length === 0) {
+    return { text: "Connecting", tone: "idle" };
+  }
+  const overdue = started.filter(
+    (c) => c.sinceLast !== null && c.sinceLast > c.blockTimeMs * 3,
+  );
+  if (overdue.length > 0) {
+    return {
+      text: `Waiting on ${overdue.map((c) => c.label).join(" and ")}`,
+      tone: "warn",
+    };
+  }
+  if (started.length < chains.length) {
+    return {
+      text: `Connecting, ${String(started.length)} of ${String(chains.length)} ready`,
+      tone: "idle",
+    };
+  }
+  return { text: "Your connection is good", tone: "ok" };
+}
+
+/**
+ * Reveal the network button. The host calls this once a product is on
+ * screen, so the icon appears with the app rather than during the load.
+ */
+export function setChainsButtonVisible(visible: boolean): void {
+  document
+    .getElementById("chains-button")
+    ?.classList.toggle("visible", visible);
+}
+
+function initChainsPopover(): void {
+  const button = document.getElementById("chains-button");
+  const popover = document.getElementById("chains-popover");
+  if (button === null || popover === null) {
+    return;
+  }
+  button.setAttribute("aria-haspopup", "dialog");
+  popover.setAttribute("role", "dialog");
+  popover.setAttribute("aria-label", "Network");
+
+  const close = (): void => {
+    popover.classList.remove("open");
+    button.setAttribute("aria-expanded", "false");
+    unsubscribeNetwork?.();
+    unsubscribeNetwork = null;
+    stopPendingTicker();
+    stopNetworkWatch();
+    onStatusChange = null;
+  };
+  // No `stopPropagation`. The shared outside-click closer has to see this
+  // click to shut Settings, which sits at the same fixed position and would
+  // otherwise render on top of this panel.
+  button.addEventListener("click", () => {
+    if (popover.classList.contains("open")) {
+      close();
+      return;
+    }
+    renderChainsPopover(popover);
+    popover.classList.add("open");
+    button.setAttribute("aria-expanded", "true");
+  });
+  document.addEventListener("click", (e) => {
+    // `contains` rather than an identity check: the click lands on the globe
+    // SVG inside the button, so comparing against the button itself closed
+    // the panel in the same click that opened it.
+    if (
+      popover.classList.contains("open") &&
+      !popover.contains(e.target as Node) &&
+      !button.contains(e.target as Node)
+    ) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      close();
+    }
+  });
 }
 
 function initModeToggle(): void {
@@ -1783,49 +2146,10 @@ function renderDiagnostics(parent: HTMLElement): void {
     );
   }
 
-  // Version is static and cheap. Block numbers are async so the rows start
-  // with an ellipsis placeholder and get swapped in when `chainConnect`
-  // rounds-trip back with a finalized-block header. When the user is on
-  // the RPC chain backend, smoldot isn't running, so hide the per-chain
-  // block rows entirely (the endpoints already appear under Chain) and
-  // keep only the smoldot version so the dependency is still visible.
-  const smoldotInfo: SmoldotInfo = {
-    version: buildSmoldotVersionLabel(),
-    blocks: { relay: "…", assetHub: "…", people: "…" },
-  };
-  const smoldotActive = getBackend() !== "rpc-gateway";
+  // Version only. The per-chain block heights this section used to carry
+  // now live in the network popover, where they can be read live.
   appendSectionHeader(parent, "@smoldot");
-  renderInfoRow(parent, "smoldot", smoldotInfo.version);
-  if (smoldotActive) {
-    const relayRow = renderInfoRow(parent, "Relay Chain", "…");
-    const assetHubRow = renderInfoRow(parent, "Asset Hub", "…");
-    const peopleRow = renderInfoRow(parent, "People Chain", "…");
-
-    // Fire all queries. They update their own rows and the shared snapshot
-    // (so the "Share diagnostic" button captures whatever resolved in time).
-    const cfg = getActiveServicesConfig();
-    void queryFinalizedBlock(cfg.relay.genesis).then((n) => {
-      const v = formatBlock(n);
-      relayRow.update(v);
-      smoldotInfo.blocks.relay = v;
-    });
-    void queryFinalizedBlock(cfg.assethub.genesis).then((n) => {
-      const v = formatBlock(n);
-      assetHubRow.update(v);
-      smoldotInfo.blocks.assetHub = v;
-    });
-    void queryFinalizedBlock(cfg.people.genesis).then((n) => {
-      const v = formatBlock(n);
-      peopleRow.update(v);
-      smoldotInfo.blocks.people = v;
-    });
-  } else {
-    // Keep the snapshot tagged as n/a so the Share-diagnostic report is
-    // coherent: smoldot wasn't consulted, don't claim a block height.
-    smoldotInfo.blocks.relay = "n/a";
-    smoldotInfo.blocks.assetHub = "n/a";
-    smoldotInfo.blocks.people = "n/a";
-  }
+  renderInfoRow(parent, "smoldot", buildSmoldotVersionLabel());
 
   // The unscoped `polkadot-api` package lives in the same visual section as
   // `@polkadot-api/*`. Same ecosystem, same release cadence, users expect
@@ -1870,6 +2194,10 @@ function renderDiagnostics(parent: HTMLElement): void {
     "Open a new issue on paritytech/dotli pre-filled with these diagnostics";
   shareBtn.addEventListener("click", () => {
     void (async () => {
+      // Block heights now live in the Network popover, so nothing has them
+      // cached. Query them here, where a report is actually being made,
+      // instead of keeping four chains awake for a panel nobody opened.
+      const smoldotInfo = await collectSmoldotInfo();
       const report = await formatDiagnosticsReport(
         base,
         smoldotInfo,
@@ -1929,10 +2257,10 @@ function isTruapiDebugEnabled(): boolean {
  *              so the snapshot matches what's actually live right now.
  *    3. Permissions: per-product, omitted on landing where we don't have
  *                    a scoped label to query.
- *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi. The
- *                 live block heights from the @smoldot popover section
- *                 aren't included here because they're noise in a bug
- *                 report. The popover already shows them live. */
+ *    4. Packages: flat list of smoldot, polkadot-api, and @parity/truapi,
+ *                 with the block heights queried at share time. They are
+ *                 not rendered in this popover any more, they live in the
+ *                 network panel where they can be read live. */
 async function formatDiagnosticsReport(
   base: [label: string, value: string][],
   smoldot: SmoldotInfo,
@@ -2048,6 +2376,29 @@ function backendLabel(b: Backend): string {
     case "rpc-gateway":
       return "Trusted Providers";
   }
+}
+
+/** Gather the smoldot readouts a diagnostic report quotes. */
+async function collectSmoldotInfo(): Promise<SmoldotInfo> {
+  const info: SmoldotInfo = {
+    version: buildSmoldotVersionLabel(),
+    blocks: { relay: "n/a", assetHub: "n/a", people: "n/a" },
+  };
+  if (getBackend() === "rpc-gateway") {
+    return info;
+  }
+  const cfg = getActiveServicesConfig();
+  const [relay, assetHub, people] = await Promise.all([
+    queryFinalizedBlock(cfg.relay.genesis),
+    queryFinalizedBlock(cfg.assethub.genesis),
+    queryFinalizedBlock(cfg.people.genesis),
+  ]);
+  info.blocks = {
+    relay: formatBlock(relay),
+    assetHub: formatBlock(assetHub),
+    people: formatBlock(people),
+  };
+  return info;
 }
 
 interface SmoldotInfo {
@@ -2429,7 +2780,7 @@ function ensureAuthModalLease(): void {
   }
 
   if (blockingModalCoordinator === null) {
-    throw new Error("Top bar initialized without a blocking modal coordinator");
+    throw new Error(UI_ERRORS.MISSING_MODAL_COORDINATOR);
   }
   const scope = blockingModalCoordinator.createScope();
   authModalScope = scope;

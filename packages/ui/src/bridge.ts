@@ -55,6 +55,7 @@ import {
 } from "./legacy-host-bridge";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { showNotification } from "./notification";
+import { UI_ERRORS } from "./errors";
 
 const noop = (): void => undefined;
 
@@ -1090,7 +1091,7 @@ export async function renderAppSubdomain(
   }
   const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
   if (parsedUrl.origin !== appOrigin) {
-    throw new Error("Refusing to render an app URL outside its sandbox origin");
+    throw new Error(UI_ERRORS.CROSS_ORIGIN_APP_URL);
   }
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
   parsedUrl.searchParams.set(

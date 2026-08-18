@@ -207,37 +207,20 @@
 [data-theme="light"] .loading h1 {
   color: #111;
 }
+[data-theme="light"] .loading-warning {
+  /* 6.50:1 */
+  color: #92400e;
+}
 [data-theme="light"] #status {
   color: #1a1a1a;
-}
-[data-theme="light"] .loading-hint {
-  color: #b45309;
-}
-[data-theme="light"] .loading-hint.visible {
-  opacity: 0.9;
-}
-[data-theme="light"] .loading-gateway-btn {
-  border-color: rgba(0, 0, 0, 0.16);
-  background: rgba(0, 0, 0, 0.03);
-  color: rgba(0, 0, 0, 0.85);
-}
-[data-theme="light"] .loading-gateway-btn:hover {
-  border-color: rgba(0, 0, 0, 0.32);
-  background: rgba(0, 0, 0, 0.06);
-  color: #111;
-}
-[data-theme="light"] .loading-gateway-btn-icon {
-  background: rgba(0, 0, 0, 0.06);
-  color: #0a0a0a;
-}
-[data-theme="light"] .loading-gateway-btn-sub {
-  color: rgba(0, 0, 0, 0.55);
 }
 [data-theme="light"] .loading-progress-bar {
   background: rgba(0, 0, 0, 0.06);
 }
 [data-theme="light"] .loading-progress-fill {
-  background: rgba(0, 0, 0, 0.35);
+  /* The fill is the state indicator, so it needs 3:1 as a non-text
+     component. 0.35 gave 2.43:1 against the page; 0.5 gives 3.88:1. */
+  background: rgba(0, 0, 0, 0.5);
 }
 /* Loading logo — dark-mode uses `fill: #fff` on the petals, which is
    invisible on the light-theme cream body. Flip to near-black so the
@@ -246,7 +229,36 @@
   fill: #111;
 }
 [data-theme="light"] .loading-progress-pct {
-  color: #333;
+  /* 4.89:1, and kept below the detail line so the ranking survives the
+     flip. #333 would clear AA too, but it would outrank the headline's
+     own secondary line. */
+  color: #6b6b6b;
+}
+[data-theme="light"] .loading-status-heading,
+[data-theme="light"] .loading-details-summary,
+[data-theme="light"] .loading-metric dt {
+  /* 4.89:1 */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-status {
+  color: #1a1a1a;
+}
+[data-theme="light"] .chains-table tr:first-child th {
+  /* 4.89:1 */
+  color: #6b6b6b;
+  border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .chains-table td,
+[data-theme="light"] .chains-table tr th:first-child {
+  /* 7.17:1 */
+  color: #525252;
+}
+[data-theme="light"] .chains-status-dot.is-idle {
+  background: #6b6b6b;
+}
+[data-theme="light"] .loading-metric dd {
+  /* 7.17:1 */
+  color: #525252;
 }
 [data-theme="light"] .spinner {
   border-color: #ddd;
@@ -579,4 +591,48 @@
 }
 [data-theme="light"] .permission-modal-notice {
   color: rgba(0, 0, 0, 0.5);
+}
+
+/* Green, amber and red all need darkening on the cream panel to clear 3:1 as
+   non-text marks. Measured against #fdfdfd, the composited light surface. */
+[data-theme="light"] .chains-bar.is-onTime {
+  /* 4.93:1 */
+  background: #15803d;
+}
+[data-theme="light"] .chains-bar.is-late {
+  /* 4.94:1 */
+  background: #b45309;
+}
+[data-theme="light"] .chains-bar.is-veryLate {
+  /* 4.86:1 */
+  background: #b91c1c;
+}
+[data-theme="light"] .chains-bars {
+  border-bottom-color: rgba(0, 0, 0, 0.16);
+}
+[data-theme="light"] .chains-group-label {
+  /* 7.10:1 */
+  color: #525252;
+}
+[data-theme="light"] .chains-bar-pending {
+  /* 5.24:1 on the cream panel */
+  background: #6b6b6b;
+}
+[data-theme="light"] .chains-bars-waiting,
+[data-theme="light"] .chains-bars-cell.is-unavailable {
+  /* 5.24:1 */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-status {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+}
+[data-theme="light"] .chains-status-dot.is-ok {
+  background: #15803d;
+}
+[data-theme="light"] .chains-status-dot.is-warn {
+  background: #b45309;
+}
+[data-theme="light"] .chains-status-dot.is-idle {
+  background: #6b6b6b;
 }
