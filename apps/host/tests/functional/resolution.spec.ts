@@ -10,16 +10,16 @@
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
-import { BACKENDS } from "./fixtures/settings";
+import { BACKENDS, TRANSPORT_LABELS } from "./fixtures/settings";
 import { test } from "./helpers/shared-mode-reset";
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
 
-test.describe("Resolution across chain backends", () => {
+test.describe("Resolution across network transports", () => {
   for (const backend of BACKENDS) {
-    test(`As a user opening ${DOTNS_NAME} via ${backend}, the shell loads the app`, async ({
+    test(`As a user opening ${DOTNS_NAME} on ${TRANSPORT_LABELS[backend]}, the shell loads the app`, async ({
       browser,
     }) => {
       // Given

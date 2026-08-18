@@ -36,6 +36,7 @@ import {
   CACHE_ENABLED,
   SKIP_ARCHIVE_ONLY,
   SKIP_CID_ONLY,
+  TRANSPORT_LABELS,
   updateCacheSettings,
 } from "./fixtures/settings";
 import { test } from "./helpers/shared-mode-reset";
@@ -101,7 +102,7 @@ test.describe("Settings works", () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user opening a link that selects ${backend}, my session runs in that mode and stays there`, async ({
+    test(`As a user opening a link that selects ${TRANSPORT_LABELS[backend]}, my session runs in that mode and stays there`, async ({
       page,
     }) => {
       // When
@@ -238,7 +239,7 @@ test.describe("Settings works", () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
       // Given
@@ -263,7 +264,7 @@ test.describe("Settings works", () => {
       }
     });
 
-    test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
       // Given
@@ -291,7 +292,7 @@ test.describe("Settings works", () => {
   }
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the archive cache on, revisiting a site checks my local copy first`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} with the archive cache on, revisiting a site checks my local copy first`, async ({
       browser,
     }) => {
       // Given
@@ -315,7 +316,7 @@ test.describe("Settings works", () => {
       }
     });
 
-    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
       browser,
     }) => {
       // Given
