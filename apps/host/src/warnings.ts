@@ -88,3 +88,25 @@ export function describeStall(facts: StallFacts): string | null {
   }
   return `Fetching ${what} from ${peerWords} at ${rate}. Slower than usual.`;
 }
+
+/**
+ * One sentence for a bar that has stopped moving, or null when the throughput
+ * says the load is simply working.
+ *
+ * The per-chain watchdog cannot cover this: a chain that never reaches a peer
+ * emits nothing, so its lifecycle stays quiet while the bar parks. Throughput
+ * is the discriminator. Data still arriving means slow, not stuck.
+ */
+export function describeProgressStall(
+  percent: number,
+  bytesPerSecond: number | null,
+): string | null {
+  const rate = throughput(bytesPerSecond);
+  if (rate !== null) {
+    return `Still working at ${String(Math.round(percent))}%. Your connection is giving ${rate}, which is slower than this usually needs.`;
+  }
+  if (bytesPerSecond === null) {
+    return null;
+  }
+  return `Stopped at ${String(Math.round(percent))}%. No data is arriving right now.`;
+}

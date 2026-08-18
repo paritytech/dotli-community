@@ -31,6 +31,7 @@ import {
   initPhases,
   advancePhase,
   nudgePhaseProgress,
+  onProgressStall,
   releasePhaseProgress,
   setLoadingDomain,
   setLoadingStage,
@@ -41,6 +42,7 @@ import {
 import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainSyncKind } from "@dotli/resolver/smoldot";
 import {
+  describeProgressStall,
   describeStall,
   isCriticalChain,
   STALL_WARNING_MS,
@@ -1309,6 +1311,16 @@ async function main(): Promise<void> {
     const stallTimers = new Map<CriticalChain, ReturnType<typeof setTimeout>>();
     const warned = new Set<CriticalChain>();
     let liveBytesPerSecond: number | null = null;
+
+    onProgressStall((pct) => {
+      if (warned.size > 0) {
+        return;
+      }
+      const message = describeProgressStall(pct, liveBytesPerSecond);
+      if (message !== null) {
+        setLoadingWarning(message);
+      }
+    });
 
     const armStallWatch = (
       chain: CriticalChain,

@@ -196,14 +196,7 @@ body {
 /* Status block: held back until the load is slow enough to explain itself.
    Nothing sits below it, so no height needs reserving against a shift. */
 .loading-status {
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
   width: 100%;
-}
-.loading-status.visible {
-  opacity: 1;
-  pointer-events: auto;
 }
 /* Shown only while a chain has stopped making progress, so it must read as
    information rather than failure. Amber is already AA on both themes. */

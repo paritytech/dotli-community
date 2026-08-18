@@ -58,8 +58,6 @@ let currentPhase = -1;
 let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
 let progressBarEl: HTMLElement | null = null;
-let statusBlockEl: HTMLElement | null = null;
-let revealTimer: ReturnType<typeof setTimeout> | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
 let crawlStep = 0;
@@ -76,8 +74,52 @@ let creepStep = 0;
 /** True while the current step owes the indicator a real percentage. */
 let phaseReportsProgress = false;
 
+/**
+ * How long the bar may sit at one percentage before it owes an explanation.
+ *
+ * The per-chain watchdog cannot see this. A load whose content chain never
+ * finds a peer leaves every chain's lifecycle quiet while the bar creeps to its
+ * ceiling and parks, measured at over a minute in one run.
+ */
+const PROGRESS_STALL_MS = 4_000;
+
+let progressStallTimer: ReturnType<typeof setTimeout> | null = null;
+let progressStallListener: ((pct: number) => void) | null = null;
+
+/**
+ * Report when the bar stops moving, and again each time it stops afresh.
+ *
+ * The listener is handed the percentage it stalled at, so the caller can say
+ * where the load got to. Replaces any previous listener.
+ */
+export function onProgressStall(listener: (pct: number) => void): void {
+  progressStallListener = listener;
+}
+
+/** Stop watching, for a load that finished or failed. */
+export function stopProgressWatch(): void {
+  if (progressStallTimer !== null) {
+    clearTimeout(progressStallTimer);
+    progressStallTimer = null;
+  }
+}
+
+function armProgressWatch(pct: number): void {
+  stopProgressWatch();
+  if (pct >= 100) {
+    return;
+  }
+  progressStallTimer = setTimeout(() => {
+    progressStallListener?.(pct);
+  }, PROGRESS_STALL_MS);
+}
+
 function setProgress(pct: number): void {
+  const moved = Math.round(pct) !== Math.round(currentProgress);
   currentProgress = pct;
+  if (moved) {
+    armProgressWatch(pct);
+  }
   if (progressFillEl !== null) {
     progressFillEl.style.width = `${String(pct)}%`;
   }
@@ -141,25 +183,12 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
   progressBarEl = document.getElementById("loading-progress");
-  statusBlockEl = document.getElementById("loading-status");
-
-  // A load that finishes quickly should never explain itself. Only once it
-  // has run long enough to feel slow does the status block appear.
-  if (revealTimer !== null) {
-    clearTimeout(revealTimer);
-  }
-  revealTimer = setTimeout(() => {
-    statusBlockEl?.classList.add("visible");
-  }, STATUS_REVEAL_MS);
 
   // Not on the first `advancePhase`, which lands seconds later once the
   // protocol frame is up. The markup already shows this stage's opening line,
   // so the rotation clock has to start from when that line became visible.
   setLoadingStage("starting");
 }
-
-/** How long a load may run before it owes the user an explanation. */
-export const STATUS_REVEAL_MS = 3_000;
 
 // How often the line turns over. Most of this window is the turnover
 // animation, so the finished sentence itself is only still for the last ~4s.
@@ -489,7 +518,7 @@ export function releasePhaseProgress(): void {
 export function stopStatusTick(): void {
   stopProgressCrawl();
   stopStageMessages();
-  cancelStatusReveal();
+  stopProgressWatch();
 }
 
 /**
@@ -513,21 +542,13 @@ export function setLoadingWarning(message: string | null): void {
   row.classList.add("visible");
 }
 
-/** Cancel the pending status reveal, for a load that finished in time. */
-function cancelStatusReveal(): void {
-  if (revealTimer !== null) {
-    clearTimeout(revealTimer);
-    revealTimer = null;
-  }
-}
-
 /**
  * Remove the loading overlay (logo, progress bar, log).
  * Called when the app is fully loaded and the iframe is ready.
  */
 export function dismissLoading(): void {
   completeProgress();
-  cancelStatusReveal();
+  stopProgressWatch();
   stopStageMessages();
   const loading = document.querySelector<HTMLElement>("#app > .loading");
   if (loading !== null) {
