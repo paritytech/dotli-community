@@ -129,3 +129,67 @@ describe("The loading bar reports when it stops moving", () => {
     expect(stalls).toEqual([]);
   });
 });
+
+describe("The loading bar never stands still", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    installLoadingDom();
+  });
+
+  afterEach(() => {
+    stopProgressWatch();
+    vi.useRealTimers();
+  });
+
+  function shownPercent(): number {
+    return Number(
+      (
+        document.getElementById("loading-progress-pct")?.textContent ?? "0%"
+      ).replace("%", ""),
+    );
+  }
+
+  it("As a user whose download reports nothing at all, the number still moves every 3 seconds", () => {
+    // Given a step that promised a real percentage and never delivers one,
+    // which is what a peerless content chain looks like.
+    initPhases(PHASES);
+    advancePhase(1);
+
+    // When
+    const seen: number[] = [shownPercent()];
+    for (let i = 0; i < 20; i += 1) {
+      vi.advanceTimersByTime(3_000);
+      seen.push(shownPercent());
+    }
+
+    // Then no two consecutive samples three seconds apart are equal
+    const frozen = seen.filter((v, i) => i > 0 && v === seen[i - 1]);
+    expect(frozen).toEqual([]);
+  });
+
+  it("As a user, the creeping number never claims more than the step it is in", () => {
+    // Given
+    initPhases(PHASES);
+    advancePhase(1);
+
+    // When a very long silence, far longer than the band's runway
+    vi.advanceTimersByTime(10 * 60_000);
+
+    // Then it stops at the band's own target rather than implying the load is done
+    expect(shownPercent()).toBeLessThanOrEqual(PHASES[1].target);
+  });
+
+  it("As a user whose real progress overtakes the creep, the number follows the truth", () => {
+    // Given
+    initPhases(PHASES);
+    advancePhase(1);
+    vi.advanceTimersByTime(9_000);
+    const crept = shownPercent();
+
+    // When a real report arrives well ahead of where the creep had reached
+    nudgePhaseProgress(0.9, "content");
+
+    // Then
+    expect(shownPercent()).toBeGreaterThan(crept);
+  });
+});

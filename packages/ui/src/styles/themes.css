@@ -592,3 +592,43 @@
 [data-theme="light"] .permission-modal-notice {
   color: rgba(0, 0, 0, 0.5);
 }
+
+/* Green, amber and red all need darkening on the cream panel to clear 3:1 as
+   non-text marks. Measured against #fdfdfd, the composited light surface. */
+[data-theme="light"] .chains-bar.is-onTime {
+  /* 4.93:1 */
+  background: #15803d;
+}
+[data-theme="light"] .chains-bar.is-late {
+  /* 4.94:1 */
+  background: #b45309;
+}
+[data-theme="light"] .chains-bar.is-veryLate {
+  /* 4.86:1 */
+  background: #b91c1c;
+}
+[data-theme="light"] .chains-bars {
+  border-bottom-color: rgba(0, 0, 0, 0.16);
+}
+[data-theme="light"] .chains-group-label {
+  /* 7.10:1 */
+  color: #525252;
+}
+[data-theme="light"] .chains-bars-waiting,
+[data-theme="light"] .chains-bars-cell.is-unavailable {
+  /* 5.24:1 */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-status {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+}
+[data-theme="light"] .chains-status-dot.is-ok {
+  background: #15803d;
+}
+[data-theme="light"] .chains-status-dot.is-warn {
+  background: #b45309;
+}
+[data-theme="light"] .chains-status-dot.is-idle {
+  background: #6b6b6b;
+}

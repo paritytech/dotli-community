@@ -6,6 +6,15 @@
 // Manages the auth button, QR pairing modal, and user popover.
 // All plain DOM manipulation, no framework.
 //
+import { getActiveChainRoles, type ChainRole } from "@dotli/config/network";
+import {
+  getNetworkStatus,
+  setBlockSource,
+  startNetworkWatch,
+  stopNetworkWatch,
+  subscribeNetwork,
+  type BlockSource,
+} from "@dotli/ui/network-monitor";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
@@ -412,6 +421,7 @@ export function initTopBar(
 
   // Mode toggle (P2P / Centralized)
   initModeToggle();
+  setBlockSource(createBlockSource());
   initChainsPopover();
   watchChainSync();
 
@@ -1099,40 +1109,7 @@ function createPermissionDropdown(
  */
 const chainSyncState = new Map<string, string>();
 let onStatusChange: (() => void) | null = null;
-let chainsRefreshTimer: ReturnType<typeof setInterval> | null = null;
-
-/** How often the open panel re-reads peers and heights. */
-const CHAINS_REFRESH_MS = 6_000;
-/**
- * Budget for each phase of a chain's read.
- *
- * Two phases run in sequence, the peer and height reads together and then the
- * block ages, so twice this has to stay inside the refresh interval.
- */
-const CHAIN_QUERY_TIMEOUT_MS = 2_600;
-
-function stopChainsRefresh(): void {
-  if (chainsRefreshTimer !== null) {
-    clearInterval(chainsRefreshTimer);
-    chainsRefreshTimer = null;
-  }
-}
-
-function describeNetworkStatus(): { text: string; tone: string } {
-  const states = [...chainSyncState.values()];
-  if (states.length === 0) {
-    return { text: "Starting", tone: "idle" };
-  }
-  if (states.includes("stalled")) {
-    return { text: "Reconnecting", tone: "warn" };
-  }
-  const settled = states.every(
-    (k) => k === "bootstrapComplete" || k === "recovered",
-  );
-  return settled
-    ? { text: "Your connection is good", tone: "ok" }
-    : { text: "Connecting", tone: "idle" };
-}
+let unsubscribeNetwork: (() => void) | null = null;
 
 function watchChainSync(): void {
   onProtocolChainSync((event) => {
@@ -1151,6 +1128,67 @@ function watchChainSync(): void {
  * because this panel is the only thing that wants them and a background
  * poll would keep four chains awake for something nobody has looked at.
  */
+/**
+ * Watch each chain's best block over a client held for the session.
+ *
+ * The panel used to stand up and tear down a client per chain on every tick,
+ * paying metadata each time. One client per chain that stays open pays it once,
+ * and `bestBlocks$` reports every head change rather than whatever a poll
+ * happens to catch.
+ */
+function createBlockSource(): BlockSource {
+  return {
+    isReachable: (genesis) => isRemoteChainSupported(genesis),
+    subscribe: (genesis, onBlock) => {
+      // A record rather than two locals: the returned unsubscribe runs after
+      // this function has gone, and a plain boolean flipped from there cannot
+      // be seen by the checker.
+      const live = { cancelled: false, teardown: null as (() => void) | null };
+      void (async () => {
+        try {
+          const provider = createRemoteChainProvider(genesis);
+          if (provider === null) {
+            return;
+          }
+          const papi = await import("polkadot-api");
+          const client = papi.createClient(provider);
+          if (live.cancelled) {
+            client.destroy();
+            return;
+          }
+          const sub = client.bestBlocks$.subscribe({
+            next: (blocks) => {
+              const best = blocks.at(0);
+              if (best !== undefined) {
+                onBlock(best.number);
+              }
+            },
+            error: (err: unknown) => {
+              // A dropped chain renders as a gap in its strip, which is the
+              // truth, so this is worth a log line and nothing louder.
+              log.warn(
+                `[dot.li network] block stream for ${genesis.slice(0, 10)} ended: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            },
+          });
+          live.teardown = () => {
+            sub.unsubscribe();
+            client.destroy();
+          };
+        } catch (err: unknown) {
+          log.warn(
+            `[dot.li network] cannot watch ${genesis.slice(0, 10)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
+      return () => {
+        live.cancelled = true;
+        live.teardown?.();
+      };
+    },
+  };
+}
+
 function renderChainsPopover(parent: HTMLElement): void {
   parent.replaceChildren();
   const backend = getBackend();
@@ -1163,82 +1201,111 @@ function renderChainsPopover(parent: HTMLElement): void {
   statusRow.append(dot, text);
   parent.appendChild(statusRow);
 
-  if (backend === "rpc-gateway") {
-    onStatusChange = null;
-    dot.className = "chains-status-dot is-idle";
-    text.textContent = "Trusted provider, no light client";
-    return;
-  }
-  if (backend === "smoldot-shared-worker") {
-    onStatusChange = null;
-    dot.className = "chains-status-dot is-idle";
-    text.textContent = "Light client in a shared worker";
-    return;
-  }
+  const trusted = backend === "rpc-gateway";
 
   const paint = (): void => {
-    const { text: label, tone } = describeNetworkStatus();
+    const { text: label, tone } = describeLiveNetwork();
     dot.className = `chains-status-dot is-${tone}`;
     text.textContent = label;
   };
-  paint();
-  // Keep the line honest while the panel is open, so a chain that stalls
-  // now says so without the user reopening it.
-  onStatusChange = paint;
 
-  const cfg = getActiveServicesConfig();
-  const chains: [string, string][] = [
-    ["Relay", cfg.relay.genesis],
-    ["AssetHub", cfg.assethub.genesis],
-    ["Bulletin", cfg.bulletin.genesis],
-    ["People", cfg.people.genesis],
-  ];
-
-  const table = document.createElement("table");
-  table.className = "chains-table";
-  const head = document.createElement("tr");
-  for (const label of ["", "Peers", "Best block", "Finalized"]) {
-    const th = document.createElement("th");
-    th.textContent = label;
-    head.appendChild(th);
+  if (trusted) {
+    dot.className = "chains-status-dot is-idle";
+    text.textContent = "Served by a trusted provider, not a light client here";
+  } else {
+    paint();
   }
-  table.appendChild(head);
 
-  const refreshers: (() => void)[] = [];
-  for (const [label, genesis] of chains) {
-    const row = document.createElement("tr");
-    const name = document.createElement("th");
-    name.scope = "row";
-    name.textContent = label;
-    const cells = ["…", "…", "…"].map((v) => {
-      const td = document.createElement("td");
-      td.textContent = v;
-      return td;
-    });
-    row.append(name, ...cells);
-    table.appendChild(row);
-
-    const refresh = (): void => {
-      void queryChainStatus(genesis).then(({ peers, best, finalized }) => {
-        cells[0].textContent = peers === null ? "n/a" : String(peers);
-        cells[1].textContent = best ?? "n/a";
-        cells[2].textContent = finalized ?? "n/a";
-      });
-    };
-    refresh();
-    refreshers.push(refresh);
+  // A labelled strip per chain rather than a table. The peer count is gone: a
+  // raw number told the visitor nothing they could act on, where the bars show
+  // whether blocks are actually arriving.
+  const barCells = new Map<ChainRole, HTMLElement>();
+  for (const chain of getActiveChainRoles()) {
+    const group = document.createElement("div");
+    group.className = "chains-group";
+    const name = document.createElement("p");
+    name.className = "chains-group-label";
+    name.textContent = chain.label;
+    const bars = document.createElement("div");
+    bars.className = "chains-bars-cell";
+    group.append(name, bars);
+    parent.appendChild(group);
+    barCells.set(chain.role, bars);
   }
-  parent.appendChild(table);
 
-  // Heights and ages go stale within a block, so keep re-reading while the
-  // panel is on screen. The interval is cleared on close, which is what
-  // keeps this from waking four chains for a panel nobody is looking at.
-  stopChainsRefresh();
-  chainsRefreshTimer = setInterval(() => {
-    for (const refresh of refreshers) {
-      refresh();
+  const renderBars = (): void => {
+    for (const chain of getNetworkStatus()) {
+      const cell = barCells.get(chain.role);
+      if (cell === undefined) {
+        continue;
+      }
+      if (!chain.reachable) {
+        cell.textContent =
+          chain.role === "bulletin" && trusted
+            ? "served over the IPFS gateway"
+            : "no endpoint on this network";
+        cell.classList.add("is-unavailable");
+        continue;
+      }
+      cell.classList.remove("is-unavailable");
+      const strip = document.createElement("div");
+      strip.className = "chains-bars";
+      for (const bar of chain.bars) {
+        const mark = document.createElement("span");
+        mark.className = `chains-bar is-${bar.health}`;
+        strip.appendChild(mark);
+      }
+      if (chain.bars.length === 0) {
+        const waiting = document.createElement("span");
+        waiting.className = "chains-bars-waiting";
+        waiting.textContent = "waiting for a block";
+        strip.appendChild(waiting);
+      }
+      cell.replaceChildren(strip);
     }
-  }, CHAINS_REFRESH_MS);
+    if (!trusted) {
+      paint();
+    }
+  };
+
+  startNetworkWatch();
+  renderBars();
+  unsubscribeNetwork?.();
+  unsubscribeNetwork = subscribeNetwork(renderBars);
+}
+
+/**
+ * The overall verdict, from the blocks actually arriving.
+ *
+ * The old line came from lifecycle milestones, which are terminal, so it
+ * latched at whatever it computed when the last chain bootstrapped and kept
+ * saying it after the connection died.
+ */
+function describeLiveNetwork(): { text: string; tone: string } {
+  const chains = getNetworkStatus().filter((c) => c.reachable);
+  if (chains.length === 0) {
+    return { text: "Starting", tone: "idle" };
+  }
+  const started = chains.filter((c) => c.latest !== null);
+  if (started.length === 0) {
+    return { text: "Connecting", tone: "idle" };
+  }
+  const overdue = started.filter(
+    (c) => c.sinceLast !== null && c.sinceLast > c.blockTimeMs * 3,
+  );
+  if (overdue.length > 0) {
+    return {
+      text: `Waiting on ${overdue.map((c) => c.label).join(" and ")}`,
+      tone: "warn",
+    };
+  }
+  if (started.length < chains.length) {
+    return {
+      text: `Connecting, ${String(started.length)} of ${String(chains.length)} ready`,
+      tone: "idle",
+    };
+  }
+  return { text: "Your connection is good", tone: "ok" };
 }
 
 /**
@@ -1264,7 +1331,9 @@ function initChainsPopover(): void {
   const close = (): void => {
     popover.classList.remove("open");
     button.setAttribute("aria-expanded", "false");
-    stopChainsRefresh();
+    unsubscribeNetwork?.();
+    unsubscribeNetwork = null;
+    stopNetworkWatch();
     onStatusChange = null;
   };
   // No `stopPropagation`. The shared outside-click closer has to see this
@@ -2283,159 +2352,6 @@ function buildSmoldotVersionLabel(): string {
  * stays dynamic so opening the popover is cheap when the user doesn't care
  * about blocks.
  */
-/**
- * Read a block's own timestamp, so its age is measured by the chain's clock
- * rather than by when we happened to hear about it.
- *
- * `Timestamp::Now` is a plain `u64` of milliseconds under a well-known key,
- * so this needs no metadata: hash the pallet and item names and decode eight
- * little-endian bytes.
- */
-async function queryBlockAgeMs(
-  client: {
-    _request: <R>(method: string, params: unknown[]) => Promise<R>;
-  },
-  blockHash: string,
-): Promise<number | null> {
-  try {
-    const [{ Twox128 }, { mergeUint8, toHex, fromHex }] = await Promise.all([
-      import("@polkadot-api/substrate-bindings"),
-      import("@polkadot-api/utils"),
-    ]);
-    const enc = new TextEncoder();
-    const key = toHex(
-      mergeUint8([
-        Twox128(enc.encode("Timestamp")),
-        Twox128(enc.encode("Now")),
-      ]),
-    );
-    // An empty storage slot comes back as null, which is normal on a chain
-    // whose block has not written the timestamp yet.
-    const raw = await client._request<string | null>("state_getStorage", [
-      key,
-      blockHash,
-    ]);
-    if (raw === null) {
-      return null;
-    }
-    const bytes = fromHex(raw);
-    if (bytes.length < 8) {
-      return null;
-    }
-    const millis = Number(
-      new DataView(
-        bytes.buffer,
-        bytes.byteOffset,
-        bytes.byteLength,
-      ).getBigUint64(0, true),
-    );
-    const age = Date.now() - millis;
-    return age >= 0 ? age : 0;
-  } catch {
-    return null;
-  }
-}
-
-/** "4s ago", "2m ago". Blank when the chain would not say. */
-/** How long ago a block landed, or null when its timestamp is unreadable. */
-function formatAge(ms: number | null): string | null {
-  if (ms === null) {
-    return null;
-  }
-  const secs = Math.round(ms / 1000);
-  if (secs < 60) {
-    return `${String(secs)}s ago`;
-  }
-  return `${String(Math.round(secs / 60))}m ago`;
-}
-
-/**
- * Query a chain's best and finalized block, each with the age its own clock
- * reports. `getBestBlocks` returns the chain from best to finalized, so one
- * call covers both ends.
- */
-/** Reject after `ms`, and clear the timer as soon as the race settles. */
-async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error("timeout"));
-        }, ms);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Everything the network panel shows for one chain, over a single client.
- *
- * Peers and heights used to be read by two functions that each stood up their
- * own client, so an open panel churned eight of them every refresh. The
- * budget is under the refresh interval so ticks cannot overlap.
- */
-async function queryChainStatus(genesisHash: string): Promise<{
-  peers: number | null;
-  best: string | null;
-  finalized: string | null;
-}> {
-  const empty = { peers: null, best: null, finalized: null };
-  try {
-    if (!isRemoteChainSupported(genesisHash)) {
-      return empty;
-    }
-    const provider = createRemoteChainProvider(genesisHash);
-    if (provider === null) {
-      return empty;
-    }
-    const papi = await import("polkadot-api");
-    const client = papi.createClient(provider);
-    try {
-      // Concurrently, because they are independent reads on one client and
-      // running them in series spent the whole budget before the block heights
-      // came back. That left three of four chains showing no block age at all.
-      const [health, blocks] = await Promise.all([
-        withTimeout(
-          client._request<{ peers?: number }>("system_health", []),
-          CHAIN_QUERY_TIMEOUT_MS,
-        ).catch(() => null),
-        withTimeout(client.getBestBlocks(), CHAIN_QUERY_TIMEOUT_MS).catch(
-          () => null,
-        ),
-      ]);
-      const best = blocks?.at(0);
-      const finalized = blocks?.at(-1);
-      if (best === undefined || finalized === undefined) {
-        return { ...empty, peers: health?.peers ?? null };
-      }
-      const [bestAge, finalizedAge] = await withTimeout(
-        Promise.all([
-          queryBlockAgeMs(client, best.hash),
-          best.hash === finalized.hash
-            ? Promise.resolve(null)
-            : queryBlockAgeMs(client, finalized.hash),
-        ]),
-        CHAIN_QUERY_TIMEOUT_MS,
-      ).catch(() => [null, null]);
-      return {
-        peers: typeof health?.peers === "number" ? health.peers : null,
-        best: formatAge(bestAge),
-        finalized: formatAge(
-          best.hash === finalized.hash ? bestAge : finalizedAge,
-        ),
-      };
-    } finally {
-      client.destroy();
-    }
-  } catch {
-    return empty;
-  }
-}
-
 async function queryFinalizedBlock(
   genesisHash: string,
 ): Promise<number | null> {

@@ -429,3 +429,91 @@ body {
   /* 7.85:1 */
   color: #a3a3a3;
 }
+
+/* A labelled strip per chain, bars sitting on a baseline. Generously spaced,
+   because the gaps are what make a missing block read as missing. */
+.chains-group {
+  padding: 8px 14px 2px;
+}
+.chains-group-label {
+  font-size: 11px;
+  font-weight: 500;
+  /* 7.85:1 */
+  color: #a3a3a3;
+  margin-bottom: 5px;
+}
+.chains-bars-cell {
+  text-align: left;
+}
+.chains-bars {
+  display: flex;
+  /* Newest on the right, and the oldest are the ones clipped when the panel
+     runs out of room. */
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-items: flex-end;
+  gap: 4px;
+  height: 22px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding-bottom: 2px;
+}
+.chains-bar {
+  width: 4px;
+  height: 100%;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.chains-bar.is-onTime {
+  /* 6.98:1 */
+  background: #22c55e;
+}
+.chains-bar.is-late {
+  /* 8.30:1, and shorter, so height carries the meaning too */
+  background: #eab308;
+  height: 60%;
+}
+.chains-bar.is-veryLate {
+  /* 5.02:1 */
+  background: #f87171;
+  height: 32%;
+}
+.chains-bars-waiting,
+.chains-bars-cell.is-unavailable {
+  /* 6.12:1 */
+  color: #8f8f8f;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* The verdict reads as a banner rather than a line of text, so it is legible
+   at a glance before the strips below are studied. */
+.chains-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 14px 8px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 500;
+  /* 13.36:1 */
+  color: #d4d4d4;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.chains-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.chains-status-dot.is-ok {
+  background: #22c55e;
+}
+.chains-status-dot.is-warn {
+  background: #eab308;
+}
+.chains-status-dot.is-idle {
+  background: #8f8f8f;
+}

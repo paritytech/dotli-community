@@ -67,6 +67,22 @@ const CRAWL_TICK_MS = 200;
 
 // Where an exhausted band creeps on to, and how long it takes. Stops short
 // of 100 so only a finished load can fill the indicator.
+/**
+ * The displayed whole number must change at least this often.
+ *
+ * Measured over ten cold loads, the bar sat at 62% for up to 41 seconds: that
+ * is the content band's base, where a step that promised a real percentage was
+ * holding the indicator until bytes arrived and none did. Refusing to overstate
+ * is right, but standing perfectly still reads as a hang. So the number always
+ * creeps, and the creep is capped by the band the step owns, which is what
+ * keeps it from claiming a phase it has not reached.
+ */
+const PROGRESS_FLOOR_MS = 2_500;
+let lastShownAt = 0;
+let lastShown = -1;
+/** The last number reached by real progress rather than by the floor creep. */
+let lastRealShown = -1;
+
 const CREEP_CEILING = 99;
 const CREEP_MS = 10_000;
 let creepCeiling = 0;
@@ -114,8 +130,24 @@ function armProgressWatch(pct: number): void {
   }, PROGRESS_STALL_MS);
 }
 
-function setProgress(pct: number): void {
-  const moved = Math.round(pct) !== Math.round(currentProgress);
+/**
+ * Move the bar.
+ *
+ * `cosmetic` marks the movement-floor creep, which exists so the number never
+ * stands still. It deliberately does not count as progress: if it did, it would
+ * re-arm the stall watch every couple of seconds and the warning explaining the
+ * stall could never appear.
+ */
+function setProgress(pct: number, cosmetic = false): void {
+  const shown = Math.round(pct);
+  if (shown !== lastShown) {
+    lastShown = shown;
+    lastShownAt = Date.now();
+  }
+  const moved = !cosmetic && shown !== lastRealShown;
+  if (moved) {
+    lastRealShown = shown;
+  }
   currentProgress = pct;
   if (moved) {
     armProgressWatch(pct);
@@ -133,20 +165,31 @@ function setProgress(pct: number): void {
 function startProgressCrawl(): void {
   stopProgressCrawl();
   progressInterval = setInterval(() => {
-    // A step that reports a real percentage owns the indicator outright. The
-    // crawl and the creep are both guesses at how long a step takes, and on a
-    // download slower than the estimate they ran the logo to nearly full
-    // while the readout underneath still said 58%. Nothing that guesses may
-    // move the indicator past something that knows.
-    if (phaseReportsProgress) {
-      return;
+    // A step that reports a real percentage owns the indicator, so neither the
+    // crawl nor the creep may run past what it says. Both are guesses, and on a
+    // download slower than the estimate they used to walk the bar to nearly
+    // full while the readout underneath still said 58%.
+    if (!phaseReportsProgress) {
+      if (currentProgress < targetProgress) {
+        setProgress(Math.min(currentProgress + crawlStep, targetProgress));
+        return;
+      }
+      if (currentProgress < creepCeiling) {
+        setProgress(Math.min(currentProgress + creepStep, creepCeiling));
+        return;
+      }
     }
-    if (currentProgress < targetProgress) {
-      setProgress(Math.min(currentProgress + crawlStep, targetProgress));
-      return;
-    }
-    if (currentProgress < creepCeiling) {
-      setProgress(Math.min(currentProgress + creepStep, creepCeiling));
+    // Whatever owns the indicator, the number still has to move. Nudge it just
+    // past the next whole number, never beyond the band the current step owns.
+    if (Date.now() - lastShownAt >= PROGRESS_FLOOR_MS) {
+      const ceiling = Math.min(
+        phaseReportsProgress ? targetProgress : creepCeiling,
+        CREEP_CEILING,
+      );
+      const next = Math.min(Math.floor(currentProgress) + 1, ceiling);
+      if (next > currentProgress) {
+        setProgress(next, true);
+      }
     }
   }, CRAWL_TICK_MS);
 }
@@ -179,6 +222,9 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   currentProgress = 0;
   targetProgress = 0;
   phaseReportsProgress = false;
+  lastShown = -1;
+  lastRealShown = -1;
+  lastShownAt = Date.now();
 
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
