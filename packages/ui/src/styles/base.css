@@ -493,6 +493,41 @@ body {
   background: #f87171;
   height: 32%;
 }
+/* The ghost bar stands where the next block will: dim, filling with the
+   elapsed fraction of the chain's block time once a first head has anchored
+   the estimate. It never renders a number at zero, the text swaps to words
+   instead, matching how block explorers and transit signs survive overshoot. */
+.chains-bar-pending {
+  /* 4.92:1 on the dark panel */
+  background: #8f8f8f;
+  height: 20%;
+  opacity: 0.75;
+}
+.chains-bar-pending.is-searching {
+  height: 45%;
+}
+.chains-bar-pending.is-due {
+  height: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chains-bar-pending {
+    transition: height 0.25s linear;
+  }
+  .chains-bar-pending.is-searching,
+  .chains-bar-pending.is-due {
+    animation: chains-pending-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes chains-pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.chains-bars-waiting {
+  align-self: center;
+  margin-left: 2px;
+}
+
 .chains-bars-waiting,
 .chains-bars-cell.is-unavailable {
   /* 6.12:1 */

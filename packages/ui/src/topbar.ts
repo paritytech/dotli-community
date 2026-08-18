@@ -1110,6 +1110,14 @@ function createPermissionDropdown(
 const chainSyncState = new Map<string, string>();
 let onStatusChange: (() => void) | null = null;
 let unsubscribeNetwork: (() => void) | null = null;
+let pendingTicker: ReturnType<typeof setInterval> | null = null;
+
+function stopPendingTicker(): void {
+  if (pendingTicker !== null) {
+    clearInterval(pendingTicker);
+    pendingTicker = null;
+  }
+}
 
 function watchChainSync(): void {
   onProtocolChainSync((event) => {
@@ -1239,6 +1247,10 @@ function renderChainsPopover(parent: HTMLElement): void {
   // raw number told the visitor nothing they could act on, where the bars show
   // whether blocks are actually arriving.
   const barCells = new Map<ChainRole, HTMLElement>();
+  const pendingCells = new Map<
+    ChainRole,
+    { ghost: HTMLElement; text: HTMLElement }
+  >();
   for (const chain of getActiveChainRoles()) {
     const group = document.createElement("div");
     group.className = "chains-group";
@@ -1282,15 +1294,55 @@ function renderChainsPopover(parent: HTMLElement): void {
         strip.appendChild(mark);
       }
       if (chain.bars.length === 0) {
+        // A ghost bar and a live estimate instead of static waiting words.
+        // Before the first head nothing is predictable, so no number is shown.
+        // After it, the next block is genuinely due within the chain's own
+        // block time, and the ticker below keeps the estimate current.
+        const ghost = document.createElement("span");
+        ghost.className = "chains-bar chains-bar-pending";
         const waiting = document.createElement("span");
         waiting.className = "chains-bars-waiting";
-        waiting.textContent = "waiting for a block";
-        strip.appendChild(waiting);
+        strip.append(ghost, waiting);
+        pendingCells.set(chain.role, { ghost, text: waiting });
+      } else {
+        pendingCells.delete(chain.role);
       }
       cell.replaceChildren(strip);
     }
+    updatePending();
     if (!trusted) {
       paint();
+    }
+  };
+
+  // Countdown copy is honest by construction: it never shows zero or a
+  // negative. When the estimate passes it swaps to words, and past 3x the
+  // panel's own verdict line escalates, so "due any moment" cannot linger.
+  const updatePending = (): void => {
+    if (pendingCells.size === 0) {
+      return;
+    }
+    for (const chain of getNetworkStatus()) {
+      const pending = pendingCells.get(chain.role);
+      if (pending === undefined) {
+        continue;
+      }
+      if (chain.sinceLast === null) {
+        pending.ghost.classList.add("is-searching");
+        pending.text.textContent = "connecting";
+        continue;
+      }
+      pending.ghost.classList.remove("is-searching");
+      const fraction = Math.min(chain.sinceLast / chain.blockTimeMs, 1);
+      pending.ghost.style.height = `${String(Math.round(20 + fraction * 80))}%`;
+      const leftMs = chain.blockTimeMs - chain.sinceLast;
+      if (leftMs > 0) {
+        pending.text.textContent = `next block in about ${String(Math.ceil(leftMs / 1000))}s`;
+        pending.ghost.classList.remove("is-due");
+      } else {
+        pending.text.textContent = "due any moment";
+        pending.ghost.classList.add("is-due");
+      }
     }
   };
 
@@ -1298,6 +1350,8 @@ function renderChainsPopover(parent: HTMLElement): void {
   renderBars();
   unsubscribeNetwork?.();
   unsubscribeNetwork = subscribeNetwork(renderBars);
+  stopPendingTicker();
+  pendingTicker = setInterval(updatePending, 250);
 }
 
 /**
@@ -1359,6 +1413,7 @@ function initChainsPopover(): void {
     button.setAttribute("aria-expanded", "false");
     unsubscribeNetwork?.();
     unsubscribeNetwork = null;
+    stopPendingTicker();
     stopNetworkWatch();
     onStatusChange = null;
   };

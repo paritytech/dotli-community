@@ -614,6 +614,10 @@
   /* 7.10:1 */
   color: #525252;
 }
+[data-theme="light"] .chains-bar-pending {
+  /* 5.24:1 on the cream panel */
+  background: #6b6b6b;
+}
 [data-theme="light"] .chains-bars-waiting,
 [data-theme="light"] .chains-bars-cell.is-unavailable {
   /* 5.24:1 */
