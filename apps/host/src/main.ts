@@ -156,6 +156,18 @@ if (!isMobileDevice()) {
 initSentry("host");
 installGlobalErrorHandlers("host");
 
+// Collapse this origin's analytics id onto the shared one. Deliberately not
+// awaited: it costs an iframe round-trip and nothing below depends on it. Every
+// app is its own subdomain, so without this one person counts once per app.
+void import("@dotli/ui/analytics-identity")
+  .then(({ reconcileAnalyticsUser }) => reconcileAnalyticsUser())
+  .catch((err: unknown) => {
+    log.warn(
+      "[dot.li analytics] Identity reconcile skipped:",
+      err instanceof Error ? err.message : err,
+    );
+  });
+
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 

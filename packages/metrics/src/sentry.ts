@@ -24,6 +24,48 @@ import { m } from "./metrics";
  */
 export type SentrySource = "host" | "worker" | "sandbox";
 
+/**
+ * Storage key holding the anonymous analytics id.
+ *
+ * Exported so a full reset can carry it across `localStorage.clear()` and so
+ * the cross-subdomain reconciler can address it. A reset that dropped this key
+ * turned one returning visitor into a brand new one on every wipe.
+ */
+export const ANALYTICS_USER_KEY = "dotli:sentry-uuid";
+
+function localStorageOrNull(): Storage | null {
+  return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+}
+
+/** The analytics id this origin has stored, or `null` if it has none yet. */
+export function getAnalyticsUser(): string | null {
+  try {
+    return localStorageOrNull()?.getItem(ANALYTICS_USER_KEY) ?? null;
+  } catch {
+    // localStorage may be unavailable in Safari private mode. An absent id is
+    // the safe answer, the caller then leaves the Sentry scope untouched.
+    return null;
+  }
+}
+
+/**
+ * Adopt `id` as the analytics identity for this origin.
+ *
+ * `initSentry` mints a per-origin id synchronously, because it must run before
+ * anything that can throw. The cross-subdomain id can only be read
+ * asynchronously, so it arrives later and replaces the local one here. Writing
+ * the mirror as well means the next boot is already correct without waiting.
+ */
+export function adoptAnalyticsUser(id: string): void {
+  try {
+    localStorageOrNull()?.setItem(ANALYTICS_USER_KEY, id);
+    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable, and the Sentry scope below is what actually matters.
+  } catch {
+    /* mirror is best-effort */
+  }
+  Sentry.setUser({ id });
+}
+
 // The smoldot WASM client panics at the Rust layer and surfaces the
 // crash as a `CrashError` with a `panicked at /__w/smoldot/...` message.
 // These events can arrive via our own handlers or via Sentry's default
@@ -173,13 +215,18 @@ export function initSentry(source: SentrySource): void {
   });
 
   // Anonymous per-browser UUID for Sentry user-level metrics. No PII.
+  //
+  // Read synchronously, because this runs before anything that can throw and
+  // an async read would lose early events. It is per-origin, so the same person
+  // on two app subdomains starts with two ids. `reconcileAnalyticsUser` in
+  // `@dotli/ui` collapses them once the shared store is reachable.
   try {
-    const ls = (globalThis as { localStorage?: Storage }).localStorage;
+    const ls = localStorageOrNull();
     if (ls) {
-      let uuid = ls.getItem("dotli:sentry-uuid");
+      let uuid = ls.getItem(ANALYTICS_USER_KEY);
       if (uuid === null) {
         uuid = crypto.randomUUID();
-        ls.setItem("dotli:sentry-uuid", uuid);
+        ls.setItem(ANALYTICS_USER_KEY, uuid);
       }
       Sentry.setUser({ id: uuid });
     }

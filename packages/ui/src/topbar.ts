@@ -28,6 +28,7 @@ import {
   type Backend,
   type CacheSettings,
 } from "@dotli/config/mode";
+import { ANALYTICS_USER_KEY } from "@dotli/metrics/sentry";
 import { clearCidCache } from "@dotli/storage/cid-cache";
 import {
   getEnabledNetworks,
@@ -1640,7 +1641,14 @@ export async function wipeOriginState(): Promise<void> {
     /* sessionStorage unavailable */
   }
   try {
+    // The analytics id survives the wipe. It identifies the browser, not any
+    // state being reset, and dropping it made every full reset look like a
+    // brand new visitor in Sentry.
+    const analyticsUser = localStorage.getItem(ANALYTICS_USER_KEY);
     localStorage.clear();
+    if (analyticsUser !== null) {
+      localStorage.setItem(ANALYTICS_USER_KEY, analyticsUser);
+    }
     // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable. Full reset is best-effort.
   } catch {
     /* localStorage unavailable */

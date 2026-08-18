@@ -7,7 +7,20 @@
 
 export type SentrySource = "host" | "worker" | "sandbox";
 
+// Same literal as `sentry.ts`, so a full reset preserves the key on the off
+// chance an earlier metrics-enabled build left one behind on this origin.
+export const ANALYTICS_USER_KEY = "dotli:sentry-uuid";
+
 export function initSentry(_source: SentrySource): void {
+  /* no-op */
+}
+
+/** Always `null` here, which stops `reconcileAnalyticsUser` before any I/O. */
+export function getAnalyticsUser(): string | null {
+  return null;
+}
+
+export function adoptAnalyticsUser(_id: string): void {
   /* no-op */
 }
 
