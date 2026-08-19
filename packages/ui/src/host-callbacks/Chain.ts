@@ -22,7 +22,7 @@ import { createChainBrokerManager } from "@dotli/protocol/broker";
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
-} from "@dotli/resolver/chains";
+} from "@dotli/resolver/provider";
 import {
   createCoreRpcChainProvider,
   isCoreRpcChainSupported,

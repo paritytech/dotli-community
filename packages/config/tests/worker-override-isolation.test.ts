@@ -25,11 +25,10 @@ const OVERRIDABLE_FIELDS = ["label", "rpcs", "ipfsGateways"] as const;
 
 /**
  * The worker and the resolver modules it imports that read the network table.
- * `smoldot.ts` is also imported but reads chain specs, not this table.
  */
 const WORKER_GRAPH = [
   "apps/protocol/src/protocol-shared-worker.ts",
-  "packages/resolver/src/chains.ts",
+  "packages/resolver/src/provider.ts",
   "packages/resolver/src/resolve.ts",
 ] as const;
 

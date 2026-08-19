@@ -15,7 +15,7 @@ import type { ChainIdentifier } from "@parity/truapi";
 import { toHexString } from "@parity/truapi/scale";
 import { getBackend } from "@dotli/config/mode";
 import { getActiveServicesConfig, getNetwork } from "@dotli/config/network";
-import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/chains";
+import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/provider";
 import { isRpcChainSupported } from "@dotli/resolver/rpc-chain";
 
 export function createSupportedChains(): Features["supportedChains"] {
