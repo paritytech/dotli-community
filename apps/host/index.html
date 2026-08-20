@@ -5,7 +5,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
         <title>Polkadot - The decentralized web, in your browser</title>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="preconnect" href="https://host.dot.li" crossorigin />
@@ -319,7 +319,7 @@
         <div id="app">
             <div class="loading">
                 <div class="loading-logo" id="loading-logo">
-                    <svg width="52" height="52" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="120" height="120" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path class="loading-petal" d="M31.0155 57.7181C14.6547 76.7768 14.2233 103.306 30.0862 116.92C45.9492 130.566 72.0667 126.15 88.4607 107.058C104.821 87.9995 105.253 61.4701 89.3899 47.8567C83.1841 42.511 75.3522 39.9543 67.1884 39.9543C54.5113 39.9543 40.9713 46.1302 31.0155 57.7181Z"/>
                         <path class="loading-petal" d="M26.2694 156.332C13.9574 170.941 19.3003 195.744 38.2164 211.715C57.1326 227.686 82.4868 228.815 94.7989 214.205C107.111 199.596 101.768 174.793 82.8518 158.822C72.8296 150.355 61.0153 146.072 50.2962 146.072C40.7718 146.072 32.077 149.459 26.3026 156.332"/>
                         <path class="loading-petal" d="M137.343 209.789C115.142 216.795 99.8429 231.072 103.161 241.664C106.513 252.256 127.221 255.178 149.423 248.139C171.625 241.133 186.923 226.856 183.605 216.264C181.481 209.59 172.454 205.938 160.507 205.938C153.505 205.938 145.54 207.166 137.343 209.756"/>
@@ -335,13 +335,18 @@
                     <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
                 </div>
                 <div class="loading-text" id="loading-text">
-                    <p id="status" aria-live="polite">Reaching out</p>
+                    <!-- The visible line is typed a character at a time, which
+                         would make a live region announce every partial string,
+                         so the announcement is split into its own hidden
+                         element that only ever receives whole sentences. -->
+                    <p id="status" aria-hidden="true">Reaching out</p>
+                    <p class="sr-only" id="status-sr" aria-live="polite"></p>
                     <p class="loading-hint" id="loading-hint"></p>
                 </div>
             </div>
         </div>
         <script>
-            // Logo spinner — rAF-driven for smooth petal cycling
+            // Logo spinner, rAF-driven for smooth petal cycling
             (function(){
                 var petals = document.querySelectorAll('.loading-petal');
                 if (!petals.length) return;
