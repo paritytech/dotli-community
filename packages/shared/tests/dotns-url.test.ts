@@ -261,13 +261,13 @@ describe("isDotDomain", () => {
   });
 });
 
-// Paseo Next V2 registers names under `.paseo`, previewnet stays on `.dot`. The
+// Paseo Next V2 registers names under `.paseo`, previewnet under `.test`. The
 // parser must follow the active network, otherwise a Paseo deployment silently
 // treats every product URL as a regular website, and a `.dot` name resolves
 // against the wrong namehash.
 describe("dotNS TLD per network", () => {
   afterEach(() => {
-    setNetworkOverride("previewnet");
+    setNetworkOverride("paseo-next-v1");
   });
 
   it("As a user on Paseo Next V2, I open a .paseo name and reach the product", () => {
@@ -306,17 +306,17 @@ describe("dotNS TLD per network", () => {
     expect(parsed).toBeNull();
   });
 
-  it("As a user on previewnet, a .dot name is a product and a .paseo name is not", () => {
+  it("As a user on previewnet, a .test name is a product and a .dot name is not", () => {
     // Given
     setNetworkOverride("previewnet");
 
     // When
+    const test = dotNsUrl.isDotDomain("mytestapp.test");
     const dot = dotNsUrl.isDotDomain("mytestapp.dot");
-    const paseo = dotNsUrl.isDotDomain("mytestapp.paseo");
 
     // Then
-    expect(dot).toBe(true);
-    expect(paseo).toBe(false);
+    expect(test).toBe(true);
+    expect(dot).toBe(false);
   });
 });
 
