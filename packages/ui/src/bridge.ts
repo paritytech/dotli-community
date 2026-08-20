@@ -1,4 +1,4 @@
-// dot.li — TrUAPI host bridge
+// dot.li TrUAPI host bridge
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
 // product iframe via `@parity/truapi-host`. Each render swaps the running
@@ -45,6 +45,7 @@ import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
+import { productIframeBox } from "./product-iframe-box";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
@@ -57,8 +58,8 @@ import { showNotification } from "./notification";
 
 const noop = (): void => undefined;
 
-// Eagerly load the iframe host chunk + worker constructor so they're ready
-// by the time we need them. The wasm core lives inside the worker; the host
+// Eagerly load the iframe host chunk and the worker constructor so they're
+// ready by the time we need them. The wasm core lives inside the worker. The host
 // shell only owns the postMessage bridge, keeping smoldot's CPU off the
 // main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
@@ -249,7 +250,7 @@ function rerenderProduct(product: CurrentProduct): void {
         })
       : renderAppSubdomain(product.cid, product.label);
   void render.catch((error: unknown) => {
-    // A newer render superseded this one; its result owns the UI now.
+    // A newer render superseded this one, so its result owns the UI now.
     if (renderGeneration !== expectedGeneration) {
       return;
     }
@@ -269,7 +270,7 @@ function rerenderProduct(product: CurrentProduct): void {
   });
 }
 
-// Listen for device permission grants — reload the iframe so the updated
+// Listen for device permission grants. Reload the iframe so the updated
 // `allow` attribute takes effect. Keep the current iframe visible and surface
 // a retry if replacement host startup fails.
 window.addEventListener("dotli:device-permission-changed", () => {
@@ -394,7 +395,8 @@ async function disconnectTruapiHosts(): Promise<void> {
 }
 
 /**
- * Capture deep link path (pathname + search + hash) to forward into the iframe.
+ * Capture the deep link path, meaning pathname, search and hash, to forward
+ * into the iframe.
  */
 function getDeepPath(): string {
   const { pathname, search, hash } = window.location;
@@ -410,13 +412,13 @@ function getDeepPath(): string {
   return p + search + hash;
 }
 
+/** Pin the product iframe to the area the host chrome and the insets leave. */
 function applyIframeStyling(
   iframe: HTMLIFrameElement,
   opts: { topbarOffset: boolean },
 ): void {
-  iframe.style.cssText = opts.topbarOffset
-    ? "position:fixed;top:56px;left:0;width:100%;height:calc(100vh - 56px);border:none;margin:0;padding:0;"
-    : "position:fixed;top:0;left:0;width:100%;height:100vh;border:none;margin:0;padding:0;";
+  const box = productIframeBox(opts);
+  iframe.style.cssText = `position:fixed;top:${box.top};left:${box.left};width:${box.width};height:${box.height};border:none;margin:0;padding:0;`;
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 }
@@ -468,7 +470,7 @@ function pipeProviders(
     for (const unsub of unsubs) {
       try {
         unsub();
-        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort; stale MessagePorts can already be closed while the next cleanup still must run.
+        // eslint-disable-next-line no-restricted-syntax -- provider teardown is best-effort. Stale MessagePorts can already be closed while the next cleanup still must run.
       } catch {
         /* ignore teardown races */
       }
@@ -947,7 +949,7 @@ export async function renderIframe(
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   // Keep the current product visible while the replacement core initializes.
-  // Core startup can take several seconds; removing the old iframe first made
+  // Core startup can take several seconds. Removing the old iframe first made
   // permission-triggered reloads look like a permanently blank application.
   const previousHost = currentHost;
   if (previousHost === null) {
@@ -1022,7 +1024,7 @@ export async function renderIframe(
   }
 
   stopSetup();
-  document.title = `${label} — dot.li`;
+  document.title = `${label} · dot.li`;
 
   window.dispatchEvent(
     new CustomEvent("dotli:product-loaded", { detail: { label } }),
@@ -1042,7 +1044,7 @@ export async function renderIframe(
  *
  * The app context acts as a transparent relay between the host and the dApp
  * iframe. Only the app subdomain itself participates in the TrUAPI
- * MessageChannel; any nested dApp iframe it loads is opaque to the host.
+ * MessageChannel. Any nested dApp iframe it loads is opaque to the host.
  */
 export async function renderAppSubdomain(
   cid: string,
@@ -1074,7 +1076,7 @@ export async function renderAppSubdomain(
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
   // the first sandbox boot after "Save & Apply" wipes its own origin too.
-  // Consume + clear so subsequent navigations (permission reload, etc.)
+  // Consume and clear so subsequent navigations (permission reload, etc.)
   // don't keep triggering resets.
   let fullReset = false;
   try {
@@ -1082,9 +1084,9 @@ export async function renderAppSubdomain(
       fullReset = true;
       sessionStorage.removeItem("dotli:pending-reset:sandbox");
     }
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); reset flag defaults to false which is the safe state.
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag defaults to false which is the safe state.
   } catch {
-    /* sessionStorage unavailable — skip pending reset */
+    /* sessionStorage unavailable, skip pending reset */
   }
   const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
   if (parsedUrl.origin !== appOrigin) {
@@ -1108,7 +1110,7 @@ export async function renderAppSubdomain(
   }
   const url = parsedUrl.toString();
 
-  // Keep the loading overlay visible — the sandbox will post status
+  // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
   // Only prepare it on the initial render. During a permission refresh the
   // current iframe remains visible until the replacement is ready.

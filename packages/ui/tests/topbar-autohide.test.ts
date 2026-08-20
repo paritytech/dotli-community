@@ -1,5 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// happy-dom rejects var() inside calc(), so the box helper is mocked with
+// plain values here. The real inset math is covered by product-iframe-box tests.
+vi.mock("@dotli/ui/product-iframe-box", () => ({
+  productIframeBox: (opts: { topbarOffset: boolean }) =>
+    opts.topbarOffset
+      ? {
+          top: "56px",
+          left: "0px",
+          width: "100%",
+          height: "calc(100vh - 56px)",
+        }
+      : { top: "0px", left: "0px", width: "100%", height: "100vh" },
+}));
+
 const HIDE_DELAY_MS = 5000;
 
 function installTopbarDom(): void {
@@ -287,7 +301,9 @@ describe("topbar auto-hide motion and layout", () => {
     expect(appFrame().style.height).toBe(hiddenHeight);
     expect(hiddenTop).toBe("0px");
     expect(hiddenHeight).toBe("100vh");
-    expect(appFrame().style.transform).toBe("translateY(56px)");
+    expect(appFrame().style.transform).toBe(
+      "translateY(calc(var(--topbar-height, 56px) - var(--safe-top, 0px)))",
+    );
   });
 
   it("As a dotli integrator, a re-rendered product frame keeps the hidden-bar geometry", async () => {

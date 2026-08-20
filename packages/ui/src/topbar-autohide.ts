@@ -8,8 +8,10 @@
 // so home, settings, permissions and login never become mouse-only.
 //
 import { isMobileDevice } from "@dotli/shared/device";
+import { productIframeBox } from "./product-iframe-box";
 
-const TOPBAR_HEIGHT = "56px";
+const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
+const SAFE_TOP = "var(--safe-top, 0px)";
 const HIDE_DELAY_MS = 5000;
 const SLIDE_TRANSITION = "transform 0.3s ease";
 const HOVER_STRIP_HEIGHT = "6px";
@@ -74,8 +76,8 @@ function applySlideTransition(): void {
 }
 
 /**
- * While auto-hide is active the frame keeps a constant 100vh layout box and
- * a transform tracks the bar. Revealing shifts the frame down below the bar,
+ * While auto-hide is active the frame keeps a constant hidden-bar layout box
+ * and a transform tracks the bar. Revealing shifts the frame down below the bar,
  * so the app's top is never covered and, because only the transform changes,
  * the product document never relayouts. Cost: the app's bottom strip sits
  * off-screen for the moment the bar is revealed.
@@ -86,16 +88,19 @@ function applyAppFrameGeometry(): void {
     return;
   }
   if (appFrameTracking) {
-    frame.style.top = "0";
-    frame.style.height = "100vh";
+    const box = productIframeBox({ topbarOffset: false });
+    frame.style.top = box.top;
+    frame.style.height = box.height;
     frame.style.transition =
       reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION;
+    // --topbar-height already includes the top inset, so shift by the rest.
     frame.style.transform = visible
-      ? `translateY(${TOPBAR_HEIGHT})`
+      ? `translateY(calc(${TOPBAR_HEIGHT} - ${SAFE_TOP}))`
       : "translateY(0)";
   } else {
-    frame.style.top = TOPBAR_HEIGHT;
-    frame.style.height = `calc(100vh - ${TOPBAR_HEIGHT})`;
+    const box = productIframeBox({ topbarOffset: true });
+    frame.style.top = box.top;
+    frame.style.height = box.height;
     frame.style.transition = "";
     frame.style.transform = "";
   }
