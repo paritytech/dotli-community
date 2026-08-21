@@ -129,7 +129,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     description: "Product Preview Network",
     relay: {
       genesis:
-        "0x8c27ddf678c2ae9bef0efebfc485a9309f3d735c6d3fbb8d947afc3ace0e80f4",
+        "0xf534869782b0aafa6e02a66d8bae47c83fd0a7b854d55303ce574838c6c48a23",
       rpcs: [
         "wss://previewnet.substrate.dev/relay/alice",
         "wss://previewnet.substrate.dev/relay/bob",
@@ -137,25 +137,25 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0x4d11c803cc6921429e3876638977ad006ea1bba8cd3976a0bca2f164e7026210",
+        "0x627f54413120c81161261b2ca87f60f0020963107dc28367491e09ec2dd29659",
       rpcs: ["wss://previewnet.substrate.dev/asset-hub"],
     },
     bulletin: {
       genesis:
-        "0x2778b1c94c4362e49a54be57d3056bc714f3712e4486625312704ffb74eb973d",
+        "0x1144acd27f0e5b2c88da7dc12c111e396983dec036ccfb42da5bbb0dd7104e89",
       rpcs: ["wss://previewnet.substrate.dev/bulletin"],
       ipfsGateways: ["https://previewnet.substrate.dev"],
     },
     people: {
       genesis:
-        "0x3138c6d4ce58c760047a413c2a930e919b4673a841ab4890de59aac3bd037f3d",
+        "0x34999c298555e25bf17a7f3ea20efe7f6fdab1dfec7f808fbcfd36ca8aa5d220",
       rpcs: ["wss://previewnet.substrate.dev/people"],
     },
     dotns: {
       DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
       DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
-      TLD: "dot",
+      TLD: "test",
     },
   },
 };
