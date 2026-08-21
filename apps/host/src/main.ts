@@ -742,22 +742,13 @@ async function applyUrlSettings(): Promise<void> {
     return;
   }
 
-  // Wipe host origin and signal the other two origins to purge themselves
-  // on their next boot. wipeOriginState clears localStorage, so capture
-  // the theme and the just-written settings and re-persist them.
-  const theme = readRawLocalStorage("dotli-theme");
+  // Wipe host origin and signal the other two origins to purge themselves on
+  // their next boot. The wipe preserves the theme and the analytics id itself,
+  // so only the just-written settings need re-persisting here.
   await wipeOriginState();
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
-  if (theme === "light" || theme === "dark" || theme === "system") {
-    try {
-      localStorage.setItem("dotli-theme", theme);
-      // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable post-wipe in Safari private mode, so theme restore is best-effort.
-    } catch {
-      /* localStorage unavailable */
-    }
-  }
   try {
     sessionStorage.setItem("dotli:pending-reset:protocol", "1");
     sessionStorage.setItem("dotli:pending-reset:sandbox", "1");

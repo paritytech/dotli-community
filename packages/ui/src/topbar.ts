@@ -28,6 +28,7 @@ import {
   type Backend,
   type CacheSettings,
 } from "@dotli/config/mode";
+import { ANALYTICS_USER_KEY } from "@dotli/metrics/sentry";
 import { clearCidCache } from "@dotli/storage/cid-cache";
 import {
   getEnabledNetworks,
@@ -110,13 +111,15 @@ let releaseAuthModal: (() => void) | null = null;
 
 type ThemePref = "light" | "dark" | "system";
 
+const THEME_KEY = "dotli-theme";
+
 /**
  * Read the persisted theme preference.
  *
  * An absent key means "system" so pre-existing users keep following the OS.
  */
 function getStoredThemePref(): ThemePref {
-  const stored = localStorage.getItem("dotli-theme");
+  const stored = localStorage.getItem(THEME_KEY);
   if (stored === "light" || stored === "dark" || stored === "system") {
     return stored;
   }
@@ -187,7 +190,7 @@ function setThemePopoverOpen(open: boolean): void {
 }
 
 function selectThemePref(pref: ThemePref): void {
-  localStorage.setItem("dotli-theme", pref);
+  localStorage.setItem(THEME_KEY, pref);
   applyThemePref(pref);
   syncThemePopoverChecked(pref);
   if (themeButton !== null) {
@@ -1555,16 +1558,10 @@ async function applyAndReset(
 ): Promise<void> {
   try {
     if (forceFullWipe) {
-      // Snapshot the theme so the wipe (which clears localStorage) doesn't
-      // yank the user into a different colour scheme.
-      const theme = localStorage.getItem("dotli-theme");
       await wipeOriginState();
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
-      if (theme === "light" || theme === "dark" || theme === "system") {
-        localStorage.setItem("dotli-theme", theme);
-      }
       // Force every origin to purge regardless of persisted prefs.
       try {
         sessionStorage.setItem("dotli:pending-reset:protocol", "1");
@@ -1625,10 +1622,20 @@ async function applyAndReset(
 }
 
 /**
+ * Keys that describe the browser rather than the state a reset clears.
+ *
+ * The theme is what the visitor chose to look at, and the analytics id is who
+ * Sentry thinks they are. Losing either turns a reset into a visible change the
+ * user did not ask for, so `wipeOriginState` carries them across.
+ */
+const PRESERVED_KEYS: readonly string[] = [THEME_KEY, ANALYTICS_USER_KEY];
+
+/**
  * Wipe this origin's IDB, CacheStorage, SW registrations, localStorage,
  * sessionStorage. Best-effort: Firefox and Safari pre-17 lack
- * `indexedDB.databases()`. Callers must snapshot keys they need preserved
- * (theme, settings) and re-write them after, since localStorage is cleared.
+ * `indexedDB.databases()`. Everything in `PRESERVED_KEYS` survives. Callers
+ * still re-write settings they want to change, since those are new values
+ * rather than preserved ones.
  */
 export async function wipeOriginState(): Promise<void> {
   await Promise.allSettled([deleteAllIndexedDBs(), deleteAllCacheStorage()]);
@@ -1640,7 +1647,15 @@ export async function wipeOriginState(): Promise<void> {
     /* sessionStorage unavailable */
   }
   try {
+    const preserved = PRESERVED_KEYS.map(
+      (key) => [key, localStorage.getItem(key)] as const,
+    );
     localStorage.clear();
+    for (const [key, value] of preserved) {
+      if (value !== null) {
+        localStorage.setItem(key, value);
+      }
+    }
     // eslint-disable-next-line no-restricted-syntax -- localStorage unavailable. Full reset is best-effort.
   } catch {
     /* localStorage unavailable */
