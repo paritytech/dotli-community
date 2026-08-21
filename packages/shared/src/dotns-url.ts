@@ -5,7 +5,7 @@
 //
 // Parses dotNS domain URLs in various formats (bare, with protocol,
 // polkadot://) and identifies products by the active network's TLD. The TLD is
-// per-network: `.dot` on previewnet, `.paseo` on Paseo Next V2. URLs with any
+// per-network: `.test` on previewnet, `.paseo` on Paseo Next V2. URLs with any
 // other TLD (dot.li, paseo.li, google.com, etc.) are regular websites.
 //
 // Parse outcomes are discriminated unions. A `null` return would hide

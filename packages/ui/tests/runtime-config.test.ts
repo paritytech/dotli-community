@@ -19,9 +19,9 @@ describe("labelToProductId", () => {
 
   // A product id built with the wrong TLD hashes to a different dotNS node, so
   // the host would read an empty record instead of failing loudly.
-  it("As a dotli integrator, the host maps the same label to .dot on previewnet", () => {
+  it("As a dotli integrator, the host maps the same label to .test on previewnet", () => {
     setNetworkOverride("previewnet");
-    expect(labelToProductId("acme")).toBe("acme.dot");
+    expect(labelToProductId("acme")).toBe("acme.test");
   });
 
   it("As a dotli integrator, the host keeps localhost labels stable", () => {
