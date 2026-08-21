@@ -38,7 +38,7 @@ import {
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
-import { productIframeBox } from "@dotli/ui/product-iframe-box";
+import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
@@ -284,105 +284,18 @@ function parseDotLabel(): string | null {
  *   "verified": green, P2P mode, data independently verified by light client.
  *   "validating": yellow, gateway mode, data from trusted source.
  */
-let topbarHideTimer: ReturnType<typeof setTimeout> | null = null;
-let topbarHoverBound = false;
 let shieldVerified = false;
-
-function isLoggedIn(): boolean {
-  return document.querySelector(".user-badge") !== null;
-}
-
-function setTopbarVisible(visible: boolean): void {
-  const topbar = document.getElementById("topbar");
-  if (!topbar) {
-    return;
-  }
-  const iframe = document.querySelector("iframe");
-  topbar.style.transform = visible ? "translateY(0)" : "translateY(-100%)";
-  if (iframe) {
-    // With the bar hidden the product still starts below the status bar.
-    const box = productIframeBox({ topbarOffset: visible });
-    iframe.style.top = box.top;
-    iframe.style.height = box.height;
-  }
-  window.dispatchEvent(
-    new CustomEvent<boolean>("topbar:visibility", { detail: visible }),
-  );
-}
-
-function scheduleTopbarHide(): void {
-  if (topbarHideTimer !== null) {
-    clearTimeout(topbarHideTimer);
-  }
-  if (!isLoggedIn()) {
-    return;
-  }
-  topbarHideTimer = setTimeout(() => {
-    setTopbarVisible(false);
-  }, 5000);
-}
-
-function setupTopbarAutoHide(): void {
-  // No hover on touch devices to bring the bar back, so keep it pinned.
-  if (isMobileDevice()) {
-    return;
-  }
-  const topbar = document.getElementById("topbar");
-  if (!topbar) {
-    return;
-  }
-
-  topbar.style.transition = "transform 0.3s ease";
-  const iframe = document.querySelector("iframe");
-  if (iframe) {
-    iframe.style.transition = "top 0.3s ease, height 0.3s ease";
-  }
-
-  scheduleTopbarHide();
-
-  if (!topbarHoverBound) {
-    topbarHoverBound = true;
-
-    // Invisible trigger zone at the very top. Catches hover even over the iframe.
-    const trigger = document.createElement("div");
-    trigger.style.cssText =
-      "position:fixed;top:0;left:0;right:0;height:6px;z-index:999;";
-    document.body.appendChild(trigger);
-
-    trigger.addEventListener("mouseenter", () => {
-      if (topbarHideTimer !== null) {
-        clearTimeout(topbarHideTimer);
-        topbarHideTimer = null;
-      }
-      setTopbarVisible(true);
-    });
-    topbar.addEventListener("mouseenter", () => {
-      if (topbarHideTimer !== null) {
-        clearTimeout(topbarHideTimer);
-        topbarHideTimer = null;
-      }
-      setTopbarVisible(true);
-    });
-    topbar.addEventListener("mouseleave", () => {
-      scheduleTopbarHide();
-    });
-  }
-}
 
 // Wire auth-state changes to topbar auto-hide. Login starts the hide timer
 // once the shield is verified, logout pins the topbar visible.
 function bindTopbarAutoHide(): void {
   window.addEventListener("dotli:authenticated", () => {
     if (shieldVerified) {
-      setupTopbarAutoHide();
+      armTopbarAutoHide();
     }
   });
   window.addEventListener("dotli:logged-out", () => {
-    if (topbarHideTimer !== null) {
-      clearTimeout(topbarHideTimer);
-      topbarHideTimer = null;
-    }
-    setTopbarVisible(true);
+    pinTopbarVisible();
   });
 }
 
@@ -400,7 +313,7 @@ function setShieldState(state: "validating" | "verified"): void {
   }
 
   shieldVerified = true;
-  setupTopbarAutoHide();
+  armTopbarAutoHide();
 }
 
 /**
@@ -1076,7 +989,7 @@ async function main(): Promise<void> {
 
     shieldVerified = true;
     bindTopbarAutoHide();
-    setupTopbarAutoHide();
+    armTopbarAutoHide();
 
     // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
     history.replaceState(
