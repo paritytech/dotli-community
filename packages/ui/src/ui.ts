@@ -355,56 +355,6 @@ function stopStageMessages(): void {
   cancelTyping();
 }
 
-export const GATEWAY_ESCAPE_DELAY_MS = 10_000;
-
-/**
- * One-click "Use Trusted Provider" escape hatch on the loading screen.
- * Renders at most once per page lifetime after `delayMs` of slow loading.
- * Returns a cancel function that clears the pending timer.
- */
-export function showGatewayEscape(
-  onClick: () => void,
-  delayMs: number = GATEWAY_ESCAPE_DELAY_MS,
-): () => void {
-  const timer = setTimeout(() => {
-    const hint = document.getElementById("loading-hint");
-    if (hint === null) {
-      return;
-    }
-    if (hint.querySelector(".loading-gateway-btn") !== null) {
-      return;
-    }
-    const btn = document.createElement("button");
-    btn.className = "loading-gateway-btn";
-    btn.type = "button";
-    const icon = document.createElement("span");
-    icon.className = "loading-gateway-btn-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.innerHTML =
-      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-      '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
-    const text = document.createElement("span");
-    text.className = "loading-gateway-btn-text";
-    const label = document.createElement("span");
-    label.className = "loading-gateway-btn-label";
-    label.textContent = "Use Trusted Provider";
-    const sub = document.createElement("span");
-    sub.className = "loading-gateway-btn-sub";
-    sub.textContent = "Faster but no verification";
-    text.append(label, sub);
-    btn.append(icon, text);
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      onClick();
-    });
-    hint.appendChild(btn);
-    hint.classList.add("visible");
-  }, delayMs);
-  return () => {
-    clearTimeout(timer);
-  };
-}
-
 // Single-line status. Updates #status in place. Shows a slow-step
 // hint when a step exceeds its time threshold.
 
@@ -480,15 +430,11 @@ function clearSlowWarning(): void {
   }
   const hint = document.getElementById("loading-hint");
   if (hint !== null) {
-    // Remove only the text span, preserve any gateway button
     const textSpan = hint.querySelector(".loading-hint-text");
     if (textSpan !== null) {
       textSpan.remove();
     }
-    // Only hide if no gateway button is present
-    if (hint.querySelector(".loading-gateway-btn") === null) {
-      hint.classList.remove("visible");
-    }
+    hint.classList.remove("visible");
   }
 }
 
@@ -508,12 +454,10 @@ export function trackStatus(message: string): void {
     slowTimer = setTimeout(() => {
       const hint = document.getElementById("loading-hint");
       if (hint !== null) {
-        // Remove previous text span if any
         const existing = hint.querySelector(".loading-hint-text");
         if (existing !== null) {
           existing.remove();
         }
-        // Insert text as a span so it doesn't wipe the gateway button
         const span = document.createElement("span");
         span.className = "loading-hint-text";
         span.textContent = threshold.hint;

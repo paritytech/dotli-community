@@ -34,7 +34,6 @@ import {
   advancePhase,
   stopStatusTick,
   listenForSandboxStatus,
-  showGatewayEscape,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
@@ -1257,48 +1256,36 @@ async function main(): Promise<void> {
       log.warn(
         `[dot.li resolve] path=smoldot (trustless light-client) (${elapsed(T0)})`,
       );
-      // After 10s of slow loading on the verified path, surface a one-click
-      // escape to the gateway backend. The user trades the light-client
-      // verification badge for a faster, trust-based load.
-      const cancelGatewayEscape = showGatewayEscape(() => {
-        m.count(S.GATEWAY_ESCAPE, { from_backend: chainBackend });
-        switchBackendAndReload("rpc-gateway");
-      });
-
-      try {
-        const { statusToPhase } = await import("@dotli/resolver/resolve");
-        const onResolveProgress = (msg: string): void => {
-          // Progress events arrive as opaque strings across the iframe
-          // boundary. The resolver package owns the authoritative
-          // mapping from status text to ResolvePhase, so we defer to it
-          // instead of maintaining a parallel regex here.
-          const phase = statusToPhase(msg);
-          if (phase === "relay-chain-adding") {
-            advancePhase(1);
-          } else if (
-            // `asset-hub-connecting` is ~0ms (just createClient), so it shares
-            // the Syncing band rather than getting a slice that makes the bar
-            // jump for no work.
-            phase === "asset-hub-connecting" ||
-            phase === "asset-hub-syncing" ||
-            phase === "asset-hub-ready"
-          ) {
-            advancePhase(2);
-          } else if (phase === "resolving-content") {
-            advancePhase(3);
-          }
-          emitPhase(msg, phase ?? "progress");
-          trackStatus(msg);
-        };
-        cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
-        if (cid === null) {
-          cid = await resolveDotNameRemote(label, onResolveProgress);
-          log.warn(
-            `[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? "null"}`,
-          );
+      const { statusToPhase } = await import("@dotli/resolver/resolve");
+      const onResolveProgress = (msg: string): void => {
+        // Progress events arrive as opaque strings across the iframe
+        // boundary. The resolver package owns the authoritative
+        // mapping from status text to ResolvePhase, so we defer to it
+        // instead of maintaining a parallel regex here.
+        const phase = statusToPhase(msg);
+        if (phase === "relay-chain-adding") {
+          advancePhase(1);
+        } else if (
+          // `asset-hub-connecting` is ~0ms (just createClient), so it shares
+          // the Syncing band rather than getting a slice that makes the bar
+          // jump for no work.
+          phase === "asset-hub-connecting" ||
+          phase === "asset-hub-syncing" ||
+          phase === "asset-hub-ready"
+        ) {
+          advancePhase(2);
+        } else if (phase === "resolving-content") {
+          advancePhase(3);
         }
-      } finally {
-        cancelGatewayEscape();
+        emitPhase(msg, phase ?? "progress");
+        trackStatus(msg);
+      };
+      cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
+      if (cid === null) {
+        cid = await resolveDotNameRemote(label, onResolveProgress);
+        log.warn(
+          `[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? "null"}`,
+        );
       }
     } else {
       log.warn(
