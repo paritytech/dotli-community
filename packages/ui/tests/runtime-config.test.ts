@@ -55,6 +55,9 @@ describe("createTruapiRuntimeConfig", () => {
       bulletin: {
         genesisHash: getActiveServicesConfig().bulletin.genesis,
       },
+      assetHub: {
+        genesisHash: getActiveServicesConfig().assethub.genesis,
+      },
       pairing: {
         deeplinkScheme: "polkadotapp",
       },
