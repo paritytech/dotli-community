@@ -55,6 +55,9 @@ let unreadCount = 0;
 let renderQueued = false;
 // Send-failure notice, kept across re-renders until the next send or edit.
 let composerError: string | null = null;
+// The core denies every chat call without an active session, so the empty
+// state must point at login rather than blame the product.
+let loggedIn = false;
 
 function getElements(): PanelElements | null {
   const button = document.getElementById("chat-button");
@@ -219,7 +222,9 @@ async function renderPanel(): Promise<void> {
     el.rooms.hidden = true;
     el.messages.replaceChildren();
     el.hint.hidden = false;
-    el.hint.textContent = "Waiting for the app to start a chat.";
+    el.hint.textContent = loggedIn
+      ? "Waiting for the app to start a chat."
+      : "Log in to chat with this app.";
     el.input.disabled = true;
     return;
   }
@@ -371,6 +376,17 @@ export function initChatPanel(): void {
   window.addEventListener("dotli:product-error", () => {
     currentLabel = null;
     updateButton();
+  });
+
+  window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
+    const state = (event as CustomEvent<{ tag: string }>).detail;
+    const next = state.tag === "Connected";
+    if (next !== loggedIn) {
+      loggedIn = next;
+      if (open) {
+        scheduleRender();
+      }
+    }
   });
 
   window.addEventListener(CHAT_MESSAGE_EVENT, (event: Event) => {
