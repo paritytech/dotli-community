@@ -112,7 +112,8 @@ export class ContenthashDecodeError extends ResolverError {
  *
  * Smoldot started and added the relay chain, but the peer set never produced
  * a finalized parachain block in time. Surfaced as a fatal so the host can
- * offer the gateway escape rather than sit on the loading screen.
+ * show the error page with its trusted-provider retry rather than sit on the
+ * loading screen.
  */
 export class NetworkSyncTimeoutError extends ResolverError {
   override readonly name = "NetworkSyncTimeoutError" as const;

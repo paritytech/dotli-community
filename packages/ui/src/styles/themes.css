@@ -216,23 +216,6 @@
 [data-theme="light"] .loading-hint.visible {
   opacity: 0.9;
 }
-[data-theme="light"] .loading-gateway-btn {
-  border-color: rgba(0, 0, 0, 0.16);
-  background: rgba(0, 0, 0, 0.03);
-  color: rgba(0, 0, 0, 0.85);
-}
-[data-theme="light"] .loading-gateway-btn:hover {
-  border-color: rgba(0, 0, 0, 0.32);
-  background: rgba(0, 0, 0, 0.06);
-  color: #111;
-}
-[data-theme="light"] .loading-gateway-btn-icon {
-  background: rgba(0, 0, 0, 0.06);
-  color: #0a0a0a;
-}
-[data-theme="light"] .loading-gateway-btn-sub {
-  color: rgba(0, 0, 0, 0.55);
-}
 [data-theme="light"] .loading-progress-bar {
   background: rgba(0, 0, 0, 0.06);
 }
