@@ -258,6 +258,14 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
+    case "DeviceEncryptionKey":
+      return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
+    // Keyed per (session, product) so each product keeps its own slot and a
+    // persist stays a single write instead of a session-wide read-modify-write.
+    case "ProductSubtree":
+      return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
     case "AuthSession":
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
   }
@@ -267,7 +275,8 @@ function storesSecretMaterial(key: CoreStorageKey): boolean {
   return (
     key.tag === "AllowanceKeys" ||
     key.tag === "AutoSigningKey" ||
-    key.tag === "AutoSigningKeys"
+    key.tag === "AutoSigningKeys" ||
+    key.tag === "DeviceEncryptionKey"
   );
 }
 

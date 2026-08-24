@@ -180,6 +180,10 @@ function confirmationDisplay(
       return { fields: createIdentityDisclosureFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
+    case "ProductSubtree":
+      return {
+        fields: [{ label: "Product", value: review.value.productId }],
+      };
   }
 }
 
@@ -404,6 +408,12 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       };
     case "ResourceAllocation":
       return { title: "Resource Allocation", action: "Allow" };
+    case "ProductSubtree":
+      return {
+        title: "Account Access",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
   }
 }
 

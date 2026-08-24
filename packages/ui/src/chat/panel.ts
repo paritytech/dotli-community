@@ -22,10 +22,12 @@ import {
   chatMessages,
   chatRooms,
   userPostMessage,
+  userTriggerAction,
   type ChatMessageEventDetail,
   type ChatMessageRecord,
   type ChatRoomRecord,
 } from "./service";
+import { mountCustomMessage } from "./custom-message";
 
 const PANEL_WIDTH_KEY = "dotli:chat-panel-width";
 const MIN_PANEL_WIDTH = 280;
@@ -66,6 +68,17 @@ let composerError: string | null = null;
 // The core denies every chat call without an active session, so the empty
 // state must point at login rather than blame the product.
 let loggedIn = false;
+// Live custom-message renders in the current message list. Each holds an
+// observer and possibly an open product subscription, so every rebuild of
+// the list must dispose the previous set before dropping the rows.
+let customRenderCleanups: (() => void)[] = [];
+
+function disposeCustomRenders(): void {
+  for (const cleanup of customRenderCleanups) {
+    cleanup();
+  }
+  customRenderCleanups = [];
+}
 
 function getElements(): PanelElements | null {
   const button = document.getElementById("chat-button");
@@ -204,12 +217,44 @@ function renderMessage(record: ChatMessageRecord): HTMLElement {
     case "File":
       bubble.textContent = `[file] ${content.value.fileName}`;
       break;
-    case "Actions":
-      bubble.textContent = content.value.text ?? "[actions]";
+    case "Actions": {
+      if (content.value.text !== undefined && content.value.text !== "") {
+        const text = document.createElement("span");
+        text.textContent = content.value.text;
+        bubble.appendChild(text);
+      }
+      const actions = document.createElement("div");
+      actions.className = `chat-msg-actions chat-msg-actions-${content.value.layout === "Grid" ? "grid" : "column"}`;
+      for (const action of content.value.actions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "chat-custom-btn chat-custom-btn-secondary";
+        button.textContent = action.title;
+        button.addEventListener("click", () => {
+          void userTriggerAction(record.productId, record.roomId, {
+            messageId: record.messageId,
+            actionId: action.actionId,
+          }).catch(() => {
+            composerError = "The app could not be reached.";
+            scheduleRender();
+          });
+        });
+        actions.appendChild(button);
+      }
+      bubble.appendChild(actions);
       break;
+    }
     case "Custom":
-      bubble.className += " chat-msg-event";
-      bubble.textContent = "[custom message]";
+      bubble.className += " chat-msg-custom";
+      customRenderCleanups.push(
+        mountCustomMessage(bubble, {
+          productId: record.productId,
+          roomId: record.roomId,
+          messageId: record.messageId,
+          messageType: content.value.messageType,
+          payload: content.value.payload,
+        }),
+      );
       break;
     default:
       bubble.className += " chat-msg-event";
@@ -271,6 +316,7 @@ function renderRoomList(rooms: ChatRoomRecord[]): void {
   }
   el.back.hidden = true;
   el.messages.hidden = true;
+  disposeCustomRenders();
   el.messages.replaceChildren();
   el.composer.hidden = true;
   el.hint.hidden = true;
@@ -318,6 +364,7 @@ async function renderConversation(
   if (activeRoomId !== room.roomId) {
     return;
   }
+  disposeCustomRenders();
   el.messages.replaceChildren(...records.map(renderMessage));
   el.messages.scrollTop = el.messages.scrollHeight;
   if (focusComposerOnRender) {
@@ -343,6 +390,7 @@ async function renderPanel(): Promise<void> {
     el.back.hidden = true;
     el.rooms.hidden = true;
     el.messages.hidden = true;
+    disposeCustomRenders();
     el.messages.replaceChildren();
     el.composer.hidden = true;
     el.hint.hidden = false;
@@ -377,6 +425,7 @@ function setPanelOpen(next: boolean): void {
     timeRefreshTimer ??= setInterval(scheduleRender, TIME_REFRESH_MS);
   } else {
     updateButton();
+    disposeCustomRenders();
     if (timeRefreshTimer !== null) {
       clearInterval(timeRefreshTimer);
       timeRefreshTimer = null;

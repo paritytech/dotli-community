@@ -5,6 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
+        "@parity/truapi": "link:@parity/truapi",
         "smoldot": "3.4.1",
       },
       "devDependencies": {
@@ -321,7 +322,8 @@
     },
   },
   "overrides": {
-    "@parity/truapi": "0.9.0",
+    "@parity/truapi": "link:@parity/truapi",
+    "@parity/truapi-host": "link:@parity/truapi-host",
     "brace-expansion": "^5.0.9",
     "deepmerge-ts": "^8.0.1",
     "esbuild": "^0.28.1",
@@ -663,9 +665,9 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.133.0", "", {}, "sha512-KzkdCd6Uxqnf6l3HOw1xfatAlUURA0g14cvBYFyJ5SaNOQbOUvBr9PKArcPcrNIeRsBdgcUzOGrhKveVpvOIGA=="],
 
-    "@parity/truapi": ["@parity/truapi@0.9.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-mndLyirfLFGYhlMKj10kMvovUk8v5h58z3f4u47yDb6bn5cmYlkf37fIsXC3rXEBGRL78yMv83O0xWrS3K2RVA=="],
+    "@parity/truapi": ["@parity/truapi@link:@parity/truapi", {}],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.6.0", "", { "dependencies": { "@parity/truapi": "^0.9.0" } }, "sha512-1rSZ7ZCBWaXXq+zZAHrOiECE5pf59/aJxiQbq1EF9mi6U7t/90UBLrKzpQgBCNT23ivTuWrSlBVi7Tj6ZiWheQ=="],
+    "@parity/truapi-host": ["@parity/truapi-host@link:@parity/truapi-host", {}],
 
     "@playwright/test": ["@playwright/test@1.60.0", "", { "dependencies": { "playwright": "1.60.0" }, "bin": { "playwright": "cli.js" } }, "sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag=="],
 

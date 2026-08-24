@@ -16,6 +16,7 @@ import {
   chatRooms,
   productCreateRoom,
   productPostMessage,
+  registerBot,
 } from "../chat/service";
 import { createResultStream } from "./result-stream";
 
@@ -24,6 +25,16 @@ export function createChatPlatform(): Required<ChatPlatform> {
     async createChatRoom(product, request) {
       const status = await productCreateRoom(product.productId, {
         roomId: request.roomId,
+        name: request.name,
+        icon: request.icon,
+      });
+      return { status };
+    },
+
+    // eslint-disable-next-line @typescript-eslint/require-await -- interface is async; the registry is synchronous localStorage.
+    async registerChatBot(product, request) {
+      const status = registerBot(product.productId, {
+        botId: request.botId,
         name: request.name,
         icon: request.icon,
       });

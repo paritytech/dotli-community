@@ -120,31 +120,39 @@ If a background re-resolution finds the on-chain CID has changed, dotli shows a 
 
 Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:
 
-| Handler                        | What it does                                                           |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `accountGet`                   | Derives a per-app public key via HDKD soft derivation                  |
-| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host |
-| `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session     |
-| `chainConnection`              | Returns an isolated broker connection over the selected chain backend  |
-| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                |
-| `navigateTo`                   | Opens URLs in new tabs                                                 |
-| `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)   |
-| `connectionStatus`             | Streams auth state changes to the SPA                                  |
+| Handler                        | What it does                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| `accountGet`                   | Derives a per-app public key via HDKD soft derivation                                 |
+| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host                |
+| `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
+| `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
+| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
+| `navigateTo`                   | Opens URLs in new tabs                                                                |
+| `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
+| `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
 ### Product chat
 
 Products that declare `includes.chat` in their `worker.<label>.<tld>`
-executable manifest get a Chat-kind TrUAPI execution and a chat button in
+executable manifest get a Worker-kind TrUAPI execution and a chat button in
 the topbar. The product drives the conversation over the core's chat
-surface (`chat.create_room`, `chat.post_message`, `chat.list_subscribe`,
-`chat.action_subscribe`); the user replies from the docked chat panel, and
-each reply reaches the product as a `MessagePosted` action. Rooms and
-messages persist in IndexedDB on the product origin and never leave the
-device. The core denies chat calls without an active session, so chat
-requires being logged in. The localhost debug paths enable chat
-unconditionally so local products can be tested without publishing a
+surface (`chat.create_room`, `chat.register_bot`, `chat.post_message`,
+`chat.list_subscribe`, `chat.action_subscribe`); the user replies from the
+docked chat panel, and each reply reaches the product as a `MessagePosted`
+action. Rooms and messages persist in IndexedDB on the product origin and
+never leave the device. The core denies chat calls without an active
+session, so chat requires being logged in. The localhost debug paths enable
+chat unconditionally so local products can be tested without publishing a
 manifest.
+
+Custom messages (`ChatMessageContent::Custom`) render live: when a custom
+message cell scrolls into view, the panel asks the product to draw it
+(`chat.custom_message_render`) and renders the streamed tree with the
+host's own design system (`src/chat/custom-renderer.ts`). The tree is a
+closed vocabulary of layouts and design tokens, so a product can never
+inject markup, styles, or URLs. Button taps and text-field edits flow back
+as `ActionTriggered` actions, as do taps on `Actions`-content buttons.
 
 ### App iframe model
 

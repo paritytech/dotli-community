@@ -36,16 +36,18 @@
     "packages/*"
   ],
   "dependencies": {
+    "@parity/truapi": "link:@parity/truapi",
     "smoldot": "3.4.1"
   },
   "overrides": {
-    "@parity/truapi": "0.9.0",
+    "@parity/truapi": "link:@parity/truapi",
     "fast-uri": "3.1.5",
     "smoldot": "3.4.1",
     "esbuild": "^0.28.1",
     "brace-expansion": "^5.0.9",
     "postcss": "^8.5.24",
     "nanoid": "^3.3.18",
-    "deepmerge-ts": "^8.0.1"
+    "deepmerge-ts": "^8.0.1",
+    "@parity/truapi-host": "link:@parity/truapi-host"
   }
 }

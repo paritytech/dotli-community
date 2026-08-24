@@ -169,6 +169,7 @@ describe("chat panel", () => {
       publish: async (action) => {
         published.push(action);
       },
+      renderCustomMessage: () => () => undefined,
     });
 
     await service.productCreateRoom(productId, {
@@ -211,6 +212,121 @@ describe("chat panel", () => {
       },
     });
     expect(byId("chat-panel-messages").textContent).toContain("hello back");
+  });
+
+  it("As a user, custom messages render live trees and taps reach the product", async () => {
+    // No IntersectionObserver in this environment: the mount falls back to
+    // subscribing immediately, which is exactly what the test needs.
+    vi.stubGlobal("IntersectionObserver", undefined);
+    try {
+      const { panel, service } = await loadChatModules();
+      panel.initChatPanel();
+      loadProduct("chatty-custom");
+      const productId = labelToProductId("chatty-custom");
+
+      const published: HostChatActionSubscribeItem[] = [];
+      const renders: {
+        request: { messageId: string; messageType: string; payload: Uint8Array };
+        sink: {
+          onUpdate(node: unknown): void;
+          onError?(error: Error): void;
+        };
+      }[] = [];
+      const disposeRender = vi.fn();
+      service.registerChatConnection(productId, {
+        publish: async (action) => {
+          published.push(action);
+        },
+        renderCustomMessage: (request, sink) => {
+          renders.push({ request, sink });
+          return disposeRender;
+        },
+      });
+
+      await service.productCreateRoom(productId, {
+        roomId: "main",
+        name: "Main",
+        icon: "",
+      });
+      const messageId = await service.productPostMessage(productId, "main", {
+        tag: "Custom",
+        value: { messageType: "poll", payload: "0x0102" },
+      });
+
+      byId("chat-button").click();
+      await settle();
+      document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+      await settle();
+
+      // The cell subscribed with the stored message identity and payload.
+      expect(renders).toHaveLength(1);
+      expect(renders[0].request.messageId).toBe(messageId);
+      expect(renders[0].request.messageType).toBe("poll");
+      expect(renders[0].request.payload).toEqual(new Uint8Array([1, 2]));
+      expect(byId("chat-panel-messages").textContent).toContain("Loading…");
+
+      // The product streams a tree; the cell replaces its content.
+      renders[0].sink.onUpdate({
+        tag: "Column",
+        value: {
+          modifiers: [],
+          props: {},
+          children: [
+            {
+              tag: "Text",
+              value: {
+                modifiers: [],
+                props: {},
+                children: [{ tag: "String", value: { text: "Pick one" } }],
+              },
+            },
+            {
+              tag: "Button",
+              value: {
+                modifiers: [],
+                props: {
+                  text: "Option A",
+                  enabled: true,
+                  loading: undefined,
+                  clickAction: "pick:a",
+                },
+                children: [],
+              },
+            },
+          ],
+        },
+      });
+      expect(byId("chat-panel-messages").textContent).toContain("Pick one");
+
+      // Tapping the rendered button publishes an ActionTriggered action.
+      document
+        .querySelector<HTMLButtonElement>(".chat-custom-btn")
+        ?.click();
+      await settle();
+      expect(published).toHaveLength(1);
+      expect(published[0]).toMatchObject({
+        roomId: "main",
+        peer: "user",
+        payload: {
+          tag: "ActionTriggered",
+          value: { messageId, actionId: "pick:a" },
+        },
+      });
+
+      // A failed render must not leave a partial tree standing.
+      renders[0].sink.onError?.(new Error("render refused"));
+      expect(byId("chat-panel-messages").textContent).not.toContain("Pick one");
+      expect(byId("chat-panel-messages").textContent).toContain(
+        "This message can’t be shown right now.",
+      );
+
+      // Leaving the room disposes the live render.
+      byId("chat-panel-back").click();
+      await settle();
+      expect(disposeRender).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("As a user, unseen product messages show an unread badge", async () => {

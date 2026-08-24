@@ -839,8 +839,8 @@ async function createCoreProvider(
       await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
-    // Chat-capable products get a Chat-kind execution so the core serves
-    // their chat calls; everything a Spa connection can do still works.
+    // Chat-capable products get a Worker-kind execution so the core serves
+    // their chat calls; everything an App connection can do still works.
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
     const chatCapable = await chatCapabilityFor(label);
@@ -859,11 +859,21 @@ async function createCoreProvider(
     );
     const provider = await runtime.createProvider({
       productId,
-      executionKind: chatCapable ? "Chat" : "Spa",
+      executionKind: chatCapable ? "Worker" : "App",
     });
     const unregisterChat = chatCapable
       ? registerChatConnection(productId, {
-          publish: (action) => runtime.publishChatAction(productId, action),
+          publish: (action) =>
+            provider.publishChatAction === undefined
+              ? Promise.reject(new Error("chat publishing unavailable"))
+              : provider.publishChatAction(action),
+          renderCustomMessage: (request, sink) => {
+            if (provider.renderCustomMessage === undefined) {
+              sink.onError?.(new Error("custom rendering unavailable"));
+              return noop;
+            }
+            return provider.renderCustomMessage(request, sink);
+          },
         })
       : noop;
     return trackCoreProvider(
