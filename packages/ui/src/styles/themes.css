@@ -574,22 +574,26 @@
 [data-theme="light"] .chat-panel-title {
   color: rgba(0, 0, 0, 0.88);
 }
+[data-theme="light"] .chat-panel-back,
 [data-theme="light"] .chat-panel-close {
   color: rgba(0, 0, 0, 0.55);
 }
+[data-theme="light"] .chat-panel-back:hover,
 [data-theme="light"] .chat-panel-close:hover {
   background: rgba(0, 0, 0, 0.06);
   color: rgba(0, 0, 0, 0.88);
 }
-[data-theme="light"] .chat-room-tab {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: rgba(0, 0, 0, 0.65);
+[data-theme="light"] .chat-room-item {
+  color: rgba(0, 0, 0, 0.85);
 }
-[data-theme="light"] .chat-room-tab[aria-selected="true"] {
-  background: rgba(230, 0, 122, 0.12);
-  border-color: rgba(230, 0, 122, 0.4);
-  color: rgba(0, 0, 0, 0.88);
+[data-theme="light"] .chat-room-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+[data-theme="light"] .chat-room-icon {
+  background: rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .chat-room-icon-fallback {
+  color: rgba(0, 0, 0, 0.55);
 }
 [data-theme="light"] .chat-msg-bubble {
   background: rgba(0, 0, 0, 0.05);
@@ -602,6 +606,9 @@
 [data-theme="light"] .chat-msg-meta,
 [data-theme="light"] .chat-panel-hint {
   color: rgba(0, 0, 0, 0.45);
+}
+[data-theme="light"] .chat-msg-time {
+  color: rgba(0, 0, 0, 0.38);
 }
 [data-theme="light"] .chat-panel-input {
   background: rgba(0, 0, 0, 0.03);

@@ -25,6 +25,7 @@ function installChatDom(): void {
     <button id="more-row-chat" hidden></button>
     <aside id="chat-panel" hidden>
       <div id="chat-panel-resize"></div>
+      <button id="chat-panel-back" hidden></button>
       <span id="chat-panel-title"></span>
       <button id="chat-panel-close"></button>
       <div id="chat-panel-rooms" hidden></div>
@@ -92,7 +93,70 @@ describe("chat panel", () => {
 
     expect(byId("chat-panel").hidden).toBe(false);
     expect(byId("chat-panel-hint").hidden).toBe(false);
-    expect(byId<HTMLInputElement>("chat-panel-input").disabled).toBe(true);
+    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
+  });
+
+  it("As a user, opening the panel lists rooms with icon and name", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-rooms");
+    const productId = labelToProductId("chatty-rooms");
+
+    await service.productCreateRoom(productId, {
+      roomId: "support",
+      name: "Support",
+      icon: "data:image/png;base64,AAAA",
+    });
+    await service.productCreateRoom(productId, {
+      roomId: "general",
+      name: "General",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle();
+
+    expect(byId("chat-panel-rooms").hidden).toBe(false);
+    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
+    const items =
+      document.querySelectorAll<HTMLButtonElement>(".chat-room-item");
+    expect(items).toHaveLength(2);
+    expect(items[0].textContent).toContain("Support");
+    expect(
+      items[0].querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
+    ).toBe("data:image/png;base64,AAAA");
+    // A room without an icon falls back to its initial.
+    expect(
+      items[1].querySelector(".chat-room-icon-fallback")?.textContent,
+    ).toBe("G");
+
+    items[0].click();
+    await settle();
+    expect(byId("chat-panel-rooms").hidden).toBe(true);
+    expect(byId("chat-panel-title").textContent).toBe("Support");
+    expect(byId("chat-panel-back").hidden).toBe(false);
+    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
+
+    byId("chat-panel-back").click();
+    await settle();
+    expect(byId("chat-panel-rooms").hidden).toBe(false);
+    expect(byId("chat-panel-back").hidden).toBe(true);
+  });
+
+  it("As a user, the panel stretches to the top when the topbar hides", async () => {
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    const panelEl = byId("chat-panel");
+
+    window.dispatchEvent(
+      new CustomEvent<boolean>("topbar:visibility", { detail: false }),
+    );
+    expect(panelEl.classList.contains("topbar-hidden")).toBe(true);
+
+    window.dispatchEvent(
+      new CustomEvent<boolean>("topbar:visibility", { detail: true }),
+    );
+    expect(panelEl.classList.contains("topbar-hidden")).toBe(false);
   });
 
   it("As a user, product messages render and replies reach the product", async () => {
@@ -119,9 +183,19 @@ describe("chat panel", () => {
 
     byId("chat-button").click();
     await settle();
+    // The panel opens on the room list; enter the room to see messages.
+    const roomItem =
+      document.querySelector<HTMLButtonElement>(".chat-room-item");
+    expect(roomItem?.textContent).toContain("Main");
+    roomItem?.click();
+    await settle();
     expect(byId("chat-panel-messages").textContent).toContain(
       "hello from the app",
     );
+    // Bubbles carry a relative timestamp with the exact time on hover.
+    const time = document.querySelector<HTMLTimeElement>(".chat-msg-time");
+    expect(time?.textContent).toBe("just now");
+    expect(time?.title).not.toBe("");
 
     const input = byId<HTMLInputElement>("chat-panel-input");
     input.value = "hello back";

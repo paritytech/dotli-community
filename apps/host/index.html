@@ -288,6 +288,11 @@
         <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden>
             <div class="chat-panel-resize" id="chat-panel-resize" aria-hidden="true"></div>
             <div class="chat-panel-header">
+                <button class="chat-panel-back" id="chat-panel-back" title="Back to rooms" aria-label="Back to rooms" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                </button>
                 <span class="chat-panel-title" id="chat-panel-title">Chat</span>
                 <button class="chat-panel-close" id="chat-panel-close" title="Close chat" aria-label="Close chat">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -295,7 +300,7 @@
                     </svg>
                 </button>
             </div>
-            <div class="chat-panel-rooms" id="chat-panel-rooms" role="tablist" aria-label="Chat rooms" hidden></div>
+            <div class="chat-panel-rooms" id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden></div>
             <div class="chat-panel-messages" id="chat-panel-messages" aria-live="polite"></div>
             <p class="chat-panel-hint" id="chat-panel-hint" hidden></p>
             <form class="chat-panel-composer" id="chat-panel-composer">

@@ -24,12 +24,15 @@ import {
   userPostMessage,
   type ChatMessageEventDetail,
   type ChatMessageRecord,
+  type ChatRoomRecord,
 } from "./service";
 
 const PANEL_WIDTH_KEY = "dotli:chat-panel-width";
 const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 560;
 const DEFAULT_PANEL_WIDTH = 360;
+// Relative bubble timestamps go stale while the panel sits open.
+const TIME_REFRESH_MS = 60_000;
 
 interface PanelElements {
   button: HTMLElement;
@@ -38,6 +41,7 @@ interface PanelElements {
   panel: HTMLElement;
   resize: HTMLElement;
   title: HTMLElement;
+  back: HTMLElement;
   close: HTMLElement;
   rooms: HTMLElement;
   messages: HTMLElement;
@@ -50,9 +54,13 @@ let el: PanelElements | null = null;
 let currentLabel: string | null = null;
 let chatAvailable = false;
 let open = false;
+// null shows the room list; a room id shows that room's conversation.
 let activeRoomId: string | null = null;
 let unreadCount = 0;
 let renderQueued = false;
+let timeRefreshTimer: ReturnType<typeof setInterval> | null = null;
+// The composer only exists after picking a room, so focus it on that render.
+let focusComposerOnRender = false;
 // Send-failure notice, kept across re-renders until the next send or edit.
 let composerError: string | null = null;
 // The core denies every chat call without an active session, so the empty
@@ -66,6 +74,7 @@ function getElements(): PanelElements | null {
   const panel = document.getElementById("chat-panel");
   const resize = document.getElementById("chat-panel-resize");
   const title = document.getElementById("chat-panel-title");
+  const back = document.getElementById("chat-panel-back");
   const close = document.getElementById("chat-panel-close");
   const rooms = document.getElementById("chat-panel-rooms");
   const messages = document.getElementById("chat-panel-messages");
@@ -79,6 +88,7 @@ function getElements(): PanelElements | null {
     panel === null ||
     resize === null ||
     title === null ||
+    back === null ||
     close === null ||
     rooms === null ||
     messages === null ||
@@ -95,6 +105,7 @@ function getElements(): PanelElements | null {
     panel,
     resize,
     title,
+    back,
     close,
     rooms,
     messages,
@@ -145,6 +156,23 @@ function updateButton(): void {
   }
 }
 
+/** "just now" / "5 mins ago" / "an hour ago" style label for a bubble. */
+function relativeTime(timestamp: number, now: number): string {
+  const minutes = Math.floor((now - timestamp) / 60_000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return minutes === 1 ? "a min ago" : `${String(minutes)} mins ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return hours === 1 ? "an hour ago" : `${String(hours)} hours ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "yesterday" : `${String(days)} days ago`;
+}
+
 /** One message row. Built via textContent so product text cannot inject markup. */
 function renderMessage(record: ChatMessageRecord): HTMLElement {
   const row = document.createElement("div");
@@ -187,6 +215,11 @@ function renderMessage(record: ChatMessageRecord): HTMLElement {
       bubble.className += " chat-msg-event";
       bubble.textContent = "[unsupported message]";
   }
+  const time = document.createElement("time");
+  time.className = "chat-msg-time";
+  time.textContent = relativeTime(record.timestamp, Date.now());
+  time.title = new Date(record.timestamp).toLocaleString();
+  bubble.appendChild(time);
   row.appendChild(bubble);
   return row;
 }
@@ -205,6 +238,94 @@ function scheduleRender(): void {
   }, 0);
 }
 
+/** Circular room icon; falls back to the room's initial when there is no
+ *  usable image. The icon string is product-supplied, so never markup. */
+function renderRoomIcon(room: ChatRoomRecord): HTMLElement {
+  const fallback = (): HTMLElement => {
+    const initial = document.createElement("span");
+    initial.className = "chat-room-icon chat-room-icon-fallback";
+    initial.textContent = (room.name.trim().charAt(0) || "#").toUpperCase();
+    initial.setAttribute("aria-hidden", "true");
+    return initial;
+  };
+  if (room.icon === "") {
+    return fallback();
+  }
+  const img = document.createElement("img");
+  img.className = "chat-room-icon";
+  img.alt = "";
+  img.src = room.icon;
+  img.addEventListener(
+    "error",
+    () => {
+      img.replaceWith(fallback());
+    },
+    { once: true },
+  );
+  return img;
+}
+
+function renderRoomList(rooms: ChatRoomRecord[]): void {
+  if (el === null) {
+    return;
+  }
+  el.back.hidden = true;
+  el.messages.hidden = true;
+  el.messages.replaceChildren();
+  el.composer.hidden = true;
+  el.hint.hidden = true;
+  el.rooms.hidden = false;
+  el.rooms.replaceChildren(
+    ...rooms.map((room) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "chat-room-item";
+      row.setAttribute("role", "listitem");
+      row.appendChild(renderRoomIcon(room));
+      const name = document.createElement("span");
+      name.className = "chat-room-name";
+      name.textContent = room.name;
+      row.appendChild(name);
+      row.addEventListener("click", () => {
+        activeRoomId = room.roomId;
+        focusComposerOnRender = true;
+        scheduleRender();
+      });
+      return row;
+    }),
+  );
+}
+
+async function renderConversation(
+  productId: string,
+  room: ChatRoomRecord,
+): Promise<void> {
+  if (el === null) {
+    return;
+  }
+  el.title.textContent = room.name;
+  el.back.hidden = false;
+  el.rooms.hidden = true;
+  el.rooms.replaceChildren();
+  el.messages.hidden = false;
+  el.composer.hidden = false;
+  el.input.disabled = false;
+  el.hint.hidden = composerError === null;
+  el.hint.textContent = composerError ?? "";
+
+  const records = await chatMessages(productId, room.roomId);
+  // The active room may have changed while messages loaded.
+  if (activeRoomId !== room.roomId) {
+    return;
+  }
+  el.messages.replaceChildren(...records.map(renderMessage));
+  el.messages.scrollTop = el.messages.scrollHeight;
+  if (focusComposerOnRender) {
+    focusComposerOnRender = false;
+    el.input.focus();
+  }
+}
+
 async function renderPanel(): Promise<void> {
   if (el === null || !open) {
     return;
@@ -219,8 +340,11 @@ async function renderPanel(): Promise<void> {
   const rooms = await chatRooms(productId);
   if (rooms.length === 0) {
     activeRoomId = null;
+    el.back.hidden = true;
     el.rooms.hidden = true;
+    el.messages.hidden = true;
     el.messages.replaceChildren();
+    el.composer.hidden = true;
     el.hint.hidden = false;
     el.hint.textContent = loggedIn
       ? "Waiting for the app to start a chat."
@@ -228,43 +352,13 @@ async function renderPanel(): Promise<void> {
     el.input.disabled = true;
     return;
   }
-  if (activeRoomId === null || !rooms.some((r) => r.roomId === activeRoomId)) {
-    activeRoomId = rooms[0].roomId;
-  }
-  el.hint.hidden = composerError === null;
-  el.hint.textContent = composerError ?? "";
-  el.input.disabled = false;
-
-  el.rooms.hidden = rooms.length < 2;
-  if (rooms.length >= 2) {
-    el.rooms.replaceChildren(
-      ...rooms.map((room) => {
-        const tab = document.createElement("button");
-        tab.type = "button";
-        tab.className = "chat-room-tab";
-        tab.setAttribute("role", "tab");
-        tab.setAttribute(
-          "aria-selected",
-          room.roomId === activeRoomId ? "true" : "false",
-        );
-        tab.textContent = room.name;
-        tab.addEventListener("click", () => {
-          activeRoomId = room.roomId;
-          scheduleRender();
-        });
-        return tab;
-      }),
-    );
-  }
-
-  const roomId = activeRoomId;
-  const records = await chatMessages(productId, roomId);
-  // The active room may have changed while messages loaded.
-  if (activeRoomId !== roomId) {
+  const activeRoom = rooms.find((r) => r.roomId === activeRoomId);
+  if (activeRoom === undefined) {
+    activeRoomId = null;
+    renderRoomList(rooms);
     return;
   }
-  el.messages.replaceChildren(...records.map(renderMessage));
-  el.messages.scrollTop = el.messages.scrollHeight;
+  await renderConversation(productId, activeRoom);
 }
 
 function setPanelOpen(next: boolean): void {
@@ -280,9 +374,13 @@ function setPanelOpen(next: boolean): void {
     unreadCount = 0;
     updateButton();
     scheduleRender();
-    el.input.focus();
+    timeRefreshTimer ??= setInterval(scheduleRender, TIME_REFRESH_MS);
   } else {
     updateButton();
+    if (timeRefreshTimer !== null) {
+      clearInterval(timeRefreshTimer);
+      timeRefreshTimer = null;
+    }
   }
   adjustIframe();
 }
@@ -409,8 +507,19 @@ export function initChatPanel(): void {
     }
   });
 
+  // The auto-hidden topbar frees its strip; stretch the panel into it.
+  window.addEventListener("topbar:visibility", (event: Event) => {
+    const topbarVisible = (event as CustomEvent<boolean>).detail;
+    el?.panel.classList.toggle("topbar-hidden", !topbarVisible);
+  });
+
   el.button.addEventListener("click", () => {
     setPanelOpen(!open);
+  });
+  el.back.addEventListener("click", () => {
+    activeRoomId = null;
+    composerError = null;
+    scheduleRender();
   });
   el.close.addEventListener("click", () => {
     setPanelOpen(false);
