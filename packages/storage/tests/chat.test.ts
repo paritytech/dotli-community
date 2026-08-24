@@ -17,7 +17,12 @@ const textContent = (text: string): unknown => ({
 
 describe("chat rooms", () => {
   it("As a product, creating a room reports New then Exists", async () => {
-    const room = { productId: "roomstatus.dot", roomId: "main", name: "Main", icon: "" };
+    const room = {
+      productId: "roomstatus.dot",
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    };
 
     expect(await createRoom(room)).toBe("New");
     expect(await createRoom(room)).toBe("Exists");

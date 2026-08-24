@@ -68,8 +68,7 @@ export function createChatPlatform(): Required<ChatPlatform> {
             );
           };
           const onRoomsChanged = (event: Event): void => {
-            const detail = (event as CustomEvent<{ productId: string }>)
-              .detail;
+            const detail = (event as CustomEvent<{ productId: string }>).detail;
             if (detail.productId === product.productId) {
               emitSnapshot();
             }
