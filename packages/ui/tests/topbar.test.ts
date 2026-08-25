@@ -161,6 +161,56 @@ describe("topbar disconnect", () => {
     expect(document.getElementById("user-popover-username")?.textContent).toBe(
       "pgherveou.04",
     );
+    expect(document.getElementById("user-popover-hint")).toBeNull();
+  });
+
+  it("As a dotli integrator, the host renders a username-less session as an anonymous badge with a popover hint", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    // When: a session installed on a network where the account has no dotNS
+    // record carries no usernames at all.
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Connected",
+          session: {
+            connected: true,
+            publicKey:
+              "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          },
+        },
+      }),
+    );
+
+    // Then
+    const badge = document
+      .getElementById("auth-button")
+      ?.querySelector(".user-badge");
+    expect(badge?.classList.contains("user-badge-anon")).toBe(true);
+    expect(badge?.querySelector("svg")).not.toBeNull();
+    expect(document.getElementById("user-popover-username")?.textContent).toBe(
+      "0x000102...1e1f",
+    );
+    expect(
+      document.getElementById("user-popover-hint")?.textContent,
+    ).toContain("No username");
+
+    // When: reconnecting with a username clears the hint again.
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Connected",
+          session: { connected: true, liteUsername: "pgherveou.04" },
+        },
+      }),
+    );
+
+    // Then
+    expect(document.getElementById("auth-button")?.textContent).toBe("PG");
+    expect(document.getElementById("user-popover-hint")).toBeNull();
   });
 });
 

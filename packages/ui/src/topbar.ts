@@ -489,24 +489,32 @@ function renderAuthState(state: DotliAuthState): void {
 function renderLoggedOut(): void {
   authButton.innerHTML = USER_SVG;
   authButton.title = "Login with Polkadot Mobile";
+  setUserPopoverNoUsernameHint(false);
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
 
 function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
-  authButton.innerHTML = `<div class="user-badge">${escapeHtml(
-    shortenTruapiSessionName(state),
-  )}</div>`;
+  const initials = truapiSessionInitials(state);
+  authButton.innerHTML =
+    initials !== undefined
+      ? `<div class="user-badge">${escapeHtml(initials)}</div>`
+      : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
   authButton.title = "Account";
+  const username =
+    state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
   userPopoverUsername.textContent =
-    state.primaryUsername ??
-    state.fullUsername ??
-    state.liteUsername ??
+    username ??
     shortenAccount(state.identityAccountId ?? state.publicKey) ??
     "Connected with Polkadot Mobile";
+  setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
   window.dispatchEvent(new Event("dotli:authenticated"));
 }
 
-function shortenTruapiSessionName(state: TruapiSessionUiState): string {
+// A session can install without any username (the account has no dotNS record
+// on this network), so initials only come from real names, never account hex.
+function truapiSessionInitials(
+  state: TruapiSessionUiState,
+): string | undefined {
   const fullName = state.fullUsername;
   if (fullName !== undefined && fullName.length > 0) {
     const parts = fullName.split(" ").filter((part) => part.length > 0);
@@ -521,11 +529,25 @@ function shortenTruapiSessionName(state: TruapiSessionUiState): string {
   if (liteName !== undefined && liteName.length > 0) {
     return liteName.slice(0, 2).toUpperCase();
   }
-  const account = state.identityAccountId ?? state.publicKey;
-  if (account !== undefined && account.length >= 4) {
-    return account.slice(2, 4).toUpperCase();
+  return undefined;
+}
+
+// Explains the username-less state in the popover instead of leaving a bare
+// address that reads as a rendering bug.
+function setUserPopoverNoUsernameHint(show: boolean): void {
+  const existing = document.getElementById("user-popover-hint");
+  if (!show) {
+    existing?.remove();
+    return;
   }
-  return "??";
+  if (existing !== null) {
+    return;
+  }
+  const hint = document.createElement("div");
+  hint.id = "user-popover-hint";
+  hint.className = "user-popover-hint";
+  hint.textContent = "No username found for this account on this network.";
+  userPopoverUsername.insertAdjacentElement("afterend", hint);
 }
 
 function shortenAccount(account: string | undefined): string | undefined {

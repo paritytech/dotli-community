@@ -185,6 +185,9 @@
 [data-theme="light"] .user-popover-name .name {
   color: #111;
 }
+[data-theme="light"] .user-popover-hint {
+  color: rgba(0, 0, 0, 0.55);
+}
 [data-theme="light"] .user-popover-divider {
   border-top-color: rgba(0, 0, 0, 0.08);
 }
