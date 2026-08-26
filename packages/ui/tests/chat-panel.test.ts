@@ -449,4 +449,70 @@ describe("chat panel", () => {
     await settle(() => badge.hidden);
     expect(badge.hidden).toBe(true);
   });
+
+  it("As a user, each room shows its own unread count until I open it", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-room-unread");
+    const productId = labelToProductId("chatty-room-unread");
+
+    await service.productCreateRoom(productId, {
+      roomId: "busy",
+      name: "Busy",
+      icon: "",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await service.productCreateRoom(productId, {
+      roomId: "quiet",
+      name: "Quiet",
+      icon: "",
+    });
+    await service.productPostMessage(productId, "busy", {
+      tag: "Text",
+      value: { text: "one" },
+    });
+    await service.productPostMessage(productId, "busy", {
+      tag: "Text",
+      value: { text: "two" },
+    });
+
+    // The topbar badge sums unreads across rooms.
+    const badge = byId("chat-unread-badge");
+    expect(badge.textContent).toBe("2");
+
+    byId("chat-button").click();
+    await settle(
+      () => document.querySelectorAll(".chat-room-item").length === 2,
+    );
+    const roomBadges = document.querySelectorAll(".chat-room-unread");
+    expect(roomBadges).toHaveLength(1);
+    expect(roomBadges[0].textContent).toBe("2");
+    const busyRow = [
+      ...document.querySelectorAll<HTMLButtonElement>(".chat-room-item"),
+    ].find((row) => row.textContent?.includes("Busy"));
+    expect(busyRow?.querySelector(".chat-room-unread")).not.toBeNull();
+
+    // A message for another room while viewing this one stays unread.
+    busyRow?.click();
+    await settle(() => byId("chat-panel-rooms").hidden);
+    await service.productPostMessage(productId, "quiet", {
+      tag: "Text",
+      value: { text: "psst" },
+    });
+
+    byId("chat-panel-back").click();
+    await settle(
+      () => document.querySelectorAll(".chat-room-unread").length === 1,
+    );
+    const backBadges = [
+      ...document.querySelectorAll<HTMLButtonElement>(".chat-room-item"),
+    ].map((row) => row.querySelector(".chat-room-unread")?.textContent ?? "");
+    // Busy was read; Quiet accumulated one while it was off screen.
+    expect(backBadges).toEqual(["", "1"]);
+
+    // Closing the panel surfaces the remaining unread on the topbar.
+    byId("chat-panel-close").click();
+    expect(badge.hidden).toBe(false);
+    expect(badge.textContent).toBe("1");
+  });
 });

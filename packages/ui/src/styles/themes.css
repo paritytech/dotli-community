@@ -612,7 +612,7 @@
   color: rgba(0, 0, 0, 0.85);
 }
 [data-theme="light"] .chat-msg-user .chat-msg-bubble {
-  background: rgba(230, 0, 122, 0.14);
+  background: rgba(0, 0, 0, 0.09);
 }
 [data-theme="light"] .chat-msg-event,
 [data-theme="light"] .chat-msg-meta,
@@ -626,6 +626,31 @@
   background: rgba(0, 0, 0, 0.03);
   border-color: rgba(0, 0, 0, 0.12);
   color: rgba(0, 0, 0, 0.88);
+}
+[data-theme="light"] .chat-panel-input:focus {
+  border-color: rgba(0, 0, 0, 0.4);
+}
+[data-theme="light"] .chat-unread-badge,
+[data-theme="light"] .chat-room-unread {
+  background: #0a0a0a;
+  color: #fafafa;
+}
+[data-theme="light"] .chat-panel-send {
+  background: #0a0a0a;
+  color: #fafafa;
+}
+[data-theme="light"] .chat-panel-send:hover {
+  background: #000;
+}
+[data-theme="light"] .chat-custom-btn-primary {
+  background: #0a0a0a;
+  color: #fafafa;
+}
+[data-theme="light"] .chat-custom-btn-primary:hover:not(:disabled) {
+  background: #000;
+}
+[data-theme="light"] .chat-custom-field-input:focus {
+  border-color: rgba(0, 0, 0, 0.4);
 }
 [data-theme="light"] #chat-button.active {
   background: rgba(0, 0, 0, 0.06);

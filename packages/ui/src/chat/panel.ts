@@ -61,7 +61,8 @@ let chatAvailable = false;
 let open = false;
 // null shows the room list; a room id shows that room's conversation.
 let activeRoomId: string | null = null;
-let unreadCount = 0;
+// Unseen product messages per room; the topbar badge shows the sum.
+const unreadByRoom = new Map<string, number>();
 let renderQueued = false;
 let timeRefreshTimer: ReturnType<typeof setInterval> | null = null;
 // The composer only exists after picking a room, so focus it on that render.
@@ -158,6 +159,19 @@ function adjustIframe(): void {
     : "100%";
 }
 
+function totalUnread(): number {
+  let total = 0;
+  for (const count of unreadByRoom.values()) {
+    total += count;
+  }
+  return total;
+}
+
+/** "3" / "9+" pill text shared by the topbar badge and the room rows. */
+function unreadLabel(count: number): string {
+  return count > 9 ? "9+" : String(count);
+}
+
 function updateButton(): void {
   if (el === null) {
     return;
@@ -165,8 +179,10 @@ function updateButton(): void {
   const visible = chatAvailable && currentLabel !== null;
   el.button.hidden = !visible;
   el.moreRow.hidden = !visible;
+  // While the panel is open the room rows carry their own badges.
+  const unreadCount = open ? 0 : totalUnread();
   el.badge.hidden = unreadCount === 0;
-  el.badge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
+  el.badge.textContent = unreadLabel(unreadCount);
   if (!visible && open) {
     setPanelOpen(false);
   }
@@ -358,6 +374,17 @@ function renderRoomList(rooms: ChatRoomRecord[]): void {
       name.className = "chat-room-name";
       name.textContent = room.name;
       row.appendChild(name);
+      const unread = unreadByRoom.get(room.roomId) ?? 0;
+      if (unread > 0) {
+        const badge = document.createElement("span");
+        badge.className = "chat-room-unread";
+        badge.textContent = unreadLabel(unread);
+        badge.setAttribute(
+          "aria-label",
+          `${String(unread)} unread message${unread === 1 ? "" : "s"}`,
+        );
+        row.appendChild(badge);
+      }
       row.addEventListener("click", () => {
         activeRoomId = room.roomId;
         focusComposerOnRender = true;
@@ -374,6 +401,10 @@ async function renderConversation(
 ): Promise<void> {
   if (el === null) {
     return;
+  }
+  // The conversation is on screen, so its messages count as seen.
+  if (unreadByRoom.delete(room.roomId)) {
+    updateButton();
   }
   el.title.textContent = room.name;
   el.back.hidden = false;
@@ -464,7 +495,6 @@ function setPanelOpen(next: boolean): void {
   el.button.classList.toggle("active", next);
   if (next) {
     el.panel.style.width = `${String(storedPanelWidth())}px`;
-    unreadCount = 0;
     updateButton();
     scheduleRender();
     timeRefreshTimer ??= setInterval(scheduleRender, TIME_REFRESH_MS);
@@ -555,7 +585,7 @@ export function initChatPanel(): void {
     if (currentLabel !== label) {
       currentLabel = label;
       activeRoomId = null;
-      unreadCount = 0;
+      unreadByRoom.clear();
       composerError = null;
     }
     updateButton();
@@ -586,11 +616,16 @@ export function initChatPanel(): void {
     if (detail.productId !== currentProductId()) {
       return;
     }
+    // A message in the room being viewed is seen immediately; anything
+    // else (panel closed, or a different room) counts as unread.
+    const viewing = open && activeRoomId === detail.roomId;
+    if (detail.author === "product" && !viewing) {
+      const count = unreadByRoom.get(detail.roomId) ?? 0;
+      unreadByRoom.set(detail.roomId, count + 1);
+      updateButton();
+    }
     if (open) {
       scheduleRender();
-    } else if (detail.author === "product") {
-      unreadCount += 1;
-      updateButton();
     }
   });
 
