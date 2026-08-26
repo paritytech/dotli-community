@@ -6,8 +6,10 @@ import { describe, it, expect } from "vitest";
 import {
   appendMessage,
   createRoom,
+  listBots,
   listMessages,
   listRooms,
+  registerBot,
 } from "@dotli/storage/chat";
 
 const textContent = (text: string): unknown => ({
@@ -84,5 +86,48 @@ describe("chat messages", () => {
 
     const messages = await listMessages("cap.dot", "main", 2);
     expect(messages.map((m) => m.messageId)).toEqual(["m3", "m4"]);
+  });
+});
+
+describe("chat bots", () => {
+  it("As a product, registering a bot reports New then Exists", async () => {
+    const bot = {
+      productId: "botstatus.dot",
+      botId: "echo",
+      name: "Echo",
+      icon: "",
+    };
+
+    expect(await registerBot(bot)).toBe("New");
+    expect(await registerBot(bot)).toBe("Exists");
+  });
+
+  it("As a product, re-registering refreshes the stored name and icon", async () => {
+    await registerBot({
+      productId: "refresh.dot",
+      botId: "echo",
+      name: "Echo",
+      icon: "",
+    });
+    await registerBot({
+      productId: "refresh.dot",
+      botId: "echo",
+      name: "Echo v2",
+      icon: "https://example.com/icon.png",
+    });
+
+    const bots = await listBots("refresh.dot");
+    expect(bots).toHaveLength(1);
+    expect(bots[0].name).toBe("Echo v2");
+    expect(bots[0].icon).toBe("https://example.com/icon.png");
+  });
+
+  it("As a host, bots are scoped per product", async () => {
+    await registerBot({ productId: "a.dot", botId: "b", name: "A", icon: "" });
+    await registerBot({ productId: "b.dot", botId: "b", name: "B", icon: "" });
+
+    const bots = await listBots("a.dot");
+    expect(bots).toHaveLength(1);
+    expect(bots[0].name).toBe("A");
   });
 });

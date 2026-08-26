@@ -22,7 +22,7 @@ declare global {
 }
 
 const DB_NAME = "dotli";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -70,6 +70,12 @@ function openFresh(): Promise<IDBDatabase> {
         });
         store.createIndex("byRoom", ["productId", "roomId"], {
           unique: false,
+        });
+      }
+      // v4: product chat bot identities.
+      if (!db.objectStoreNames.contains("chat_bots")) {
+        db.createObjectStore("chat_bots", {
+          keyPath: ["productId", "botId"],
         });
       }
     };

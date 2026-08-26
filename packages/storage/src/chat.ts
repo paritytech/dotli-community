@@ -18,11 +18,21 @@ import { getDb } from "./db";
 
 const ROOM_STORE = "chat_rooms";
 const MESSAGE_STORE = "chat_messages";
+const BOT_STORE = "chat_bots";
 const BY_ROOM = "byRoom";
 
 export interface ChatRoomRecord {
   productId: string;
   roomId: string;
+  name: string;
+  /** URL or base64 image, as supplied by the product. */
+  icon: string;
+  createdAt: number;
+}
+
+export interface ChatBotRecord {
+  productId: string;
+  botId: string;
   name: string;
   /** URL or base64 image, as supplied by the product. */
   icon: string;
@@ -89,6 +99,55 @@ export async function createRoom(
       reject(tx.error ?? new Error("createRoom tx errored"));
     };
   });
+}
+
+/**
+ * Register the bot if it does not exist yet, mirroring the TrUAPI
+ * `ChatBotRegistrationStatus` values. A re-registration answers `"Exists"`
+ * and refreshes the stored name and icon, so a product can update its bot
+ * identity without a new id.
+ */
+export async function registerBot(
+  bot: Omit<ChatBotRecord, "createdAt">,
+): Promise<"New" | "Exists"> {
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(BOT_STORE, "readwrite");
+    const store = tx.objectStore(BOT_STORE);
+    let status: "New" | "Exists" | null = null;
+    const getReq = store.get([bot.productId, bot.botId]) as IDBRequest<
+      ChatBotRecord | undefined
+    >;
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      status = existing === undefined ? "New" : "Exists";
+      store.put({
+        ...bot,
+        createdAt: existing?.createdAt ?? Date.now(),
+      } satisfies ChatBotRecord);
+    };
+    tx.oncomplete = () => {
+      if (status !== null) {
+        resolve(status);
+      } else {
+        reject(new Error("registerBot tx completed without a result"));
+      }
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error("registerBot tx errored"));
+    };
+  });
+}
+
+/** All bots of a product, in registration order. */
+export async function listBots(productId: string): Promise<ChatBotRecord[]> {
+  const db = await getDb();
+  const store = db.transaction(BOT_STORE, "readonly").objectStore(BOT_STORE);
+  const range = IDBKeyRange.bound([productId, ""], [productId, "￿"]);
+  const bots = await requestAsPromise(
+    store.getAll(range) as IDBRequest<ChatBotRecord[]>,
+  );
+  return bots.sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /** All rooms of a product, in creation order. */

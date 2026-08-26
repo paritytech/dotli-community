@@ -107,6 +107,9 @@ describe("chat panel", () => {
       name: "Support",
       icon: "data:image/png;base64,AAAA",
     });
+    // Room order ties on same-millisecond createdAt stamps; let the clock
+    // tick so "Support" reliably sorts first.
+    await new Promise((resolve) => setTimeout(resolve, 2));
     await service.productCreateRoom(productId, {
       roomId: "general",
       name: "General",
@@ -212,6 +215,76 @@ describe("chat panel", () => {
       },
     });
     expect(byId("chat-panel-messages").textContent).toContain("hello back");
+  });
+
+  it("As a user, a product run is labeled with the single registered bot identity", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("botfaced");
+    const productId = labelToProductId("botfaced");
+
+    expect(
+      await service.registerBot(productId, {
+        botId: "echo",
+        name: "Echo Bot",
+        icon: "data:image/png;base64,AAAA",
+      }),
+    ).toBe("New");
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "one" },
+    });
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "two" },
+    });
+
+    byId("chat-button").click();
+    await settle();
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle();
+
+    // One sender line labels the consecutive product-message run.
+    const senders = document.querySelectorAll(".chat-msg-sender");
+    expect(senders).toHaveLength(1);
+    expect(senders[0].textContent).toContain("Echo Bot");
+    expect(
+      senders[0].querySelector<HTMLImageElement>("img.chat-msg-sender-icon")
+        ?.src,
+    ).toBe("data:image/png;base64,AAAA");
+  });
+
+  it("As a user, product messages stay unlabeled with zero or multiple bots", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("twobots");
+    const productId = labelToProductId("twobots");
+
+    // Wire messages carry no bot attribution, so two bots are ambiguous.
+    await service.registerBot(productId, { botId: "a", name: "A", icon: "" });
+    await service.registerBot(productId, { botId: "b", name: "B", icon: "" });
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "anonymous" },
+    });
+
+    byId("chat-button").click();
+    await settle();
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle();
+
+    expect(byId("chat-panel-messages").textContent).toContain("anonymous");
+    expect(document.querySelector(".chat-msg-sender")).toBeNull();
   });
 
   it("As a user, custom messages render live trees and taps reach the product", async () => {

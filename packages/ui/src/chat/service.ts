@@ -21,16 +21,21 @@ import type {
 import {
   appendMessage,
   createRoom,
+  listBots,
   listMessages,
   listRooms,
+  registerBot as storeBot,
+  type ChatBotRecord,
   type ChatMessageRecord,
   type ChatRoomRecord,
 } from "@dotli/storage/chat";
 
-export type { ChatMessageRecord, ChatRoomRecord };
+export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
 
 /** Window event: a product's room list changed. Detail: `{ productId }`. */
 export const CHAT_ROOMS_CHANGED_EVENT = "dotli:chat-rooms-changed";
+/** Window event: a product's bot registry changed. Detail: `{ productId }`. */
+export const CHAT_BOTS_CHANGED_EVENT = "dotli:chat-bots-changed";
 /** Window event: a message was appended. Detail: `{ productId, roomId, author }`. */
 export const CHAT_MESSAGE_EVENT = "dotli:chat-message";
 
@@ -183,33 +188,23 @@ export function renderCustomMessage(
   return connection.renderCustomMessage(request, sink);
 }
 
-const BOTS_STORAGE_PREFIX = "dotli:chat-bots:";
-
 /**
- * Register a product bot identity. Host-owned like rooms, persisted so a
- * re-registration after reload resolves to `Exists`.
+ * Register a product bot identity. Host-owned and persisted with the rooms
+ * it belongs to, so a re-registration after reload resolves to `Exists` and
+ * refreshes the stored name and icon.
  */
-export function registerBot(
+export async function registerBot(
   productId: string,
   bot: { botId: string; name: string; icon: string },
-): "New" | "Exists" {
-  const key = `${BOTS_STORAGE_PREFIX}${productId}`;
-  let bots: Record<string, { name: string; icon: string }> = {};
-  try {
-    bots = JSON.parse(localStorage.getItem(key) ?? "{}") as typeof bots;
-    // eslint-disable-next-line no-restricted-syntax -- a corrupt or unavailable registry re-registers the bot as New; nothing else is lost.
-  } catch {
-    /* fall through with an empty registry */
-  }
-  const status = bot.botId in bots ? "Exists" : "New";
-  bots[bot.botId] = { name: bot.name, icon: bot.icon };
-  try {
-    localStorage.setItem(key, JSON.stringify(bots));
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode); only Exists detection across reloads is lost.
-  } catch {
-    /* registration still answered for this load */
-  }
+): Promise<"New" | "Exists"> {
+  const status = await storeBot({ productId, ...bot });
+  emit(CHAT_BOTS_CHANGED_EVENT, { productId });
   return status;
+}
+
+/** Registered bots of one product, registration order. */
+export function chatBots(productId: string): Promise<ChatBotRecord[]> {
+  return listBots(productId);
 }
 
 /** Rooms of one product, creation order. */

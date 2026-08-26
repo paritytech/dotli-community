@@ -17,12 +17,15 @@ import {
 import type { ChatMessageContent } from "@parity/truapi";
 import { labelToProductId } from "../runtime-config";
 import {
+  CHAT_BOTS_CHANGED_EVENT,
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
+  chatBots,
   chatMessages,
   chatRooms,
   userPostMessage,
   userTriggerAction,
+  type ChatBotRecord,
   type ChatMessageEventDetail,
   type ChatMessageRecord,
   type ChatRoomRecord,
@@ -283,23 +286,27 @@ function scheduleRender(): void {
   }, 0);
 }
 
-/** Circular room icon; falls back to the room's initial when there is no
+/** Circular contact icon; falls back to the name's initial when there is no
  *  usable image. The icon string is product-supplied, so never markup. */
-function renderRoomIcon(room: ChatRoomRecord): HTMLElement {
+function renderContactIcon(
+  name: string,
+  icon: string,
+  className: string,
+): HTMLElement {
   const fallback = (): HTMLElement => {
     const initial = document.createElement("span");
-    initial.className = "chat-room-icon chat-room-icon-fallback";
-    initial.textContent = (room.name.trim().charAt(0) || "#").toUpperCase();
+    initial.className = `${className} ${className}-fallback`;
+    initial.textContent = (name.trim().charAt(0) || "#").toUpperCase();
     initial.setAttribute("aria-hidden", "true");
     return initial;
   };
-  if (room.icon === "") {
+  if (icon === "") {
     return fallback();
   }
   const img = document.createElement("img");
-  img.className = "chat-room-icon";
+  img.className = className;
   img.alt = "";
-  img.src = room.icon;
+  img.src = icon;
   img.addEventListener(
     "error",
     () => {
@@ -308,6 +315,25 @@ function renderRoomIcon(room: ChatRoomRecord): HTMLElement {
     { once: true },
   );
   return img;
+}
+
+function renderRoomIcon(room: ChatRoomRecord): HTMLElement {
+  return renderContactIcon(room.name, room.icon, "chat-room-icon");
+}
+
+/** Avatar + name line above a run of product messages, shown when the
+ *  product registered a single bot identity to speak as. */
+function renderSenderLine(bot: ChatBotRecord): HTMLElement {
+  const line = document.createElement("div");
+  line.className = "chat-msg-sender";
+  line.appendChild(
+    renderContactIcon(bot.name, bot.icon, "chat-msg-sender-icon"),
+  );
+  const name = document.createElement("span");
+  name.className = "chat-msg-sender-name";
+  name.textContent = bot.name;
+  line.appendChild(name);
+  return line;
 }
 
 function renderRoomList(rooms: ChatRoomRecord[]): void {
@@ -359,13 +385,32 @@ async function renderConversation(
   el.hint.hidden = composerError === null;
   el.hint.textContent = composerError ?? "";
 
-  const records = await chatMessages(productId, room.roomId);
+  const [records, bots] = await Promise.all([
+    chatMessages(productId, room.roomId),
+    chatBots(productId),
+  ]);
   // The active room may have changed while messages loaded.
   if (activeRoomId !== room.roomId) {
     return;
   }
   disposeCustomRenders();
-  el.messages.replaceChildren(...records.map(renderMessage));
+  // Wire messages carry no bot attribution, so only a product with exactly
+  // one registered bot gets its message runs labeled with that identity.
+  const sender = bots.length === 1 ? bots[0] : null;
+  const nodes: HTMLElement[] = [];
+  let prevAuthor: ChatMessageRecord["author"] | null = null;
+  for (const record of records) {
+    if (
+      sender !== null &&
+      record.author === "product" &&
+      prevAuthor !== "product"
+    ) {
+      nodes.push(renderSenderLine(sender));
+    }
+    nodes.push(renderMessage(record));
+    prevAuthor = record.author;
+  }
+  el.messages.replaceChildren(...nodes);
   el.messages.scrollTop = el.messages.scrollHeight;
   if (focusComposerOnRender) {
     focusComposerOnRender = false;
@@ -550,6 +595,13 @@ export function initChatPanel(): void {
   });
 
   window.addEventListener(CHAT_ROOMS_CHANGED_EVENT, (event: Event) => {
+    const detail = (event as CustomEvent<{ productId: string }>).detail;
+    if (detail.productId === currentProductId() && open) {
+      scheduleRender();
+    }
+  });
+
+  window.addEventListener(CHAT_BOTS_CHANGED_EVENT, (event: Event) => {
     const detail = (event as CustomEvent<{ productId: string }>).detail;
     if (detail.productId === currentProductId() && open) {
       scheduleRender();

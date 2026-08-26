@@ -31,9 +31,8 @@ export function createChatPlatform(): Required<ChatPlatform> {
       return { status };
     },
 
-    // eslint-disable-next-line @typescript-eslint/require-await -- interface is async; the registry is synchronous localStorage.
     async registerChatBot(product, request) {
-      const status = registerBot(product.productId, {
+      const status = await registerBot(product.productId, {
         botId: request.botId,
         name: request.name,
         icon: request.icon,
