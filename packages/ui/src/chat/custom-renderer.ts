@@ -295,7 +295,10 @@ export function renderCustomNode(
       button.className = `chat-custom-btn chat-custom-btn-${variant}`;
       button.textContent = props.text;
       button.disabled = props.enabled === false || props.loading === true;
-      button.classList.toggle("chat-custom-btn-loading", props.loading === true);
+      button.classList.toggle(
+        "chat-custom-btn-loading",
+        props.loading === true,
+      );
       const clickAction = props.clickAction;
       if (clickAction !== undefined) {
         button.addEventListener("click", () => {

@@ -226,7 +226,11 @@ describe("chat panel", () => {
 
       const published: HostChatActionSubscribeItem[] = [];
       const renders: {
-        request: { messageId: string; messageType: string; payload: Uint8Array };
+        request: {
+          messageId: string;
+          messageType: string;
+          payload: Uint8Array;
+        };
         sink: {
           onUpdate(node: unknown): void;
           onError?(error: Error): void;
@@ -299,9 +303,7 @@ describe("chat panel", () => {
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
       // Tapping the rendered button publishes an ActionTriggered action.
-      document
-        .querySelector<HTMLButtonElement>(".chat-custom-btn")
-        ?.click();
+      document.querySelector<HTMLButtonElement>(".chat-custom-btn")?.click();
       await settle();
       expect(published).toHaveLength(1);
       expect(published[0]).toMatchObject({

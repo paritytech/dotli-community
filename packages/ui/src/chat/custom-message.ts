@@ -10,10 +10,7 @@
 // cell scrolls in and drops it when it leaves, like the desktop host.
 
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import {
-  renderCustomMessage,
-  userTriggerAction,
-} from "./service";
+import { renderCustomMessage, userTriggerAction } from "./service";
 import { renderCustomNode } from "./custom-renderer";
 
 export interface CustomMessageMount {

@@ -27,7 +27,10 @@ describe("chat custom renderer", () => {
             },
           },
         ],
-        props: { horizontalAlignment: "Center", verticalArrangement: "SpaceBetween" },
+        props: {
+          horizontalAlignment: "Center",
+          verticalArrangement: "SpaceBetween",
+        },
         children: [
           {
             tag: "Text",
@@ -41,7 +44,10 @@ describe("chat custom renderer", () => {
             tag: "Row",
             value: {
               modifiers: [{ tag: "FillWidth", value: { enabled: true } }],
-              props: { verticalAlignment: "Bottom", horizontalArrangement: "End" },
+              props: {
+                verticalAlignment: "Bottom",
+                horizontalArrangement: "End",
+              },
               children: [
                 { tag: "Spacer", value: { modifiers: [], children: [] } },
                 { tag: "Nil" },
@@ -73,7 +79,9 @@ describe("chat custom renderer", () => {
     const column = renderElement(tree);
     expect(column.className).toBe("chat-custom-column");
     expect(column.style.padding).toBe("12px 8px");
-    expect(column.style.backgroundColor).toBe("var(--chat-bg-surface-container)");
+    expect(column.style.backgroundColor).toBe(
+      "var(--chat-bg-surface-container)",
+    );
     expect(column.style.borderRadius).toBe("10px");
     expect(column.style.alignItems).toBe("center");
     expect(column.style.justifyContent).toBe("space-between");

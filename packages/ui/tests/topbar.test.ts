@@ -194,9 +194,9 @@ describe("topbar disconnect", () => {
     expect(document.getElementById("user-popover-username")?.textContent).toBe(
       "0x000102...1e1f",
     );
-    expect(
-      document.getElementById("user-popover-hint")?.textContent,
-    ).toContain("No username");
+    expect(document.getElementById("user-popover-hint")?.textContent).toContain(
+      "No username",
+    );
 
     // When: reconnecting with a username clears the hint again.
     window.dispatchEvent(
