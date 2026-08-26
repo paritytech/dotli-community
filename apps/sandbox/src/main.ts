@@ -49,6 +49,7 @@ import { setNetworkOverride } from "@dotli/config/network";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
+import { isPvmPackage, runPvmApplication } from "./pvm-runtime";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -410,6 +411,21 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
   return injectSandboxChecker(html);
 }
 
+async function runPvmIfPresent(
+  files: ArchiveFiles,
+  cid: string,
+): Promise<boolean> {
+  if (!isPvmPackage(files)) {
+    return false;
+  }
+  showStatus("Starting PolkaVM application...");
+  stripContractParamsFromUrl();
+  await runPvmApplication(files, cid);
+  notifyLoadingDone();
+  performance.mark("dotli:app:end");
+  return true;
+}
+
 // Session-scoped decryption key cache: once a user decrypts a CID in this tab,
 // we store the password so SW-cache hits don't re-prompt.
 const decryptedPasswords = new Map<string, string>();
@@ -672,6 +688,10 @@ async function main(): Promise<void> {
     : await getCachedArchive(cid, cid, chainBackend);
   if (cachedFiles) {
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
+    if (await runPvmIfPresent(cachedFiles, cid)) {
+      stopApp();
+      return;
+    }
 
     // Extract index.html and write it directly into this window so it
     // occupies the APP iframe. An archive without index.html is invalid,
@@ -752,14 +772,19 @@ async function main(): Promise<void> {
   if (result.type === "single") {
     html = new TextDecoder().decode(result.content);
   } else {
-    // For multi-file archives, store files in the SW so it can serve
-    // sub-resources (CSS, JS, fonts) when the browser loads them.
+    // Persist every verified archive before choosing its runtime. HTML products
+    // use the SW as a virtual file system; PolkaVM products use the same cache
+    // as their immutable asset source on the next launch.
     await storeArchiveInSW(result.files, cid, cid, chainBackend);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+    if (await runPvmIfPresent(result.files, cid)) {
+      stopApp();
+      return;
+    }
     const indexHtml = result.files["index.html"] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
-        "Archive missing index.html — cannot render a sandbox without a root document.",
+        "Archive is neither a supported PolkaVM product nor an HTML application.",
       );
     }
     html = new TextDecoder().decode(indexHtml);

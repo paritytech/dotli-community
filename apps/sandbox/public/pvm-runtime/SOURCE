@@ -1,0 +1,18 @@
+Epoca PolkaVM browser runtime
+Source repository: https://github.com/paritytech/epoca
+Source commit: ebe6d1954049b745726b1e5f570c456345a76f52
+Originating change: https://github.com/paritytech/epoca/pull/338
+
+Vendored files:
+- epoca-pvm-host.wasm
+- pvm-wasm-translated.js
+- pvm-wasm-worker-entry.js
+- pvm-wasm-worker.js (generated bundle)
+
+Local adaptation:
+- scripts/build-pvm-worker.ts generates pvm-wasm-worker.js by concatenating
+  pvm-wasm-translated.js and pvm-wasm-worker-entry.js so it also works inside
+  opaque sandbox workers where importScripts cannot resolve URLs.
+- The worker entry reports translation, compilation, startup, and update timing
+  metrics and returns translated Wasm bytes for the sandbox's digest-keyed
+  IndexedDB cache.
