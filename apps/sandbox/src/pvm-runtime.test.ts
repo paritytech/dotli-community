@@ -30,6 +30,31 @@ function doomManifest(): Uint8Array {
   );
 }
 
+function doomAppV2Manifest(): string {
+  return JSON.stringify({
+    $v: 2,
+    kind: "app",
+    appVersion: [0, 1, 7],
+    runtime: {
+      kind: "polkavm",
+      abiVersion: 1,
+      entrypoint: "app.polkavm",
+    },
+    capabilities: {
+      graphics: {
+        abiVersion: 1,
+        profile: "framebuffer",
+        requiredFeatures: [],
+      },
+      deviceInput: {
+        abiVersion: 1,
+        requiredFeatures: ["pointer", "keyboard"],
+      },
+      audio: { abiVersion: 1, requiredFeatures: [] },
+    },
+  });
+}
+
 describe("PolkaVM package recognition", () => {
   it("recognizes the deployed doom.paseo package shape", () => {
     const files = {
@@ -44,7 +69,31 @@ describe("PolkaVM package recognition", () => {
       controls: ["WASD Move", "Space Fire"],
       audioEnabled: true,
       requiredAssets: ["game/doom.wad"],
+      manifestVersion: null,
     });
+  });
+
+  it("recognizes App manifest v2 and requires exact external bytes", () => {
+    const manifest = doomAppV2Manifest();
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+      "game/doom.wad": new Uint8Array([4, 5, 6]),
+    };
+
+    expect(describePvmPackage(files, manifest)).toEqual({
+      programPath: "app.polkavm",
+      controls: ["Pointer", "Keyboard"],
+      audioEnabled: true,
+      requiredAssets: [],
+      manifestVersion: 2,
+    });
+    expect(() => describePvmPackage(files)).toThrow(
+      /external App manifest is required/,
+    );
+    expect(() => describePvmPackage(files, `${manifest}\n`)).toThrow(
+      /does not match/,
+    );
   });
 
   it("leaves ordinary HTML archives on the existing sandbox path", () => {

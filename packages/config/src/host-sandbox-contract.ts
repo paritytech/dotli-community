@@ -26,6 +26,7 @@
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">
 //     ?fullReset=<"0" | "1">
+//     ?executableManifest=<exact UTF-8 App executable text record>
 //     ?v=<schema version integer, reserved for future breakage>
 //
 // When we add a new required param, bump SANDBOX_SCHEMA_VERSION and
@@ -62,6 +63,7 @@ export const SANDBOX_CONTRACT_PARAMS = {
   network: "network",
   skipArchiveCache: "skipArchiveCache",
   fullReset: "fullReset",
+  executableManifest: "executableManifest",
   v: "v",
 } as const;
 
@@ -74,6 +76,7 @@ export interface SandboxParams {
   network: Network;
   skipArchiveCache: boolean;
   fullReset: boolean;
+  executableManifest: string | null;
 }
 
 export type SandboxParamsResult =
@@ -176,6 +179,21 @@ export function validateSandboxParams(
     };
   }
 
+  const executableManifest = search.get(
+    SANDBOX_CONTRACT_PARAMS.executableManifest,
+  );
+  if (
+    executableManifest !== null &&
+    (executableManifest.length === 0 ||
+      new TextEncoder().encode(executableManifest).byteLength > 64 * 1024)
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Invalid executableManifest — expected a non-empty App manifest within 65536 UTF-8 bytes.",
+    };
+  }
+
   return {
     ok: true,
     params: {
@@ -187,6 +205,7 @@ export function validateSandboxParams(
       network,
       skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",
+      executableManifest,
     },
   };
 }

@@ -22,6 +22,29 @@ const VALID_APP = {
   appVersion: [1, 0, 0],
 };
 
+const VALID_APP_V2 = {
+  $v: 2,
+  kind: "app",
+  appVersion: [0, 1, 7],
+  runtime: {
+    kind: "polkavm",
+    abiVersion: 1,
+    entrypoint: "app.polkavm",
+  },
+  capabilities: {
+    graphics: {
+      abiVersion: 1,
+      profile: "framebuffer",
+      requiredFeatures: [],
+    },
+    deviceInput: {
+      abiVersion: 1,
+      requiredFeatures: ["pointer", "keyboard"],
+    },
+    audio: { abiVersion: 1, requiredFeatures: [] },
+  },
+};
+
 const VALID_WIDGET = {
   $v: 1,
   kind: "widget",
@@ -73,6 +96,36 @@ describe("validateRootManifest", () => {
 describe("validateExecutableManifest", () => {
   it("accepts a valid app manifest", () => {
     expect(validateExecutableManifest(VALID_APP).ok).toBe(true);
+  });
+
+  it("accepts App manifest v2 runtime capabilities", () => {
+    expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
+    expect(
+      validateExecutableManifest({
+        $v: 2,
+        kind: "app",
+        appVersion: [1, 0, 0],
+        runtime: { kind: "web", entrypoint: "index.html" },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects unsafe App v2 entrypoints and unknown required features", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: { ...VALID_APP_V2.runtime, entrypoint: "../app.polkavm" },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          audio: { abiVersion: 1, requiredFeatures: ["spatial"] },
+        },
+      }).ok,
+    ).toBe(false);
   });
 
   it("accepts a valid widget manifest", () => {

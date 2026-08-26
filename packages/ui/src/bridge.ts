@@ -120,6 +120,7 @@ type CurrentProduct =
       mode: "subdomain";
       label: string;
       cid: string;
+      executableManifest: string | null;
     };
 
 const LANDING_AUTH_LABEL = "dotli";
@@ -250,7 +251,11 @@ function rerenderProduct(product: CurrentProduct): void {
       ? renderIframe(product.url, product.label, {
           productId: product.productId,
         })
-      : renderAppSubdomain(product.cid, product.label);
+      : renderAppSubdomain(
+          product.cid,
+          product.label,
+          product.executableManifest,
+        );
   void render.catch((error: unknown) => {
     // A newer render superseded this one, so its result owns the UI now.
     if (renderGeneration !== expectedGeneration) {
@@ -1086,6 +1091,7 @@ export async function renderIframe(
 export async function renderAppSubdomain(
   cid: string,
   label: string,
+  executableManifest: string | null = null,
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId("render");
@@ -1101,6 +1107,7 @@ export async function renderAppSubdomain(
     mode: "subdomain",
     label,
     cid,
+    executableManifest,
   };
 
   // Propagate the current sandbox contract. The `?mode=` preset param is no
@@ -1139,6 +1146,12 @@ export async function renderAppSubdomain(
     chainBackend,
   );
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
+  if (executableManifest !== null) {
+    parsedUrl.searchParams.set(
+      SANDBOX_CONTRACT_PARAMS.executableManifest,
+      executableManifest,
+    );
+  }
   if (cache.skipArchiveCache) {
     parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
   }
