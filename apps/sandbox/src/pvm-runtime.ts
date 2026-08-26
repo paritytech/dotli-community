@@ -51,6 +51,7 @@ interface PvmDescriptor {
   controls: string[];
   audioEnabled: boolean;
   requiredAssets: string[];
+  manifestVersion: number | null;
 }
 
 interface WorkerReady {
@@ -163,7 +164,29 @@ function cleanPath(value: unknown): string | null {
     : path;
 }
 
-function parseManifest(files: ArchiveFiles): PvmDescriptor | null {
+function assertExternalManifest(
+  embedded: Uint8Array,
+  externalManifest: string | null,
+): void {
+  if (externalManifest === null) {
+    throw new Error("external App manifest is required for App manifest v2");
+  }
+  const external = encoder.encode(externalManifest);
+  if (
+    external.byteLength !== embedded.byteLength ||
+    external.some((byte, index) => byte !== embedded[index])
+  ) {
+    throw new Error(
+      "embedded App manifest does not match the external executable record",
+    );
+  }
+}
+
+function parseManifest(
+  files: ArchiveFiles,
+  externalManifest: string | null = null,
+  enforceExternal = true,
+): PvmDescriptor | null {
   if (!Object.hasOwn(files, "manifest.json")) {
     return null;
   }
@@ -187,7 +210,69 @@ function parseManifest(files: ArchiveFiles): PvmDescriptor | null {
   const modalities = object(manifest?.modalities);
   let controls: string[];
   let audioEnabled: boolean;
-  if (
+  let manifestVersion: number | null = null;
+  if (manifest?.$v === 2 && manifest.kind === "app") {
+    if (runtime.abiVersion !== 1) {
+      throw new Error("PolkaVM App v2 runtime requires ABI version 1");
+    }
+    const capabilities = object(manifest.capabilities);
+    const graphics = object(capabilities?.graphics);
+    if (graphics?.abiVersion !== 1 || graphics.profile !== "framebuffer") {
+      throw new Error(
+        "dotli currently supports only framebuffer ABI version 1 PolkaVM Apps",
+      );
+    }
+    const graphicsFeatures = Array.isArray(graphics.requiredFeatures)
+      ? graphics.requiredFeatures
+      : null;
+    if (
+      graphicsFeatures === null ||
+      graphicsFeatures.some((feature) => typeof feature !== "string") ||
+      graphicsFeatures.length > 0
+    ) {
+      throw new Error("PolkaVM App v2 requires unsupported graphics features");
+    }
+    const deviceInput =
+      capabilities?.deviceInput === undefined
+        ? null
+        : object(capabilities.deviceInput);
+    const deviceFeatures =
+      deviceInput === null
+        ? []
+        : Array.isArray(deviceInput.requiredFeatures)
+          ? deviceInput.requiredFeatures
+          : null;
+    if (
+      (deviceInput !== null && deviceInput.abiVersion !== 1) ||
+      deviceFeatures === null ||
+      deviceFeatures.some(
+        (feature) =>
+          typeof feature !== "string" ||
+          !["pointer", "keyboard"].includes(feature),
+      )
+    ) {
+      throw new Error("PolkaVM App v2 requires unsupported device input");
+    }
+    const audio =
+      capabilities?.audio === undefined ? null : object(capabilities.audio);
+    if (
+      audio !== null &&
+      (audio.abiVersion !== 1 ||
+        !Array.isArray(audio.requiredFeatures) ||
+        audio.requiredFeatures.length > 0)
+    ) {
+      throw new Error("PolkaVM App v2 requires unsupported audio features");
+    }
+    controls = deviceFeatures.map(
+      (feature) =>
+        (feature as string)[0].toUpperCase() + (feature as string).slice(1),
+    );
+    audioEnabled = audio !== null;
+    manifestVersion = 2;
+    if (enforceExternal) {
+      assertExternalManifest(bytes, externalManifest);
+    }
+  } else if (
     manifest?.$schema === "epoca:experimental-product/v1" &&
     manifest.$v === 1 &&
     manifest.kind === "framebuffer"
@@ -237,15 +322,24 @@ function parseManifest(files: ArchiveFiles): PvmDescriptor | null {
       }
     }
   }
-  return { programPath, controls, audioEnabled, requiredAssets };
+  return {
+    programPath,
+    controls,
+    audioEnabled,
+    requiredAssets,
+    manifestVersion,
+  };
 }
 
 export function isPvmPackage(files: ArchiveFiles): boolean {
-  return parseManifest(files) !== null;
+  return parseManifest(files, null, false) !== null;
 }
 
-export function describePvmPackage(files: ArchiveFiles): PvmDescriptor | null {
-  return parseManifest(files);
+export function describePvmPackage(
+  files: ArchiveFiles,
+  externalManifest: string | null = null,
+): PvmDescriptor | null {
+  return parseManifest(files, externalManifest);
 }
 
 function validateFiles(files: ArchiveFiles, descriptor: PvmDescriptor): void {
@@ -549,8 +643,9 @@ function installInput(
 export async function runPvmApplication(
   files: ArchiveFiles,
   cid: string,
+  externalManifest: string | null = null,
 ): Promise<void> {
-  const descriptor = parseManifest(files);
+  const descriptor = parseManifest(files, externalManifest);
   if (descriptor === null) {
     throw new Error("package is not a PolkaVM application");
   }

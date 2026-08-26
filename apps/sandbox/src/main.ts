@@ -414,13 +414,14 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
 async function runPvmIfPresent(
   files: ArchiveFiles,
   cid: string,
+  executableManifest: string | null,
 ): Promise<boolean> {
   if (!isPvmPackage(files)) {
     return false;
   }
   showStatus("Starting PolkaVM application...");
   stripContractParamsFromUrl();
-  await runPvmApplication(files, cid);
+  await runPvmApplication(files, cid, executableManifest);
   notifyLoadingDone();
   performance.mark("dotli:app:end");
   return true;
@@ -636,7 +637,8 @@ async function main(): Promise<void> {
     stopApp();
     return;
   }
-  const { cid, chainBackend, network, skipArchiveCache } = parsed.params;
+  const { cid, chainBackend, network, skipArchiveCache, executableManifest } =
+    parsed.params;
   const isGateway = chainBackend === "rpc-gateway";
 
   setNetworkOverride(network);
@@ -688,7 +690,7 @@ async function main(): Promise<void> {
     : await getCachedArchive(cid, cid, chainBackend);
   if (cachedFiles) {
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
-    if (await runPvmIfPresent(cachedFiles, cid)) {
+    if (await runPvmIfPresent(cachedFiles, cid, executableManifest)) {
       stopApp();
       return;
     }
@@ -777,7 +779,7 @@ async function main(): Promise<void> {
     // as their immutable asset source on the next launch.
     await storeArchiveInSW(result.files, cid, cid, chainBackend);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
-    if (await runPvmIfPresent(result.files, cid)) {
+    if (await runPvmIfPresent(result.files, cid, executableManifest)) {
       stopApp();
       return;
     }

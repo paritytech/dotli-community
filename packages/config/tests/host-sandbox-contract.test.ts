@@ -44,6 +44,21 @@ describe("validateSandboxParams: v3 cid contract", () => {
     }
   });
 
+  it("preserves exact executable manifest text for sandbox byte comparison", () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
+    const result = validateSandboxParams(
+      search({
+        [SANDBOX_CONTRACT_PARAMS.executableManifest]: executableManifest,
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.executableManifest).toBe(executableManifest);
+    }
+  });
+
   it("As the sandbox, I reject a contract that omits the cid, but flag it recoverable so the host can re-render me", () => {
     // Given a contract with no cid param (the post-boot strip leaves
     // exactly this shape behind, so a reload of a booted sandbox lands here).
