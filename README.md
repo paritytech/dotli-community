@@ -62,6 +62,7 @@ Each product gets its own `<label>.app.paseo.li` origin, so versions of the same
 1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected to Asset Hub Paseo, querying dotNS contracts.
 2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via smoldot `bitswap_v1_get` JSON-RPC or an IPFS gateway.
 3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage.
+4. **Runs** verified framebuffer PolkaVM products by translating `app.polkavm` to WebAssembly at load time inside a worker, with a bounded interpreter fallback.
 
 ```
 host-playground.paseo.li
@@ -100,12 +101,31 @@ When a CID points to an IPFS directory (not a single file):
 4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory archive
 5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
 
+## How PolkaVM apps work
+
+An archive whose `manifest.json` declares `runtime.kind: "polkavm"` never
+executes package-owned HTML. The sandbox instead creates a host-owned canvas,
+loads the verified `app.polkavm` and immutable package assets, and translates
+the program to WebAssembly inside a worker. Keyboard, pointer, framebuffer,
+PCM-audio, asset, and save traffic stays on the bounded PolkaVM host ABI.
+
+The initial profile supports Epoca framebuffer ABI version 1, including CoreVM
+products such as `doom.paseo`. Tri2D, WebGPU, and TruAPI guest hostcalls fail
+closed until their capability boundaries are implemented independently.
+
+Translated Wasm bytes are cached in product-origin IndexedDB by the SHA-256 of
+the PVM program and the pinned translator version. Warm launches skip PVM
+instruction lowering; WebAssembly compilation remains browser-owned. If
+translation or Wasm compilation fails, the same worker retries through the
+bounded interpreter.
+
 ## Caching and verification
 
-dotli uses a two-layer cache for fast repeat visits:
+dotli uses three cache layers for fast repeat visits:
 
 1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
 2. **Archive cache** (Service Worker) — stores fetched file maps keyed by domain; a cache hit additionally requires the stored CID (and content backend) to match
+3. **PVM translation cache** (IndexedDB) — stores translated Wasm bytes keyed by translator version and PVM program digest
 
 On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield shows how the current page was loaded:
 

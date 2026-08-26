@@ -8,9 +8,11 @@ alphabetically. Copyright and permission notices for each package are retained
 in its distribution under `node_modules`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are
-compatible with this project's AGPL-3.0 outbound license. Build-time-only
-tooling under weak-copyleft (MPL-2.0) or source-available (FSL-1.1-MIT) terms is
-used to build the application and is not redistributed as part of it.
+compatible with this project's AGPL-3.0 outbound license. The vendored Epoca
+PolkaVM browser runtime remains under MPL-2.0, with its PolkaVM-derived portions
+under Apache-2.0 OR MIT. Its complete notices and source provenance ship beside
+the runtime. Build-time-only tooling under source-available FSL-1.1-MIT terms is
+not redistributed as part of the application.
 
 > Generated from the resolved dependency tree (595 distinct third-party
 > packages). Platform-specific binary packages (for example
@@ -76,7 +78,7 @@ smoldot, verifiablejs
 
 ## MPL-2.0
 
-lightningcss, lightningcss-darwin-arm64
+Epoca PolkaVM browser runtime, lightningcss, lightningcss-darwin-arm64
 
 ## FSL-1.1-MIT
 
