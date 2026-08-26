@@ -46,10 +46,17 @@ function loadProduct(label: string): void {
   setChatCapability(label, true);
 }
 
-/** Panel renders on rAF then reads IndexedDB; settle both. */
-async function settle(): Promise<void> {
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-  await new Promise((resolve) => setTimeout(resolve, 20));
+/** Panel renders on a queued task then reads IndexedDB, so a fixed wait
+ *  races slow machines. Poll until the expected state appears. */
+async function settle(ready: () => boolean): Promise<void> {
+  await vi.waitFor(
+    () => {
+      if (!ready()) {
+        throw new Error("panel has not settled");
+      }
+    },
+    { timeout: 5000 },
+  );
 }
 
 const byId = <T extends HTMLElement>(id: string): T => {
@@ -89,7 +96,7 @@ describe("chat panel", () => {
     loadProduct("chatty-empty");
 
     byId("chat-button").click();
-    await settle();
+    await settle(() => !byId("chat-panel-hint").hidden);
 
     expect(byId("chat-panel").hidden).toBe(false);
     expect(byId("chat-panel-hint").hidden).toBe(false);
@@ -117,7 +124,9 @@ describe("chat panel", () => {
     });
 
     byId("chat-button").click();
-    await settle();
+    await settle(
+      () => document.querySelectorAll(".chat-room-item").length === 2,
+    );
 
     expect(byId("chat-panel-rooms").hidden).toBe(false);
     expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
@@ -134,14 +143,14 @@ describe("chat panel", () => {
     ).toBe("G");
 
     items[0].click();
-    await settle();
+    await settle(() => byId("chat-panel-rooms").hidden);
     expect(byId("chat-panel-rooms").hidden).toBe(true);
     expect(byId("chat-panel-title").textContent).toBe("Support");
     expect(byId("chat-panel-back").hidden).toBe(false);
     expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
 
     byId("chat-panel-back").click();
-    await settle();
+    await settle(() => !byId("chat-panel-rooms").hidden);
     expect(byId("chat-panel-rooms").hidden).toBe(false);
     expect(byId("chat-panel-back").hidden).toBe(true);
   });
@@ -186,13 +195,18 @@ describe("chat panel", () => {
     });
 
     byId("chat-button").click();
-    await settle();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
     // The panel opens on the room list; enter the room to see messages.
     const roomItem =
       document.querySelector<HTMLButtonElement>(".chat-room-item");
     expect(roomItem?.textContent).toContain("Main");
     roomItem?.click();
-    await settle();
+    await settle(
+      () =>
+        byId("chat-panel-messages").textContent?.includes(
+          "hello from the app",
+        ) === true,
+    );
     expect(byId("chat-panel-messages").textContent).toContain(
       "hello from the app",
     );
@@ -204,7 +218,11 @@ describe("chat panel", () => {
     const input = byId<HTMLInputElement>("chat-panel-input");
     input.value = "hello back";
     byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
-    await settle();
+    await settle(
+      () =>
+        byId("chat-panel-messages").textContent?.includes("hello back") ===
+          true && published.length === 1,
+    );
 
     expect(published).toHaveLength(1);
     expect(published[0]).toMatchObject({
@@ -245,9 +263,9 @@ describe("chat panel", () => {
     });
 
     byId("chat-button").click();
-    await settle();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-    await settle();
+    await settle(() => document.querySelector(".chat-msg-sender") !== null);
 
     // One sender line labels the consecutive product-message run.
     const senders = document.querySelectorAll(".chat-msg-sender");
@@ -279,9 +297,12 @@ describe("chat panel", () => {
     });
 
     byId("chat-button").click();
-    await settle();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-    await settle();
+    await settle(
+      () =>
+        byId("chat-panel-messages").textContent?.includes("anonymous") === true,
+    );
 
     expect(byId("chat-panel-messages").textContent).toContain("anonymous");
     expect(document.querySelector(".chat-msg-sender")).toBeNull();
@@ -331,9 +352,9 @@ describe("chat panel", () => {
       });
 
       byId("chat-button").click();
-      await settle();
+      await settle(() => document.querySelector(".chat-room-item") !== null);
       document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-      await settle();
+      await settle(() => renders.length === 1);
 
       // The cell subscribed with the stored message identity and payload.
       expect(renders).toHaveLength(1);
@@ -377,7 +398,7 @@ describe("chat panel", () => {
 
       // Tapping the rendered button publishes an ActionTriggered action.
       document.querySelector<HTMLButtonElement>(".chat-custom-btn")?.click();
-      await settle();
+      await settle(() => published.length === 1);
       expect(published).toHaveLength(1);
       expect(published[0]).toMatchObject({
         roomId: "main",
@@ -397,7 +418,7 @@ describe("chat panel", () => {
 
       // Leaving the room disposes the live render.
       byId("chat-panel-back").click();
-      await settle();
+      await settle(() => disposeRender.mock.calls.length > 0);
       expect(disposeRender).toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
@@ -425,7 +446,7 @@ describe("chat panel", () => {
     expect(badge.textContent).toBe("1");
 
     byId("chat-button").click();
-    await settle();
+    await settle(() => badge.hidden);
     expect(badge.hidden).toBe(true);
   });
 });
