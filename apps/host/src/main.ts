@@ -319,6 +319,46 @@ function setShieldState(state: "validating" | "verified"): void {
   armTopbarAutoHide();
 }
 
+async function resolveAppExecutableManifest(
+  label: string,
+  chainBackend: Backend,
+): Promise<ManifestResult<ExecutableManifest>> {
+  if (chainBackend === "rpc-gateway") {
+    const mod = await import("@dotli/resolver/rpc-resolve");
+    return mod.resolveExecutableManifestViaRpc(label, "app");
+  }
+  return resolveExecutableManifestRemote(label, "app");
+}
+
+async function executableManifestText(
+  label: string,
+  chainBackend: Backend,
+): Promise<string | null> {
+  let timeoutId: NodeJS.Timeout | number | undefined;
+  try {
+    return await Promise.race([
+      resolveAppExecutableManifest(label, chainBackend).then((result) =>
+        result.kind === "ok" && result.value.kind === "app" ? result.raw : null,
+      ),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => {
+          log.warn(
+            `[dot.li manifest] executable preflight timed out for ${withActiveTld(label)}`,
+          );
+          resolve(null);
+        }, 1_500);
+      }),
+    ]);
+  } catch (error: unknown) {
+    log.warn(
+      `[dot.li manifest] executable preflight failed for ${withActiveTld(label)}: ${serializeError(error)}`,
+    );
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Apply the product's branding from the root manifest at `<label>.dot`.
  *
@@ -337,12 +377,12 @@ async function applyProductBranding(
     const mod = await import("@dotli/resolver/rpc-resolve");
     [rootResult, appResult] = await Promise.all([
       mod.resolveRootManifestViaRpc(label),
-      mod.resolveExecutableManifestViaRpc(label, "app"),
+      resolveAppExecutableManifest(label, chainBackend),
     ]);
   } else {
     [rootResult, appResult] = await Promise.all([
       resolveRootManifestRemote(label),
-      resolveExecutableManifestRemote(label, "app"),
+      resolveAppExecutableManifest(label, chainBackend),
     ]);
   }
   if (rootResult.kind === "ok") {
@@ -1203,7 +1243,11 @@ async function main(): Promise<void> {
         setShieldState(shieldState);
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
-        await renderAppSubdomain(cachedCid, label);
+        await renderAppSubdomain(
+          cachedCid,
+          label,
+          await executableManifestText(label, chainBackend),
+        );
       });
       void recordRecentLabel(label);
       void applyProductBranding(label, chainBackend).catch((err: unknown) => {
@@ -1370,7 +1414,11 @@ async function main(): Promise<void> {
 
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
-    await renderAppSubdomain(cid, label);
+    await renderAppSubdomain(
+      cid,
+      label,
+      await executableManifestText(label, chainBackend),
+    );
     void recordRecentLabel(label);
     void applyProductBranding(label, chainBackend).catch((err: unknown) => {
       log.warn(

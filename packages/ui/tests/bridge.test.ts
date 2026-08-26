@@ -373,6 +373,26 @@ describe("bridge render lifecycle", () => {
     );
   }, 10_000);
 
+  it("threads exact executable manifest text into the sandbox contract", async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+    const render = renderAppSubdomain(
+      "manifest-cid",
+      "manifest-app",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const iframeUrl = new URL(mocks.iframeHosts[0].iframeUrl);
+    expect(iframeUrl.searchParams.get("executableManifest")).toBe(
+      executableManifest,
+    );
+  });
+
   it.each(["/x.dot@evil.com/pay", "/foo.dotify/pay"])(
     "As a user, the host keeps an adversarial deep path on the app sandbox origin: %s",
     async (path) => {

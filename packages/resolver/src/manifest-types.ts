@@ -30,21 +30,69 @@ export interface RootManifest {
   icon: Icon;
 }
 
-interface CommonExecutableFields {
+interface CommonExecutableFieldsV1 {
   $v: 1;
   appVersion: AppVersion;
 }
 
-export interface AppManifest extends CommonExecutableFields {
+export interface AppManifestV1 extends CommonExecutableFieldsV1 {
   kind: "app";
 }
+
+export interface WebAppManifestV2 {
+  $v: 2;
+  kind: "app";
+  appVersion: AppVersion;
+  runtime: {
+    kind: "web";
+    entrypoint: string;
+  };
+}
+
+export interface PolkaVmAppManifestV2 {
+  $v: 2;
+  kind: "app";
+  appVersion: AppVersion;
+  runtime: {
+    kind: "polkavm";
+    abiVersion: 1;
+    entrypoint: string;
+  };
+  capabilities: {
+    graphics: {
+      abiVersion: 1;
+      profile: "framebuffer" | "tri2d" | "webgpu-raster";
+      requiredFeatures: readonly string[];
+      requiredLimits?: Readonly<Record<string, number>>;
+    };
+    deviceInput?: {
+      abiVersion: 1;
+      requiredFeatures: readonly (
+        | "pointer"
+        | "keyboard"
+        | "touch"
+        | "wheel"
+        | "text"
+        | "ime"
+        | "focus"
+      )[];
+    };
+    audio?: {
+      abiVersion: 1;
+      requiredFeatures: readonly string[];
+    };
+  };
+}
+
+export type AppManifestV2 = WebAppManifestV2 | PolkaVmAppManifestV2;
+export type AppManifest = AppManifestV1 | AppManifestV2;
 
 export interface WidgetDimensions {
   height: readonly number[];
   width?: number;
 }
 
-export interface WidgetManifest extends CommonExecutableFields {
+export interface WidgetManifest extends CommonExecutableFieldsV1 {
   kind: "widget";
   description?: string;
   dimensions: WidgetDimensions;
@@ -55,7 +103,7 @@ export interface WorkerIncludes {
   pocket: boolean;
 }
 
-export interface WorkerManifest extends CommonExecutableFields {
+export interface WorkerManifest extends CommonExecutableFieldsV1 {
   kind: "worker";
   entrypoint: string;
   includes: WorkerIncludes;
@@ -94,14 +142,114 @@ function isAppVersion(value: unknown): value is AppVersion {
   if (
     !value
       .slice(0, 3)
-      .every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)
+      .every((part) => Number.isSafeInteger(part) && (part as number) >= 0)
   ) {
     return false;
   }
-  if (value.length === 4 && typeof value[3] !== "string") {
-    return false;
+  return value.length !== 4 || isNonEmptyString(value[3]);
+}
+
+function relativeEntrypoint(value: unknown, suffix: string): boolean {
+  return (
+    isNonEmptyString(value) &&
+    !value.startsWith("/") &&
+    !value.includes("\\") &&
+    !value
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..") &&
+    value.toLowerCase().endsWith(suffix)
+  );
+}
+
+function requiredFeatures(value: unknown, allowed: readonly string[]): boolean {
+  return (
+    Array.isArray(value) &&
+    new Set(value).size === value.length &&
+    value.every(
+      (feature) => typeof feature === "string" && allowed.includes(feature),
+    )
+  );
+}
+
+function validateAppV2(input: Record<string, unknown>, p: string): string[] {
+  const errors: string[] = [];
+  const runtime = isPlainObject(input.runtime) ? input.runtime : null;
+  if (runtime === null) {
+    return [`${p}runtime must be an object`];
   }
-  return true;
+  if (runtime.kind === "web") {
+    if (!relativeEntrypoint(runtime.entrypoint, ".html")) {
+      errors.push(`${p}web runtime entrypoint must be a relative HTML path`);
+    }
+    if (input.capabilities !== undefined) {
+      errors.push(`${p}web runtime must not declare PolkaVM capabilities`);
+    }
+    return errors;
+  }
+  if (runtime.kind !== "polkavm") {
+    return [`${p}runtime.kind must be web or polkavm`];
+  }
+  if (runtime.abiVersion !== 1) {
+    errors.push(`${p}PolkaVM runtime abiVersion must be 1`);
+  }
+  if (!relativeEntrypoint(runtime.entrypoint, ".polkavm")) {
+    errors.push(`${p}PolkaVM entrypoint must be a relative .polkavm path`);
+  }
+  const capabilities = isPlainObject(input.capabilities)
+    ? input.capabilities
+    : null;
+  const graphics =
+    capabilities !== null && isPlainObject(capabilities.graphics)
+      ? capabilities.graphics
+      : null;
+  if (graphics === null) {
+    errors.push(`${p}PolkaVM capabilities.graphics must be an object`);
+  } else {
+    if (
+      graphics.abiVersion !== 1 ||
+      !["framebuffer", "tri2d", "webgpu-raster"].includes(
+        graphics.profile as string,
+      )
+    ) {
+      errors.push(`${p}graphics must select a supported ABI version 1 profile`);
+    }
+    if (!requiredFeatures(graphics.requiredFeatures, [])) {
+      errors.push(`${p}graphics.requiredFeatures contains unsupported values`);
+    }
+  }
+  if (capabilities?.deviceInput !== undefined) {
+    const inputCapability = isPlainObject(capabilities.deviceInput)
+      ? capabilities.deviceInput
+      : null;
+    if (inputCapability === null) {
+      errors.push(`${p}deviceInput capability is unsupported`);
+    } else if (
+      inputCapability.abiVersion !== 1 ||
+      !requiredFeatures(inputCapability.requiredFeatures, [
+        "pointer",
+        "keyboard",
+        "touch",
+        "wheel",
+        "text",
+        "ime",
+        "focus",
+      ])
+    ) {
+      errors.push(`${p}deviceInput capability is unsupported`);
+    }
+  }
+  if (capabilities?.audio !== undefined) {
+    const audio = isPlainObject(capabilities.audio) ? capabilities.audio : null;
+    if (audio === null) {
+      errors.push(`${p}audio capability is unsupported`);
+    } else if (
+      audio.abiVersion !== 1 ||
+      !requiredFeatures(audio.requiredFeatures, [])
+    ) {
+      errors.push(`${p}audio capability is unsupported`);
+    }
+  }
+  return errors;
 }
 
 function validateWidgetFields(
@@ -252,11 +400,6 @@ export function validateExecutableManifest(
   if (!isPlainObject(input)) {
     return { ok: false, errors: ["executable manifest must be an object"] };
   }
-  if (input.$v !== 1) {
-    errors.push(
-      `executable manifest $v must be 1 (got ${JSON.stringify(input.$v)})`,
-    );
-  }
   if (!isAppVersion(input.appVersion)) {
     errors.push(
       "executable manifest appVersion must be [major, minor, patch] or [major, minor, patch, build]",
@@ -264,16 +407,25 @@ export function validateExecutableManifest(
   }
   const kind = input.kind;
   const p = "executable manifest ";
-  if (kind === "app") {
-    // App has no kind-specific fields beyond the common ones.
-  } else if (kind === "widget") {
-    errors.push(...validateWidgetFields(input, p));
-  } else if (kind === "worker") {
-    errors.push(...validateWorkerFields(input, p));
+  if (kind === "app" && input.$v === 2) {
+    errors.push(...validateAppV2(input, p));
   } else {
-    errors.push(
-      `${p}kind must be one of app, widget, worker (got ${JSON.stringify(kind)})`,
-    );
+    if (input.$v !== 1) {
+      errors.push(
+        `executable manifest $v must be 1 (got ${JSON.stringify(input.$v)})`,
+      );
+    }
+    if (kind === "app") {
+      // App v1 has no kind-specific fields.
+    } else if (kind === "widget") {
+      errors.push(...validateWidgetFields(input, p));
+    } else if (kind === "worker") {
+      errors.push(...validateWorkerFields(input, p));
+    } else {
+      errors.push(
+        `${p}kind must be one of app, widget, worker (got ${JSON.stringify(kind)})`,
+      );
+    }
   }
   return errors.length === 0
     ? { ok: true, value: input as unknown as ExecutableManifest }
