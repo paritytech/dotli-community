@@ -11,7 +11,7 @@
   const STATUS_OUT_OF_GAS = -4;
   const INPUT_EVENT_BYTES = 8;
   const MAX_INPUT_EVENTS = 4096;
-  const MAX_HOSTCALLS_PER_INIT = 131072;
+  const MAX_HOSTCALLS_PER_INIT = 1024 * 1024;
   const MAX_HOSTCALLS_PER_UPDATE = 8192;
   const MAX_HOSTCALL_BYTES = 32 * 1024 * 1024;
   const MAX_LOG_BYTES = 4 * 1024;
@@ -39,7 +39,7 @@
   function readMetadata(module) {
     const sections = WebAssembly.Module.customSections(
       module,
-      "epoca.pvm.meta"
+      "epoca.pvm.meta",
     );
     if (sections.length !== 1) {
       throw new Error("translated PolkaVM module has invalid metadata");
@@ -47,7 +47,7 @@
     const bytes = new Uint8Array(sections[0]);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let offset = 0;
-    const requireBytes = length => {
+    const requireBytes = (length) => {
       if (offset + length > bytes.byteLength) {
         throw new Error("translated PolkaVM metadata is truncated");
       }
@@ -64,7 +64,7 @@
       offset += 4;
       return value;
     };
-    const readString = length => {
+    const readString = (length) => {
       requireBytes(length);
       const value = decoder.decode(bytes.subarray(offset, offset + length));
       offset += length;
@@ -208,15 +208,15 @@
         this.pvm.memory_stack,
       ];
       if (
-        this.memories.some(memory => !(memory instanceof WebAssembly.Memory))
+        this.memories.some((memory) => !(memory instanceof WebAssembly.Memory))
       ) {
         throw new Error("translated PolkaVM module is missing guest memories");
       }
       this.assets = new Map(
-        assets.map(asset => [
+        assets.map((asset) => [
           normalizedPath(asset.path),
           new Uint8Array(asset.bytes),
-        ])
+        ]),
       );
       this.emit = emit;
       this.audioEnabled = audioEnabled;
@@ -231,6 +231,7 @@
       this.resumePending = false;
       this.stopped = false;
       this.coreVm = this.metadata.exports.has("_pvm_start");
+      this.coreVmStarted = false;
       this.palette = new Uint32Array(256);
       this.palette.fill(0xffffffff);
       this.audioChannels = 0;
@@ -263,9 +264,14 @@
         return;
       }
       this.timeMs = timeMs;
-      this.#resetBudget(MAX_HOSTCALLS_PER_UPDATE);
+      this.#resetBudget(
+        this.coreVm && !this.coreVmStarted
+          ? MAX_HOSTCALLS_PER_INIT
+          : MAX_HOSTCALLS_PER_UPDATE,
+      );
       if (this.coreVm) {
         this.#run(this.exports.get("_pvm_start"), true);
+        this.coreVmStarted = true;
         return;
       }
       const update = this.exports.get("update");
@@ -289,7 +295,7 @@
       const view = new DataView(
         bytes.buffer,
         bytes.byteOffset,
-        bytes.byteLength
+        bytes.byteLength,
       );
       const type = bytes[0];
       if (type === 1 || type === 2) {
@@ -308,22 +314,22 @@
         if (this.pointer) {
           this.#queueCoreInput(
             0xa3,
-            Math.max(-128, Math.min(127, current[0] - this.pointer[0])) & 0xff
+            Math.max(-128, Math.min(127, current[0] - this.pointer[0])) & 0xff,
           );
           this.#queueCoreInput(
             0xa4,
-            Math.max(-128, Math.min(127, current[1] - this.pointer[1])) & 0xff
+            Math.max(-128, Math.min(127, current[1] - this.pointer[1])) & 0xff,
           );
         }
         this.pointer = current;
       } else if (type === 6) {
         this.#queueCoreInput(
           0xa3,
-          Math.max(-128, Math.min(127, view.getInt16(2, true))) & 0xff
+          Math.max(-128, Math.min(127, view.getInt16(2, true))) & 0xff,
         );
         this.#queueCoreInput(
           0xa4,
-          Math.max(-128, Math.min(127, view.getInt16(4, true))) & 0xff
+          Math.max(-128, Math.min(127, view.getInt16(4, true))) & 0xff,
         );
       }
     }
@@ -360,7 +366,7 @@
         }
         if (status === STATUS_TRAP) {
           throw new Error(
-            `translated PolkaVM execution trapped at ${this.pvm.trap_pc.value}`
+            `translated PolkaVM execution trapped at ${this.pvm.trap_pc.value}`,
           );
         }
         if (status === STATUS_OUT_OF_GAS) {
@@ -368,19 +374,19 @@
         }
         if (status !== STATUS_ECALL) {
           throw new Error(
-            `translated PolkaVM returned invalid status ${status}`
+            `translated PolkaVM returned invalid status ${status}`,
           );
         }
         const importIndex = this.pvm.ecall.value >>> 0;
         const name = this.imports[importIndex];
         if (!name) {
           throw new Error(
-            `translated PolkaVM called unknown import ${importIndex}`
+            `translated PolkaVM called unknown import ${importIndex}`,
           );
         }
         if (--this.hostcalls < 0) {
           throw new Error(
-            `translated PolkaVM guest exceeded hostcall budget in ${name}`
+            `translated PolkaVM guest exceeded hostcall budget in ${name}`,
           );
         }
         const yielded = this.coreVm
@@ -415,7 +421,7 @@
       const end = address + length;
       if (end > 0x100000000) {
         throw new Error(
-          "translated PolkaVM guest memory access is out of range"
+          "translated PolkaVM guest memory access is out of range",
         );
       }
       const { layout } = this.metadata;
@@ -439,7 +445,7 @@
         physical = address - layout.roAddress;
       } else {
         throw new Error(
-          "translated PolkaVM guest memory access is out of range"
+          "translated PolkaVM guest memory access is out of range",
         );
       }
       return new Uint8Array(memory.buffer, physical, length);
@@ -462,7 +468,7 @@
         length > this.hostcallBytes
       ) {
         throw new Error(
-          "translated PolkaVM guest exceeded hostcall byte budget"
+          "translated PolkaVM guest exceeded hostcall byte budget",
         );
       }
       this.hostcallBytes -= length;
@@ -472,7 +478,7 @@
       const bytes = this.#range(address >>> 0, 8);
       return new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(
         0,
-        true
+        true,
       );
     }
 
@@ -481,7 +487,7 @@
       new DataView(bytes.buffer, bytes.byteOffset, 8).setBigUint64(
         0,
         BigInt.asUintN(64, value),
-        true
+        true,
       );
     }
 
@@ -540,7 +546,7 @@
           const capacity = this.#u32(a1);
           const count = Math.min(
             Math.floor(capacity / INPUT_EVENT_BYTES),
-            this.input.length
+            this.input.length,
           );
           const output = new Uint8Array(count * INPUT_EVENT_BYTES);
           for (let index = 0; index < count; index++) {
@@ -577,7 +583,7 @@
           const samples = this.#read(this.#u32(a0), sampleCount * 2);
           this.emit(
             { type: "audio", sampleRate: 48000, channels: 2, samples },
-            [samples.buffer]
+            [samples.buffer],
           );
           this.#setReg(7, 0n);
           return false;
@@ -592,7 +598,7 @@
             return false;
           }
           const assetName = decoder.decode(
-            this.#read(this.#u32(a0), nameLength)
+            this.#read(this.#u32(a0), nameLength),
           );
           const asset = this.assets.get(assetName);
           if (!asset || offset >= asset.byteLength) {
@@ -602,7 +608,7 @@
           const length = Math.min(
             capacity,
             asset.byteLength - offset,
-            16 * 1024 * 1024
+            16 * 1024 * 1024,
           );
           this.#write(destination, asset.subarray(offset, offset + length));
           this.#setReg(7, BigInt(length));
@@ -627,7 +633,7 @@
         }
         default:
           throw new Error(
-            `translated PolkaVM guest uses unsupported import ${name}`
+            `translated PolkaVM guest uses unsupported import ${name}`,
           );
       }
     }
@@ -657,12 +663,12 @@
         return;
       }
       if (key === 0xa3 || key === 0xa4) {
-        const existing = this.coreInput.find(event => event[0] === key);
+        const existing = this.coreInput.find((event) => event[0] === key);
         if (existing) {
           existing[1] =
             Math.max(
               -128,
-              Math.min(127, signedByte(existing[1]) + signedByte(value))
+              Math.min(127, signedByte(existing[1]) + signedByte(value)),
             ) & 0xff;
           return;
         }
@@ -703,10 +709,11 @@
           this.emit({ type: "frame", width, height, pixels }, [pixels.buffer]);
           return true;
         }
+        case "pvm_fetch_epoca_inputs":
         case "pvm_fetch_inputs": {
           const count = Math.min(
             this.#u32(this.#reg(8)),
-            this.coreInput.length
+            this.coreInput.length,
           );
           const output = new Uint8Array(count * 2);
           for (let index = 0; index < count; index++) {
@@ -716,6 +723,69 @@
           this.#setReg(7, BigInt(count));
           return false;
         }
+        case "pvm_asset_read": {
+          const nameLength = this.#u32(this.#reg(8));
+          const offset = this.#u32(this.#reg(9));
+          const destination = this.#u32(this.#reg(10));
+          const capacity = this.#u32(this.#reg(11));
+          if (!nameLength || nameLength > 1024) {
+            this.#setReg(7, 0n);
+            return false;
+          }
+          const assetName = decoder.decode(
+            this.#read(this.#u32(this.#reg(7)), nameLength),
+          );
+          const asset = this.assets.get(assetName);
+          if (!asset || offset >= asset.byteLength) {
+            this.#setReg(7, 0n);
+            return false;
+          }
+          const length = Math.min(
+            capacity,
+            asset.byteLength - offset,
+            16 * 1024 * 1024,
+          );
+          this.#write(destination, asset.subarray(offset, offset + length));
+          this.#setReg(7, BigInt(length));
+          return false;
+        }
+        case "host_audio_submit": {
+          if (!this.audioEnabled) {
+            this.#setReg(7, 3n);
+            return false;
+          }
+          const sampleCount = this.#u32(this.#reg(8));
+          if (
+            !sampleCount ||
+            sampleCount % 2 ||
+            sampleCount > MAX_AUDIO_SAMPLES
+          ) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          const samples = this.#read(this.#u32(this.#reg(7)), sampleCount * 2);
+          this.emit(
+            { type: "audio", sampleRate: 48000, channels: 2, samples },
+            [samples.buffer],
+          );
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "pvm_time_ms": {
+          const timeMs = this.timeMs ?? performance.now() - this.clockStartedAt;
+          this.#setReg(7, BigInt(Math.max(0, Math.trunc(timeMs))));
+          return false;
+        }
+        case "host_log": {
+          const length = Math.min(this.#u32(this.#reg(8)), MAX_LOG_BYTES);
+          const message = decoder.decode(
+            this.#read(this.#u32(this.#reg(7)), length),
+          );
+          this.emit({ type: "log", message });
+          return false;
+        }
+        case "pvm_yield":
+          return true;
         case "pvm_init_audio": {
           const channels = this.#u32(this.#reg(7));
           const bitsPerSample = this.#u32(this.#reg(8));
@@ -741,7 +811,7 @@
           if (this.audioChannels && sampleCount) {
             const samples = this.#read(
               this.#u32(this.#reg(7)),
-              sampleCount * 2
+              sampleCount * 2,
             );
             this.emit(
               {
@@ -750,7 +820,7 @@
                 channels: this.audioChannels,
                 samples,
               },
-              [samples.buffer]
+              [samples.buffer],
             );
           }
           return false;
@@ -759,7 +829,7 @@
           return this.#handleCoreVmSyscall();
         default:
           throw new Error(
-            `translated CoreVM guest uses unsupported import ${name}`
+            `translated CoreVM guest uses unsupported import ${name}`,
           );
       }
     }
@@ -869,8 +939,8 @@
           this.#u32(address),
           file.bytes.subarray(
             Number(file.position),
-            Number(file.position) + count
-          )
+            Number(file.position) + count,
+          ),
         );
       } catch {
         return errno(EFAULT);
@@ -916,7 +986,7 @@
       } else if (whence === 1n) {
         file.position = BigInt.asUintN(
           64,
-          BigInt.asIntN(64, file.position) + offset
+          BigInt.asIntN(64, file.position) + offset,
         );
         if (file.position > fileLength) {
           file.position = fileLength;
@@ -924,7 +994,7 @@
       } else if (whence === 2n) {
         file.position = BigInt.asUintN(
           64,
-          BigInt.asIntN(64, fileLength) + offset
+          BigInt.asIntN(64, fileLength) + offset,
         );
         if (file.position > fileLength) {
           file.position = fileLength;
