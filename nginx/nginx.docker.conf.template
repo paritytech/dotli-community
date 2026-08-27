@@ -85,6 +85,7 @@ server {
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
     root ${WEBROOT}/protocol;
+    include /etc/nginx/snippets/dotli-mode-store.conf;
     index index.html;
 
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;

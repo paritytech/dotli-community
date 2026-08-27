@@ -1,4 +1,5 @@
 #!/bin/sh
+mkdir -p /var/tmp/dotli-mode/.tmp && chown -R nginx:nginx /var/tmp/dotli-mode 2>/dev/null || true
 # Generate the runtime network config, then hand off to the nginx image's own
 # entrypoint (which renders /etc/nginx/templates/*.template and starts nginx).
 #
