@@ -39,11 +39,21 @@ function installChatDom(): void {
   `;
 }
 
+function setLoggedIn(loggedIn: boolean): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:truapi-auth-state", {
+      detail: { tag: loggedIn ? "Connected" : "Disconnected" },
+    }),
+  );
+}
+
 function loadProduct(label: string): void {
   window.dispatchEvent(
     new CustomEvent("dotli:product-loaded", { detail: { label } }),
   );
   setChatCapability(label, true);
+  // The chat affordance is gated on an active session.
+  setLoggedIn(true);
 }
 
 /** Panel renders on a queued task then reads IndexedDB, so a fixed wait
@@ -88,6 +98,26 @@ describe("chat panel", () => {
 
     window.dispatchEvent(new CustomEvent("dotli:product-error"));
     expect(button.hidden).toBe(true);
+  });
+
+  it("As a user, the chat button is hidden until I log in and hides again on logout", async () => {
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    const button = byId("chat-button");
+
+    loadProduct("chatty-gated");
+    setLoggedIn(false);
+    expect(button.hidden).toBe(true);
+
+    setLoggedIn(true);
+    expect(button.hidden).toBe(false);
+
+    // Logging out while the panel is open must also close it.
+    button.click();
+    expect(byId("chat-panel").hidden).toBe(false);
+    setLoggedIn(false);
+    expect(button.hidden).toBe(true);
+    expect(byId("chat-panel").hidden).toBe(true);
   });
 
   it("As a user, an empty room list shows a waiting hint", async () => {
@@ -277,35 +307,54 @@ describe("chat panel", () => {
     ).toBe("data:image/png;base64,AAAA");
   });
 
-  it("As a user, product messages stay unlabeled with zero or multiple bots", async () => {
+  it("As a user, each product message is credited to the newest bot at its post time", async () => {
     const { panel, service } = await loadChatModules();
     panel.initChatPanel();
     loadProduct("twobots");
     const productId = labelToProductId("twobots");
 
-    // Wire messages carry no bot attribution, so two bots are ambiguous.
-    await service.registerBot(productId, { botId: "a", name: "A", icon: "" });
-    await service.registerBot(productId, { botId: "b", name: "B", icon: "" });
     await service.productCreateRoom(productId, {
       roomId: "main",
       name: "Main",
       icon: "",
     });
+    // Registrations and posts land within one millisecond otherwise, and
+    // attribution orders bots against message timestamps.
+    const tick = (): Promise<void> =>
+      new Promise((resolve) => setTimeout(resolve, 2));
     await service.productPostMessage(productId, "main", {
       tag: "Text",
       value: { text: "anonymous" },
+    });
+    await tick();
+    await service.registerBot(productId, { botId: "a", name: "A", icon: "" });
+    await tick();
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "from a" },
+    });
+    await tick();
+    await service.registerBot(productId, { botId: "b", name: "B", icon: "" });
+    await tick();
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "from b" },
     });
 
     byId("chat-button").click();
     await settle(() => document.querySelector(".chat-room-item") !== null);
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
     await settle(
-      () =>
-        byId("chat-panel-messages").textContent?.includes("anonymous") === true,
+      () => document.querySelectorAll(".chat-msg-sender").length === 2,
     );
 
-    expect(byId("chat-panel-messages").textContent).toContain("anonymous");
-    expect(document.querySelector(".chat-msg-sender")).toBeNull();
+    // The pre-registration message stays unlabeled; the later two switch
+    // identity where the newest registration changes.
+    const senders = document.querySelectorAll(".chat-msg-sender");
+    expect(senders[0].textContent).toContain("A");
+    expect(senders[1].textContent).toContain("B");
+    const text = byId("chat-panel-messages").textContent ?? "";
+    expect(text.indexOf("anonymous")).toBeLessThan(text.indexOf("A"));
   });
 
   it("As a user, custom messages render live trees and taps reach the product", async () => {

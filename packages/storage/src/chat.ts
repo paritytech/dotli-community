@@ -67,9 +67,10 @@ function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
 }
 
 /**
- * Create the room if it does not exist yet. Returns `"New"` on first
- * creation and `"Exists"` when the (productId, roomId) pair is already
- * stored, mirroring the TrUAPI `ChatRoomRegistrationStatus` values.
+ * Create the room if it does not exist yet, mirroring the TrUAPI
+ * `ChatRoomRegistrationStatus` values. A re-creation answers `"Exists"`
+ * and refreshes the stored name and icon, so a product can rename a room
+ * without a new id, same as bot re-registration.
  */
 export async function createRoom(
   room: Omit<ChatRoomRecord, "createdAt">,
@@ -79,14 +80,16 @@ export async function createRoom(
     const tx = db.transaction(ROOM_STORE, "readwrite");
     const store = tx.objectStore(ROOM_STORE);
     let status: "New" | "Exists" | null = null;
-    const getReq = store.get([room.productId, room.roomId]);
+    const getReq = store.get([room.productId, room.roomId]) as IDBRequest<
+      ChatRoomRecord | undefined
+    >;
     getReq.onsuccess = () => {
-      if (getReq.result !== undefined) {
-        status = "Exists";
-        return;
-      }
-      store.add({ ...room, createdAt: Date.now() } satisfies ChatRoomRecord);
-      status = "New";
+      const existing = getReq.result;
+      status = existing === undefined ? "New" : "Exists";
+      store.put({
+        ...room,
+        createdAt: existing?.createdAt ?? Date.now(),
+      } satisfies ChatRoomRecord);
     };
     tx.oncomplete = () => {
       if (status !== null) {

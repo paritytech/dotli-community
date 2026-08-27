@@ -60,15 +60,19 @@ export function createChatPlatform(): Required<ChatPlatform> {
         [],
         (push, pushError) => {
           let live = true;
+          // Snapshot reads are independent transactions and can settle out
+          // of order; only the newest may push or the list goes stale.
+          let latest = 0;
           const emitSnapshot = (): void => {
+            const generation = ++latest;
             snapshot().then(
               (item) => {
-                if (live) {
+                if (live && generation === latest) {
                   push(item);
                 }
               },
               (error: unknown) => {
-                if (live) {
+                if (live && generation === latest) {
                   pushError({
                     reason:
                       error instanceof Error ? error.message : String(error),

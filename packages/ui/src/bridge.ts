@@ -1052,8 +1052,15 @@ export async function renderIframe(
   stopSetup();
   document.title = `${label} · dot.li`;
 
+  // Carry the runtime productId so listeners key chat data the same way
+  // storage does when the debug path overrides the label-derived id.
   window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", { detail: { label } }),
+    new CustomEvent("dotli:product-loaded", {
+      detail: {
+        label,
+        productId: options.productId ?? labelToProductId(label),
+      },
+    }),
   );
   emitDotliDebugEvent({
     layer: "render",
@@ -1217,7 +1224,9 @@ export async function renderAppSubdomain(
   document.title = withActiveTld(label);
 
   window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", { detail: { label } }),
+    new CustomEvent("dotli:product-loaded", {
+      detail: { label, productId: labelToProductId(label) },
+    }),
   );
   emitDotliDebugEvent({
     layer: "render",

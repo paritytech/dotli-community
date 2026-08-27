@@ -94,6 +94,11 @@ function openFresh(): Promise<IDBDatabase> {
         ),
       );
     };
+    // A still-open tab on an older schema blocks the upgrade. Blocked fires
+    // neither onsuccess nor onerror, so reject rather than hang forever.
+    req.onblocked = () => {
+      reject(new Error("Failed to open dotli DB: blocked by another tab"));
+    };
   });
 }
 
@@ -137,6 +142,17 @@ export function getDb(): Promise<IDBDatabase> {
       db.onclose = () => {
         if (dbGeneration === thisGeneration) {
           dbPromise = null;
+        }
+      };
+      // Another tab wants to upgrade the schema. Close so it is not blocked
+      // and drop the cached handles so the next access reopens.
+      db.onversionchange = () => {
+        db.close();
+        if (dbGeneration === thisGeneration) {
+          dbPromise = null;
+        }
+        if (typeof window !== "undefined") {
+          delete window.__dotliDb;
         }
       };
     })

@@ -55,7 +55,10 @@ function announce(label: string, chat: boolean): void {
 /**
  * Prime the capability for the product being rendered. The cached value
  * answers immediately when present; `resolve` always runs to refresh the
- * cache and re-announce, so a stale cache corrects itself on the next load.
+ * cache, so a stale cache corrects itself on the next load. Within one load
+ * every answer and announcement sticks to the same value, since the bridge
+ * fixes the connection's execution kind from the first answer and a fresher
+ * one cannot retroactively change what that connection can do.
  */
 export function primeChatCapability(
   label: string,
@@ -66,8 +69,8 @@ export function primeChatCapability(
   const fresh = resolve().then(
     (value) => {
       writeCache(label, value);
-      announce(label, value);
-      return value;
+      announce(label, cached ?? value);
+      return cached ?? value;
     },
     () => {
       // An unreadable manifest means no chat this load; keep any cached

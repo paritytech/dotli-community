@@ -57,6 +57,10 @@ interface PanelElements {
 
 let el: PanelElements | null = null;
 let currentLabel: string | null = null;
+// Runtime productId from `dotli:product-loaded`. The bridge and storage key
+// chat data by it, and it can differ from the label-derived id when the
+// localhost debug path sets a product-id override.
+let currentRuntimeProductId: string | null = null;
 let chatAvailable = false;
 let open = false;
 // null shows the room list; a room id shows that room's conversation.
@@ -64,6 +68,9 @@ let activeRoomId: string | null = null;
 // Unseen product messages per room; the topbar badge shows the sum.
 const unreadByRoom = new Map<string, number>();
 let renderQueued = false;
+// Bumped per renderPanel run so an older run whose storage reads resolve
+// late can detect it was superseded and must not paint over a newer one.
+let renderPass = 0;
 let timeRefreshTimer: ReturnType<typeof setInterval> | null = null;
 // The composer only exists after picking a room, so focus it on that render.
 let focusComposerOnRender = false;
@@ -133,6 +140,9 @@ function getElements(): PanelElements | null {
 }
 
 function currentProductId(): string | null {
+  if (currentRuntimeProductId !== null) {
+    return currentRuntimeProductId;
+  }
   return currentLabel === null ? null : labelToProductId(currentLabel);
 }
 
@@ -176,7 +186,9 @@ function updateButton(): void {
   if (el === null) {
     return;
   }
-  const visible = chatAvailable && currentLabel !== null;
+  // Every chat call needs an active session, so a logged-out user gets no
+  // chat affordance at all rather than a panel full of denied calls.
+  const visible = chatAvailable && currentLabel !== null && loggedIn;
   el.button.hidden = !visible;
   el.moreRow.hidden = !visible;
   // While the panel is open the room rows carry their own badges.
@@ -281,11 +293,29 @@ function renderMessage(record: ChatMessageRecord): HTMLElement {
   }
   const time = document.createElement("time");
   time.className = "chat-msg-time";
+  time.dataset["timestamp"] = String(record.timestamp);
   time.textContent = relativeTime(record.timestamp, Date.now());
   time.title = new Date(record.timestamp).toLocaleString();
   bubble.appendChild(time);
   row.appendChild(bubble);
   return row;
+}
+
+// Rewrites the relative bubble timestamps in place. A full re-render just
+// for label drift would re-read storage and remount every custom message.
+function refreshTimestamps(): void {
+  if (el === null) {
+    return;
+  }
+  const now = Date.now();
+  for (const time of el.messages.querySelectorAll<HTMLElement>(
+    "time.chat-msg-time",
+  )) {
+    const timestamp = Number(time.dataset["timestamp"]);
+    if (Number.isFinite(timestamp)) {
+      time.textContent = relativeTime(timestamp, now);
+    }
+  }
 }
 
 // Coalesces bursts via setTimeout rather than requestAnimationFrame: rAF
@@ -398,6 +428,7 @@ function renderRoomList(rooms: ChatRoomRecord[]): void {
 async function renderConversation(
   productId: string,
   room: ChatRoomRecord,
+  pass: number,
 ): Promise<void> {
   if (el === null) {
     return;
@@ -420,23 +451,36 @@ async function renderConversation(
     chatMessages(productId, room.roomId),
     chatBots(productId),
   ]);
-  // The active room may have changed while messages loaded.
-  if (activeRoomId !== room.roomId) {
+  // The active room may have changed while messages loaded, or a newer
+  // render may already have painted fresher records.
+  if (activeRoomId !== room.roomId || pass !== renderPass) {
     return;
   }
   disposeCustomRenders();
-  // Wire messages carry no bot attribution, so only a product with exactly
-  // one registered bot gets its message runs labeled with that identity.
-  const sender = bots.length === 1 ? bots[0] : null;
+  // Wire messages carry no bot attribution, so each product message is
+  // credited to the bot most recently registered when it was posted.
+  const senderFor = (timestamp: number): ChatBotRecord | null => {
+    let match: ChatBotRecord | null = null;
+    for (const bot of bots) {
+      if (bot.createdAt <= timestamp) {
+        match = bot;
+      }
+    }
+    return match;
+  };
   const nodes: HTMLElement[] = [];
   let prevAuthor: ChatMessageRecord["author"] | null = null;
+  let prevBotId: string | null = null;
   for (const record of records) {
-    if (
-      sender !== null &&
-      record.author === "product" &&
-      prevAuthor !== "product"
-    ) {
-      nodes.push(renderSenderLine(sender));
+    if (record.author === "product") {
+      const sender = senderFor(record.timestamp);
+      if (
+        sender !== null &&
+        (prevAuthor !== "product" || sender.botId !== prevBotId)
+      ) {
+        nodes.push(renderSenderLine(sender));
+      }
+      prevBotId = sender?.botId ?? null;
     }
     nodes.push(renderMessage(record));
     prevAuthor = record.author;
@@ -457,10 +501,14 @@ async function renderPanel(): Promise<void> {
   if (productId === null) {
     return;
   }
+  const pass = ++renderPass;
   el.title.textContent =
     getActiveRootManifest()?.displayName ?? currentLabel ?? "Chat";
 
   const rooms = await chatRooms(productId);
+  if (pass !== renderPass) {
+    return;
+  }
   if (rooms.length === 0) {
     activeRoomId = null;
     el.back.hidden = true;
@@ -482,7 +530,7 @@ async function renderPanel(): Promise<void> {
     renderRoomList(rooms);
     return;
   }
-  await renderConversation(productId, activeRoom);
+  await renderConversation(productId, activeRoom, pass);
 }
 
 function setPanelOpen(next: boolean): void {
@@ -497,7 +545,7 @@ function setPanelOpen(next: boolean): void {
     el.panel.style.width = `${String(storedPanelWidth())}px`;
     updateButton();
     scheduleRender();
-    timeRefreshTimer ??= setInterval(scheduleRender, TIME_REFRESH_MS);
+    timeRefreshTimer ??= setInterval(refreshTimestamps, TIME_REFRESH_MS);
   } else {
     updateButton();
     disposeCustomRenders();
@@ -527,9 +575,12 @@ function initResize(): void {
       panel.style.width = `${String(width)}px`;
       adjustIframe();
     };
-    const onUp = (): void => {
+    // pointercancel is never followed by pointerup, so both ends of the
+    // drag must detach the listeners or they leak and act on later hovers.
+    const onEnd = (): void => {
       resize.removeEventListener("pointermove", onMove);
-      resize.removeEventListener("pointerup", onUp);
+      resize.removeEventListener("pointerup", onEnd);
+      resize.removeEventListener("pointercancel", onEnd);
       try {
         localStorage.setItem(PANEL_WIDTH_KEY, String(panel.offsetWidth));
         // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode); the width just resets next session.
@@ -538,7 +589,8 @@ function initResize(): void {
       }
     };
     resize.addEventListener("pointermove", onMove);
-    resize.addEventListener("pointerup", onUp);
+    resize.addEventListener("pointerup", onEnd);
+    resize.addEventListener("pointercancel", onEnd);
   });
 }
 
@@ -581,13 +633,16 @@ export function initChatPanel(): void {
   });
 
   window.addEventListener("dotli:product-loaded", (event: Event) => {
-    const { label } = (event as CustomEvent<{ label: string }>).detail;
+    const { label, productId } = (
+      event as CustomEvent<{ label: string; productId?: string }>
+    ).detail;
     if (currentLabel !== label) {
       currentLabel = label;
       activeRoomId = null;
       unreadByRoom.clear();
       composerError = null;
     }
+    currentRuntimeProductId = productId ?? null;
     updateButton();
     // A product (re)load while the panel is open must refresh its content.
     if (open) {
@@ -597,14 +652,22 @@ export function initChatPanel(): void {
 
   window.addEventListener("dotli:product-error", () => {
     currentLabel = null;
+    currentRuntimeProductId = null;
     updateButton();
   });
 
   window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
     const state = (event as CustomEvent<{ tag: string }>).detail;
+    // Pairing/Authenticating/LoginFailed are transitional login-flow states,
+    // not a session change; acting on them would close an open panel mid-flow.
+    if (state.tag !== "Connected" && state.tag !== "Disconnected") {
+      return;
+    }
     const next = state.tag === "Connected";
     if (next !== loggedIn) {
       loggedIn = next;
+      // Login reveals the button at once; logout hides it and closes the panel.
+      updateButton();
       if (open) {
         scheduleRender();
       }
@@ -624,7 +687,9 @@ export function initChatPanel(): void {
       unreadByRoom.set(detail.roomId, count + 1);
       updateButton();
     }
-    if (open) {
+    // A message for another room only moves that room's badge; rebuilding
+    // the active conversation for it would be wasted storage reads and DOM.
+    if (open && (activeRoomId === null || activeRoomId === detail.roomId)) {
       scheduleRender();
     }
   });

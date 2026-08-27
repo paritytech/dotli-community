@@ -45,6 +45,9 @@
                 };
                 req.onsuccess = function() { resolve(req.result); };
                 req.onerror = function() { reject(new Error("IDB open failed")); };
+                // A still-open tab on an older schema blocks the upgrade;
+                // reject instead of leaving the promise pending forever.
+                req.onblocked = function() { reject(new Error("IDB open blocked by another tab")); };
             });
         </script>
         <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />

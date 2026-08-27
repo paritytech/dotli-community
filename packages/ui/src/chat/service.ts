@@ -77,15 +77,14 @@ function emit(name: string, detail: unknown): void {
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
-/** Product-initiated room creation. Idempotent per (productId, roomId). */
+/** Product-initiated room creation. A repeat for an existing (productId,
+ *  roomId) refreshes the room's name and icon, so always notify. */
 export async function productCreateRoom(
   productId: string,
   room: { roomId: string; name: string; icon: string },
 ): Promise<"New" | "Exists"> {
   const status = await createRoom({ productId, ...room });
-  if (status === "New") {
-    emit(CHAT_ROOMS_CHANGED_EVENT, { productId });
-  }
+  emit(CHAT_ROOMS_CHANGED_EVENT, { productId });
   return status;
 }
 
@@ -113,17 +112,22 @@ export async function productPostMessage(
 }
 
 /**
- * User-authored text message from the chat panel. Persists locally first,
- * then publishes a `MessagePosted` action into the product's
- * `chat.action_subscribe` stream. The publish can fail independently of
- * persistence (no live Chat connection, logged out); callers surface that
- * without losing the stored message.
+ * User-authored text message from the chat panel. Requires a live Chat
+ * connection up front, so a message that provably cannot reach the product
+ * is never stored looking sent. After that it persists locally, then
+ * publishes a `MessagePosted` action into the product's
+ * `chat.action_subscribe` stream; a late publish failure (denied, worker
+ * gone mid-call) surfaces to the caller without losing the stored message.
  */
 export async function userPostMessage(
   productId: string,
   roomId: string,
   text: string,
 ): Promise<void> {
+  const connection = connections.get(productId);
+  if (connection === undefined) {
+    throw new Error("Chat is not connected for this product");
+  }
   const content: ChatMessageContent = { tag: "Text", value: { text } };
   await appendMessage({
     productId,
@@ -138,10 +142,6 @@ export async function userPostMessage(
     roomId,
     author: "user",
   } satisfies ChatMessageEventDetail);
-  const connection = connections.get(productId);
-  if (connection === undefined) {
-    throw new Error("Chat is not connected for this product");
-  }
   await connection.publish({
     roomId,
     peer: "user",
