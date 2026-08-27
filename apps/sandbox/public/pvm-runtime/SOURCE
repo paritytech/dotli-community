@@ -1,6 +1,6 @@
 Epoca PolkaVM browser runtime
 Source repository: https://github.com/paritytech/epoca
-Source commit: d2b3757d80aef8eeeab1e90c7d5f3fc3783cc91c
+Source commit: 512f9294169caf630c4b2f83a3ea964552d035bc
 Source branch: https://github.com/paritytech/epoca/tree/feat/app-manifest-v2
 Originating browser runtime: https://github.com/paritytech/epoca/pull/338
 
@@ -18,6 +18,5 @@ Local adaptation:
 - The worker entry reports translation, compilation, startup, and update timing
   metrics and returns translated Wasm bytes for the sandbox's digest-keyed
   IndexedDB cache.
-- Non-framebuffer profiles use the bounded Epoca interpreter because the
-  current PVM-to-Wasm translator does not yet compile the egui guest and does
-  not lower the WebGPU Raster imports.
+- The translated runtime implements the bounded Tri2D and WebGPU Raster
+  hostcalls while retaining the interpreter as a guarded fallback.
