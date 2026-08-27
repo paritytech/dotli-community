@@ -21,6 +21,7 @@ import type {
 import {
   appendMessage,
   createRoom,
+  latestMessageTimestamps,
   listBots,
   listMessages,
   listRooms,
@@ -205,6 +206,13 @@ export async function registerBot(
 /** Registered bots of one product, registration order. */
 export function chatBots(productId: string): Promise<ChatBotRecord[]> {
   return listBots(productId);
+}
+
+/** Latest message timestamp per room, for contact-list ordering. */
+export function chatLatestMessageTimes(
+  productId: string,
+): Promise<Map<string, number>> {
+  return latestMessageTimestamps(productId);
 }
 
 /** Rooms of one product, creation order. */

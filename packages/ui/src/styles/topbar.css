@@ -1412,6 +1412,12 @@
 .chat-room-item:hover {
   background: rgba(255, 255, 255, 0.06);
 }
+.chat-room-item-bot {
+  cursor: default;
+}
+.chat-room-item-bot:hover {
+  background: transparent;
+}
 .chat-room-icon {
   flex-shrink: 0;
   width: 28px;
@@ -1462,40 +1468,6 @@
 }
 .chat-msg-user {
   justify-content: flex-end;
-}
-.chat-msg-sender {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-}
-.chat-msg-sender:first-child {
-  margin-top: 0;
-}
-.chat-msg-sender-icon {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: rgba(255, 255, 255, 0.08);
-}
-.chat-msg-sender-icon-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 0.58rem;
-  font-weight: 600;
-}
-.chat-msg-sender-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.7rem;
-  font-weight: 600;
 }
 .chat-msg-bubble {
   max-width: 85%;

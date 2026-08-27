@@ -21,6 +21,7 @@ import {
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
   chatBots,
+  chatLatestMessageTimes,
   chatMessages,
   chatRooms,
   userPostMessage,
@@ -293,7 +294,7 @@ function renderMessage(record: ChatMessageRecord): HTMLElement {
   }
   const time = document.createElement("time");
   time.className = "chat-msg-time";
-  time.dataset["timestamp"] = String(record.timestamp);
+  time.dataset.timestamp = String(record.timestamp);
   time.textContent = relativeTime(record.timestamp, Date.now());
   time.title = new Date(record.timestamp).toLocaleString();
   bubble.appendChild(time);
@@ -311,7 +312,7 @@ function refreshTimestamps(): void {
   for (const time of el.messages.querySelectorAll<HTMLElement>(
     "time.chat-msg-time",
   )) {
-    const timestamp = Number(time.dataset["timestamp"]);
+    const timestamp = Number(time.dataset.timestamp);
     if (Number.isFinite(timestamp)) {
       time.textContent = relativeTime(timestamp, now);
     }
@@ -363,26 +364,55 @@ function renderContactIcon(
   return img;
 }
 
-function renderRoomIcon(room: ChatRoomRecord): HTMLElement {
-  return renderContactIcon(room.name, room.icon, "chat-room-icon");
+/** One list entry: a room, or a registered bot shown as a contact. */
+interface ContactEntry {
+  kind: "room" | "bot";
+  name: string;
+  icon: string;
+  createdAt: number;
+  // null when the entry has no messages: bots always, rooms until the
+  // first post. Message-less contacts sort to the top of the list.
+  lastMessageAt: number | null;
+  room?: ChatRoomRecord;
 }
 
-/** Avatar + name line above a run of product messages, shown when the
- *  product registered a single bot identity to speak as. */
-function renderSenderLine(bot: ChatBotRecord): HTMLElement {
-  const line = document.createElement("div");
-  line.className = "chat-msg-sender";
-  line.appendChild(
-    renderContactIcon(bot.name, bot.icon, "chat-msg-sender-icon"),
-  );
-  const name = document.createElement("span");
-  name.className = "chat-msg-sender-name";
-  name.textContent = bot.name;
-  line.appendChild(name);
-  return line;
+function contactEntries(
+  rooms: ChatRoomRecord[],
+  bots: ChatBotRecord[],
+  lastMessageTimes: Map<string, number>,
+): ContactEntry[] {
+  const entries: ContactEntry[] = [
+    ...rooms.map((room) => ({
+      kind: "room" as const,
+      name: room.name,
+      icon: room.icon,
+      createdAt: room.createdAt,
+      lastMessageAt: lastMessageTimes.get(room.roomId) ?? null,
+      room,
+    })),
+    ...bots.map((bot) => ({
+      kind: "bot" as const,
+      name: bot.name,
+      icon: bot.icon,
+      createdAt: bot.createdAt,
+      lastMessageAt: null,
+    })),
+  ];
+  return entries.sort((a, b) => {
+    if (a.lastMessageAt === null && b.lastMessageAt === null) {
+      return b.createdAt - a.createdAt;
+    }
+    if (a.lastMessageAt === null) {
+      return -1;
+    }
+    if (b.lastMessageAt === null) {
+      return 1;
+    }
+    return b.lastMessageAt - a.lastMessageAt;
+  });
 }
 
-function renderRoomList(rooms: ChatRoomRecord[]): void {
+function renderContactList(entries: ContactEntry[]): void {
   if (el === null) {
     return;
   }
@@ -394,16 +424,31 @@ function renderRoomList(rooms: ChatRoomRecord[]): void {
   el.hint.hidden = true;
   el.rooms.hidden = false;
   el.rooms.replaceChildren(
-    ...rooms.map((room) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "chat-room-item";
+    ...entries.map((entry) => {
+      // Bots are display-only contacts: the wire has no bot conversation
+      // to open, so their rows are inert.
+      const row = document.createElement(
+        entry.kind === "room" ? "button" : "div",
+      );
+      row.className =
+        entry.kind === "room"
+          ? "chat-room-item"
+          : "chat-room-item chat-room-item-bot";
       row.setAttribute("role", "listitem");
-      row.appendChild(renderRoomIcon(room));
+      row.appendChild(
+        renderContactIcon(entry.name, entry.icon, "chat-room-icon"),
+      );
       const name = document.createElement("span");
       name.className = "chat-room-name";
-      name.textContent = room.name;
+      name.textContent = entry.name;
       row.appendChild(name);
+      const room = entry.room;
+      if (room === undefined) {
+        return row;
+      }
+      if (row instanceof HTMLButtonElement) {
+        row.type = "button";
+      }
       const unread = unreadByRoom.get(room.roomId) ?? 0;
       if (unread > 0) {
         const badge = document.createElement("span");
@@ -447,45 +492,14 @@ async function renderConversation(
   el.hint.hidden = composerError === null;
   el.hint.textContent = composerError ?? "";
 
-  const [records, bots] = await Promise.all([
-    chatMessages(productId, room.roomId),
-    chatBots(productId),
-  ]);
+  const records = await chatMessages(productId, room.roomId);
   // The active room may have changed while messages loaded, or a newer
   // render may already have painted fresher records.
   if (activeRoomId !== room.roomId || pass !== renderPass) {
     return;
   }
   disposeCustomRenders();
-  // Wire messages carry no bot attribution, so each product message is
-  // credited to the bot most recently registered when it was posted.
-  const senderFor = (timestamp: number): ChatBotRecord | null => {
-    let match: ChatBotRecord | null = null;
-    for (const bot of bots) {
-      if (bot.createdAt <= timestamp) {
-        match = bot;
-      }
-    }
-    return match;
-  };
-  const nodes: HTMLElement[] = [];
-  let prevAuthor: ChatMessageRecord["author"] | null = null;
-  let prevBotId: string | null = null;
-  for (const record of records) {
-    if (record.author === "product") {
-      const sender = senderFor(record.timestamp);
-      if (
-        sender !== null &&
-        (prevAuthor !== "product" || sender.botId !== prevBotId)
-      ) {
-        nodes.push(renderSenderLine(sender));
-      }
-      prevBotId = sender?.botId ?? null;
-    }
-    nodes.push(renderMessage(record));
-    prevAuthor = record.author;
-  }
-  el.messages.replaceChildren(...nodes);
+  el.messages.replaceChildren(...records.map(renderMessage));
   el.messages.scrollTop = el.messages.scrollHeight;
   if (focusComposerOnRender) {
     focusComposerOnRender = false;
@@ -505,11 +519,15 @@ async function renderPanel(): Promise<void> {
   el.title.textContent =
     getActiveRootManifest()?.displayName ?? currentLabel ?? "Chat";
 
-  const rooms = await chatRooms(productId);
+  const [rooms, bots, lastMessageTimes] = await Promise.all([
+    chatRooms(productId),
+    chatBots(productId),
+    chatLatestMessageTimes(productId),
+  ]);
   if (pass !== renderPass) {
     return;
   }
-  if (rooms.length === 0) {
+  if (rooms.length === 0 && bots.length === 0) {
     activeRoomId = null;
     el.back.hidden = true;
     el.rooms.hidden = true;
@@ -527,7 +545,7 @@ async function renderPanel(): Promise<void> {
   const activeRoom = rooms.find((r) => r.roomId === activeRoomId);
   if (activeRoom === undefined) {
     activeRoomId = null;
-    renderRoomList(rooms);
+    renderContactList(contactEntries(rooms, bots, lastMessageTimes));
     return;
   }
   await renderConversation(productId, activeRoom, pass);

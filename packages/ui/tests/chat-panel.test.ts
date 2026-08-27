@@ -145,7 +145,7 @@ describe("chat panel", () => {
       icon: "data:image/png;base64,AAAA",
     });
     // Room order ties on same-millisecond createdAt stamps; let the clock
-    // tick so "Support" reliably sorts first.
+    // tick so "General" reliably sorts first (newest created, no messages).
     await new Promise((resolve) => setTimeout(resolve, 2));
     await service.productCreateRoom(productId, {
       roomId: "general",
@@ -163,16 +163,16 @@ describe("chat panel", () => {
     const items =
       document.querySelectorAll<HTMLButtonElement>(".chat-room-item");
     expect(items).toHaveLength(2);
-    expect(items[0].textContent).toContain("Support");
+    expect(items[1].textContent).toContain("Support");
     expect(
-      items[0].querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
+      items[1].querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
     ).toBe("data:image/png;base64,AAAA");
     // A room without an icon falls back to its initial.
     expect(
-      items[1].querySelector(".chat-room-icon-fallback")?.textContent,
+      items[0].querySelector(".chat-room-icon-fallback")?.textContent,
     ).toBe("G");
 
-    items[0].click();
+    items[1].click();
     await settle(() => byId("chat-panel-rooms").hidden);
     expect(byId("chat-panel-rooms").hidden).toBe(true);
     expect(byId("chat-panel-title").textContent).toBe("Support");
@@ -265,12 +265,34 @@ describe("chat panel", () => {
     expect(byId("chat-panel-messages").textContent).toContain("hello back");
   });
 
-  it("As a user, a product run is labeled with the single registered bot identity", async () => {
+  it("As a user, bots and rooms share one list ordered by last message time", async () => {
     const { panel, service } = await loadChatModules();
     panel.initChatPanel();
-    loadProduct("botfaced");
-    const productId = labelToProductId("botfaced");
+    loadProduct("contacts");
+    const productId = labelToProductId("contacts");
 
+    // Creation and post stamps tie within one millisecond otherwise, and
+    // the list orders contacts against those stamps.
+    const tick = (): Promise<void> =>
+      new Promise((resolve) => setTimeout(resolve, 2));
+    await service.productCreateRoom(productId, {
+      roomId: "first",
+      name: "First",
+      icon: "",
+    });
+    await tick();
+    await service.productCreateRoom(productId, {
+      roomId: "second",
+      name: "Second",
+      icon: "",
+    });
+    await tick();
+    await service.productCreateRoom(productId, {
+      roomId: "idle",
+      name: "Idle",
+      icon: "",
+    });
+    await tick();
     expect(
       await service.registerBot(productId, {
         botId: "echo",
@@ -278,83 +300,45 @@ describe("chat panel", () => {
         icon: "data:image/png;base64,AAAA",
       }),
     ).toBe("New");
-    await service.productCreateRoom(productId, {
-      roomId: "main",
-      name: "Main",
-      icon: "",
-    });
-    await service.productPostMessage(productId, "main", {
+    await tick();
+    await service.productPostMessage(productId, "second", {
       tag: "Text",
-      value: { text: "one" },
+      value: { text: "older" },
     });
-    await service.productPostMessage(productId, "main", {
+    await tick();
+    await service.productPostMessage(productId, "first", {
       tag: "Text",
-      value: { text: "two" },
+      value: { text: "newer" },
     });
 
     byId("chat-button").click();
-    await settle(() => document.querySelector(".chat-room-item") !== null);
-    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-    await settle(() => document.querySelector(".chat-msg-sender") !== null);
-
-    // One sender line labels the consecutive product-message run.
-    const senders = document.querySelectorAll(".chat-msg-sender");
-    expect(senders).toHaveLength(1);
-    expect(senders[0].textContent).toContain("Echo Bot");
-    expect(
-      senders[0].querySelector<HTMLImageElement>("img.chat-msg-sender-icon")
-        ?.src,
-    ).toBe("data:image/png;base64,AAAA");
-  });
-
-  it("As a user, each product message is credited to the newest bot at its post time", async () => {
-    const { panel, service } = await loadChatModules();
-    panel.initChatPanel();
-    loadProduct("twobots");
-    const productId = labelToProductId("twobots");
-
-    await service.productCreateRoom(productId, {
-      roomId: "main",
-      name: "Main",
-      icon: "",
-    });
-    // Registrations and posts land within one millisecond otherwise, and
-    // attribution orders bots against message timestamps.
-    const tick = (): Promise<void> =>
-      new Promise((resolve) => setTimeout(resolve, 2));
-    await service.productPostMessage(productId, "main", {
-      tag: "Text",
-      value: { text: "anonymous" },
-    });
-    await tick();
-    await service.registerBot(productId, { botId: "a", name: "A", icon: "" });
-    await tick();
-    await service.productPostMessage(productId, "main", {
-      tag: "Text",
-      value: { text: "from a" },
-    });
-    await tick();
-    await service.registerBot(productId, { botId: "b", name: "B", icon: "" });
-    await tick();
-    await service.productPostMessage(productId, "main", {
-      tag: "Text",
-      value: { text: "from b" },
-    });
-
-    byId("chat-button").click();
-    await settle(() => document.querySelector(".chat-room-item") !== null);
-    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
     await settle(
-      () => document.querySelectorAll(".chat-msg-sender").length === 2,
+      () => document.querySelectorAll(".chat-room-item").length === 4,
     );
 
-    // The pre-registration message stays unlabeled; the later two switch
-    // identity where the newest registration changes.
-    const senders = document.querySelectorAll(".chat-msg-sender");
-    expect(senders[0].textContent).toContain("A");
-    expect(senders[1].textContent).toContain("B");
-    const text = byId("chat-panel-messages").textContent ?? "";
-    expect(text.indexOf("anonymous")).toBeLessThan(text.indexOf("A"));
+    // Message-less contacts first (newest created leading), then rooms by
+    // last message, newest first.
+    const items = [
+      ...document.querySelectorAll<HTMLElement>(".chat-room-item"),
+    ];
+    expect(
+      items.map((row) => row.querySelector(".chat-room-name")?.textContent),
+    ).toEqual(["Echo Bot", "Idle", "First", "Second"]);
+
+    // The bot renders as an inert contact with its registered icon.
+    const botRow = items[0];
+    expect(botRow.tagName).toBe("DIV");
+    expect(botRow.classList.contains("chat-room-item-bot")).toBe(true);
+    expect(
+      botRow.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
+    ).toBe("data:image/png;base64,AAAA");
+    botRow.click();
+    expect(byId("chat-panel-rooms").hidden).toBe(false);
+
+    // Messages carry no sender label above them any more.
+    items[2].click();
+    await settle(() => byId("chat-panel-rooms").hidden);
+    expect(document.querySelector(".chat-msg-sender")).toBeNull();
   });
 
   it("As a user, custom messages render live trees and taps reach the product", async () => {
@@ -556,8 +540,9 @@ describe("chat panel", () => {
     const backBadges = [
       ...document.querySelectorAll<HTMLButtonElement>(".chat-room-item"),
     ].map((row) => row.querySelector(".chat-room-unread")?.textContent ?? "");
-    // Busy was read; Quiet accumulated one while it was off screen.
-    expect(backBadges).toEqual(["", "1"]);
+    // Quiet holds the newest message so it lists first, carrying the one
+    // unread it accumulated while Busy was on screen.
+    expect(backBadges).toEqual(["1", ""]);
 
     // Closing the panel surfaces the remaining unread on the topbar.
     byId("chat-panel-close").click();

@@ -592,19 +592,13 @@
 [data-theme="light"] .chat-room-item:hover {
   background: rgba(0, 0, 0, 0.05);
 }
+[data-theme="light"] .chat-room-item-bot:hover {
+  background: transparent;
+}
 [data-theme="light"] .chat-room-icon {
   background: rgba(0, 0, 0, 0.06);
 }
 [data-theme="light"] .chat-room-icon-fallback {
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme="light"] .chat-msg-sender-icon {
-  background: rgba(0, 0, 0, 0.06);
-}
-[data-theme="light"] .chat-msg-sender-icon-fallback {
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme="light"] .chat-msg-sender-name {
   color: rgba(0, 0, 0, 0.55);
 }
 [data-theme="light"] .chat-msg-bubble {

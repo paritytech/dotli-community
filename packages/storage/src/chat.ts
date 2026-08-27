@@ -174,6 +174,28 @@ export async function appendMessage(message: NewChatMessage): Promise<number> {
   return seq as number;
 }
 
+/** Latest message timestamp per room of one product. */
+export async function latestMessageTimestamps(
+  productId: string,
+): Promise<Map<string, number>> {
+  const db = await getDb();
+  const index = db
+    .transaction(MESSAGE_STORE, "readonly")
+    .objectStore(MESSAGE_STORE)
+    .index(BY_ROOM);
+  const range = IDBKeyRange.bound([productId, ""], [productId, "￿"]);
+  const all = await requestAsPromise(
+    index.getAll(range) as IDBRequest<ChatMessageRecord[]>,
+  );
+  const latest = new Map<string, number>();
+  for (const message of all) {
+    if (message.timestamp > (latest.get(message.roomId) ?? 0)) {
+      latest.set(message.roomId, message.timestamp);
+    }
+  }
+  return latest;
+}
+
 /** Messages of one room in insertion order, capped at `limit` latest. */
 export async function listMessages(
   productId: string,
