@@ -4,6 +4,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { seedBackend } from "../functional/fixtures/settings";
+import type { Backend } from "../functional/fixtures/settings";
 
 const DOOM_URL = "http://doom.localhost:5173/";
 
@@ -45,10 +46,32 @@ async function readMetrics(canvas: Locator): Promise<DoomMetrics> {
   };
 }
 
-async function launchDoom(page: Page): Promise<void> {
-  await seedBackend(page, "rpc-gateway");
+async function launchDoom(
+  page: Page,
+  backend: Backend = "rpc-gateway",
+): Promise<void> {
+  await seedBackend(page, backend);
   await page.goto(DOOM_URL, { waitUntil: "domcontentloaded" });
 }
+
+test("doom.paseo receives its required App v2 manifest over smoldot", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await launchDoom(page, "smoldot-direct");
+
+  const productFrame = page.locator('iframe[src*="doom.app.localhost"]');
+  await expect(productFrame).toHaveAttribute("src", /[?&]executableManifest=/, {
+    timeout: 120_000,
+  });
+
+  const canvas = page
+    .frameLocator('iframe[src*="doom.app.localhost"]')
+    .locator("#dotli-pvm-canvas");
+  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    timeout: 60_000,
+  });
+});
 
 test("doom.paseo is playable through the real-time PVM to Wasm translator", async ({
   page,
