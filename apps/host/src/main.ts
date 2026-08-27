@@ -330,60 +330,50 @@ async function resolveAppExecutableManifest(
   return resolveExecutableManifestRemote(label, "app");
 }
 
-async function executableManifestText(
+async function loadAppExecutableManifest(
   label: string,
   chainBackend: Backend,
-): Promise<string | null> {
-  let timeoutId: NodeJS.Timeout | number | undefined;
+): Promise<ManifestResult<ExecutableManifest> | null> {
   try {
-    return await Promise.race([
-      resolveAppExecutableManifest(label, chainBackend).then((result) =>
-        result.kind === "ok" && result.value.kind === "app" ? result.raw : null,
-      ),
-      new Promise<null>((resolve) => {
-        timeoutId = setTimeout(() => {
-          log.warn(
-            `[dot.li manifest] executable preflight timed out for ${withActiveTld(label)}`,
-          );
-          resolve(null);
-        }, 1_500);
-      }),
-    ]);
+    // App manifest v2 is an execution contract, not optional metadata. Let the
+    // resolver's own transport timeout govern this read: replacing a slow
+    // response with `null` makes the sandbox reject valid PolkaVM packages as
+    // if their required external manifest did not exist.
+    return await resolveAppExecutableManifest(label, chainBackend);
   } catch (error: unknown) {
     log.warn(
-      `[dot.li manifest] executable preflight failed for ${withActiveTld(label)}: ${serializeError(error)}`,
+      `[dot.li manifest] executable manifest resolution failed for ${withActiveTld(label)}: ${serializeError(error)}`,
     );
     return null;
-  } finally {
-    clearTimeout(timeoutId);
   }
+}
+
+function executableManifestText(
+  result: ManifestResult<ExecutableManifest> | null,
+): string | null {
+  return result?.kind === "ok" && result.value.kind === "app"
+    ? result.raw
+    : null;
 }
 
 /**
  * Apply the product's branding from the root manifest at `<label>.dot`.
  *
- * Runs after the app iframe is rendered so a slow or absent manifest never
- * blocks first paint. The manifest itself is read through the user's
- * selected backend (smoldot or RPC). The icon bytes flow through the same
- * backend via `bitswapGet`, which dispatches through the protocol bridge.
+ * Runs after the app iframe is rendered. The executable manifest result is
+ * reused from the launch path; only cosmetic root metadata and icon bytes are
+ * fetched here, so branding never delays the application.
  */
 async function applyProductBranding(
   label: string,
   chainBackend: Backend,
+  appResult: ManifestResult<ExecutableManifest> | null,
 ): Promise<void> {
   let rootResult: ManifestResult<RootManifest>;
-  let appResult: ManifestResult<ExecutableManifest>;
   if (chainBackend === "rpc-gateway") {
     const mod = await import("@dotli/resolver/rpc-resolve");
-    [rootResult, appResult] = await Promise.all([
-      mod.resolveRootManifestViaRpc(label),
-      resolveAppExecutableManifest(label, chainBackend),
-    ]);
+    rootResult = await mod.resolveRootManifestViaRpc(label);
   } else {
-    [rootResult, appResult] = await Promise.all([
-      resolveRootManifestRemote(label),
-      resolveAppExecutableManifest(label, chainBackend),
-    ]);
+    rootResult = await resolveRootManifestRemote(label);
   }
   if (rootResult.kind === "ok") {
     const root = rootResult.value;
@@ -408,7 +398,7 @@ async function applyProductBranding(
       );
     }
   }
-  if (appResult.kind === "ok" && appResult.value.kind === "app") {
+  if (appResult?.kind === "ok" && appResult.value.kind === "app") {
     setActiveAppManifest({
       schemaVersion: appResult.value.$v,
       appVersion: appResult.value.appVersion,
@@ -1220,6 +1210,11 @@ async function main(): Promise<void> {
   setLoadingDomain(label);
   advancePhase(0);
   trackStatus(`Resolving ${withActiveTld(label)}`);
+  // Start the executable-manifest read alongside CID resolution. Cold
+  // smoldot startup can take several seconds, so this overlap preserves the
+  // loading path without misclassifying a slow required manifest as absent.
+  // The same result is reused for branding to avoid a second storage read.
+  const appManifestPromise = loadAppExecutableManifest(label, chainBackend);
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1239,6 +1234,7 @@ async function main(): Promise<void> {
       );
       // Wrap the warm-path render in a span so its duration is queryable
       // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
+      const appManifestResult = await appManifestPromise;
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
         const { renderAppSubdomain } = await renderChunkPromise;
@@ -1246,15 +1242,17 @@ async function main(): Promise<void> {
         await renderAppSubdomain(
           cachedCid,
           label,
-          await executableManifestText(label, chainBackend),
+          executableManifestText(appManifestResult),
         );
       });
       void recordRecentLabel(label);
-      void applyProductBranding(label, chainBackend).catch((err: unknown) => {
-        log.warn(
-          `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      void applyProductBranding(label, chainBackend, appManifestResult).catch(
+        (err: unknown) => {
+          log.warn(
+            `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        },
+      );
       performance.mark("dotli:main:end");
       log.warn(`[dot.li perf] === TOTAL (fast path): ${dur(T0)} ===`);
       emitDotliDebugEvent({
@@ -1412,19 +1410,22 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
+    const appManifestResult = await appManifestPromise;
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(
       cid,
       label,
-      await executableManifestText(label, chainBackend),
+      executableManifestText(appManifestResult),
     );
     void recordRecentLabel(label);
-    void applyProductBranding(label, chainBackend).catch((err: unknown) => {
-      log.warn(
-        `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    void applyProductBranding(label, chainBackend, appManifestResult).catch(
+      (err: unknown) => {
+        log.warn(
+          `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      },
+    );
 
     m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, "millisecond", {
       outcome: "ok",
