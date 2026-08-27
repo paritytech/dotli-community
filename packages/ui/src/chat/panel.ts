@@ -364,16 +364,18 @@ function renderContactIcon(
   return img;
 }
 
-/** One list entry: a room, or a registered bot shown as a contact. */
+/** One list entry: a room, or a registered bot. Both open a conversation;
+ *  a bot's is keyed by its botId, which the product uses as the roomId when
+ *  it posts into or reads from that conversation. */
 interface ContactEntry {
   kind: "room" | "bot";
+  id: string;
   name: string;
   icon: string;
   createdAt: number;
-  // null when the entry has no messages: bots always, rooms until the
-  // first post. Message-less contacts sort to the top of the list.
+  // null until the conversation has messages; the list then falls back to
+  // creation time, so one recency order covers active and new contacts.
   lastMessageAt: number | null;
-  room?: ChatRoomRecord;
 }
 
 function contactEntries(
@@ -384,32 +386,24 @@ function contactEntries(
   const entries: ContactEntry[] = [
     ...rooms.map((room) => ({
       kind: "room" as const,
+      id: room.roomId,
       name: room.name,
       icon: room.icon,
       createdAt: room.createdAt,
       lastMessageAt: lastMessageTimes.get(room.roomId) ?? null,
-      room,
     })),
     ...bots.map((bot) => ({
       kind: "bot" as const,
+      id: bot.botId,
       name: bot.name,
       icon: bot.icon,
       createdAt: bot.createdAt,
-      lastMessageAt: null,
+      lastMessageAt: lastMessageTimes.get(bot.botId) ?? null,
     })),
   ];
-  return entries.sort((a, b) => {
-    if (a.lastMessageAt === null && b.lastMessageAt === null) {
-      return b.createdAt - a.createdAt;
-    }
-    if (a.lastMessageAt === null) {
-      return -1;
-    }
-    if (b.lastMessageAt === null) {
-      return 1;
-    }
-    return b.lastMessageAt - a.lastMessageAt;
-  });
+  const recency = (entry: ContactEntry): number =>
+    entry.lastMessageAt ?? entry.createdAt;
+  return entries.sort((a, b) => recency(b) - recency(a));
 }
 
 function renderContactList(entries: ContactEntry[]): void {
@@ -425,15 +419,9 @@ function renderContactList(entries: ContactEntry[]): void {
   el.rooms.hidden = false;
   el.rooms.replaceChildren(
     ...entries.map((entry) => {
-      // Bots are display-only contacts: the wire has no bot conversation
-      // to open, so their rows are inert.
-      const row = document.createElement(
-        entry.kind === "room" ? "button" : "div",
-      );
-      row.className =
-        entry.kind === "room"
-          ? "chat-room-item"
-          : "chat-room-item chat-room-item-bot";
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "chat-room-item";
       row.setAttribute("role", "listitem");
       row.appendChild(
         renderContactIcon(entry.name, entry.icon, "chat-room-icon"),
@@ -442,14 +430,7 @@ function renderContactList(entries: ContactEntry[]): void {
       name.className = "chat-room-name";
       name.textContent = entry.name;
       row.appendChild(name);
-      const room = entry.room;
-      if (room === undefined) {
-        return row;
-      }
-      if (row instanceof HTMLButtonElement) {
-        row.type = "button";
-      }
-      const unread = unreadByRoom.get(room.roomId) ?? 0;
+      const unread = unreadByRoom.get(entry.id) ?? 0;
       if (unread > 0) {
         const badge = document.createElement("span");
         badge.className = "chat-room-unread";
@@ -461,7 +442,7 @@ function renderContactList(entries: ContactEntry[]): void {
         row.appendChild(badge);
       }
       row.addEventListener("click", () => {
-        activeRoomId = room.roomId;
+        activeRoomId = entry.id;
         focusComposerOnRender = true;
         scheduleRender();
       });
@@ -472,17 +453,17 @@ function renderContactList(entries: ContactEntry[]): void {
 
 async function renderConversation(
   productId: string,
-  room: ChatRoomRecord,
+  contact: ContactEntry,
   pass: number,
 ): Promise<void> {
   if (el === null) {
     return;
   }
   // The conversation is on screen, so its messages count as seen.
-  if (unreadByRoom.delete(room.roomId)) {
+  if (unreadByRoom.delete(contact.id)) {
     updateButton();
   }
-  el.title.textContent = room.name;
+  el.title.textContent = contact.name;
   el.back.hidden = false;
   el.rooms.hidden = true;
   el.rooms.replaceChildren();
@@ -492,10 +473,10 @@ async function renderConversation(
   el.hint.hidden = composerError === null;
   el.hint.textContent = composerError ?? "";
 
-  const records = await chatMessages(productId, room.roomId);
-  // The active room may have changed while messages loaded, or a newer
-  // render may already have painted fresher records.
-  if (activeRoomId !== room.roomId || pass !== renderPass) {
+  const records = await chatMessages(productId, contact.id);
+  // The active conversation may have changed while messages loaded, or a
+  // newer render may already have painted fresher records.
+  if (activeRoomId !== contact.id || pass !== renderPass) {
     return;
   }
   disposeCustomRenders();
@@ -542,13 +523,14 @@ async function renderPanel(): Promise<void> {
     el.input.disabled = true;
     return;
   }
-  const activeRoom = rooms.find((r) => r.roomId === activeRoomId);
-  if (activeRoom === undefined) {
+  const entries = contactEntries(rooms, bots, lastMessageTimes);
+  const activeContact = entries.find((entry) => entry.id === activeRoomId);
+  if (activeContact === undefined) {
     activeRoomId = null;
-    renderContactList(contactEntries(rooms, bots, lastMessageTimes));
+    renderContactList(entries);
     return;
   }
-  await renderConversation(productId, activeRoom, pass);
+  await renderConversation(productId, activeContact, pass);
 }
 
 function setPanelOpen(next: boolean): void {

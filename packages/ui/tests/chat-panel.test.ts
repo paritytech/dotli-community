@@ -316,29 +316,47 @@ describe("chat panel", () => {
       () => document.querySelectorAll(".chat-room-item").length === 4,
     );
 
-    // Message-less contacts first (newest created leading), then rooms by
-    // last message, newest first.
+    // One recency order across rooms and bots: last message time, falling
+    // back to creation/registration time for message-less contacts.
     const items = [
       ...document.querySelectorAll<HTMLElement>(".chat-room-item"),
     ];
     expect(
       items.map((row) => row.querySelector(".chat-room-name")?.textContent),
-    ).toEqual(["Echo Bot", "Idle", "First", "Second"]);
+    ).toEqual(["First", "Second", "Echo Bot", "Idle"]);
 
-    // The bot renders as an inert contact with its registered icon.
-    const botRow = items[0];
-    expect(botRow.tagName).toBe("DIV");
-    expect(botRow.classList.contains("chat-room-item-bot")).toBe(true);
+    // The bot lists with its registered icon and opens like a room.
+    const botRow = items[2];
     expect(
       botRow.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
     ).toBe("data:image/png;base64,AAAA");
     botRow.click();
-    expect(byId("chat-panel-rooms").hidden).toBe(false);
-
-    // Messages carry no sender label above them any more.
-    items[2].click();
     await settle(() => byId("chat-panel-rooms").hidden);
+    expect(byId("chat-panel-title").textContent).toBe("Echo Bot");
+    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
+
+    // The bot messages the user through its own conversation: the product
+    // posts with the botId as the roomId.
+    await service.productPostMessage(productId, "echo", {
+      tag: "Text",
+      value: { text: "hi, I am the bot" },
+    });
+    await settle(
+      () =>
+        byId("chat-panel-messages").textContent?.includes(
+          "hi, I am the bot",
+        ) === true,
+    );
+    // Messages carry no sender label above them.
     expect(document.querySelector(".chat-msg-sender")).toBeNull();
+
+    // With the newest message, the bot now leads the list.
+    byId("chat-panel-back").click();
+    await settle(() => !byId("chat-panel-rooms").hidden);
+    const reordered = [
+      ...document.querySelectorAll<HTMLElement>(".chat-room-item"),
+    ].map((row) => row.querySelector(".chat-room-name")?.textContent);
+    expect(reordered).toEqual(["Echo Bot", "First", "Second", "Idle"]);
   });
 
   it("As a user, custom messages render live trees and taps reach the product", async () => {

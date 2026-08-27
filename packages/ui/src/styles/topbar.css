@@ -1412,12 +1412,6 @@
 .chat-room-item:hover {
   background: rgba(255, 255, 255, 0.06);
 }
-.chat-room-item-bot {
-  cursor: default;
-}
-.chat-room-item-bot:hover {
-  background: transparent;
-}
 .chat-room-icon {
   flex-shrink: 0;
   width: 28px;
