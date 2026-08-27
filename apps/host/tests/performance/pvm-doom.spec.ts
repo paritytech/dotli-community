@@ -7,6 +7,8 @@ import { seedBackend } from "../functional/fixtures/settings";
 import type { Backend } from "../functional/fixtures/settings";
 
 const DOOM_URL = "http://doom.localhost:5173/";
+const QUAKE_URL = "http://quake.localhost:5173/";
+const DUKE_URL = "http://duke.localhost:5173/";
 
 interface DoomMetrics {
   backend: string | null;
@@ -71,6 +73,55 @@ test("doom.paseo receives its required App v2 manifest over smoldot", async ({
   await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
     timeout: 60_000,
   });
+});
+
+test("quake.paseo advances frames through the translated runtime", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await seedBackend(page, "smoldot-direct");
+  await page.goto(QUAKE_URL, { waitUntil: "domcontentloaded" });
+
+  const canvas = page
+    .frameLocator('iframe[src*="quake.app.localhost"]')
+    .locator("#dotli-pvm-canvas");
+  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    timeout: 120_000,
+  });
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")), {
+      timeout: 30_000,
+    })
+    .toBeGreaterThan(120);
+  expect(await canvas.getAttribute("data-pvm-backend")).toBe("compiler");
+});
+
+test("duke.paseo continues across bounded translated hostcall slices", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await seedBackend(page, "smoldot-direct");
+  await page.goto(DUKE_URL, { waitUntil: "domcontentloaded" });
+
+  const product = page.frameLocator('iframe[src*="duke.app.localhost"]');
+  const canvas = product.locator("#dotli-pvm-canvas");
+  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    timeout: 120_000,
+  });
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-pvm-updates")), {
+      timeout: 30_000,
+    })
+    .toBeGreaterThan(120);
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")), {
+      timeout: 30_000,
+    })
+    .toBeGreaterThan(120);
+  await expect(product.locator("body")).not.toContainText(
+    "exceeded hostcall budget",
+  );
+  expect(await canvas.getAttribute("data-pvm-backend")).toBe("compiler");
 });
 
 test("doom.paseo is playable through the real-time PVM to Wasm translator", async ({
