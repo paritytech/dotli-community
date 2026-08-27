@@ -362,7 +362,11 @@ export function initBridgeEventListeners(
       // a second login while one is pairing). Synthesize a state only for
       // failures the core never saw: host boot, encode, transport errors.
       if (!(error instanceof LoginRequestError)) {
-        dispatchAuthState({ tag: "LoginFailed", reason: message });
+        dispatchAuthState({
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: message,
+        });
       }
     });
   });
