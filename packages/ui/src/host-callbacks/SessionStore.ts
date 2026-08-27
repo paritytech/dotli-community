@@ -258,16 +258,19 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
+    case "AuthSession":
+      return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
+    // Peers address this device by the public counterpart, so the slot name
+    // must not move with the session.
     case "DeviceEncryptionKey":
       return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
-    // Keyed per (session, product) so each product keeps its own slot and a
-    // persist stays a single write instead of a session-wide read-modify-write.
+    // Keyed by session and product together: pairing again re-asks the
+    // Account Holder, so one session's answer must not be read back for
+    // another.
     case "ProductSubtree":
       return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
-    case "AuthSession":
-      return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
   }
 }
 

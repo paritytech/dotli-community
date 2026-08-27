@@ -529,7 +529,7 @@ describe("topbar login cancellation", () => {
     );
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
-        detail: { tag: "LoginFailed", reason: "Host failure" },
+        detail: { tag: "LoginFailed", kind: "Other", reason: "Host failure" },
       }),
     );
 
@@ -547,7 +547,7 @@ describe("topbar login cancellation", () => {
     );
   });
 
-  it("explains statement-store slot exhaustion in the login failure view", async () => {
+  it("explains statement-store slot exhaustion from the typed failure kind", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
     initTopBar();
@@ -556,16 +556,39 @@ describe("topbar login cancellation", () => {
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
           tag: "LoginFailed",
-          reason: "no free statement-store slot for device registration",
+          kind: "NoFreeAllowanceSlots",
+          // Wallet wording, which this workspace does not control. The core
+          // classifies it; matching the prose here would not.
+          reason: "No free slots available (limit=8)",
         },
       }),
     );
 
     const modalText = document.getElementById("auth-modal-qr")?.textContent;
     expect(modalText).toContain("No Statement Store slots left");
-    expect(modalText).toContain(
-      "no free statement-store slot for device registration",
+    expect(modalText).toContain("No free slots available (limit=8)");
+    // Retrying cannot succeed until the allowance period rolls over, so the
+    // view must not offer it as the way forward.
+    expect(modalText).not.toContain("Retry");
+  });
+
+  it("keeps the retry affordance for login failures that are worth retrying", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "transport closed before the wallet answered",
+        },
+      }),
     );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("transport closed before the wallet answered");
     expect(modalText).toContain("Retry");
   });
 
@@ -578,6 +601,7 @@ describe("topbar login cancellation", () => {
       new CustomEvent("dotli:truapi-auth-state", {
         detail: {
           tag: "LoginFailed",
+          kind: "Other",
           reason: "submit RPC error: Invalid Transaction",
         },
       }),

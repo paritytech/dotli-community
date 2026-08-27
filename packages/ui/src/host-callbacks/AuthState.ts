@@ -1,4 +1,8 @@
-import type { AuthPresenter, AuthState } from "@parity/truapi-host";
+import type {
+  AuthPresenter,
+  AuthState,
+  LoginFailureKind,
+} from "@parity/truapi-host";
 import {
   toSessionUiState,
   writeUiStateCache,
@@ -21,7 +25,7 @@ export type DotliAuthState =
     }
   | { tag: "Authenticating" }
   | { tag: "Connected"; session: TruapiSessionUiState }
-  | { tag: "LoginFailed"; reason: string };
+  | { tag: "LoginFailed"; kind: LoginFailureKind; reason: string };
 
 /** Dispatch a `dotli:truapi-auth-state` event for the topbar to render. */
 export function dispatchAuthState(state: DotliAuthState): void {
@@ -69,7 +73,11 @@ export function createAuthStateChanged(
         break;
       }
       case "LoginFailed": {
-        dispatchAuthState({ tag: "LoginFailed", reason: state.value.reason });
+        dispatchAuthState({
+          tag: "LoginFailed",
+          kind: state.value.kind,
+          reason: state.value.reason,
+        });
         break;
       }
     }

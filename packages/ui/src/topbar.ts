@@ -47,6 +47,7 @@ import {
   setPermissionStatus,
   type PermissionStatus,
 } from "./permissions";
+import type { LoginFailureKind } from "@parity/truapi-host";
 import { initChatPanel } from "./chat/panel";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
@@ -481,7 +482,7 @@ function renderAuthState(state: DotliAuthState): void {
       break;
     case "LoginFailed":
       openModal();
-      renderError(state.reason);
+      renderError(state.reason, state.kind);
       break;
   }
 }
@@ -641,20 +642,24 @@ function renderAuthenticating(): void {
 const PENDING_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
+interface FriendlyAuthError {
+  title: string;
+  subtitle: string;
+  detail?: string;
+}
+
+function exhaustedAllowanceError(message: string): FriendlyAuthError {
+  return {
+    title: "No Statement Store slots left",
+    subtitle:
+      "Polkadot Mobile has no free slot to register this browser. Try again once the current allowance period rolls over.",
+    detail: message,
+  };
+}
+
 // Recognize known wallet-side SSO failures and return friendly copy, or null to
 // fall back to the raw error.
-function friendlyAuthError(
-  message: string,
-): { title: string; subtitle: string; detail?: string } | null {
-  if (
-    message.includes("no free statement-store slot for device registration")
-  ) {
-    return {
-      title: "No Statement Store slots left",
-      subtitle: "Polkadot Mobile could not register this browser as a device.",
-      detail: "no free statement-store slot for device registration",
-    };
-  }
+function friendlyAuthError(message: string): FriendlyAuthError | null {
   if (message.includes("Invalid Transaction")) {
     return {
       title: "Statement Store transaction rejected",
@@ -680,11 +685,14 @@ function friendlyAuthError(
   return null;
 }
 
-function renderError(message: string): void {
+function renderError(message: string, kind: LoginFailureKind): void {
   const container = document.createElement("div");
   container.className = "auth-modal-error-view";
 
-  const friendly = friendlyAuthError(message);
+  const exhaustedPeriod = kind === "NoFreeAllowanceSlots";
+  const friendly = exhaustedPeriod
+    ? exhaustedAllowanceError(message)
+    : friendlyAuthError(message);
   if (friendly) {
     const icon = document.createElement("div");
     icon.className = "auth-modal-pending-icon";
@@ -714,14 +722,16 @@ function renderError(message: string): void {
     container.appendChild(msg);
   }
 
-  const retry = document.createElement("button");
-  retry.className = "auth-modal-retry";
-  retry.textContent = "Retry";
-  retry.addEventListener("click", () => {
-    openModal();
-    requestTruapiLogin();
-  });
-  container.appendChild(retry);
+  if (!exhaustedPeriod) {
+    const retry = document.createElement("button");
+    retry.className = "auth-modal-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => {
+      openModal();
+      requestTruapiLogin();
+    });
+    container.appendChild(retry);
+  }
 
   modalQr.innerHTML = "";
   modalQr.appendChild(container);

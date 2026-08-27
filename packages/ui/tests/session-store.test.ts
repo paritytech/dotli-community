@@ -225,6 +225,81 @@ describe("session-store host callbacks", () => {
     expect(await readCoreStorage(key)).toBeUndefined();
   });
 
+  it("As a dotli integrator, the host encrypts the device encryption secret in a stable install-wide slot", async () => {
+    // Given
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const key = { tag: "DeviceEncryptionKey" } satisfies CoreStorageKey;
+
+    // When
+    await writeCoreStorage(key, new Uint8Array([9, 10, 11, 12]));
+
+    // Then
+    // Peers address this device by the public counterpart, so the slot name
+    // must not move with the session: a fresh name would orphan them.
+    const storageKey = "dotli:core:device-encryption-key";
+    expect(localStorage.getItem(storageKey)).toMatch(/^enc1:0x/);
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
+      9, 10, 11, 12,
+    ]);
+
+    // When
+    await clearCoreStorage(key);
+
+    // Then
+    expect(await readCoreStorage(key)).toBeUndefined();
+  });
+
+  it("As a dotli integrator, the host stores product subtree keys per session in opaque plaintext slots", async () => {
+    // Given
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const key = {
+      tag: "ProductSubtree",
+      value: {
+        sessionId: "session-1",
+        productId: "truapi-playground.dot",
+      },
+    } satisfies CoreStorageKey;
+    const otherSession = {
+      tag: "ProductSubtree",
+      value: {
+        sessionId: "session-2",
+        productId: "truapi-playground.dot",
+      },
+    } satisfies CoreStorageKey;
+
+    // When
+    await writeCoreStorage(key, new Uint8Array([13]));
+    await writeCoreStorage(otherSession, new Uint8Array([14]));
+
+    // Then
+    // The slot holds a public key, so it is stored in the clear, but the
+    // product it belongs to stays out of the visible storage key.
+    expect(localStorage.length).toBe(2);
+    for (const index of [0, 1]) {
+      const storageKey = localStorage.key(index);
+      expect(storageKey).toMatch(/^dotli:core:product-subtree:[0-9a-f]+$/);
+      expect(storageKey).not.toContain("truapi-playground.dot");
+      expect(localStorage.getItem(storageKey ?? "")).toMatch(/^0x/);
+    }
+    // Pairing again answers afresh, so one session's answer must not be read
+    // back for another.
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([13]);
+    expect(Array.from((await readCoreStorage(otherSession)) ?? [])).toEqual([
+      14,
+    ]);
+
+    // When
+    await clearCoreStorage(key);
+
+    // Then
+    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(Array.from((await readCoreStorage(otherSession)) ?? [])).toEqual([
+      14,
+    ]);
+  });
+
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
