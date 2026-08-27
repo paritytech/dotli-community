@@ -214,11 +214,6 @@ async function start(message) {
   stage(program);
   const pendingOutputs = [];
   try {
-    if (message.graphicsProfile !== "framebuffer") {
-      throw new Error(
-        `${message.graphicsProfile} currently requires the PolkaVM interpreter`,
-      );
-    }
     let module = message.compiledModule;
     let bytes =
       message.compiledBytes instanceof ArrayBuffer
@@ -262,6 +257,9 @@ async function start(message) {
       },
       MAX_TRANSLATED_LOOPS_PER_UPDATE,
       message.audioEnabled,
+      message.gpuCapabilities instanceof ArrayBuffer
+        ? new Uint8Array(message.gpuCapabilities)
+        : null,
     );
     translated.initialize();
     backend = "compiler";
@@ -350,7 +348,11 @@ function sendInput(bytes) {
 }
 
 function sendGpuEvent(bytes) {
-  if (!running || !pvm || translated || !bytes.byteLength) {
+  if (!running || !pvm || !bytes.byteLength) {
+    return;
+  }
+  if (translated) {
+    translated.sendGpuEvent(bytes);
     return;
   }
   stage(bytes);

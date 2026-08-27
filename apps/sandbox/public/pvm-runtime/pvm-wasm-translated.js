@@ -19,6 +19,14 @@
   const MAX_AUDIO_SAMPLES = 48000 * 2;
   const MAX_FRAME_BYTES = 16 * 1024 * 1024;
   const MAX_TRI2D_BYTES = 8 * 1024 * 1024;
+  const MAX_GPU_BATCH_BYTES = 4 * 1024 * 1024;
+  const MAX_GPU_EVENT_BYTES = 64 * 1024;
+  const MAX_GPU_EVENTS = 256;
+  const MAX_GPU_SUBMITS_PER_UPDATE = 8;
+  const MAX_GPU_COMMANDS = 16_384;
+  const GPU_ERROR_MALFORMED_BATCH = -2;
+  const GPU_ERROR_QUOTA_EXCEEDED = -3;
+  const GPU_ERROR_INVALID_STATE = -5;
   const IOV_MAX = 1024n;
   const AT_FDCWD = BigInt.asUintN(64, -100n);
   const ENOSYS = 38;
@@ -199,7 +207,7 @@
   }
 
   class TranslatedPvmRuntime {
-    constructor(module, assets, emit, maxGas, audioEnabled) {
+    constructor(module, assets, emit, maxGas, audioEnabled, gpuCapabilities = null) {
       this.metadata = readMetadata(module);
       this.instance = new WebAssembly.Instance(module, {});
       this.pvm = this.instance.exports;
@@ -221,6 +229,11 @@
       );
       this.emit = emit;
       this.audioEnabled = audioEnabled;
+      this.gpuCapabilities =
+        gpuCapabilities instanceof Uint8Array ? gpuCapabilities.slice() : null;
+      this.gpuEvents = [];
+      this.gpuSubmits = 0;
+      this.gpuLastSequence = 0n;
       this.maxGas = BigInt(maxGas);
       this.input = [];
       this.coreInput = [];
@@ -265,6 +278,7 @@
         return;
       }
       this.timeMs = timeMs;
+      this.gpuSubmits = 0;
       this.#resetBudget(
         this.coreVm && !this.coreVmStarted
           ? MAX_HOSTCALLS_PER_INIT
@@ -335,10 +349,27 @@
       }
     }
 
+    sendGpuEvent(bytes) {
+      if (
+        this.stopped ||
+        !(bytes instanceof Uint8Array) ||
+        bytes.byteLength < 24 ||
+        bytes.byteLength > MAX_GPU_EVENT_BYTES ||
+        decoder.decode(bytes.subarray(0, 4)) !== "EGE1"
+      ) {
+        return;
+      }
+      if (this.gpuEvents.length === MAX_GPU_EVENTS) {
+        this.gpuEvents.shift();
+      }
+      this.gpuEvents.push(bytes.slice());
+    }
+
     stop() {
       this.stopped = true;
       this.input.length = 0;
       this.coreInput.length = 0;
+      this.gpuEvents.length = 0;
     }
 
     #resetBudget(hostcalls) {
@@ -554,6 +585,70 @@
           this.#setReg(7, 0n);
           return false;
         }
+        case "epoca_gpu_capabilities": {
+          if (this.gpuCapabilities === null) {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
+            return false;
+          }
+          const capacity = this.#u32(a1);
+          const required = this.gpuCapabilities.byteLength;
+          if (capacity < required) {
+            this.#setReg(7, BigInt(-required));
+            return false;
+          }
+          this.#write(this.#u32(a0), this.gpuCapabilities);
+          this.#setReg(7, BigInt(required));
+          return false;
+        }
+        case "epoca_gpu_submit": {
+          const length = this.#u32(a1);
+          if (this.gpuCapabilities === null) {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
+            return false;
+          }
+          if (
+            !length ||
+            length > MAX_GPU_BATCH_BYTES ||
+            this.gpuSubmits === MAX_GPU_SUBMITS_PER_UPDATE
+          ) {
+            this.#setReg(
+              7,
+              BigInt(
+                this.gpuSubmits === MAX_GPU_SUBMITS_PER_UPDATE
+                  ? GPU_ERROR_QUOTA_EXCEEDED
+                  : GPU_ERROR_MALFORMED_BATCH,
+              ),
+            );
+            return false;
+          }
+          const bytes = this.#read(this.#u32(a0), length);
+          const sequence = this.#gpuBatchSequence(bytes);
+          if (sequence === null || sequence <= this.gpuLastSequence) {
+            this.#setReg(7, BigInt(GPU_ERROR_MALFORMED_BATCH));
+            return false;
+          }
+          this.gpuSubmits++;
+          this.gpuLastSequence = sequence;
+          this.emit({ type: "gpu-batch", bytes }, [bytes.buffer]);
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "epoca_gpu_receive": {
+          const event = this.gpuEvents[0];
+          if (event === undefined) {
+            this.#setReg(7, 0n);
+            return false;
+          }
+          const capacity = this.#u32(a1);
+          if (capacity < event.byteLength) {
+            this.#setReg(7, BigInt(-event.byteLength));
+            return false;
+          }
+          this.#write(this.#u32(a0), event);
+          this.gpuEvents.shift();
+          this.#setReg(7, BigInt(event.byteLength));
+          return false;
+        }
         case "host_poll_input": {
           const capacity = this.#u32(a1);
           const count = Math.min(
@@ -648,6 +743,51 @@
             `translated PolkaVM guest uses unsupported import ${name}`,
           );
       }
+    }
+
+    #gpuBatchSequence(bytes) {
+      if (
+        bytes.byteLength < 24 ||
+        decoder.decode(bytes.subarray(0, 4)) !== "EPG1"
+      ) {
+        return null;
+      }
+      const view = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      );
+      if (
+        view.getUint16(4, true) !== 1 ||
+        view.getUint16(6, true) !== 0 ||
+        view.getUint32(8, true) !== bytes.byteLength
+      ) {
+        return null;
+      }
+      const commandCount = view.getUint32(12, true);
+      const sequence = view.getBigUint64(16, true);
+      if (sequence === 0n || commandCount > MAX_GPU_COMMANDS) {
+        return null;
+      }
+      let offset = 24;
+      for (let index = 0; index < commandCount; index++) {
+        if (
+          offset + 8 > bytes.byteLength ||
+          view.getUint16(offset + 2, true) !== 0
+        ) {
+          return null;
+        }
+        const commandBytes = view.getUint32(offset + 4, true);
+        if (
+          commandBytes < 8 ||
+          commandBytes % 4 ||
+          commandBytes > bytes.byteLength - offset
+        ) {
+          return null;
+        }
+        offset += commandBytes;
+      }
+      return offset === bytes.byteLength ? sequence : null;
     }
 
     #setupCoreVm() {
