@@ -80,6 +80,31 @@ function drainFrame() {
   postMessage({ type: "frame", width, height, pixels }, [pixels.buffer]);
 }
 
+function drainTri2d() {
+  if (!pvm.pvm_browser_take_tri2d?.()) {
+    return;
+  }
+  const length = pvm.pvm_browser_tri2d_length();
+  const bytes = new Uint8Array(
+    pvm.memory.buffer,
+    pvm.pvm_browser_tri2d_pointer(),
+    length,
+  ).slice();
+  postMessage({ type: "tri2d", bytes }, [bytes.buffer]);
+}
+
+function drainGpuBatches() {
+  while (pvm.pvm_browser_take_gpu_batch?.()) {
+    const length = pvm.pvm_browser_gpu_batch_length();
+    const bytes = new Uint8Array(
+      pvm.memory.buffer,
+      pvm.pvm_browser_gpu_batch_pointer(),
+      length,
+    ).slice();
+    postMessage({ type: "gpu-batch", bytes }, [bytes.buffer]);
+  }
+}
+
 function drainAudio() {
   while (pvm.pvm_browser_take_audio()) {
     const sampleRate = pvm.pvm_browser_audio_sample_rate();
@@ -133,6 +158,8 @@ function tick() {
         "update PolkaVM browser guest",
       );
       drainFrame();
+      drainTri2d();
+      drainGpuBatches();
       drainAudio();
       drainSave();
       drainLogs();
@@ -187,6 +214,11 @@ async function start(message) {
   stage(program);
   const pendingOutputs = [];
   try {
+    if (message.graphicsProfile !== "framebuffer") {
+      throw new Error(
+        `${message.graphicsProfile} currently requires the PolkaVM interpreter`,
+      );
+    }
     let module = message.compiledModule;
     let bytes =
       message.compiledBytes instanceof ArrayBuffer
@@ -237,11 +269,22 @@ async function start(message) {
     translated = null;
     pendingOutputs.length = 0;
     console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
+    const presentation =
+      message.graphicsProfile === "tri2d"
+        ? 1
+        : message.graphicsProfile === "webgpu-raster"
+          ? 2
+          : 0;
+    const begin = pvm.pvm_browser_launch_begin_v2;
+    if (typeof begin !== "function") {
+      throw new Error("PolkaVM interpreter does not support graphics profiles");
+    }
     stage(program);
     check(
-      pvm.pvm_browser_launch_begin(
+      begin(
         MAX_GAS_PER_UPDATE,
         message.audioEnabled ? 1 : 0,
+        presentation,
       ),
       "begin PolkaVM browser launch",
     );
@@ -249,12 +292,24 @@ async function start(message) {
       addAsset(asset);
     }
     check(pvm.pvm_browser_launch_start(), "start PolkaVM browser launch");
+    if (message.graphicsProfile === "webgpu-raster") {
+      if (!(message.gpuCapabilities instanceof ArrayBuffer)) {
+        throw new Error("WebGPU capabilities are required before PVM initialization");
+      }
+      stage(new Uint8Array(message.gpuCapabilities));
+      check(
+        pvm.pvm_browser_set_gpu_capabilities(),
+        "set PolkaVM browser GPU capabilities",
+      );
+    }
     try {
       check(pvm.pvm_browser_init(), "initialize PolkaVM browser guest");
     } catch (initError) {
       drainLogs();
       throw initError;
     }
+    drainTri2d();
+    drainGpuBatches();
     drainLogs();
   }
   startedAt = performance.now();
@@ -294,6 +349,14 @@ function sendInput(bytes) {
   );
 }
 
+function sendGpuEvent(bytes) {
+  if (!running || !pvm || translated || !bytes.byteLength) {
+    return;
+  }
+  stage(bytes);
+  check(pvm.pvm_browser_send_gpu_event(), "send PolkaVM browser GPU event");
+}
+
 onmessage = (event) => {
   const message = event.data;
   if (message?.type === "start") {
@@ -305,6 +368,15 @@ onmessage = (event) => {
   } else if (message?.type === "input") {
     try {
       sendInput(new Uint8Array(message.bytes));
+    } catch (error) {
+      running = false;
+      clearTimeout(timer);
+      postMessage({ type: "error", message: error.message });
+      postMessage({ type: "terminated" });
+    }
+  } else if (message?.type === "gpu-event") {
+    try {
+      sendGpuEvent(new Uint8Array(message.bytes));
     } catch (error) {
       running = false;
       clearTimeout(timer);
