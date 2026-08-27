@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ArchiveFiles } from "@dotli/content/archive";
+import { Tri2dRenderer } from "./tri2d-renderer";
+import { WebGpuRasterBridge, type WebGpuRequirements } from "./webgpu-raster";
 
 const PVM_RUNTIME_ROOT = "/pvm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
@@ -16,7 +18,7 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "epoca-ebe6d195-pvm-wasm-v2";
+const RUNTIME_SOURCE = "epoca-d2b3757d-pvm-wasm-v3";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
@@ -48,6 +50,8 @@ declare global {
 
 interface PvmDescriptor {
   programPath: string;
+  graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster";
+  webGpuRequirements: WebGpuRequirements | null;
   controls: string[];
   audioEnabled: boolean;
   requiredAssets: string[];
@@ -71,6 +75,15 @@ interface WorkerFrame {
   pixels: Uint8Array;
 }
 
+interface WorkerTri2d {
+  type: "tri2d";
+  bytes: Uint8Array;
+}
+
+interface WorkerGpuBatch {
+  type: "gpu-batch";
+  bytes: Uint8Array;
+}
 interface WorkerAudio {
   type: "audio";
   sampleRate: number;
@@ -208,6 +221,8 @@ function parseManifest(
     throw new Error("PolkaVM manifest has an invalid runtime entrypoint");
   }
   const modalities = object(manifest?.modalities);
+  let graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster";
+  let webGpuRequirements: WebGpuRequirements | null = null;
   let controls: string[];
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
@@ -217,11 +232,20 @@ function parseManifest(
     }
     const capabilities = object(manifest.capabilities);
     const graphics = object(capabilities?.graphics);
-    if (graphics?.abiVersion !== 1 || graphics.profile !== "framebuffer") {
+    if (
+      graphics?.abiVersion !== 1 ||
+      !["framebuffer", "tri2d", "webgpu-raster"].includes(
+        String(graphics.profile),
+      )
+    ) {
       throw new Error(
-        "dotli currently supports only framebuffer ABI version 1 PolkaVM Apps",
+        "dotli supports framebuffer, Tri2D, and WebGPU Raster ABI version 1 PolkaVM Apps",
       );
     }
+    graphicsProfile = graphics.profile as
+      | "framebuffer"
+      | "tri2d"
+      | "webgpu-raster";
     const graphicsFeatures = Array.isArray(graphics.requiredFeatures)
       ? graphics.requiredFeatures
       : null;
@@ -231,6 +255,37 @@ function parseManifest(
       graphicsFeatures.length > 0
     ) {
       throw new Error("PolkaVM App v2 requires unsupported graphics features");
+    }
+    if (graphicsProfile === "webgpu-raster") {
+      const requiredLimits = object(graphics.requiredLimits);
+      if (requiredLimits === null) {
+        throw new Error("WebGPU Raster requires explicit bounded limits");
+      }
+      const limits: Record<string, number> = {};
+      for (const [name, value] of Object.entries(requiredLimits)) {
+        if (
+          !Number.isSafeInteger(value) ||
+          (value as number) <= 0 ||
+          ![
+            "maxTextureDimension2D",
+            "maxBufferSize",
+            "maxBindingsPerBindGroup",
+            "maxBindGroups",
+            "maxVertexBuffers",
+            "maxVertexAttributes",
+            "maxColorAttachments",
+          ].includes(name)
+        ) {
+          throw new Error(`WebGPU Raster requires unsupported limit ${name}`);
+        }
+        limits[name] = value as number;
+      }
+      webGpuRequirements = {
+        requiredFeatures: graphicsFeatures as string[],
+        requiredLimits: limits,
+      };
+    } else if (graphics.requiredLimits !== undefined) {
+      throw new Error("non-WebGPU graphics profiles cannot require GPU limits");
     }
     const deviceInput =
       capabilities?.deviceInput === undefined
@@ -287,6 +342,7 @@ function parseManifest(
         )
       : [];
     audioEnabled = true;
+    graphicsProfile = "framebuffer";
   } else if (
     manifest?.$schema === "epoca:experimental-product/v2" &&
     manifest.$v === 2 &&
@@ -308,6 +364,7 @@ function parseManifest(
         )
       : [];
     audioEnabled = modalities?.audio !== undefined;
+    graphicsProfile = "framebuffer";
   } else {
     throw new Error("PolkaVM package uses an unsupported manifest version");
   }
@@ -323,6 +380,8 @@ function parseManifest(
     }
   }
   return {
+    graphicsProfile,
+    webGpuRequirements,
     programPath,
     controls,
     audioEnabled,
@@ -570,10 +629,21 @@ function createShell(controls: string[]): {
 
 function installInput(
   canvas: HTMLCanvasElement,
+  graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster",
   send: (bytes: Uint8Array) => void,
   resumeAudio: () => void,
-): () => void {
+): { cleanup: () => void; sendSurfaceMetrics: () => void } {
   const pressed = new Set<number>();
+  const canvasPosition = (event: PointerEvent): [number, number] => {
+    const bounds = canvas.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return [0, 0];
+    }
+    return [
+      ((event.clientX - bounds.left) * canvas.width) / bounds.width,
+      ((event.clientY - bounds.top) * canvas.height) / bounds.height,
+    ];
+  };
   const keydown = (event: KeyboardEvent): void => {
     if (!(event.code in keyCodes) || event.repeat) {
       return;
@@ -604,17 +674,28 @@ function installInput(
     }
     event.preventDefault();
     resumeAudio();
-    send(encodedInput(type, pointerButtons[event.button]));
+    const [x, y] = canvasPosition(event);
+    send(encodedInput(type, pointerButtons[event.button], x, y));
   };
   const move = (event: PointerEvent): void => {
-    if (document.pointerLockElement === canvas) {
+    if (graphicsProfile !== "framebuffer") {
+      const [x, y] = canvasPosition(event);
+      send(encodedInput(5, 0, x, y));
+    } else if (document.pointerLockElement === canvas) {
       send(encodedInput(6, 0, event.movementX, event.movementY));
     }
   };
   const down = (event: PointerEvent): void => {
     canvas.focus();
+    if (graphicsProfile !== "framebuffer") {
+      move(event);
+    }
     pointer(event, 3);
-    if (event.button === 0 && document.pointerLockElement !== canvas) {
+    if (
+      graphicsProfile === "framebuffer" &&
+      event.button === 0 &&
+      document.pointerLockElement !== canvas
+    ) {
       void canvas.requestPointerLock().catch(() => undefined);
     }
   };
@@ -624,19 +705,40 @@ function installInput(
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
   };
+  const sendSurfaceMetrics = (): void => {
+    if (graphicsProfile !== "tri2d") {
+      return;
+    }
+    const bounds = canvas.getBoundingClientRect();
+    const scale = Math.max(1 / 32, Math.min(3, window.devicePixelRatio || 1));
+    const width = clamp(bounds.width * scale, 1, 4_096);
+    const height = clamp(bounds.height * scale, 1, 4_096);
+    send(encodedInput(7, clamp(scale * 32, 1, 96), width, height));
+  };
+  const resizeObserver =
+    graphicsProfile === "tri2d"
+      ? new ResizeObserver(() => {
+          sendSurfaceMetrics();
+        })
+      : null;
+  resizeObserver?.observe(canvas);
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
   canvas.addEventListener("contextmenu", contextmenu);
-  return () => {
-    window.removeEventListener("keydown", keydown);
-    window.removeEventListener("keyup", keyup);
-    canvas.removeEventListener("pointerdown", down);
-    canvas.removeEventListener("pointerup", up);
-    canvas.removeEventListener("pointermove", move);
-    canvas.removeEventListener("contextmenu", contextmenu);
+  return {
+    sendSurfaceMetrics,
+    cleanup: () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("contextmenu", contextmenu);
+    },
   };
 }
 
@@ -657,10 +759,16 @@ export async function runPvmApplication(
     status,
     metrics: metricsElement,
   } = createShell(descriptor.controls);
-  const context = canvas.getContext("2d", { alpha: false });
-  if (context === null) {
+  const context =
+    descriptor.graphicsProfile === "framebuffer"
+      ? canvas.getContext("2d", { alpha: false })
+      : null;
+  if (descriptor.graphicsProfile === "framebuffer" && context === null) {
     throw new Error("2D canvas is unavailable");
   }
+  const tri2d =
+    descriptor.graphicsProfile === "tri2d" ? new Tri2dRenderer(canvas) : null;
+  canvas.dataset.pvmProfile = descriptor.graphicsProfile;
 
   const runtime = await runtimeBytes();
   const program = ownedBytes(files[descriptor.programPath]);
@@ -738,6 +846,26 @@ export async function runPvmApplication(
     canvas.dataset.pvmAudioChunks = String(pvmMetrics.audioChunks);
     canvas.dataset.pvmAudioSamples = String(pvmMetrics.audioSamples);
   };
+  const presentedFrame = (): void => {
+    pvmMetrics.frames++;
+    canvas.dataset.pvmFrames = String(pvmMetrics.frames);
+    frameWindowCount++;
+    const now = performance.now();
+    if (now - frameWindowStarted >= 500) {
+      pvmMetrics.fps = (frameWindowCount * 1000) / (now - frameWindowStarted);
+      frameWindowStarted = now;
+      frameWindowCount = 0;
+      updateMetrics();
+    }
+    if (!firstFrame) {
+      firstFrame = true;
+      pvmMetrics.firstFrameMs = now - started;
+      status.textContent = "";
+      window.clearTimeout(timer);
+      updateMetrics();
+      resolveStarted(undefined);
+    }
+  };
 
   const resumeAudio = (): void => {
     audioContext ??= new AudioContext({ sampleRate: 48_000 });
@@ -810,9 +938,28 @@ export async function runPvmApplication(
       new Error("PolkaVM application did not present a frame in time"),
     );
   }, START_TIMEOUT_MS);
+  let webGpu: WebGpuRasterBridge | null = null;
+  let gpuCapabilities: Uint8Array | null = null;
+  if (descriptor.graphicsProfile === "webgpu-raster") {
+    if (descriptor.webGpuRequirements === null) {
+      throw new Error("WebGPU Raster requirements are missing");
+    }
+    webGpu = new WebGpuRasterBridge(canvas, descriptor.webGpuRequirements, {
+      event: (bytes) => {
+        worker.postMessage({ type: "gpu-event", bytes }, [bytes.buffer]);
+      },
+      presented: presentedFrame,
+      error: (error) => {
+        status.textContent = error.message;
+        rejectStarted(error);
+      },
+    });
+    gpuCapabilities = await webGpu.capabilities;
+  }
 
-  const cleanupInput = installInput(
+  const { cleanup: cleanupInput, sendSurfaceMetrics } = installInput(
     canvas,
+    descriptor.graphicsProfile,
     (bytes) => {
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
     },
@@ -820,7 +967,9 @@ export async function runPvmApplication(
   );
   const stop = (): void => {
     cleanupInput();
+    tri2d?.dispose();
     worker.postMessage({ type: "stop" });
+    webGpu?.dispose();
     worker.terminate();
     void audioContext?.close();
   };
@@ -865,11 +1014,14 @@ export async function runPvmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PVM→Wasm JIT" : "PVM interpreter"} ready`;
         canvas.dataset.pvmReady = "true";
         updateMetrics();
+        sendSurfaceMetrics();
         break;
       }
       case "frame": {
         const frame = message as unknown as WorkerFrame;
         if (
+          descriptor.graphicsProfile !== "framebuffer" ||
+          context === null ||
           !Number.isInteger(frame.width) ||
           !Number.isInteger(frame.height) ||
           frame.width <= 0 ||
@@ -877,7 +1029,9 @@ export async function runPvmApplication(
           !(frame.pixels instanceof Uint8Array) ||
           frame.pixels.byteLength !== frame.width * frame.height * 4
         ) {
-          rejectStarted(new Error("PolkaVM guest emitted an invalid frame"));
+          rejectStarted(
+            new Error("PolkaVM guest emitted an invalid framebuffer"),
+          );
           return;
         }
         canvas.width = frame.width;
@@ -889,25 +1043,47 @@ export async function runPvmApplication(
           0,
           0,
         );
-        pvmMetrics.frames++;
-        canvas.dataset.pvmFrames = String(pvmMetrics.frames);
-        frameWindowCount++;
-        const now = performance.now();
-        if (now - frameWindowStarted >= 500) {
-          pvmMetrics.fps =
-            (frameWindowCount * 1000) / (now - frameWindowStarted);
-          frameWindowStarted = now;
-          frameWindowCount = 0;
-          updateMetrics();
+        presentedFrame();
+        break;
+      }
+      case "tri2d": {
+        const frame = message as unknown as WorkerTri2d;
+        if (
+          descriptor.graphicsProfile !== "tri2d" ||
+          tri2d === null ||
+          !(frame.bytes instanceof Uint8Array)
+        ) {
+          rejectStarted(
+            new Error("PolkaVM guest emitted an invalid Tri2D frame"),
+          );
+          return;
         }
-        if (!firstFrame) {
-          firstFrame = true;
-          pvmMetrics.firstFrameMs = now - started;
-          status.textContent = "";
-          window.clearTimeout(timer);
-          updateMetrics();
-          resolveStarted(undefined);
+        try {
+          const metadata = tri2d.render(frame.bytes);
+          canvas.dataset.pvmTri2dDraws = String(metadata.drawCount);
+          canvas.dataset.pvmTri2dVertices = String(metadata.vertexCount);
+          canvas.dataset.pvmTri2dIndices = String(metadata.indexCount);
+          presentedFrame();
+        } catch (error) {
+          rejectStarted(error);
         }
+        break;
+      }
+      case "gpu-batch": {
+        const batch = message as unknown as WorkerGpuBatch;
+        if (
+          descriptor.graphicsProfile !== "webgpu-raster" ||
+          webGpu === null ||
+          !(batch.bytes instanceof Uint8Array) ||
+          batch.bytes.byteLength === 0 ||
+          batch.bytes.byteLength > 4 * 1024 * 1024
+        ) {
+          rejectStarted(
+            new Error("PolkaVM guest emitted an invalid WebGPU Raster batch"),
+          );
+          return;
+        }
+        webGpu.submit(batch.bytes);
         break;
       }
       case "audio":
@@ -964,6 +1140,10 @@ export async function runPvmApplication(
   for (const asset of assets) {
     transfers.push(asset.bytes.buffer);
   }
+  const gpuCapabilitiesBuffer = gpuCapabilities?.buffer;
+  if (gpuCapabilitiesBuffer !== undefined) {
+    transfers.push(gpuCapabilitiesBuffer);
+  }
   worker.postMessage(
     {
       type: "start",
@@ -974,6 +1154,8 @@ export async function runPvmApplication(
       cacheKey,
       compiledModule,
       compiledBytes: compiledBytes?.buffer,
+      graphicsProfile: descriptor.graphicsProfile,
+      gpuCapabilities: gpuCapabilitiesBuffer,
     },
     transfers,
   );

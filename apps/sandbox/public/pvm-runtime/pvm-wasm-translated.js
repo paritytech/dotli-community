@@ -18,6 +18,7 @@
   const MAX_SAVE_BYTES = 1024 * 1024;
   const MAX_AUDIO_SAMPLES = 48000 * 2;
   const MAX_FRAME_BYTES = 16 * 1024 * 1024;
+  const MAX_TRI2D_BYTES = 8 * 1024 * 1024;
   const IOV_MAX = 1024n;
   const AT_FDCWD = BigInt.asUintN(64, -100n);
   const ENOSYS = 38;
@@ -539,6 +540,17 @@
             pixels[index + 3] = source[index + 3];
           }
           this.emit({ type: "frame", width, height, pixels }, [pixels.buffer]);
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "host_tri2d_submit": {
+          const length = this.#u32(a1);
+          if (!length || length > MAX_TRI2D_BYTES) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          const bytes = this.#read(this.#u32(a0), length);
+          this.emit({ type: "tri2d", bytes }, [bytes.buffer]);
           this.#setReg(7, 0n);
           return false;
         }

@@ -114,6 +114,8 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
 
 const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
 const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
+const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
+const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
 
 test("the canonical Doom App v2 artifact renders with exact manifest bytes", async ({
   page,
@@ -161,7 +163,19 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
     .toBeGreaterThan(2);
-  await expect(canvas).toHaveAttribute("data-pvm-backend", "compiler");
+  await expect(canvas).toHaveAttribute("data-pvm-backend", expectedV2Backend);
+  if (expectedV2Profile !== undefined) {
+    await expect(canvas).toHaveAttribute("data-pvm-profile", expectedV2Profile);
+  }
+  if (expectedV2Profile === "tri2d") {
+    await expect
+      .poll(async () =>
+        Number(await canvas.getAttribute("data-pvm-tri2d-draws")),
+      )
+      .toBeGreaterThan(0);
+  } else if (expectedV2Profile === "webgpu-raster") {
+    await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
+  }
   const framesBeforeInput = Number(
     await canvas.getAttribute("data-pvm-frames"),
   );
