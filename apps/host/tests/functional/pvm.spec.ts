@@ -116,6 +116,9 @@ const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
 const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
 const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
 const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
+const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
+  .split(",")
+  .filter(Boolean);
 
 test("the canonical Doom App v2 artifact renders with exact manifest bytes", async ({
   page,
@@ -180,8 +183,9 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     await canvas.getAttribute("data-pvm-frames"),
   );
   await canvas.click({ position: { x: 160, y: 100 } });
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("Space");
+  for (const key of expectedInputKeys) {
+    await page.keyboard.press(key);
+  }
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
     .toBeGreaterThan(framesBeforeInput);
