@@ -895,6 +895,12 @@ export async function runPvmApplication(
     pvmMetrics.audioSamples += message.samples.byteLength / 2;
     canvas.dataset.pvmAudioChunks = String(pvmMetrics.audioChunks);
     canvas.dataset.pvmAudioSamples = String(pvmMetrics.audioSamples);
+    if (
+      canvas.dataset.pvmAudioNonzero !== "true" &&
+      message.samples.some((byte) => byte !== 0)
+    ) {
+      canvas.dataset.pvmAudioNonzero = "true";
+    }
     resumeAudio();
     if (audioContext?.state !== "running") {
       audioCursor = 0;

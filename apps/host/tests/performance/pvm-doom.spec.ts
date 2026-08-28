@@ -122,6 +122,17 @@ test("duke.paseo continues across bounded translated hostcall slices", async ({
     "exceeded hostcall budget",
   );
   expect(await canvas.getAttribute("data-pvm-backend")).toBe("compiler");
+  await canvas.click();
+  await page.waitForTimeout(8_000);
+  const audioBefore = Number(
+    await canvas.getAttribute("data-pvm-audio-samples"),
+  );
+  await page.waitForTimeout(8_000);
+  const audioAfter = Number(
+    await canvas.getAttribute("data-pvm-audio-samples"),
+  );
+  expect(audioAfter - audioBefore).toBeGreaterThan(300_000);
+  await expect(canvas).toHaveAttribute("data-pvm-audio-nonzero", "true");
 });
 
 test("doom.paseo is playable through the real-time PVM to Wasm translator", async ({
