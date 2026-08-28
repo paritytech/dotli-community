@@ -450,9 +450,12 @@ async function programDigest(program: Uint8Array): Promise<string> {
 }
 
 function runtimeBytes(): Promise<ArrayBuffer> {
-  runtimeBytesPromise ??= fetch(`${PVM_RUNTIME_ROOT}/pvm-browser-runtime.wasm`, {
-    cache: "force-cache",
-  }).then((response) => {
+  runtimeBytesPromise ??= fetch(
+    `${PVM_RUNTIME_ROOT}/pvm-browser-runtime.wasm`,
+    {
+      cache: "force-cache",
+    },
+  ).then((response) => {
     if (!response.ok) {
       throw new Error(
         `PolkaVM runtime fetch failed: HTTP ${String(response.status)}`,
