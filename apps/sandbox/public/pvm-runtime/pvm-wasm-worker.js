@@ -48,7 +48,7 @@
   function readMetadata(module) {
     const sections = WebAssembly.Module.customSections(
       module,
-      "epoca.pvm.meta",
+      "epoca.pvm.meta"
     );
     if (sections.length !== 1) {
       throw new Error("translated PolkaVM module has invalid metadata");
@@ -56,7 +56,7 @@
     const bytes = new Uint8Array(sections[0]);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let offset = 0;
-    const requireBytes = (length) => {
+    const requireBytes = length => {
       if (offset + length > bytes.byteLength) {
         throw new Error("translated PolkaVM metadata is truncated");
       }
@@ -73,7 +73,7 @@
       offset += 4;
       return value;
     };
-    const readString = (length) => {
+    const readString = length => {
       requireBytes(length);
       const value = decoder.decode(bytes.subarray(offset, offset + length));
       offset += length;
@@ -207,7 +207,15 @@
   }
 
   class TranslatedPvmRuntime {
-    constructor(module, assets, emit, maxGas, audioEnabled, gpuCapabilities = null) {
+    constructor(
+      module,
+      assets,
+      emit,
+      maxGas,
+      audioEnabled,
+      graphicsProfile,
+      gpuCapabilities = null
+    ) {
       this.metadata = readMetadata(module);
       this.instance = new WebAssembly.Instance(module, {});
       this.pvm = this.instance.exports;
@@ -217,27 +225,43 @@
         this.pvm.memory_stack,
       ];
       if (
-        this.memories.some((memory) => !(memory instanceof WebAssembly.Memory))
+        this.memories.some(memory => !(memory instanceof WebAssembly.Memory))
       ) {
         throw new Error("translated PolkaVM module is missing guest memories");
       }
       this.assets = new Map(
-        assets.map((asset) => [
+        assets.map(asset => [
           normalizedPath(asset.path),
           new Uint8Array(asset.bytes),
-        ]),
+        ])
       );
       this.emit = emit;
       this.audioEnabled = audioEnabled;
+      if (
+        !["framebuffer", "tri2d", "webgpu-raster"].includes(graphicsProfile)
+      ) {
+        throw new Error(
+          `translated PolkaVM runtime has invalid graphics profile ${graphicsProfile}`
+        );
+      }
+      this.graphicsProfile = graphicsProfile;
+      if (
+        graphicsProfile === "webgpu-raster" &&
+        !(gpuCapabilities instanceof Uint8Array)
+      ) {
+        throw new Error(
+          "WebGPU capabilities are required before PVM initialization"
+        );
+      }
       this.gpuCapabilities =
         gpuCapabilities instanceof Uint8Array ? gpuCapabilities.slice() : null;
       this.gpuEvents = [];
       this.gpuSubmits = 0;
       this.gpuLastSequence = 0n;
+      this.tri2dSubmitted = false;
       this.maxGas = BigInt(maxGas);
       this.input = [];
       this.coreInput = [];
-      this.epocaInput = [];
       this.pointer = null;
       this.timeMs = null;
       this.clockStartedAt = performance.now();
@@ -246,6 +270,11 @@
       this.resumePending = false;
       this.stopped = false;
       this.coreVm = this.metadata.exports.has("_pvm_start");
+      if (this.coreVm && graphicsProfile !== "framebuffer") {
+        throw new Error(
+          "CoreVM guests require the framebuffer graphics profile"
+        );
+      }
       this.coreVmStarted = false;
       this.palette = new Uint32Array(256);
       this.palette.fill(0xffffffff);
@@ -283,7 +312,7 @@
       this.#resetBudget(
         this.coreVm && !this.coreVmStarted
           ? MAX_HOSTCALLS_PER_INIT
-          : MAX_HOSTCALLS_PER_UPDATE,
+          : MAX_HOSTCALLS_PER_UPDATE
       );
       if (this.coreVm) {
         this.#run(this.exports.get("_pvm_start"), true);
@@ -311,13 +340,9 @@
       const view = new DataView(
         bytes.buffer,
         bytes.byteOffset,
-        bytes.byteLength,
+        bytes.byteLength
       );
       const type = bytes[0];
-      if (this.imports.includes("pvm_fetch_epoca_inputs")) {
-        this.#queueEpocaInput(bytes);
-        return;
-      }
       if (type === 1 || type === 2) {
         const key = hidToCoreVm(bytes[1]);
         if (key !== undefined) {
@@ -334,22 +359,22 @@
         if (this.pointer) {
           this.#queueCoreInput(
             0xa3,
-            Math.max(-128, Math.min(127, current[0] - this.pointer[0])) & 0xff,
+            Math.max(-128, Math.min(127, current[0] - this.pointer[0])) & 0xff
           );
           this.#queueCoreInput(
             0xa4,
-            Math.max(-128, Math.min(127, current[1] - this.pointer[1])) & 0xff,
+            Math.max(-128, Math.min(127, current[1] - this.pointer[1])) & 0xff
           );
         }
         this.pointer = current;
       } else if (type === 6) {
         this.#queueCoreInput(
           0xa3,
-          Math.max(-128, Math.min(127, view.getInt16(2, true))) & 0xff,
+          Math.max(-128, Math.min(127, view.getInt16(2, true))) & 0xff
         );
         this.#queueCoreInput(
           0xa4,
-          Math.max(-128, Math.min(127, view.getInt16(4, true))) & 0xff,
+          Math.max(-128, Math.min(127, view.getInt16(4, true))) & 0xff
         );
       }
     }
@@ -380,6 +405,7 @@
     #resetBudget(hostcalls) {
       this.hostcalls = hostcalls;
       this.hostcallBytes = MAX_HOSTCALL_BYTES;
+      this.tri2dSubmitted = false;
       this.pvm.pvm_set_gas(this.maxGas);
     }
 
@@ -403,7 +429,7 @@
         }
         if (status === STATUS_TRAP) {
           throw new Error(
-            `translated PolkaVM execution trapped at ${this.pvm.trap_pc.value}`,
+            `translated PolkaVM execution trapped at ${this.pvm.trap_pc.value}`
           );
         }
         if (status === STATUS_OUT_OF_GAS) {
@@ -411,14 +437,14 @@
         }
         if (status !== STATUS_ECALL) {
           throw new Error(
-            `translated PolkaVM returned invalid status ${status}`,
+            `translated PolkaVM returned invalid status ${status}`
           );
         }
         const importIndex = this.pvm.ecall.value >>> 0;
         const name = this.imports[importIndex];
         if (!name) {
           throw new Error(
-            `translated PolkaVM called unknown import ${importIndex}`,
+            `translated PolkaVM called unknown import ${importIndex}`
           );
         }
         this.hostcalls--;
@@ -461,7 +487,7 @@
       const end = address + length;
       if (end > 0x100000000) {
         throw new Error(
-          "translated PolkaVM guest memory access is out of range",
+          "translated PolkaVM guest memory access is out of range"
         );
       }
       const { layout } = this.metadata;
@@ -485,7 +511,7 @@
         physical = address - layout.roAddress;
       } else {
         throw new Error(
-          "translated PolkaVM guest memory access is out of range",
+          "translated PolkaVM guest memory access is out of range"
         );
       }
       return new Uint8Array(memory.buffer, physical, length);
@@ -508,7 +534,7 @@
         length > this.hostcallBytes
       ) {
         throw new Error(
-          "translated PolkaVM guest exceeded hostcall byte budget",
+          "translated PolkaVM guest exceeded hostcall byte budget"
         );
       }
       this.hostcallBytes -= length;
@@ -518,7 +544,7 @@
       const bytes = this.#range(address >>> 0, 8);
       return new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(
         0,
-        true,
+        true
       );
     }
 
@@ -527,7 +553,7 @@
       new DataView(bytes.buffer, bytes.byteOffset, 8).setBigUint64(
         0,
         BigInt.asUintN(64, value),
-        true,
+        true
       );
     }
 
@@ -548,6 +574,7 @@
       return null;
     }
 
+    // eslint-disable-next-line complexity -- Flat hostcall dispatch mirrors the guest ABI.
     #handleCooperativeCall(name) {
       const a0 = this.#reg(7);
       const a1 = this.#reg(8);
@@ -570,6 +597,10 @@
             this.#setReg(7, 1n);
             return false;
           }
+          if (this.graphicsProfile !== "framebuffer") {
+            this.#setReg(7, 3n);
+            return false;
+          }
           const source = this.#read(this.#u32(a0), length);
           const pixels = new Uint8Array(length);
           for (let index = 0; index < length; index += 4) {
@@ -588,12 +619,25 @@
             this.#setReg(7, 1n);
             return false;
           }
+          if (this.graphicsProfile !== "tri2d") {
+            this.#setReg(7, 3n);
+            return false;
+          }
+          if (this.tri2dSubmitted) {
+            this.#setReg(7, 2n);
+            return false;
+          }
           const bytes = this.#read(this.#u32(a0), length);
           this.emit({ type: "tri2d", bytes }, [bytes.buffer]);
+          this.tri2dSubmitted = true;
           this.#setReg(7, 0n);
           return false;
         }
         case "epoca_gpu_capabilities": {
+          if (this.graphicsProfile !== "webgpu-raster") {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
+            return false;
+          }
           if (this.gpuCapabilities === null) {
             this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
             return false;
@@ -609,6 +653,10 @@
           return false;
         }
         case "epoca_gpu_submit": {
+          if (this.graphicsProfile !== "webgpu-raster") {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
+            return false;
+          }
           const length = this.#u32(a1);
           if (this.gpuCapabilities === null) {
             this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
@@ -624,15 +672,19 @@
               BigInt(
                 this.gpuSubmits === MAX_GPU_SUBMITS_PER_UPDATE
                   ? GPU_ERROR_QUOTA_EXCEEDED
-                  : GPU_ERROR_MALFORMED_BATCH,
-              ),
+                  : GPU_ERROR_MALFORMED_BATCH
+              )
             );
             return false;
           }
           const bytes = this.#read(this.#u32(a0), length);
           const sequence = this.#gpuBatchSequence(bytes);
-          if (sequence === null || sequence <= this.gpuLastSequence) {
+          if (sequence === null) {
             this.#setReg(7, BigInt(GPU_ERROR_MALFORMED_BATCH));
+            return false;
+          }
+          if (sequence <= this.gpuLastSequence) {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
             return false;
           }
           this.gpuSubmits++;
@@ -642,6 +694,10 @@
           return false;
         }
         case "epoca_gpu_receive": {
+          if (this.graphicsProfile !== "webgpu-raster") {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
+            return false;
+          }
           const event = this.gpuEvents[0];
           if (event === undefined) {
             this.#setReg(7, 0n);
@@ -661,7 +717,7 @@
           const capacity = this.#u32(a1);
           const count = Math.min(
             Math.floor(capacity / INPUT_EVENT_BYTES),
-            this.input.length,
+            this.input.length
           );
           const output = new Uint8Array(count * INPUT_EVENT_BYTES);
           for (let index = 0; index < count; index++) {
@@ -698,7 +754,7 @@
           const samples = this.#read(this.#u32(a0), sampleCount * 2);
           this.emit(
             { type: "audio", sampleRate: 48000, channels: 2, samples },
-            [samples.buffer],
+            [samples.buffer]
           );
           this.#setReg(7, 0n);
           return false;
@@ -713,7 +769,7 @@
             return false;
           }
           const assetName = decoder.decode(
-            this.#read(this.#u32(a0), nameLength),
+            this.#read(this.#u32(a0), nameLength)
           );
           const asset = this.assets.get(assetName);
           if (!asset || offset >= asset.byteLength) {
@@ -723,7 +779,7 @@
           const length = Math.min(
             capacity,
             asset.byteLength - offset,
-            16 * 1024 * 1024,
+            16 * 1024 * 1024
           );
           this.#write(destination, asset.subarray(offset, offset + length));
           this.#setReg(7, BigInt(length));
@@ -748,7 +804,7 @@
         }
         default:
           throw new Error(
-            `translated PolkaVM guest uses unsupported import ${name}`,
+            `translated PolkaVM guest uses unsupported import ${name}`
           );
       }
     }
@@ -763,7 +819,7 @@
       const view = new DataView(
         bytes.buffer,
         bytes.byteOffset,
-        bytes.byteLength,
+        bytes.byteLength
       );
       if (
         view.getUint16(4, true) !== 1 ||
@@ -818,32 +874,17 @@
       this.#setReg(7, addressInit);
     }
 
-    #queueEpocaInput(bytes) {
-      const event = bytes.slice();
-      if (
-        event[0] === 5 &&
-        this.epocaInput[this.epocaInput.length - 1]?.[0] === 5
-      ) {
-        this.epocaInput[this.epocaInput.length - 1] = event;
-        return;
-      }
-      if (this.epocaInput.length === 256) {
-        this.epocaInput.shift();
-      }
-      this.epocaInput.push(event);
-    }
-
     #queueCoreInput(key, value) {
       if (!value && (key === 0xa3 || key === 0xa4)) {
         return;
       }
       if (key === 0xa3 || key === 0xa4) {
-        const existing = this.coreInput.find((event) => event[0] === key);
+        const existing = this.coreInput.find(event => event[0] === key);
         if (existing) {
           existing[1] =
             Math.max(
               -128,
-              Math.min(127, signedByte(existing[1]) + signedByte(value)),
+              Math.min(127, signedByte(existing[1]) + signedByte(value))
             ) & 0xff;
           return;
         }
@@ -854,6 +895,7 @@
       this.coreInput.push([key, value]);
     }
 
+    // eslint-disable-next-line complexity -- Flat hostcall dispatch mirrors the guest ABI.
     #handleCoreVmCall(name) {
       switch (name) {
         case "pvm_set_palette": {
@@ -884,23 +926,11 @@
           this.emit({ type: "frame", width, height, pixels }, [pixels.buffer]);
           return true;
         }
-        case "pvm_fetch_epoca_inputs": {
-          const count = Math.min(
-            this.#u32(this.#reg(8)),
-            this.epocaInput.length,
-          );
-          const output = new Uint8Array(count * INPUT_EVENT_BYTES);
-          for (let index = 0; index < count; index++) {
-            output.set(this.epocaInput.shift(), index * INPUT_EVENT_BYTES);
-          }
-          this.#write(this.#u32(this.#reg(7)), output);
-          this.#setReg(7, BigInt(count));
-          return false;
-        }
+        case "pvm_fetch_epoca_inputs":
         case "pvm_fetch_inputs": {
           const count = Math.min(
             this.#u32(this.#reg(8)),
-            this.coreInput.length,
+            this.coreInput.length
           );
           const output = new Uint8Array(count * 2);
           for (let index = 0; index < count; index++) {
@@ -920,7 +950,7 @@
             return false;
           }
           const assetName = decoder.decode(
-            this.#read(this.#u32(this.#reg(7)), nameLength),
+            this.#read(this.#u32(this.#reg(7)), nameLength)
           );
           const asset = this.assets.get(assetName);
           if (!asset || offset >= asset.byteLength) {
@@ -930,7 +960,7 @@
           const length = Math.min(
             capacity,
             asset.byteLength - offset,
-            16 * 1024 * 1024,
+            16 * 1024 * 1024
           );
           this.#write(destination, asset.subarray(offset, offset + length));
           this.#setReg(7, BigInt(length));
@@ -953,7 +983,7 @@
           const samples = this.#read(this.#u32(this.#reg(7)), sampleCount * 2);
           this.emit(
             { type: "audio", sampleRate: 48000, channels: 2, samples },
-            [samples.buffer],
+            [samples.buffer]
           );
           this.#setReg(7, 0n);
           return false;
@@ -966,7 +996,7 @@
         case "host_log": {
           const length = Math.min(this.#u32(this.#reg(8)), MAX_LOG_BYTES);
           const message = decoder.decode(
-            this.#read(this.#u32(this.#reg(7)), length),
+            this.#read(this.#u32(this.#reg(7)), length)
           );
           this.emit({ type: "log", message });
           return false;
@@ -998,7 +1028,7 @@
           if (this.audioChannels && sampleCount) {
             const samples = this.#read(
               this.#u32(this.#reg(7)),
-              sampleCount * 2,
+              sampleCount * 2
             );
             this.emit(
               {
@@ -1007,7 +1037,7 @@
                 channels: this.audioChannels,
                 samples,
               },
-              [samples.buffer],
+              [samples.buffer]
             );
           }
           return false;
@@ -1016,7 +1046,7 @@
           return this.#handleCoreVmSyscall();
         default:
           throw new Error(
-            `translated CoreVM guest uses unsupported import ${name}`,
+            `translated CoreVM guest uses unsupported import ${name}`
           );
       }
     }
@@ -1126,8 +1156,8 @@
           this.#u32(address),
           file.bytes.subarray(
             Number(file.position),
-            Number(file.position) + count,
-          ),
+            Number(file.position) + count
+          )
         );
       } catch {
         return errno(EFAULT);
@@ -1173,7 +1203,7 @@
       } else if (whence === 1n) {
         file.position = BigInt.asUintN(
           64,
-          BigInt.asIntN(64, file.position) + offset,
+          BigInt.asIntN(64, file.position) + offset
         );
         if (file.position > fileLength) {
           file.position = fileLength;
@@ -1181,7 +1211,7 @@
       } else if (whence === 2n) {
         file.position = BigInt.asUintN(
           64,
-          BigInt.asIntN(64, fileLength) + offset,
+          BigInt.asIntN(64, fileLength) + offset
         );
         if (file.position > fileLength) {
           file.position = fileLength;
@@ -1200,9 +1230,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
-
-/** Creates the bounded PolkaVM endpoint in a Worker or on a host thread. */
+/**
+ * Creates the bounded PolkaVM endpoint in a Worker or on a host thread.
+ *
+ * @param {DedicatedWorkerGlobalScope} endpoint - Message endpoint owned by the runtime.
+ */
 globalThis.createPvmRuntime = endpoint => {
   const postMessage = (message, transfers) => {
     if (transfers) {
@@ -1215,6 +1247,11 @@ globalThis.createPvmRuntime = endpoint => {
   const FRAME_INTERVAL_MS = 1000 / 60;
   const MAX_GAS_PER_UPDATE = 500_000_000;
   const MAX_TRANSLATED_LOOPS_PER_UPDATE = 50_000_000;
+  const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
+  const MAX_ASSET_FILES = 2048;
+  const MAX_ASSET_NAME_BYTES = 1024;
+  const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
+  const MAX_ASSET_BYTES = 128 * 1024 * 1024;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -1222,12 +1259,27 @@ globalThis.createPvmRuntime = endpoint => {
   let translated;
   let backend = "interpreter";
   let running = false;
+  let disposed = false;
   let timer;
   let startedAt = 0;
   let updateCount = 0;
   const updateSamples = [];
   const tickChannel = new MessageChannel();
   tickChannel.port1.onmessage = tick;
+
+  function stopRuntime() {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    running = false;
+    clearTimeout(timer);
+    translated?.stop();
+    pvm?.pvm_browser_reset?.();
+    tickChannel.port1.close();
+    tickChannel.port2.close();
+    endpoint.onmessage = null;
+  }
 
   function errorText() {
     const pointer = pvm.pvm_browser_error_pointer();
@@ -1262,7 +1314,7 @@ globalThis.createPvmRuntime = endpoint => {
     stage(packed);
     check(
       pvm.pvm_browser_launch_add_asset(path.byteLength),
-      `mount browser asset ${asset.path}`,
+      `mount browser asset ${asset.path}`
     );
   }
 
@@ -1276,7 +1328,7 @@ globalThis.createPvmRuntime = endpoint => {
     const source = new Uint8Array(
       pvm.memory.buffer,
       pvm.pvm_browser_frame_pointer(),
-      length,
+      length
     );
     const pixels = new Uint8Array(length);
     for (let index = 0; index < length; index += 4) {
@@ -1296,7 +1348,7 @@ globalThis.createPvmRuntime = endpoint => {
     const bytes = new Uint8Array(
       pvm.memory.buffer,
       pvm.pvm_browser_tri2d_pointer(),
-      length,
+      length
     ).slice();
     postMessage({ type: "tri2d", bytes }, [bytes.buffer]);
   }
@@ -1307,7 +1359,7 @@ globalThis.createPvmRuntime = endpoint => {
       const bytes = new Uint8Array(
         pvm.memory.buffer,
         pvm.pvm_browser_gpu_batch_pointer(),
-        length,
+        length
       ).slice();
       postMessage({ type: "gpu-batch", bytes }, [bytes.buffer]);
     }
@@ -1321,7 +1373,7 @@ globalThis.createPvmRuntime = endpoint => {
       const samples = new Uint8Array(
         pvm.memory.buffer,
         pvm.pvm_browser_audio_pointer(),
-        length,
+        length
       ).slice();
       postMessage({ type: "audio", sampleRate, channels, samples }, [
         samples.buffer,
@@ -1335,7 +1387,7 @@ globalThis.createPvmRuntime = endpoint => {
       const bytes = new Uint8Array(
         pvm.memory.buffer,
         pvm.pvm_browser_save_pointer(),
-        length,
+        length
       ).slice();
       postMessage({ type: "save", bytes }, [bytes.buffer]);
     }
@@ -1346,7 +1398,7 @@ globalThis.createPvmRuntime = endpoint => {
       const pointer = pvm.pvm_browser_log_pointer();
       const length = pvm.pvm_browser_log_length();
       const message = decoder.decode(
-        new Uint8Array(pvm.memory.buffer, pointer, length),
+        new Uint8Array(pvm.memory.buffer, pointer, length)
       );
       postMessage({ type: "log", message });
     }
@@ -1363,7 +1415,7 @@ globalThis.createPvmRuntime = endpoint => {
       } else {
         check(
           pvm.pvm_browser_update(before - startedAt),
-          "update PolkaVM browser guest",
+          "update PolkaVM browser guest"
         );
         drainFrame();
         drainTri2d();
@@ -1373,7 +1425,7 @@ globalThis.createPvmRuntime = endpoint => {
         drainLogs();
       }
     } catch (error) {
-      running = false;
+      stopRuntime();
       postMessage({ type: "error", message: error.message });
       postMessage({ type: "terminated" });
       return;
@@ -1386,7 +1438,7 @@ globalThis.createPvmRuntime = endpoint => {
     }
     if (updateCount % 120 === 0) {
       const sorted = [...updateSamples].sort((a, b) => a - b);
-      const percentile = (value) =>
+      const percentile = value =>
         sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * value))];
       postMessage({
         type: "metrics",
@@ -1404,10 +1456,111 @@ globalThis.createPvmRuntime = endpoint => {
     }
   }
 
+  function asBytes(value, label) {
+    if (value instanceof ArrayBuffer) {
+      return new Uint8Array(value);
+    }
+    if (ArrayBuffer.isView(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+    throw new Error(`${label} must be binary data`);
+  }
+
+  function validateAssetPath(path) {
+    const encoded = encoder.encode(path);
+    if (
+      !path ||
+      encoded.byteLength > MAX_ASSET_NAME_BYTES ||
+      path.startsWith("/") ||
+      path.includes("\\") ||
+      path
+        .split("/")
+        .some(
+          component => !component || component === "." || component === ".."
+        )
+    ) {
+      throw new Error(`invalid PolkaVM browser asset path ${path}`);
+    }
+  }
+
+  function validateStartMessage(message) {
+    if (
+      !(message.runtime instanceof WebAssembly.Module) &&
+      asBytes(message.runtime, "PolkaVM browser runtime").byteLength === 0
+    ) {
+      throw new Error("PolkaVM browser runtime is empty");
+    }
+    const program = asBytes(message.program, "PolkaVM browser program");
+    if (!program.byteLength || program.byteLength > MAX_PROGRAM_BYTES) {
+      throw new Error(
+        `PolkaVM browser program must contain 1..=${MAX_PROGRAM_BYTES} bytes`
+      );
+    }
+    if (
+      !["framebuffer", "tri2d", "webgpu-raster"].includes(
+        message.graphicsProfile
+      )
+    ) {
+      throw new Error(
+        `invalid PolkaVM browser graphics profile ${message.graphicsProfile}`
+      );
+    }
+    if (
+      !Array.isArray(message.assets) ||
+      message.assets.length > MAX_ASSET_FILES
+    ) {
+      throw new Error(
+        `PolkaVM browser launch exceeds ${MAX_ASSET_FILES} assets`
+      );
+    }
+    const paths = new Set();
+    let assetBytes = 0;
+    for (const asset of message.assets) {
+      if (!asset || typeof asset.path !== "string") {
+        throw new Error("PolkaVM browser asset is missing its path");
+      }
+      validateAssetPath(asset.path);
+      if (paths.has(asset.path)) {
+        throw new Error(
+          `PolkaVM browser asset path is duplicated: ${asset.path}`
+        );
+      }
+      paths.add(asset.path);
+      const length = asBytes(
+        asset.bytes,
+        `PolkaVM browser asset ${asset.path}`
+      ).byteLength;
+      if (length > MAX_ASSET_FILE_BYTES) {
+        throw new Error(
+          `PolkaVM browser asset ${asset.path} exceeds ${MAX_ASSET_FILE_BYTES} bytes`
+        );
+      }
+      assetBytes += length;
+      if (!Number.isSafeInteger(assetBytes) || assetBytes > MAX_ASSET_BYTES) {
+        throw new Error(
+          `PolkaVM browser assets exceed ${MAX_ASSET_BYTES} bytes`
+        );
+      }
+    }
+    if (
+      message.graphicsProfile === "webgpu-raster" &&
+      !(message.gpuCapabilities instanceof ArrayBuffer)
+    ) {
+      throw new Error(
+        "WebGPU capabilities are required before PVM initialization"
+      );
+    }
+    return program;
+  }
+
   async function start(message) {
+    if (disposed) {
+      throw new Error("PolkaVM browser worker is stopped");
+    }
     if (pvm || running) {
       throw new Error("PolkaVM browser worker is already started");
     }
+    const program = validateStartMessage(message);
     const bootStarted = performance.now();
     let translationMs = 0;
     let compilationMs = 0;
@@ -1418,7 +1571,6 @@ globalThis.createPvmRuntime = endpoint => {
     if (pvm.pvm_browser_abi_version() !== 1) {
       throw new Error("PolkaVM browser runtime has an incompatible ABI");
     }
-    const program = new Uint8Array(message.program);
     stage(program);
     const pendingOutputs = [];
     try {
@@ -1433,7 +1585,7 @@ globalThis.createPvmRuntime = endpoint => {
           const translationStarted = performance.now();
           check(
             pvm.pvm_browser_translate_staged(),
-            "translate PolkaVM browser guest",
+            "translate PolkaVM browser guest"
           );
           translationMs = performance.now() - translationStarted;
           const pointer = pvm.pvm_browser_translation_pointer();
@@ -1441,8 +1593,12 @@ globalThis.createPvmRuntime = endpoint => {
           bytes = new Uint8Array(pvm.memory.buffer, pointer, length).slice();
           const persistent = bytes.slice();
           postMessage(
-            { type: "translated", cacheKey: message.cacheKey, bytes: persistent },
-            [persistent.buffer],
+            {
+              type: "translated",
+              cacheKey: message.cacheKey,
+              bytes: persistent,
+            },
+            [persistent.buffer]
           );
         }
         translatedWasmBytes = bytes.byteLength;
@@ -1465,9 +1621,10 @@ globalThis.createPvmRuntime = endpoint => {
         },
         MAX_TRANSLATED_LOOPS_PER_UPDATE,
         message.audioEnabled,
+        message.graphicsProfile,
         message.gpuCapabilities instanceof ArrayBuffer
           ? new Uint8Array(message.gpuCapabilities)
-          : null,
+          : null
       );
       translated.initialize();
       backend = "compiler";
@@ -1475,24 +1632,22 @@ globalThis.createPvmRuntime = endpoint => {
       translated = null;
       pendingOutputs.length = 0;
       console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
-      const presentation =
-        message.graphicsProfile === "tri2d"
-          ? 1
-          : message.graphicsProfile === "webgpu-raster"
-            ? 2
-            : 0;
+      let presentation = 0;
+      if (message.graphicsProfile === "tri2d") {
+        presentation = 1;
+      } else if (message.graphicsProfile === "webgpu-raster") {
+        presentation = 2;
+      }
       const begin = pvm.pvm_browser_launch_begin_v2;
       if (typeof begin !== "function") {
-        throw new Error("PolkaVM interpreter does not support graphics profiles");
+        throw new Error(
+          "PolkaVM interpreter does not support graphics profiles"
+        );
       }
       stage(program);
       check(
-        begin(
-          MAX_GAS_PER_UPDATE,
-          message.audioEnabled ? 1 : 0,
-          presentation,
-        ),
-        "begin PolkaVM browser launch",
+        begin(MAX_GAS_PER_UPDATE, message.audioEnabled ? 1 : 0, presentation),
+        "begin PolkaVM browser launch"
       );
       for (const asset of message.assets) {
         addAsset(asset);
@@ -1500,12 +1655,14 @@ globalThis.createPvmRuntime = endpoint => {
       check(pvm.pvm_browser_launch_start(), "start PolkaVM browser launch");
       if (message.graphicsProfile === "webgpu-raster") {
         if (!(message.gpuCapabilities instanceof ArrayBuffer)) {
-          throw new Error("WebGPU capabilities are required before PVM initialization");
+          throw new Error(
+            "WebGPU capabilities are required before PVM initialization"
+          );
         }
         stage(new Uint8Array(message.gpuCapabilities));
         check(
           pvm.pvm_browser_set_gpu_capabilities(),
-          "set PolkaVM browser GPU capabilities",
+          "set PolkaVM browser GPU capabilities"
         );
       }
       try {
@@ -1549,9 +1706,9 @@ globalThis.createPvmRuntime = endpoint => {
         bytes[0],
         bytes[1],
         view.getUint16(2, true),
-        view.getUint16(4, true),
+        view.getUint16(4, true)
       ),
-      "send PolkaVM browser input",
+      "send PolkaVM browser input"
     );
   }
 
@@ -1567,11 +1724,11 @@ globalThis.createPvmRuntime = endpoint => {
     check(pvm.pvm_browser_send_gpu_event(), "send PolkaVM browser GPU event");
   }
 
-  endpoint.onmessage = (event) => {
+  endpoint.onmessage = event => {
     const message = event.data;
     if (message?.type === "start") {
-      void start(message).catch((error) => {
-        running = false;
+      void start(message).catch(error => {
+        stopRuntime();
         postMessage({ type: "error", message: error.message });
         postMessage({ type: "terminated" });
       });
@@ -1579,8 +1736,7 @@ globalThis.createPvmRuntime = endpoint => {
       try {
         sendInput(new Uint8Array(message.bytes));
       } catch (error) {
-        running = false;
-        clearTimeout(timer);
+        stopRuntime();
         postMessage({ type: "error", message: error.message });
         postMessage({ type: "terminated" });
       }
@@ -1588,16 +1744,12 @@ globalThis.createPvmRuntime = endpoint => {
       try {
         sendGpuEvent(new Uint8Array(message.bytes));
       } catch (error) {
-        running = false;
-        clearTimeout(timer);
+        stopRuntime();
         postMessage({ type: "error", message: error.message });
         postMessage({ type: "terminated" });
       }
     } else if (message?.type === "stop") {
-      running = false;
-      clearTimeout(timer);
-      translated?.stop();
-      pvm?.pvm_browser_reset();
+      stopRuntime();
       postMessage({ type: "terminated" });
     }
   };
@@ -1606,7 +1758,5 @@ globalThis.createPvmRuntime = endpoint => {
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-"use strict";
 
 globalThis.createPvmRuntime(globalThis);
