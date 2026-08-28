@@ -31,7 +31,7 @@ async function pvmCar(): Promise<TestCar> {
   );
   const runtimeOverride = new TextEncoder().encode("package-owned runtime");
   files.push({
-    name: "pvm-runtime/epoca-pvm-host.wasm",
+    name: "pvm-runtime/pvm-browser-runtime.wasm",
     bytes: runtimeOverride,
     cid: CID.createV1(raw.code, await sha256.digest(runtimeOverride)),
   });

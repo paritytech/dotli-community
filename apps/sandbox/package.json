@@ -5,8 +5,8 @@
   "version": "0.6.0",
   "type": "module",
   "scripts": {
-    "build": "bun ../../scripts/build-pvm-worker.ts && tsc && bunx --bun vite build",
-    "build:prod": "bun ../../scripts/build-pvm-worker.ts && tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
+    "build": "tsc && bunx --bun vite build",
+    "build:prod": "tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
     "lint": "bunx eslint src/",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
