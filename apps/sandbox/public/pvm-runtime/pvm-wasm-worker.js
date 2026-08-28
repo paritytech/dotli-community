@@ -237,6 +237,7 @@
       this.maxGas = BigInt(maxGas);
       this.input = [];
       this.coreInput = [];
+      this.epocaInput = [];
       this.pointer = null;
       this.timeMs = null;
       this.clockStartedAt = performance.now();
@@ -313,6 +314,10 @@
         bytes.byteLength,
       );
       const type = bytes[0];
+      if (this.imports.includes("pvm_fetch_epoca_inputs")) {
+        this.#queueEpocaInput(bytes);
+        return;
+      }
       if (type === 1 || type === 2) {
         const key = hidToCoreVm(bytes[1]);
         if (key !== undefined) {
@@ -813,6 +818,21 @@
       this.#setReg(7, addressInit);
     }
 
+    #queueEpocaInput(bytes) {
+      const event = bytes.slice();
+      if (
+        event[0] === 5 &&
+        this.epocaInput[this.epocaInput.length - 1]?.[0] === 5
+      ) {
+        this.epocaInput[this.epocaInput.length - 1] = event;
+        return;
+      }
+      if (this.epocaInput.length === 256) {
+        this.epocaInput.shift();
+      }
+      this.epocaInput.push(event);
+    }
+
     #queueCoreInput(key, value) {
       if (!value && (key === 0xa3 || key === 0xa4)) {
         return;
@@ -864,7 +884,19 @@
           this.emit({ type: "frame", width, height, pixels }, [pixels.buffer]);
           return true;
         }
-        case "pvm_fetch_epoca_inputs":
+        case "pvm_fetch_epoca_inputs": {
+          const count = Math.min(
+            this.#u32(this.#reg(8)),
+            this.epocaInput.length,
+          );
+          const output = new Uint8Array(count * INPUT_EVENT_BYTES);
+          for (let index = 0; index < count; index++) {
+            output.set(this.epocaInput.shift(), index * INPUT_EVENT_BYTES);
+          }
+          this.#write(this.#u32(this.#reg(7)), output);
+          this.#setReg(7, BigInt(count));
+          return false;
+        }
         case "pvm_fetch_inputs": {
           const count = Math.min(
             this.#u32(this.#reg(8)),
