@@ -1,6 +1,6 @@
 PolkaVM App v2 browser runtime
 Source repository: https://github.com/paritytech/host-rust-core
-Source commit: 2a6eb08344f22b40c9b88ea206f41324c760aa34
+Source commit: 92e4e4f27ea328e4326e7a5e11987b648228a49f
 Source branch: https://github.com/paritytech/host-rust-core/tree/feat/pvm-app-runtime
 Package: js/packages/pvm-browser-runtime
 
