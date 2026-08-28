@@ -5,6 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
+        "@parity/truapi": "0.10.0",
         "smoldot": "3.4.1",
       },
       "devDependencies": {

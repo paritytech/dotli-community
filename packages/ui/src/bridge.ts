@@ -30,6 +30,7 @@ import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork, withActiveTld } from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
 import {
   emitDotliDebugEvent,
@@ -54,6 +55,7 @@ import {
   createWindowMessageProvider,
 } from "./legacy-host-bridge";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
+import { registerChatConnection } from "./chat/service";
 import { showNotification } from "./notification";
 
 const noop = (): void => undefined;
@@ -841,6 +843,11 @@ async function createCoreProvider(
       await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
+    // Chat-capable products get a Worker-kind execution so the core serves
+    // their chat calls; everything an App connection can do still works.
+    // The capability is primed by the host shell before rendering, so
+    // this await settles from cache or the in-flight manifest read.
+    const chatCapable = await chatCapabilityFor(label);
     const runtime = await createWebWorkerPairingHostRuntime(
       new HostWorker(),
       createHostCallbacks({
@@ -854,11 +861,30 @@ async function createCoreProvider(
         hostConfig,
       },
     );
-    const provider = await runtime.createProvider({ productId });
+    const provider = await runtime.createProvider({
+      productId,
+      executionKind: chatCapable ? "Worker" : "App",
+    });
+    const unregisterChat = chatCapable
+      ? registerChatConnection(productId, {
+          publish: (action) =>
+            provider.publishChatAction === undefined
+              ? Promise.reject(new Error("chat publishing unavailable"))
+              : provider.publishChatAction(action),
+          renderCustomMessage: (request, sink) => {
+            if (provider.renderCustomMessage === undefined) {
+              sink.onError?.(new Error("custom rendering unavailable"));
+              return noop;
+            }
+            return provider.renderCustomMessage(request, sink);
+          },
+        })
+      : noop;
     return trackCoreProvider(
       wrapCoreProviderForDebug(provider, options.productId ?? label),
       runtime,
       () => {
+        unregisterChat();
         blockingModalScope.dispose();
       },
     );
@@ -1030,8 +1056,15 @@ export async function renderIframe(
   stopSetup();
   document.title = `${label} · dot.li`;
 
+  // Carry the runtime productId so listeners key chat data the same way
+  // storage does when the debug path overrides the label-derived id.
   window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", { detail: { label } }),
+    new CustomEvent("dotli:product-loaded", {
+      detail: {
+        label,
+        productId: options.productId ?? labelToProductId(label),
+      },
+    }),
   );
   emitDotliDebugEvent({
     layer: "render",
@@ -1195,7 +1228,9 @@ export async function renderAppSubdomain(
   document.title = withActiveTld(label);
 
   window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", { detail: { label } }),
+    new CustomEvent("dotli:product-loaded", {
+      detail: { label, productId: labelToProductId(label) },
+    }),
   );
   emitDotliDebugEvent({
     layer: "render",

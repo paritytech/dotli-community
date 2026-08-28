@@ -17,7 +17,7 @@
             // before main.ts executes. Overlaps IDB open (~10-50ms) with
             // module loading. Picked up by src/db.ts via window.__dotliDb.
             window.__dotliDb = new Promise(function(resolve, reject) {
-                var req = indexedDB.open("dotli", 2);
+                var req = indexedDB.open("dotli", 4);
                 req.onupgradeneeded = function() {
                     var db = req.result;
                     if (!db.objectStoreNames.contains("cids"))
@@ -32,9 +32,22 @@
                     }
                     if (!db.objectStoreNames.contains("notification_counters"))
                         db.createObjectStore("notification_counters", { keyPath: "productId" });
+                    // v3: product chat rooms and messages.
+                    if (!db.objectStoreNames.contains("chat_rooms"))
+                        db.createObjectStore("chat_rooms", { keyPath: ["productId", "roomId"] });
+                    if (!db.objectStoreNames.contains("chat_messages")) {
+                        var c = db.createObjectStore("chat_messages", { keyPath: "seq", autoIncrement: true });
+                        c.createIndex("byRoom", ["productId", "roomId"], { unique: false });
+                    }
+                    // v4: product chat bot identities.
+                    if (!db.objectStoreNames.contains("chat_bots"))
+                        db.createObjectStore("chat_bots", { keyPath: ["productId", "botId"] });
                 };
                 req.onsuccess = function() { resolve(req.result); };
                 req.onerror = function() { reject(new Error("IDB open failed")); };
+                // A still-open tab on an older schema blocks the upgrade;
+                // reject instead of leaving the promise pending forever.
+                req.onblocked = function() { reject(new Error("IDB open blocked by another tab")); };
             });
         </script>
         <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />
@@ -86,6 +99,20 @@
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                         <circle cx="12" cy="7" r="4"/>
                     </svg>
+                </button>
+                <button
+                    id="chat-button"
+                    class="topbar-btn"
+                    title="Chat"
+                    aria-label="Chat"
+                    aria-expanded="false"
+                    aria-controls="chat-panel"
+                    hidden
+                >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span class="chat-unread-badge" id="chat-unread-badge" hidden></span>
                 </button>
                 <button
                     id="permissions-button"
@@ -159,6 +186,12 @@
                     </span>
                 </button>
                 <div class="more-popover" id="more-popover">
+                    <button class="more-row" id="more-row-chat" data-target="chat-button" hidden>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        <span>Chat</span>
+                    </button>
                     <button class="more-row" data-target="permissions-button">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -255,6 +288,43 @@
             <div class="permissions-popover-header">Permissions</div>
             <div class="permissions-popover-list" id="permissions-popover-list"></div>
         </div>
+
+        <!-- Chat Panel (docked right; the panel runtime shrinks the product
+             iframe while open, mirroring the debug panel's right dock) -->
+        <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden>
+            <div class="chat-panel-resize" id="chat-panel-resize" aria-hidden="true"></div>
+            <div class="chat-panel-header">
+                <button class="chat-panel-back" id="chat-panel-back" title="Back to rooms" aria-label="Back to rooms" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                </button>
+                <span class="chat-panel-title" id="chat-panel-title">Chat</span>
+                <button class="chat-panel-close" id="chat-panel-close" title="Close chat" aria-label="Close chat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="chat-panel-rooms" id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden></div>
+            <div class="chat-panel-messages" id="chat-panel-messages" aria-live="polite"></div>
+            <p class="chat-panel-hint" id="chat-panel-hint" hidden></p>
+            <form class="chat-panel-composer" id="chat-panel-composer">
+                <input
+                    id="chat-panel-input"
+                    class="chat-panel-input"
+                    type="text"
+                    placeholder="Message"
+                    autocomplete="off"
+                    maxlength="4000"
+                />
+                <button type="submit" class="chat-panel-send" id="chat-panel-send" title="Send" aria-label="Send">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
+            </form>
+        </aside>
 
         <!-- App Content -->
         <div id="app">
