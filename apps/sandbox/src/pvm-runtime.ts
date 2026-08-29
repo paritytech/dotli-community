@@ -587,14 +587,32 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, Math.round(value)));
 }
 
-function encodedInput(type: number, code: number, x = 0, y = 0): Uint8Array {
+// Pointer Lock can emit viewport-scale warp deltas when focus or lock state
+// changes. One such event otherwise becomes a full-frame camera snap. Match
+// the signed-byte range used by the browser bridge's CoreVM input path.
+const MAX_RELATIVE_POINTER_DELTA = 127;
+
+export function encodedInput(
+  type: number,
+  code: number,
+  x = 0,
+  y = 0,
+): Uint8Array {
   const bytes = new Uint8Array(8);
   const view = new DataView(bytes.buffer);
   bytes[0] = type;
   bytes[1] = code;
   if (type === 6) {
-    view.setInt16(2, clamp(x, -32768, 32767), true);
-    view.setInt16(4, clamp(y, -32768, 32767), true);
+    view.setInt16(
+      2,
+      clamp(x, -MAX_RELATIVE_POINTER_DELTA, MAX_RELATIVE_POINTER_DELTA),
+      true,
+    );
+    view.setInt16(
+      4,
+      clamp(y, -MAX_RELATIVE_POINTER_DELTA, MAX_RELATIVE_POINTER_DELTA),
+      true,
+    );
   } else {
     view.setUint16(2, clamp(x, 0, 65535), true);
     view.setUint16(4, clamp(y, 0, 65535), true);

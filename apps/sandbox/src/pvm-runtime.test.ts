@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { describePvmPackage, isPvmPackage } from "./pvm-runtime";
+import { describePvmPackage, encodedInput, isPvmPackage } from "./pvm-runtime";
 
 const encoder = new TextEncoder();
 
@@ -77,6 +77,20 @@ function webGpuAppV2Manifest(): string {
   delete capabilities.audio;
   return JSON.stringify(manifest);
 }
+
+describe("PolkaVM pointer input", () => {
+  it("bounds pointer-lock warp deltas without changing normal movement", () => {
+    const warped = encodedInput(6, 0, 32_000, -32_000);
+    const warpedView = new DataView(warped.buffer);
+    expect(warpedView.getInt16(2, true)).toBe(127);
+    expect(warpedView.getInt16(4, true)).toBe(-127);
+
+    const normal = encodedInput(6, 0, 23, -19);
+    const normalView = new DataView(normal.buffer);
+    expect(normalView.getInt16(2, true)).toBe(23);
+    expect(normalView.getInt16(4, true)).toBe(-19);
+  });
+});
 
 describe("PolkaVM package recognition", () => {
   it("recognizes the deployed doom.paseo package shape", () => {
