@@ -85,6 +85,19 @@ function stripContractParamsFromUrl(): void {
   }
   history.replaceState(null, "", cleaned.toString());
 }
+/**
+ * A full reset is a one-shot host signal. Consume only that flag after the
+ * purge while retaining the PVM launch contract, so reloading the host-owned
+ * canvas can start again with the same verified CID and manifest.
+ */
+function consumeFullResetParam(): void {
+  const cleaned = new URL(window.location.href);
+  if (!cleaned.searchParams.has(SANDBOX_CONTRACT_PARAMS.fullReset)) {
+    return;
+  }
+  cleaned.searchParams.delete(SANDBOX_CONTRACT_PARAMS.fullReset);
+  history.replaceState(null, "", cleaned.toString());
+}
 
 /**
  * Ask the host shell to rebuild this iframe with a fresh contract URL.
@@ -420,7 +433,8 @@ async function runPvmIfPresent(
     return false;
   }
   showStatus("Starting PolkaVM application...");
-  stripContractParamsFromUrl();
+  // PVM apps are host-owned canvases, not package HTML. Retain their launch
+  // contract so a browser or frame reload can verify and restart the same CID.
   await runPvmApplication(files, cid, executableManifest);
   notifyLoadingDone();
   performance.mark("dotli:app:end");
@@ -651,6 +665,7 @@ async function main(): Promise<void> {
   if (parsed.params.fullReset) {
     log.warn("[dot.li app] fullReset=1 → purging sandbox-origin state");
     await purgeSandboxOriginState();
+    consumeFullResetParam();
   }
 
   // Propagate the chainBackend and network choices into every metric emitted
