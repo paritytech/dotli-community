@@ -11,6 +11,7 @@ import * as raw from "multiformats/codecs/raw";
 import { sha256 } from "multiformats/hashes/sha2";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
 
 interface TestCar {
   cid: string;
@@ -79,12 +80,15 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
-  await page.evaluate((cid) => {
-    const iframe = document.createElement("iframe");
-    iframe.id = "pvm-product";
-    iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
-    document.body.replaceChildren(iframe);
-  }, fixture.cid);
+  await page.evaluate(
+    ({ cid, schemaVersion }) => {
+      const iframe = document.createElement("iframe");
+      iframe.id = "pvm-product";
+      iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      document.body.replaceChildren(iframe);
+    },
+    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+  );
 
   const product = page.frameLocator("#pvm-product");
   const canvas = product.locator("#dotli-pvm-canvas");
@@ -132,12 +136,15 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
-  await page.evaluate((cid) => {
-    const iframe = document.createElement("iframe");
-    iframe.id = "pvm-interpreter-product";
-    iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2&pvmMode=interpreter`;
-    document.body.replaceChildren(iframe);
-  }, fixture.cid);
+  await page.evaluate(
+    ({ cid, schemaVersion }) => {
+      const iframe = document.createElement("iframe");
+      iframe.id = "pvm-interpreter-product";
+      iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&pvmMode=interpreter`;
+      document.body.replaceChildren(iframe);
+    },
+    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+  );
 
   const canvas = page
     .frameLocator("#pvm-interpreter-product")
@@ -188,9 +195,9 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     waitUntil: "domcontentloaded",
   });
   await page.evaluate(
-    ({ artifactCid, executableManifest }) => {
+    ({ artifactCid, executableManifest, schemaVersion }) => {
       const url = new URL(
-        `http://doom-v2.app.localhost:5173/?cid=${artifactCid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2`,
+        `http://doom-v2.app.localhost:5173/?cid=${artifactCid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2`,
       );
       url.searchParams.set("executableManifest", executableManifest);
       const iframe = document.createElement("iframe");
@@ -198,7 +205,11 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       iframe.src = url.toString();
       document.body.replaceChildren(iframe);
     },
-    { artifactCid: cid, executableManifest: manifest },
+    {
+      artifactCid: cid,
+      executableManifest: manifest,
+      schemaVersion: SANDBOX_SCHEMA_VERSION,
+    },
   );
 
   const canvas = page

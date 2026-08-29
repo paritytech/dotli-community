@@ -118,6 +118,18 @@ function requestHostRerender(reason: string): void {
     failLoading("Invalid sandbox URL", reason);
   }, TIMEOUTS.SANDBOX_RECOVER);
 }
+/**
+ * A newer sandbox cannot safely interpret a contract emitted by an older host.
+ * Ask the parent to activate its waiting PWA build instead of re-rendering the
+ * same stale contract and looping.
+ */
+function requestHostUpdate(reason: string): void {
+  showStatus("Updating dot.li...");
+  window.parent.postMessage({ type: "dotli:host-update-required" }, "*");
+  window.setTimeout(() => {
+    failLoading("dot.li update required", reason);
+  }, TIMEOUTS.SANDBOX_RECOVER);
+}
 
 /**
  * Render the sandbox-local error page AND tell the host shell its loading
@@ -643,7 +655,9 @@ async function main(): Promise<void> {
   const urlParams = new URL(window.location.href).searchParams;
   const parsed = validateSandboxParams(urlParams);
   if (!parsed.ok) {
-    if (parsed.recoverable === true) {
+    if (parsed.hostUpdateRequired === true) {
+      requestHostUpdate(parsed.reason);
+    } else if (parsed.recoverable === true) {
       requestHostRerender(parsed.reason);
     } else {
       failLoading("Invalid sandbox URL", parsed.reason);

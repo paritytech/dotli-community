@@ -10,11 +10,12 @@ import {
 
 const VALID_CID = "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
 
-/** Build a search string with the required v3 params, allowing overrides. */
+/** Build a search string with the required v4 params, allowing overrides. */
 function search(
   overrides: Record<string, string | null> = {},
 ): URLSearchParams {
   const base: Record<string, string> = {
+    [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: "smoldot-direct",
     [SANDBOX_CONTRACT_PARAMS.network]: "paseo-next-v2",
@@ -27,9 +28,9 @@ function search(
   return params;
 }
 
-describe("validateSandboxParams: v3 cid contract", () => {
+describe("validateSandboxParams: v4 cid contract", () => {
   it("As the sandbox, when I receive a valid contract, I read cid, chainBackend, and network from the params", () => {
-    // Given a contract that carries every required v3 param.
+    // Given a contract that carries every required v4 param.
     const params = search();
 
     // When the sandbox validates it.
@@ -118,17 +119,27 @@ describe("validateSandboxParams: v3 cid contract", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("As the sandbox, I reject a contract whose schema version is older than my build", () => {
-    // Given a contract from a host built against an older schema.
+  it("As the sandbox, I request a host update when its schema is older than my build", () => {
     const params = search({
       [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION - 1),
     });
 
-    // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (the version gate protects against stale host deploys).
     expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.hostUpdateRequired).toBe(true);
+      expect(result.reason).toMatch(/update dot\.li/i);
+    }
+  });
+
+  it("As the sandbox, I request a host update when an active contract omits its schema version", () => {
+    const result = validateSandboxParams(
+      search({ [SANDBOX_CONTRACT_PARAMS.v]: null }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.hostUpdateRequired).toBe(true);
   });
 
   it("As the sandbox, I reject a contract that omits the chainBackend", () => {
@@ -138,7 +149,7 @@ describe("validateSandboxParams: v3 cid contract", () => {
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (chainBackend is still required after the v3 bump).
+    // Then it fails (chainBackend is still required after the v4 bump).
     expect(result.ok).toBe(false);
   });
 
@@ -149,7 +160,7 @@ describe("validateSandboxParams: v3 cid contract", () => {
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
 
-    // Then it fails (network is still required after the v3 bump).
+    // Then it fails (network is still required after the v4 bump).
     expect(result.ok).toBe(false);
   });
 
