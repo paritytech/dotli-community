@@ -120,6 +120,38 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
   await expect(canvas).toHaveAttribute("data-pvm-translation-ms", "0");
 });
 
+test("a PolkaVM package can bypass translation and use the interpreter", async ({
+  page,
+}) => {
+  const fixture = await pvmCar();
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await page.evaluate((cid) => {
+    const iframe = document.createElement("iframe");
+    iframe.id = "pvm-interpreter-product";
+    iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2&pvmMode=interpreter`;
+    document.body.replaceChildren(iframe);
+  }, fixture.cid);
+
+  const canvas = page
+    .frameLocator("#pvm-interpreter-product")
+    .locator("#dotli-pvm-canvas");
+  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    timeout: 30_000,
+  });
+  await expect(canvas).toHaveAttribute("data-pvm-backend", "interpreter");
+  await expect(canvas).toHaveAttribute("data-pvm-translation-ms", "0");
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+    .toBeGreaterThan(2);
+});
+
 const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
 const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
 const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
