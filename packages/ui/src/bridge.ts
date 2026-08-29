@@ -287,23 +287,20 @@ window.addEventListener("dotli:device-permission-changed", () => {
   }
 });
 
-// The sandbox strips its contract params after a successful boot, so a
-// reload of the sandbox window (a dApp calling `location.reload()`, a
-// browser restoring a crashed frame) boots without `?cid=` and cannot
-// recover on its own. It posts a recover request and the host rebuilds
-// the iframe from the tracked product state. The origin gate restricts
-// the request to the product currently rendered. The interval guard stops
-// a reload-looping product from pinning the host in endless re-renders.
-// A rate-limited sandbox shows its own contract error once its
-// `TIMEOUTS.SANDBOX_RECOVER` grace expires.
+// A sandbox reload asks the host to rebuild the iframe from tracked product
+// state. A schema mismatch is different: re-rendering would resend the same
+// stale contract, so forward a host-update event to the PWA coordinator.
+// Both messages are origin-gated to the product currently rendered. Recovery
+// is rate-limited so a reload-looping product cannot pin the host in endless
+// re-renders; update activation has its own idempotence guard in `pwa.ts`.
 const RECOVER_MIN_INTERVAL_MS = 5_000;
 let lastRecoverAt = 0;
 window.addEventListener("message", (event: MessageEvent) => {
   const data = event.data as Record<string, unknown> | null;
+  const type = data?.type;
   if (
-    data === null ||
-    typeof data !== "object" ||
-    data.type !== "dotli:sandbox-recover"
+    type !== "dotli:sandbox-recover" &&
+    type !== "dotli:host-update-required"
   ) {
     return;
   }
@@ -312,6 +309,10 @@ window.addEventListener("message", (event: MessageEvent) => {
     product?.mode !== "subdomain" ||
     event.origin !== getAppOrigin(product.label)
   ) {
+    return;
+  }
+  if (type === "dotli:host-update-required") {
+    window.dispatchEvent(new Event("dotli:host-update-required"));
     return;
   }
   const now = Date.now();
