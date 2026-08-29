@@ -1284,6 +1284,7 @@ globalThis.createPvmRuntime = endpoint => {
   const MAX_ASSET_NAME_BYTES = 1024;
   const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
   const MAX_ASSET_BYTES = 128 * 1024 * 1024;
+  const FORCE_INTERPRETER = Symbol("force-interpreter");
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -1606,6 +1607,9 @@ globalThis.createPvmRuntime = endpoint => {
     stage(program);
     const pendingOutputs = [];
     try {
+      if (message.forceInterpreter === true) {
+        throw FORCE_INTERPRETER;
+      }
       let module = message.compiledModule;
       let bytes =
         message.compiledBytes instanceof ArrayBuffer
@@ -1663,7 +1667,9 @@ globalThis.createPvmRuntime = endpoint => {
     } catch (error) {
       translated = null;
       pendingOutputs.length = 0;
-      console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
+      if (error !== FORCE_INTERPRETER) {
+        console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
+      }
       let presentation = 0;
       if (message.graphicsProfile === "tri2d") {
         presentation = 1;

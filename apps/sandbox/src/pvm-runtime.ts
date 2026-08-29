@@ -755,6 +755,8 @@ export async function runPvmApplication(
     throw new Error("package is not a PolkaVM application");
   }
   validateFiles(files, descriptor);
+  const forceInterpreter =
+    new URLSearchParams(location.search).get("pvmMode") === "interpreter";
 
   const started = performance.now();
   const {
@@ -762,6 +764,9 @@ export async function runPvmApplication(
     status,
     metrics: metricsElement,
   } = createShell(descriptor.controls);
+  if (forceInterpreter) {
+    status.textContent = "Starting PolkaVM interpreter…";
+  }
   const context =
     descriptor.graphicsProfile === "framebuffer"
       ? canvas.getContext("2d", { alpha: false })
@@ -776,9 +781,13 @@ export async function runPvmApplication(
   const runtime = await runtimeBytes();
   const program = ownedBytes(files[descriptor.programPath]);
   const cacheKey = `${RUNTIME_SOURCE}:${await programDigest(program)}`;
-  const compiledModule = compiledModules.get(cacheKey);
+  const compiledModule = forceInterpreter
+    ? undefined
+    : compiledModules.get(cacheKey);
   const compiledBytes =
-    compiledModule === undefined ? await loadTranslation(cacheKey) : null;
+    !forceInterpreter && compiledModule === undefined
+      ? await loadTranslation(cacheKey)
+      : null;
   let saveIdentity = cid;
   if (descriptor.requiredAssets.length > 0) {
     const fingerprints: string[] = [];
@@ -1165,6 +1174,7 @@ export async function runPvmApplication(
       compiledBytes: compiledBytes?.buffer,
       graphicsProfile: descriptor.graphicsProfile,
       gpuCapabilities: gpuCapabilitiesBuffer,
+      forceInterpreter,
     },
     transfers,
   );
