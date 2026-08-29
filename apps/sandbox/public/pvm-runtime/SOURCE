@@ -1,9 +1,9 @@
 PolkaVM App v2 browser runtime
 Bridge repository: https://github.com/paritytech/host-rust-core.git
-Bridge commit: d155fe267d5ec2f7e484016b1246fb05315450de
+Bridge commit: 96968329e44c69c7f468598796134ef18f24968d
 Runtime repository: https://github.com/paritytech/pvm-host-runtime
-Runtime commit: 2ce39a291de97d6465c0b430ab638de56fe973c9
-Release: v0.1.0
+Runtime commit: 8aa01ed8d26e15b666a8310546d3de060a1ee2a5
+Release: v0.1.1
 
 Bridge-owned artifacts:
 - pvm-browser-runtime.wasm

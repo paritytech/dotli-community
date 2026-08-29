@@ -1284,6 +1284,7 @@ globalThis.createPvmRuntime = endpoint => {
   const MAX_ASSET_NAME_BYTES = 1024;
   const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
   const MAX_ASSET_BYTES = 128 * 1024 * 1024;
+  const FORCE_INTERPRETER = Symbol("force-interpreter");
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -1440,6 +1441,10 @@ globalThis.createPvmRuntime = endpoint => {
     if (!running) {
       return;
     }
+    const firstUpdate = updateCount === 0;
+    if (firstUpdate) {
+      postMessage({ type: "startup", stage: "first-update-started" });
+    }
     const before = performance.now();
     try {
       if (translated) {
@@ -1463,6 +1468,9 @@ globalThis.createPvmRuntime = endpoint => {
       return;
     }
     const elapsed = performance.now() - before;
+    if (firstUpdate) {
+      postMessage({ type: "startup", stage: "first-update-completed" });
+    }
     updateCount++;
     updateSamples.push(elapsed);
     if (updateSamples.length > 600) {
@@ -1598,14 +1606,19 @@ globalThis.createPvmRuntime = endpoint => {
     let compilationMs = 0;
     let translatedWasmBytes = 0;
     let cacheHit = false;
+    postMessage({ type: "startup", stage: "runtime-instantiating" });
     const instantiated = await WebAssembly.instantiate(message.runtime, {});
     pvm = instantiated.instance.exports;
     if (pvm.pvm_browser_abi_version() !== 1) {
       throw new Error("PolkaVM browser runtime has an incompatible ABI");
     }
-    stage(program);
+    postMessage({ type: "startup", stage: "runtime-instantiated" });
     const pendingOutputs = [];
     try {
+      if (message.forceInterpreter === true) {
+        throw FORCE_INTERPRETER;
+      }
+      stage(program);
       let module = message.compiledModule;
       let bytes =
         message.compiledBytes instanceof ArrayBuffer
@@ -1663,7 +1676,9 @@ globalThis.createPvmRuntime = endpoint => {
     } catch (error) {
       translated = null;
       pendingOutputs.length = 0;
-      console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
+      if (error !== FORCE_INTERPRETER) {
+        console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
+      }
       let presentation = 0;
       if (message.graphicsProfile === "tri2d") {
         presentation = 1;
@@ -1676,15 +1691,23 @@ globalThis.createPvmRuntime = endpoint => {
           "PolkaVM interpreter does not support graphics profiles"
         );
       }
+      postMessage({ type: "startup", stage: "interpreter-staging-program" });
       stage(program);
+      postMessage({ type: "startup", stage: "interpreter-program-staged" });
+      postMessage({ type: "startup", stage: "interpreter-launch-begin" });
       check(
         begin(MAX_GAS_PER_UPDATE, message.audioEnabled ? 1 : 0, presentation),
         "begin PolkaVM browser launch"
       );
+      postMessage({ type: "startup", stage: "interpreter-launch-begun" });
+      postMessage({ type: "startup", stage: "interpreter-mounting-assets" });
       for (const asset of message.assets) {
         addAsset(asset);
       }
+      postMessage({ type: "startup", stage: "interpreter-assets-mounted" });
+      postMessage({ type: "startup", stage: "interpreter-launch-starting" });
       check(pvm.pvm_browser_launch_start(), "start PolkaVM browser launch");
+      postMessage({ type: "startup", stage: "interpreter-launch-started" });
       if (message.graphicsProfile === "webgpu-raster") {
         if (!(message.gpuCapabilities instanceof ArrayBuffer)) {
           throw new Error(
@@ -1697,12 +1720,14 @@ globalThis.createPvmRuntime = endpoint => {
           "set PolkaVM browser GPU capabilities"
         );
       }
+      postMessage({ type: "startup", stage: "interpreter-initializing" });
       try {
         check(pvm.pvm_browser_init(), "initialize PolkaVM browser guest");
       } catch (initError) {
         drainLogs();
         throw initError;
       }
+      postMessage({ type: "startup", stage: "interpreter-initialized" });
       drainTri2d();
       drainGpuBatches();
       drainLogs();
