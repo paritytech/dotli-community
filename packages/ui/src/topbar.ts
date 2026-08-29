@@ -28,7 +28,7 @@ import {
   type Backend,
   type CacheSettings,
 } from "@dotli/config/mode";
-import { clearCidCache } from "@dotli/storage/cid-cache";
+import { clearInstalledExecutableCache } from "@dotli/storage/cid-cache";
 import {
   getEnabledNetworks,
   getNetwork,
@@ -1586,7 +1586,7 @@ async function applyAndReset(
         draft.cache.skipArchiveCache && !prior.cache.skipArchiveCache;
 
       if (cidTurnedOff) {
-        await clearCidCache();
+        await clearInstalledExecutableCache();
       }
       if (archiveTurnedOff) {
         // Archive cache lives on the sandbox origin, unreachable from here.
