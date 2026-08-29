@@ -242,13 +242,13 @@ export type BootEvent =
     }
   | {
       layer: "boot";
-      event: "cid_cache_checked";
+      event: "installed_executable_cache_checked";
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
         hit: boolean;
-        cid?: string;
+        contenthash?: string;
       };
     }
   | {
