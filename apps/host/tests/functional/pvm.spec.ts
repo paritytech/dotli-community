@@ -82,7 +82,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
   await page.evaluate((cid) => {
     const iframe = document.createElement("iframe");
     iframe.id = "pvm-product";
-    iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2`;
+    iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
     document.body.replaceChildren(iframe);
   }, fixture.cid);
 
@@ -98,14 +98,22 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
   await expect(canvas).toHaveAttribute("width", "320");
   await expect(canvas).toHaveAttribute("height", "200");
 
-  // Reload the same product origin: translated Wasm bytes come from IndexedDB,
-  // so the second worker skips PVM instruction lowering.
-  await page.evaluate((cid) => {
-    const iframe = document.querySelector<HTMLIFrameElement>("#pvm-product");
-    if (iframe !== null) {
-      iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=3&chainBackend=rpc-gateway&network=paseo-next-v2`;
-    }
-  }, fixture.cid);
+  // The host-owned PVM canvas retains its verified launch contract so a
+  // browser/frame reload restarts the same CID without relying on parent state.
+  const productFrame = page
+    .frames()
+    .find((frame) => frame.url().includes("pvm-fixture.app.localhost"));
+  if (productFrame === undefined) {
+    throw new Error("PVM product frame did not mount");
+  }
+  expect(new URL(productFrame.url()).searchParams.get("cid")).toBe(fixture.cid);
+  expect(new URL(productFrame.url()).searchParams.has("fullReset")).toBe(false);
+  await Promise.all([
+    productFrame.waitForNavigation({ waitUntil: "domcontentloaded" }),
+    productFrame.evaluate(() => {
+      window.location.reload();
+    }),
+  ]);
   await expect(canvas).toHaveAttribute("data-pvm-cache-hit", "true", {
     timeout: 30_000,
   });
