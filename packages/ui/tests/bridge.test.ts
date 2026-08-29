@@ -392,6 +392,35 @@ describe("bridge render lifecycle", () => {
       executableManifest,
     );
   });
+  it("forwards a sandbox schema mismatch as a host PWA update request", async () => {
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain("manifest-cid", "manifest-app");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const updateRequired = vi.fn();
+    window.addEventListener("dotli:host-update-required", updateRequired, {
+      once: true,
+    });
+    const appOrigin = new URL(mocks.iframeHosts[0].iframeUrl).origin;
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:host-update-required" },
+        origin: "https://evil.example",
+      }),
+    );
+    expect(updateRequired).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:host-update-required" },
+        origin: appOrigin,
+      }),
+    );
+    expect(updateRequired).toHaveBeenCalledTimes(1);
+  });
 
   it.each(["/x.dot@evil.com/pay", "/foo.dotify/pay"])(
     "As a user, the host keeps an adversarial deep path on the app sandbox origin: %s",
