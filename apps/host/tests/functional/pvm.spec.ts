@@ -150,6 +150,10 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
     .toBeGreaterThan(2);
+  await expect(canvas).toHaveAttribute("data-pvm-startup-stage", "first-frame");
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-pvm-updates")))
+    .toBeGreaterThan(0);
 });
 
 const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
