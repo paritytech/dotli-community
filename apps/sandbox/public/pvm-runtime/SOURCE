@@ -1,20 +1,11 @@
 PolkaVM App v2 browser runtime
-Source repository: https://github.com/paritytech/host-rust-core
-Source commit: 210523afe4278fabf1cac63b422ac520e3ec8c1c
-Source branch: https://github.com/paritytech/host-rust-core/tree/feat/pvm-app-runtime
-Package: js/packages/pvm-browser-runtime
+Bridge repository: https://github.com/paritytech/host-rust-core.git
+Bridge commit: d155fe267d5ec2f7e484016b1246fb05315450de
+Runtime repository: https://github.com/paritytech/pvm-host-runtime
+Runtime commit: 2ce39a291de97d6465c0b430ab638de56fe973c9
+Release: v0.1.0
 
-Vendored package artifacts:
+Bridge-owned artifacts:
 - pvm-browser-runtime.wasm
-- pvm-gpu-worker.js
 - pvm-wasm-worker.js
-
-Rebuild from the pinned source with:
-  npm --prefix js/packages/pvm-browser-runtime run build
-
-The package build compiles the host-neutral Rust runtime, bundles the translator
-and worker entry for opaque sandbox workers, and emits SHA-256 checksums. The
-worker reports translation, compilation, startup, and update timing metrics and
-returns translated Wasm bytes for the sandbox's digest-keyed IndexedDB cache.
-The runtime implements the bounded framebuffer, Tri2D, and WebGPU Raster
-profiles while retaining the interpreter as a guarded fallback.
+- pvm-gpu-worker.js
