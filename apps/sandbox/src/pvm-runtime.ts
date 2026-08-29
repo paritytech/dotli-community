@@ -14,6 +14,7 @@ const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
 const MAX_SAVE_BYTES = 1024 * 1024;
 const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
 const START_TIMEOUT_MS = 30_000;
+const INTERPRETER_START_TIMEOUT_MS = 180_000;
 const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
@@ -30,6 +31,7 @@ export interface PvmMetrics {
   translationMs: number;
   compilationMs: number;
   startupMs: number;
+  startupStage: string;
   firstFrameMs: number;
   translatedWasmBytes: number;
   frames: number;
@@ -66,6 +68,11 @@ interface WorkerReady {
   compilationMs?: number;
   startupMs?: number;
   translatedWasmBytes?: number;
+}
+
+interface WorkerStartup {
+  type: "startup";
+  stage: string;
 }
 
 interface WorkerFrame {
@@ -824,6 +831,7 @@ export async function runPvmApplication(
     translationMs: 0,
     compilationMs: 0,
     startupMs: 0,
+    startupStage: "worker-created",
     firstFrameMs: 0,
     translatedWasmBytes: 0,
     frames: 0,
@@ -840,6 +848,7 @@ export async function runPvmApplication(
   const updateMetrics = (): void => {
     metricsElement.textContent = [
       `${pvmMetrics.backend.toUpperCase()}  ${pvmMetrics.fps.toFixed(1)} FPS`,
+      `stage ${pvmMetrics.startupStage}`,
       `translate ${pvmMetrics.translationMs.toFixed(1)} ms  compile ${pvmMetrics.compilationMs.toFixed(1)} ms`,
       `update p50 ${pvmMetrics.updateP50Ms.toFixed(2)} ms  p95 ${pvmMetrics.updateP95Ms.toFixed(2)} ms  max ${pvmMetrics.updateMaxMs.toFixed(2)} ms`,
     ].join("\n");
@@ -848,6 +857,7 @@ export async function runPvmApplication(
     canvas.dataset.pvmTranslationMs = String(pvmMetrics.translationMs);
     canvas.dataset.pvmCompilationMs = String(pvmMetrics.compilationMs);
     canvas.dataset.pvmStartupMs = String(pvmMetrics.startupMs);
+    canvas.dataset.pvmStartupStage = pvmMetrics.startupStage;
     canvas.dataset.pvmFirstFrameMs = String(pvmMetrics.firstFrameMs);
     canvas.dataset.pvmFrames = String(pvmMetrics.frames);
     canvas.dataset.pvmFps = String(pvmMetrics.fps);
@@ -857,6 +867,14 @@ export async function runPvmApplication(
     canvas.dataset.pvmUpdateMaxMs = String(pvmMetrics.updateMaxMs);
     canvas.dataset.pvmAudioChunks = String(pvmMetrics.audioChunks);
     canvas.dataset.pvmAudioSamples = String(pvmMetrics.audioSamples);
+  };
+  const setStartupStage = (stage: string): void => {
+    if (firstFrame) {
+      return;
+    }
+    pvmMetrics.startupStage = stage;
+    status.textContent = `PVM startup: ${stage.replaceAll("-", " ")}…`;
+    updateMetrics();
   };
   const presentedFrame = (): void => {
     pvmMetrics.frames++;
@@ -872,6 +890,7 @@ export async function runPvmApplication(
     if (!firstFrame) {
       firstFrame = true;
       pvmMetrics.firstFrameMs = now - started;
+      pvmMetrics.startupStage = "first-frame";
       status.textContent = "";
       window.clearTimeout(timer);
       updateMetrics();
@@ -951,11 +970,16 @@ export async function runPvmApplication(
     resolve: resolveStarted,
     reject: rejectStarted,
   } = Promise.withResolvers<undefined>();
+  const startTimeoutMs = forceInterpreter
+    ? INTERPRETER_START_TIMEOUT_MS
+    : START_TIMEOUT_MS;
   const timer = window.setTimeout(() => {
     rejectStarted(
-      new Error("PolkaVM application did not present a frame in time"),
+      new Error(
+        `${forceInterpreter ? "PolkaVM interpreter" : "PolkaVM application"} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${pvmMetrics.startupStage})`,
+      ),
     );
-  }, START_TIMEOUT_MS);
+  }, startTimeoutMs);
   let webGpu: WebGpuRasterBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
   if (descriptor.graphicsProfile === "webgpu-raster") {
@@ -996,7 +1020,15 @@ export async function runPvmApplication(
   worker.onmessage = (event: MessageEvent<unknown>): void => {
     const message = object(event.data);
     switch (message?.type) {
+      case "startup": {
+        const startup = message as unknown as WorkerStartup;
+        if (typeof startup.stage === "string" && startup.stage !== "") {
+          setStartupStage(startup.stage);
+        }
+        break;
+      }
       case "translated": {
+        setStartupStage("translated");
         if (
           message.cacheKey === cacheKey &&
           message.bytes instanceof Uint8Array
@@ -1006,6 +1038,7 @@ export async function runPvmApplication(
         break;
       }
       case "compiled": {
+        setStartupStage("compiled");
         if (
           message.cacheKey === cacheKey &&
           message.module instanceof WebAssembly.Module
@@ -1029,6 +1062,7 @@ export async function runPvmApplication(
         pvmMetrics.compilationMs = ready.compilationMs ?? 0;
         pvmMetrics.startupMs = ready.startupMs ?? 0;
         pvmMetrics.translatedWasmBytes = ready.translatedWasmBytes ?? 0;
+        pvmMetrics.startupStage = "ready";
         status.textContent = `${ready.backend === "compiler" ? "PVM→Wasm JIT" : "PVM interpreter"} ready`;
         canvas.dataset.pvmReady = "true";
         updateMetrics();
