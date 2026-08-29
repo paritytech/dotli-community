@@ -1215,6 +1215,9 @@ async function main(): Promise<void> {
   // loading path without misclassifying a slow required manifest as absent.
   // The same result is reused for branding to avoid a second storage read.
   const appManifestPromise = loadAppExecutableManifest(label, chainBackend);
+  let appManifestResultForRender:
+    | Awaited<typeof appManifestPromise>
+    | undefined;
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1228,49 +1231,55 @@ async function main(): Promise<void> {
       payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
     });
     if (cachedCid !== null) {
-      m.count(S.CACHE_HIT);
-      log.warn(
-        `[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`,
+      appManifestResultForRender = await appManifestPromise;
+      const executableManifest = executableManifestText(
+        appManifestResultForRender,
       );
-      // Wrap the warm-path render in a span so its duration is queryable
-      // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
-      const appManifestResult = await appManifestPromise;
-      await m.span(S.E2E_FAST, async () => {
-        setShieldState(shieldState);
-        const { renderAppSubdomain } = await renderChunkPromise;
-        advancePhase(contentFetchPhase);
-        await renderAppSubdomain(
-          cachedCid,
-          label,
-          executableManifestText(appManifestResult),
+      if (executableManifest === null) {
+        m.count(S.CACHE_HIT);
+        log.warn(
+          `[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`,
         );
-      });
-      void recordRecentLabel(label);
-      void applyProductBranding(label, chainBackend, appManifestResult).catch(
-        (err: unknown) => {
+        // Wrap the warm-path render in a span so its duration is queryable
+        // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
+        await m.span(S.E2E_FAST, async () => {
+          setShieldState(shieldState);
+          const { renderAppSubdomain } = await renderChunkPromise;
+          advancePhase(contentFetchPhase);
+          await renderAppSubdomain(cachedCid, label, executableManifest);
+        });
+        void recordRecentLabel(label);
+        void applyProductBranding(
+          label,
+          chainBackend,
+          appManifestResultForRender,
+        ).catch((err: unknown) => {
           log.warn(
             `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
           );
-        },
+        });
+        performance.mark("dotli:main:end");
+        log.warn(`[dot.li perf] === TOTAL (fast path): ${dur(T0)} ===`);
+        emitDotliDebugEvent({
+          layer: "boot",
+          event: "ready",
+          flowId: bootFlowId,
+          timestamp: Date.now(),
+          payload: {
+            label,
+            totalMs: performance.now() - T0,
+            path: "fast",
+          },
+        });
+        // SWR: keep the cache honest across reloads without blocking the render.
+        requestIdleCallback(() => {
+          void runBackgroundRevalidate(label, cachedCid, chainBackend);
+        });
+        return;
+      }
+      log.warn(
+        `[dot.li resolve] ignoring cached CID for App v2; resolving the contenthash paired with the external executable manifest (${elapsed(T0)})`,
       );
-      performance.mark("dotli:main:end");
-      log.warn(`[dot.li perf] === TOTAL (fast path): ${dur(T0)} ===`);
-      emitDotliDebugEvent({
-        layer: "boot",
-        event: "ready",
-        flowId: bootFlowId,
-        timestamp: Date.now(),
-        payload: {
-          label,
-          totalMs: performance.now() - T0,
-          path: "fast",
-        },
-      });
-      // SWR: keep the cache honest across reloads without blocking the render.
-      requestIdleCallback(() => {
-        void runBackgroundRevalidate(label, cachedCid, chainBackend);
-      });
-      return;
     }
     m.count(S.CACHE_MISS);
     log.warn(`[dot.li perf] CID cache MISS (${elapsed(T0)})`);
@@ -1410,7 +1419,8 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
-    const appManifestResult = await appManifestPromise;
+    const appManifestResult =
+      appManifestResultForRender ?? (await appManifestPromise);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(
