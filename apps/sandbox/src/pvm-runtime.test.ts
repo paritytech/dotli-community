@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   accumulateRelativePointerDelta,
   describePvmPackage,
@@ -9,6 +9,8 @@ import {
   isPvmPackage,
   normalizedPointerDelta,
   waitForTruapiPort,
+  type TruapiPortScope,
+  type TruapiPortTarget,
 } from "./pvm-runtime";
 
 const encoder = new TextEncoder();
@@ -227,18 +229,76 @@ describe("PolkaVM package recognition", () => {
 });
 
 describe("PolkaVM TrUAPI transport", () => {
-  it("adopts the Host-injected canonical MessagePort", async () => {
+  it("adopts an existing Host-injected canonical MessagePort", async () => {
     const channel = new MessageChannel();
-    await expect(
-      waitForTruapiPort({ __HOST_API_PORT__: channel.port1 }, 0),
-    ).resolves.toBe(channel.port1);
+    const scope = {
+      __HOST_API_PORT__: channel.port1,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } satisfies TruapiPortScope;
+    const target = { postMessage: vi.fn() } satisfies TruapiPortTarget;
+    await expect(waitForTruapiPort(scope, target, 0)).resolves.toBe(
+      channel.port1,
+    );
+    expect(target.postMessage).not.toHaveBeenCalled();
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("negotiates and adopts a transferred Host port", async () => {
+    const channel = new MessageChannel();
+    let listener: ((event: MessageEvent<unknown>) => void) | null = null;
+    const scope: TruapiPortScope = {
+      addEventListener(
+        _type: "message",
+        next: (event: MessageEvent<unknown>) => void,
+      ) {
+        listener = next;
+      },
+      removeEventListener(
+        _type: "message",
+        current: (event: MessageEvent<unknown>) => void,
+      ) {
+        if (listener === current) {
+          listener = null;
+        }
+      },
+    };
+    const target = {
+      postMessage(message: unknown, targetOrigin: string) {
+        expect(message).toEqual({ type: "truapi-ready" });
+        expect(targetOrigin).toBe("*");
+        if (listener === null) {
+          throw new Error("message listener was not ready");
+        }
+        listener({
+          source: target as unknown as MessageEventSource,
+          data: { type: "truapi-init" },
+          ports: [channel.port1],
+        } as unknown as MessageEvent<unknown>);
+      },
+    } satisfies TruapiPortTarget;
+
+    await expect(waitForTruapiPort(scope, target, 100)).resolves.toBe(
+      channel.port1,
+    );
+    expect(scope.__HOST_API_PORT__).toBe(channel.port1);
     channel.port1.close();
     channel.port2.close();
   });
 
   it("fails closed when the Host port is absent", async () => {
-    await expect(waitForTruapiPort({}, 0)).rejects.toThrow(
+    const scope = {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } satisfies TruapiPortScope;
+    const target = { postMessage: vi.fn() } satisfies TruapiPortTarget;
+    await expect(waitForTruapiPort(scope, target, 0)).rejects.toThrow(
       /TrUAPI Host port was not available/,
+    );
+    expect(target.postMessage).toHaveBeenCalledWith(
+      { type: "truapi-ready" },
+      "*",
     );
   });
 });

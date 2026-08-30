@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { CarReader, CarWriter } from "@ipld/car";
 import * as dagPb from "@ipld/dag-pb";
 import type { PBLink } from "@ipld/dag-pb";
@@ -68,6 +68,17 @@ async function pvmCar(): Promise<TestCar> {
   return { cid: root.toString(), bytes: car };
 }
 
+async function installTruapiPortResponder(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const channel = new MessageChannel();
+    channel.port2.onmessage = () => {};
+    channel.port2.start();
+    (
+      window as typeof window & { __HOST_API_PORT__?: MessagePort }
+    ).__HOST_API_PORT__ = channel.port1;
+  });
+}
+
 test("a verified PolkaVM package translates and renders in the sandbox", async ({
   page,
 }) => {
@@ -80,6 +91,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
@@ -136,6 +148,7 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
@@ -194,6 +207,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
+  await installTruapiPortResponder(page);
   await page.evaluate(
     ({ artifactCid, executableManifest, schemaVersion }) => {
       const url = new URL(
