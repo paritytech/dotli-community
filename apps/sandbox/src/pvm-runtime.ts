@@ -1228,7 +1228,8 @@ export async function runPvmApplication(
   };
   window.addEventListener("pagehide", stop, { once: true });
 
-  worker.onmessage = (event: MessageEvent<unknown>): void => {
+  let translationStorePromise: Promise<void> = Promise.resolve();
+  worker.onmessage = async (event: MessageEvent<unknown>): Promise<void> => {
     const message = object(event.data);
     switch (message?.type) {
       case "startup": {
@@ -1244,7 +1245,14 @@ export async function runPvmApplication(
           message.cacheKey === cacheKey &&
           message.bytes instanceof Uint8Array
         ) {
-          void storeTranslation(cacheKey, message.bytes);
+          translationStorePromise = storeTranslation(
+            cacheKey,
+            message.bytes,
+          ).catch((error: unknown) => {
+            console.warn(
+              `PolkaVM translation cache write failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
         }
         break;
       }
@@ -1266,6 +1274,7 @@ export async function runPvmApplication(
         break;
       }
       case "ready": {
+        await translationStorePromise;
         const ready = message as unknown as WorkerReady;
         pvmMetrics.backend = ready.backend;
         pvmMetrics.cacheHit = ready.cacheHit === true;

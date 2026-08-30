@@ -731,6 +731,11 @@ async function createHost(args: {
     disposePipe = null;
     productProvider = null;
   };
+  const connectProductPort = (port: MessagePort): void => {
+    cleanupProductSide();
+    productProvider = createMessagePortProvider(port);
+    disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
+  };
   try {
     const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
     const host = createIframeHost({
@@ -739,10 +744,7 @@ async function createHost(args: {
       allow,
       sandbox: args.sandbox,
       container: args.container,
-      onPort: (port) => {
-        productProvider = createMessagePortProvider(port);
-        disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
-      },
+      onPort: connectProductPort,
     });
 
     // DEPRECATED legacy host-API support. Modern products announce themselves
@@ -760,15 +762,29 @@ async function createHost(args: {
     // `onPort` is the only wiring.
     let probeMode: "pending" | "modern" | "legacy" = "pending";
     const onProbe = (event: MessageEvent): void => {
-      if (probeMode !== "pending") {
-        return;
-      }
       const targetWindow = host.iframe.contentWindow;
       if (
         !targetWindow ||
         event.source !== targetWindow ||
         event.origin !== args.allowedOrigin
       ) {
+        return;
+      }
+      if ((event.data as { type?: unknown } | null)?.type === "truapi-ready") {
+        if (probeMode === "modern") {
+          const channel = new MessageChannel();
+          connectProductPort(channel.port1);
+          targetWindow.postMessage(
+            { type: "truapi-init" },
+            args.allowedOrigin,
+            [channel.port2],
+          );
+        } else if (probeMode === "pending") {
+          probeMode = "modern";
+        }
+        return;
+      }
+      if (probeMode !== "pending") {
         return;
       }
       if (event.data instanceof Uint8Array) {
@@ -788,11 +804,6 @@ async function createHost(args: {
         disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
         // Replay the handshake frame the probe just consumed.
         windowProvider.injectInbound(event.data);
-      } else if (
-        (event.data as { type?: unknown } | null)?.type === "truapi-ready"
-      ) {
-        probeMode = "modern";
-        legacyProbeCleanup?.();
       }
     };
     window.addEventListener("message", onProbe);

@@ -182,6 +182,9 @@ test("doom.paseo is playable through the real-time PVM to Wasm translator", asyn
       iframe.src = url;
     }
   }, sandboxUrl);
+  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    timeout: 60_000,
+  });
   await expect(canvas).toHaveAttribute("data-pvm-cache-hit", "true", {
     timeout: 60_000,
   });
