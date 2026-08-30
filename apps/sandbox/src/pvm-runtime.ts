@@ -449,24 +449,65 @@ function ownedBytes(value: Uint8Array): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export async function waitForTruapiPort(
-  scope: { __HOST_API_PORT__?: MessagePort } = window,
+export interface TruapiPortScope {
+  __HOST_API_PORT__?: MessagePort;
+  addEventListener(
+    type: "message",
+    listener: (event: MessageEvent<unknown>) => void,
+  ): void;
+  removeEventListener(
+    type: "message",
+    listener: (event: MessageEvent<unknown>) => void,
+  ): void;
+}
+
+export interface TruapiPortTarget {
+  postMessage(message: unknown, targetOrigin: string): void;
+}
+
+export function waitForTruapiPort(
+  scope: TruapiPortScope = window,
+  target: TruapiPortTarget = window.parent,
   timeoutMs = TRUAPI_PORT_TIMEOUT_MS,
 ): Promise<MessagePort> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    if (scope.__HOST_API_PORT__ instanceof MessagePort) {
-      return scope.__HOST_API_PORT__;
-    }
-    if (Date.now() >= deadline) {
-      throw new Error(
-        `TrUAPI Host port was not available within ${String(timeoutMs)}ms`,
-      );
-    }
-    const { promise, resolve } = Promise.withResolvers<undefined>();
-    globalThis.setTimeout(resolve, 25, undefined);
-    await promise;
+  if (scope.__HOST_API_PORT__ instanceof MessagePort) {
+    return Promise.resolve(scope.__HOST_API_PORT__);
   }
+
+  const { promise, resolve, reject } = Promise.withResolvers<MessagePort>();
+  let timer = 0;
+  const cleanup = (): void => {
+    globalThis.clearTimeout(timer);
+    scope.removeEventListener("message", onMessage);
+  };
+  const onMessage = (event: MessageEvent<unknown>): void => {
+    if (
+      event.source !== target ||
+      object(event.data)?.type !== "truapi-init"
+    ) {
+      return;
+    }
+    const [port] = event.ports;
+    if (!(port instanceof MessagePort)) {
+      cleanup();
+      reject(new Error("TrUAPI initialization did not include a MessagePort"));
+      return;
+    }
+    cleanup();
+    scope.__HOST_API_PORT__ = port;
+    resolve(port);
+  };
+  scope.addEventListener("message", onMessage);
+  timer = globalThis.setTimeout(() => {
+    cleanup();
+    reject(
+      new Error(
+        `TrUAPI Host port was not available within ${String(timeoutMs)}ms`,
+      ),
+    );
+  }, timeoutMs);
+  target.postMessage({ type: "truapi-ready" }, "*");
+  return promise;
 }
 
 async function programDigest(program: Uint8Array): Promise<string> {
