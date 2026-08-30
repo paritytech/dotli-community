@@ -6,9 +6,10 @@ import type { Locator, Page } from "@playwright/test";
 import { seedBackend } from "../functional/fixtures/settings";
 import type { Backend } from "../functional/fixtures/settings";
 
-const DOOM_URL = "http://doom.localhost:5173/";
-const QUAKE_URL = "http://quake.localhost:5173/";
-const DUKE_URL = "http://duke.localhost:5173/";
+const PORT = process.env.PERF_PORT ?? "5173";
+const DOOM_URL = `http://doom.localhost:${PORT}/`;
+const QUAKE_URL = `http://quake.localhost:${PORT}/`;
+const DUKE_URL = `http://duke.localhost:${PORT}/`;
 
 interface DoomMetrics {
   backend: string | null;
