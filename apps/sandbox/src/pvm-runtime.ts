@@ -13,6 +13,10 @@ const MAX_ASSET_BYTES = 128 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
 const MAX_SAVE_BYTES = 1024 * 1024;
 const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
+const MAX_TRUAPI_FRAME_BYTES = 1024 * 1024;
+const MAX_TRUAPI_PENDING_FRAMES = 32;
+const MAX_TRUAPI_PENDING_BYTES = 4 * 1024 * 1024;
+const TRUAPI_PORT_TIMEOUT_MS = 10_000;
 const START_TIMEOUT_MS = 30_000;
 const INTERPRETER_START_TIMEOUT_MS = 180_000;
 const SAVE_DB_NAME = "dotli-pvm";
@@ -47,6 +51,7 @@ export interface PvmMetrics {
 declare global {
   interface Window {
     __dotliPvmMetrics?: PvmMetrics;
+    __HOST_API_PORT__?: MessagePort;
   }
 }
 
@@ -361,9 +366,6 @@ function parseManifest(
         "dotli currently supports only framebuffer ABI version 1 PolkaVM applications",
       );
     }
-    if (modalities?.truapi !== undefined) {
-      throw new Error("dotli does not yet expose TruAPI to PolkaVM guests");
-    }
     const generalInput = object(modalities?.generalInput);
     controls = Array.isArray(generalInput?.controls)
       ? generalInput.controls.filter(
@@ -445,6 +447,26 @@ function ownedBytes(value: Uint8Array): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(value.byteLength);
   bytes.set(value);
   return bytes;
+}
+
+export async function waitForTruapiPort(
+  scope: { __HOST_API_PORT__?: MessagePort } = window,
+  timeoutMs = TRUAPI_PORT_TIMEOUT_MS,
+): Promise<MessagePort> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (scope.__HOST_API_PORT__ instanceof MessagePort) {
+      return scope.__HOST_API_PORT__;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `TrUAPI Host port was not available within ${String(timeoutMs)}ms`,
+      );
+    }
+    const { promise, resolve } = Promise.withResolvers<undefined>();
+    globalThis.setTimeout(resolve, 25, undefined);
+    await promise;
+  }
 }
 
 async function programDigest(program: Uint8Array): Promise<string> {
@@ -916,6 +938,56 @@ export async function runPvmApplication(
   }
 
   const worker = new Worker(`${PVM_RUNTIME_ROOT}/pvm-wasm-worker.js`);
+  const {
+    promise: startedPromise,
+    resolve: resolveStarted,
+    reject: rejectStarted,
+  } = Promise.withResolvers<undefined>();
+  const truapiPort = await waitForTruapiPort();
+  const failTruapi = (error: Error): void => {
+    status.textContent = error.message;
+    rejectStarted(error);
+    worker.postMessage({ type: "stop" });
+    worker.terminate();
+    truapiPort.onmessage = null;
+    truapiPort.onmessageerror = null;
+    truapiPort.close();
+  };
+  let truapiReady = false;
+  let pendingTruapiBytes = 0;
+  const pendingTruapiResponses: Uint8Array<ArrayBuffer>[] = [];
+  const sendTruapiResponse = (value: Uint8Array): void => {
+    const bytes = ownedBytes(value);
+    worker.postMessage({ type: "truapi-response", bytes }, [bytes.buffer]);
+  };
+  truapiPort.onmessage = (event: MessageEvent<unknown>): void => {
+    if (
+      !(event.data instanceof Uint8Array) ||
+      event.data.byteLength === 0 ||
+      event.data.byteLength > MAX_TRUAPI_FRAME_BYTES
+    ) {
+      failTruapi(new Error("TrUAPI Host returned an invalid PVM frame"));
+      return;
+    }
+    const bytes = ownedBytes(event.data);
+    if (truapiReady) {
+      sendTruapiResponse(bytes);
+      return;
+    }
+    if (
+      pendingTruapiResponses.length === MAX_TRUAPI_PENDING_FRAMES ||
+      pendingTruapiBytes + bytes.byteLength > MAX_TRUAPI_PENDING_BYTES
+    ) {
+      failTruapi(new Error("TrUAPI response queue overflow during PVM startup"));
+      return;
+    }
+    pendingTruapiBytes += bytes.byteLength;
+    pendingTruapiResponses.push(bytes);
+  };
+  truapiPort.onmessageerror = () => {
+    failTruapi(new Error("TrUAPI Host port could not decode a PVM frame"));
+  };
+  truapiPort.start();
   let audioContext: AudioContext | null = null;
   let audioCursor = 0;
   let firstFrame = false;
@@ -1061,11 +1133,6 @@ export async function runPvmApplication(
     audioCursor = start + buffer.duration;
   };
 
-  const {
-    promise: startedPromise,
-    resolve: resolveStarted,
-    reject: rejectStarted,
-  } = Promise.withResolvers<undefined>();
   const startTimeoutMs = forceInterpreter
     ? INTERPRETER_START_TIMEOUT_MS
     : START_TIMEOUT_MS;
@@ -1110,6 +1177,9 @@ export async function runPvmApplication(
     webGpu?.dispose();
     worker.terminate();
     void audioContext?.close();
+    truapiPort.onmessage = null;
+    truapiPort.onmessageerror = null;
+    truapiPort.close();
   };
   window.addEventListener("pagehide", stop, { once: true });
 
@@ -1163,6 +1233,25 @@ export async function runPvmApplication(
         canvas.dataset.pvmReady = "true";
         updateMetrics();
         sendSurfaceMetrics();
+        truapiReady = true;
+        for (const response of pendingTruapiResponses.splice(0)) {
+          pendingTruapiBytes -= response.byteLength;
+          sendTruapiResponse(response);
+        }
+        break;
+      }
+      case "truapi-request": {
+        const bytes = message.bytes;
+        if (
+          !(bytes instanceof Uint8Array) ||
+          bytes.byteLength === 0 ||
+          bytes.byteLength > MAX_TRUAPI_FRAME_BYTES
+        ) {
+          failTruapi(new Error("PolkaVM guest emitted an invalid TrUAPI frame"));
+          return;
+        }
+        const request = ownedBytes(bytes);
+        truapiPort.postMessage(request, [request.buffer]);
         break;
       }
       case "frame": {
