@@ -607,6 +607,11 @@ export function encodedInput(
   return bytes;
 }
 
+// CoreVM's mouse ABI is a signed byte. Drop individual samples outside that
+// range as pointer-lock discontinuities, then bound the normal backlog
+// accumulated before the next display frame.
+const MAX_COREVM_POINTER_DELTA = 127;
+
 export function normalizedPointerDelta(
   movementX: number,
   movementY: number,
@@ -615,16 +620,14 @@ export function normalizedPointerDelta(
   if (
     firstAfterPointerLock ||
     !Number.isFinite(movementX) ||
-    !Number.isFinite(movementY)
+    !Number.isFinite(movementY) ||
+    Math.abs(movementX) > MAX_COREVM_POINTER_DELTA ||
+    Math.abs(movementY) > MAX_COREVM_POINTER_DELTA
   ) {
     return null;
   }
   return [movementX, movementY];
 }
-// Match the signed-byte aggregate used by the CoreVM bridge. Individual
-// browser deltas retain their signed 16-bit representation; only the backlog
-// collapsed into one display frame is bounded.
-const MAX_COALESCED_POINTER_DELTA = 127;
 
 export function accumulateRelativePointerDelta(
   currentX: number,
@@ -635,13 +638,13 @@ export function accumulateRelativePointerDelta(
   return [
     clamp(
       currentX + deltaX,
-      -MAX_COALESCED_POINTER_DELTA,
-      MAX_COALESCED_POINTER_DELTA,
+      -MAX_COREVM_POINTER_DELTA,
+      MAX_COREVM_POINTER_DELTA,
     ),
     clamp(
       currentY + deltaY,
-      -MAX_COALESCED_POINTER_DELTA,
-      MAX_COALESCED_POINTER_DELTA,
+      -MAX_COREVM_POINTER_DELTA,
+      MAX_COREVM_POINTER_DELTA,
     ),
   ];
 }
