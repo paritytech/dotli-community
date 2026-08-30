@@ -392,6 +392,46 @@ describe("bridge render lifecycle", () => {
       executableManifest,
     );
   });
+
+  it("reconnects the TrUAPI MessagePort after a product iframe reload", async () => {
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const addEventListener = vi.spyOn(window, "addEventListener");
+    const render = renderAppSubdomain("reload-cid", "reload-app");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const created = mocks.iframeHosts[0];
+    const targetWindow = created.iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
+    const postMessage = vi
+      .spyOn(targetWindow!, "postMessage")
+      .mockImplementation(() => {});
+    const probe = addEventListener.mock.calls
+      .filter(([type]) => type === "message")
+      .at(-1)?.[1] as EventListener | undefined;
+    addEventListener.mockRestore();
+    expect(probe).toBeTypeOf("function");
+    const ready = (): void => {
+      probe?.({
+        data: { type: "truapi-ready" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      } as MessageEvent);
+    };
+
+    ready();
+    expect(postMessage).not.toHaveBeenCalled();
+    ready();
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    const [message, origin, ports] = postMessage.mock.calls[0];
+    expect(message).toEqual({ type: "truapi-init" });
+    expect(origin).toBe(created.allowedOrigin);
+    expect(ports).toHaveLength(1);
+    expect(ports?.[0]).toHaveProperty("postMessage");
+  });
+
   it("forwards a sandbox schema mismatch as a host PWA update request", async () => {
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const render = renderAppSubdomain("manifest-cid", "manifest-app");
