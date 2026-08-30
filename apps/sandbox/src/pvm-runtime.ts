@@ -481,10 +481,7 @@ export function waitForTruapiPort(
     scope.removeEventListener("message", onMessage);
   };
   const onMessage = (event: MessageEvent<unknown>): void => {
-    if (
-      event.source !== target ||
-      object(event.data)?.type !== "truapi-init"
-    ) {
+    if (event.source !== target || object(event.data)?.type !== "truapi-init") {
       return;
     }
     const [port] = event.ports;
@@ -1019,7 +1016,9 @@ export async function runPvmApplication(
       pendingTruapiResponses.length === MAX_TRUAPI_PENDING_FRAMES ||
       pendingTruapiBytes + bytes.byteLength > MAX_TRUAPI_PENDING_BYTES
     ) {
-      failTruapi(new Error("TrUAPI response queue overflow during PVM startup"));
+      failTruapi(
+        new Error("TrUAPI response queue overflow during PVM startup"),
+      );
       return;
     }
     pendingTruapiBytes += bytes.byteLength;
@@ -1288,7 +1287,9 @@ export async function runPvmApplication(
           bytes.byteLength === 0 ||
           bytes.byteLength > MAX_TRUAPI_FRAME_BYTES
         ) {
-          failTruapi(new Error("PolkaVM guest emitted an invalid TrUAPI frame"));
+          failTruapi(
+            new Error("PolkaVM guest emitted an invalid TrUAPI frame"),
+          );
           return;
         }
         const request = ownedBytes(bytes);
