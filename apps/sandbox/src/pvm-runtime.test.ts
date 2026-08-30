@@ -8,6 +8,7 @@ import {
   encodedInput,
   isPvmPackage,
   normalizedPointerDelta,
+  waitForTruapiPort,
 } from "./pvm-runtime";
 
 const encoder = new TextEncoder();
@@ -222,6 +223,23 @@ describe("PolkaVM package recognition", () => {
         "app.polkavm": new Uint8Array([1]),
       }),
     ).toThrow(/only framebuffer ABI version 1/);
+  });
+});
+
+describe("PolkaVM TrUAPI transport", () => {
+  it("adopts the Host-injected canonical MessagePort", async () => {
+    const channel = new MessageChannel();
+    await expect(
+      waitForTruapiPort({ __HOST_API_PORT__: channel.port1 }, 0),
+    ).resolves.toBe(channel.port1);
+    channel.port1.close();
+    channel.port2.close();
+  });
+
+  it("fails closed when the Host port is absent", async () => {
+    await expect(waitForTruapiPort({}, 0)).rejects.toThrow(
+      /TrUAPI Host port was not available/,
+    );
   });
 });
 
