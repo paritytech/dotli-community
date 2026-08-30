@@ -230,12 +230,13 @@ describe("pointer lock mouse deltas", () => {
     expect(normalizedPointerDelta(80, -40, true)).toBeNull();
   });
 
-  it("preserves finite signed deltas for the guest runtime", () => {
-    expect(normalizedPointerDelta(430, -314, false)).toEqual([430, -314]);
+  it("preserves deltas representable by the CoreVM mouse ABI", () => {
+    expect(normalizedPointerDelta(127, -127, false)).toEqual([127, -127]);
     expect(normalizedPointerDelta(3, -5, false)).toEqual([3, -5]);
   });
 
-  it("drops invalid browser deltas", () => {
+  it("drops pointer-lock discontinuities and invalid browser deltas", () => {
+    expect(normalizedPointerDelta(430, -314, false)).toBeNull();
     expect(
       normalizedPointerDelta(Number.POSITIVE_INFINITY, 0, false),
     ).toBeNull();
