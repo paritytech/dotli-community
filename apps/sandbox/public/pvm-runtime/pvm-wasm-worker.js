@@ -222,15 +222,9 @@
       this.metadata = readMetadata(module);
       this.instance = new WebAssembly.Instance(module, {});
       this.pvm = this.instance.exports;
-      this.memories = [
-        this.pvm.memory_ro,
-        this.pvm.memory_rw,
-        this.pvm.memory_stack,
-      ];
-      if (
-        this.memories.some(memory => !(memory instanceof WebAssembly.Memory))
-      ) {
-        throw new Error("translated PolkaVM module is missing guest memories");
+      this.memory = this.pvm.memory;
+      if (!(this.memory instanceof WebAssembly.Memory)) {
+        throw new Error("translated PolkaVM module is missing guest memory");
       }
       this.assets = new Map(
         assets.map(asset => [
@@ -353,6 +347,13 @@
         bytes.byteLength
       );
       const type = bytes[0];
+      if (
+        type === 6 &&
+        (Math.abs(view.getInt16(2, true)) > 127 ||
+          Math.abs(view.getInt16(4, true)) > 127)
+      ) {
+        return;
+      }
       if (this.imports.includes("pvm_fetch_epoca_inputs")) {
         this.#queueEpocaInput(bytes);
         return;
@@ -528,30 +529,27 @@
         );
       }
       const { layout } = this.metadata;
-      let memory;
       let physical;
       if (address >= layout.stackLow && end <= layout.stackHigh) {
-        memory = this.memories[2];
-        physical = address - layout.stackLow;
+        physical = layout.stackPhysical + address - layout.stackLow;
       } else if (
         address >= layout.rwAddress &&
-        end <= layout.rwAddress + this.memories[1].buffer.byteLength
+        end <=
+          layout.rwAddress + this.memory.buffer.byteLength - layout.rwPhysical
       ) {
-        memory = this.memories[1];
-        physical = address - layout.rwAddress;
+        physical = layout.rwPhysical + address - layout.rwAddress;
       } else if (
         !write &&
         address >= layout.roAddress &&
         end <= layout.roAddress + layout.roSize
       ) {
-        memory = this.memories[0];
-        physical = address - layout.roAddress;
+        physical = layout.roPhysical + address - layout.roAddress;
       } else {
         throw new Error(
           "translated PolkaVM guest memory access is out of range"
         );
       }
-      return new Uint8Array(memory.buffer, physical, length);
+      return new Uint8Array(this.memory.buffer, physical, length);
     }
 
     #read(address, length) {
@@ -950,12 +948,14 @@
 
     #queueEpocaInput(bytes) {
       const event = bytes.slice();
-      if (
-        event[0] === 5 &&
-        this.epocaInput[this.epocaInput.length - 1]?.[0] === 5
-      ) {
-        this.epocaInput[this.epocaInput.length - 1] = event;
-        return;
+      if (event[0] === 5 || event[0] === 6) {
+        const existing = this.epocaInput.findIndex(
+          queued => queued[0] === event[0]
+        );
+        if (existing !== -1) {
+          this.epocaInput[existing] = event;
+          return;
+        }
       }
       if (this.epocaInput.length === 256) {
         this.epocaInput.shift();
@@ -970,11 +970,7 @@
       if (key === 0xa3 || key === 0xa4) {
         const existing = this.coreInput.find(event => event[0] === key);
         if (existing) {
-          existing[1] =
-            Math.max(
-              -128,
-              Math.min(127, signedByte(existing[1]) + signedByte(value))
-            ) & 0xff;
+          existing[1] = value;
           return;
         }
       }
