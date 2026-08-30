@@ -76,6 +76,7 @@ export interface PolkaVmAppManifestV2 {
         | "ime"
         | "focus"
       )[];
+      optionalFeatures?: readonly "motion-tilt"[];
     };
     audio?: {
       abiVersion: 1;
@@ -221,11 +222,12 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     const inputCapability = isPlainObject(capabilities.deviceInput)
       ? capabilities.deviceInput
       : null;
-    if (inputCapability === null) {
-      errors.push(`${p}deviceInput capability is unsupported`);
-    } else if (
+    const requiredInputFeatures = inputCapability?.requiredFeatures ?? [];
+    const optionalFeatures = inputCapability?.optionalFeatures ?? [];
+    if (
+      inputCapability === null ||
       inputCapability.abiVersion !== 1 ||
-      !requiredFeatures(inputCapability.requiredFeatures, [
+      !requiredFeatures(requiredInputFeatures, [
         "pointer",
         "keyboard",
         "touch",
@@ -233,7 +235,13 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
         "text",
         "ime",
         "focus",
-      ])
+      ]) ||
+      !requiredFeatures(optionalFeatures, ["motion-tilt"]) ||
+      (Array.isArray(requiredInputFeatures) &&
+        Array.isArray(optionalFeatures) &&
+        optionalFeatures.some((feature) =>
+          requiredInputFeatures.includes(feature),
+        ))
     ) {
       errors.push(`${p}deviceInput capability is unsupported`);
     }

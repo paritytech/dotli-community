@@ -12,6 +12,7 @@ import { sha256 } from "multiformats/hashes/sha2";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
+import { encodeMotionTiltSample } from "@dotli/ui/motion-tilt";
 
 interface TestCar {
   cid: string;
@@ -273,6 +274,39 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .toBeGreaterThan(0);
   } else if (expectedV2Profile === "webgpu-raster") {
     await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
+  }
+  const parsedManifest = JSON.parse(manifest) as {
+    capabilities?: {
+      deviceInput?: { optionalFeatures?: unknown };
+    };
+  };
+  if (
+    Array.isArray(parsedManifest.capabilities?.deviceInput?.optionalFeatures) &&
+    parsedManifest.capabilities.deviceInput.optionalFeatures.includes(
+      "motion-tilt",
+    )
+  ) {
+    const sample = encodeMotionTiltSample({
+      sequence: 1,
+      timestampUs: 1_000n,
+      tiltX: 0.75,
+      tiltY: -0.5,
+      azimuth: null,
+    });
+    await page.evaluate(
+      (values) => {
+        const iframe =
+          document.querySelector<HTMLIFrameElement>("#doom-v2-product");
+        const bytes = Uint8Array.from(values);
+        iframe?.contentWindow?.postMessage(
+          { type: "dotli:pvm-motion-tilt", bytes: bytes.buffer },
+          "*",
+          [bytes.buffer],
+        );
+      },
+      [...sample],
+    );
+    await expect(canvas).toHaveAttribute("data-pvm-motion", "active");
   }
   if (expectedTruapi) {
     await expect

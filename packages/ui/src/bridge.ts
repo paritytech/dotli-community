@@ -46,6 +46,7 @@ import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
+import { manifestRequestsMotionTilt, setupMotionTilt } from "./motion-tilt";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
@@ -128,6 +129,7 @@ let currentHost: ActiveHost | null = null;
 let landingAuthHostPromise: Promise<CoreHost> | null = null;
 let landingAuthGeneration = 0;
 let currentPanelDispose: (() => void) | null = null;
+let currentMotionDispose: (() => void) | null = null;
 let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
 const liveCoreProviders = new Set<CoreProvider>();
@@ -1175,6 +1177,9 @@ export async function renderAppSubdomain(
   });
   applyIframeStyling(host.iframe, { topbarOffset: true });
   activateHost(host, previousHost, loading === null ? [] : [loading]);
+  if (manifestRequestsMotionTilt(executableManifest)) {
+    currentMotionDispose = setupMotionTilt(label, host.iframe, app);
+  }
   host.iframe.addEventListener(
     "load",
     () => {
@@ -1233,6 +1238,10 @@ function activateHost(
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;
+  }
+  if (currentMotionDispose) {
+    currentMotionDispose();
+    currentMotionDispose = null;
   }
   previousHost?.dispose();
   const retained = new Set<HTMLElement>([host.iframe, ...retainedChildren]);

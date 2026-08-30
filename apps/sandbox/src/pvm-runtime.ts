@@ -63,6 +63,7 @@ interface PvmDescriptor {
   audioEnabled: boolean;
   requiredAssets: string[];
   manifestVersion: number | null;
+  motionTilt: boolean;
 }
 
 interface WorkerReady {
@@ -238,6 +239,7 @@ function parseManifest(
   let controls: string[];
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
+  let motionTilt = false;
   if (manifest?.$v === 2 && manifest.kind === "app") {
     if (runtime.abiVersion !== 1) {
       throw new Error("PolkaVM App v2 runtime requires ABI version 1");
@@ -309,6 +311,12 @@ function parseManifest(
         : Array.isArray(deviceInput.requiredFeatures)
           ? deviceInput.requiredFeatures
           : null;
+    const optionalDeviceFeatures =
+      deviceInput === null
+        ? []
+        : Array.isArray(deviceInput.optionalFeatures)
+          ? deviceInput.optionalFeatures
+          : [];
     if (
       (deviceInput !== null && deviceInput.abiVersion !== 1) ||
       deviceFeatures === null ||
@@ -316,10 +324,13 @@ function parseManifest(
         (feature) =>
           typeof feature !== "string" ||
           !["pointer", "keyboard"].includes(feature),
-      )
+      ) ||
+      optionalDeviceFeatures.some((feature) => feature !== "motion-tilt") ||
+      new Set(optionalDeviceFeatures).size !== optionalDeviceFeatures.length
     ) {
       throw new Error("PolkaVM App v2 requires unsupported device input");
     }
+    motionTilt = optionalDeviceFeatures.includes("motion-tilt");
     const audio =
       capabilities?.audio === undefined ? null : object(capabilities.audio);
     if (
@@ -396,6 +407,7 @@ function parseManifest(
     audioEnabled,
     requiredAssets,
     manifestVersion,
+    motionTilt,
   };
 }
 
@@ -975,6 +987,48 @@ export async function runPvmApplication(
     assets.push({ path: "save/cartridge.sav", bytes: ownedBytes(save) });
   }
 
+  const parentOrigin = (() => {
+    try {
+      return document.referrer === ""
+        ? null
+        : new URL(document.referrer).origin;
+    } catch {
+      return null;
+    }
+  })();
+  const onMotionTilt = (event: MessageEvent<unknown>): void => {
+    if (
+      !descriptor.motionTilt ||
+      event.source !== window.parent ||
+      (parentOrigin !== null && event.origin !== parentOrigin) ||
+      typeof event.data !== "object" ||
+      event.data === null
+    ) {
+      return;
+    }
+    const message = event.data as { type?: unknown; bytes?: unknown };
+    if (message.type === "dotli:pvm-motion-tilt") {
+      const source =
+        message.bytes instanceof ArrayBuffer
+          ? new Uint8Array(message.bytes)
+          : message.bytes instanceof Uint8Array
+            ? message.bytes
+            : null;
+      if (source === null || source.byteLength !== 40) {
+        return;
+      }
+      const bytes = ownedBytes(source);
+      worker.postMessage({ type: "motion-tilt", bytes }, [bytes.buffer]);
+      canvas.dataset.pvmMotion = "active";
+    } else if (message.type === "dotli:pvm-motion-clear") {
+      worker.postMessage({ type: "motion-tilt-clear" });
+      canvas.dataset.pvmMotion = "unavailable";
+    }
+  };
+  if (descriptor.motionTilt) {
+    canvas.dataset.pvmMotion = "permission-required";
+    window.addEventListener("message", onMotionTilt);
+  }
   const worker = new Worker(`${PVM_RUNTIME_ROOT}/pvm-wasm-worker.js`);
   const {
     promise: startedPromise,
@@ -1217,6 +1271,7 @@ export async function runPvmApplication(
   );
   const stop = (): void => {
     cleanupInput();
+    window.removeEventListener("message", onMotionTilt);
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
     webGpu?.dispose();

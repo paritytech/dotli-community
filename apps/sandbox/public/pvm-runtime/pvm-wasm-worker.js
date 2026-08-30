@@ -10,6 +10,7 @@
   const STATUS_TRAP = -3;
   const STATUS_OUT_OF_GAS = -4;
   const INPUT_EVENT_BYTES = 8;
+  const MOTION_TILT_BYTES = 40;
   const MAX_INPUT_EVENTS = 4096;
   const MAX_HOSTCALLS_PER_INIT = 1024 * 1024;
   const MAX_HOSTCALLS_PER_UPDATE = 8192;
@@ -47,6 +48,33 @@
   const SYS_EXIT = 93n;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
+
+  function validMotionTilt(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength !== MOTION_TILT_BYTES) {
+      return false;
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const flags = view.getUint16(6, true);
+    const tiltX = view.getFloat32(24, true);
+    const tiltY = view.getFloat32(28, true);
+    const azimuth = view.getFloat32(32, true);
+    return (
+      decoder.decode(bytes.subarray(0, 4)) === "PMT1" &&
+      view.getUint16(4, true) === 1 &&
+      (flags & ~3) === 0 &&
+      (flags & 1) !== 0 &&
+      view.getUint32(8, true) === MOTION_TILT_BYTES &&
+      view.getUint32(12, true) !== 0 &&
+      Number.isFinite(tiltX) &&
+      tiltX >= -1 &&
+      tiltX <= 1 &&
+      Number.isFinite(tiltY) &&
+      tiltY >= -1 &&
+      tiltY <= 1 &&
+      ((flags & 2) === 0 || Number.isFinite(azimuth)) &&
+      view.getUint32(36, true) === 0
+    );
+  }
 
   function readMetadata(module) {
     const sections = WebAssembly.Module.customSections(
@@ -136,10 +164,6 @@
       path = path.slice(2);
     }
     return path.replace(/^\/+/, "");
-  }
-
-  function signedByte(value) {
-    return value > 127 ? value - 256 : value;
   }
 
   function hidToCoreVm(code) {
@@ -262,6 +286,7 @@
       this.tri2dSubmitted = false;
       this.maxGas = BigInt(maxGas);
       this.input = [];
+      this.motionTilt = null;
       this.coreInput = [];
       this.epocaInput = [];
       this.pointer = null;
@@ -394,6 +419,17 @@
       }
     }
 
+    sendMotionTilt(bytes) {
+      if (this.stopped || !validMotionTilt(bytes)) {
+        throw new Error("invalid translated motion-tilt sample");
+      }
+      this.motionTilt = bytes.slice();
+    }
+
+    clearMotionTilt() {
+      this.motionTilt = null;
+    }
+
     sendGpuEvent(bytes) {
       if (
         this.stopped ||
@@ -432,6 +468,7 @@
     stop() {
       this.stopped = true;
       this.input.length = 0;
+      this.motionTilt = null;
       this.coreInput.length = 0;
       this.truapiRequests = 0;
       this.truapiRequestBytes = 0;
@@ -746,6 +783,20 @@
           this.#write(this.#u32(a0), event);
           this.gpuEvents.shift();
           this.#setReg(7, BigInt(event.byteLength));
+          return false;
+        }
+        case "host_motion_read": {
+          if (this.motionTilt === null) {
+            this.#setReg(7, 0n);
+            return false;
+          }
+          const capacity = this.#u32(a1);
+          if (capacity < MOTION_TILT_BYTES) {
+            this.#setReg(7, BigInt(-MOTION_TILT_BYTES));
+            return false;
+          }
+          this.#write(this.#u32(a0), this.motionTilt);
+          this.#setReg(7, BigInt(MOTION_TILT_BYTES));
           return false;
         }
         case "host_poll_input": {
@@ -1851,6 +1902,35 @@ globalThis.createPvmRuntime = endpoint => {
     );
   }
 
+  function sendMotionTilt(bytes) {
+    if (!running || bytes.byteLength !== 40) {
+      return;
+    }
+    if (translated) {
+      translated.sendMotionTilt(bytes);
+      return;
+    }
+    stage(bytes);
+    check(
+      pvm.pvm_browser_set_motion_tilt(),
+      "set PolkaVM browser motion-tilt sample"
+    );
+  }
+
+  function clearMotionTilt() {
+    if (!running) {
+      return;
+    }
+    if (translated) {
+      translated.clearMotionTilt();
+      return;
+    }
+    check(
+      pvm.pvm_browser_clear_motion_tilt(),
+      "clear PolkaVM browser motion-tilt sample"
+    );
+  }
+
   function sendGpuEvent(bytes) {
     if (!running || !pvm || !bytes.byteLength) {
       return;
@@ -1889,6 +1969,22 @@ globalThis.createPvmRuntime = endpoint => {
     } else if (message?.type === "input") {
       try {
         sendInput(new Uint8Array(message.bytes));
+      } catch (error) {
+        stopRuntime();
+        postMessage({ type: "error", message: error.message });
+        postMessage({ type: "terminated" });
+      }
+    } else if (message?.type === "motion-tilt") {
+      try {
+        sendMotionTilt(new Uint8Array(message.bytes));
+      } catch (error) {
+        stopRuntime();
+        postMessage({ type: "error", message: error.message });
+        postMessage({ type: "terminated" });
+      }
+    } else if (message?.type === "motion-tilt-clear") {
+      try {
+        clearMotionTilt();
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });
