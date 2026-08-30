@@ -138,10 +138,6 @@
     return path.replace(/^\/+/, "");
   }
 
-  function signedByte(value) {
-    return value > 127 ? value - 256 : value;
-  }
-
   function hidToCoreVm(code) {
     if (code >= 0x04 && code <= 0x1d) {
       return 0x61 + code - 0x04;
