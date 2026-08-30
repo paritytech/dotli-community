@@ -587,11 +587,6 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, Math.round(value)));
 }
 
-// Pointer Lock can emit viewport-scale warp deltas when focus or lock state
-// changes. One such event otherwise becomes a full-frame camera snap. Match
-// the signed-byte range used by the browser bridge's CoreVM input path.
-const MAX_RELATIVE_POINTER_DELTA = 127;
-
 export function encodedInput(
   type: number,
   code: number,
@@ -603,21 +598,28 @@ export function encodedInput(
   bytes[0] = type;
   bytes[1] = code;
   if (type === 6) {
-    view.setInt16(
-      2,
-      clamp(x, -MAX_RELATIVE_POINTER_DELTA, MAX_RELATIVE_POINTER_DELTA),
-      true,
-    );
-    view.setInt16(
-      4,
-      clamp(y, -MAX_RELATIVE_POINTER_DELTA, MAX_RELATIVE_POINTER_DELTA),
-      true,
-    );
+    view.setInt16(2, clamp(x, -32768, 32767), true);
+    view.setInt16(4, clamp(y, -32768, 32767), true);
   } else {
     view.setUint16(2, clamp(x, 0, 65535), true);
     view.setUint16(4, clamp(y, 0, 65535), true);
   }
   return bytes;
+}
+
+export function normalizedPointerDelta(
+  movementX: number,
+  movementY: number,
+  firstAfterPointerLock: boolean,
+): [number, number] | null {
+  if (
+    firstAfterPointerLock ||
+    !Number.isFinite(movementX) ||
+    !Number.isFinite(movementY)
+  ) {
+    return null;
+  }
+  return [movementX, movementY];
 }
 
 function createShell(controls: string[]): {
@@ -662,6 +664,7 @@ function installInput(
   resumeAudio: () => void,
 ): { cleanup: () => void; sendSurfaceMetrics: () => void } {
   const pressed = new Set<number>();
+  let firstMoveAfterPointerLock = false;
   const canvasPosition = (event: PointerEvent): [number, number] => {
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) {
@@ -709,8 +712,19 @@ function installInput(
     if (graphicsProfile !== "framebuffer") {
       const [x, y] = canvasPosition(event);
       send(encodedInput(5, 0, x, y));
-    } else if (document.pointerLockElement === canvas) {
-      send(encodedInput(6, 0, event.movementX, event.movementY));
+      return;
+    }
+    if (document.pointerLockElement !== canvas) {
+      return;
+    }
+    const delta = normalizedPointerDelta(
+      event.movementX,
+      event.movementY,
+      firstMoveAfterPointerLock,
+    );
+    firstMoveAfterPointerLock = false;
+    if (delta !== null) {
+      send(encodedInput(6, 0, delta[0], delta[1]));
     }
   };
   const down = (event: PointerEvent): void => {
@@ -729,6 +743,9 @@ function installInput(
   };
   const up = (event: PointerEvent): void => {
     pointer(event, 4);
+  };
+  const pointerlockchange = (): void => {
+    firstMoveAfterPointerLock = document.pointerLockElement === canvas;
   };
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
@@ -756,6 +773,7 @@ function installInput(
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
   canvas.addEventListener("contextmenu", contextmenu);
+  document.addEventListener("pointerlockchange", pointerlockchange);
   return {
     sendSurfaceMetrics,
     cleanup: () => {
@@ -765,6 +783,7 @@ function installInput(
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerlockchange", pointerlockchange);
       canvas.removeEventListener("contextmenu", contextmenu);
     },
   };

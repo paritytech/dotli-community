@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { describePvmPackage, encodedInput, isPvmPackage } from "./pvm-runtime";
+import {
+  describePvmPackage,
+  encodedInput,
+  isPvmPackage,
+  normalizedPointerDelta,
+} from "./pvm-runtime";
 
 const encoder = new TextEncoder();
 
@@ -79,11 +84,11 @@ function webGpuAppV2Manifest(): string {
 }
 
 describe("PolkaVM pointer input", () => {
-  it("bounds pointer-lock warp deltas without changing normal movement", () => {
-    const warped = encodedInput(6, 0, 32_000, -32_000);
-    const warpedView = new DataView(warped.buffer);
-    expect(warpedView.getInt16(2, true)).toBe(127);
-    expect(warpedView.getInt16(4, true)).toBe(-127);
+  it("preserves signed pointer deltas for the guest runtime", () => {
+    const large = encodedInput(6, 0, 32_000, -32_000);
+    const largeView = new DataView(large.buffer);
+    expect(largeView.getInt16(2, true)).toBe(32_000);
+    expect(largeView.getInt16(4, true)).toBe(-32_000);
 
     const normal = encodedInput(6, 0, 23, -19);
     const normalView = new DataView(normal.buffer);
@@ -205,5 +210,23 @@ describe("PolkaVM package recognition", () => {
         "app.polkavm": new Uint8Array([1]),
       }),
     ).toThrow(/only framebuffer ABI version 1/);
+  });
+});
+
+describe("pointer lock mouse deltas", () => {
+  it("drops the cursor-warp sample after pointer lock acquisition", () => {
+    expect(normalizedPointerDelta(80, -40, true)).toBeNull();
+  });
+
+  it("preserves finite signed deltas for the guest runtime", () => {
+    expect(normalizedPointerDelta(430, -314, false)).toEqual([430, -314]);
+    expect(normalizedPointerDelta(3, -5, false)).toEqual([3, -5]);
+  });
+
+  it("drops invalid browser deltas", () => {
+    expect(
+      normalizedPointerDelta(Number.POSITIVE_INFINITY, 0, false),
+    ).toBeNull();
+    expect(normalizedPointerDelta(0, Number.NaN, false)).toBeNull();
   });
 });
