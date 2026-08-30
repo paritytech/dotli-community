@@ -71,11 +71,36 @@ async function pvmCar(): Promise<TestCar> {
 async function installTruapiPortResponder(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const channel = new MessageChannel();
-    channel.port2.onmessage = () => {};
+    const scope = window as typeof window & {
+      __HOST_API_PORT__?: MessagePort;
+    };
+    channel.port2.onmessage = (event) => {
+      if (!(event.data instanceof Uint8Array)) {
+        return;
+      }
+      const request = event.data;
+      const first = request[0];
+      if (first === undefined || (first & 3) !== 0) {
+        return;
+      }
+      const kindOffset = 1 + (first >> 2);
+      if (
+        request.length !== kindOffset + 3 ||
+        request[kindOffset] !== 0 ||
+        request[kindOffset + 1] !== 0 ||
+        request[kindOffset + 2] !== 1
+      ) {
+        return;
+      }
+      const response = new Uint8Array(kindOffset + 3);
+      response.set(request.subarray(0, kindOffset));
+      response[kindOffset] = 1;
+      response[kindOffset + 1] = 0;
+      response[kindOffset + 2] = 0;
+      channel.port2.postMessage(response, [response.buffer]);
+    };
     channel.port2.start();
-    (
-      window as typeof window & { __HOST_API_PORT__?: MessagePort }
-    ).__HOST_API_PORT__ = channel.port1;
+    scope.__HOST_API_PORT__ = channel.port1;
   });
 }
 
@@ -180,6 +205,7 @@ const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
 const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
 const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
 const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
+const expectedTruapi = process.env.DOTLI_PVM_EXPECTED_TRUAPI === "1";
 const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
   .split(",")
   .filter(Boolean);
@@ -247,6 +273,18 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .toBeGreaterThan(0);
   } else if (expectedV2Profile === "webgpu-raster") {
     await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
+  }
+  if (expectedTruapi) {
+    await expect
+      .poll(async () =>
+        Number(await canvas.getAttribute("data-pvm-truapi-requests")),
+      )
+      .toBeGreaterThan(0);
+    await expect
+      .poll(async () =>
+        Number(await canvas.getAttribute("data-pvm-truapi-responses")),
+      )
+      .toBeGreaterThan(0);
   }
   const framesBeforeInput = Number(
     await canvas.getAttribute("data-pvm-frames"),
