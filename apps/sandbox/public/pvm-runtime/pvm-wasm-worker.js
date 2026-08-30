@@ -23,6 +23,9 @@
   const MAX_GPU_EVENT_BYTES = 64 * 1024;
   const MAX_GPU_EVENTS = 256;
   const MAX_GPU_SUBMITS_PER_UPDATE = 8;
+  const MAX_TRUAPI_FRAME_BYTES = 1024 * 1024;
+  const MAX_TRUAPI_RESPONSES = 32;
+  const MAX_TRUAPI_RESPONSE_BYTES = 4 * 1024 * 1024;
   const MAX_GPU_COMMANDS = 16_384;
   const GPU_ERROR_MALFORMED_BATCH = -2;
   const GPU_ERROR_QUOTA_EXCEEDED = -3;
@@ -258,6 +261,8 @@
       this.gpuEvents = [];
       this.gpuSubmits = 0;
       this.gpuLastSequence = 0n;
+      this.truapiResponses = [];
+      this.truapiResponseBytes = 0;
       this.tri2dSubmitted = false;
       this.maxGas = BigInt(maxGas);
       this.input = [];
@@ -400,11 +405,32 @@
       this.gpuEvents.push(bytes.slice());
     }
 
+    sendTruapiResponse(bytes) {
+      if (
+        this.stopped ||
+        !(bytes instanceof Uint8Array) ||
+        !bytes.byteLength ||
+        bytes.byteLength > MAX_TRUAPI_FRAME_BYTES
+      ) {
+        throw new Error("invalid translated TrUAPI response");
+      }
+      if (
+        this.truapiResponses.length === MAX_TRUAPI_RESPONSES ||
+        this.truapiResponseBytes + bytes.byteLength > MAX_TRUAPI_RESPONSE_BYTES
+      ) {
+        throw new Error("translated TrUAPI response queue overflow");
+      }
+      this.truapiResponses.push(bytes.slice());
+      this.truapiResponseBytes += bytes.byteLength;
+    }
+
     stop() {
       this.stopped = true;
       this.input.length = 0;
       this.coreInput.length = 0;
       this.gpuEvents.length = 0;
+      this.truapiResponses.length = 0;
+      this.truapiResponseBytes = 0;
     }
 
     #resetBudget(hostcalls) {
@@ -764,6 +790,34 @@
           this.#setReg(7, 0n);
           return false;
         }
+        case "host_truapi_send": {
+          const length = this.#u32(a1);
+          if (!length || length > MAX_TRUAPI_FRAME_BYTES) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          const bytes = this.#read(this.#u32(a0), length);
+          this.emit({ type: "truapi-request", bytes }, [bytes.buffer]);
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "host_truapi_poll": {
+          const response = this.truapiResponses[0];
+          if (response === undefined) {
+            this.#setReg(7, 0n);
+            return false;
+          }
+          const capacity = this.#u32(a1);
+          if (capacity < response.byteLength) {
+            this.#setReg(7, BigInt(-response.byteLength));
+            return false;
+          }
+          this.#write(this.#u32(a0), response);
+          this.truapiResponses.shift();
+          this.truapiResponseBytes -= response.byteLength;
+          this.#setReg(7, BigInt(response.byteLength));
+          return false;
+        }
         case "host_asset_read": {
           const nameLength = this.#u32(a1);
           const offset = this.#u32(a2);
@@ -918,6 +972,9 @@
     // eslint-disable-next-line complexity -- Flat hostcall dispatch mirrors the guest ABI.
     #handleCoreVmCall(name) {
       switch (name) {
+        case "host_truapi_send":
+        case "host_truapi_poll":
+          return this.#handleCooperativeCall(name);
         case "pvm_set_palette": {
           const palette = this.#read(this.#u32(this.#reg(7)), 256 * 3);
           for (let index = 0; index < 256; index++) {
@@ -1398,6 +1455,18 @@ globalThis.createPvmRuntime = endpoint => {
     }
   }
 
+  function drainTruapiRequests() {
+    while (pvm.pvm_browser_take_truapi_request?.()) {
+      const length = pvm.pvm_browser_truapi_request_length();
+      const bytes = new Uint8Array(
+        pvm.memory.buffer,
+        pvm.pvm_browser_truapi_request_pointer(),
+        length
+      ).slice();
+      postMessage({ type: "truapi-request", bytes }, [bytes.buffer]);
+    }
+  }
+
   function drainAudio() {
     while (pvm.pvm_browser_take_audio()) {
       const sampleRate = pvm.pvm_browser_audio_sample_rate();
@@ -1457,6 +1526,7 @@ globalThis.createPvmRuntime = endpoint => {
         drainFrame();
         drainTri2d();
         drainGpuBatches();
+        drainTruapiRequests();
         drainAudio();
         drainSave();
         drainLogs();
@@ -1730,6 +1800,7 @@ globalThis.createPvmRuntime = endpoint => {
       postMessage({ type: "startup", stage: "interpreter-initialized" });
       drainTri2d();
       drainGpuBatches();
+      drainTruapiRequests();
       drainLogs();
     }
     startedAt = performance.now();
@@ -1781,6 +1852,21 @@ globalThis.createPvmRuntime = endpoint => {
     check(pvm.pvm_browser_send_gpu_event(), "send PolkaVM browser GPU event");
   }
 
+  function sendTruapiResponse(bytes) {
+    if (!running || !pvm || !bytes.byteLength) {
+      return;
+    }
+    if (translated) {
+      translated.sendTruapiResponse(bytes);
+      return;
+    }
+    stage(bytes);
+    check(
+      pvm.pvm_browser_send_truapi_response(),
+      "send PolkaVM browser TrUAPI response"
+    );
+  }
+
   endpoint.onmessage = event => {
     const message = event.data;
     if (message?.type === "start") {
@@ -1800,6 +1886,14 @@ globalThis.createPvmRuntime = endpoint => {
     } else if (message?.type === "gpu-event") {
       try {
         sendGpuEvent(new Uint8Array(message.bytes));
+      } catch (error) {
+        stopRuntime();
+        postMessage({ type: "error", message: error.message });
+        postMessage({ type: "terminated" });
+      }
+    } else if (message?.type === "truapi-response") {
+      try {
+        sendTruapiResponse(new Uint8Array(message.bytes));
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });
