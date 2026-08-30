@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  accumulateRelativePointerDelta,
   describePvmPackage,
   encodedInput,
   isPvmPackage,
@@ -94,6 +95,17 @@ describe("PolkaVM pointer input", () => {
     const normalView = new DataView(normal.buffer);
     expect(normalView.getInt16(2, true)).toBe(23);
     expect(normalView.getInt16(4, true)).toBe(-19);
+  });
+
+  it("coalesces a high-rate pointer backlog into one bounded frame delta", () => {
+    let x = 0;
+    let y = 0;
+    for (let index = 0; index < 64; index++) {
+      [x, y] = accumulateRelativePointerDelta(x, y, 5, -3);
+    }
+    expect([x, y]).toEqual([127, -127]);
+
+    expect(accumulateRelativePointerDelta(x, y, -20, 20)).toEqual([107, -107]);
   });
 });
 

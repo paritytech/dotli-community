@@ -621,6 +621,30 @@ export function normalizedPointerDelta(
   }
   return [movementX, movementY];
 }
+// Match the signed-byte aggregate used by the CoreVM bridge. Individual
+// browser deltas retain their signed 16-bit representation; only the backlog
+// collapsed into one display frame is bounded.
+const MAX_COALESCED_POINTER_DELTA = 127;
+
+export function accumulateRelativePointerDelta(
+  currentX: number,
+  currentY: number,
+  deltaX: number,
+  deltaY: number,
+): [number, number] {
+  return [
+    clamp(
+      currentX + deltaX,
+      -MAX_COALESCED_POINTER_DELTA,
+      MAX_COALESCED_POINTER_DELTA,
+    ),
+    clamp(
+      currentY + deltaY,
+      -MAX_COALESCED_POINTER_DELTA,
+      MAX_COALESCED_POINTER_DELTA,
+    ),
+  ];
+}
 
 function createShell(controls: string[]): {
   canvas: HTMLCanvasElement;
@@ -665,6 +689,37 @@ function installInput(
 ): { cleanup: () => void; sendSurfaceMetrics: () => void } {
   const pressed = new Set<number>();
   let firstMoveAfterPointerLock = false;
+  let relativeX = 0;
+  let relativeY = 0;
+  let relativeFrame: number | null = null;
+  const flushRelativePointer = (): void => {
+    relativeFrame = null;
+    const x = relativeX;
+    const y = relativeY;
+    relativeX = 0;
+    relativeY = 0;
+    if (x !== 0 || y !== 0) {
+      send(encodedInput(6, 0, x, y));
+    }
+  };
+  const queueRelativePointer = (x: number, y: number): void => {
+    [relativeX, relativeY] = accumulateRelativePointerDelta(
+      relativeX,
+      relativeY,
+      x,
+      y,
+    );
+    relativeFrame ??= window.requestAnimationFrame(flushRelativePointer);
+  };
+  const pointerLockChanged = (): void => {
+    if (relativeFrame !== null) {
+      window.cancelAnimationFrame(relativeFrame);
+      relativeFrame = null;
+    }
+    relativeX = 0;
+    relativeY = 0;
+    firstMoveAfterPointerLock = document.pointerLockElement === canvas;
+  };
   const canvasPosition = (event: PointerEvent): [number, number] => {
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) {
@@ -724,7 +779,10 @@ function installInput(
     );
     firstMoveAfterPointerLock = false;
     if (delta !== null) {
-      send(encodedInput(6, 0, delta[0], delta[1]));
+      // Pointer events can outpace a guest frame by an order of magnitude.
+      // Coalesce them once per display frame so a render stall cannot replay
+      // a stale queue as one camera snap.
+      queueRelativePointer(delta[0], delta[1]);
     }
   };
   const down = (event: PointerEvent): void => {
@@ -743,9 +801,6 @@ function installInput(
   };
   const up = (event: PointerEvent): void => {
     pointer(event, 4);
-  };
-  const pointerlockchange = (): void => {
-    firstMoveAfterPointerLock = document.pointerLockElement === canvas;
   };
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
@@ -767,23 +822,24 @@ function installInput(
         })
       : null;
   resizeObserver?.observe(canvas);
+  document.addEventListener("pointerlockchange", pointerLockChanged);
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
   canvas.addEventListener("contextmenu", contextmenu);
-  document.addEventListener("pointerlockchange", pointerlockchange);
   return {
     sendSurfaceMetrics,
     cleanup: () => {
       resizeObserver?.disconnect();
+      pointerLockChanged();
+      document.removeEventListener("pointerlockchange", pointerLockChanged);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerlockchange", pointerlockchange);
       canvas.removeEventListener("contextmenu", contextmenu);
     },
   };
