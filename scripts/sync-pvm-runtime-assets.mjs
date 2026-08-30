@@ -14,10 +14,10 @@ const lock = JSON.parse(
   await readFile(resolve(root, "scripts/pvm-runtime.lock.json"), "utf8"),
 );
 const temporary = await mkdtemp(resolve(tmpdir(), "dotli-pvm-assets-"));
-let checkout = process.env.PVM_RUNTIME_ROOT;
+let checkout = process.env.PVM_BRIDGE_ROOT;
 try {
   if (!checkout) {
-    checkout = resolve(temporary, "pvm-host-runtime");
+    checkout = resolve(temporary, "host-rust-core");
     execFileSync("git", ["init", "-q", checkout]);
     execFileSync("git", [
       "-C",
@@ -25,8 +25,8 @@ try {
       "fetch",
       "-q",
       "--depth=1",
-      lock.runtimeRepository,
-      lock.runtimeRevision,
+      lock.bridgeRepository,
+      lock.bridgeRevision,
     ]);
     execFileSync("git", [
       "-C",
@@ -40,9 +40,9 @@ try {
   const head = execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
-  if (head !== lock.runtimeRevision) {
+  if (head !== lock.bridgeRevision) {
     throw new Error(
-      `runtime checkout ${head} does not match ${lock.runtimeRevision}`,
+      `bridge checkout ${head} does not match ${lock.bridgeRevision}`,
     );
   }
 
@@ -55,6 +55,10 @@ try {
       "--manifest-path",
       resolve(checkout, "Cargo.toml"),
       "-p",
+      "truapi-pvm-host",
+      "--features",
+      "browser-assets",
+      "--bin",
       "pvm-assets-export",
       "--",
       "--output",
@@ -71,12 +75,13 @@ try {
   ]);
   const destination = resolve(root, "apps/sandbox/public/pvm-runtime");
   const source = `PolkaVM App v2 browser runtime
+Bridge repository: ${lock.bridgeRepository}
+Bridge commit: ${lock.bridgeRevision}
 Runtime repository: ${lock.runtimeRepository}
 Runtime commit: ${lock.runtimeRevision}
 Release: ${lock.releaseTag}
-Temporary direct integration: replace with host-rust-core truapi-pvm-host after paritytech/host-rust-core#540 merges.
 
-Runtime-owned artifacts:
+Bridge-owned artifacts:
 ${[...mappings.values()].map((path) => `- ${path}`).join("\n")}
 `;
 
@@ -104,7 +109,7 @@ ${[...mappings.values()].map((path) => `- ${path}`).join("\n")}
     await writeFile(sourcePath, source);
   }
   console.log(
-    `${checkOnly ? "Verified" : "Synchronized"} standalone PVM assets from ${lock.runtimeRevision}`,
+    `${checkOnly ? "Verified" : "Synchronized"} bridge-owned PVM assets from ${lock.bridgeRevision}`,
   );
 } finally {
   await rm(temporary, { recursive: true, force: true });
