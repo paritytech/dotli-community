@@ -982,6 +982,8 @@ export async function runPvmApplication(
     reject: rejectStarted,
   } = Promise.withResolvers<undefined>();
   const truapiPort = await waitForTruapiPort();
+  canvas.dataset.pvmTruapiRequests = "0";
+  canvas.dataset.pvmTruapiResponses = "0";
   const failTruapi = (error: Error): void => {
     status.textContent = error.message;
     rejectStarted(error);
@@ -1008,6 +1010,9 @@ export async function runPvmApplication(
       return;
     }
     const bytes = ownedBytes(event.data);
+    canvas.dataset.pvmTruapiResponses = String(
+      Number(canvas.dataset.pvmTruapiResponses) + 1,
+    );
     if (truapiReady) {
       sendTruapiResponse(bytes);
       return;
@@ -1293,6 +1298,9 @@ export async function runPvmApplication(
           return;
         }
         const request = ownedBytes(bytes);
+        canvas.dataset.pvmTruapiRequests = String(
+          Number(canvas.dataset.pvmTruapiRequests) + 1,
+        );
         truapiPort.postMessage(request, [request.buffer]);
         break;
       }
