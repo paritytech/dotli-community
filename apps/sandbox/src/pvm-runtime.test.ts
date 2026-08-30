@@ -6,6 +6,7 @@ import {
   accumulateRelativePointerDelta,
   describePvmPackage,
   encodedInput,
+  formatPvmMetrics,
   isPvmPackage,
   normalizedPointerDelta,
   waitForTruapiPort,
@@ -109,6 +110,34 @@ describe("PolkaVM pointer input", () => {
     expect([x, y]).toEqual([127, -127]);
 
     expect(accumulateRelativePointerDelta(x, y, -20, 20)).toEqual([107, -107]);
+  });
+});
+
+describe("PolkaVM metrics display", () => {
+  const metrics = {
+    backend: "compiler" as const,
+    fps: 59.94,
+    startupStage: "first-frame",
+    translationMs: 10,
+    compilationMs: 5,
+    updateP50Ms: 0,
+    updateP95Ms: 1,
+    updateMaxMs: 4,
+  };
+
+  it("keeps the default JIT badge to one concise line", () => {
+    const display = formatPvmMetrics(metrics);
+    expect(display.summary).toBe("PolkaVM / JIT · 59.9 FPS");
+    expect(display.summary).not.toContain("Stage");
+    expect(display.summary).not.toContain("Translate");
+  });
+
+  it("retains diagnostics in the expandable details", () => {
+    expect(formatPvmMetrics({ ...metrics, backend: "interpreter" })).toEqual({
+      summary: "PolkaVM / Interpreter · 59.9 FPS",
+      details:
+        "Stage: first-frame\nTranslate 10.0 ms · Compile 5.0 ms\nUpdate p50 0.00 ms · p95 1.00 ms · max 4.00 ms",
+    });
   });
 });
 

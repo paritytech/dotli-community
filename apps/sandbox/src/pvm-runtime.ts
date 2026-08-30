@@ -48,6 +48,38 @@ export interface PvmMetrics {
   audioSamples: number;
 }
 
+type PvmMetricsDisplaySource = Pick<
+  PvmMetrics,
+  | "backend"
+  | "fps"
+  | "startupStage"
+  | "translationMs"
+  | "compilationMs"
+  | "updateP50Ms"
+  | "updateP95Ms"
+  | "updateMaxMs"
+>;
+
+export function formatPvmMetrics(metrics: PvmMetricsDisplaySource): {
+  summary: string;
+  details: string;
+} {
+  const backend =
+    metrics.backend === "compiler"
+      ? "JIT"
+      : metrics.backend === "interpreter"
+        ? "Interpreter"
+        : "Starting";
+  return {
+    summary: `PolkaVM / ${backend} · ${metrics.fps.toFixed(1)} FPS`,
+    details: [
+      `Stage: ${metrics.startupStage}`,
+      `Translate ${metrics.translationMs.toFixed(1)} ms · Compile ${metrics.compilationMs.toFixed(1)} ms`,
+      `Update p50 ${metrics.updateP50Ms.toFixed(2)} ms · p95 ${metrics.updateP95Ms.toFixed(2)} ms · max ${metrics.updateMaxMs.toFixed(2)} ms`,
+    ].join("\n"),
+  };
+}
+
 declare global {
   interface Window {
     __dotliPvmMetrics?: PvmMetrics;
@@ -712,15 +744,22 @@ export function accumulateRelativePointerDelta(
 function createShell(controls: string[]): {
   canvas: HTMLCanvasElement;
   status: HTMLElement;
-  metrics: HTMLElement;
+  metrics: HTMLDetailsElement;
+  metricsSummary: HTMLElement;
+  metricsDetails: HTMLElement;
 } {
   const style = document.createElement("style");
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
     #dotli-pvm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;background:#050505}
     #dotli-pvm-canvas{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;outline:none}
-    .dotli-pvm-overlay{position:absolute;left:12px;padding:5px 8px;background:#000b;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;pointer-events:none}
-    #dotli-pvm-status{top:12px} #dotli-pvm-metrics{bottom:12px;white-space:pre}
+    .dotli-pvm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
+    #dotli-pvm-status{top:12px;padding:5px 8px;pointer-events:none}
+    #dotli-pvm-status:empty{display:none}
+    #dotli-pvm-metrics{top:12px;max-width:min(460px,calc(100vw - 24px));overflow:hidden;pointer-events:auto}
+    #dotli-pvm-metrics[hidden]{display:none}
+    #dotli-pvm-metrics summary{padding:6px 9px;cursor:pointer;white-space:nowrap;font-weight:600;user-select:none}
+    #dotli-pvm-metrics pre{margin:0;padding:7px 9px;border-top:1px solid #ffffff1f;white-space:pre-wrap;color:#c9ced3;font:inherit;font-weight:400}
     #dotli-pvm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
   `;
   const shell = document.createElement("main");
@@ -732,16 +771,20 @@ function createShell(controls: string[]): {
   status.id = "dotli-pvm-status";
   status.className = "dotli-pvm-overlay";
   status.textContent = "Translating PolkaVM application…";
-  const metrics = document.createElement("div");
+  const metrics = document.createElement("details");
   metrics.id = "dotli-pvm-metrics";
   metrics.className = "dotli-pvm-overlay";
+  metrics.hidden = true;
+  const metricsSummary = document.createElement("summary");
+  const metricsDetails = document.createElement("pre");
+  metrics.append(metricsSummary, metricsDetails);
   const controlText = document.createElement("div");
   controlText.id = "dotli-pvm-controls";
   controlText.textContent = controls.join(" · ");
   shell.append(canvas, status, metrics, controlText);
   document.head.append(style);
   document.body.replaceChildren(shell);
-  return { canvas, status, metrics };
+  return { canvas, status, metrics, metricsSummary, metricsDetails };
 }
 
 function installInput(
@@ -926,6 +969,8 @@ export async function runPvmApplication(
     canvas,
     status,
     metrics: metricsElement,
+    metricsSummary,
+    metricsDetails,
   } = createShell(descriptor.controls);
   if (forceInterpreter) {
     status.textContent = "Starting PolkaVM interpreter…";
@@ -1059,12 +1104,9 @@ export async function runPvmApplication(
   window.__dotliPvmMetrics = pvmMetrics;
 
   const updateMetrics = (): void => {
-    metricsElement.textContent = [
-      `${pvmMetrics.backend.toUpperCase()}  ${pvmMetrics.fps.toFixed(1)} FPS`,
-      `stage ${pvmMetrics.startupStage}`,
-      `translate ${pvmMetrics.translationMs.toFixed(1)} ms  compile ${pvmMetrics.compilationMs.toFixed(1)} ms`,
-      `update p50 ${pvmMetrics.updateP50Ms.toFixed(2)} ms  p95 ${pvmMetrics.updateP95Ms.toFixed(2)} ms  max ${pvmMetrics.updateMaxMs.toFixed(2)} ms`,
-    ].join("\n");
+    const display = formatPvmMetrics(pvmMetrics);
+    metricsSummary.textContent = display.summary;
+    metricsDetails.textContent = display.details;
     canvas.dataset.pvmBackend = pvmMetrics.backend;
     canvas.dataset.pvmCacheHit = String(pvmMetrics.cacheHit);
     canvas.dataset.pvmTranslationMs = String(pvmMetrics.translationMs);
@@ -1105,6 +1147,7 @@ export async function runPvmApplication(
       pvmMetrics.firstFrameMs = now - started;
       pvmMetrics.startupStage = "first-frame";
       status.textContent = "";
+      metricsElement.hidden = false;
       window.clearTimeout(timer);
       updateMetrics();
       resolveStarted(undefined);
