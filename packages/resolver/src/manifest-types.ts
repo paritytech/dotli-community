@@ -75,6 +75,7 @@ export interface PolkaVmAppManifestV2 {
         | "text"
         | "ime"
         | "focus"
+        | "motion"
       )[];
     };
     audio?: {
@@ -233,6 +234,7 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
         "text",
         "ime",
         "focus",
+        "motion",
       ])
     ) {
       errors.push(`${p}deviceInput capability is unsupported`);

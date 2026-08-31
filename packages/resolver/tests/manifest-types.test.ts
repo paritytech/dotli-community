@@ -102,6 +102,18 @@ describe("validateExecutableManifest", () => {
     expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
     expect(
       validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          deviceInput: {
+            abiVersion: 1,
+            requiredFeatures: ["pointer", "motion"],
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
         $v: 2,
         kind: "app",
         appVersion: [1, 0, 0],
