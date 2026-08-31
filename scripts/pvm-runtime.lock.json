@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "bridgeRepository": "https://github.com/paritytech/host-rust-core.git",
-  "bridgeRevision": "d76a7ac017621c35014a573550adaf9b14125282",
+  "bridgeRevision": "e892cd9df8170bde6bd3bbb5cb395d5830f20fbf",
   "runtimeRepository": "https://github.com/paritytech/pvm-host-runtime",
   "runtimeRevision": "81a484a131f40f114a64dfedf90527039b135a38",
   "releaseTag": "v0.1.5",
