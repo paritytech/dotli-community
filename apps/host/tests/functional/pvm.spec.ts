@@ -260,10 +260,9 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     timeout: 60_000,
   });
   await expect
-    .poll(
-      async () => Number(await canvas.getAttribute("data-pvm-frames")),
-      { timeout: 60_000 },
-    )
+    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")), {
+      timeout: 60_000,
+    })
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("data-pvm-backend", expectedV2Backend);
   if (expectedV2Profile !== undefined) {
