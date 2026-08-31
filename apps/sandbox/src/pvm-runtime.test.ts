@@ -280,7 +280,6 @@ describe("PolkaVM package recognition", () => {
     };
     expect(describePvmPackage(files, manifest)?.controls).toEqual([
       "Pointer",
-      "Relative Pointer",
       "Keyboard",
       "Motion",
     ]);
