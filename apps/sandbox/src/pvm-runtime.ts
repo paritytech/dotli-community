@@ -103,6 +103,8 @@ interface PvmDescriptor {
   audioEnabled: boolean;
   requiredAssets: string[];
   manifestVersion: number | null;
+  deviceInputFeatures: string[];
+  relativePointer: boolean;
 }
 
 interface WorkerReady {
@@ -278,6 +280,7 @@ function parseManifest(
   let controls: string[];
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
+  let deviceInputFeatures: string[] = [];
   if (manifest?.$v === 2 && manifest.kind === "app") {
     if (runtime.abiVersion !== 1) {
       throw new Error("PolkaVM App v2 runtime requires ABI version 1");
@@ -355,10 +358,24 @@ function parseManifest(
       deviceFeatures.some(
         (feature) =>
           typeof feature !== "string" ||
-          !["pointer", "keyboard", "motion"].includes(feature),
+          ![
+            "pointer",
+            "relative-pointer",
+            "keyboard",
+            "motion",
+          ].includes(feature),
       )
     ) {
       throw new Error("PolkaVM App v2 requires unsupported device input");
+    }
+    deviceInputFeatures = deviceFeatures as string[];
+    if (
+      deviceInputFeatures.includes("relative-pointer") &&
+      !deviceInputFeatures.includes("pointer")
+    ) {
+      throw new Error(
+        "PolkaVM App v2 relative-pointer input requires pointer input",
+      );
     }
     const audio =
       capabilities?.audio === undefined ? null : object(capabilities.audio);
@@ -370,9 +387,11 @@ function parseManifest(
     ) {
       throw new Error("PolkaVM App v2 requires unsupported audio features");
     }
-    controls = deviceFeatures.map(
-      (feature) =>
-        (feature as string)[0].toUpperCase() + (feature as string).slice(1),
+    controls = deviceInputFeatures.map((feature) =>
+      feature
+        .split("-")
+        .map((part) => part[0].toUpperCase() + part.slice(1))
+        .join(" "),
     );
     audioEnabled = audio !== null;
     manifestVersion = 2;
@@ -428,6 +447,11 @@ function parseManifest(
       }
     }
   }
+  const relativePointer = relativePointerEnabled(
+    manifestVersion,
+    deviceInputFeatures,
+    graphicsProfile,
+  );
   return {
     graphicsProfile,
     webGpuRequirements,
@@ -435,6 +459,8 @@ function parseManifest(
     controls,
     audioEnabled,
     requiredAssets,
+    deviceInputFeatures,
+    relativePointer,
     manifestVersion,
   };
 }
@@ -848,6 +874,21 @@ export function accumulateRelativePointerDelta(
   ];
 }
 
+/**
+ * App v2 separates absolute `pointer` input from captured
+ * `relative-pointer` motion. Older manifests had no machine-readable pointer
+ * mode, so non-Tri2D profiles retain their historical capture behavior.
+ */
+export function relativePointerEnabled(
+  manifestVersion: number | null,
+  deviceInputFeatures: string[],
+  graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster",
+): boolean {
+  return manifestVersion === 2
+    ? deviceInputFeatures.includes("relative-pointer")
+    : graphicsProfile !== "tri2d";
+}
+
 function createShell(controls: string[]): {
   canvas: HTMLCanvasElement;
   status: HTMLElement;
@@ -897,6 +938,7 @@ function createShell(controls: string[]): {
 function installInput(
   canvas: HTMLCanvasElement,
   graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster",
+  relativePointer: boolean,
   send: (bytes: Uint8Array) => void,
   sendMotion: (bytes: Uint8Array) => void,
   resumeAudio: () => void,
@@ -1070,7 +1112,7 @@ function installInput(
     send(encodedInput(type, pointerButtons[event.button], x, y));
   };
   const move = (event: PointerEvent): void => {
-    if (graphicsProfile === "tri2d") {
+    if (!relativePointer) {
       const [x, y] = canvasPosition(event);
       send(encodedInput(5, 0, x, y));
       if (previousPointer !== null) {
@@ -1102,12 +1144,12 @@ function installInput(
     requestDeviceMotionPermission();
     previousPointer = [event.clientX, event.clientY];
     canvas.focus();
-    if (graphicsProfile === "tri2d") {
+    if (!relativePointer) {
       move(event);
     }
     pointer(event, 3);
     if (
-      graphicsProfile !== "tri2d" &&
+      relativePointer &&
       event.button === 0 &&
       document.pointerLockElement !== canvas
     ) {
@@ -1470,6 +1512,7 @@ export async function runPvmApplication(
   const { cleanup: cleanupInput, sendSurfaceMetrics } = installInput(
     canvas,
     descriptor.graphicsProfile,
+    descriptor.relativePointer,
     (bytes) => {
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
     },

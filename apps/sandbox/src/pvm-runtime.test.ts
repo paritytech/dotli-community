@@ -11,6 +11,7 @@ import {
   formatPvmMetrics,
   isPvmPackage,
   normalizedPointerDelta,
+  relativePointerEnabled,
   unsupportedPvmImport,
   waitForTruapiPort,
   type TruapiPortScope,
@@ -61,7 +62,7 @@ function doomAppV2Manifest(): string {
       },
       deviceInput: {
         abiVersion: 1,
-        requiredFeatures: ["pointer", "keyboard"],
+        requiredFeatures: ["pointer", "relative-pointer", "keyboard"],
       },
       audio: { abiVersion: 1, requiredFeatures: [] },
     },
@@ -113,6 +114,16 @@ describe("PolkaVM pointer input", () => {
     expect([x, y]).toEqual([127, -127]);
 
     expect(accumulateRelativePointerDelta(x, y, -20, 20)).toEqual([107, -107]);
+  });
+
+  it("uses explicit App v2 relative input and legacy profile defaults", () => {
+    expect(
+      relativePointerEnabled(2, ["pointer", "relative-pointer"], "framebuffer"),
+    ).toBe(true);
+    expect(relativePointerEnabled(2, ["pointer"], "framebuffer")).toBe(false);
+    expect(relativePointerEnabled(null, [], "framebuffer")).toBe(true);
+    expect(relativePointerEnabled(null, [], "webgpu-raster")).toBe(true);
+    expect(relativePointerEnabled(null, [], "tri2d")).toBe(false);
   });
 });
 
@@ -223,6 +234,8 @@ describe("PolkaVM package recognition", () => {
       audioEnabled: true,
       requiredAssets: ["game/doom.wad"],
       manifestVersion: null,
+      deviceInputFeatures: [],
+      relativePointer: true,
     });
   });
 
@@ -238,10 +251,12 @@ describe("PolkaVM package recognition", () => {
       graphicsProfile: "framebuffer",
       webGpuRequirements: null,
       programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
+      controls: ["Pointer", "Relative Pointer", "Keyboard"],
       audioEnabled: true,
       requiredAssets: [],
       manifestVersion: 2,
+      deviceInputFeatures: ["pointer", "relative-pointer", "keyboard"],
+      relativePointer: true,
     });
     expect(() => describePvmPackage(files)).toThrow(
       /external App manifest is required/,
@@ -280,10 +295,12 @@ describe("PolkaVM package recognition", () => {
       graphicsProfile: "tri2d",
       webGpuRequirements: null,
       programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
+      controls: ["Pointer", "Relative Pointer", "Keyboard"],
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
+      deviceInputFeatures: ["pointer", "relative-pointer", "keyboard"],
+      relativePointer: true,
     });
   });
 
@@ -304,11 +321,44 @@ describe("PolkaVM package recognition", () => {
         },
       },
       programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
+      controls: ["Pointer", "Relative Pointer", "Keyboard"],
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
+      deviceInputFeatures: ["pointer", "relative-pointer", "keyboard"],
+      relativePointer: true,
     });
+  });
+
+  it("keeps App v2 pointer input absolute unless relative-pointer is required", () => {
+    const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
+    const capabilities = manifest.capabilities as Record<string, unknown>;
+    const deviceInput = capabilities.deviceInput as Record<string, unknown>;
+    deviceInput.requiredFeatures = ["pointer", "keyboard"];
+    const manifestText = JSON.stringify(manifest);
+    const files = {
+      "manifest.json": encoder.encode(manifestText),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(describePvmPackage(files, manifestText)).toMatchObject({
+      deviceInputFeatures: ["pointer", "keyboard"],
+      relativePointer: false,
+    });
+  });
+
+  it("rejects relative-pointer without the base pointer capability", () => {
+    const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
+    const capabilities = manifest.capabilities as Record<string, unknown>;
+    const deviceInput = capabilities.deviceInput as Record<string, unknown>;
+    deviceInput.requiredFeatures = ["relative-pointer"];
+    const manifestText = JSON.stringify(manifest);
+    const files = {
+      "manifest.json": encoder.encode(manifestText),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(() => describePvmPackage(files, manifestText)).toThrow(
+      /requires pointer input/,
+    );
   });
 
   it("leaves ordinary HTML archives on the existing sandbox path", () => {
