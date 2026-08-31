@@ -23,7 +23,7 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "epoca-512f9294-pvm-wasm-v5";
+const RUNTIME_SOURCE = "pvm-host-runtime-81a484a1";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
@@ -1246,6 +1246,12 @@ export async function runPvmApplication(
       throw new Error("WebGPU Raster requirements are missing");
     }
     webGpu = new WebGpuRasterBridge(canvas, descriptor.webGpuRequirements, {
+      capabilities: (bytes) => {
+        const capabilities = ownedBytes(bytes);
+        worker.postMessage({ type: "gpu-capabilities", bytes: capabilities }, [
+          capabilities.buffer,
+        ]);
+      },
       event: (bytes) => {
         worker.postMessage({ type: "gpu-event", bytes }, [bytes.buffer]);
       },

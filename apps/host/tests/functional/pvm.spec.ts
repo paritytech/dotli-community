@@ -206,6 +206,7 @@ const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
 const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
 const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
 const expectedTruapi = process.env.DOTLI_PVM_EXPECTED_TRUAPI === "1";
+const expectedResize = process.env.DOTLI_PVM_EXPECTED_RESIZE === "1";
 const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
   .split(",")
   .filter(Boolean);
@@ -285,6 +286,23 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
         Number(await canvas.getAttribute("data-pvm-truapi-responses")),
       )
       .toBeGreaterThan(0);
+  }
+  if (expectedResize) {
+    const framesBeforeResize = Number(
+      await canvas.getAttribute("data-pvm-frames"),
+    );
+    await page.locator("#doom-v2-product").evaluate((iframe) => {
+      iframe.style.width = "100vw";
+      iframe.style.height = "100vh";
+    });
+    await page.setViewportSize({ width: 960, height: 640 });
+    await expect
+      .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+      .toBeGreaterThan(framesBeforeResize);
+    await expect(canvas).toHaveAttribute("data-pvm-ready", "true");
+    if (expectedV2Profile === "webgpu-raster") {
+      await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
+    }
   }
   const framesBeforeInput = Number(
     await canvas.getAttribute("data-pvm-frames"),
