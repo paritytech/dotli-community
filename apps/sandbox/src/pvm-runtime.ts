@@ -845,6 +845,11 @@ function installInput(
     ];
   };
   const keydown = (event: KeyboardEvent): void => {
+    if (event.code === "Escape" && document.pointerLockElement === canvas) {
+      event.preventDefault();
+      document.exitPointerLock();
+      return;
+    }
     if (!(event.code in keyCodes) || event.repeat) {
       return;
     }
@@ -878,7 +883,7 @@ function installInput(
     send(encodedInput(type, pointerButtons[event.button], x, y));
   };
   const move = (event: PointerEvent): void => {
-    if (graphicsProfile !== "framebuffer") {
+    if (graphicsProfile === "tri2d") {
       const [x, y] = canvasPosition(event);
       send(encodedInput(5, 0, x, y));
       return;
@@ -901,12 +906,12 @@ function installInput(
   };
   const down = (event: PointerEvent): void => {
     canvas.focus();
-    if (graphicsProfile !== "framebuffer") {
+    if (graphicsProfile === "tri2d") {
       move(event);
     }
     pointer(event, 3);
     if (
-      graphicsProfile === "framebuffer" &&
+      graphicsProfile !== "tri2d" &&
       event.button === 0 &&
       document.pointerLockElement !== canvas
     ) {

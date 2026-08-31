@@ -260,7 +260,10 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     timeout: 60_000,
   });
   await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+    .poll(
+      async () => Number(await canvas.getAttribute("data-pvm-frames")),
+      { timeout: 60_000 },
+    )
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("data-pvm-backend", expectedV2Backend);
   if (expectedV2Profile !== undefined) {
@@ -308,6 +311,26 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     await canvas.getAttribute("data-pvm-frames"),
   );
   await canvas.click({ position: { x: 160, y: 100 } });
+  if (expectedV2Profile === "webgpu-raster") {
+    const productFrame = page
+      .frames()
+      .find((frame) => frame.url().includes("doom-v2.app.localhost"));
+    if (productFrame === undefined) {
+      throw new Error("WebGPU product frame did not mount");
+    }
+    await expect
+      .poll(async () =>
+        productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
+      )
+      .toBe("dotli-pvm-canvas");
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(async () =>
+        productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
+      )
+      .toBeNull();
+    await canvas.click({ position: { x: 160, y: 100 } });
+  }
   for (const key of expectedInputKeys) {
     await page.keyboard.press(key);
   }
