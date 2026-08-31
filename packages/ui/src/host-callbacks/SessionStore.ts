@@ -271,6 +271,12 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
+    // The ledger bounds replays for one wallet and peer pair, so the whole
+    // triple has to discriminate the slot.
+    case "SsoResponderRequestLedger":
+      return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
   }
 }
 
