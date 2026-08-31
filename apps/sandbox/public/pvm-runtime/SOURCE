@@ -1,8 +1,8 @@
 PolkaVM App v2 browser runtime
 Bridge repository: https://github.com/paritytech/host-rust-core.git
-Bridge commit: 860fe967427c4e083e6328895e951fde679f9184
+Bridge commit: 2915399fef4f1d93b47e5fd5372d02cffd83438f
 Runtime repository: https://github.com/paritytech/pvm-host-runtime
-Runtime commit: a211ac005529eaf7cc009e1363afe0a0d9240bad
+Runtime commit: 554d993b95128633e8737e5f494c7fa8dfb24877
 Release: unreleased-motion-tilt
 
 Bridge-owned artifacts:
