@@ -18,6 +18,7 @@ interface Dimensions {
 
 interface Callbacks {
   event: (bytes: Uint8Array) => void;
+  capabilities: (bytes: Uint8Array) => void;
   presented: () => void;
   error: (error: Error) => void;
 }
@@ -67,9 +68,11 @@ export class WebGpuRasterBridge {
         message?.type === "capabilities" &&
         message.bytes instanceof Uint8Array
       ) {
+        const bytes = message.bytes.slice();
         window.clearTimeout(timer);
         canvas.dataset.pvmGpu = "ready";
-        resolve(message.bytes.slice());
+        callbacks.capabilities(bytes);
+        resolve(bytes);
       } else if (
         message?.type === "event" &&
         message.bytes instanceof Uint8Array
