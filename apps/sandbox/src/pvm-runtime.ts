@@ -80,6 +80,14 @@ export function formatPvmMetrics(metrics: PvmMetricsDisplaySource): {
   };
 }
 
+export function unsupportedPvmImport(message: string): string | null {
+  return (
+    /translated (?:PolkaVM|CoreVM) guest uses unsupported import ([A-Za-z][A-Za-z0-9_]*)/.exec(
+      message,
+    )?.[1] ?? null
+  );
+}
+
 declare global {
   interface Window {
     __dotliPvmMetrics?: PvmMetrics;
