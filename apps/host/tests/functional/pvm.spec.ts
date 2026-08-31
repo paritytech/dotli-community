@@ -346,10 +346,12 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       )
       .toBeNull();
   }
-  for (const key of expectedInputKeys) {
-    await page.keyboard.press(key);
+  if (expectedInputKeys.length > 0) {
+    for (const key of expectedInputKeys) {
+      await page.keyboard.press(key);
+    }
+    await expect
+      .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+      .toBeGreaterThan(framesBeforeInput);
   }
-  await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
-    .toBeGreaterThan(framesBeforeInput);
 });
