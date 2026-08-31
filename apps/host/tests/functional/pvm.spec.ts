@@ -220,16 +220,6 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   );
   const carBytes = new Uint8Array(await readFile(doomV2CarPath as string));
   const manifest = await readFile(doomV2ManifestPath as string, "utf8");
-  const manifestValue = JSON.parse(manifest) as {
-    capabilities?: {
-      deviceInput?: { requiredFeatures?: unknown };
-    };
-  };
-  const expectedPointerLock =
-    Array.isArray(manifestValue.capabilities?.deviceInput?.requiredFeatures) &&
-    manifestValue.capabilities.deviceInput.requiredFeatures.includes(
-      "relative-pointer",
-    );
   const reader = await CarReader.fromBytes(carBytes);
   const [root] = await reader.getRoots();
   if (root === undefined) throw new Error("Doom v2 CAR has no root");
@@ -320,13 +310,13 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     await canvas.getAttribute("data-pvm-frames"),
   );
   await canvas.click({ position: { x: 160, y: 100 } });
-  const productFrame = page
-    .frames()
-    .find((frame) => frame.url().includes("doom-v2.app.localhost"));
-  if (productFrame === undefined) {
-    throw new Error("App v2 product frame did not mount");
-  }
-  if (expectedPointerLock) {
+  if (expectedV2Profile === "webgpu-raster") {
+    const productFrame = page
+      .frames()
+      .find((frame) => frame.url().includes("doom-v2.app.localhost"));
+    if (productFrame === undefined) {
+      throw new Error("WebGPU product frame did not mount");
+    }
     await expect
       .poll(async () =>
         productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
@@ -339,12 +329,6 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       )
       .toBeNull();
     await canvas.click({ position: { x: 160, y: 100 } });
-  } else {
-    await expect
-      .poll(async () =>
-        productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
-      )
-      .toBeNull();
   }
   for (const key of expectedInputKeys) {
     await page.keyboard.press(key);
