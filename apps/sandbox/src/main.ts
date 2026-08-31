@@ -49,7 +49,11 @@ import { setNetworkOverride } from "@dotli/config/network";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
-import { isPvmPackage, runPvmApplication } from "./pvm-runtime";
+import {
+  isPvmPackage,
+  runPvmApplication,
+  unsupportedPvmImport,
+} from "./pvm-runtime";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -880,6 +884,18 @@ function run(): void {
         attempt: String(runAttempts),
       });
       const message = err instanceof Error ? err.message : String(err);
+      const unsupportedImport = unsupportedPvmImport(message);
+      if (unsupportedImport !== null) {
+        const feature =
+          unsupportedImport === "host_motion_read"
+            ? `motion input (${unsupportedImport})`
+            : `the runtime feature ${unsupportedImport}`;
+        failLoading(
+          "App feature isn't supported",
+          `This app requires ${feature}, which dot.li does not support. Update the app or open it in a compatible host.`,
+        );
+        return;
+      }
       failLoading(
         "Failed to load content",
         `${message} (via ${dependency})`,

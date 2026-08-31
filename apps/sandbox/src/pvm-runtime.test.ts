@@ -9,6 +9,7 @@ import {
   formatPvmMetrics,
   isPvmPackage,
   normalizedPointerDelta,
+  unsupportedPvmImport,
   waitForTruapiPort,
   type TruapiPortScope,
   type TruapiPortTarget,
@@ -138,6 +139,25 @@ describe("PolkaVM metrics display", () => {
       details:
         "Stage: first-frame\nTranslate 10.0 ms · Compile 5.0 ms\nUpdate p50 0.00 ms · p95 1.00 ms · max 4.00 ms",
     });
+  });
+});
+
+describe("PolkaVM compatibility errors", () => {
+  it("extracts unsupported imports from translated guest failures", () => {
+    expect(
+      unsupportedPvmImport(
+        "translated PolkaVM guest uses unsupported import host_motion_read",
+      ),
+    ).toBe("host_motion_read");
+    expect(
+      unsupportedPvmImport(
+        "translated CoreVM guest uses unsupported import pvm_unknown",
+      ),
+    ).toBe("pvm_unknown");
+  });
+
+  it("leaves transport and content failures unclassified", () => {
+    expect(unsupportedPvmImport("IPFS request timed out")).toBeNull();
   });
 });
 
