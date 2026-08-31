@@ -6,6 +6,8 @@ import {
   accumulateRelativePointerDelta,
   describePvmPackage,
   encodedInput,
+  encodedMotionSample,
+  encodedPointerMotionSample,
   formatPvmMetrics,
   isPvmPackage,
   normalizedPointerDelta,
@@ -114,6 +116,49 @@ describe("PolkaVM pointer input", () => {
   });
 });
 
+describe("MotionSample v1 encoding", () => {
+  it("encodes pointer movement as bounded rotation-rate motion", () => {
+    const bytes = encodedPointerMotionSample(10, -5, 20, 3, 100);
+    const view = new DataView(bytes.buffer);
+    expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("PMO1");
+    expect(view.getUint16(4, true)).toBe(1);
+    expect(view.getUint16(6, true)).toBe(6);
+    expect(view.getUint32(8, true)).toBe(48);
+    expect(view.getUint32(12, true)).toBe(3);
+    expect(view.getFloat64(16, true)).toBe(100);
+    expect(view.getFloat32(40, true)).toBeCloseTo(-37.5);
+    expect(view.getFloat32(44, true)).toBeCloseTo(75);
+  });
+
+  it("encodes finite device motion and rejects malformed samples", () => {
+    const bytes = encodedMotionSample({
+      flags: 3,
+      sequence: 1,
+      timestampMs: 20,
+      accelerationX: 1,
+      accelerationY: 2,
+      accelerationZ: 3,
+      rotationAlpha: 4,
+      rotationBeta: 5,
+      rotationGamma: 6,
+    });
+    expect(new DataView(bytes.buffer).getFloat32(32, true)).toBe(3);
+    expect(() =>
+      encodedMotionSample({
+        flags: 0,
+        sequence: 1,
+        timestampMs: 20,
+        accelerationX: 0,
+        accelerationY: 0,
+        accelerationZ: 0,
+        rotationAlpha: 0,
+        rotationBeta: 0,
+        rotationGamma: 0,
+      }),
+    ).toThrow(/invalid MotionSample v1/);
+  });
+});
+
 describe("PolkaVM metrics display", () => {
   const metrics = {
     backend: "compiler" as const,
@@ -204,6 +249,25 @@ describe("PolkaVM package recognition", () => {
     expect(() => describePvmPackage(files, `${manifest}\n`)).toThrow(
       /does not match/,
     );
+  });
+
+  it("accepts required MotionSample v1 input", () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: {
+        deviceInput: { requiredFeatures: string[] };
+      };
+    };
+    value.capabilities.deviceInput.requiredFeatures.push("motion");
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(describePvmPackage(files, manifest)?.controls).toEqual([
+      "Pointer",
+      "Keyboard",
+      "Motion",
+    ]);
   });
 
   it("recognizes strict App manifest v2 Tri2D packages", () => {

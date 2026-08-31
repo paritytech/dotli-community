@@ -23,7 +23,7 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "pvm-host-runtime-81a484a1";
+const RUNTIME_SOURCE = "pvm-host-runtime-a5110c3d";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
@@ -355,7 +355,7 @@ function parseManifest(
       deviceFeatures.some(
         (feature) =>
           typeof feature !== "string" ||
-          !["pointer", "keyboard"].includes(feature),
+          !["pointer", "keyboard", "motion"].includes(feature),
       )
     ) {
       throw new Error("PolkaVM App v2 requires unsupported device input");
@@ -707,6 +707,105 @@ export function encodedInput(
   return bytes;
 }
 
+const MOTION_SAMPLE_BYTES = 48;
+const MOTION_FLAG_ACCELERATION = 1;
+const MOTION_FLAG_ROTATION = 2;
+const MOTION_FLAG_POINTER_EMULATED = 4;
+const POINTER_ROTATION_DEGREES_PER_PIXEL = 0.15;
+const MAX_POINTER_ROTATION_RATE = 720;
+
+export interface MotionSampleValues {
+  flags: number;
+  sequence: number;
+  timestampMs: number;
+  accelerationX: number;
+  accelerationY: number;
+  accelerationZ: number;
+  rotationAlpha: number;
+  rotationBeta: number;
+  rotationGamma: number;
+}
+
+export function encodedMotionSample(sample: MotionSampleValues): Uint8Array {
+  if (
+    !Number.isInteger(sample.flags) ||
+    sample.flags <= 0 ||
+    (sample.flags & ~7) !== 0 ||
+    ((sample.flags & MOTION_FLAG_POINTER_EMULATED) !== 0 &&
+      (sample.flags & MOTION_FLAG_ROTATION) === 0) ||
+    !Number.isInteger(sample.sequence) ||
+    sample.sequence <= 0 ||
+    sample.sequence > 0xffffffff ||
+    !Number.isFinite(sample.timestampMs) ||
+    sample.timestampMs < 0 ||
+    [
+      sample.accelerationX,
+      sample.accelerationY,
+      sample.accelerationZ,
+      sample.rotationAlpha,
+      sample.rotationBeta,
+      sample.rotationGamma,
+    ].some((value) => !Number.isFinite(value))
+  ) {
+    throw new Error("invalid MotionSample v1");
+  }
+  const bytes = new Uint8Array(MOTION_SAMPLE_BYTES);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x50, 0x4d, 0x4f, 0x31]);
+  view.setUint16(4, 1, true);
+  view.setUint16(6, sample.flags, true);
+  view.setUint32(8, MOTION_SAMPLE_BYTES, true);
+  view.setUint32(12, sample.sequence, true);
+  view.setFloat64(16, sample.timestampMs, true);
+  for (const [offset, value] of [
+    [24, sample.accelerationX],
+    [28, sample.accelerationY],
+    [32, sample.accelerationZ],
+    [36, sample.rotationAlpha],
+    [40, sample.rotationBeta],
+    [44, sample.rotationGamma],
+  ] as const) {
+    view.setFloat32(offset, value, true);
+  }
+  return bytes;
+}
+
+export function encodedPointerMotionSample(
+  deltaX: number,
+  deltaY: number,
+  elapsedMs: number,
+  sequence: number,
+  timestampMs: number,
+): Uint8Array {
+  if (
+    !Number.isFinite(deltaX) ||
+    !Number.isFinite(deltaY) ||
+    !Number.isFinite(elapsedMs) ||
+    elapsedMs <= 0
+  ) {
+    throw new Error("invalid pointer motion sample");
+  }
+  const degreesPerSecond = (delta: number): number =>
+    Math.max(
+      -MAX_POINTER_ROTATION_RATE,
+      Math.min(
+        MAX_POINTER_ROTATION_RATE,
+        (delta * POINTER_ROTATION_DEGREES_PER_PIXEL * 1_000) / elapsedMs,
+      ),
+    );
+  return encodedMotionSample({
+    flags: MOTION_FLAG_ROTATION | MOTION_FLAG_POINTER_EMULATED,
+    sequence,
+    timestampMs,
+    accelerationX: 0,
+    accelerationY: 0,
+    accelerationZ: 0,
+    rotationAlpha: 0,
+    rotationBeta: degreesPerSecond(deltaY),
+    rotationGamma: degreesPerSecond(deltaX),
+  });
+}
+
 // CoreVM's mouse ABI is a signed byte. Drop individual samples outside that
 // range as pointer-lock discontinuities, then bound the normal backlog
 // accumulated before the next display frame.
@@ -799,6 +898,7 @@ function installInput(
   canvas: HTMLCanvasElement,
   graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster",
   send: (bytes: Uint8Array) => void,
+  sendMotion: (bytes: Uint8Array) => void,
   resumeAudio: () => void,
 ): { cleanup: () => void; sendSurfaceMetrics: () => void } {
   const pressed = new Set<number>();
@@ -806,6 +906,83 @@ function installInput(
   let relativeX = 0;
   let relativeY = 0;
   let relativeFrame: number | null = null;
+  let motionSequence = 0;
+  let motionX = 0;
+  let motionY = 0;
+  let motionFrame: number | null = null;
+  let motionWindowStarted = performance.now();
+  let previousPointer: [number, number] | null = null;
+  let motionPermissionRequested = false;
+  const nextMotionSequence = (): number => {
+    motionSequence = motionSequence === 0xffffffff ? 1 : motionSequence + 1;
+    return motionSequence;
+  };
+  const flushPointerMotion = (now: number): void => {
+    motionFrame = null;
+    const x = motionX;
+    const y = motionY;
+    motionX = 0;
+    motionY = 0;
+    if (x === 0 && y === 0) {
+      return;
+    }
+    const elapsedMs = Math.max(1, now - motionWindowStarted);
+    motionWindowStarted = now;
+    sendMotion(
+      encodedPointerMotionSample(x, y, elapsedMs, nextMotionSequence(), now),
+    );
+  };
+  const queuePointerMotion = (x: number, y: number): void => {
+    motionX += x;
+    motionY += y;
+    motionFrame ??= window.requestAnimationFrame(flushPointerMotion);
+  };
+  const requestDeviceMotionPermission = (): void => {
+    if (motionPermissionRequested || typeof DeviceMotionEvent === "undefined") {
+      return;
+    }
+    motionPermissionRequested = true;
+    const constructor = DeviceMotionEvent as typeof DeviceMotionEvent & {
+      requestPermission?: () => Promise<"granted" | "denied">;
+    };
+    if (typeof constructor.requestPermission === "function") {
+      void constructor.requestPermission().catch(() => undefined);
+    }
+  };
+  const deviceMotion = (event: DeviceMotionEvent): void => {
+    const acceleration = event.accelerationIncludingGravity;
+    const rotation = event.rotationRate;
+    const accelerationValues = [
+      acceleration?.x,
+      acceleration?.y,
+      acceleration?.z,
+    ];
+    const rotationValues = [rotation?.alpha, rotation?.beta, rotation?.gamma];
+    const hasAcceleration = accelerationValues.every(
+      (value) => typeof value === "number" && Number.isFinite(value),
+    );
+    const hasRotation = rotationValues.every(
+      (value) => typeof value === "number" && Number.isFinite(value),
+    );
+    if (!hasAcceleration && !hasRotation) {
+      return;
+    }
+    sendMotion(
+      encodedMotionSample({
+        flags:
+          (hasAcceleration ? MOTION_FLAG_ACCELERATION : 0) |
+          (hasRotation ? MOTION_FLAG_ROTATION : 0),
+        sequence: nextMotionSequence(),
+        timestampMs: performance.now(),
+        accelerationX: hasAcceleration ? (acceleration?.x ?? 0) : 0,
+        accelerationY: hasAcceleration ? (acceleration?.y ?? 0) : 0,
+        accelerationZ: hasAcceleration ? (acceleration?.z ?? 0) : 0,
+        rotationAlpha: hasRotation ? (rotation?.alpha ?? 0) : 0,
+        rotationBeta: hasRotation ? (rotation?.beta ?? 0) : 0,
+        rotationGamma: hasRotation ? (rotation?.gamma ?? 0) : 0,
+      }),
+    );
+  };
   const flushRelativePointer = (): void => {
     relativeFrame = null;
     const x = relativeX;
@@ -814,6 +991,7 @@ function installInput(
     relativeY = 0;
     if (x !== 0 || y !== 0) {
       send(encodedInput(6, 0, x, y));
+      queuePointerMotion(x, y);
     }
   };
   const queueRelativePointer = (x: number, y: number): void => {
@@ -832,6 +1010,14 @@ function installInput(
     }
     relativeX = 0;
     relativeY = 0;
+    if (motionFrame !== null) {
+      window.cancelAnimationFrame(motionFrame);
+      motionFrame = null;
+    }
+    motionX = 0;
+    motionY = 0;
+    motionWindowStarted = performance.now();
+    previousPointer = null;
     firstMoveAfterPointerLock = document.pointerLockElement === canvas;
   };
   const canvasPosition = (event: PointerEvent): [number, number] => {
@@ -845,6 +1031,7 @@ function installInput(
     ];
   };
   const keydown = (event: KeyboardEvent): void => {
+    requestDeviceMotionPermission();
     if (event.code === "Escape" && document.pointerLockElement === canvas) {
       event.preventDefault();
       document.exitPointerLock();
@@ -886,6 +1073,13 @@ function installInput(
     if (graphicsProfile === "tri2d") {
       const [x, y] = canvasPosition(event);
       send(encodedInput(5, 0, x, y));
+      if (previousPointer !== null) {
+        queuePointerMotion(
+          event.clientX - previousPointer[0],
+          event.clientY - previousPointer[1],
+        );
+      }
+      previousPointer = [event.clientX, event.clientY];
       return;
     }
     if (document.pointerLockElement !== canvas) {
@@ -905,6 +1099,8 @@ function installInput(
     }
   };
   const down = (event: PointerEvent): void => {
+    requestDeviceMotionPermission();
+    previousPointer = [event.clientX, event.clientY];
     canvas.focus();
     if (graphicsProfile === "tri2d") {
       move(event);
@@ -944,6 +1140,7 @@ function installInput(
   document.addEventListener("pointerlockchange", pointerLockChanged);
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
+  window.addEventListener("devicemotion", deviceMotion);
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
@@ -956,6 +1153,7 @@ function installInput(
       document.removeEventListener("pointerlockchange", pointerLockChanged);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
+      window.removeEventListener("devicemotion", deviceMotion);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
@@ -1275,6 +1473,19 @@ export async function runPvmApplication(
     (bytes) => {
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
     },
+    (bytes) => {
+      const flags = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      ).getUint16(6, true);
+      canvas.dataset.pvmMotionSamples = String(
+        Number(canvas.dataset.pvmMotionSamples ?? 0) + 1,
+      );
+      canvas.dataset.pvmMotionSource =
+        (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
+      worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
+    },
     resumeAudio,
   );
   const stop = (): void => {
@@ -1514,6 +1725,11 @@ export async function runPvmApplication(
       compiledBytes: compiledBytes?.buffer,
       graphicsProfile: descriptor.graphicsProfile,
       gpuCapabilities: gpuCapabilitiesBuffer,
+      motionAvailability:
+        typeof PointerEvent !== "undefined" ||
+        typeof DeviceMotionEvent !== "undefined"
+          ? 1
+          : 0,
       forceInterpreter,
     },
     transfers,
