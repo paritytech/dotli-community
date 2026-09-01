@@ -1,34 +1,46 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { chromium, type FullConfig } from "@playwright/test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chromium, type FullConfig, type Page } from "@playwright/test";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import {
-  pair,
-  health,
-  generateUsername,
-  type PairResult,
-} from "./helpers/signer-bot";
+  formatSigningHostExit,
+  signingHostVersion,
+  startSigningHostPair,
+  stopSigningHost,
+  stopSigningHostPid,
+  type SigningHostConfig,
+  type SigningHostProcess,
+} from "./helpers/signing-host-cli";
 import { extractQrPayload } from "./helpers/extract-qr-payload";
 import {
   E2E_CHAIN_BACKEND,
   initializeChainBackend,
 } from "./helpers/chain-backend";
-import { STATE_FILE, SESSION_FILE } from "./fixtures/paths";
+import {
+  STATE_FILE,
+  SESSION_FILE,
+  SIGNING_HOST_STATE_DIR,
+  type PersistedSession,
+} from "./fixtures/paths";
 
-// External-service config. Required, with no defaults. A wrong or missing
-// value silently breaks pairing (e.g. bot attesting on a different
-// chain than the host listens on). Set in CI via the workflow env
-// block and in local `.env`.
-const SVC_TOKEN = requiredEnv("SIGNER_BOT_SVC_TOKEN");
-const BOT_BASE = requiredEnv("SIGNER_BOT_BASE_URL");
 // Must equal the host's default network (`packages/config/src/network.ts`
-// `defaultNetwork()`, "paseo-next-v2" at time of writing). The bot's
-// `/api/networks` lists supported IDs. A mismatch surfaces as "pair OK,
-// user-badge never appears" because the chain-side handshake never
-// reaches the host's protocol iframe.
-const BOT_NETWORK = requiredEnv("SIGNER_BOT_NETWORK");
+// `defaultNetwork()`, "paseo-next-v2" at time of writing). Required with no
+// default: a mismatch surfaces as "pair OK, user-badge never appears"
+// because the CLI attests on a different chain than the host listens on.
+const NETWORK = requiredEnv("SIGNING_HOST_NETWORK");
+// The truapi-host CLI from paritytech/host-rust-core, on PATH by default.
+// `||` not `??` because the .env loader can hand us empty strings.
+const SIGNING_HOST_BIN = process.env.SIGNING_HOST_BIN || "truapi-host";
+const SIGNING_HOST_BASE_PATH =
+  process.env.SIGNING_HOST_BASE_PATH || SIGNING_HOST_STATE_DIR;
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
 const PORT = process.env.PORT ?? "5173";
@@ -64,40 +76,67 @@ function positiveIntegerEnv(name: string, fallback: number): number {
 
 const PAIR_ATTEMPTS = 3;
 const PAIR_ATTEMPT_BACKOFF_MS = 3_000;
-// One-time setup: the bot has to create the user and attest on the
-// network, so the ceiling is more generous than the per-test restore.
-// If this trips, the bot or chain is in trouble and the whole run
-// should fail fast.
-// The bot only returns from `/api/pair` after accepting the handshake. Its
-// chain-side device allowance is then finalized asynchronously and can take
-// longer than the ring inclusion timeout (150s). Keep this above that ceiling.
+// First-attempt ceiling: a cold signing-host state dir registers a lite
+// username and waits for ring inclusion, which can take several minutes.
 const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv(
   "E2E_PAIR_BADGE_TIMEOUT_MS",
-  240_000,
+  600_000,
 );
+// Retries reuse the warmed state dir, so they get a far smaller ceiling.
+// Caps the worst case under CI's 35-min job timeout so exit 99 stays
+// reachable during an outage instead of the runner hard-killing the job.
+const RETRY_BADGE_TIMEOUT_MS = positiveIntegerEnv(
+  "E2E_RETRY_BADGE_TIMEOUT_MS",
+  120_000,
+);
+// A CLI death this soon after spawn is a deterministic tooling failure
+// (bad flags, broken release), never a chain-side outage.
+const FAST_CLI_EXIT_MS = 15_000;
 
-// Distinct exit code so CI workflow / reviewers can tell "Nova is down"
-// apart from "dot.li tests asserted false". Keeps the failure attributable.
-export const BOT_UNAVAILABLE_EXIT_CODE = 99;
+// Distinct exit code so CI workflow / reviewers can tell "testnet or
+// identity backend is down" apart from "dot.li tests asserted false".
+export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
-export default async function globalSetup(_config: FullConfig): Promise<void> {
-  console.log(
-    `[globalSetup] bot=${BOT_BASE} network=${BOT_NETWORK} backend=${E2E_CHAIN_BACKEND}`,
-  );
+const signingHostConfig: SigningHostConfig = {
+  binary: SIGNING_HOST_BIN,
+  basePath: SIGNING_HOST_BASE_PATH,
+  network: NETWORK,
+  // With an explicit mnemonic the CLI signs as that account directly and
+  // rejects auto-account naming flags.
+  liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
+    ? undefined
+    : "dotlitest",
+};
 
-  const probe = await health(BOT_BASE);
-  if (!probe.ok) {
-    console.error(
-      `[globalSetup] BOT UNAVAILABLE: ${probe.error ?? probe.status ?? "unknown"} — skipping pair, exiting with code ${BOT_UNAVAILABLE_EXIT_CODE}.`,
-    );
-    console.error(
-      `[globalSetup] This is a Nova-side outage signal, not a dot.li test failure.`,
-    );
-    process.exit(BOT_UNAVAILABLE_EXIT_CODE);
+// Thrown when the CLI process dies before login; elapsedMs distinguishes
+// instant deterministic failures from chain-side ones.
+class SigningHostExitError extends Error {
+  readonly elapsedMs: number;
+  constructor(message: string, elapsedMs: number) {
+    super(message);
+    this.elapsedMs = elapsedMs;
   }
+}
+
+export default async function globalSetup(
+  _config: FullConfig,
+): Promise<() => Promise<void>> {
   console.log(
-    `[globalSetup] bot health ok (uptime=${probe.uptime ?? "?"}s) — pairing once.`,
+    `[globalSetup] signing-host=${SIGNING_HOST_BIN} network=${NETWORK} backend=${E2E_CHAIN_BACKEND}`,
   );
+
+  const version = signingHostVersion(SIGNING_HOST_BIN);
+  if (version === null) {
+    console.error(
+      `[globalSetup] truapi-host CLI not runnable at "${SIGNING_HOST_BIN}". ` +
+        `Install it (see README "Running the host-playground E2E locally") ` +
+        `or point SIGNING_HOST_BIN at a built binary.`,
+    );
+    process.exit(1);
+  }
+  console.log(`[globalSetup] signing-host version: ${version} — pairing once.`);
+
+  await killStaleSigningHost();
 
   // Honor HEADED=1 here too so a local repro can watch the pair flow.
   const browser = await chromium.launch({
@@ -108,26 +147,30 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
   for (let attempt = 1; attempt <= PAIR_ATTEMPTS; attempt++) {
     try {
-      const result = await pairOnce(browser);
+      const badgeTimeoutMs =
+        attempt === 1 ? USER_BADGE_TIMEOUT_MS : RETRY_BADGE_TIMEOUT_MS;
+      const result = await pairOnce(browser, badgeTimeoutMs);
       mkdirSync(dirname(STATE_FILE), { recursive: true });
-      writeFileSync(
-        SESSION_FILE,
-        JSON.stringify(
-          {
-            sessionId: result.pairResult.sessionId,
-            username: result.username,
-            network: BOT_NETWORK,
-            botBase: BOT_BASE,
-          },
-          null,
-          2,
-        ),
-      );
+      const session: PersistedSession = {
+        pid: result.signingHost.child.pid ?? -1,
+        username: result.username,
+        network: NETWORK,
+        basePath: SIGNING_HOST_BASE_PATH,
+      };
+      writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
       console.log(
-        `[globalSetup] paired as "${result.username}" sessionId=${result.pairResult.sessionId.slice(0, 16)}… (attempt ${attempt}/${PAIR_ATTEMPTS})`,
+        `[globalSetup] paired as "${result.username}" signing-host pid=${session.pid} (attempt ${attempt}/${PAIR_ATTEMPTS})`,
       );
       await browser.close();
-      return;
+      // Playwright runs this closure as the global teardown. Clearing the
+      // session file keeps the stale-kill path a crash-only affair.
+      return async () => {
+        await stopSigningHost(result.signingHost);
+        rmSync(SESSION_FILE, { force: true });
+        console.log(
+          `[globalTeardown] stopped signing-host pid=${session.pid} ("${result.username}")`,
+        );
+      };
     } catch (e) {
       lastErr = e;
       console.warn(
@@ -143,13 +186,46 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   console.error(
     `[globalSetup] PAIR EXHAUSTED after ${PAIR_ATTEMPTS} attempts: ${(lastErr as Error).message}`,
   );
-  process.exit(BOT_UNAVAILABLE_EXIT_CODE);
+  // A CLI that died within seconds failed deterministically; hard-fail so a
+  // broken release can't soft-pass the suite forever as an "outage".
+  const deterministic =
+    lastErr instanceof SigningHostExitError &&
+    lastErr.elapsedMs < FAST_CLI_EXIT_MS;
+  process.exit(deterministic ? 1 : SIGNING_UNAVAILABLE_EXIT_CODE);
 }
+
+// A crashed prior run can leave its signing host alive and still holding the
+// state dir lock. Wait for it to die before pairing, then clear the record.
+async function killStaleSigningHost(): Promise<void> {
+  if (!existsSync(SESSION_FILE)) return;
+  try {
+    const stale = JSON.parse(
+      readFileSync(SESSION_FILE, "utf-8"),
+    ) as PersistedSession;
+    if (stale.pid > 0) {
+      console.warn(
+        `[globalSetup] stopping stale signing-host pid=${stale.pid}`,
+      );
+      await stopSigningHostPid(stale.pid);
+    }
+  } catch {
+    // Unreadable session file: nothing identifiable to stop.
+  }
+  rmSync(SESSION_FILE, { force: true });
+}
+
+// Login-failure detail captured in the page; see the init script below.
+interface LoginFailure {
+  tag?: string;
+  kind?: string;
+  reason?: string;
+}
+type LoginFailureWindow = Window & { __e2eLoginFailed?: LoginFailure };
 
 async function pairOnce(
   browser: Awaited<ReturnType<typeof chromium.launch>>,
-): Promise<{ pairResult: PairResult; username: string }> {
-  const username = generateUsername();
+  badgeTimeoutMs: number,
+): Promise<{ signingHost: SigningHostProcess; username: string }> {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
 
@@ -158,7 +234,22 @@ async function pairOnce(
   });
 
   await page.addInitScript(initializeChainBackend, E2E_CHAIN_BACKEND);
+  // Installed before the CLI spawns and re-installed on every navigation,
+  // so a LoginFailed fired at any point is never missed.
+  await page.addInitScript(() => {
+    window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
+      const detail = (
+        event as CustomEvent<
+          { tag?: string; kind?: string; reason?: string } | undefined
+        >
+      ).detail;
+      if (detail?.tag === "LoginFailed") {
+        (window as LoginFailureWindow).__e2eLoginFailed = detail;
+      }
+    });
+  });
 
+  let signingHost: SigningHostProcess | null = null;
   try {
     await page.goto(`http://${AUTH_HOST}:${PORT}/`, { timeout: 60_000 });
     if (E2E_CHAIN_BACKEND === "rpc-gateway") {
@@ -177,25 +268,71 @@ async function pairOnce(
 
     const deeplink = await extractQrPayload(page, "#auth-modal-qr canvas");
     const pairStart = Date.now();
-    const pairResult = await pair(BOT_BASE, SVC_TOKEN, {
-      handshake: deeplink,
-      username,
-      network: BOT_NETWORK,
-    });
-    console.log(
-      `[globalSetup] bot /api/pair OK in ${Date.now() - pairStart}ms sessionId=${pairResult.sessionId.slice(0, 16)}… — waiting for host to surface user-badge.`,
-    );
+    signingHost = startSigningHostPair(signingHostConfig, deeplink);
 
-    await page
-      .locator("#auth-button .user-badge")
-      .waitFor({ state: "visible", timeout: USER_BADGE_TIMEOUT_MS });
+    await waitForSignedIn(page, signingHost, badgeTimeoutMs, pairStart);
+    console.log(`[globalSetup] signed in after ${Date.now() - pairStart}ms.`);
+
+    const username = (
+      await page
+        .locator("#user-popover-username")
+        .innerText({ timeout: 5_000 })
+        .catch(() => "unknown")
+    ).trim();
 
     // Persist cookies and localStorage from every origin this context has
     // touched (including the cross-origin shared-auth iframe on `host.<root>`).
     // This is what lets worker fixtures skip the QR/pair flow entirely.
     await ctx.storageState({ path: STATE_FILE });
-    return { pairResult, username };
+    const paired = signingHost;
+    signingHost = null;
+    return { signingHost: paired, username };
   } finally {
+    // Only on failure: the successful path hands the process to teardown.
+    if (signingHost !== null) {
+      await stopSigningHost(signingHost);
+    }
     await ctx.close();
+  }
+}
+
+// Signed in when the user badge renders. Racing the host's LoginFailed
+// event and the CLI's exit turns a hang into a fast, attributable failure.
+async function waitForSignedIn(
+  page: Page,
+  signingHost: SigningHostProcess,
+  badgeTimeoutMs: number,
+  spawnedAtMs: number,
+): Promise<void> {
+  const outcome = await Promise.race([
+    page
+      .locator("#auth-button .user-badge")
+      .waitFor({ state: "visible", timeout: badgeTimeoutMs })
+      .then(() => ({ tag: "signed-in" as const })),
+    page
+      .waitForFunction(
+        () => (window as LoginFailureWindow).__e2eLoginFailed ?? null,
+        undefined,
+        { timeout: 0 },
+      )
+      .then(async (handle) => ({
+        tag: "login-failed" as const,
+        failure: await handle.jsonValue(),
+      })),
+    signingHost.completed.then((result) => ({
+      tag: "signing-host-exit" as const,
+      result,
+    })),
+  ]);
+  if (outcome.tag === "signing-host-exit") {
+    throw new SigningHostExitError(
+      formatSigningHostExit(outcome.result, signingHost.output()),
+      Date.now() - spawnedAtMs,
+    );
+  }
+  if (outcome.tag === "login-failed") {
+    throw new Error(
+      `Login failed (${outcome.failure?.kind ?? "Other"}): ${outcome.failure?.reason ?? "unknown"}`,
+    );
   }
 }

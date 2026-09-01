@@ -205,8 +205,13 @@ Local development uses wildcard subdomains:
 
 The product E2E suite can load the source checkout directly through dotli's
 localhost proxy instead of resolving the published `host-playground.dot` CID.
-By default it expects the product at `../../../host-playground` relative to this
-repository and the local signing bot at `http://localhost:3737/`:
+By default it expects the product at `../../../host-playground` relative to
+this repository, and the `truapi-host` CLI from
+[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+```
 
 ```bash
 bun run test:e2e:local
@@ -227,13 +232,17 @@ flow through either light-client backend:
 E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
 ```
 
-The signer can run natively or in Docker; set `SIGNER_BOT_BASE_URL`,
-`SIGNER_BOT_SVC_TOKEN`, and `SIGNER_BOT_NETWORK` when its published port or
-credentials differ from the defaults.
+Set `SIGNING_HOST_BIN` to a locally built binary (e.g.
+`../host-rust-core/target/debug/truapi-host`) instead of installing, and
+`SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI
+keeps its account state under `apps/host/tests/e2e/.auth/signing-host`, so
+repeat runs reuse one test account; the first run registers a fresh lite
+username on-chain and can take a few minutes.
 
 The command builds dotli with its debug-only localhost proxy enabled, starts
-both preview servers through Playwright, pairs once through the signer bot, and
-runs the same host-product suite used in CI.
+both preview servers through Playwright, extracts the login QR deeplink, pairs
+a headless `truapi-host signing-host` process that auto-signs for the rest of
+the run, and runs the same host-product suite used in CI.
 
 ### Running an approved build
 

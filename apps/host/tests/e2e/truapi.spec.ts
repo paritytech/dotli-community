@@ -77,7 +77,7 @@ test.describe("dot.li > host-playground.dot", () => {
   });
 
   // Each allocation triggers an "Allow" modal on the host that the user
-  // approves. The bot is auto-paired so the test only drives the modal.
+  // approves. The signing host is paired so the test only drives the modal.
 
   test.describe("Allowances", () => {
     test("StatementStore Allowance", async ({ pairedPage, productFrame }) => {
