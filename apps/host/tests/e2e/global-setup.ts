@@ -41,6 +41,13 @@ const NETWORK = requiredEnv("SIGNING_HOST_NETWORK");
 const SIGNING_HOST_BIN = process.env.SIGNING_HOST_BIN || "truapi-host";
 const SIGNING_HOST_BASE_PATH =
   process.env.SIGNING_HOST_BASE_PATH || SIGNING_HOST_STATE_DIR;
+// The product the tests exercise, mirroring fixtures/paired.ts. The CLI
+// scopes wallet-level signing (signRaw) to this id.
+const PRODUCT_ID =
+  process.env.SIGNING_HOST_PRODUCT_ID ||
+  (process.env.E2E_PRODUCT_URL === undefined
+    ? `${process.env.E2E_HOST ?? "host-playground"}.dot`
+    : new URL(process.env.E2E_PRODUCT_URL).host);
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
 const PORT = process.env.PORT ?? "5173";
@@ -89,9 +96,11 @@ const RETRY_BADGE_TIMEOUT_MS = positiveIntegerEnv(
   "E2E_RETRY_BADGE_TIMEOUT_MS",
   120_000,
 );
-// A CLI death this soon after spawn is a deterministic tooling failure
-// (bad flags, broken release), never a chain-side outage.
-const FAST_CLI_EXIT_MS = 15_000;
+// A CLI death this soon after spawn is a deterministic tooling failure:
+// chain-side errors take multiple RPC round trips to surface.
+const FAST_CLI_EXIT_MS = 5_000;
+// clap usage errors (unknown flag on a new release) exit with code 2.
+const CLI_USAGE_EXIT_CODE = 2;
 
 // Distinct exit code so CI workflow / reviewers can tell "testnet or
 // identity backend is down" apart from "dot.li tests asserted false".
@@ -101,6 +110,7 @@ const signingHostConfig: SigningHostConfig = {
   binary: SIGNING_HOST_BIN,
   basePath: SIGNING_HOST_BASE_PATH,
   network: NETWORK,
+  productId: PRODUCT_ID,
   // With an explicit mnemonic the CLI signs as that account directly and
   // rejects auto-account naming flags.
   liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
@@ -112,9 +122,11 @@ const signingHostConfig: SigningHostConfig = {
 // instant deterministic failures from chain-side ones.
 class SigningHostExitError extends Error {
   readonly elapsedMs: number;
-  constructor(message: string, elapsedMs: number) {
+  readonly exitCode: number | null;
+  constructor(message: string, elapsedMs: number, exitCode: number | null) {
     super(message);
     this.elapsedMs = elapsedMs;
+    this.exitCode = exitCode;
   }
 }
 
@@ -186,11 +198,12 @@ export default async function globalSetup(
   console.error(
     `[globalSetup] PAIR EXHAUSTED after ${PAIR_ATTEMPTS} attempts: ${(lastErr as Error).message}`,
   );
-  // A CLI that died within seconds failed deterministically; hard-fail so a
-  // broken release can't soft-pass the suite forever as an "outage".
+  // A usage error or instant death is deterministic; hard-fail so a broken
+  // release can't soft-pass the suite forever as an "outage".
   const deterministic =
     lastErr instanceof SigningHostExitError &&
-    lastErr.elapsedMs < FAST_CLI_EXIT_MS;
+    (lastErr.exitCode === CLI_USAGE_EXIT_CODE ||
+      lastErr.elapsedMs < FAST_CLI_EXIT_MS);
   process.exit(deterministic ? 1 : SIGNING_UNAVAILABLE_EXIT_CODE);
 }
 
@@ -251,7 +264,11 @@ async function pairOnce(
 
   let signingHost: SigningHostProcess | null = null;
   try {
-    await page.goto(`http://${AUTH_HOST}:${PORT}/`, { timeout: 60_000 });
+    // Seeding ?network= pins the host to the CLI's network, so the two
+    // can't silently drift apart (the classic "badge never appears" hang).
+    await page.goto(`http://${AUTH_HOST}:${PORT}/?network=${NETWORK}`, {
+      timeout: 60_000,
+    });
     if (E2E_CHAIN_BACKEND === "rpc-gateway") {
       await page
         .getByRole("button", { name: "Switch to Gateway" })
@@ -328,6 +345,7 @@ async function waitForSignedIn(
     throw new SigningHostExitError(
       formatSigningHostExit(outcome.result, signingHost.output()),
       Date.now() - spawnedAtMs,
+      outcome.result.code,
     );
   }
   if (outcome.tag === "login-failed") {

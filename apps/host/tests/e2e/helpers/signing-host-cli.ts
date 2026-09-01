@@ -12,6 +12,7 @@ export interface SigningHostConfig {
   binary: string;
   basePath: string;
   network: string;
+  productId: string;
   liteUsernamePrefix?: string;
 }
 
@@ -51,6 +52,8 @@ export function startSigningHostPair(
     config.network,
     "--base-path",
     config.basePath,
+    "--product-id",
+    config.productId,
     "--auto-accept",
   ];
   if (config.liteUsernamePrefix !== undefined) {
