@@ -46,7 +46,7 @@ import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
-import { manifestRequestsMotionTilt, setupMotionTilt } from "./motion-tilt";
+import { setupMotion } from "./motion";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
@@ -1177,9 +1177,34 @@ export async function renderAppSubdomain(
   });
   applyIframeStyling(host.iframe, { topbarOffset: true });
   activateHost(host, previousHost, loading === null ? [] : [loading]);
-  if (manifestRequestsMotionTilt(executableManifest)) {
-    currentMotionDispose = setupMotionTilt(label, host.iframe, app);
-  }
+  let disposeMotionControl: (() => void) | null = null;
+  const onPvmCapabilities = (event: MessageEvent<unknown>): void => {
+    if (
+      event.source !== host.iframe.contentWindow ||
+      event.origin !== appOrigin ||
+      typeof event.data !== "object" ||
+      event.data === null ||
+      !("type" in event.data) ||
+      event.data.type !== "dotli:pvm-capabilities" ||
+      !("usesMotion" in event.data) ||
+      event.data.usesMotion !== true ||
+      disposeMotionControl !== null
+    ) {
+      return;
+    }
+    disposeMotionControl = setupMotion(
+      label,
+      network,
+      host.iframe,
+      app,
+      appOrigin,
+    );
+  };
+  window.addEventListener("message", onPvmCapabilities);
+  currentMotionDispose = () => {
+    window.removeEventListener("message", onPvmCapabilities);
+    disposeMotionControl?.();
+  };
   host.iframe.addEventListener(
     "load",
     () => {
@@ -1190,6 +1215,10 @@ export async function renderAppSubdomain(
         timestamp: Date.now(),
         payload: { label, productId: label, mode: "subdomain" },
       });
+      host.iframe.contentWindow?.postMessage(
+        { type: "dotli:pvm-capabilities-request" },
+        "*",
+      );
     },
     { once: true },
   );

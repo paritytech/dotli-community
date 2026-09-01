@@ -129,7 +129,6 @@ describe("PolkaVM package recognition", () => {
       audioEnabled: true,
       requiredAssets: ["game/doom.wad"],
       manifestVersion: null,
-      motionTilt: false,
     });
   });
 
@@ -149,7 +148,6 @@ describe("PolkaVM package recognition", () => {
       audioEnabled: true,
       requiredAssets: [],
       manifestVersion: 2,
-      motionTilt: false,
     });
     expect(() => describePvmPackage(files)).toThrow(
       /external App manifest is required/,
@@ -173,7 +171,6 @@ describe("PolkaVM package recognition", () => {
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
-      motionTilt: false,
     });
   });
 
@@ -198,11 +195,10 @@ describe("PolkaVM package recognition", () => {
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
-      motionTilt: false,
     });
   });
 
-  it("recognizes optional motion tilt without changing input ABI v1", () => {
+  it("rejects the deprecated manifest motion-tilt declaration", () => {
     const value = JSON.parse(webGpuAppV2Manifest()) as {
       capabilities: {
         deviceInput: { optionalFeatures?: string[] };
@@ -214,7 +210,9 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)?.motionTilt).toBe(true);
+    expect(() => describePvmPackage(files, manifest)).toThrow(
+      /unsupported device input/,
+    );
   });
 
   it("leaves ordinary HTML archives on the existing sandbox path", () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HostRequestLoginResponse,
   VersionedHostRequestLoginError,
@@ -271,6 +271,49 @@ describe("bridge render lifecycle", () => {
         import("@dotli/ui/blocking-modal-queue"),
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows motion controls only after the PVM runtime reports motion usage", async () => {
+    function FakeDeviceMotionEvent(): void {}
+    // The bridge must load after vi.resetModules so it observes this test's
+    // worker and iframe-host mocks.
+    vi.stubGlobal("DeviceMotionEvent", FakeDeviceMotionEvent);
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain("motion-cid", "motion-app");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    expect(
+      document.querySelector(
+        'button[aria-label="Enable motion controls for this product"]',
+      ),
+    ).toBeNull();
+    const host = mocks.iframeHosts[0];
+    const contentWindow = { postMessage: vi.fn() };
+    Object.defineProperty(host.iframe, "contentWindow", {
+      configurable: true,
+      value: contentWindow,
+    });
+    // Happy DOM's lightweight contentWindow mock is structurally sufficient
+    // for MessageEvent.source but is not declared as a full WindowProxy.
+    const messageSource = contentWindow as unknown as Window;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:pvm-capabilities", usesMotion: true },
+        origin: new URL(host.iframeUrl).origin,
+        source: messageSource,
+      }),
+    );
+    expect(
+      document.querySelector(
+        'button[aria-label="Enable motion controls for this product"]',
+      ),
+    ).not.toBeNull();
   });
 
   it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {

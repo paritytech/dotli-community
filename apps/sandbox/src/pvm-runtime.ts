@@ -63,7 +63,6 @@ interface PvmDescriptor {
   audioEnabled: boolean;
   requiredAssets: string[];
   manifestVersion: number | null;
-  motionTilt: boolean;
 }
 
 interface WorkerReady {
@@ -74,6 +73,7 @@ interface WorkerReady {
   compilationMs?: number;
   startupMs?: number;
   translatedWasmBytes?: number;
+  usesMotion: boolean;
 }
 
 interface WorkerStartup {
@@ -239,7 +239,6 @@ function parseManifest(
   let controls: string[];
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
-  let motionTilt = false;
   if (manifest?.$v === 2 && manifest.kind === "app") {
     if (runtime.abiVersion !== 1) {
       throw new Error("PolkaVM App v2 runtime requires ABI version 1");
@@ -325,12 +324,11 @@ function parseManifest(
           typeof feature !== "string" ||
           !["pointer", "keyboard"].includes(feature),
       ) ||
-      optionalDeviceFeatures.some((feature) => feature !== "motion-tilt") ||
-      new Set(optionalDeviceFeatures).size !== optionalDeviceFeatures.length
+      optionalDeviceFeatures.some((feature) => typeof feature !== "string") ||
+      optionalDeviceFeatures.length > 0
     ) {
       throw new Error("PolkaVM App v2 requires unsupported device input");
     }
-    motionTilt = optionalDeviceFeatures.includes("motion-tilt");
     const audio =
       capabilities?.audio === undefined ? null : object(capabilities.audio);
     if (
@@ -407,7 +405,6 @@ function parseManifest(
     audioEnabled,
     requiredAssets,
     manifestVersion,
-    motionTilt,
   };
 }
 
@@ -996,9 +993,34 @@ export async function runPvmApplication(
       return null;
     }
   })();
-  const onMotionTilt = (event: MessageEvent<unknown>): void => {
+  let reportedUsesMotion: boolean | null = null;
+  const postCapabilities = (): void => {
+    if (reportedUsesMotion === null) {
+      return;
+    }
+    window.parent.postMessage(
+      {
+        type: "dotli:pvm-capabilities",
+        usesMotion: reportedUsesMotion,
+      },
+      parentOrigin ?? "*",
+    );
+  };
+  const onCapabilityRequest = (event: MessageEvent<unknown>): void => {
     if (
-      !descriptor.motionTilt ||
+      event.source === window.parent &&
+      (parentOrigin === null || event.origin === parentOrigin) &&
+      typeof event.data === "object" &&
+      event.data !== null &&
+      "type" in event.data &&
+      event.data.type === "dotli:pvm-capabilities-request"
+    ) {
+      postCapabilities();
+    }
+  };
+  window.addEventListener("message", onCapabilityRequest);
+  const onMotion = (event: MessageEvent<unknown>): void => {
+    if (
       event.source !== window.parent ||
       (parentOrigin !== null && event.origin !== parentOrigin) ||
       typeof event.data !== "object" ||
@@ -1006,29 +1028,49 @@ export async function runPvmApplication(
     ) {
       return;
     }
-    const message = event.data as { type?: unknown; bytes?: unknown };
-    if (message.type === "dotli:pvm-motion-tilt") {
+    const message = event.data as {
+      type?: unknown;
+      availability?: unknown;
+      bytes?: unknown;
+    };
+    if (
+      message.type === "dotli:pvm-motion-status" &&
+      Number.isInteger(message.availability) &&
+      Number(message.availability) >= 0 &&
+      Number(message.availability) <= 2
+    ) {
+      const availability = Number(message.availability);
+      worker.postMessage({ type: "motion-status", availability });
+      canvas.dataset.pvmMotion =
+        availability === 1
+          ? "active"
+          : availability === 2
+            ? "denied"
+            : "unavailable";
+    } else if (message.type === "dotli:pvm-motion-sample") {
       const source =
         message.bytes instanceof ArrayBuffer
           ? new Uint8Array(message.bytes)
           : message.bytes instanceof Uint8Array
             ? message.bytes
             : null;
-      if (source === null || source.byteLength !== 40) {
+      if (source?.byteLength !== 48) {
         return;
       }
       const bytes = ownedBytes(source);
-      worker.postMessage({ type: "motion-tilt", bytes }, [bytes.buffer]);
+      worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
       canvas.dataset.pvmMotion = "active";
-    } else if (message.type === "dotli:pvm-motion-clear") {
-      worker.postMessage({ type: "motion-tilt-clear" });
-      canvas.dataset.pvmMotion = "unavailable";
     }
   };
-  if (descriptor.motionTilt) {
+  let motionBridgeAttached = false;
+  const attachMotionBridge = (): void => {
+    if (motionBridgeAttached) {
+      return;
+    }
+    motionBridgeAttached = true;
     canvas.dataset.pvmMotion = "permission-required";
-    window.addEventListener("message", onMotionTilt);
-  }
+    window.addEventListener("message", onMotion);
+  };
   const worker = new Worker(`${PVM_RUNTIME_ROOT}/pvm-wasm-worker.js`);
   const {
     promise: startedPromise,
@@ -1271,7 +1313,10 @@ export async function runPvmApplication(
   );
   const stop = (): void => {
     cleanupInput();
-    window.removeEventListener("message", onMotionTilt);
+    if (motionBridgeAttached) {
+      window.removeEventListener("message", onMotion);
+    }
+    window.removeEventListener("message", onCapabilityRequest);
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
     webGpu?.dispose();
@@ -1332,6 +1377,11 @@ export async function runPvmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PVM→Wasm JIT" : "PVM interpreter"} ready`;
         canvas.dataset.pvmReady = "true";
         updateMetrics();
+        reportedUsesMotion = ready.usesMotion;
+        if (ready.usesMotion) {
+          attachMotionBridge();
+        }
+        postCapabilities();
         sendSurfaceMetrics();
         truapiReady = true;
         for (const response of pendingTruapiResponses.splice(0)) {
