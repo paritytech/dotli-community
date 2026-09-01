@@ -20,21 +20,13 @@ function getPlatformType(userAgent: string = navigator.userAgent): string {
   return "Unknown";
 }
 
-// `assetHub` drives the host's dotNS username resolution. Typed as an
-// intersection so this compiles against @parity/truapi-host releases from
-// before the field existed; once the dependency floor includes it, fold the
-// field into the plain ProductRuntimeConfig literal.
-type RuntimeConfigWithAssetHub = ProductRuntimeConfig & {
-  assetHub?: { genesisHash: string | Uint8Array };
-};
-
 // The window origin deliberately plays no part here: `productId` comes
 // solely from the label (or the explicit override).
 export function createTruapiRuntimeConfig(
   label: string,
   productId: string = labelToProductId(label),
 ): ProductRuntimeConfig {
-  const config: RuntimeConfigWithAssetHub = {
+  const config: ProductRuntimeConfig = {
     productId,
     host: {
       name: "Polkadot Web",

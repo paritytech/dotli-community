@@ -21,6 +21,7 @@ import { createChainConnect } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
 import { createSupportedChains } from "./SupportedChains";
 import { createThemeSubscribe } from "./Theme";
+import { createLocaleSubscribe } from "./Locale";
 import { createAuthStateChanged } from "./AuthState";
 import { createChatPlatform } from "./Chat";
 import { createSessionStoreAdapters } from "./SessionStore";
@@ -82,6 +83,7 @@ export function createHostCallbacks(
     },
     userConfirmation: createUserConfirmationAdapters(label, blockingModalScope),
     theme: { subscribeTheme: createThemeSubscribe() },
+    locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
     // Always served; the core itself denies chat calls on non-Chat

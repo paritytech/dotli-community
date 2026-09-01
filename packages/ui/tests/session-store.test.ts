@@ -300,6 +300,53 @@ describe("session-store host callbacks", () => {
     ]);
   });
 
+  it("As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer", async () => {
+    // Given
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const key = {
+      tag: "SsoResponderRequestLedger",
+      value: {
+        rootPublicKey: new Uint8Array(32).fill(1),
+        peerStatementAccountId: new Uint8Array(32).fill(2),
+        peerEncryptionPublicKey: new Uint8Array(32).fill(3),
+      },
+    } satisfies CoreStorageKey;
+    const otherPeer = {
+      tag: "SsoResponderRequestLedger",
+      value: {
+        rootPublicKey: new Uint8Array(32).fill(1),
+        peerStatementAccountId: new Uint8Array(32).fill(2),
+        peerEncryptionPublicKey: new Uint8Array(32).fill(4),
+      },
+    } satisfies CoreStorageKey;
+
+    // When
+    await writeCoreStorage(key, new Uint8Array([21]));
+    await writeCoreStorage(otherPeer, new Uint8Array([22]));
+
+    // Then
+    // Core-owned replay state, not key material, so it is stored like the
+    // ring registry snapshot rather than under at-rest encryption.
+    expect(localStorage.length).toBe(2);
+    for (const index of [0, 1]) {
+      const storageKey = localStorage.key(index);
+      expect(storageKey).toMatch(/^dotli:core:sso-responder-ledger:[0-9a-f]+$/);
+      expect(localStorage.getItem(storageKey ?? "")).toMatch(/^0x/);
+    }
+    // The ledger bounds replays for one peer, so two peers of the same wallet
+    // must never share a slot.
+    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([21]);
+    expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+
+    // When
+    await clearCoreStorage(key);
+
+    // Then
+    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+  });
+
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
