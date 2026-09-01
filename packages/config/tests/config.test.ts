@@ -54,7 +54,7 @@ describe("config constants", () => {
 
   describe("dotns TLD", () => {
     // Mirrors `DOTNS_TLDS` in truapi's `truapi-platform`.
-    const CORE_ACCEPTED_TLDS = ["dot", "paseo", "test"];
+    const CORE_ACCEPTED_TLDS = ["dot", "paseo", "testnet"];
 
     it("every network declares a bare lowercase TLD the truapi core accepts", () => {
       for (const [name, cfg] of Object.entries(
