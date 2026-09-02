@@ -100,6 +100,7 @@ interface PvmDescriptor {
   graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster";
   webGpuRequirements: WebGpuRequirements | null;
   controls: string[];
+  inputFeatures: string[];
   audioEnabled: boolean;
   requiredAssets: string[];
   manifestVersion: number | null;
@@ -276,6 +277,7 @@ function parseManifest(
   let graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster";
   let webGpuRequirements: WebGpuRequirements | null = null;
   let controls: string[];
+  let inputFeatures: string[];
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
   if (manifest?.$v === 2 && manifest.kind === "app") {
@@ -355,7 +357,15 @@ function parseManifest(
       deviceFeatures.some(
         (feature) =>
           typeof feature !== "string" ||
-          !["pointer", "keyboard", "motion"].includes(feature),
+          ![
+            "pointer",
+            "keyboard",
+            "text",
+            "ime",
+            "focus",
+            "wheel",
+            "motion",
+          ].includes(feature),
       )
     ) {
       throw new Error("PolkaVM App v2 requires unsupported device input");
@@ -374,6 +384,7 @@ function parseManifest(
       (feature) =>
         (feature as string)[0].toUpperCase() + (feature as string).slice(1),
     );
+    inputFeatures = deviceFeatures as string[];
     audioEnabled = audio !== null;
     manifestVersion = 2;
     if (enforceExternal) {
@@ -393,6 +404,7 @@ function parseManifest(
           (control): control is string => typeof control === "string",
         )
       : [];
+    inputFeatures = ["pointer", "keyboard", "motion"];
     audioEnabled = true;
     graphicsProfile = "framebuffer";
   } else if (
@@ -412,6 +424,7 @@ function parseManifest(
           (control): control is string => typeof control === "string",
         )
       : [];
+    inputFeatures = ["pointer", "keyboard", "motion"];
     audioEnabled = modalities?.audio !== undefined;
     graphicsProfile = "framebuffer";
   } else {
@@ -433,6 +446,7 @@ function parseManifest(
     webGpuRequirements,
     programPath,
     controls,
+    inputFeatures,
     audioEnabled,
     requiredAssets,
     manifestVersion,
@@ -697,7 +711,7 @@ export function encodedInput(
   const view = new DataView(bytes.buffer);
   bytes[0] = type;
   bytes[1] = code;
-  if (type === 6) {
+  if (type === 6 || type === 14) {
     view.setInt16(2, clamp(x, -32768, 32767), true);
     view.setInt16(4, clamp(y, -32768, 32767), true);
   } else {
@@ -705,6 +719,44 @@ export function encodedInput(
     view.setUint16(4, clamp(y, 0, 65535), true);
   }
   return bytes;
+}
+
+const MAX_TEXT_INPUT_BYTES = 4 * 1024;
+const TEXT_CHUNK_BYTES = 6;
+const TEXT_CHUNK_START = 0x40;
+const TEXT_CHUNK_END = 0x80;
+
+export function encodedTextInput(
+  type: 8 | 9 | 10,
+  text: string,
+): Uint8Array[] {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.byteLength > MAX_TEXT_INPUT_BYTES) {
+    return [];
+  }
+  const records: Uint8Array[] = [];
+  let offset = 0;
+  do {
+    let end = Math.min(offset + TEXT_CHUNK_BYTES, encoded.byteLength);
+    while (
+      end > offset &&
+      end < encoded.byteLength &&
+      (encoded[end] & 0xc0) === 0x80
+    ) {
+      end -= 1;
+    }
+    const length = end - offset;
+    const record = new Uint8Array(8);
+    record[0] = type;
+    record[1] =
+      length |
+      (offset === 0 ? TEXT_CHUNK_START : 0) |
+      (end === encoded.byteLength ? TEXT_CHUNK_END : 0);
+    record.set(encoded.subarray(offset, end), 2);
+    records.push(record);
+    offset = end;
+  } while (offset < encoded.byteLength);
+  return records;
 }
 
 const MOTION_SAMPLE_BYTES = 48;
@@ -897,11 +949,30 @@ function createShell(controls: string[]): {
 function installInput(
   canvas: HTMLCanvasElement,
   graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster",
+  inputFeatures: readonly string[],
   send: (bytes: Uint8Array) => void,
   sendMotion: (bytes: Uint8Array) => void,
   resumeAudio: () => void,
 ): { cleanup: () => void; sendSurfaceMetrics: () => void } {
   const pressed = new Set<number>();
+  const inputFeatureSet = new Set(inputFeatures);
+  const textInput =
+    inputFeatureSet.has("text") || inputFeatureSet.has("ime")
+      ? document.createElement("textarea")
+      : null;
+  if (textInput !== null) {
+    textInput.tabIndex = -1;
+    textInput.spellcheck = false;
+    textInput.setAttribute("autocomplete", "off");
+    textInput.setAttribute("autocapitalize", "off");
+    textInput.style.cssText =
+      "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+    document.body.append(textInput);
+  }
+  const focusTarget: HTMLCanvasElement | HTMLTextAreaElement =
+    textInput ?? canvas;
+  let composing = false;
+  let suppressCommittedInput = false;
   let firstMoveAfterPointerLock = false;
   let relativeX = 0;
   let relativeY = 0;
@@ -1030,6 +1101,82 @@ function installInput(
       ((event.clientY - bounds.top) * canvas.height) / bounds.height,
     ];
   };
+  const sendTextRecords = (type: 8 | 9 | 10, text: string): void => {
+    for (const record of encodedTextInput(type, text)) {
+      send(record);
+    }
+  };
+  const focus = (): void => {
+    if (inputFeatureSet.has("focus")) {
+      send(encodedInput(13, 1));
+    }
+  };
+  const blur = (): void => {
+    if (composing && inputFeatureSet.has("ime")) {
+      send(encodedInput(12, 0));
+    }
+    composing = false;
+    if (inputFeatureSet.has("focus")) {
+      send(encodedInput(13, 0));
+    }
+  };
+  const beforeInput = (event: InputEvent): void => {
+    if (
+      !inputFeatureSet.has("text") ||
+      composing ||
+      event.isComposing ||
+      suppressCommittedInput ||
+      event.data === null
+    ) {
+      return;
+    }
+    sendTextRecords(8, event.data);
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+  };
+  const input = (): void => {
+    if (!composing && textInput !== null) {
+      textInput.value = "";
+    }
+  };
+  const compositionStart = (): void => {
+    composing = true;
+    if (inputFeatureSet.has("ime")) {
+      send(encodedInput(11, 0));
+    }
+  };
+  const compositionUpdate = (event: CompositionEvent): void => {
+    if (inputFeatureSet.has("ime")) {
+      sendTextRecords(9, event.data);
+    }
+  };
+  const compositionEnd = (event: CompositionEvent): void => {
+    composing = false;
+    suppressCommittedInput = true;
+    queueMicrotask(() => {
+      suppressCommittedInput = false;
+    });
+    if (inputFeatureSet.has("ime")) {
+      sendTextRecords(10, event.data);
+      send(encodedInput(12, 0));
+    } else if (inputFeatureSet.has("text")) {
+      sendTextRecords(8, event.data);
+    }
+    if (textInput !== null) {
+      textInput.value = "";
+    }
+  };
+  const wheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const scale =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? Math.max(1, canvas.clientHeight)
+          : 1;
+    send(encodedInput(14, 0, event.deltaX * scale, event.deltaY * scale));
+  };
   const keydown = (event: KeyboardEvent): void => {
     requestDeviceMotionPermission();
     if (event.code === "Escape" && document.pointerLockElement === canvas) {
@@ -1044,7 +1191,15 @@ function installInput(
     if (pressed.has(code)) {
       return;
     }
-    event.preventDefault();
+    if (
+      textInput === null ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.code === "Tab"
+    ) {
+      event.preventDefault();
+    }
     pressed.add(code);
     resumeAudio();
     send(encodedInput(1, code));
@@ -1101,7 +1256,7 @@ function installInput(
   const down = (event: PointerEvent): void => {
     requestDeviceMotionPermission();
     previousPointer = [event.clientX, event.clientY];
-    canvas.focus();
+    focusTarget.focus({ preventScroll: true });
     if (graphicsProfile === "tri2d") {
       move(event);
     }
@@ -1137,6 +1292,18 @@ function installInput(
         })
       : null;
   resizeObserver?.observe(canvas);
+  focusTarget.addEventListener("focus", focus);
+  focusTarget.addEventListener("blur", blur);
+  if (textInput !== null) {
+    textInput.addEventListener("beforeinput", beforeInput);
+    textInput.addEventListener("input", input);
+    textInput.addEventListener("compositionstart", compositionStart);
+    textInput.addEventListener("compositionupdate", compositionUpdate);
+    textInput.addEventListener("compositionend", compositionEnd);
+  }
+  if (inputFeatureSet.has("wheel")) {
+    canvas.addEventListener("wheel", wheel, { passive: false });
+  }
   document.addEventListener("pointerlockchange", pointerLockChanged);
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
@@ -1149,11 +1316,25 @@ function installInput(
     sendSurfaceMetrics,
     cleanup: () => {
       resizeObserver?.disconnect();
+      if (document.activeElement === focusTarget) {
+        focusTarget.blur();
+      }
       pointerLockChanged();
       document.removeEventListener("pointerlockchange", pointerLockChanged);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
       window.removeEventListener("devicemotion", deviceMotion);
+      focusTarget.removeEventListener("focus", focus);
+      focusTarget.removeEventListener("blur", blur);
+      if (textInput !== null) {
+        textInput.removeEventListener("beforeinput", beforeInput);
+        textInput.removeEventListener("input", input);
+        textInput.removeEventListener("compositionstart", compositionStart);
+        textInput.removeEventListener("compositionupdate", compositionUpdate);
+        textInput.removeEventListener("compositionend", compositionEnd);
+        textInput.remove();
+      }
+      canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
@@ -1470,6 +1651,7 @@ export async function runPvmApplication(
   const { cleanup: cleanupInput, sendSurfaceMetrics } = installInput(
     canvas,
     descriptor.graphicsProfile,
+    descriptor.inputFeatures,
     (bytes) => {
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
     },
