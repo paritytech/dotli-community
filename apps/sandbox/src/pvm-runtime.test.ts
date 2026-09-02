@@ -6,6 +6,7 @@ import {
   accumulateRelativePointerDelta,
   describePvmPackage,
   encodedInput,
+  encodedTextInput,
   encodedMotionSample,
   encodedPointerMotionSample,
   formatPvmMetrics,
@@ -116,6 +117,33 @@ describe("PolkaVM pointer input", () => {
   });
 });
 
+describe("PolkaVM advanced input encoding", () => {
+  it("chunks UTF-8 text without splitting code points", () => {
+    const records = encodedTextInput(8, "hello π");
+    expect(records).toHaveLength(2);
+    expect(records[0]).toEqual(
+      new Uint8Array([8, 0x46, 104, 101, 108, 108, 111, 32]),
+    );
+    expect(records[1]).toEqual(
+      new Uint8Array([8, 0x82, 0xcf, 0x80, 0, 0, 0, 0]),
+    );
+    expect(encodedTextInput(9, "")).toEqual([
+      new Uint8Array([9, 0xc0, 0, 0, 0, 0, 0, 0]),
+    ]);
+    expect(encodedTextInput(10, "a".repeat(4097))).toEqual([]);
+  });
+
+  it("encodes signed wheel deltas and focus state", () => {
+    const wheel = encodedInput(14, 0, -12, 32000);
+    const view = new DataView(wheel.buffer);
+    expect(view.getInt16(2, true)).toBe(-12);
+    expect(view.getInt16(4, true)).toBe(32000);
+    expect(encodedInput(13, 1)).toEqual(
+      new Uint8Array([13, 1, 0, 0, 0, 0, 0, 0]),
+    );
+  });
+});
+
 describe("MotionSample v1 encoding", () => {
   it("encodes pointer movement as bounded rotation-rate motion", () => {
     const bytes = encodedPointerMotionSample(10, -5, 20, 3, 100);
@@ -220,6 +248,7 @@ describe("PolkaVM package recognition", () => {
       webGpuRequirements: null,
       programPath: "app.polkavm",
       controls: ["WASD Move", "Space Fire"],
+      inputFeatures: ["pointer", "keyboard", "motion"],
       audioEnabled: true,
       requiredAssets: ["game/doom.wad"],
       manifestVersion: null,
@@ -239,6 +268,7 @@ describe("PolkaVM package recognition", () => {
       webGpuRequirements: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
+      inputFeatures: ["pointer", "keyboard"],
       audioEnabled: true,
       requiredAssets: [],
       manifestVersion: 2,
@@ -270,6 +300,33 @@ describe("PolkaVM package recognition", () => {
     ]);
   });
 
+  it("accepts required text, IME, focus, and wheel input", () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: {
+        deviceInput: { requiredFeatures: string[] };
+      };
+    };
+    value.capabilities.deviceInput.requiredFeatures.push(
+      "text",
+      "ime",
+      "focus",
+      "wheel",
+    );
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(describePvmPackage(files, manifest)?.inputFeatures).toEqual([
+      "pointer",
+      "keyboard",
+      "text",
+      "ime",
+      "focus",
+      "wheel",
+    ]);
+  });
+
   it("recognizes strict App manifest v2 Tri2D packages", () => {
     const manifest = tri2dAppV2Manifest();
     const files = {
@@ -281,6 +338,7 @@ describe("PolkaVM package recognition", () => {
       webGpuRequirements: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
+      inputFeatures: ["pointer", "keyboard"],
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
@@ -305,6 +363,7 @@ describe("PolkaVM package recognition", () => {
       },
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
+      inputFeatures: ["pointer", "keyboard"],
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,

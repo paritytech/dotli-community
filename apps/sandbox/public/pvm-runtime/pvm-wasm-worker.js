@@ -27,6 +27,9 @@
   const MAX_AUDIO_SAMPLES = 48000 * 2;
   const MAX_FRAME_BYTES = 16 * 1024 * 1024;
   const MAX_TRI2D_BYTES = 8 * 1024 * 1024;
+  const MAX_UI_SEMANTICS_BYTES = 256 * 1024;
+  const MAX_UI_SEMANTIC_NODES = 1024;
+  const MAX_UI_SEMANTIC_STRING_BYTES = 1024;
   const MAX_GPU_BATCH_BYTES = 4 * 1024 * 1024;
   const MAX_GPU_EVENT_BYTES = 64 * 1024;
   const MAX_GPU_EVENTS = 256;
@@ -55,6 +58,82 @@
   const SYS_EXIT = 93n;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
+
+  function validInputRecord(bytes) {
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength !== INPUT_EVENT_BYTES) {
+      return false;
+    }
+    const type = bytes[0];
+    if (type < 1 || type > 14) {
+      return false;
+    }
+    if (type <= 7) {
+      return bytes[6] === 0 && bytes[7] === 0;
+    }
+    if (type <= 10) {
+      const length = bytes[1] & 7;
+      if ((bytes[1] & ~0xc7) !== 0 || length > 6) {
+        return false;
+      }
+      return bytes.subarray(2 + length).every((byte) => byte === 0);
+    }
+    if (type === 11 || type === 12) {
+      return bytes.subarray(1).every((byte) => byte === 0);
+    }
+    if (type === 13) {
+      return bytes[1] <= 1 && bytes.subarray(2).every((byte) => byte === 0);
+    }
+    return bytes[1] === 0 && bytes[6] === 0 && bytes[7] === 0;
+  }
+
+  function validUiSemantics(bytes) {
+    let snapshot;
+    try {
+      snapshot = JSON.parse(decoder.decode(bytes));
+    } catch {
+      return false;
+    }
+    if (
+      snapshot?.version !== 1 ||
+      !Number.isSafeInteger(snapshot.generation) ||
+      snapshot.generation < 0 ||
+      !Array.isArray(snapshot.nodes) ||
+      !snapshot.nodes.length ||
+      snapshot.nodes.length > MAX_UI_SEMANTIC_NODES
+    ) {
+      return false;
+    }
+    const ids = new Set();
+    let roots = 0;
+    for (const node of snapshot.nodes) {
+      if (
+        typeof node?.id !== "string" ||
+        !/^[0-9a-f]{1,16}$/.test(node.id) ||
+        ids.has(node.id) ||
+        !Array.isArray(node.bounds) ||
+        node.bounds.length !== 4 ||
+        !node.bounds.every(Number.isFinite) ||
+        node.bounds[2] < node.bounds[0] ||
+        node.bounds[3] < node.bounds[1] ||
+        typeof node.name !== "string" ||
+        encoder.encode(node.name).byteLength > MAX_UI_SEMANTIC_STRING_BYTES ||
+        typeof node.value !== "string" ||
+        encoder.encode(node.value).byteLength > MAX_UI_SEMANTIC_STRING_BYTES
+      ) {
+        return false;
+      }
+      ids.add(node.id);
+      if (node.parent === null) {
+        roots++;
+      }
+    }
+    return (
+      roots === 1 &&
+      snapshot.nodes.every(
+        (node) => node.parent === null || ids.has(node.parent),
+      )
+    );
+  }
 
   function readMetadata(module) {
     const sections = WebAssembly.Module.customSections(
@@ -300,6 +379,7 @@
       this.truapiResponses = [];
       this.truapiResponseBytes = 0;
       this.tri2dSubmitted = false;
+      this.uiSemanticsSubmitted = false;
       this.maxGas = BigInt(maxGas);
       this.input = [];
       this.coreInput = [];
@@ -347,6 +427,10 @@
       }
     }
 
+    usesMotion() {
+      return this.imports.includes("host_motion_read");
+    }
+
     update(timeMs) {
       if (this.stopped) {
         return;
@@ -354,6 +438,7 @@
       this.timeMs = timeMs;
       this.gpuSubmits = 0;
       this.truapiRequests = 0;
+      this.uiSemanticsSubmitted = false;
       this.truapiRequestBytes = 0;
       this.#resetBudget(
         this.coreVm && !this.coreVmStarted
@@ -373,7 +458,7 @@
     }
 
     sendInput(bytes) {
-      if (this.stopped || bytes.byteLength !== INPUT_EVENT_BYTES) {
+      if (this.stopped || !validInputRecord(bytes)) {
         return;
       }
       if (!this.coreVm) {
@@ -396,7 +481,10 @@
       ) {
         return;
       }
-      if (this.imports.includes("pvm_fetch_epoca_inputs")) {
+      if (
+        this.imports.includes("pvm_fetch_epoca_inputs") ||
+        this.imports.includes("host_poll_input")
+      ) {
         this.#queueEpocaInput(bytes);
         return;
       }
@@ -745,6 +833,26 @@
           const bytes = this.#read(this.#u32(a0), length);
           this.emit({ type: "tri2d", bytes }, [bytes.buffer]);
           this.tri2dSubmitted = true;
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "host_ui_semantics_submit": {
+          const length = this.#u32(a1);
+          if (!length || length > MAX_UI_SEMANTICS_BYTES) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          if (this.uiSemanticsSubmitted) {
+            this.#setReg(7, 2n);
+            return false;
+          }
+          const bytes = this.#read(this.#u32(a0), length);
+          if (!validUiSemantics(bytes)) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          this.emit({ type: "ui-semantics", bytes }, [bytes.buffer]);
+          this.uiSemanticsSubmitted = true;
           this.#setReg(7, 0n);
           return false;
         }
@@ -1569,6 +1677,19 @@ globalThis.createPvmRuntime = (endpoint) => {
     postMessage({ type: "tri2d", bytes }, [bytes.buffer]);
   }
 
+  function drainUiSemantics() {
+    if (!pvm.pvm_browser_take_ui_semantics?.()) {
+      return;
+    }
+    const length = pvm.pvm_browser_ui_semantics_length();
+    const bytes = new Uint8Array(
+      pvm.memory.buffer,
+      pvm.pvm_browser_ui_semantics_pointer(),
+      length,
+    ).slice();
+    postMessage({ type: "ui-semantics", bytes }, [bytes.buffer]);
+  }
+
   function drainGpuBatches() {
     while (pvm.pvm_browser_take_gpu_batch?.()) {
       const length = pvm.pvm_browser_gpu_batch_length();
@@ -1651,6 +1772,7 @@ globalThis.createPvmRuntime = (endpoint) => {
         );
         drainFrame();
         drainTri2d();
+        drainUiSemantics();
         drainGpuBatches();
         drainTruapiRequests();
         drainAudio();
@@ -1959,11 +2081,15 @@ globalThis.createPvmRuntime = (endpoint) => {
       drainTruapiRequests();
       drainLogs();
     }
+    const usesMotion = translated
+      ? translated.usesMotion()
+      : pvm.pvm_browser_uses_motion() === 1;
     startedAt = performance.now();
     running = true;
     postMessage({
       type: "ready",
       backend,
+      usesMotion,
       cacheHit,
       translationMs,
       compilationMs,
@@ -1984,15 +2110,23 @@ globalThis.createPvmRuntime = (endpoint) => {
       translated.sendInput(bytes);
       return;
     }
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (bytes[0] <= 7) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      check(
+        pvm.pvm_browser_send_input(
+          bytes[0],
+          bytes[1],
+          view.getUint16(2, true),
+          view.getUint16(4, true),
+        ),
+        "send PolkaVM browser input",
+      );
+      return;
+    }
+    stage(bytes);
     check(
-      pvm.pvm_browser_send_input(
-        bytes[0],
-        bytes[1],
-        view.getUint16(2, true),
-        view.getUint16(4, true),
-      ),
-      "send PolkaVM browser input",
+      pvm.pvm_browser_send_input_record(),
+      "send PolkaVM browser extended input",
     );
   }
 
