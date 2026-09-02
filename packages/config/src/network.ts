@@ -103,7 +103,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0x23e730eb1c6fecae09c917439a5038cb6122d0d48980e8b9bbf0ff56f94a2ca6",
+        "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a",
       rpcs: ["wss://paseo-asset-hub-next-rpc.polkadot.io"],
     },
     bulletin: {
@@ -114,7 +114,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     people: {
       genesis:
-        "0x89a63b11fef2c0273fc72c0d864da0793a665dade5db153e0cab995348c5440f",
+        "0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48",
       rpcs: ["wss://paseo-people-next-system-rpc.polkadot.io"],
     },
     dotns: {
@@ -129,7 +129,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     description: "Product Preview Network",
     relay: {
       genesis:
-        "0xf534869782b0aafa6e02a66d8bae47c83fd0a7b854d55303ce574838c6c48a23",
+        "0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e",
       rpcs: [
         "wss://previewnet.substrate.dev/relay/alice",
         "wss://previewnet.substrate.dev/relay/bob",
@@ -137,18 +137,18 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0x627f54413120c81161261b2ca87f60f0020963107dc28367491e09ec2dd29659",
+        "0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe",
       rpcs: ["wss://previewnet.substrate.dev/asset-hub"],
     },
     bulletin: {
       genesis:
-        "0x1144acd27f0e5b2c88da7dc12c111e396983dec036ccfb42da5bbb0dd7104e89",
+        "0xea9158d768971553e315b76323cbffda238b6b865f3d3d5e138350b12312173d",
       rpcs: ["wss://previewnet.substrate.dev/bulletin"],
       ipfsGateways: ["https://previewnet.substrate.dev"],
     },
     people: {
       genesis:
-        "0x34999c298555e25bf17a7f3ea20efe7f6fdab1dfec7f808fbcfd36ca8aa5d220",
+        "0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218",
       rpcs: ["wss://previewnet.substrate.dev/people"],
     },
     dotns: {
