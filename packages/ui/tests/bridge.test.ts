@@ -53,6 +53,7 @@ const mocks = vi.hoisted(() => ({
   iframeHosts: [] as {
     iframeUrl: string;
     allowedOrigin: string;
+    allow: string;
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
@@ -247,6 +248,7 @@ describe("bridge render lifecycle", () => {
       (args: {
         iframeUrl: string;
         allowedOrigin: string;
+        allow: string;
         container: HTMLElement;
       }) => {
         const iframe = document.createElement("iframe");
@@ -258,6 +260,7 @@ describe("bridge render lifecycle", () => {
         const host = {
           iframeUrl: args.iframeUrl,
           allowedOrigin: args.allowedOrigin,
+          allow: args.allow,
           iframe,
           dispose,
         };
@@ -391,6 +394,27 @@ describe("bridge render lifecycle", () => {
     expect(iframeUrl.searchParams.get("executableManifest")).toBe(
       executableManifest,
     );
+    expect(mocks.iframeHosts[0].allow).not.toContain("accelerometer");
+    expect(mocks.iframeHosts[0].allow).not.toContain("gyroscope");
+  });
+
+  it("delegates motion sensors only to PolkaVM product frames", async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,8],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+    const render = renderAppSubdomain(
+      "motion-cid",
+      "motion-app",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const directives = mocks.iframeHosts[0].allow.split("; ");
+    expect(directives).toContain("accelerometer");
+    expect(directives).toContain("gyroscope");
   });
 
   it("reconnects the TrUAPI MessagePort after a product iframe reload", async () => {

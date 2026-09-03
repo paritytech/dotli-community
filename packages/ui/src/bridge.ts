@@ -703,6 +703,7 @@ async function createHost(args: {
   label: string;
   productId?: string;
   container: HTMLElement;
+  extraAllow?: readonly string[];
   debugFlowId: string;
 }): Promise<ActiveHost> {
   const coreProvider = await createCoreProvider(args.label, {
@@ -737,7 +738,11 @@ async function createHost(args: {
     disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
   };
   try {
-    const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
+    const allow = [
+      await buildAllowAttribute(args.label),
+      ...(args.extraAllow ?? []),
+      "cross-origin-isolated",
+    ].join("; ");
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -1092,6 +1097,28 @@ export async function renderIframe(
   });
 }
 
+function isPolkaVmExecutableManifest(value: string | null): boolean {
+  if (value === null) {
+    return false;
+  }
+  try {
+    const manifest: unknown = JSON.parse(value);
+    if (
+      manifest === null ||
+      typeof manifest !== "object" ||
+      !("runtime" in manifest) ||
+      manifest.runtime === null ||
+      typeof manifest.runtime !== "object" ||
+      !("kind" in manifest.runtime)
+    ) {
+      return false;
+    }
+    return manifest.runtime.kind === "polkavm";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Render content in a cross-origin app subdomain iframe (cid.app.dot.li).
  * Used by the host build to delegate content fetching+rendering to the app context.
@@ -1206,6 +1233,9 @@ export async function renderAppSubdomain(
     sandbox:
       "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
     label,
+    extraAllow: isPolkaVmExecutableManifest(executableManifest)
+      ? ["accelerometer", "gyroscope"]
+      : [],
     container: app,
     debugFlowId: bridgeFlowId,
   });
