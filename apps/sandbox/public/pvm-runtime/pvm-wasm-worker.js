@@ -20,7 +20,7 @@
   const MOTION_ERROR_BUFFER_TOO_SMALL = -4;
   const MAX_INPUT_EVENTS = 4096;
   const MAX_HOSTCALLS_PER_INIT = 1024 * 1024;
-  const MAX_HOSTCALLS_PER_UPDATE = 8192;
+  const MAX_HOSTCALLS_PER_UPDATE = 65536;
   const MAX_HOSTCALL_BYTES = 32 * 1024 * 1024;
   const MAX_LOG_BYTES = 4 * 1024;
   const MAX_SAVE_BYTES = 1024 * 1024;
@@ -58,33 +58,6 @@
   const SYS_EXIT = 93n;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-
-  function validInputRecord(bytes) {
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength !== INPUT_EVENT_BYTES) {
-      return false;
-    }
-    const type = bytes[0];
-    if (type < 1 || type > 14) {
-      return false;
-    }
-    if (type <= 7) {
-      return bytes[6] === 0 && bytes[7] === 0;
-    }
-    if (type <= 10) {
-      const length = bytes[1] & 7;
-      if ((bytes[1] & ~0xc7) !== 0 || length > 6) {
-        return false;
-      }
-      return bytes.subarray(2 + length).every((byte) => byte === 0);
-    }
-    if (type === 11 || type === 12) {
-      return bytes.subarray(1).every((byte) => byte === 0);
-    }
-    if (type === 13) {
-      return bytes[1] <= 1 && bytes.subarray(2).every((byte) => byte === 0);
-    }
-    return bytes[1] === 0 && bytes[6] === 0 && bytes[7] === 0;
-  }
 
   function validUiSemantics(bytes) {
     let snapshot;
@@ -458,7 +431,7 @@
     }
 
     sendInput(bytes) {
-      if (this.stopped || !validInputRecord(bytes)) {
+      if (this.stopped || bytes.byteLength !== INPUT_EVENT_BYTES) {
         return;
       }
       if (!this.coreVm) {
@@ -481,10 +454,7 @@
       ) {
         return;
       }
-      if (
-        this.imports.includes("pvm_fetch_epoca_inputs") ||
-        this.imports.includes("host_poll_input")
-      ) {
+      if (this.imports.includes("pvm_fetch_epoca_inputs")) {
         this.#queueEpocaInput(bytes);
         return;
       }
@@ -1564,9 +1534,9 @@ globalThis.createPvmRuntime = (endpoint) => {
   };
 
   const FRAME_INTERVAL_MS = 1000 / 60;
-  const MAX_GAS_PER_UPDATE = 500_000_000;
+  const MAX_GAS_PER_UPDATE = 10_000_000_000;
   const MAX_TRANSLATED_LOOPS_PER_UPDATE = 50_000_000;
-  const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
+  const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
   const MAX_ASSET_FILES = 2048;
   const MAX_ASSET_NAME_BYTES = 1024;
   const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
