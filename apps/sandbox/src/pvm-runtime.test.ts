@@ -13,6 +13,7 @@ import {
   isPvmPackage,
   normalizedPointerDelta,
   unsupportedPvmImport,
+  resolvedParentOrigin,
   waitForTruapiPort,
   type TruapiPortScope,
   type TruapiPortTarget,
@@ -184,6 +185,25 @@ describe("MotionSample v1 encoding", () => {
         rotationGamma: 0,
       }),
     ).toThrow(/invalid MotionSample v1/);
+  });
+});
+
+describe("PolkaVM parent motion relay", () => {
+  it("uses the browser-provided ancestor when referrer policy hides referrer", () => {
+    expect(
+      resolvedParentOrigin("https://chinpokomon-pvm.westendli.dev", ""),
+    ).toBe("https://chinpokomon-pvm.westendli.dev");
+  });
+
+  it("falls back to a valid referrer and rejects a missing parent origin", () => {
+    expect(
+      resolvedParentOrigin(
+        null,
+        "https://chinpokomon-pvm.westendli.dev/product",
+      ),
+    ).toBe("https://chinpokomon-pvm.westendli.dev");
+    expect(resolvedParentOrigin(null, "")).toBeNull();
+    expect(resolvedParentOrigin(null, "not a URL")).toBeNull();
   });
 });
 
