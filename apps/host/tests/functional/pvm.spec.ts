@@ -207,6 +207,7 @@ const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
 const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
 const expectedTruapi = process.env.DOTLI_PVM_EXPECTED_TRUAPI === "1";
 const expectedResize = process.env.DOTLI_PVM_EXPECTED_RESIZE === "1";
+const expectedMotion = process.env.DOTLI_PVM_EXPECTED_MOTION === "1";
 const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
   .split(",")
   .filter(Boolean);
@@ -220,6 +221,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   );
   const carBytes = new Uint8Array(await readFile(doomV2CarPath as string));
   const manifest = await readFile(doomV2ManifestPath as string, "utf8");
+  const expectedPointerLock = expectedV2Profile !== "tri2d";
   const reader = await CarReader.fromBytes(carBytes);
   const [root] = await reader.getRoots();
   if (root === undefined) throw new Error("Doom v2 CAR has no root");
@@ -310,13 +312,13 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     await canvas.getAttribute("data-pvm-frames"),
   );
   await canvas.click({ position: { x: 160, y: 100 } });
-  if (expectedV2Profile === "webgpu-raster") {
-    const productFrame = page
-      .frames()
-      .find((frame) => frame.url().includes("doom-v2.app.localhost"));
-    if (productFrame === undefined) {
-      throw new Error("WebGPU product frame did not mount");
-    }
+  const productFrame = page
+    .frames()
+    .find((frame) => frame.url().includes("doom-v2.app.localhost"));
+  if (productFrame === undefined) {
+    throw new Error("PolkaVM product frame did not mount");
+  }
+  if (expectedPointerLock) {
     await expect
       .poll(async () =>
         productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
@@ -329,6 +331,46 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       )
       .toBeNull();
     await canvas.click({ position: { x: 160, y: 100 } });
+    await expect
+      .poll(async () =>
+        productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
+      )
+      .toBe("dotli-pvm-canvas");
+  }
+  if (expectedMotion) {
+    if (expectedPointerLock) {
+      await productFrame.evaluate(() => {
+        const target = document.querySelector("#dotli-pvm-canvas");
+        if (!(target instanceof HTMLCanvasElement)) {
+          throw new Error("PolkaVM canvas is unavailable");
+        }
+        target.dispatchEvent(
+          new PointerEvent("pointermove", { movementX: 1, movementY: 1 }),
+        );
+        target.dispatchEvent(
+          new PointerEvent("pointermove", { movementX: 24, movementY: -12 }),
+        );
+      });
+    } else {
+      const bounds = await canvas.boundingBox();
+      if (bounds === null) {
+        throw new Error("PolkaVM canvas has no browser bounds");
+      }
+      await page.mouse.move(
+        bounds.x + bounds.width / 3,
+        bounds.y + bounds.height / 2,
+      );
+      await page.mouse.move(
+        bounds.x + (bounds.width * 2) / 3,
+        bounds.y + bounds.height / 2,
+      );
+    }
+    await expect
+      .poll(async () =>
+        Number(await canvas.getAttribute("data-pvm-motion-samples")),
+      )
+      .toBeGreaterThan(0);
+    await expect(canvas).toHaveAttribute("data-pvm-motion-source", "pointer");
   }
   for (const key of expectedInputKeys) {
     await page.keyboard.press(key);

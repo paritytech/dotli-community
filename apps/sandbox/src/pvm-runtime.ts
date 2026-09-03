@@ -114,6 +114,7 @@ interface WorkerReady {
   compilationMs?: number;
   startupMs?: number;
   translatedWasmBytes?: number;
+  usesMotion?: boolean;
 }
 
 interface WorkerStartup {
@@ -949,6 +950,8 @@ function installInput(
   inputFeatures: readonly string[],
   send: (bytes: Uint8Array) => void,
   sendMotion: (bytes: Uint8Array) => void,
+  sendMotionStatus: (availability: 0 | 1 | 2) => void,
+  motionRequested: () => boolean,
   resumeAudio: () => void,
 ): { cleanup: () => void; sendSurfaceMetrics: () => void } {
   const pressed = new Set<number>();
@@ -1001,12 +1004,19 @@ function installInput(
     );
   };
   const queuePointerMotion = (x: number, y: number): void => {
+    if (!motionRequested()) {
+      return;
+    }
     motionX += x;
     motionY += y;
     motionFrame ??= window.requestAnimationFrame(flushPointerMotion);
   };
   const requestDeviceMotionPermission = (): void => {
-    if (motionPermissionRequested || typeof DeviceMotionEvent === "undefined") {
+    if (
+      !motionRequested() ||
+      motionPermissionRequested ||
+      typeof DeviceMotionEvent === "undefined"
+    ) {
       return;
     }
     motionPermissionRequested = true;
@@ -1014,10 +1024,22 @@ function installInput(
       requestPermission?: () => Promise<"granted" | "denied">;
     };
     if (typeof constructor.requestPermission === "function") {
-      void constructor.requestPermission().catch(() => undefined);
+      void constructor
+        .requestPermission()
+        .then((permission) => {
+          sendMotionStatus(permission === "granted" ? 1 : 2);
+        })
+        .catch(() => {
+          sendMotionStatus(2);
+        });
+    } else {
+      sendMotionStatus(1);
     }
   };
   const deviceMotion = (event: DeviceMotionEvent): void => {
+    if (!motionRequested()) {
+      return;
+    }
     const acceleration = event.accelerationIncludingGravity;
     const rotation = event.rotationRate;
     const accelerationValues = [
@@ -1222,41 +1244,36 @@ function installInput(
     send(encodedInput(type, pointerButtons[event.button], x, y));
   };
   const move = (event: PointerEvent): void => {
-    if (graphicsProfile === "tri2d") {
-      const [x, y] = canvasPosition(event);
-      send(encodedInput(5, 0, x, y));
-      if (previousPointer !== null) {
-        queuePointerMotion(
-          event.clientX - previousPointer[0],
-          event.clientY - previousPointer[1],
-        );
+    if (document.pointerLockElement === canvas) {
+      const delta = normalizedPointerDelta(
+        event.movementX,
+        event.movementY,
+        firstMoveAfterPointerLock,
+      );
+      firstMoveAfterPointerLock = false;
+      if (delta !== null) {
+        // Pointer events can outpace a guest frame by an order of magnitude.
+        // Coalesce them once per display frame so a render stall cannot replay
+        // a stale queue as one camera snap.
+        queueRelativePointer(delta[0], delta[1]);
       }
-      previousPointer = [event.clientX, event.clientY];
       return;
     }
-    if (document.pointerLockElement !== canvas) {
-      return;
+    const [x, y] = canvasPosition(event);
+    send(encodedInput(5, 0, x, y));
+    if (previousPointer !== null) {
+      queuePointerMotion(
+        event.clientX - previousPointer[0],
+        event.clientY - previousPointer[1],
+      );
     }
-    const delta = normalizedPointerDelta(
-      event.movementX,
-      event.movementY,
-      firstMoveAfterPointerLock,
-    );
-    firstMoveAfterPointerLock = false;
-    if (delta !== null) {
-      // Pointer events can outpace a guest frame by an order of magnitude.
-      // Coalesce them once per display frame so a render stall cannot replay
-      // a stale queue as one camera snap.
-      queueRelativePointer(delta[0], delta[1]);
-    }
+    previousPointer = [event.clientX, event.clientY];
   };
   const down = (event: PointerEvent): void => {
     requestDeviceMotionPermission();
     previousPointer = [event.clientX, event.clientY];
     focusTarget.focus({ preventScroll: true });
-    if (graphicsProfile === "tri2d") {
-      move(event);
-    }
+    move(event);
     pointer(event, 3);
     if (
       graphicsProfile !== "tri2d" &&
@@ -1354,6 +1371,13 @@ export async function runPvmApplication(
     new URLSearchParams(location.search).get("pvmMode") === "interpreter";
 
   const started = performance.now();
+  if (
+    descriptor.inputFeatures.includes("motion") &&
+    typeof PointerEvent === "undefined" &&
+    typeof DeviceMotionEvent === "undefined"
+  ) {
+    throw new Error("required motion input is unavailable");
+  }
   const {
     canvas,
     status,
@@ -1645,6 +1669,7 @@ export async function runPvmApplication(
     gpuCapabilities = await webGpu.capabilities;
   }
 
+  let usesMotion = false;
   const { cleanup: cleanupInput, sendSurfaceMetrics } = installInput(
     canvas,
     descriptor.graphicsProfile,
@@ -1665,6 +1690,10 @@ export async function runPvmApplication(
         (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
       worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
     },
+    (availability) => {
+      worker.postMessage({ type: "motion-status", availability });
+    },
+    () => usesMotion,
     resumeAudio,
   );
   const stop = (): void => {
@@ -1672,7 +1701,6 @@ export async function runPvmApplication(
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
     webGpu?.dispose();
-    worker.terminate();
     void audioContext?.close();
     truapiPort.onmessage = null;
     truapiPort.onmessageerror = null;
@@ -1738,6 +1766,7 @@ export async function runPvmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PVM→Wasm JIT" : "PVM interpreter"} ready`;
         canvas.dataset.pvmReady = "true";
         updateMetrics();
+        usesMotion = ready.usesMotion === true;
         sendSurfaceMetrics();
         truapiReady = true;
         for (const response of pendingTruapiResponses.splice(0)) {
