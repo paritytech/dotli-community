@@ -27,6 +27,7 @@ const MIN_COLUMNS = 20;
 const MAX_COLUMNS = 240;
 const MIN_ROWS = 6;
 const MAX_ROWS = 100;
+const RESOLVE_TIMEOUT_MS = 30_000;
 const PACKAGE_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 // Interfaces this sandbox host provides; ids per the runtime ADR namespace.
@@ -505,6 +506,104 @@ export async function runComputerApplication(
     });
   };
 
+  // Open spawn: the guest may name any published app. The sandbox cannot
+  // resolve DotNS itself, so it asks the host shell for the label's
+  // executable record and contenthash, then fetches and verifies the
+  // archive exactly like a top-level app before handing the program to
+  // the worker. The host (not this code) owns any consent policy.
+  let resolveNonce = 0;
+  const resolveAppRecord = (
+    label: string,
+  ): Promise<{ cid: string; executableManifest: string }> => {
+    const nonce = `computer-${String(resolveNonce++)}-${String(Date.now())}`;
+    const { promise, resolve, reject } = Promise.withResolvers<{
+      cid: string;
+      executableManifest: string;
+    }>();
+    const onMessage = (event: MessageEvent): void => {
+      const data = event.data as {
+        type?: string;
+        nonce?: string;
+        cid?: string;
+        executableManifest?: string;
+        message?: string;
+      } | null;
+      if (data?.nonce !== nonce) {
+        return;
+      }
+      if (
+        data.type === "dotli:computer-app" &&
+        typeof data.cid === "string" &&
+        typeof data.executableManifest === "string"
+      ) {
+        cleanup();
+        resolve({ cid: data.cid, executableManifest: data.executableManifest });
+      } else if (data.type === "dotli:computer-app-error") {
+        cleanup();
+        reject(new Error(data.message ?? `cannot resolve ${label}`));
+      }
+    };
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`resolving ${label} timed out`));
+    }, RESOLVE_TIMEOUT_MS);
+    const cleanup = (): void => {
+      window.clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+    };
+    window.addEventListener("message", onMessage);
+    window.parent.postMessage(
+      { type: "dotli:computer-resolve-app", label, nonce },
+      "*",
+    );
+    return promise;
+  };
+
+  const fetchPackage = async (label: string): Promise<Uint8Array> => {
+    const record = await resolveAppRecord(label);
+    // Dynamic on purpose: the fetch chunk and the bitswap bridge are
+    // code-split exactly as in main.ts, so computers that never spawn a
+    // remote package never load them.
+    const { fetchArchive } = await import("@dotli/content/fetch");
+    const isGateway =
+      new URLSearchParams(location.search).get("chainBackend") ===
+      "rpc-gateway";
+    const result = isGateway
+      ? await fetchArchive(record.cid, () => undefined, { useGateway: true })
+      : await fetchArchive(record.cid, () => undefined, {
+          bitswapBlockSource: (await import("./bitswap-bridge"))
+            .requestBitswapBlock,
+        });
+    if (result.type !== "archive") {
+      throw new Error(`${label} did not resolve to an app archive`);
+    }
+    // The child is authorized by its own signed manifest: it must declare
+    // the same host contract, and its grant clamps to this computer's.
+    const descriptor = parseComputerManifest(
+      result.files,
+      record.executableManifest,
+      true,
+    );
+    if (descriptor === null) {
+      throw new Error(`${label} is not a polkadot-host computer app`);
+    }
+    validateComputerFiles(result.files, descriptor);
+    return ownedBytes(result.files[descriptor.programPath]);
+  };
+
+  const resolvePackage = async (name: string): Promise<void> => {
+    try {
+      status.textContent = `Fetching ${name}…`;
+      const bytes = await fetchPackage(name);
+      status.textContent = "";
+      worker.postMessage({ type: "package", name, bytes }, [bytes.buffer]);
+    } catch (error) {
+      status.textContent = "";
+      console.warn(`[pvm computer] resolving ${name} failed:`, error);
+      worker.postMessage({ type: "package-error", name });
+    }
+  };
+
   let persistWarned = false;
   // Modified-file drains are coarse (editor saves, child exits), so each one
   // is written straight to IndexedDB; a debounce here would race reloads.
@@ -529,6 +628,7 @@ export async function runComputerApplication(
       entries?: WorkerFileEntry[];
       code?: number;
       message?: string;
+      name?: string;
       translationMs?: number;
     };
     switch (message.type) {
@@ -553,6 +653,11 @@ export async function runComputerApplication(
           persisted.set(entry.path, entry.bytes);
         }
         persistNow();
+        break;
+      case "resolve-package":
+        if (typeof message.name === "string") {
+          void resolvePackage(message.name);
+        }
         break;
       case "exit":
         running = false;

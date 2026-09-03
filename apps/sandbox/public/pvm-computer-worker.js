@@ -73,8 +73,13 @@ function flushPendingInput() {
   }
 }
 
+let translator = null;
+// Package name whose resolution the page currently owns; pump() stays
+// suspended until a "package"/"package-error" message settles it.
+let resolvingPackage = null;
+
 function pump() {
-  if (supervisor === null || finished) {
+  if (supervisor === null || finished || resolvingPackage !== null) {
     return;
   }
   try {
@@ -87,6 +92,13 @@ function pump() {
         self.postMessage({ type: "exit", code: status.code });
         return;
       }
+      if (status.kind === "package") {
+        // Open spawn: ask the page to resolve the name (DotNS) and hand
+        // back program bytes; the computer stays suspended meanwhile.
+        resolvingPackage = status.package;
+        self.postMessage({ type: "resolve-package", name: status.package });
+        return;
+      }
       if (!supervisor.hasTerminalInput() && pendingInput.length === 0) {
         return;
       }
@@ -97,8 +109,15 @@ function pump() {
   }
 }
 
+async function providePackage(message) {
+  const module = await translator.translate(message.bytes);
+  supervisor.providePackage(module);
+  resolvingPackage = null;
+  pump();
+}
+
 async function start(message) {
-  const translator = await ComputerTranslator.create(message.runtime);
+  translator = await ComputerTranslator.create(message.runtime);
   const started = performance.now();
   const program = await translator.translate(message.program);
   const context = computerContext(message.argv, message.environment);
@@ -109,6 +128,7 @@ async function start(message) {
     (text) => {
       self.postMessage({ type: "log", message: text });
     },
+    { packageResolution: true },
   );
   for (const entry of message.packages) {
     supervisor.registerPackage(
@@ -148,6 +168,26 @@ self.onmessage = (event) => {
       case "resize": {
         if (supervisor !== null && !finished) {
           supervisor.setTerminalSize(message.columns, message.rows);
+          pump();
+        }
+        break;
+      }
+      case "package": {
+        if (supervisor !== null && !finished) {
+          if (message.name !== resolvingPackage) {
+            throw new Error(`unexpected package ${message.name}`);
+          }
+          providePackage(message).catch(fail);
+        }
+        break;
+      }
+      case "package-error": {
+        if (supervisor !== null && !finished) {
+          if (message.name !== resolvingPackage) {
+            throw new Error(`unexpected package ${message.name}`);
+          }
+          supervisor.rejectPackage();
+          resolvingPackage = null;
           pump();
         }
         break;

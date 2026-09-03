@@ -1,9 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Functional coverage for the experimental `polkadot-host-computer/0.1`
-// app kind: a real shell guest boots in the sandbox terminal, spawns the
-// kilo editor as a sandboxed child VM, and /home persists across reloads.
+// Functional coverage for the experimental `polkadot-host` computer app
+// kind: a real shell guest boots in the sandbox terminal, spawns the kilo
+// editor via OPEN SPAWN (kilo is its own published app, resolved by name
+// through the host bridge — it is deliberately absent from the computer's
+// manifest), and /home persists across reloads.
 
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 import { CarWriter } from "@ipld/car";
@@ -17,27 +19,28 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
 
-interface ComputerFixture {
+interface AppCar {
   cid: string;
   bytes: Uint8Array;
   manifest: string;
 }
 
-async function computerCar(): Promise<ComputerFixture> {
-  const fixture = join(import.meta.dirname, "fixtures/pvm-computer");
+const fixtureRoot = join(import.meta.dirname, "fixtures/pvm-computer");
+
+async function appCar(entries: readonly string[][]): Promise<AppCar> {
   const files = await Promise.all(
-    [
-      ["manifest.json", join(fixture, "manifest.json")],
-      ["shell.polkavm", join(fixture, "shell.polkavm")],
-      ["kilo.polkavm", join(fixture, "kilo.polkavm")],
-      ["home/readme.txt", join(fixture, "readme.txt")],
-    ].map(async ([name, path]) => {
-      const bytes = new Uint8Array(await readFile(path));
+    entries.map(async ([name, path]) => {
+      const bytes = new Uint8Array(await readFile(join(fixtureRoot, path)));
       const cid = CID.createV1(raw.code, await sha256.digest(bytes));
       return { name, bytes, cid };
     }),
   );
-  const manifestBytes = files[0].bytes;
+  const manifestBytes = files.find(
+    (file) => file.name === "manifest.json",
+  )?.bytes;
+  if (manifestBytes === undefined) {
+    throw new Error("fixture archive is missing manifest.json");
+  }
   const links: PBLink[] = files
     .map(({ name, bytes, cid }) => ({
       Name: name,
@@ -74,9 +77,62 @@ async function computerCar(): Promise<ComputerFixture> {
   };
 }
 
+async function routeCar(page: Page, fixture: AppCar): Promise<void> {
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+}
+
+// The test page is the sandbox iframe's parent, standing in for the dot.li
+// host shell: it answers open-spawn resolutions exactly like
+// listenForComputerResolutions does in production.
+async function answerResolutions(
+  page: Page,
+  apps: Record<string, { cid: string; manifest: string }>,
+): Promise<void> {
+  await page.evaluate((published) => {
+    window.addEventListener("message", (event: MessageEvent) => {
+      const data = event.data as {
+        type?: string;
+        label?: string;
+        nonce?: string;
+      } | null;
+      if (
+        data?.type !== "dotli:computer-resolve-app" ||
+        typeof data.label !== "string" ||
+        typeof data.nonce !== "string" ||
+        event.source === null
+      ) {
+        return;
+      }
+      const app = published[data.label] as
+        | { cid: string; manifest: string }
+        | undefined;
+      const reply =
+        app === undefined
+          ? {
+              type: "dotli:computer-app-error",
+              nonce: data.nonce,
+              message: `no app published at ${data.label}`,
+            }
+          : {
+              type: "dotli:computer-app",
+              nonce: data.nonce,
+              cid: app.cid,
+              executableManifest: app.manifest,
+            };
+      (event.source as Window).postMessage(reply, "*");
+    });
+  }, apps);
+}
+
 async function mountComputer(
   page: Page,
-  fixture: ComputerFixture,
+  fixture: AppCar,
   fullReset: boolean,
 ): Promise<FrameLocator> {
   await page.evaluate(
@@ -109,19 +165,25 @@ async function screenText(product: FrameLocator): Promise<string> {
   return (await product.locator("#dotli-computer-screen").textContent()) ?? "";
 }
 
-test("a PolkaVM computer boots a shell, edits with a child VM, and persists /home", async ({
+test("a PolkaVM computer open-spawns a published editor and persists /home", async ({
   page,
 }) => {
-  const fixture = await computerCar();
-  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/vnd.ipld.car",
-      body: Buffer.from(fixture.bytes),
-    });
-  });
+  const computer = await appCar([
+    ["manifest.json", "manifest.json"],
+    ["shell.polkavm", "shell.polkavm"],
+    ["home/readme.txt", "readme.txt"],
+  ]);
+  const kilo = await appCar([
+    ["manifest.json", "kilo-manifest.json"],
+    ["kilo.polkavm", "kilo.polkavm"],
+  ]);
+  await routeCar(page, computer);
+  await routeCar(page, kilo);
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
-  const product = await mountComputer(page, fixture, true);
+  await answerResolutions(page, {
+    kilo: { cid: kilo.cid, manifest: kilo.manifest },
+  });
+  const product = await mountComputer(page, computer, true);
   const screen = product.locator("#dotli-computer-screen");
   await expect(screen).toHaveAttribute("data-computer-ready", "true", {
     timeout: 60_000,
@@ -141,7 +203,9 @@ test("a PolkaVM computer boots a shell, edits with a child VM, and persists /hom
     .poll(async () => screenText(product))
     .toContain("hello from the archive seed");
 
-  // kilo runs as a spawned child VM; save, quit, and verify from the shell.
+  // kilo is NOT in the computer's manifest: the spawn suspends, the page
+  // resolves the label through the host bridge, fetches and verifies the
+  // kilo app archive, and the editor runs as a sandboxed child VM.
   await page.keyboard.type("kilo notes.txt");
   await page.keyboard.press("Enter");
   await expect.poll(async () => screenText(product)).toContain("HELP: Ctrl-S");
@@ -179,4 +243,12 @@ test("a PolkaVM computer boots a shell, edits with a child VM, and persists /hom
   await expect
     .poll(async () => screenText(product))
     .toContain("computer on the web");
+
+  // An unpublished label fails the spawn; the shell survives and reports it.
+  await page.keyboard.type("vi ghost.txt");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => screenText(product)).toContain("vi");
+  await page.keyboard.type("ls");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => screenText(product)).toContain("notes.txt");
 });
