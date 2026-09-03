@@ -29,7 +29,6 @@ const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
   "useragent-kit-polkavm-runtime-30770959f66db81d46163f70f72f83f1a5507f6d";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
-
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();

@@ -55,6 +55,7 @@ import {
   polkavmWebFallbackEntrypoint,
   unsupportedPolkaVmImport,
 } from "./polkavm-runtime";
+import { isComputerPackage, runComputerApplication } from "./pvm-computer";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -446,6 +447,15 @@ async function runPolkaVmIfPresent(
   cid: string,
   executableManifest: string | null,
 ): Promise<false | null | string> {
+  // The experimental computer contract is checked first: its host-interface
+  // capabilities discriminate it from the cooperative graphics runtime.
+  if (isComputerPackage(files)) {
+    showStatus("Starting PolkaVM computer...");
+    await runComputerApplication(files, cid, executableManifest);
+    notifyLoadingDone();
+    performance.mark("dotli:app:end");
+    return null;
+  }
   if (!isPolkaVmPackage(files)) {
     return false;
   }
