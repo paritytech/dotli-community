@@ -452,6 +452,7 @@ describe("bridge render lifecycle", () => {
     const enable = document.querySelector<HTMLButtonElement>(".notif-action");
     expect(enable?.textContent).toBe("Enable motion");
     enable?.click();
+    enable?.click();
     await vi.waitFor(() => {
       expect(TestDeviceMotionEvent.requestPermission).toHaveBeenCalledOnce();
       expect(postMessage).toHaveBeenCalledWith(
