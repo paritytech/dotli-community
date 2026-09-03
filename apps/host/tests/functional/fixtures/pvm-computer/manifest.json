@@ -3,12 +3,18 @@
   "kind": "app",
   "appVersion": [0, 1, 0],
   "runtime": {
-    "kind": "polkavm-computer",
-    "abiVersion": 1,
+    "kind": "polkavm",
     "entrypoint": "shell.polkavm"
   },
   "capabilities": {
-    "terminal": { "abiVersion": 1 },
+    "host": {
+      "requires": [
+        "polkadot-host/0.1/core",
+        "polkadot-host/0.1/fs",
+        "polkadot-host/0.1/tty",
+        "polkadot-host/0.1/process"
+      ]
+    },
     "packages": [{ "name": "kilo", "path": "kilo.polkavm" }]
   }
 }
