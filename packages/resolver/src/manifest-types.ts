@@ -94,22 +94,37 @@ export interface PolkaVmComputerPackage {
   path: string;
 }
 
+/**
+ * A PolkaVM app that requires versioned Polkadot Host interfaces (the
+ * experimental computer contract) instead of the cooperative graphics ABI.
+ * The declaration is the discriminant: `capabilities.host.requires` names
+ * the interfaces, so contract versioning rides on the interface ids and
+ * there is no separate runtime kind or abiVersion. Hosts MUST refuse any
+ * manifest requiring an interface they cannot provide.
+ */
 export interface PolkaVmComputerManifestV2 {
   $v: 2;
   kind: "app";
   appVersion: AppVersion;
   runtime: {
-    kind: "polkavm-computer";
-    abiVersion: 1;
+    kind: "polkavm";
     entrypoint: string;
   };
   capabilities: {
-    terminal: {
-      abiVersion: 1;
+    host: {
+      requires: readonly string[];
     };
     packages?: readonly PolkaVmComputerPackage[];
   };
 }
+
+/** Host interfaces this resolver knows how to validate (ADR namespace). */
+export const HOST_INTERFACES = [
+  "polkadot-host/0.1/core",
+  "polkadot-host/0.1/fs",
+  "polkadot-host/0.1/tty",
+  "polkadot-host/0.1/process",
+] as const;
 
 export type AppManifestV2 =
   | WebAppManifestV2
@@ -218,21 +233,8 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     }
     return errors;
   }
-  if (runtime.kind === "polkavm-computer") {
-    if (runtime.abiVersion !== 1) {
-      errors.push(`${p}PolkaVM computer runtime abiVersion must be 1`);
-    }
-    if (!relativeEntrypoint(runtime.entrypoint, ".polkavm")) {
-      errors.push(`${p}PolkaVM entrypoint must be a relative .polkavm path`);
-    }
-    errors.push(...validateComputerCapabilities(input, runtime, p));
-    return errors;
-  }
   if (runtime.kind !== "polkavm") {
-    return [`${p}runtime.kind must be web, polkavm, or polkavm-computer`];
-  }
-  if (runtime.abiVersion !== 2) {
-    errors.push(`${p}PolkaVM runtime abiVersion must be 2`);
+    return [`${p}runtime.kind must be web or polkavm`];
   }
   if (!relativeEntrypoint(runtime.entrypoint, ".polkavm")) {
     errors.push(`${p}PolkaVM entrypoint must be a relative .polkavm path`);
@@ -251,6 +253,20 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
   const capabilities = isPlainObject(input.capabilities)
     ? input.capabilities
     : null;
+  if (capabilities?.host !== undefined) {
+    // Host-interface apps (the computer contract): the required interface
+    // ids carry the contract version, so runtime.abiVersion must not exist.
+    if (runtime.abiVersion !== undefined) {
+      errors.push(
+        `${p}host-interface apps must not declare runtime.abiVersion`,
+      );
+    }
+    errors.push(...validateHostCapabilities(capabilities, runtime, p));
+    return errors;
+  }
+  if (runtime.abiVersion !== 1) {
+    errors.push(`${p}PolkaVM runtime abiVersion must be 1`);
+  }
   const graphics =
     capabilities !== null && isPlainObject(capabilities.graphics)
       ? capabilities.graphics
@@ -306,30 +322,41 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
   return errors;
 }
 
-function validateComputerCapabilities(
-  input: Record<string, unknown>,
+function validateHostCapabilities(
+  capabilities: Record<string, unknown>,
   runtime: Record<string, unknown>,
   p: string,
 ): string[] {
   const errors: string[] = [];
-  const capabilities = isPlainObject(input.capabilities)
-    ? input.capabilities
-    : null;
-  const terminal =
-    capabilities !== null && isPlainObject(capabilities.terminal)
-      ? capabilities.terminal
-      : null;
-  if (terminal?.abiVersion !== 1) {
+  const host = isPlainObject(capabilities.host) ? capabilities.host : null;
+  const requires = Array.isArray(host?.requires) ? host.requires : null;
+  if (
+    requires === null ||
+    requires.length === 0 ||
+    new Set(requires).size !== requires.length ||
+    requires.some((id) => typeof id !== "string")
+  ) {
     errors.push(
-      `${p}computer capabilities.terminal must declare ABI version 1`,
+      `${p}capabilities.host.requires must be a non-empty list of interface ids`,
     );
-  }
-  for (const key of ["graphics", "deviceInput", "audio"]) {
-    if (capabilities?.[key] !== undefined) {
-      errors.push(`${p}computer runtime must not declare ${key} capability`);
+  } else {
+    // Fail closed: a host must refuse manifests requiring interfaces it
+    // cannot provide, so the validator only accepts registered ids.
+    for (const id of requires) {
+      if (!(HOST_INTERFACES as readonly string[]).includes(id as string)) {
+        errors.push(`${p}unsupported host interface ${JSON.stringify(id)}`);
+      }
+    }
+    if (!requires.includes("polkadot-host/0.1/core")) {
+      errors.push(`${p}host apps must require polkadot-host/0.1/core`);
     }
   }
-  if (capabilities?.packages === undefined) {
+  for (const key of ["graphics", "deviceInput", "audio", "terminal"]) {
+    if (capabilities[key] !== undefined) {
+      errors.push(`${p}host apps must not declare ${key} capability`);
+    }
+  }
+  if (capabilities.packages === undefined) {
     return errors;
   }
   if (!Array.isArray(capabilities.packages)) {

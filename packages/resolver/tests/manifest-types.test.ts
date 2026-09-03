@@ -45,17 +45,23 @@ const VALID_APP_V2 = {
   },
 };
 
+const HOST_REQUIRES = [
+  "polkadot-host/0.1/core",
+  "polkadot-host/0.1/fs",
+  "polkadot-host/0.1/tty",
+  "polkadot-host/0.1/process",
+];
+
 const VALID_COMPUTER = {
   $v: 2,
   kind: "app",
   appVersion: [0, 1, 0],
   runtime: {
-    kind: "polkavm-computer",
-    abiVersion: 1,
+    kind: "polkavm",
     entrypoint: "shell.polkavm",
   },
   capabilities: {
-    terminal: { abiVersion: 1 },
+    host: { requires: HOST_REQUIRES },
   },
 };
 
@@ -210,7 +216,7 @@ describe("validateExecutableManifest", () => {
       validateExecutableManifest({
         ...VALID_COMPUTER,
         capabilities: {
-          terminal: { abiVersion: 1 },
+          host: { requires: HOST_REQUIRES },
           packages: [
             { name: "vim", path: "vim.polkavm" },
             { name: "busybox-1", path: "tools/busybox.polkavm" },
@@ -220,22 +226,50 @@ describe("validateExecutableManifest", () => {
     ).toBe(true);
   });
 
-  it("rejects computer terminal with wrong abiVersion", () => {
+  it("rejects an unknown host interface", () => {
     expect(
       validateExecutableManifest({
         ...VALID_COMPUTER,
-        capabilities: { terminal: { abiVersion: 2 } },
+        capabilities: {
+          host: { requires: [...HOST_REQUIRES, "polkadot-host/0.1/net"] },
+        },
       }).ok,
     ).toBe(false);
   });
 
-  it("rejects computer manifest without terminal capability", () => {
+  it("rejects host apps that do not require the core interface", () => {
     expect(
       validateExecutableManifest({
         ...VALID_COMPUTER,
-        capabilities: {},
+        capabilities: {
+          host: { requires: ["polkadot-host/0.1/tty"] },
+        },
       }).ok,
     ).toBe(false);
+  });
+
+  it("rejects host apps that declare runtime.abiVersion", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        runtime: {
+          kind: "polkavm",
+          abiVersion: 1,
+          entrypoint: "shell.polkavm",
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("rejects empty or duplicated host interface lists", () => {
+    for (const requires of [[], HOST_REQUIRES.concat(HOST_REQUIRES[0])]) {
+      expect(
+        validateExecutableManifest({
+          ...VALID_COMPUTER,
+          capabilities: { host: { requires } },
+        }).ok,
+      ).toBe(false);
+    }
   });
 
   it("rejects duplicate computer package names", () => {
@@ -243,7 +277,7 @@ describe("validateExecutableManifest", () => {
       validateExecutableManifest({
         ...VALID_COMPUTER,
         capabilities: {
-          terminal: { abiVersion: 1 },
+          host: { requires: HOST_REQUIRES },
           packages: [
             { name: "vim", path: "vim.polkavm" },
             { name: "vim", path: "vim2.polkavm" },
@@ -259,7 +293,7 @@ describe("validateExecutableManifest", () => {
         validateExecutableManifest({
           ...VALID_COMPUTER,
           capabilities: {
-            terminal: { abiVersion: 1 },
+            host: { requires: HOST_REQUIRES },
             packages: [{ name, path: "pkg.polkavm" }],
           },
         }).ok,
@@ -273,7 +307,7 @@ describe("validateExecutableManifest", () => {
         validateExecutableManifest({
           ...VALID_COMPUTER,
           capabilities: {
-            terminal: { abiVersion: 1 },
+            host: { requires: HOST_REQUIRES },
             packages: [{ name: "vim", path }],
           },
         }).ok,
@@ -286,7 +320,7 @@ describe("validateExecutableManifest", () => {
       validateExecutableManifest({
         ...VALID_COMPUTER,
         capabilities: {
-          terminal: { abiVersion: 1 },
+          host: { requires: HOST_REQUIRES },
           packages: [{ name: "shell", path: "shell.polkavm" }],
         },
       }).ok,
@@ -298,7 +332,7 @@ describe("validateExecutableManifest", () => {
       validateExecutableManifest({
         ...VALID_COMPUTER,
         capabilities: {
-          terminal: { abiVersion: 1 },
+          host: { requires: HOST_REQUIRES },
           graphics: {
             abiVersion: 1,
             profile: "framebuffer",

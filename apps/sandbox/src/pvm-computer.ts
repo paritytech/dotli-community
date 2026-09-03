@@ -29,6 +29,13 @@ const MIN_ROWS = 6;
 const MAX_ROWS = 100;
 const PACKAGE_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
+// Interfaces this sandbox host provides; ids per the runtime ADR namespace.
+const HOST_INTERFACES: readonly string[] = [
+  "polkadot-host/0.1/core",
+  "polkadot-host/0.1/fs",
+  "polkadot-host/0.1/tty",
+  "polkadot-host/0.1/process",
+];
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 
@@ -100,33 +107,50 @@ function parseComputerManifest(
   }
   const manifest = object(value);
   const runtime = object(manifest?.runtime);
-  if (runtime?.kind !== "polkavm-computer") {
+  if (runtime?.kind !== "polkavm") {
+    return null;
+  }
+  const capabilities = object(manifest?.capabilities);
+  // The required host interfaces ARE the contract declaration: manifests
+  // without capabilities.host belong to the cooperative graphics runtime.
+  if (capabilities?.host === undefined) {
     return null;
   }
   if (manifest?.$v !== 2 || manifest.kind !== "app") {
     throw new Error("PolkaVM computer manifests must be App manifest v2");
   }
-  if (runtime.abiVersion !== 1) {
-    throw new Error("PolkaVM computer runtime requires ABI version 1");
+  if (runtime.abiVersion !== undefined) {
+    throw new Error("host-interface apps must not declare runtime.abiVersion");
   }
   const programPath = cleanPath(runtime.entrypoint);
   if (programPath?.endsWith(".polkavm") !== true) {
     throw new Error("PolkaVM computer has an invalid runtime entrypoint");
   }
-  const capabilities = object(manifest.capabilities);
-  if (capabilities === null) {
-    throw new Error("PolkaVM computer requires the terminal capability");
+  const host = object(capabilities.host);
+  const requires = Array.isArray(host?.requires) ? host.requires : null;
+  if (
+    requires === null ||
+    requires.length === 0 ||
+    new Set(requires).size !== requires.length ||
+    requires.some((id) => typeof id !== "string") ||
+    !requires.includes("polkadot-host/0.1/core")
+  ) {
+    throw new Error("PolkaVM computer must require polkadot-host interfaces");
   }
-  const terminal = object(capabilities.terminal);
-  if (terminal?.abiVersion !== 1) {
-    throw new Error("PolkaVM computer requires the terminal capability");
+  // Fail closed: refuse any manifest requiring an interface this host
+  // cannot provide, before a single guest instruction runs.
+  for (const id of requires) {
+    if (!HOST_INTERFACES.includes(id as string)) {
+      throw new Error(`unsupported host interface ${JSON.stringify(id)}`);
+    }
   }
   if (
     capabilities.graphics !== undefined ||
     capabilities.deviceInput !== undefined ||
-    capabilities.audio !== undefined
+    capabilities.audio !== undefined ||
+    capabilities.terminal !== undefined
   ) {
-    throw new Error("PolkaVM computer capabilities are terminal-only");
+    throw new Error("host apps declare interfaces, not device capabilities");
   }
   const packages: { name: string; path: string }[] = [];
   if (capabilities.packages !== undefined) {
