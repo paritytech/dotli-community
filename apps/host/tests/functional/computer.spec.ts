@@ -134,11 +134,12 @@ async function mountComputer(
   page: Page,
   fixture: AppCar,
   fullReset: boolean,
+  label = "computer-fixture",
 ): Promise<FrameLocator> {
   await page.evaluate(
-    ({ cid, executableManifest, schemaVersion, reset }) => {
+    ({ cid, executableManifest, schemaVersion, reset, appLabel }) => {
       const url = new URL(
-        `http://computer-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2`,
+        `http://${appLabel}.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2`,
       );
       url.searchParams.set("executableManifest", executableManifest);
       if (reset) {
@@ -156,6 +157,7 @@ async function mountComputer(
       executableManifest: fixture.manifest,
       schemaVersion: SANDBOX_SCHEMA_VERSION,
       reset: fullReset,
+      appLabel: label,
     },
   );
   return page.frameLocator("#computer-product");
@@ -251,4 +253,59 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
   await page.keyboard.type("ls");
   await page.keyboard.press("Enter");
   await expect.poll(async () => screenText(product)).toContain("notes.txt");
+});
+
+test("Vim runs as a standalone published computer app", async ({ page }) => {
+  const vim = await appCar([
+    ["manifest.json", "vim-manifest.json"],
+    ["vim.polkavm", "vim.polkavm"],
+  ]);
+  await routeCar(page, vim);
+  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  const product = await mountComputer(page, vim, true, "vim-fixture");
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await expect.poll(async () => screenText(product)).toContain("~");
+
+  await screen.click();
+  await page.keyboard.type("iVim standalone works");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w /home/standalone.txt");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => screenText(product)).toContain("bytes written");
+  // The compact terminal triggers Vim's normal hit-enter wait.
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(":q");
+  await page.keyboard.press("Enter");
+  await expect(screen).toHaveAttribute("data-computer-exit", "0", {
+    timeout: 30_000,
+  });
+});
+
+test("Kilo runs as a standalone published computer app", async ({ page }) => {
+  const kilo = await appCar([
+    ["manifest.json", "kilo-manifest.json"],
+    ["kilo.polkavm", "kilo.polkavm"],
+  ]);
+  await routeCar(page, kilo);
+  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  const product = await mountComputer(page, kilo, true, "kilo-fixture");
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await expect.poll(async () => screenText(product)).toContain("HELP: Ctrl-S");
+
+  await screen.click();
+  await page.keyboard.type("Kilo standalone works");
+  await page.keyboard.press("Control+s");
+  await expect
+    .poll(async () => screenText(product))
+    .toContain("bytes written on disk");
+  await page.keyboard.press("Control+q");
+  await expect(screen).toHaveAttribute("data-computer-exit", "0", {
+    timeout: 30_000,
+  });
 });

@@ -740,7 +740,12 @@ export async function runComputerApplication(
       program,
       packages,
       files: workerFiles,
-      argv: ["shell"],
+      argv: [
+        descriptor.programPath
+          .replace(/\.polkavm$/, "")
+          .split("/")
+          .pop() ?? descriptor.programPath,
+      ],
       environment: [
         ["HOME", "/home"],
         ["TERM", "xterm"],
