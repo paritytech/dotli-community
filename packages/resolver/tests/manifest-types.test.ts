@@ -114,6 +114,14 @@ describe("validateExecutableManifest", () => {
     ).toBe(true);
     expect(
       validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          graphics: VALID_APP_V2.capabilities.graphics,
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
         $v: 2,
         kind: "app",
         appVersion: [1, 0, 0],

@@ -281,6 +281,22 @@ describe("PolkaVM package recognition", () => {
     );
   });
 
+  it("runs without a required pointer capability", () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: {
+        deviceInput?: { requiredFeatures: string[] };
+      };
+    };
+    delete value.capabilities.deviceInput;
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(describePvmPackage(files, manifest)?.inputFeatures).toEqual([]);
+    expect(describePvmPackage(files, manifest)?.controls).toEqual([]);
+  });
+
   it("accepts required MotionSample v1 input", () => {
     const value = JSON.parse(doomAppV2Manifest()) as {
       capabilities: {

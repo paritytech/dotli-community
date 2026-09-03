@@ -109,9 +109,13 @@ loads the verified `app.polkavm` and immutable package assets, and translates
 the program to WebAssembly inside a worker. Keyboard, pointer, framebuffer,
 PCM-audio, asset, and save traffic stays on the bounded PolkaVM host ABI.
 
-The initial profile supports Epoca framebuffer ABI version 1, including CoreVM
-products such as `doom.paseo`. Tri2D, WebGPU, and TruAPI guest hostcalls fail
-closed until their capability boundaries are implemented independently.
+App manifest v2 supports framebuffer, Tri2D, and WebGPU Raster ABI version 1.
+WebGPU commands execute in a dedicated host worker after bounded capability
+negotiation; TrUAPI, MotionSample v1, text, IME, focus, and wheel input use the
+same pinned browser runtime as the native Hosts. As an interim compatibility
+policy, framebuffer and WebGPU Raster capture the pointer after a primary click
+while Tri2D leaves it free. A future guest-to-host request will replace this
+profile-based choice without adding a manifest feature.
 
 Translated Wasm bytes are cached in product-origin IndexedDB by the SHA-256 of
 the PVM program and the pinned translator version. Warm launches skip PVM
