@@ -726,10 +726,7 @@ const TEXT_CHUNK_BYTES = 6;
 const TEXT_CHUNK_START = 0x40;
 const TEXT_CHUNK_END = 0x80;
 
-export function encodedTextInput(
-  type: 8 | 9 | 10,
-  text: string,
-): Uint8Array[] {
+export function encodedTextInput(type: 8 | 9 | 10, text: string): Uint8Array[] {
   const encoded = new TextEncoder().encode(text);
   if (encoded.byteLength > MAX_TEXT_INPUT_BYTES) {
     return [];
