@@ -208,6 +208,10 @@ const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
 const expectedTruapi = process.env.DOTLI_PVM_EXPECTED_TRUAPI === "1";
 const expectedResize = process.env.DOTLI_PVM_EXPECTED_RESIZE === "1";
 const expectedMotion = process.env.DOTLI_PVM_EXPECTED_MOTION === "1";
+const expectedMotionSource =
+  process.env.DOTLI_PVM_EXPECTED_MOTION_SOURCE ?? "pointer";
+const pointerLockUnavailable =
+  process.env.DOTLI_PVM_POINTER_LOCK_UNAVAILABLE === "1";
 const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
   .split(",")
   .filter(Boolean);
@@ -219,9 +223,57 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     doomV2CarPath === undefined || doomV2ManifestPath === undefined,
     "DOTLI_DOOM_V2_CAR and DOTLI_DOOM_V2_MANIFEST are required",
   );
+  await page.addInitScript(
+    ({ disablePointerLock, physicalMotion }) => {
+      if (disablePointerLock) {
+        Object.defineProperty(
+          HTMLCanvasElement.prototype,
+          "requestPointerLock",
+          {
+            configurable: true,
+            value: undefined,
+          },
+        );
+      }
+      if (physicalMotion) {
+        Reflect.set(window, "__dotliMotionPermissionRequests", 0);
+        class TestDeviceMotionEvent extends Event {
+          static async requestPermission(): Promise<"granted"> {
+            Reflect.set(
+              window,
+              "__dotliMotionPermissionRequests",
+              Number(
+                Reflect.get(window, "__dotliMotionPermissionRequests") ?? 0,
+              ) + 1,
+            );
+            return "granted";
+          }
+
+          readonly accelerationIncludingGravity;
+          readonly rotationRate;
+
+          constructor(type: string, init: DeviceMotionEventInit = {}) {
+            super(type);
+            this.accelerationIncludingGravity =
+              init.accelerationIncludingGravity ?? null;
+            this.rotationRate = init.rotationRate ?? null;
+          }
+        }
+        Object.defineProperty(window, "DeviceMotionEvent", {
+          configurable: true,
+          value: TestDeviceMotionEvent,
+        });
+      }
+    },
+    {
+      disablePointerLock: pointerLockUnavailable,
+      physicalMotion: expectedMotionSource === "device",
+    },
+  );
   const carBytes = new Uint8Array(await readFile(doomV2CarPath as string));
   const manifest = await readFile(doomV2ManifestPath as string, "utf8");
-  const expectedPointerLock = expectedV2Profile !== "tri2d";
+  const expectedPointerLock =
+    expectedV2Profile !== "tri2d" && !pointerLockUnavailable;
   const reader = await CarReader.fromBytes(carBytes);
   const [root] = await reader.getRoots();
   if (root === undefined) throw new Error("Doom v2 CAR has no root");
@@ -338,7 +390,33 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .toBe("dotli-pvm-canvas");
   }
   if (expectedMotion) {
-    if (expectedPointerLock) {
+    if (expectedMotionSource === "device") {
+      await productFrame.evaluate(() => {
+        window.dispatchEvent(
+          new DeviceMotionEvent("devicemotion", {
+            accelerationIncludingGravity: { x: 0, y: 0, z: 9.80665 },
+            rotationRate: { alpha: 0, beta: 0, gamma: 0 },
+          }),
+        );
+        window.dispatchEvent(
+          new DeviceMotionEvent("devicemotion", {
+            accelerationIncludingGravity: {
+              x: -9.80665 * 0.4,
+              y: 0,
+              z: 9,
+            },
+            rotationRate: { alpha: 0, beta: 0, gamma: 0 },
+          }),
+        );
+      });
+      await expect
+        .poll(async () =>
+          productFrame.evaluate(() =>
+            Number(Reflect.get(window, "__dotliMotionPermissionRequests") ?? 0),
+          ),
+        )
+        .toBeGreaterThan(0);
+    } else if (expectedPointerLock) {
       await productFrame.evaluate(() => {
         const target = document.querySelector("#dotli-pvm-canvas");
         if (!(target instanceof HTMLCanvasElement)) {
@@ -370,7 +448,10 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
         Number(await canvas.getAttribute("data-pvm-motion-samples")),
       )
       .toBeGreaterThan(0);
-    await expect(canvas).toHaveAttribute("data-pvm-motion-source", "pointer");
+    await expect(canvas).toHaveAttribute(
+      "data-pvm-motion-source",
+      expectedMotionSource,
+    );
   }
   for (const key of expectedInputKeys) {
     await page.keyboard.press(key);

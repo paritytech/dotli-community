@@ -1027,10 +1027,15 @@ function installInput(
       void constructor
         .requestPermission()
         .then((permission) => {
-          sendMotionStatus(permission === "granted" ? 1 : 2);
+          sendMotionStatus(
+            permission === "granted" || typeof PointerEvent !== "undefined"
+              ? 1
+              : 2,
+          );
         })
         .catch(() => {
-          sendMotionStatus(2);
+          motionPermissionRequested = false;
+          sendMotionStatus(typeof PointerEvent !== "undefined" ? 1 : 2);
         });
     } else {
       sendMotionStatus(1);
@@ -1278,6 +1283,7 @@ function installInput(
     if (
       graphicsProfile !== "tri2d" &&
       event.button === 0 &&
+      typeof canvas.requestPointerLock === "function" &&
       document.pointerLockElement !== canvas
     ) {
       void canvas.requestPointerLock().catch(() => undefined);
