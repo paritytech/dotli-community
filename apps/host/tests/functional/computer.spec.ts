@@ -183,7 +183,7 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
   await routeCar(page, kilo);
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
   await answerResolutions(page, {
-    kilo: { cid: kilo.cid, manifest: kilo.manifest },
+    pvmkiloapp: { cid: kilo.cid, manifest: kilo.manifest },
   });
   const product = await mountComputer(page, computer, true);
   const screen = product.locator("#dotli-computer-screen");
@@ -208,7 +208,7 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
   // kilo is NOT in the computer's manifest: the spawn suspends, the page
   // resolves the label through the host bridge, fetches and verifies the
   // kilo app archive, and the editor runs as a sandboxed child VM.
-  await page.keyboard.type("kilo notes.txt");
+  await page.keyboard.type("pvmkiloapp notes.txt");
   await page.keyboard.press("Enter");
   await expect.poll(async () => screenText(product)).toContain("HELP: Ctrl-S");
   await page.keyboard.type("computer on the web");
