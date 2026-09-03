@@ -224,7 +224,7 @@ export function resolvedParentOrigin(
   ancestorOrigin: string | null,
   referrer: string,
 ): string | null {
-  const candidate = ancestorOrigin || referrer;
+  const candidate = ancestorOrigin ?? referrer;
   if (candidate === "") {
     return null;
   }
@@ -1705,8 +1705,11 @@ export async function runPvmApplication(
       (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
+  const ancestorOrigins = Reflect.get(location, "ancestorOrigins") as
+    | DOMStringList
+    | undefined;
   const parentOrigin = resolvedParentOrigin(
-    location.ancestorOrigins?.item(0) ?? null,
+    ancestorOrigins?.item(0) ?? null,
     document.referrer,
   );
   const onParentMotion = (event: MessageEvent<unknown>): void => {
