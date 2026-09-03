@@ -26,9 +26,8 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "pvm-host-runtime-f49d662c";
+const RUNTIME_SOURCE = "pvm-host-runtime-17ef1510";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
-
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();

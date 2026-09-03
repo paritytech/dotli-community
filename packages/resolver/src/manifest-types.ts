@@ -89,7 +89,32 @@ export interface PolkaVmAppManifestV2 {
   };
 }
 
-export type AppManifestV2 = WebAppManifestV2 | PolkaVmAppManifestV2;
+export interface PolkaVmComputerPackage {
+  name: string;
+  path: string;
+}
+
+export interface PolkaVmComputerManifestV2 {
+  $v: 2;
+  kind: "app";
+  appVersion: AppVersion;
+  runtime: {
+    kind: "polkavm-computer";
+    abiVersion: 1;
+    entrypoint: string;
+  };
+  capabilities: {
+    terminal: {
+      abiVersion: 1;
+    };
+    packages?: readonly PolkaVmComputerPackage[];
+  };
+}
+
+export type AppManifestV2 =
+  | WebAppManifestV2
+  | PolkaVmAppManifestV2
+  | PolkaVmComputerManifestV2;
 export type AppManifest = AppManifestV1 | AppManifestV2;
 
 export interface WidgetDimensions {
@@ -166,6 +191,8 @@ function relativeEntrypoint(value: unknown, suffix: string): boolean {
   );
 }
 
+const COMPUTER_PACKAGE_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
 function requiredFeatures(value: unknown, allowed: readonly string[]): boolean {
   return (
     Array.isArray(value) &&
@@ -191,8 +218,18 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     }
     return errors;
   }
+  if (runtime.kind === "polkavm-computer") {
+    if (runtime.abiVersion !== 1) {
+      errors.push(`${p}PolkaVM computer runtime abiVersion must be 1`);
+    }
+    if (!relativeEntrypoint(runtime.entrypoint, ".polkavm")) {
+      errors.push(`${p}PolkaVM entrypoint must be a relative .polkavm path`);
+    }
+    errors.push(...validateComputerCapabilities(input, runtime, p));
+    return errors;
+  }
   if (runtime.kind !== "polkavm") {
-    return [`${p}runtime.kind must be web or polkavm`];
+    return [`${p}runtime.kind must be web, polkavm, or polkavm-computer`];
   }
   if (runtime.abiVersion !== 1) {
     errors.push(`${p}PolkaVM runtime abiVersion must be 1`);
@@ -264,6 +301,67 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
       !requiredFeatures(audio.requiredFeatures, [])
     ) {
       errors.push(`${p}audio capability is unsupported`);
+    }
+  }
+  return errors;
+}
+
+function validateComputerCapabilities(
+  input: Record<string, unknown>,
+  runtime: Record<string, unknown>,
+  p: string,
+): string[] {
+  const errors: string[] = [];
+  const capabilities = isPlainObject(input.capabilities)
+    ? input.capabilities
+    : null;
+  const terminal =
+    capabilities !== null && isPlainObject(capabilities.terminal)
+      ? capabilities.terminal
+      : null;
+  if (terminal?.abiVersion !== 1) {
+    errors.push(
+      `${p}computer capabilities.terminal must declare ABI version 1`,
+    );
+  }
+  for (const key of ["graphics", "deviceInput", "audio"]) {
+    if (capabilities?.[key] !== undefined) {
+      errors.push(`${p}computer runtime must not declare ${key} capability`);
+    }
+  }
+  if (capabilities?.packages === undefined) {
+    return errors;
+  }
+  if (!Array.isArray(capabilities.packages)) {
+    errors.push(`${p}computer capabilities.packages must be an array`);
+    return errors;
+  }
+  const names = new Set<string>();
+  for (const pkg of capabilities.packages) {
+    const entry = isPlainObject(pkg) ? pkg : null;
+    if (entry === null) {
+      errors.push(`${p}computer package must be an object`);
+      continue;
+    }
+    if (
+      typeof entry.name !== "string" ||
+      !COMPUTER_PACKAGE_NAME.test(entry.name)
+    ) {
+      errors.push(`${p}computer package name is invalid`);
+    } else if (names.has(entry.name)) {
+      errors.push(
+        `${p}computer package name ${JSON.stringify(entry.name)} is duplicated`,
+      );
+    } else {
+      names.add(entry.name);
+    }
+    if (
+      !relativeEntrypoint(entry.path, ".polkavm") ||
+      entry.path === runtime.entrypoint
+    ) {
+      errors.push(
+        `${p}computer package path must be a relative .polkavm path distinct from the entrypoint`,
+      );
     }
   }
   return errors;

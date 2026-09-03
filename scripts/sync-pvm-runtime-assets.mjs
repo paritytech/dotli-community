@@ -14,10 +14,10 @@ const lock = JSON.parse(
   await readFile(resolve(root, "scripts/pvm-runtime.lock.json"), "utf8"),
 );
 const temporary = await mkdtemp(resolve(tmpdir(), "dotli-pvm-assets-"));
-let checkout = process.env.PVM_BRIDGE_ROOT;
+let checkout = process.env.PVM_RUNTIME_ROOT;
 try {
   if (!checkout) {
-    checkout = resolve(temporary, "host-rust-core");
+    checkout = resolve(temporary, "pvm-host-runtime");
     execFileSync("git", ["init", "-q", checkout]);
     execFileSync("git", [
       "-C",
@@ -25,8 +25,8 @@ try {
       "fetch",
       "-q",
       "--depth=1",
-      lock.bridgeRepository,
-      lock.bridgeRevision,
+      lock.runtimeRepository,
+      lock.runtimeRevision,
     ]);
     execFileSync("git", [
       "-C",
@@ -40,9 +40,9 @@ try {
   const head = execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
-  if (head !== lock.bridgeRevision) {
+  if (head !== lock.runtimeRevision) {
     throw new Error(
-      `bridge checkout ${head} does not match ${lock.bridgeRevision}`,
+      `runtime checkout ${head} does not match ${lock.runtimeRevision}`,
     );
   }
 
@@ -55,9 +55,7 @@ try {
       "--manifest-path",
       resolve(checkout, "Cargo.toml"),
       "-p",
-      "truapi-pvm-host",
-      "--features",
-      "browser-assets",
+      "pvm-assets-export",
       "--bin",
       "pvm-assets-export",
       "--",
@@ -72,16 +70,16 @@ try {
     ["pvm-browser-runtime.wasm", "pvm-browser-runtime.wasm"],
     ["pvm-worker.js", "pvm-wasm-worker.js"],
     ["pvm-gpu-worker.js", "pvm-gpu-worker.js"],
+    ["pvm-computer.js", "pvm-computer.js"],
   ]);
   const destination = resolve(root, "apps/sandbox/public/pvm-runtime");
   const source = `PolkaVM App v2 browser runtime
-Bridge repository: ${lock.bridgeRepository}
-Bridge commit: ${lock.bridgeRevision}
 Runtime repository: ${lock.runtimeRepository}
 Runtime commit: ${lock.runtimeRevision}
 Release: ${lock.releaseTag}
+Provenance: ${lock.provenance}
 
-Bridge-owned artifacts:
+Runtime-exported artifacts:
 ${[...mappings.values()].map((path) => `- ${path}`).join("\n")}
 `;
 
@@ -109,7 +107,7 @@ ${[...mappings.values()].map((path) => `- ${path}`).join("\n")}
     await writeFile(sourcePath, source);
   }
   console.log(
-    `${checkOnly ? "Verified" : "Synchronized"} bridge-owned PVM assets from ${lock.bridgeRevision}`,
+    `${checkOnly ? "Verified" : "Synchronized"} runtime-exported PVM assets from ${lock.runtimeRevision}`,
   );
 } finally {
   await rm(temporary, { recursive: true, force: true });

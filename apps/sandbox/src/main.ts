@@ -55,6 +55,7 @@ import {
   pvmWebFallbackEntrypoint,
   unsupportedPvmImport,
 } from "./pvm-runtime";
+import { isComputerPackage, runComputerApplication } from "./pvm-computer";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -446,6 +447,15 @@ async function runPvmIfPresent(
   cid: string,
   executableManifest: string | null,
 ): Promise<false | null | string> {
+  // The experimental computer contract is checked first: its manifests use
+  // runtime.kind "polkavm-computer", which the cartridge parser rejects.
+  if (isComputerPackage(files)) {
+    showStatus("Starting PolkaVM computer...");
+    await runComputerApplication(files, cid, executableManifest);
+    notifyLoadingDone();
+    performance.mark("dotli:app:end");
+    return null;
+  }
   if (!isPvmPackage(files)) {
     return false;
   }

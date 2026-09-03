@@ -1,0 +1,14 @@
+{
+  "$v": 2,
+  "kind": "app",
+  "appVersion": [0, 1, 0],
+  "runtime": {
+    "kind": "polkavm-computer",
+    "abiVersion": 1,
+    "entrypoint": "shell.polkavm"
+  },
+  "capabilities": {
+    "terminal": { "abiVersion": 1 },
+    "packages": [{ "name": "kilo", "path": "kilo.polkavm" }]
+  }
+}
