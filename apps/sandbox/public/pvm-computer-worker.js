@@ -17,7 +17,7 @@
 //     { type: "log", message }             guest host_log diagnostics
 //     { type: "error", message }           supervisor fault; computer is dead
 
-importScripts("/pvm-runtime/pvm-computer.js");
+importScripts(new URL("/pvm-runtime/pvm-computer.js", self.location.href).href);
 
 const { ComputerSupervisor, ComputerTranslator, computerContext } =
   globalThis.PvmComputer;
