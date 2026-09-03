@@ -317,6 +317,7 @@ function offerTopLevelMotionPermission(
     return;
   }
   motionPromptSource = source;
+  let permissionPending = false;
   showNotification({
     label: withActiveTld(label),
     text: "Enable motion to tilt this application with your device.",
@@ -325,18 +326,33 @@ function offerTopLevelMotionPermission(
     action: {
       label: "Enable motion",
       onClick: () => {
+        if (motionRelayCleanup !== null) {
+          sendMotionStatus(source, origin, 1);
+          return;
+        }
+        if (permissionPending) {
+          return;
+        }
+        permissionPending = true;
         const constructor =
           typeof DeviceMotionEvent === "undefined"
             ? null
             : (DeviceMotionEvent as typeof DeviceMotionEvent & {
                 requestPermission?: () => Promise<"granted" | "denied">;
               });
-        const request =
-          constructor === null
-            ? Promise.resolve<"unavailable">("unavailable")
-            : typeof constructor.requestPermission === "function"
-              ? constructor.requestPermission()
-              : Promise.resolve<"granted">("granted");
+        let request: Promise<"granted" | "denied" | "unavailable">;
+        try {
+          request =
+            constructor === null
+              ? Promise.resolve("unavailable")
+              : typeof constructor.requestPermission === "function"
+                ? constructor.requestPermission()
+                : Promise.resolve("granted");
+        } catch {
+          permissionPending = false;
+          sendMotionStatus(source, origin, 2);
+          return;
+        }
         void request
           .then((permission) => {
             if (
@@ -354,12 +370,28 @@ function offerTopLevelMotionPermission(
               return;
             }
             const onMotion = (event: DeviceMotionEvent): void => {
+              const acceleration = event.accelerationIncludingGravity;
+              const rotation = event.rotationRate;
               source.postMessage(
                 {
                   type: "dotli:pvm-motion-sample",
                   timestampMs: performance.now(),
-                  acceleration: event.accelerationIncludingGravity,
-                  rotation: event.rotationRate,
+                  acceleration:
+                    acceleration === null
+                      ? null
+                      : {
+                          x: acceleration.x,
+                          y: acceleration.y,
+                          z: acceleration.z,
+                        },
+                  rotation:
+                    rotation === null
+                      ? null
+                      : {
+                          alpha: rotation.alpha,
+                          beta: rotation.beta,
+                          gamma: rotation.gamma,
+                        },
                 },
                 origin,
               );
@@ -372,8 +404,10 @@ function offerTopLevelMotionPermission(
             sendMotionStatus(source, origin, 1);
           })
           .catch(() => {
-            motionPromptSource = null;
             sendMotionStatus(source, origin, 2);
+          })
+          .finally(() => {
+            permissionPending = false;
           });
       },
     },
