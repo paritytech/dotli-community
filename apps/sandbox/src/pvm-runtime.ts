@@ -220,6 +220,21 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export function resolvedParentOrigin(
+  ancestorOrigin: string | null,
+  referrer: string,
+): string | null {
+  const candidate = ancestorOrigin || referrer;
+  if (candidate === "") {
+    return null;
+  }
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return null;
+  }
+}
+
 function cleanPath(value: unknown): string | null {
   if (typeof value !== "string" || value === "" || value.includes("\\")) {
     return null;
@@ -1690,9 +1705,10 @@ export async function runPvmApplication(
       (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
-  const parentOrigin = document.referrer
-    ? new URL(document.referrer).origin
-    : null;
+  const parentOrigin = resolvedParentOrigin(
+    location.ancestorOrigins?.item(0) ?? null,
+    document.referrer,
+  );
   const onParentMotion = (event: MessageEvent<unknown>): void => {
     if (
       parentOrigin === null ||
