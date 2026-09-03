@@ -322,6 +322,68 @@ function setShieldState(state: "validating" | "verified"): void {
   armTopbarAutoHide();
 }
 
+let computerResolutionListenerInstalled = false;
+
+/**
+ * Answers open-spawn resolutions from a computer sandbox: the guest may
+ * name any published app; the sandbox cannot resolve DotNS itself, so it
+ * asks the host for the label's executable record and contenthash. The
+ * sandbox verifies the fetched archive against the returned record, so a
+ * wrong answer here fails verification rather than running unintended
+ * code. Consent policy (prompting before fetching) belongs here later.
+ */
+function listenForComputerResolutions(chainBackend: Backend): void {
+  if (computerResolutionListenerInstalled) {
+    return;
+  }
+  computerResolutionListenerInstalled = true;
+  window.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as {
+      type?: unknown;
+      label?: unknown;
+      nonce?: unknown;
+    } | null;
+    if (data?.type !== "dotli:computer-resolve-app") {
+      return;
+    }
+    const source = event.source;
+    if (
+      source === null ||
+      typeof data.label !== "string" ||
+      !/^[a-z0-9-]{1,63}$/.test(data.label) ||
+      typeof data.nonce !== "string" ||
+      !new URL(event.origin).hostname.includes(".app.")
+    ) {
+      return;
+    }
+    const { label, nonce } = data;
+    const reply = (message: Record<string, unknown>): void => {
+      (source as Window).postMessage(message, event.origin);
+    };
+    void (async () => {
+      try {
+        const [manifestResult, cid] = await Promise.all([
+          loadAppExecutableManifest(label, chainBackend),
+          resolveAppContenthash(label, chainBackend),
+        ]);
+        const executableManifest = executableManifestText(manifestResult);
+        if (cid === null || executableManifest === null) {
+          throw new Error(
+            `no computer app is published at ${withActiveTld(label)}`,
+          );
+        }
+        reply({ type: "dotli:computer-app", nonce, cid, executableManifest });
+      } catch (error: unknown) {
+        reply({
+          type: "dotli:computer-app-error",
+          nonce,
+          message: serializeError(error),
+        });
+      }
+    })();
+  });
+}
+
 async function resolveAppExecutableManifest(
   label: string,
   chainBackend: Backend,
@@ -1281,6 +1343,7 @@ async function main(): Promise<void> {
           );
           await m.span(S.E2E_FAST, async () => {
             setShieldState(shieldState);
+            listenForComputerResolutions(chainBackend);
             const { renderAppSubdomain } = await renderChunkPromise;
             advancePhase(contentFetchPhase);
             await renderAppSubdomain(
@@ -1457,6 +1520,7 @@ async function main(): Promise<void> {
     }
 
     setShieldState(shieldState);
+    listenForComputerResolutions(chainBackend);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(
