@@ -1676,6 +1676,85 @@ export async function runPvmApplication(
   }
 
   let usesMotion = false;
+  let relayedMotionSequence = 0;
+  const sendMotion = (bytes: Uint8Array): void => {
+    const flags = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).getUint16(6, true);
+    canvas.dataset.pvmMotionSamples = String(
+      Number(canvas.dataset.pvmMotionSamples ?? 0) + 1,
+    );
+    canvas.dataset.pvmMotionSource =
+      (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
+    worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
+  };
+  const parentOrigin = document.referrer
+    ? new URL(document.referrer).origin
+    : null;
+  const onParentMotion = (event: MessageEvent<unknown>): void => {
+    if (
+      parentOrigin === null ||
+      event.source !== window.parent ||
+      event.origin !== parentOrigin
+    ) {
+      return;
+    }
+    const message = object(event.data);
+    if (
+      message?.type === "dotli:pvm-motion-status" &&
+      Number.isInteger(message.availability) &&
+      Number(message.availability) >= 0 &&
+      Number(message.availability) <= 2
+    ) {
+      worker.postMessage({
+        type: "motion-status",
+        availability: Number(message.availability),
+      });
+      return;
+    }
+    if (message?.type !== "dotli:pvm-motion-sample") {
+      return;
+    }
+    const acceleration = object(message.acceleration);
+    const rotation = object(message.rotation);
+    const accelerationX = acceleration?.x;
+    const accelerationY = acceleration?.y;
+    const accelerationZ = acceleration?.z;
+    const rotationAlpha = rotation?.alpha;
+    const rotationBeta = rotation?.beta;
+    const rotationGamma = rotation?.gamma;
+    const finite = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value);
+    const hasAcceleration =
+      finite(accelerationX) && finite(accelerationY) && finite(accelerationZ);
+    const hasRotation =
+      finite(rotationAlpha) && finite(rotationBeta) && finite(rotationGamma);
+    if (!hasAcceleration && !hasRotation) {
+      return;
+    }
+    relayedMotionSequence =
+      relayedMotionSequence === 0xffffffff ? 1 : relayedMotionSequence + 1;
+    sendMotion(
+      encodedMotionSample({
+        flags:
+          (hasAcceleration ? MOTION_FLAG_ACCELERATION : 0) |
+          (hasRotation ? MOTION_FLAG_ROTATION : 0),
+        sequence: relayedMotionSequence,
+        timestampMs: finite(message.timestampMs)
+          ? message.timestampMs
+          : performance.now(),
+        accelerationX: finite(accelerationX) ? accelerationX : 0,
+        accelerationY: finite(accelerationY) ? accelerationY : 0,
+        accelerationZ: finite(accelerationZ) ? accelerationZ : 0,
+        rotationAlpha: finite(rotationAlpha) ? rotationAlpha : 0,
+        rotationBeta: finite(rotationBeta) ? rotationBeta : 0,
+        rotationGamma: finite(rotationGamma) ? rotationGamma : 0,
+      }),
+    );
+  };
+  window.addEventListener("message", onParentMotion);
   const { cleanup: cleanupInput, sendSurfaceMetrics } = installInput(
     canvas,
     descriptor.graphicsProfile,
@@ -1683,19 +1762,7 @@ export async function runPvmApplication(
     (bytes) => {
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
     },
-    (bytes) => {
-      const flags = new DataView(
-        bytes.buffer,
-        bytes.byteOffset,
-        bytes.byteLength,
-      ).getUint16(6, true);
-      canvas.dataset.pvmMotionSamples = String(
-        Number(canvas.dataset.pvmMotionSamples ?? 0) + 1,
-      );
-      canvas.dataset.pvmMotionSource =
-        (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
-      worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
-    },
+    sendMotion,
     (availability) => {
       worker.postMessage({ type: "motion-status", availability });
     },
@@ -1704,6 +1771,7 @@ export async function runPvmApplication(
   );
   const stop = (): void => {
     cleanupInput();
+    window.removeEventListener("message", onParentMotion);
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
     webGpu?.dispose();
@@ -1773,6 +1841,12 @@ export async function runPvmApplication(
         canvas.dataset.pvmReady = "true";
         updateMetrics();
         usesMotion = ready.usesMotion === true;
+        if (usesMotion && parentOrigin !== null) {
+          window.parent.postMessage(
+            { type: "dotli:pvm-motion-request" },
+            parentOrigin,
+          );
+        }
         sendSurfaceMetrics();
         truapiReady = true;
         for (const response of pendingTruapiResponses.splice(0)) {

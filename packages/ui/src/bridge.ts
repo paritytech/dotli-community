@@ -287,6 +287,104 @@ window.addEventListener("dotli:device-permission-changed", () => {
   }
 });
 
+let motionRelayCleanup: (() => void) | null = null;
+let motionPromptSource: Window | null = null;
+
+function stopMotionRelay(): void {
+  motionRelayCleanup?.();
+  motionRelayCleanup = null;
+  motionPromptSource = null;
+}
+
+function sendMotionStatus(
+  source: Window,
+  origin: string,
+  availability: 0 | 1 | 2,
+): void {
+  source.postMessage({ type: "dotli:pvm-motion-status", availability }, origin);
+}
+
+function offerTopLevelMotionPermission(
+  source: Window,
+  origin: string,
+  label: string,
+): void {
+  if (motionRelayCleanup !== null) {
+    sendMotionStatus(source, origin, 1);
+    return;
+  }
+  if (motionPromptSource === source) {
+    return;
+  }
+  motionPromptSource = source;
+  showNotification({
+    label: withActiveTld(label),
+    text: "Enable motion to tilt this application with your device.",
+    dismissMs: 0,
+    browserNotification: false,
+    action: {
+      label: "Enable motion",
+      onClick: () => {
+        const constructor =
+          typeof DeviceMotionEvent === "undefined"
+            ? null
+            : (DeviceMotionEvent as typeof DeviceMotionEvent & {
+                requestPermission?: () => Promise<"granted" | "denied">;
+              });
+        const request =
+          constructor === null
+            ? Promise.resolve<"unavailable">("unavailable")
+            : typeof constructor.requestPermission === "function"
+              ? constructor.requestPermission()
+              : Promise.resolve<"granted">("granted");
+        void request
+          .then((permission) => {
+            if (
+              currentHost?.iframe.contentWindow !== source ||
+              currentProduct?.mode !== "subdomain"
+            ) {
+              return;
+            }
+            if (permission === "unavailable") {
+              sendMotionStatus(source, origin, 0);
+              return;
+            }
+            if (permission !== "granted") {
+              sendMotionStatus(source, origin, 2);
+              return;
+            }
+            const onMotion = (event: DeviceMotionEvent): void => {
+              source.postMessage(
+                {
+                  type: "dotli:pvm-motion-sample",
+                  timestampMs: performance.now(),
+                  acceleration: event.accelerationIncludingGravity,
+                  rotation: event.rotationRate,
+                },
+                origin,
+              );
+            };
+            window.addEventListener("devicemotion", onMotion);
+            motionRelayCleanup = () => {
+              window.removeEventListener("devicemotion", onMotion);
+            };
+            motionPromptSource = null;
+            sendMotionStatus(source, origin, 1);
+          })
+          .catch(() => {
+            motionPromptSource = null;
+            sendMotionStatus(source, origin, 2);
+          });
+      },
+    },
+    onDismiss: () => {
+      if (motionPromptSource === source) {
+        motionPromptSource = null;
+      }
+    },
+  });
+}
+
 // A sandbox reload asks the host to rebuild the iframe from tracked product
 // state. A schema mismatch is different: re-rendering would resend the same
 // stale contract, so forward a host-update event to the PWA coordinator.
@@ -300,7 +398,8 @@ window.addEventListener("message", (event: MessageEvent) => {
   const type = data?.type;
   if (
     type !== "dotli:sandbox-recover" &&
-    type !== "dotli:host-update-required"
+    type !== "dotli:host-update-required" &&
+    type !== "dotli:pvm-motion-request"
   ) {
     return;
   }
@@ -309,6 +408,13 @@ window.addEventListener("message", (event: MessageEvent) => {
     product?.mode !== "subdomain" ||
     event.origin !== getAppOrigin(product.label)
   ) {
+    return;
+  }
+  if (type === "dotli:pvm-motion-request") {
+    const source = currentHost?.iframe.contentWindow;
+    if (source !== null && source !== undefined && event.source === source) {
+      offerTopLevelMotionPermission(source, event.origin, product.label);
+    }
     return;
   }
   if (type === "dotli:host-update-required") {
@@ -1310,6 +1416,7 @@ function activateHost(
   previousHost: ActiveHost | null,
   retainedChildren: readonly HTMLElement[] = [],
 ): void {
+  stopMotionRelay();
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;

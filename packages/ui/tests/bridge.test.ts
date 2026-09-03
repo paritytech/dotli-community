@@ -417,6 +417,61 @@ describe("bridge render lifecycle", () => {
     expect(directives).toContain("gyroscope");
   });
 
+  it("requests motion at top level and relays physical samples to the PolkaVM frame", async () => {
+    class TestDeviceMotionEvent extends Event {
+      static requestPermission = vi.fn(async () => "granted" as const);
+      readonly accelerationIncludingGravity = { x: 1, y: 2, z: 9 };
+      readonly rotationRate = { alpha: 3, beta: 4, gamma: 5 };
+    }
+    vi.stubGlobal("DeviceMotionEvent", TestDeviceMotionEvent);
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain(
+      "motion-relay-cid",
+      "motion-relay",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const created = mocks.iframeHosts[0];
+    const targetWindow = created.iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
+    const postMessage = vi
+      .spyOn(targetWindow!, "postMessage")
+      .mockImplementation(() => {});
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:pvm-motion-request" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    const enable = document.querySelector<HTMLButtonElement>(".notif-action");
+    expect(enable?.textContent).toBe("Enable motion");
+    enable?.click();
+    await vi.waitFor(() => {
+      expect(TestDeviceMotionEvent.requestPermission).toHaveBeenCalledOnce();
+      expect(postMessage).toHaveBeenCalledWith(
+        { type: "dotli:pvm-motion-status", availability: 1 },
+        created.allowedOrigin,
+      );
+    });
+
+    window.dispatchEvent(new TestDeviceMotionEvent("devicemotion"));
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        type: "dotli:pvm-motion-sample",
+        timestampMs: expect.any(Number),
+        acceleration: { x: 1, y: 2, z: 9 },
+        rotation: { alpha: 3, beta: 4, gamma: 5 },
+      },
+      created.allowedOrigin,
+    );
+  });
+
   it("reconnects the TrUAPI MessagePort after a product iframe reload", async () => {
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const addEventListener = vi.spyOn(window, "addEventListener");
