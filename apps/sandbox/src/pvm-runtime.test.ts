@@ -13,11 +13,13 @@ import {
   isPvmPackage,
   normalizedPointerDelta,
   postFirstUiPlatformCommand,
+  pvmWebFallbackEntrypoint,
   unsupportedPvmImport,
   validateFiles,
   resolvedParentOrigin,
   shouldReloadAfterWake,
   validatedUiPlatformOutput,
+  webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
   type TruapiPortScope,
   type TruapiPortTarget,
@@ -370,6 +372,7 @@ describe("PolkaVM package recognition", () => {
     expect(describePvmPackage(files)).toEqual({
       graphicsProfile: "framebuffer",
       webGpuRequirements: null,
+      webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["WASD Move", "Space Fire"],
       inputFeatures: ["pointer", "keyboard", "motion"],
@@ -390,6 +393,7 @@ describe("PolkaVM package recognition", () => {
     expect(describePvmPackage(files, manifest)).toEqual({
       graphicsProfile: "framebuffer",
       webGpuRequirements: null,
+      webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
       inputFeatures: ["pointer", "keyboard"],
@@ -476,6 +480,7 @@ describe("PolkaVM package recognition", () => {
     expect(describePvmPackage(files, manifest)).toEqual({
       graphicsProfile: "tri2d",
       webGpuRequirements: null,
+      webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
       inputFeatures: ["pointer", "keyboard"],
@@ -501,6 +506,7 @@ describe("PolkaVM package recognition", () => {
           maxBindingsPerBindGroup: 3,
         },
       },
+      webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
       inputFeatures: ["pointer", "keyboard"],
@@ -540,6 +546,112 @@ describe("PolkaVM package recognition", () => {
     }).toThrow(/oversized program/);
   });
 
+  it("selects a declared web fallback when WebGPU is unavailable", async () => {
+    const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
+      runtime: {
+        fallback?: { kind: "web"; entrypoint: string };
+      };
+    };
+    value.runtime.fallback = {
+      kind: "web",
+      entrypoint: "fallback/index.html",
+    };
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+      "fallback/index.html": encoder.encode("<canvas></canvas>"),
+    };
+    vi.stubGlobal("navigator", {
+      gpu: { requestAdapter: vi.fn(() => Promise.resolve(null)) },
+    });
+    try {
+      expect(describePvmPackage(files, manifest)?.webFallbackPath).toBe(
+        "fallback/index.html",
+      );
+      await expect(pvmWebFallbackEntrypoint(files, manifest)).resolves.toBe(
+        "fallback/index.html",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps the primary runtime when the adapter meets its limits", () => {
+    const adapter = {
+      features: { has: () => false },
+      limits: {
+        maxTextureDimension2D: 4096,
+        maxBufferSize: 1024,
+      },
+    } as unknown as GPUAdapter;
+    expect(
+      webGpuAdapterMeetsRequirements(adapter, {
+        requiredFeatures: [],
+        requiredLimits: {
+          maxTextureDimension2D: 4096,
+          maxBufferSize: 1024,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps the PolkaVM program when the adapter satisfies the declared limits", async () => {
+    const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
+      runtime: { fallback?: { kind: "web"; entrypoint: string } };
+    };
+    value.runtime.fallback = { kind: "web", entrypoint: "fallback/index.html" };
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+      "fallback/index.html": encoder.encode("<canvas></canvas>"),
+    };
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(() =>
+          Promise.resolve({
+            features: new Set<string>(),
+            limits: {
+              maxTextureDimension2D: 8192,
+              maxBufferSize: 268_435_456,
+              maxBindingsPerBindGroup: 640,
+            },
+          }),
+        ),
+      },
+    });
+    try {
+      await expect(
+        pvmWebFallbackEntrypoint(files, manifest),
+      ).resolves.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("refuses a package whose declared web fallback is absent", async () => {
+    const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
+      runtime: { fallback?: { kind: "web"; entrypoint: string } };
+    };
+    value.runtime.fallback = { kind: "web", entrypoint: "fallback/index.html" };
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    vi.stubGlobal("navigator", {
+      gpu: { requestAdapter: vi.fn(() => Promise.resolve(null)) },
+    });
+    try {
+      await expect(pvmWebFallbackEntrypoint(files, manifest)).rejects.toThrow(
+        /web fallback entrypoint is missing/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("recognizes strict App manifest v2 WebGPU compute limits", () => {
     const manifest = webGpuComputeAppV2Manifest();
     const files = {
@@ -561,6 +673,7 @@ describe("PolkaVM package recognition", () => {
           maxComputeWorkgroupsPerDimension: 1_024,
         },
       },
+      webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
       inputFeatures: ["pointer", "keyboard"],

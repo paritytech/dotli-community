@@ -18,24 +18,16 @@ interface TestCar {
   bytes: Uint8Array;
 }
 
-async function pvmCar(): Promise<TestCar> {
-  const fixture = join(import.meta.dirname, "fixtures/pvm");
+async function archiveCar(
+  sourceFiles: readonly (readonly [string, Uint8Array])[],
+): Promise<TestCar> {
   const files = await Promise.all(
-    [
-      ["manifest.json", join(fixture, "manifest.json")],
-      ["app.polkavm", join(fixture, "framebuffer-test.polkavm")],
-    ].map(async ([name, path]) => {
-      const bytes = new Uint8Array(await readFile(path));
-      const cid = CID.createV1(raw.code, await sha256.digest(bytes));
-      return { name, bytes, cid };
-    }),
+    sourceFiles.map(async ([name, bytes]) => ({
+      name,
+      bytes,
+      cid: CID.createV1(raw.code, await sha256.digest(bytes)),
+    })),
   );
-  const runtimeOverride = new TextEncoder().encode("package-owned runtime");
-  files.push({
-    name: "pvm-runtime/pvm-browser-runtime.wasm",
-    bytes: runtimeOverride,
-    cid: CID.createV1(raw.code, await sha256.digest(runtimeOverride)),
-  });
   const links: PBLink[] = files
     .map(({ name, bytes, cid }) => ({
       Name: name,
@@ -66,6 +58,65 @@ async function pvmCar(): Promise<TestCar> {
     offset += chunk.length;
   }
   return { cid: root.toString(), bytes: car };
+}
+
+async function pvmCar(): Promise<TestCar> {
+  const fixture = join(import.meta.dirname, "fixtures/pvm");
+  const manifest = new Uint8Array(
+    await readFile(join(fixture, "manifest.json")),
+  );
+  const program = new Uint8Array(
+    await readFile(join(fixture, "framebuffer-test.polkavm")),
+  );
+  return archiveCar([
+    ["manifest.json", manifest],
+    ["app.polkavm", program],
+    [
+      "pvm-runtime/pvm-browser-runtime.wasm",
+      new TextEncoder().encode("package-owned runtime"),
+    ],
+  ]);
+}
+
+async function webGpuFallbackCar(): Promise<TestCar & { manifest: string }> {
+  const fixture = join(import.meta.dirname, "fixtures/pvm");
+  const manifest = JSON.stringify({
+    $v: 2,
+    kind: "app",
+    appVersion: [1, 0, 0],
+    runtime: {
+      kind: "polkavm",
+      abiVersion: 1,
+      entrypoint: "app.polkavm",
+      fallback: { kind: "web", entrypoint: "fallback/index.html" },
+    },
+    capabilities: {
+      graphics: {
+        abiVersion: 1,
+        profile: "webgpu-raster",
+        requiredFeatures: [],
+        requiredLimits: {
+          maxTextureDimension2D: 4096,
+          maxBufferSize: 1024,
+          maxBindingsPerBindGroup: 3,
+        },
+      },
+    },
+  });
+  const car = await archiveCar([
+    ["manifest.json", new TextEncoder().encode(manifest)],
+    [
+      "app.polkavm",
+      new Uint8Array(await readFile(join(fixture, "framebuffer-test.polkavm"))),
+    ],
+    [
+      "fallback/index.html",
+      new TextEncoder().encode(
+        '<main id="webgl-fallback">WebGL fallback selected</main>',
+      ),
+    ],
+  ]);
+  return { ...car, manifest };
 }
 
 async function installTruapiPortResponder(page: Page): Promise<void> {
@@ -177,6 +228,56 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     timeout: 30_000,
   });
   await expect(canvas).toHaveAttribute("data-pvm-translation-ms", "0");
+});
+
+test("a WebGPU PolkaVM package selects its web fallback without an adapter", async ({
+  page,
+}) => {
+  const fixture = await webGpuFallbackCar();
+  await page.addInitScript(() => {
+    if (window.location.hostname === "pvm-fallback.app.localhost") {
+      Object.defineProperty(navigator, "gpu", {
+        configurable: true,
+        value: { requestAdapter: () => Promise.resolve(null) },
+      });
+    }
+  });
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+  await page.goto("http://localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  await installTruapiPortResponder(page);
+  await page.evaluate(
+    ({ cid, manifest, schemaVersion }) => {
+      const url = new URL("http://pvm-fallback.app.localhost:5173/");
+      url.searchParams.set("cid", cid);
+      url.searchParams.set("v", String(schemaVersion));
+      url.searchParams.set("chainBackend", "rpc-gateway");
+      url.searchParams.set("network", "paseo-next-v2");
+      url.searchParams.set("executableManifest", manifest);
+      const iframe = document.createElement("iframe");
+      iframe.id = "pvm-fallback-product";
+      iframe.src = url.toString();
+      document.body.replaceChildren(iframe);
+    },
+    {
+      cid: fixture.cid,
+      manifest: fixture.manifest,
+      schemaVersion: SANDBOX_SCHEMA_VERSION,
+    },
+  );
+
+  const product = page.frameLocator("#pvm-fallback-product");
+  await expect(product.locator("#webgl-fallback")).toHaveText(
+    "WebGL fallback selected",
+  );
+  await expect(product.locator("#dotli-pvm-canvas")).toHaveCount(0);
 });
 
 test("a PolkaVM package can bypass translation and use the interpreter", async ({

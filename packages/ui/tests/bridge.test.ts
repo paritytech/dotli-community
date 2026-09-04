@@ -398,9 +398,9 @@ describe("bridge render lifecycle", () => {
     expect(mocks.iframeHosts[0].allow).not.toContain("gyroscope");
   });
 
-  it("delegates motion sensors only to PolkaVM product frames", async () => {
+  it("delegates motion sensors to PolkaVM product frames with web fallbacks", async () => {
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,1,8],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
 
     const render = renderAppSubdomain(

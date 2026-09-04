@@ -104,6 +104,7 @@ interface PvmDescriptor {
   programPath: string;
   graphicsProfile: GraphicsProfile;
   webGpuRequirements: WebGpuRequirements | null;
+  webFallbackPath: string | null;
   controls: string[];
   inputFeatures: string[];
   audioEnabled: boolean;
@@ -463,9 +464,22 @@ function parseManifest(
   let inputFeatures: string[];
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
+  let webFallbackPath: string | null = null;
   if (manifest?.$v === 2 && manifest.kind === "app") {
     if (runtime.abiVersion !== 1) {
       throw new Error("PolkaVM App v2 runtime requires ABI version 1");
+    }
+    if (runtime.fallback !== undefined) {
+      const fallback = object(runtime.fallback);
+      webFallbackPath = cleanPath(fallback?.entrypoint);
+      if (
+        fallback?.kind !== "web" ||
+        webFallbackPath?.endsWith(".html") !== true
+      ) {
+        throw new Error(
+          "PolkaVM App v2 web fallback requires a relative HTML entrypoint",
+        );
+      }
     }
     const capabilities = object(manifest.capabilities);
     const graphics = object(capabilities?.graphics);
@@ -632,6 +646,7 @@ function parseManifest(
   return {
     graphicsProfile,
     webGpuRequirements,
+    webFallbackPath,
     programPath,
     controls,
     inputFeatures,
@@ -650,6 +665,58 @@ export function describePvmPackage(
   externalManifest: string | null = null,
 ): PvmDescriptor | null {
   return parseManifest(files, externalManifest);
+}
+
+export function webGpuAdapterMeetsRequirements(
+  adapter: GPUAdapter | null,
+  requirements: WebGpuRequirements,
+): boolean {
+  if (adapter === null) {
+    return false;
+  }
+  if (
+    requirements.requiredFeatures.some(
+      (feature) => !adapter.features.has(feature),
+    )
+  ) {
+    return false;
+  }
+  const limits = adapter.limits as unknown as Record<string, number>;
+  return Object.entries(requirements.requiredLimits).every(
+    ([name, required]) => (limits[name] ?? 0) >= required,
+  );
+}
+
+export async function pvmWebFallbackEntrypoint(
+  files: ArchiveFiles,
+  externalManifest: string | null,
+): Promise<string | null> {
+  const descriptor = parseManifest(files, externalManifest);
+  if (descriptor === null) {
+    return null;
+  }
+  const { graphicsProfile, webFallbackPath, webGpuRequirements } = descriptor;
+  if (
+    webFallbackPath === null ||
+    (graphicsProfile !== "webgpu-raster" && graphicsProfile !== "webgpu") ||
+    webGpuRequirements === null
+  ) {
+    return null;
+  }
+  const gpu = Reflect.get(navigator, "gpu") as GPU | undefined;
+  let adapter: GPUAdapter | null;
+  try {
+    adapter = gpu === undefined ? null : await gpu.requestAdapter();
+  } catch {
+    adapter = null;
+  }
+  if (webGpuAdapterMeetsRequirements(adapter, webGpuRequirements)) {
+    return null;
+  }
+  if (!Object.hasOwn(files, webFallbackPath)) {
+    throw new Error("PolkaVM web fallback entrypoint is missing");
+  }
+  return webFallbackPath;
 }
 
 export function validateFiles(

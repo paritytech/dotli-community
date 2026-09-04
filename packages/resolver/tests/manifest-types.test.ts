@@ -149,6 +149,15 @@ describe("validateExecutableManifest", () => {
         runtime: { kind: "web", entrypoint: "index.html" },
       }).ok,
     ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: {
+          ...VALID_APP_V2.runtime,
+          fallback: { kind: "web", entrypoint: "fallback/index.html" },
+        },
+      }).ok,
+    ).toBe(true);
   });
 
   it("rejects unsafe App v2 entrypoints and unknown required features", () => {
@@ -156,6 +165,15 @@ describe("validateExecutableManifest", () => {
       validateExecutableManifest({
         ...VALID_APP_V2,
         runtime: { ...VALID_APP_V2.runtime, entrypoint: "../app.polkavm" },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: {
+          ...VALID_APP_V2.runtime,
+          fallback: { kind: "web", entrypoint: "../fallback.html" },
+        },
       }).ok,
     ).toBe(false);
     expect(

@@ -57,6 +57,10 @@ export interface PolkaVmAppManifestV2 {
     kind: "polkavm";
     abiVersion: 1;
     entrypoint: string;
+    fallback?: {
+      kind: "web";
+      entrypoint: string;
+    };
   };
   capabilities: {
     graphics: {
@@ -195,6 +199,17 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
   }
   if (!relativeEntrypoint(runtime.entrypoint, ".polkavm")) {
     errors.push(`${p}PolkaVM entrypoint must be a relative .polkavm path`);
+  }
+  if (runtime.fallback !== undefined) {
+    const fallback = isPlainObject(runtime.fallback) ? runtime.fallback : null;
+    if (
+      fallback?.kind !== "web" ||
+      !relativeEntrypoint(fallback.entrypoint, ".html")
+    ) {
+      errors.push(
+        `${p}PolkaVM runtime fallback must be a relative web entrypoint`,
+      );
+    }
   }
   const capabilities = isPlainObject(input.capabilities)
     ? input.capabilities

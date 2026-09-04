@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc && bunx --bun vite build",
     "build:prod": "tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
-    "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/pvm.spec.ts",
+    "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/pvm.spec.ts tests/functional/chinpokomon.spec.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
     "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} SIGNING_HOST_NETWORK=${SIGNING_HOST_NETWORK:-paseo-next-v2} playwright test --config=tests/e2e/playwright.config.ts",
     "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",

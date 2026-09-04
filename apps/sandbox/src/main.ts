@@ -52,6 +52,7 @@ import { parseIpfsResponse } from "@dotli/content/archive";
 import {
   isPvmPackage,
   runPvmApplication,
+  pvmWebFallbackEntrypoint,
   unsupportedPvmImport,
 } from "./pvm-runtime";
 
@@ -444,9 +445,14 @@ async function runPvmIfPresent(
   files: ArchiveFiles,
   cid: string,
   executableManifest: string | null,
-): Promise<boolean> {
+): Promise<false | null | string> {
   if (!isPvmPackage(files)) {
     return false;
+  }
+  const fallback = await pvmWebFallbackEntrypoint(files, executableManifest);
+  if (fallback !== null) {
+    showStatus("Starting compatible web fallback...");
+    return fallback;
   }
   showStatus("Starting PolkaVM application...");
   // PVM apps are host-owned canvases, not package HTML. Retain their launch
@@ -454,7 +460,7 @@ async function runPvmIfPresent(
   await runPvmApplication(files, cid, executableManifest);
   notifyLoadingDone();
   performance.mark("dotli:app:end");
-  return true;
+  return null;
 }
 
 // Session-scoped decryption key cache: once a user decrypts a CID in this tab,
@@ -721,20 +727,25 @@ async function main(): Promise<void> {
   const cachedFiles = skipArchiveCache
     ? null
     : await getCachedArchive(cid, cid, chainBackend);
-  if (cachedFiles) {
+  if (cachedFiles !== null) {
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
-    if (await runPvmIfPresent(cachedFiles, cid, executableManifest)) {
+    const pvmRuntime = await runPvmIfPresent(
+      cachedFiles,
+      cid,
+      executableManifest,
+    );
+    if (pvmRuntime === null) {
       stopApp();
       return;
     }
 
-    // Extract index.html and write it directly into this window so it
-    // occupies the APP iframe. An archive without index.html is invalid,
-    // so surface it instead of silently falling through to a no-op render.
-    const indexHtml = cachedFiles["index.html"] as Uint8Array | undefined;
+    // Extract the selected HTML entrypoint and write it directly into this
+    // window. An archive without that entrypoint is invalid.
+    const htmlPath = typeof pvmRuntime === "string" ? pvmRuntime : "index.html";
+    const indexHtml = cachedFiles[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
-        "Archive cache hit missing index.html — cannot render a sandbox without a root document.",
+        "Archive is neither a supported PolkaVM product nor an HTML application.",
       );
     }
     // For multi-file archives, store files in the SW so it can serve
@@ -812,11 +823,17 @@ async function main(): Promise<void> {
     // as their immutable asset source on the next launch.
     await storeArchiveInSW(result.files, cid, cid, chainBackend);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
-    if (await runPvmIfPresent(result.files, cid, executableManifest)) {
+    const pvmRuntime = await runPvmIfPresent(
+      result.files,
+      cid,
+      executableManifest,
+    );
+    if (pvmRuntime === null) {
       stopApp();
       return;
     }
-    const indexHtml = result.files["index.html"] as Uint8Array | undefined;
+    const htmlPath = typeof pvmRuntime === "string" ? pvmRuntime : "index.html";
+    const indexHtml = result.files[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
         "Archive is neither a supported PolkaVM product nor an HTML application.",
