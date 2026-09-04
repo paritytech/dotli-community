@@ -463,6 +463,123 @@ window.addEventListener("message", (event: MessageEvent) => {
   rerenderProduct(product);
 });
 
+type PvmPlatformCommand =
+  | Readonly<{ type: "copy-text"; text: string }>
+  | Readonly<{ type: "open-url"; url: string; newSurface: boolean }>;
+
+const PVM_PLATFORM_ACTIVATION_MS = 1_000;
+const MAX_PVM_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_PVM_OPEN_URL_BYTES = 8 * 1024;
+const pvmPlatformEncoder = new TextEncoder();
+let pvmPlatformActivation: Readonly<{
+  source: MessageEventSource;
+  origin: string;
+  expiresAt: number;
+}> | null = null;
+
+function validatedPvmPlatformCommand(
+  value: unknown,
+): PvmPlatformCommand | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const command = value as Record<string, unknown>;
+  if (
+    command.type === "copy-text" &&
+    Object.keys(command).every((key) => key === "type" || key === "text") &&
+    typeof command.text === "string" &&
+    pvmPlatformEncoder.encode(command.text).byteLength <=
+      MAX_PVM_COPY_TEXT_BYTES
+  ) {
+    return { type: "copy-text", text: command.text };
+  }
+  if (
+    command.type === "open-url" &&
+    Object.keys(command).every((key) =>
+      ["type", "url", "newSurface"].includes(key),
+    ) &&
+    typeof command.url === "string" &&
+    command.url !== "" &&
+    pvmPlatformEncoder.encode(command.url).byteLength <=
+      MAX_PVM_OPEN_URL_BYTES &&
+    typeof command.newSurface === "boolean"
+  ) {
+    return {
+      type: "open-url",
+      url: command.url,
+      newSurface: command.newSurface,
+    };
+  }
+  return null;
+}
+
+window.addEventListener("message", (event: MessageEvent) => {
+  const data = event.data as { type?: unknown; command?: unknown } | null;
+  if (
+    data?.type !== "dotli:pvm-user-activation" &&
+    data?.type !== "dotli:pvm-ui-command"
+  ) {
+    return;
+  }
+  const product = currentProduct;
+  const source = currentHost?.iframe.contentWindow;
+  if (
+    product?.mode !== "subdomain" ||
+    event.origin !== getAppOrigin(product.label) ||
+    source === null ||
+    event.source !== source
+  ) {
+    return;
+  }
+  if (data.type === "dotli:pvm-user-activation") {
+    if (navigator.userActivation.isActive) {
+      pvmPlatformActivation = {
+        source,
+        origin: event.origin,
+        expiresAt: performance.now() + PVM_PLATFORM_ACTIVATION_MS,
+      };
+    }
+    return;
+  }
+  const activation = pvmPlatformActivation;
+  pvmPlatformActivation = null;
+  if (activation === null) {
+    return;
+  }
+  if (
+    activation.source !== event.source ||
+    activation.origin !== event.origin ||
+    activation.expiresAt < performance.now() ||
+    !navigator.userActivation.isActive
+  ) {
+    return;
+  }
+  const command = validatedPvmPlatformCommand(data.command);
+  if (command === null) {
+    return;
+  }
+  if (command.type === "copy-text") {
+    void navigator.clipboard.writeText(command.text).catch((error: unknown) => {
+      log.warn("[dot.li] PVM clipboard request was declined:", error);
+    });
+    return;
+  }
+  let destination: URL;
+  try {
+    destination = new URL(command.url);
+  } catch {
+    return;
+  }
+  if (destination.protocol !== "https:" && destination.protocol !== "http:") {
+    return;
+  }
+  if (command.newSurface) {
+    window.open(destination.href, "_blank", "noopener,noreferrer");
+  } else {
+    window.location.assign(destination.href);
+  }
+});
+
 let bridgeEventListenersInitialized = false;
 
 export function initBridgeEventListeners(

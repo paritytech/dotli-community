@@ -16,6 +16,9 @@ const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
 const MAX_TRUAPI_FRAME_BYTES = 1024 * 1024;
 const MAX_TRUAPI_PENDING_FRAMES = 32;
 const MAX_TRUAPI_PENDING_BYTES = 4 * 1024 * 1024;
+const MAX_UI_OUTPUT_COMMANDS = 64;
+const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
 const START_TIMEOUT_MS = 30_000;
 const INTERPRETER_START_TIMEOUT_MS = 180_000;
@@ -23,7 +26,7 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "pvm-host-runtime-1d73f040";
+const RUNTIME_SOURCE = "pvm-host-runtime-5d7b86b4";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
@@ -153,6 +156,32 @@ interface WorkerMetrics {
   updateMaxMs: number;
 }
 
+export type UiPlatformRect = readonly [number, number, number, number];
+
+export type UiPlatformCommand =
+  | Readonly<{ type: "copy-text"; text: string }>
+  | Readonly<{ type: "open-url"; url: string; newSurface: boolean }>;
+
+export interface UiPlatformOutput {
+  cursorIcon: string;
+  mutableTextUnderCursor: boolean;
+  ime: Readonly<{
+    rect: UiPlatformRect;
+    cursorRect: UiPlatformRect;
+  }> | null;
+  commands: readonly UiPlatformCommand[];
+}
+
+export interface UiPlatformCommandTarget {
+  postMessage(
+    message: Readonly<{
+      type: "dotli:pvm-ui-command";
+      command: UiPlatformCommand;
+    }>,
+    targetOrigin: string,
+  ): void;
+}
+
 const keyCodes: Readonly<Record<string, number>> = Object.freeze({
   KeyA: 0x04,
   KeyB: 0x05,
@@ -213,6 +242,43 @@ const pointerButtons: Readonly<Record<number, number>> = Object.freeze({
   1: 3,
   2: 2,
 });
+const uiCursorIcons: Readonly<Partial<Record<string, true>>> = Object.freeze({
+  default: true,
+  none: true,
+  "context-menu": true,
+  help: true,
+  pointer: true,
+  progress: true,
+  wait: true,
+  cell: true,
+  crosshair: true,
+  text: true,
+  "vertical-text": true,
+  alias: true,
+  copy: true,
+  move: true,
+  "no-drop": true,
+  "not-allowed": true,
+  grab: true,
+  grabbing: true,
+  "all-scroll": true,
+  "ew-resize": true,
+  "nesw-resize": true,
+  "nwse-resize": true,
+  "ns-resize": true,
+  "e-resize": true,
+  "se-resize": true,
+  "s-resize": true,
+  "sw-resize": true,
+  "w-resize": true,
+  "nw-resize": true,
+  "n-resize": true,
+  "ne-resize": true,
+  "col-resize": true,
+  "row-resize": true,
+  "zoom-in": true,
+  "zoom-out": true,
+});
 
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -233,6 +299,97 @@ export function resolvedParentOrigin(
   } catch {
     return null;
   }
+}
+
+function uiPlatformRect(value: unknown): UiPlatformRect | null {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 4 ||
+    !value.every((coordinate) => Number.isFinite(coordinate)) ||
+    value[2] < value[0] ||
+    value[3] < value[1]
+  ) {
+    return null;
+  }
+  return [value[0], value[1], value[2], value[3]];
+}
+
+export function validatedUiPlatformOutput(
+  value: unknown,
+): UiPlatformOutput | null {
+  const output = object(value);
+  if (
+    output === null ||
+    typeof output.cursorIcon !== "string" ||
+    !uiCursorIcons[output.cursorIcon] ||
+    typeof output.mutableTextUnderCursor !== "boolean" ||
+    !Array.isArray(output.commands) ||
+    output.commands.length > MAX_UI_OUTPUT_COMMANDS
+  ) {
+    return null;
+  }
+
+  let ime: UiPlatformOutput["ime"] = null;
+  if (output.ime !== null) {
+    const rawIme = object(output.ime);
+    const rect = uiPlatformRect(rawIme?.rect);
+    const cursorRect = uiPlatformRect(rawIme?.cursorRect);
+    if (rawIme === null || rect === null || cursorRect === null) {
+      return null;
+    }
+    ime = { rect, cursorRect };
+  }
+
+  const commands: UiPlatformCommand[] = [];
+  for (const value of output.commands) {
+    const command = object(value);
+    if (command?.type === "copy-text") {
+      if (
+        typeof command.text !== "string" ||
+        encoder.encode(command.text).byteLength > MAX_UI_COPY_TEXT_BYTES
+      ) {
+        return null;
+      }
+      commands.push({ type: "copy-text", text: command.text });
+      continue;
+    }
+    if (command?.type === "open-url") {
+      if (
+        typeof command.url !== "string" ||
+        command.url === "" ||
+        encoder.encode(command.url).byteLength > MAX_UI_OPEN_URL_BYTES ||
+        typeof command.newSurface !== "boolean"
+      ) {
+        return null;
+      }
+      commands.push({
+        type: "open-url",
+        url: command.url,
+        newSurface: command.newSurface,
+      });
+      continue;
+    }
+    return null;
+  }
+
+  return {
+    cursorIcon: output.cursorIcon,
+    mutableTextUnderCursor: output.mutableTextUnderCursor,
+    ime,
+    commands,
+  };
+}
+
+export function postFirstUiPlatformCommand(
+  output: UiPlatformOutput,
+  target: UiPlatformCommandTarget,
+): boolean {
+  const command = output.commands.at(0);
+  if (command === undefined) {
+    return false;
+  }
+  target.postMessage({ type: "dotli:pvm-ui-command", command }, "*");
+  return true;
 }
 
 function cleanPath(value: unknown): string | null {
@@ -968,7 +1125,11 @@ function installInput(
   sendMotionStatus: (availability: 0 | 1 | 2) => void,
   motionRequested: () => boolean,
   resumeAudio: () => void,
-): { cleanup: () => void; sendSurfaceMetrics: () => void } {
+): {
+  applyUiOutput: (output: UiPlatformOutput) => void;
+  cleanup: () => void;
+  sendSurfaceMetrics: () => void;
+} {
   const pressed = new Set<number>();
   const inputFeatureSet = new Set(inputFeatures);
   const textInput =
@@ -984,10 +1145,10 @@ function installInput(
       "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
     document.body.append(textInput);
   }
-  const focusTarget: HTMLCanvasElement | HTMLTextAreaElement =
-    textInput ?? canvas;
   let composing = false;
   let suppressCommittedInput = false;
+  let wantsTextInput = false;
+  let reportedFocused = false;
   let firstMoveAfterPointerLock = false;
   let relativeX = 0;
   let relativeY = 0;
@@ -1145,19 +1306,26 @@ function installInput(
       send(record);
     }
   };
-  const focus = (): void => {
+  const syncFocus = (): void => {
+    const focused =
+      document.activeElement === canvas ||
+      (textInput !== null && document.activeElement === textInput);
+    if (focused === reportedFocused) {
+      return;
+    }
+    reportedFocused = focused;
+    if (!focused) {
+      if (composing && inputFeatureSet.has("ime")) {
+        send(encodedInput(12, 0));
+      }
+      composing = false;
+    }
     if (inputFeatureSet.has("focus")) {
-      send(encodedInput(13, 1));
+      send(encodedInput(13, focused ? 1 : 0));
     }
   };
-  const blur = (): void => {
-    if (composing && inputFeatureSet.has("ime")) {
-      send(encodedInput(12, 0));
-    }
-    composing = false;
-    if (inputFeatureSet.has("focus")) {
-      send(encodedInput(13, 0));
-    }
+  const focusChanged = (): void => {
+    queueMicrotask(syncFocus);
   };
   const beforeInput = (event: InputEvent): void => {
     if (
@@ -1230,6 +1398,9 @@ function installInput(
     if (pressed.has(code)) {
       return;
     }
+    if (event.isTrusted) {
+      window.parent.postMessage({ type: "dotli:pvm-user-activation" }, "*");
+    }
     if (
       textInput === null ||
       event.ctrlKey ||
@@ -1291,8 +1462,13 @@ function installInput(
   };
   const down = (event: PointerEvent): void => {
     requestDeviceMotionPermission();
+    if (event.isTrusted && event.button in pointerButtons) {
+      window.parent.postMessage({ type: "dotli:pvm-user-activation" }, "*");
+    }
     previousPointer = [event.clientX, event.clientY];
-    focusTarget.focus({ preventScroll: true });
+    (wantsTextInput && textInput !== null ? textInput : canvas).focus({
+      preventScroll: true,
+    });
     move(event);
     pointer(event, 3);
     if (
@@ -1310,15 +1486,44 @@ function installInput(
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
   };
+  const surfaceScale = (): number =>
+    Math.max(1 / 32, Math.min(4, window.devicePixelRatio || 1));
   const sendSurfaceMetrics = (): void => {
     if (graphicsProfile !== "tri2d") {
       return;
     }
     const bounds = canvas.getBoundingClientRect();
-    const scale = Math.max(1 / 32, Math.min(3, window.devicePixelRatio || 1));
+    const scale = surfaceScale();
     const width = clamp(bounds.width * scale, 1, 4_096);
     const height = clamp(bounds.height * scale, 1, 4_096);
-    send(encodedInput(7, clamp(scale * 32, 1, 96), width, height));
+    send(encodedInput(7, clamp(scale * 32, 1, 128), width, height));
+  };
+  const applyUiOutput = (output: UiPlatformOutput): void => {
+    canvas.style.cursor = output.cursorIcon;
+    wantsTextInput = output.mutableTextUnderCursor || output.ime !== null;
+    if (textInput === null) {
+      return;
+    }
+    if (output.ime === null) {
+      if (document.activeElement === textInput) {
+        canvas.focus({ preventScroll: true });
+      }
+      return;
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+    const logicalWidth = canvas.width / surfaceScale();
+    const logicalHeight = canvas.height / surfaceScale();
+    const scaleX = bounds.width / Math.max(1, logicalWidth);
+    const scaleY = bounds.height / Math.max(1, logicalHeight);
+    const cursor = output.ime.cursorRect;
+    const x = bounds.left + ((cursor[0] + cursor[2]) / 2) * scaleX;
+    const y = bounds.top + ((cursor[1] + cursor[3]) / 2) * scaleY;
+    textInput.style.left = `${String(Math.max(bounds.left, Math.min(bounds.right - 1, x)))}px`;
+    textInput.style.top = `${String(Math.max(bounds.top, Math.min(bounds.bottom - 1, y)))}px`;
+    if (document.activeElement === canvas) {
+      textInput.focus({ preventScroll: true });
+    }
   };
   const resizeObserver =
     graphicsProfile === "tri2d"
@@ -1327,14 +1532,16 @@ function installInput(
         })
       : null;
   resizeObserver?.observe(canvas);
-  focusTarget.addEventListener("focus", focus);
-  focusTarget.addEventListener("blur", blur);
+  canvas.addEventListener("focus", focusChanged);
+  canvas.addEventListener("blur", focusChanged);
   if (textInput !== null) {
     textInput.addEventListener("beforeinput", beforeInput);
     textInput.addEventListener("input", input);
     textInput.addEventListener("compositionstart", compositionStart);
     textInput.addEventListener("compositionupdate", compositionUpdate);
     textInput.addEventListener("compositionend", compositionEnd);
+    textInput.addEventListener("focus", focusChanged);
+    textInput.addEventListener("blur", focusChanged);
   }
   if (inputFeatureSet.has("wheel")) {
     canvas.addEventListener("wheel", wheel, { passive: false });
@@ -1348,25 +1555,31 @@ function installInput(
   canvas.addEventListener("pointermove", move);
   canvas.addEventListener("contextmenu", contextmenu);
   return {
+    applyUiOutput,
     sendSurfaceMetrics,
     cleanup: () => {
       resizeObserver?.disconnect();
-      if (document.activeElement === focusTarget) {
-        focusTarget.blur();
+      if (
+        document.activeElement === canvas ||
+        (textInput !== null && document.activeElement === textInput)
+      ) {
+        (document.activeElement as HTMLElement).blur();
       }
       pointerLockChanged();
       document.removeEventListener("pointerlockchange", pointerLockChanged);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
       window.removeEventListener("devicemotion", deviceMotion);
-      focusTarget.removeEventListener("focus", focus);
-      focusTarget.removeEventListener("blur", blur);
+      canvas.removeEventListener("focus", focusChanged);
+      canvas.removeEventListener("blur", focusChanged);
       if (textInput !== null) {
         textInput.removeEventListener("beforeinput", beforeInput);
         textInput.removeEventListener("input", input);
         textInput.removeEventListener("compositionstart", compositionStart);
         textInput.removeEventListener("compositionupdate", compositionUpdate);
         textInput.removeEventListener("compositionend", compositionEnd);
+        textInput.removeEventListener("focus", focusChanged);
+        textInput.removeEventListener("blur", focusChanged);
         textInput.remove();
       }
       canvas.removeEventListener("wheel", wheel);
@@ -1774,7 +1987,11 @@ export async function runPvmApplication(
     );
   };
   window.addEventListener("message", onParentMotion);
-  const { cleanup: cleanupInput, sendSurfaceMetrics } = installInput(
+  const {
+    applyUiOutput,
+    cleanup: cleanupInput,
+    sendSurfaceMetrics,
+  } = installInput(
     canvas,
     descriptor.graphicsProfile,
     descriptor.inputFeatures,
@@ -1943,6 +2160,36 @@ export async function runPvmApplication(
         } catch (error) {
           rejectStarted(error);
         }
+        break;
+      }
+      case "ui-output": {
+        const output = validatedUiPlatformOutput(message.output);
+        if (output === null) {
+          rejectStarted(
+            new Error("PolkaVM guest emitted an invalid UI platform output"),
+          );
+          return;
+        }
+        applyUiOutput(output);
+        canvas.dataset.pvmCursor = output.cursorIcon;
+        canvas.dataset.pvmIme = String(output.ime !== null);
+        canvas.dataset.pvmUiCommands = String(
+          Number(canvas.dataset.pvmUiCommands ?? 0) + output.commands.length,
+        );
+        canvas.dataset.pvmUiLastCommands = output.commands
+          .map((command) => command.type)
+          .join(",");
+        const command = output.commands.at(0);
+        if (command?.type === "copy-text") {
+          canvas.dataset.pvmClipboardRequests = String(
+            Number(canvas.dataset.pvmClipboardRequests ?? 0) + 1,
+          );
+        } else if (command !== undefined) {
+          canvas.dataset.pvmNavigationRequests = String(
+            Number(canvas.dataset.pvmNavigationRequests ?? 0) + 1,
+          );
+        }
+        postFirstUiPlatformCommand(output, window.parent);
         break;
       }
       case "gpu-batch": {
