@@ -1095,8 +1095,8 @@ function createShell(controls: string[]): {
   const style = document.createElement("style");
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
-    #dotli-pvm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;background:#050505}
-    #dotli-pvm-canvas{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;outline:none}
+    #dotli-pvm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
+    #dotli-pvm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
     .dotli-pvm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-pvm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-pvm-status:empty{display:none}

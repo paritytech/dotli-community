@@ -138,6 +138,24 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("width", "320");
   await expect(canvas).toHaveAttribute("height", "200");
+  expect(
+    await canvas.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        position: style.position,
+        top: style.top,
+        right: style.right,
+        bottom: style.bottom,
+        left: style.left,
+      };
+    }),
+  ).toEqual({
+    position: "absolute",
+    top: "0px",
+    right: "0px",
+    bottom: "0px",
+    left: "0px",
+  });
 
   // The host-owned PVM canvas retains its verified launch contract so a
   // browser/frame reload restarts the same CID without relying on parent state.
