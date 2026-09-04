@@ -11,6 +11,7 @@ import {
   createClient,
   createMessagePortProvider,
   createTransport,
+  type TrUApiClient,
 } from "@parity/truapi";
 import {
   ComputerTerminal,
@@ -464,13 +465,12 @@ export async function runComputerApplication(
   // it lazily: a computer that never touches the network must boot (and keep
   // working) without the Host port, and the port handshake must not gate the
   // terminal.
-  let truapiPromise: ReturnType<typeof lazyTruapi> | null = null;
-  const lazyTruapi = async () =>
+  let truapiPromise: Promise<TrUApiClient> | null = null;
+  const lazyTruapi = async (): Promise<TrUApiClient> =>
     createClient(
       createTransport(createMessagePortProvider(await waitForTruapiPort())),
     );
-  const truapi = (): ReturnType<typeof lazyTruapi> =>
-    (truapiPromise ??= lazyTruapi());
+  const truapi = (): Promise<TrUApiClient> => (truapiPromise ??= lazyTruapi());
   validateComputerFiles(files, descriptor);
 
   const { screen, status } = createComputerShell();
