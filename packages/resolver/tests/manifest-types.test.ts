@@ -226,7 +226,7 @@ describe("validateExecutableManifest", () => {
     ).toBe(true);
   });
 
-  it("rejects an unknown host interface", () => {
+  it("accepts the network host interface", () => {
     expect(
       validateExecutableManifest({
         ...VALID_COMPUTER,
@@ -234,7 +234,7 @@ describe("validateExecutableManifest", () => {
           host: { requires: [...HOST_REQUIRES, "polkadot-host/0.1/net"] },
         },
       }).ok,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("rejects host apps that do not require the core interface", () => {

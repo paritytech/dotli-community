@@ -3,13 +3,13 @@
   "bridgeRepository": "https://github.com/paritytech/host-rust-core.git",
   "bridgeRevision": "1755e7975d15f26e411b07d2b551e80d0c8fd4f9",
   "runtimeRepository": "https://github.com/paritytech/pvm-host-runtime",
-  "runtimeRevision": "17ef1510f6e7e659bac87e622b648b9804303b23",
+  "runtimeRevision": "777272463670cff81a5fd6cece63d598c202651e",
   "releaseTag": "v0.1.10 + browser-computer (prototype)",
-  "provenance": "bridge-owned core runtime v0.1.10 plus the prototype pvm-computer.js adapter pinned directly on runtime feat/browser-computer rebased on f49d662c",
+  "provenance": "bridge-owned core runtime v0.1.10 plus the prototype pvm-computer.js adapter pinned directly on runtime feat/browser-computer at 777272463670cff81a5fd6cece63d598c202651e",
   "assets": {
     "pvm-browser-runtime.wasm": "7082fa7765d212e3934ca6ab5024dc489c7f9b574bab9c3bbe998296ae8de81e",
     "pvm-wasm-worker.js": "c0ea902cde5705729a037bf000911b45289b7a67ae8f7719d658016f1f6fc347",
     "pvm-gpu-worker.js": "13a1d354904667dd288d88ac6cffc17e9bb0401cafb2aee8b5e71d85a7e16c60",
-    "pvm-computer.js": "353d9810db3af61d1d3d1015e147975a2fe05f1dc831697f3feca3339af93082"
+    "pvm-computer.js": "c81bace446840822737ba8a601c591f9f4dc7fc78a5803fb08b0a07a82152b44"
   }
 }

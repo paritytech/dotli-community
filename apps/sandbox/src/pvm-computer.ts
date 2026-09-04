@@ -21,7 +21,9 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const SAVE_FORMAT_VERSION = 1;
 const HOME_PREFIX = "home/";
-const MAX_GAS = 4_000_000_000;
+const MAX_GAS = 8_000_000_000;
+const TCP_RELAY_URL =
+  (import.meta.env.VITE_PVM_TCP_RELAY_URL as string | undefined)?.trim() ?? "";
 const RESIZE_DEBOUNCE_MS = 200;
 const MIN_COLUMNS = 20;
 const MAX_COLUMNS = 240;
@@ -36,6 +38,7 @@ const HOST_INTERFACES: readonly string[] = [
   "polkadot-host/0.1/fs",
   "polkadot-host/0.1/tty",
   "polkadot-host/0.1/process",
+  "polkadot-host/0.1/net",
 ];
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -43,6 +46,7 @@ const encoder = new TextEncoder();
 interface ComputerDescriptor {
   programPath: string;
   packages: { name: string; path: string }[];
+  networkEnabled: boolean;
 }
 
 interface WorkerFileEntry {
@@ -179,7 +183,11 @@ function parseComputerManifest(
   if (enforceExternal) {
     assertExternalManifest(bytes, externalManifest);
   }
-  return { programPath, packages };
+  return {
+    programPath,
+    packages,
+    networkEnabled: requires.includes("polkadot-host/0.1/net"),
+  };
 }
 
 export function isComputerPackage(files: ArchiveFiles): boolean {
@@ -559,7 +567,9 @@ export async function runComputerApplication(
     return promise;
   };
 
-  const fetchPackage = async (label: string): Promise<Uint8Array> => {
+  const fetchPackage = async (
+    label: string,
+  ): Promise<{ bytes: Uint8Array; files: WorkerFileEntry[] }> => {
     const record = await resolveAppRecord(label);
     // Dynamic on purpose: the fetch chunk and the bitswap bridge are
     // code-split exactly as in main.ts, so computers that never spawn a
@@ -579,24 +589,48 @@ export async function runComputerApplication(
     }
     // The child is authorized by its own signed manifest: it must declare
     // the same host contract, and its grant clamps to this computer's.
-    const descriptor = parseComputerManifest(
+    const childDescriptor = parseComputerManifest(
       result.files,
       record.executableManifest,
       true,
     );
-    if (descriptor === null) {
+    if (childDescriptor === null) {
       throw new Error(`${label} is not a polkadot-host computer app`);
     }
-    validateComputerFiles(result.files, descriptor);
-    return ownedBytes(result.files[descriptor.programPath]);
+    validateComputerFiles(result.files, childDescriptor);
+    if (childDescriptor.networkEnabled && !descriptor.networkEnabled) {
+      throw new Error(`${label} cannot elevate the parent network capability`);
+    }
+    const childFiles: WorkerFileEntry[] = [];
+    for (const [path, bytes] of Object.entries(result.files)) {
+      if (
+        path.startsWith(HOME_PREFIX) &&
+        path.length > HOME_PREFIX.length &&
+        !path.endsWith("/")
+      ) {
+        const mountedPath = `/${path}`;
+        if (!mounts.has(mountedPath)) {
+          const owned = ownedBytes(bytes);
+          mounts.set(mountedPath, owned);
+          childFiles.push({ path: mountedPath, bytes: ownedBytes(owned) });
+        }
+      }
+    }
+    return {
+      bytes: ownedBytes(result.files[childDescriptor.programPath]),
+      files: childFiles,
+    };
   };
 
   const resolvePackage = async (name: string): Promise<void> => {
     try {
       status.textContent = `Fetching ${name}…`;
-      const bytes = await fetchPackage(name);
+      const child = await fetchPackage(name);
       status.textContent = "";
-      worker.postMessage({ type: "package", name, bytes }, [bytes.buffer]);
+      worker.postMessage(
+        { type: "package", name, bytes: child.bytes, files: child.files },
+        [child.bytes.buffer, ...child.files.map((entry) => entry.bytes.buffer)],
+      );
     } catch (error) {
       status.textContent = "";
       console.warn(`[pvm computer] resolving ${name} failed:`, error);
@@ -626,6 +660,7 @@ export async function runComputerApplication(
       type: string;
       bytes?: Uint8Array;
       entries?: WorkerFileEntry[];
+      removed?: string[];
       code?: number;
       message?: string;
       name?: string;
@@ -651,6 +686,9 @@ export async function runComputerApplication(
       case "files":
         for (const entry of message.entries ?? []) {
           persisted.set(entry.path, entry.bytes);
+        }
+        for (const path of message.removed ?? []) {
+          persisted.delete(path);
         }
         persistNow();
         break;
@@ -733,6 +771,9 @@ export async function runComputerApplication(
   observer.observe(screen);
 
   scheduleRender();
+  if (descriptor.networkEnabled && TCP_RELAY_URL === "") {
+    throw new Error("network app requires VITE_PVM_TCP_RELAY_URL");
+  }
   worker.postMessage(
     {
       type: "start",
@@ -752,6 +793,8 @@ export async function runComputerApplication(
       ],
       columns: geometry.columns,
       rows: geometry.rows,
+      networkEnabled: descriptor.networkEnabled,
+      relayUrl: TCP_RELAY_URL,
       maxGas: MAX_GAS,
     },
     [

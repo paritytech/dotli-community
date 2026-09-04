@@ -382,6 +382,7 @@
       this.ttyMode = TTY_MODE_ECHO;
       this.files = new Map();
       this.modified = new Set();
+      this.removed = new Set();
       this.openFiles = new Map();
       this.networkProvider = networkProvider;
       this.networkEnabled = false;
@@ -521,6 +522,7 @@
         throw new Error("computer filesystem file limit exceeded");
       }
       this.files.set(path, Uint8Array.from(bytes));
+      this.removed.delete(path);
     }
 
     takeModifiedFiles() {
@@ -533,6 +535,12 @@
       }
       this.modified.clear();
       return changed;
+    }
+
+    takeRemovedFiles() {
+      const removed = [...this.removed];
+      this.removed.clear();
+      return removed;
     }
 
     hasTerminalInput() {
@@ -615,6 +623,7 @@
       ) {
         this.files.set(path, new Uint8Array(0));
         this.modified.add(path);
+        this.removed.delete(path);
       }
       this.openFiles.set(handle, { path, position: 0, readable, writable });
       return handle;
@@ -730,6 +739,23 @@
 
     fsClose(handle) {
       return this.openFiles.delete(handle) ? 0 : STATUS_BAD_HANDLE;
+    }
+
+    fsRemove(path) {
+      if (validPath(path) === null) {
+        return STATUS_INVALID;
+      }
+      for (const open of this.openFiles.values()) {
+        if (open.path === path) {
+          return STATUS_DENIED;
+        }
+      }
+      if (!this.files.delete(path)) {
+        return STATUS_NOT_FOUND;
+      }
+      this.modified.delete(path);
+      this.removed.add(path);
+      return 0;
     }
 
     fsListRecord() {
@@ -921,6 +947,10 @@
       return this.devices.takeModifiedFiles();
     }
 
+    takeRemovedFiles() {
+      return this.devices.takeRemovedFiles();
+    }
+
     // eslint-disable-next-line complexity -- Flat dispatch mirrors the ABI.
     #hostcall(name) {
       const a0 = this.#reg(7);
@@ -1090,6 +1120,14 @@
         case "polkadot_host_0_1_fs_close":
           this.#setReg(7, BigInt(this.devices.fsClose(this.#u32(a0))));
           return "continue";
+        case "polkadot_host_0_1_fs_remove": {
+          const path = this.#readPath(a0, a1);
+          this.#setReg(
+            7,
+            BigInt(path === null ? STATUS_INVALID : this.devices.fsRemove(path)),
+          );
+          return "continue";
+        }
         case "polkadot_host_0_1_fs_list": {
           const capacity = Math.min(this.#u32(a1), MAX_FS_TRANSFER);
           const record = this.devices.fsListRecord();
@@ -1358,6 +1396,7 @@
       this.environment = context.environment.map((pair) => pair.slice());
       this.files = new Map();
       this.modified = new Map();
+      this.removed = new Set();
       this.maxGas = maxGas;
       this.emitLog = emitLog;
       this.network = false;
@@ -1428,6 +1467,7 @@
     mountFile(path, bytes) {
       this.#foreground().mountFile(path, bytes);
       this.files.set(path, Uint8Array.from(bytes));
+      this.removed.delete(path);
     }
 
     setNetworkEnabled(enabled) {
@@ -1483,6 +1523,12 @@
       const changed = [...this.modified.entries()];
       this.modified.clear();
       return changed;
+    }
+
+    takeRemovedFiles() {
+      const removed = [...this.removed];
+      this.removed.clear();
+      return removed;
     }
 
     /** Runs the foreground process until the system yields or the root
@@ -1603,9 +1649,15 @@
     }
 
     #collectModified() {
+      for (const path of this.#foreground().takeRemovedFiles()) {
+        this.files.delete(path);
+        this.modified.delete(path);
+        this.removed.add(path);
+      }
       for (const [path, bytes] of this.#foreground().takeModifiedFiles()) {
         this.files.set(path, bytes);
         this.modified.set(path, bytes.slice());
+        this.removed.delete(path);
       }
     }
 
@@ -1751,9 +1803,15 @@
             entry.output.push(output[index]);
           }
         }
+        for (const path of entry.process.takeRemovedFiles()) {
+          this.files.delete(path);
+          this.modified.delete(path);
+          this.removed.add(path);
+        }
         for (const [path, bytes] of entry.process.takeModifiedFiles()) {
           this.files.set(path, bytes);
           this.modified.set(path, bytes.slice());
+          this.removed.delete(path);
         }
         if (status === null) {
           entry.exit = FAULTED_CHILD_STATUS;
