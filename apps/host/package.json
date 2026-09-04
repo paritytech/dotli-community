@@ -9,7 +9,7 @@
     "build:prod": "tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
     "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
-    "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} SIGNER_BOT_BASE_URL=${SIGNER_BOT_BASE_URL:-http://localhost:3737/} SIGNER_BOT_SVC_TOKEN=${SIGNER_BOT_SVC_TOKEN:-admin} SIGNER_BOT_NETWORK=${SIGNER_BOT_NETWORK:-paseo-next-v2} playwright test --config=tests/e2e/playwright.config.ts",
+    "test:e2e:local": "E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} SIGNING_HOST_NETWORK=${SIGNING_HOST_NETWORK:-paseo-next-v2} playwright test --config=tests/e2e/playwright.config.ts",
     "test:perf": "PERF_RUNS=10 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
     "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
     "test:perf:compare": "bun tests/performance/compare.ts",

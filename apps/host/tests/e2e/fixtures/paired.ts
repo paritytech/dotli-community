@@ -13,10 +13,10 @@ const PORT = process.env.PORT ?? "5173";
 const HOST = process.env.E2E_HOST ?? "host-playground";
 const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
 
-// Restored-session badge wait. The bot was paired once in globalSetup, the
-// storageState restores the host's auth on every context, so seeing the
-// user-badge should be near-instant. A tight cap surfaces a broken bot or
-// host fast instead of running out the workflow clock.
+// Restored-session badge wait. The signing host was paired once in
+// globalSetup, the storageState restores the host's auth on every context,
+// so seeing the user-badge should be near-instant. A tight cap surfaces a
+// broken signer or host fast instead of running out the workflow clock.
 const USER_BADGE_TIMEOUT_MS = 15_000;
 const PRODUCT_IFRAME_TIMEOUT_MS = 20_000;
 
@@ -87,13 +87,13 @@ async function waitForHostPlaygroundFrame(
 
 /**
  * Worker-scoped fixtures: open a fresh page that inherits the
- * once-per-run bot pairing via `storageState` written by globalSetup.
- * No QR scan, no bot pair API call here. If the badge doesn't appear
- * inside 15 s the worker fails fast. The bot is either down or the
- * host can't restore auth from the saved state.
+ * once-per-run signing-host pairing via `storageState` written by
+ * globalSetup. No QR scan, no CLI spawn here. If the badge doesn't appear
+ * inside 15 s the worker fails fast. The signing host is either dead or
+ * the host can't restore auth from the saved state.
  *
  * State sharing: every worker reads the same `.auth/state.json`, so all
- * tests across the run share one bot user. This matches the prior
+ * tests across the run share one signer account. This matches the prior
  * behavior under `workers: 1` (worker-scope pairing) and avoids the
  * re-pair cascade that previously timed out CI on a single test failure.
  */
@@ -107,7 +107,7 @@ export const test = base.extend<
       if (!existsSync(STATE_FILE)) {
         throw new Error(
           `pairedPage: ${STATE_FILE} missing — globalSetup must run first. ` +
-            `If you ran the test directly, ensure SIGNER_BOT_SVC_TOKEN is set ` +
+            `If you ran the test directly, ensure SIGNING_HOST_NETWORK is set ` +
             `and re-run via \`bun run test:e2e\`.`,
         );
       }

@@ -84,8 +84,8 @@ jobs:
           fi
 
   # E2E run of host-playground product tests against the local preview server,
-  # with pairing handled by mission-control's signer bot (no Android emulator,
-  # no Maestro).
+  # with pairing and signing handled headlessly by the truapi-host CLI from
+  # paritytech/host-rust-core (no Android emulator, no Maestro).
   e2e-product:
     name: E2E
     runs-on: ubuntu-latest
@@ -95,12 +95,12 @@ jobs:
     timeout-minutes: 35
     if: ${{ github.event.sender.type != 'Bot' }}
     env:
-      SIGNER_BOT_BASE_URL: https://signing-bot-dev.novasama-tech.org/
       # Must match the host's `defaultNetwork()` in
       # `packages/config/src/network.ts`. Setting explicitly so a host
-      # network bump can't silently leave the bot on the wrong chain.
-      SIGNER_BOT_NETWORK: paseo-next-v2
-      SIGNER_BOT_SVC_TOKEN: ${{ secrets.SIGNER_BOT_SVC_TOKEN }}
+      # network bump can't silently leave the CLI on the wrong chain.
+      SIGNING_HOST_NETWORK: paseo-next-v2
+      # The CLI self-updates by default; keep CI runs deterministic.
+      TRUAPI_HOST_NO_UPDATE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,6 +109,15 @@ jobs:
         uses: ./.github/actions/setup-playwright
         with:
           bun-version: "1.3.13"
+
+      # Installs the current stable prebuilt binary (release pointer
+      # `truapi-host-cli-stable` in host-rust-core). Pin with
+      # TRUAPI_HOST_VERSION=x.y.z if a release ever breaks the suite.
+      - name: Install truapi-host CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/truapi-host" --version
 
       - name: Build
         env:
@@ -119,10 +128,10 @@ jobs:
           VITE_NETWORKS: paseo-next-v2,previewnet
         run: bunx --bun turbo run build
 
-      # Exit code 99 from playwright = Nova bot unavailable (signal raised
-      # by apps/host/tests/e2e/global-setup.ts). Treat as soft-pass with a clear
-      # annotation: this is a Nova-side outage, not a dot.li test failure,
-      # and shouldn't block a PR.
+      # Exit code 99 from playwright = pairing/signing infrastructure down
+      # (signal raised by apps/host/tests/e2e/global-setup.ts after retries:
+      # testnet chains or the identity backend, not dot.li). Treat as
+      # soft-pass with a clear annotation so it doesn't block a PR.
       - name: Run E2E
         id: e2e
         working-directory: apps/host
@@ -131,8 +140,8 @@ jobs:
           bunx --bun playwright test --config=tests/e2e/playwright.config.ts
           code=$?
           if [ "$code" -eq 99 ]; then
-            echo "::warning::Signer bot unavailable — E2E Product suite skipped (Nova-side outage, not a dot.li failure)."
-            echo "bot_unavailable=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Signing infrastructure unavailable — E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
+            echo "signing_unavailable=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           exit $code
@@ -199,26 +208,27 @@ jobs:
           header: e2e-product
           delete: true
 
-      # Bot-unavailable surfaces as a distinct sticky comment so the
+      # Signing-unavailable surfaces as a distinct sticky comment so the
       # reviewer can tell at a glance that the suite didn't actually run.
       # Separate header from the failure note so the two can coexist
       # without overwriting each other across runs.
-      - name: Post bot-unavailable note on PR
-        if: steps.e2e.outputs.bot_unavailable == 'true' && github.event_name == 'pull_request'
+      - name: Post signing-unavailable note on PR
+        if: steps.e2e.outputs.signing_unavailable == 'true' && github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
-          header: e2e-product-bot-unavailable
+          header: e2e-product-signing-unavailable
           message: |
-            ⚠️ **E2E Product suite skipped** — Nova signing bot is unavailable.
+            ⚠️ **E2E Product suite skipped** — pairing/signing infrastructure is unavailable.
 
-            This is a Nova-side outage and **not a dot.li test failure**. Re-run
-            from the Actions tab once the bot recovers.
+            The truapi-host CLI could not complete pairing (testnet chains or
+            identity backend outage). This is **not a dot.li test failure**.
+            Re-run from the Actions tab once the infrastructure recovers.
 
             Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      - name: Clear stale bot-unavailable note on PR
-        if: success() && steps.e2e.outputs.bot_unavailable != 'true' && github.event_name == 'pull_request'
+      - name: Clear stale signing-unavailable note on PR
+        if: success() && steps.e2e.outputs.signing_unavailable != 'true' && github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
-          header: e2e-product-bot-unavailable
+          header: e2e-product-signing-unavailable
           delete: true
