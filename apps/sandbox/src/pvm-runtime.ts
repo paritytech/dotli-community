@@ -6,7 +6,7 @@ import { Tri2dRenderer } from "./tri2d-renderer";
 import { WebGpuBridge, type WebGpuRequirements } from "./webgpu";
 
 const PVM_RUNTIME_ROOT = "/pvm-runtime";
-const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
+const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
 const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_BYTES = 128 * 1024 * 1024;
@@ -652,7 +652,10 @@ export function describePvmPackage(
   return parseManifest(files, externalManifest);
 }
 
-function validateFiles(files: ArchiveFiles, descriptor: PvmDescriptor): void {
+export function validateFiles(
+  files: ArchiveFiles,
+  descriptor: PvmDescriptor,
+): void {
   if (!Object.hasOwn(files, descriptor.programPath)) {
     throw new Error("PolkaVM package is missing its program");
   }

@@ -14,6 +14,7 @@ import {
   normalizedPointerDelta,
   postFirstUiPlatformCommand,
   unsupportedPvmImport,
+  validateFiles,
   resolvedParentOrigin,
   shouldReloadAfterWake,
   validatedUiPlatformOutput,
@@ -507,6 +508,36 @@ describe("PolkaVM package recognition", () => {
       requiredAssets: [],
       manifestVersion: 2,
     });
+  });
+
+  it("accepts the deployed GPUI editor within the runtime program ceiling", () => {
+    const manifest = webGpuRasterAppV2Manifest();
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array(51_425_059),
+    };
+    const descriptor = describePvmPackage(files, manifest);
+    if (descriptor === null) {
+      throw new Error("GPUI package was not recognized");
+    }
+    expect(() => {
+      validateFiles(files, descriptor);
+    }).not.toThrow();
+  });
+
+  it("rejects programs beyond the runtime program ceiling", () => {
+    const manifest = webGpuRasterAppV2Manifest();
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array(64 * 1024 * 1024 + 1),
+    };
+    const descriptor = describePvmPackage(files, manifest);
+    if (descriptor === null) {
+      throw new Error("oversized package was not recognized");
+    }
+    expect(() => {
+      validateFiles(files, descriptor);
+    }).toThrow(/oversized program/);
   });
 
   it("recognizes strict App manifest v2 WebGPU compute limits", () => {
