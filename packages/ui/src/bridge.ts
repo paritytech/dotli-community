@@ -289,10 +289,13 @@ window.addEventListener("dotli:device-permission-changed", () => {
 
 let motionRelayCleanup: (() => void) | null = null;
 let motionPromptSource: Window | null = null;
+let motionPromptDismiss: (() => void) | null = null;
 
 function stopMotionRelay(): void {
   motionRelayCleanup?.();
   motionRelayCleanup = null;
+  motionPromptDismiss?.();
+  motionPromptDismiss = null;
   motionPromptSource = null;
 }
 
@@ -318,7 +321,7 @@ function offerTopLevelMotionPermission(
   }
   motionPromptSource = source;
   let permissionPending = false;
-  showNotification({
+  const dismissPrompt = showNotification({
     label: withActiveTld(label),
     text: "Enable motion to tilt this application with your device.",
     dismissMs: 0,
@@ -400,6 +403,7 @@ function offerTopLevelMotionPermission(
             motionRelayCleanup = () => {
               window.removeEventListener("devicemotion", onMotion);
             };
+            dismissPrompt();
             motionPromptSource = null;
             sendMotionStatus(source, origin, 1);
           })
@@ -412,11 +416,15 @@ function offerTopLevelMotionPermission(
       },
     },
     onDismiss: () => {
+      if (motionPromptDismiss === dismissPrompt) {
+        motionPromptDismiss = null;
+      }
       if (motionPromptSource === source) {
         motionPromptSource = null;
       }
     },
   });
+  motionPromptDismiss = dismissPrompt;
 }
 
 // A sandbox reload asks the host to rebuild the iframe from tracked product

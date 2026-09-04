@@ -449,6 +449,18 @@ describe("bridge render lifecycle", () => {
         source: targetWindow,
       }),
     );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:pvm-motion-request" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(
+      [...document.querySelectorAll(".notif-action")].filter(
+        (element) => element.textContent === "Enable motion",
+      ),
+    ).toHaveLength(1);
     const enable = document.querySelector<HTMLButtonElement>(".notif-action");
     expect(enable?.textContent).toBe("Enable motion");
     enable?.click();
@@ -460,6 +472,23 @@ describe("bridge render lifecycle", () => {
         created.allowedOrigin,
       );
     });
+    const prompt = enable?.closest(".notif-card");
+    expect(prompt).not.toBeNull();
+    expect(prompt?.classList.contains("notif-leave")).toBe(true);
+    prompt?.dispatchEvent(new Event("animationend"));
+    expect(document.body.textContent).not.toContain(
+      "Enable motion to tilt this application",
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:pvm-motion-request" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(document.body.textContent).not.toContain(
+      "Enable motion to tilt this application",
+    );
 
     window.dispatchEvent(new TestDeviceMotionEvent("devicemotion"));
     expect(postMessage).toHaveBeenCalledWith(
