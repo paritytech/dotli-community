@@ -1,44 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from "vitest";
-import type {
-  JsonRpcConnection,
-  JsonRpcMessage,
-  JsonRpcProvider,
-  JsonRpcRequest,
-} from "@polkadot-api/json-rpc-provider";
+import { describe, expect, it } from "vitest";
 import { createChainBrokerManager } from "@dotli/protocol/broker";
-
-function createProviderHarness(): {
-  provider: JsonRpcProvider;
-  sent: JsonRpcRequest[];
-  disconnect: ReturnType<typeof vi.fn>;
-  emit: (message: JsonRpcMessage) => void;
-} {
-  const sent: JsonRpcRequest[] = [];
-  const disconnect = vi.fn();
-  let onMessage: ((message: JsonRpcMessage) => void) | null = null;
-
-  const provider: JsonRpcProvider = (listener): JsonRpcConnection => {
-    onMessage = listener;
-    return {
-      send(message) {
-        sent.push(message);
-      },
-      disconnect,
-    };
-  };
-
-  return {
-    provider,
-    sent,
-    disconnect,
-    emit(message) {
-      onMessage?.(message);
-    },
-  };
-}
+import { createProviderHarness } from "./support";
 
 describe("createChainBrokerManager", () => {
   it("remaps request ids and routes responses back to the correct client", () => {

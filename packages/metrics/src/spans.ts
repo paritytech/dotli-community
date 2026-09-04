@@ -140,9 +140,13 @@ export const APP_RENDER = "app.render";
 export const PROTOCOL_IFRAME_READY = "protocol.iframe_ready";
 
 /**
- * Protocol request roundtrip time. Timeouts emit
- * `m.count(PROTOCOL_REQUEST, { outcome: "timeout", method })`; there is
- * no separate `_TIMEOUT` constant.
+ * Protocol request roundtrip time, recorded only for a completed roundtrip.
+ *
+ * A request that fails records no duration, so this series stays comparable
+ * across releases. Timeouts arrive instead as
+ * `m.count(PROTOCOL_REQUEST, { outcome: "timeout", method, phase })`, where
+ * `phase` is `load`, `ready`, or `reply` and names which wait spent the
+ * request's call-time budget. There is no separate `_TIMEOUT` constant.
  */
 export const PROTOCOL_REQUEST = "protocol.request";
 
