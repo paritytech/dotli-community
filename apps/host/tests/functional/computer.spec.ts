@@ -183,7 +183,7 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
   await routeCar(page, kilo);
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
   await answerResolutions(page, {
-    pvmkiloapp: { cid: kilo.cid, manifest: kilo.manifest },
+    kilo: { cid: kilo.cid, manifest: kilo.manifest },
   });
   const product = await mountComputer(page, computer, true);
   const screen = product.locator("#dotli-computer-screen");
@@ -208,7 +208,7 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
   // kilo is NOT in the computer's manifest: the spawn suspends, the page
   // resolves the label through the host bridge, fetches and verifies the
   // kilo app archive, and the editor runs as a sandboxed child VM.
-  await page.keyboard.type("pvmkiloapp notes.txt");
+  await page.keyboard.type("kilo notes.txt");
   await page.keyboard.press("Enter");
   await expect.poll(async () => screenText(product)).toContain("HELP: Ctrl-S");
   await page.keyboard.type("computer on the web");
@@ -308,4 +308,78 @@ test("Kilo runs as a standalone published computer app", async ({ page }) => {
   await expect(screen).toHaveAttribute("data-computer-exit", "0", {
     timeout: 30_000,
   });
+});
+
+test("a network computer open-spawns Lynx by published name", async ({
+  page,
+}) => {
+  const computer = await appCar([
+    ["manifest.json", "network-manifest.json"],
+    ["shell.polkavm", "shell.polkavm"],
+    ["home/readme.txt", "readme.txt"],
+  ]);
+  const lynx = await appCar([
+    ["manifest.json", "lynx-manifest.json"],
+    ["app.polkavm", "lynx.polkavm"],
+    ["home/cacert.pem", "lynx-cacert.pem"],
+    ["home/lynx.cfg", "lynx.cfg"],
+    ["home/lynx.lss", "lynx.lss"],
+    ["home/index.html", "lynx-index.html"],
+  ]);
+  await routeCar(page, computer);
+  await routeCar(page, lynx);
+  await page.goto("http://localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  await answerResolutions(page, {
+    lynx: { cid: lynx.cid, manifest: lynx.manifest },
+  });
+  const product = await mountComputer(
+    page,
+    computer,
+    true,
+    "lynx-child-fixture",
+  );
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await screen.click();
+  await page.keyboard.type("lynx");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 60_000 })
+    .toContain("PolkaVM Lynx");
+});
+
+test("Lynx browses HTTPS through the guest TLS stack", async ({ page }) => {
+  const lynx = await appCar([
+    ["manifest.json", "lynx-manifest.json"],
+    ["app.polkavm", "lynx.polkavm"],
+    ["home/cacert.pem", "lynx-cacert.pem"],
+    ["home/lynx.cfg", "lynx.cfg"],
+    ["home/lynx.lss", "lynx.lss"],
+    ["home/index.html", "lynx-index.html"],
+  ]);
+  await routeCar(page, lynx);
+  await page.goto("http://localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  const product = await mountComputer(page, lynx, true, "lynx-fixture");
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await expect
+    .poll(async () => screenText(product))
+    .toContain("H)elp O)ptions");
+
+  await screen.click();
+  await page.keyboard.type("g");
+  await expect.poll(async () => screenText(product)).toContain("URL to open");
+  await page.keyboard.type("https://example.com/");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 60_000 })
+    .toContain("Example Domain");
 });

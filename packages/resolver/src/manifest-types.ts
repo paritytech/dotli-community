@@ -124,6 +124,7 @@ export const HOST_INTERFACES = [
   "polkadot-host/0.1/fs",
   "polkadot-host/0.1/tty",
   "polkadot-host/0.1/process",
+  "polkadot-host/0.1/net",
 ] as const;
 
 export type AppManifestV2 =

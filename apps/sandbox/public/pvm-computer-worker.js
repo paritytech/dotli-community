@@ -7,13 +7,12 @@
 //   page -> worker:
 //     { type: "start", runtime, program, packages: [{ name, bytes }],
 //       files: [{ path, bytes }], argv, environment, columns, rows, maxGas }
-//     { type: "input", bytes }
+//     { type: "package", name, bytes, files } resolved child program and seeds
 //     { type: "resize", columns, rows }
 //   worker -> page:
 //     { type: "started", translationMs }
 //     { type: "output", bytes }            terminal ANSI byte stream
-//     { type: "files", entries }           modified /home files since last drain
-//     { type: "exit", code }               root process ended the computer
+//     { type: "files", entries, removed }  changed /home entries
 //     { type: "log", message }             guest host_log diagnostics
 //     { type: "error", message }           supervisor fault; computer is dead
 
@@ -21,8 +20,12 @@ importScripts(
   new URL("/pvm-runtime/pvm-computer.js", self.location.origin).href,
 );
 
-const { ComputerSupervisor, ComputerTranslator, computerContext } =
-  globalThis.PvmComputer;
+const {
+  ComputerSupervisor,
+  ComputerTranslator,
+  WebSocketTcpProvider,
+  computerContext,
+} = globalThis.PvmComputer;
 
 // One pump handles at most this many run slices before declaring the guest
 // wedged. A busy full-screen redraw needs a few dozen; 100k is a hang.
@@ -55,6 +58,10 @@ function drainOutput() {
       },
       entries.map(([, bytes]) => bytes.buffer),
     );
+  }
+  const removed = supervisor.takeRemovedFiles();
+  if (removed.length > 0) {
+    self.postMessage({ type: "files", entries: [], removed });
   }
 }
 
@@ -112,6 +119,9 @@ function pump() {
 }
 
 async function providePackage(message) {
+  for (const file of message.files ?? []) {
+    supervisor.mountFile(file.path, new Uint8Array(file.bytes));
+  }
   const module = await translator.translate(message.bytes);
   supervisor.providePackage(module);
   resolvingPackage = null;
@@ -123,6 +133,11 @@ async function start(message) {
   const started = performance.now();
   const program = await translator.translate(message.program);
   const context = computerContext(message.argv, message.environment);
+  const networkProvider = message.networkEnabled
+    ? new WebSocketTcpProvider(message.relayUrl, () => {
+        queueMicrotask(pump);
+      })
+    : null;
   supervisor = new ComputerSupervisor(
     program,
     context,
@@ -130,7 +145,7 @@ async function start(message) {
     (text) => {
       self.postMessage({ type: "log", message: text });
     },
-    { packageResolution: true },
+    { packageResolution: true, networkProvider },
   );
   for (const entry of message.packages) {
     supervisor.registerPackage(
@@ -138,6 +153,7 @@ async function start(message) {
       await translator.translate(entry.bytes),
     );
   }
+  supervisor.setNetworkEnabled(message.networkEnabled === true);
   supervisor.setTerminalSize(message.columns, message.rows);
   for (const file of message.files) {
     supervisor.mountFile(file.path, new Uint8Array(file.bytes));
