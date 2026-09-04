@@ -301,6 +301,14 @@ export function resolvedParentOrigin(
   }
 }
 
+export function shouldReloadAfterWake(
+  wasHidden: boolean,
+  visibilityState: DocumentVisibilityState,
+  restoredFromPageCache: boolean,
+): boolean {
+  return restoredFromPageCache || (wasHidden && visibilityState === "visible");
+}
+
 function uiPlatformRect(value: unknown): UiPlatformRect | null {
   if (
     !Array.isArray(value) ||
@@ -2017,6 +2025,41 @@ export async function runPvmApplication(
     truapiPort.close();
   };
   window.addEventListener("pagehide", stop, { once: true });
+  // Mobile browsers may discard the worker-owned GPU device while the screen
+  // is locked. Reload only this product frame on wake: that recreates the
+  // OffscreenCanvas, worker, and input listeners while the top-level motion
+  // permission relay remains active.
+  if (descriptor.graphicsProfile === "webgpu-raster") {
+    let wasHidden = document.visibilityState === "hidden";
+    let reloadRequested = false;
+    const reloadAfterWake = (): void => {
+      if (reloadRequested) {
+        return;
+      }
+      reloadRequested = true;
+      location.reload();
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        wasHidden = true;
+        return;
+      }
+      if (shouldReloadAfterWake(wasHidden, document.visibilityState, false)) {
+        reloadAfterWake();
+      }
+    });
+    window.addEventListener("pageshow", (event) => {
+      if (
+        shouldReloadAfterWake(
+          wasHidden,
+          document.visibilityState,
+          event.persisted,
+        )
+      ) {
+        reloadAfterWake();
+      }
+    });
+  }
 
   let translationStorePromise: Promise<void> = Promise.resolve();
   worker.onmessage = async (event: MessageEvent<unknown>): Promise<void> => {

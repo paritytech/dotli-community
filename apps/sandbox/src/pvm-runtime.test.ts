@@ -15,6 +15,7 @@ import {
   postFirstUiPlatformCommand,
   unsupportedPvmImport,
   resolvedParentOrigin,
+  shouldReloadAfterWake,
   validatedUiPlatformOutput,
   waitForTruapiPort,
   type TruapiPortScope,
@@ -275,6 +276,18 @@ describe("PolkaVM parent motion relay", () => {
     ).toBe("https://chinpokomon-pvm.westendli.dev");
     expect(resolvedParentOrigin(null, "")).toBeNull();
     expect(resolvedParentOrigin(null, "not a URL")).toBeNull();
+  });
+});
+
+describe("PolkaVM wake recovery", () => {
+  it("reloads a visible WebGPU application after suspension", () => {
+    expect(shouldReloadAfterWake(true, "visible", false)).toBe(true);
+    expect(shouldReloadAfterWake(false, "visible", false)).toBe(false);
+    expect(shouldReloadAfterWake(true, "hidden", false)).toBe(false);
+  });
+
+  it("reloads a page restored from the back-forward cache", () => {
+    expect(shouldReloadAfterWake(false, "visible", true)).toBe(true);
   });
 });
 
