@@ -8,10 +8,16 @@
 
 import type { ArchiveFiles } from "@dotli/content/archive";
 import {
+  createClient,
+  createMessagePortProvider,
+  createTransport,
+} from "@parity/truapi";
+import {
   ComputerTerminal,
   keyEventToBytes,
   type TerminalSnapshot,
 } from "./computer-terminal";
+import { waitForTruapiPort } from "./pvm-runtime";
 
 const PVM_RUNTIME_ROOT = "/pvm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
@@ -454,6 +460,17 @@ export async function runComputerApplication(
   if (descriptor === null) {
     throw new Error("package is not a PolkaVM computer");
   }
+  // Permission prompts route through the product's TrUAPI connection. Resolve
+  // it lazily: a computer that never touches the network must boot (and keep
+  // working) without the Host port, and the port handshake must not gate the
+  // terminal.
+  let truapiPromise: ReturnType<typeof lazyTruapi> | null = null;
+  const lazyTruapi = async () =>
+    createClient(
+      createTransport(createMessagePortProvider(await waitForTruapiPort())),
+    );
+  const truapi = (): ReturnType<typeof lazyTruapi> =>
+    (truapiPromise ??= lazyTruapi());
   validateComputerFiles(files, descriptor);
 
   const { screen, status } = createComputerShell();
@@ -664,9 +681,37 @@ export async function runComputerApplication(
       code?: number;
       message?: string;
       name?: string;
+      domain?: string;
+      nonce?: string;
       translationMs?: number;
     };
     switch (message.type) {
+      case "network-permission":
+        if (
+          typeof message.domain === "string" &&
+          typeof message.nonce === "string"
+        ) {
+          const { domain, nonce } = message;
+          void truapi()
+            .then((client) =>
+              client.permissions.requestRemotePermission({
+                permission: {
+                  tag: "Remote",
+                  value: { domains: [domain] },
+                },
+              }),
+            )
+            .then((result) => result.isOk() && result.value.granted)
+            .catch(() => false)
+            .then((granted) => {
+              worker.postMessage({
+                type: "network-permission-result",
+                nonce,
+                granted,
+              });
+            });
+        }
+        break;
       case "started":
         status.textContent = "";
         screen.dataset.computerReady = "true";

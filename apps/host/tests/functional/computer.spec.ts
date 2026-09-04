@@ -18,6 +18,15 @@ import { sha256 } from "multiformats/hashes/sha2";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
+import {
+  decodeWireMessage,
+  encodeWireMessage,
+  RemotePermissionResponse,
+  VersionedRemotePermissionError,
+  VersionedRemotePermissionRequest,
+} from "@parity/truapi";
+import { CallError, Result, indexedTaggedUnion } from "@parity/truapi/scale";
+import { PERMISSIONS_REQUEST_REMOTE_PERMISSION } from "@parity/truapi/wire-table";
 
 interface AppCar {
   cid: string;
@@ -165,6 +174,81 @@ async function mountComputer(
 
 async function screenText(product: FrameLocator): Promise<string> {
   return (await product.locator("#dotli-computer-screen").textContent()) ?? "";
+}
+
+// Stand-in for the dotli Host core: answer the sandbox's `truapi-ready`
+// announcement with a MessagePort and grant every RemotePermission request,
+// recording the requested domains. In production `packages/ui/src/bridge.ts`
+// wires this port to the Rust core, which shows the permission modal.
+async function grantRemotePermissions(page: Page): Promise<string[]> {
+  const domains: string[] = [];
+  const remoteResponse = indexedTaggedUnion({
+    V1: [
+      0,
+      Result(
+        RemotePermissionResponse,
+        CallError(VersionedRemotePermissionError),
+      ),
+    ],
+  });
+  await page.exposeFunction(
+    "__truapiGrantRemote",
+    (bytes: number[]): number[] | null => {
+      const decoded = decodeWireMessage(new Uint8Array(bytes));
+      if (decoded.isErr()) return null;
+      const { requestId, payload } = decoded.value;
+      if (payload.id !== PERMISSIONS_REQUEST_REMOTE_PERMISSION.request) {
+        return null;
+      }
+      const request = VersionedRemotePermissionRequest.dec(payload.value).value;
+      if (request.permission.tag === "Remote") {
+        domains.push(...request.permission.value.domains);
+      }
+      const encoded = encodeWireMessage({
+        requestId,
+        payload: {
+          id: PERMISSIONS_REQUEST_REMOTE_PERMISSION.response,
+          value: remoteResponse.enc({
+            tag: "V1",
+            value: { success: true, value: { granted: true } },
+          }),
+        },
+      });
+      return encoded.isOk() ? Array.from(encoded.value) : null;
+    },
+  );
+  await page.evaluate(() => {
+    window.addEventListener("message", (event) => {
+      const data: unknown = event.data;
+      if (
+        data === null ||
+        typeof data !== "object" ||
+        !("type" in data) ||
+        data.type !== "truapi-ready"
+      ) {
+        return;
+      }
+      if (event.source === null) return;
+      // The product iframe is cross-origin, so event.source is a restricted
+      // WindowProxy: `instanceof Window` is unreliable; trust the protocol.
+      const source = event.source as Window;
+      // exposeFunction installs the binding on window; the DOM lib has no
+      // declaration for it, so narrow through a named holder once.
+      const holder = window as Window & {
+        __truapiGrantRemote?: (bytes: number[]) => Promise<number[] | null>;
+      };
+      const grant = holder.__truapiGrantRemote;
+      if (grant === undefined) return;
+      const channel = new MessageChannel();
+      channel.port1.onmessage = async (message) => {
+        if (!(message.data instanceof Uint8Array)) return;
+        const reply = await grant(Array.from(message.data));
+        if (reply !== null) channel.port1.postMessage(new Uint8Array(reply));
+      };
+      source.postMessage({ type: "truapi-init" }, "*", [channel.port2]);
+    });
+  });
+  return domains;
 }
 
 test("a PolkaVM computer open-spawns a published editor and persists /home", async ({
@@ -365,6 +449,9 @@ test("Lynx browses HTTPS through the guest TLS stack", async ({ page }) => {
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
+  // The functional harness has no dotli bridge; stand in for the Host core
+  // and grant the sandbox's remote-permission request while recording it.
+  const requestedDomains = await grantRemotePermissions(page);
   const product = await mountComputer(page, lynx, true, "lynx-fixture");
   const screen = product.locator("#dotli-computer-screen");
   await expect(screen).toHaveAttribute("data-computer-ready", "true", {
@@ -382,4 +469,7 @@ test("Lynx browses HTTPS through the guest TLS stack", async ({ page }) => {
   await expect
     .poll(async () => screenText(product), { timeout: 60_000 })
     .toContain("Example Domain");
+  // The connection only proceeds after the sandbox asked the Host for the
+  // exact domain; dotli's bridge turns this request into a user prompt.
+  expect(requestedDomains).toEqual(["example.com"]);
 });
