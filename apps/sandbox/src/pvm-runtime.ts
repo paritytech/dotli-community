@@ -1886,16 +1886,21 @@ export async function runPvmApplication(
     audioCursor = start + buffer.duration;
   };
 
-  const startTimeoutMs = forceInterpreter
+  let startTimeoutMs = forceInterpreter
     ? INTERPRETER_START_TIMEOUT_MS
     : START_TIMEOUT_MS;
-  const timer = window.setTimeout(() => {
+  const onStartTimeout = (): void => {
+    const label =
+      forceInterpreter || pvmMetrics.backend === "interpreter"
+        ? "PolkaVM interpreter"
+        : "PolkaVM application";
     rejectStarted(
       new Error(
-        `${forceInterpreter ? "PolkaVM interpreter" : "PolkaVM application"} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${pvmMetrics.startupStage})`,
+        `${label} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${pvmMetrics.startupStage})`,
       ),
     );
-  }, startTimeoutMs);
+  };
+  let timer = window.setTimeout(onStartTimeout, startTimeoutMs);
   let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
   if (
@@ -2135,6 +2140,17 @@ export async function runPvmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PVM→Wasm JIT" : "PVM interpreter"} ready`;
         canvas.dataset.pvmReady = "true";
         updateMetrics();
+        if (ready.backend === "interpreter" && !forceInterpreter) {
+          // Translation fell back to the interpreter, so the compiler start
+          // budget no longer applies; re-arm the frame watchdog with the
+          // interpreter budget instead of failing a live guest at 30s.
+          window.clearTimeout(timer);
+          startTimeoutMs = INTERPRETER_START_TIMEOUT_MS;
+          timer = window.setTimeout(
+            onStartTimeout,
+            INTERPRETER_START_TIMEOUT_MS,
+          );
+        }
         usesMotion = ready.usesMotion === true;
         if (usesMotion && parentOrigin !== null) {
           window.parent.postMessage(
