@@ -3,7 +3,7 @@
 
 import type { ArchiveFiles } from "@dotli/content/archive";
 import { Tri2dRenderer } from "./tri2d-renderer";
-import { WebGpuRasterBridge, type WebGpuRequirements } from "./webgpu-raster";
+import { WebGpuBridge, type WebGpuRequirements } from "./webgpu";
 
 const PVM_RUNTIME_ROOT = "/pvm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
@@ -26,7 +26,9 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "pvm-host-runtime-5d7b86b4";
+const RUNTIME_SOURCE = "pvm-host-runtime-f49d662c";
+type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
+
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
@@ -100,7 +102,7 @@ declare global {
 
 interface PvmDescriptor {
   programPath: string;
-  graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster";
+  graphicsProfile: GraphicsProfile;
   webGpuRequirements: WebGpuRequirements | null;
   controls: string[];
   inputFeatures: string[];
@@ -455,7 +457,7 @@ function parseManifest(
     throw new Error("PolkaVM manifest has an invalid runtime entrypoint");
   }
   const modalities = object(manifest?.modalities);
-  let graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster";
+  let graphicsProfile: GraphicsProfile;
   let webGpuRequirements: WebGpuRequirements | null = null;
   let controls: string[];
   let inputFeatures: string[];
@@ -469,18 +471,15 @@ function parseManifest(
     const graphics = object(capabilities?.graphics);
     if (
       graphics?.abiVersion !== 1 ||
-      !["framebuffer", "tri2d", "webgpu-raster"].includes(
+      !["framebuffer", "tri2d", "webgpu-raster", "webgpu"].includes(
         String(graphics.profile),
       )
     ) {
       throw new Error(
-        "dotli supports framebuffer, Tri2D, and WebGPU Raster ABI version 1 PolkaVM Apps",
+        "dotli supports framebuffer, Tri2D, WebGPU Raster, and WebGPU ABI version 1 PolkaVM Apps",
       );
     }
-    graphicsProfile = graphics.profile as
-      | "framebuffer"
-      | "tri2d"
-      | "webgpu-raster";
+    graphicsProfile = graphics.profile as GraphicsProfile;
     const graphicsFeatures = Array.isArray(graphics.requiredFeatures)
       ? graphics.requiredFeatures
       : null;
@@ -491,10 +490,10 @@ function parseManifest(
     ) {
       throw new Error("PolkaVM App v2 requires unsupported graphics features");
     }
-    if (graphicsProfile === "webgpu-raster") {
+    if (graphicsProfile === "webgpu-raster" || graphicsProfile === "webgpu") {
       const requiredLimits = object(graphics.requiredLimits);
       if (requiredLimits === null) {
-        throw new Error("WebGPU Raster requires explicit bounded limits");
+        throw new Error("WebGPU requires explicit bounded limits");
       }
       const limits: Record<string, number> = {};
       for (const [name, value] of Object.entries(requiredLimits)) {
@@ -509,9 +508,17 @@ function parseManifest(
             "maxVertexBuffers",
             "maxVertexAttributes",
             "maxColorAttachments",
+            "maxStorageBufferBindingSize",
+            "maxStorageBuffersPerShaderStage",
+            "maxComputeWorkgroupStorageSize",
+            "maxComputeInvocationsPerWorkgroup",
+            "maxComputeWorkgroupSizeX",
+            "maxComputeWorkgroupSizeY",
+            "maxComputeWorkgroupSizeZ",
+            "maxComputeWorkgroupsPerDimension",
           ].includes(name)
         ) {
-          throw new Error(`WebGPU Raster requires unsupported limit ${name}`);
+          throw new Error(`WebGPU requires unsupported limit ${name}`);
         }
         limits[name] = value as number;
       }
@@ -1126,7 +1133,7 @@ function createShell(controls: string[]): {
 
 function installInput(
   canvas: HTMLCanvasElement,
-  graphicsProfile: "framebuffer" | "tri2d" | "webgpu-raster",
+  graphicsProfile: GraphicsProfile,
   inputFeatures: readonly string[],
   send: (bytes: Uint8Array) => void,
   sendMotion: (bytes: Uint8Array) => void,
@@ -1886,13 +1893,16 @@ export async function runPvmApplication(
       ),
     );
   }, startTimeoutMs);
-  let webGpu: WebGpuRasterBridge | null = null;
+  let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
-  if (descriptor.graphicsProfile === "webgpu-raster") {
+  if (
+    descriptor.graphicsProfile === "webgpu-raster" ||
+    descriptor.graphicsProfile === "webgpu"
+  ) {
     if (descriptor.webGpuRequirements === null) {
-      throw new Error("WebGPU Raster requirements are missing");
+      throw new Error("WebGPU requirements are missing");
     }
-    webGpu = new WebGpuRasterBridge(canvas, descriptor.webGpuRequirements, {
+    webGpu = new WebGpuBridge(canvas, descriptor.webGpuRequirements, {
       capabilities: (bytes) => {
         const capabilities = ownedBytes(bytes);
         worker.postMessage({ type: "gpu-capabilities", bytes: capabilities }, [
@@ -2029,7 +2039,10 @@ export async function runPvmApplication(
   // is locked. Reload only this product frame on wake: that recreates the
   // OffscreenCanvas, worker, and input listeners while the top-level motion
   // permission relay remains active.
-  if (descriptor.graphicsProfile === "webgpu-raster") {
+  if (
+    descriptor.graphicsProfile === "webgpu-raster" ||
+    descriptor.graphicsProfile === "webgpu"
+  ) {
     let wasHidden = document.visibilityState === "hidden";
     let reloadRequested = false;
     const reloadAfterWake = (): void => {
@@ -2238,14 +2251,15 @@ export async function runPvmApplication(
       case "gpu-batch": {
         const batch = message as unknown as WorkerGpuBatch;
         if (
-          descriptor.graphicsProfile !== "webgpu-raster" ||
+          (descriptor.graphicsProfile !== "webgpu-raster" &&
+            descriptor.graphicsProfile !== "webgpu") ||
           webGpu === null ||
           !(batch.bytes instanceof Uint8Array) ||
           batch.bytes.byteLength === 0 ||
           batch.bytes.byteLength > 4 * 1024 * 1024
         ) {
           rejectStarted(
-            new Error("PolkaVM guest emitted an invalid WebGPU Raster batch"),
+            new Error("PolkaVM guest emitted an invalid WebGPU batch"),
           );
           return;
         }

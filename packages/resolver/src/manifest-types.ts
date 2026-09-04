@@ -61,7 +61,7 @@ export interface PolkaVmAppManifestV2 {
   capabilities: {
     graphics: {
       abiVersion: 1;
-      profile: "framebuffer" | "tri2d" | "webgpu-raster";
+      profile: "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
       requiredFeatures: readonly string[];
       requiredLimits?: Readonly<Record<string, number>>;
     };
@@ -208,7 +208,7 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
   } else {
     if (
       graphics.abiVersion !== 1 ||
-      !["framebuffer", "tri2d", "webgpu-raster"].includes(
+      !["framebuffer", "tri2d", "webgpu-raster", "webgpu"].includes(
         graphics.profile as string,
       )
     ) {

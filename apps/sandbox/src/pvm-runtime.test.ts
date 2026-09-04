@@ -82,7 +82,7 @@ function tri2dAppV2Manifest(): string {
   return JSON.stringify(manifest);
 }
 
-function webGpuAppV2Manifest(): string {
+function webGpuRasterAppV2Manifest(): string {
   const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
   const capabilities = manifest.capabilities as Record<string, unknown>;
   const graphics = capabilities.graphics as Record<string, unknown>;
@@ -91,6 +91,25 @@ function webGpuAppV2Manifest(): string {
     maxTextureDimension2D: 4096,
     maxBufferSize: 1024,
     maxBindingsPerBindGroup: 3,
+  };
+  delete capabilities.audio;
+  return JSON.stringify(manifest);
+}
+
+function webGpuComputeAppV2Manifest(): string {
+  const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
+  const capabilities = manifest.capabilities as Record<string, unknown>;
+  const graphics = capabilities.graphics as Record<string, unknown>;
+  graphics.profile = "webgpu";
+  graphics.requiredLimits = {
+    maxBufferSize: 1_048_576,
+    maxBindingsPerBindGroup: 3,
+    maxBindGroups: 1,
+    maxStorageBufferBindingSize: 1_048_576,
+    maxStorageBuffersPerShaderStage: 2,
+    maxComputeInvocationsPerWorkgroup: 64,
+    maxComputeWorkgroupSizeX: 64,
+    maxComputeWorkgroupsPerDimension: 1_024,
   };
   delete capabilities.audio;
   return JSON.stringify(manifest);
@@ -466,7 +485,7 @@ describe("PolkaVM package recognition", () => {
   });
 
   it("recognizes strict App manifest v2 WebGPU Raster limits", () => {
-    const manifest = webGpuAppV2Manifest();
+    const manifest = webGpuRasterAppV2Manifest();
     const files = {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
@@ -479,6 +498,36 @@ describe("PolkaVM package recognition", () => {
           maxTextureDimension2D: 4096,
           maxBufferSize: 1024,
           maxBindingsPerBindGroup: 3,
+        },
+      },
+      programPath: "app.polkavm",
+      controls: ["Pointer", "Keyboard"],
+      inputFeatures: ["pointer", "keyboard"],
+      audioEnabled: false,
+      requiredAssets: [],
+      manifestVersion: 2,
+    });
+  });
+
+  it("recognizes strict App manifest v2 WebGPU compute limits", () => {
+    const manifest = webGpuComputeAppV2Manifest();
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(describePvmPackage(files, manifest)).toEqual({
+      graphicsProfile: "webgpu",
+      webGpuRequirements: {
+        requiredFeatures: [],
+        requiredLimits: {
+          maxBufferSize: 1_048_576,
+          maxBindingsPerBindGroup: 3,
+          maxBindGroups: 1,
+          maxStorageBufferBindingSize: 1_048_576,
+          maxStorageBuffersPerShaderStage: 2,
+          maxComputeInvocationsPerWorkgroup: 64,
+          maxComputeWorkgroupSizeX: 64,
+          maxComputeWorkgroupsPerDimension: 1_024,
         },
       },
       programPath: "app.polkavm",

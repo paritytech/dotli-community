@@ -37,7 +37,7 @@ function dimensions(canvas: HTMLCanvasElement): Dimensions {
   };
 }
 
-export class WebGpuRasterBridge {
+export class WebGpuBridge {
   readonly #worker: Worker;
   readonly #resizeObserver: ResizeObserver;
   readonly capabilities: Promise<Uint8Array>;

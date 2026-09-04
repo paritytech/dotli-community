@@ -103,6 +103,14 @@
   const encoder = new TextEncoder();
   const strictDecoder = new TextDecoder("utf-8", { fatal: true });
 
+  function isWebGpuProfile(profile) {
+    return profile === "webgpu-raster" || profile === "webgpu";
+  }
+
+  function isComputeOpcode(opcode) {
+    return opcode >= 24 && opcode <= 29;
+  }
+
   function validUiSemantics(bytes) {
     let snapshot;
     try {
@@ -479,7 +487,9 @@
       this.emit = emit;
       this.audioEnabled = audioEnabled;
       if (
-        !["framebuffer", "tri2d", "webgpu-raster"].includes(graphicsProfile)
+        !["framebuffer", "tri2d", "webgpu-raster", "webgpu"].includes(
+          graphicsProfile,
+        )
       ) {
         throw new Error(
           `translated PolkaVM runtime has invalid graphics profile ${graphicsProfile}`,
@@ -487,7 +497,7 @@
       }
       this.graphicsProfile = graphicsProfile;
       if (
-        graphicsProfile === "webgpu-raster" &&
+        isWebGpuProfile(graphicsProfile) &&
         !(gpuCapabilities instanceof Uint8Array)
       ) {
         throw new Error(
@@ -1012,7 +1022,7 @@
           return false;
         }
         case "host_gpu_capabilities": {
-          if (this.graphicsProfile !== "webgpu-raster") {
+          if (!isWebGpuProfile(this.graphicsProfile)) {
             this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
             return false;
           }
@@ -1031,7 +1041,7 @@
           return false;
         }
         case "host_gpu_submit": {
-          if (this.graphicsProfile !== "webgpu-raster") {
+          if (!isWebGpuProfile(this.graphicsProfile)) {
             this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
             return false;
           }
@@ -1061,6 +1071,13 @@
             this.#setReg(7, BigInt(GPU_ERROR_MALFORMED_BATCH));
             return false;
           }
+          if (
+            this.graphicsProfile !== "webgpu" &&
+            this.#gpuBatchUsesCompute(bytes)
+          ) {
+            this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
+            return false;
+          }
           if (sequence <= this.gpuLastSequence) {
             this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
             return false;
@@ -1072,7 +1089,7 @@
           return false;
         }
         case "host_gpu_receive": {
-          if (this.graphicsProfile !== "webgpu-raster") {
+          if (!isWebGpuProfile(this.graphicsProfile)) {
             this.#setReg(7, BigInt(GPU_ERROR_INVALID_STATE));
             return false;
           }
@@ -1269,6 +1286,23 @@
         offset += commandBytes;
       }
       return offset === bytes.byteLength ? sequence : null;
+    }
+
+    #gpuBatchUsesCompute(bytes) {
+      const view = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      );
+      const commandCount = view.getUint32(12, true);
+      let offset = 24;
+      for (let index = 0; index < commandCount; index++) {
+        if (isComputeOpcode(view.getUint16(offset, true))) {
+          return true;
+        }
+        offset += view.getUint32(offset + 4, true);
+      }
+      return false;
     }
 
     #setupCoreVm() {
@@ -2015,6 +2049,10 @@ globalThis.createPvmRuntime = (endpoint) => {
     }
   }
 
+  function isWebGpuProfile(profile) {
+    return profile === "webgpu-raster" || profile === "webgpu";
+  }
+
   function validateStartMessage(message) {
     if (
       !(message.runtime instanceof WebAssembly.Module) &&
@@ -2029,7 +2067,7 @@ globalThis.createPvmRuntime = (endpoint) => {
       );
     }
     if (
-      !["framebuffer", "tri2d", "webgpu-raster"].includes(
+      !["framebuffer", "tri2d", "webgpu-raster", "webgpu"].includes(
         message.graphicsProfile,
       )
     ) {
@@ -2075,7 +2113,7 @@ globalThis.createPvmRuntime = (endpoint) => {
       }
     }
     if (
-      message.graphicsProfile === "webgpu-raster" &&
+      isWebGpuProfile(message.graphicsProfile) &&
       !(message.gpuCapabilities instanceof ArrayBuffer)
     ) {
       throw new Error(
@@ -2193,6 +2231,8 @@ globalThis.createPvmRuntime = (endpoint) => {
         presentation = 1;
       } else if (message.graphicsProfile === "webgpu-raster") {
         presentation = 2;
+      } else if (message.graphicsProfile === "webgpu") {
+        presentation = 3;
       }
       const begin = pvm.pvm_browser_launch_begin_v2;
       if (typeof begin !== "function") {
@@ -2229,7 +2269,7 @@ globalThis.createPvmRuntime = (endpoint) => {
         );
         pendingMotionSample = null;
       }
-      if (message.graphicsProfile === "webgpu-raster") {
+      if (isWebGpuProfile(message.graphicsProfile)) {
         if (pendingGpuCapabilities === null) {
           throw new Error(
             "WebGPU capabilities are required before PVM initialization",

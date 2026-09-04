@@ -110,15 +110,16 @@ the program to WebAssembly inside a worker. Keyboard, pointer, framebuffer,
 PCM-audio, asset, save, and UI integration traffic stays on the bounded
 PolkaVM Host ABI.
 
-App manifest v2 supports framebuffer, Tri2D, and WebGPU Raster ABI version 1.
-WebGPU commands execute in a dedicated Host worker after bounded capability
-negotiation; TrUAPI, MotionSample v1, text, IME, focus, and wheel input use the
-same pinned browser runtime as native Hosts. UI output v1 applies cursor and
-IME-agent state in the sandbox. Clipboard text and HTTP(S) navigation cross an
-origin-checked parent channel; the Host consumes at most one command per recent
-trusted input and does not grant the app iframe clipboard permission. As an
-interim compatibility policy, framebuffer and WebGPU Raster capture the pointer
-after a primary click while Tri2D leaves it free.
+App manifest v2 supports framebuffer, Tri2D, WebGPU Raster, and WebGPU ABI
+version 1. WebGPU commands execute in a dedicated Host worker after bounded
+capability negotiation; TrUAPI, MotionSample v1, text, IME, focus, and wheel
+input use the same pinned browser runtime as native Hosts. UI output v1 applies
+cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S)
+navigation cross an origin-checked parent channel; the Host consumes at most
+one command per recent trusted input and does not grant the app iframe
+clipboard permission. As an interim compatibility policy, framebuffer and
+WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
+free.
 
 Translated Wasm bytes are cached in product-origin IndexedDB by the SHA-256 of
 the PVM program and the pinned translator version. Warm launches skip PVM

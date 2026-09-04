@@ -328,7 +328,10 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
         Number(await canvas.getAttribute("data-pvm-tri2d-draws")),
       )
       .toBeGreaterThan(0);
-  } else if (expectedV2Profile === "webgpu-raster") {
+  } else if (
+    expectedV2Profile === "webgpu-raster" ||
+    expectedV2Profile === "webgpu"
+  ) {
     await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
   }
   if (expectedTruapi) {
@@ -356,7 +359,10 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
       .toBeGreaterThan(framesBeforeResize);
     await expect(canvas).toHaveAttribute("data-pvm-ready", "true");
-    if (expectedV2Profile === "webgpu-raster") {
+    if (
+      expectedV2Profile === "webgpu-raster" ||
+      expectedV2Profile === "webgpu"
+    ) {
       await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
     }
   }

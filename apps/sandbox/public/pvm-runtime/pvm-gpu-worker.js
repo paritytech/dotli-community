@@ -19,6 +19,9 @@ const MAX_PENDING_BATCHES = 4;
 const BATCH_ERROR_STALE_SURFACE = 4;
 const MAX_RENDER_PASSES_PER_BATCH = 16;
 const MAX_DRAWS_PER_BATCH = 8_192;
+const MAX_COMPUTE_PASSES_PER_BATCH = 64;
+const MAX_DISPATCHES_PER_BATCH = 8_192;
+const GPU_SHADER_STAGE_VERTEX = 1;
 const MAX_TOTAL_BUFFER_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_TEXTURE_BYTES = 256 * 1024 * 1024;
 const resourceLimits = new Map([
@@ -30,11 +33,13 @@ const resourceLimits = new Map([
   ["bindGroupLayout", 128],
   ["pipelineLayout", 64],
   ["bindGroup", 512],
-  ["pipeline", 256],
+  ["renderPipeline", 256],
+  ["computePipeline", 256],
 ]);
 const bindGroupResourceKinds = new Map([
   [1, "buffer"],
   [4, "buffer"],
+  [5, "buffer"],
   [2, "sampler"],
   [3, "textureView"],
 ]);
@@ -375,7 +380,11 @@ function createBoundedResource(
         commandIndex
       );
     }
-  } else if (kind === "shader" || kind === "pipeline") {
+  } else if (
+    kind === "shader" ||
+    kind === "renderPipeline" ||
+    kind === "computePipeline"
+  ) {
     creations.compilations++;
     if (creations.compilations > MAX_COMPILATIONS_PER_BATCH) {
       throw new ProtocolError(
@@ -524,8 +533,13 @@ function parseCommand(command) {
         const parameter0 = reader.u32();
         const parameter1 = reader.u32();
         let entry;
-        if (kind === 1 || kind === 4) {
-          if (parameter0 || parameter1 || flags & ~1) {
+        if (kind === 1 || kind === 4 || kind === 5) {
+          if (
+            parameter0 ||
+            parameter1 ||
+            flags & ~1 ||
+            (kind === 5 && visibility & GPU_SHADER_STAGE_VERTEX)
+          ) {
             throw new ProtocolError(
               "invalid buffer binding layout",
               command.index
@@ -535,7 +549,12 @@ function parseCommand(command) {
             binding,
             visibility,
             buffer: {
-              type: kind === 1 ? "uniform" : "read-only-storage",
+              type:
+                kind === 1
+                  ? "uniform"
+                  : kind === 4
+                    ? "read-only-storage"
+                    : "storage",
               hasDynamicOffset: Boolean(flags & 1),
               minBindingSize,
             },
@@ -611,7 +630,7 @@ function parseCommand(command) {
         const binding = reader.u32();
         const resourceId = reader.u32();
         const kind = reader.u16();
-        if (kind !== 1 && kind !== 2 && kind !== 3 && kind !== 4) {
+        if (kind !== 1 && kind !== 2 && kind !== 3 && kind !== 4 && kind !== 5) {
           throw new ProtocolError(
             "unsupported bind group entry kind",
             command.index
@@ -773,6 +792,31 @@ function parseCommand(command) {
       result.baseArrayLayer = reader.u16();
       result.arrayLayerCount = reader.u16();
       break;
+    case 24:
+      Object.assign(result, {
+        id: reader.u32(),
+        layout: reader.u32(),
+        shader: reader.u32(),
+      });
+      reader.zero(4);
+      break;
+    case 25:
+      break;
+    case 26:
+      result.id = reader.u32();
+      break;
+    case 27: {
+      result.bindIndex = reader.u32();
+      result.bindGroup = reader.u32();
+      const count = reader.u32();
+      result.dynamicOffsets = Array.from({ length: count }, () => reader.u32());
+      break;
+    }
+    case 28:
+      result.values = [reader.u32(), reader.u32(), reader.u32()];
+      break;
+    case 29:
+      break;
     default:
       throw new ProtocolError(
         `unsupported GPU opcode ${command.opcode}`,
@@ -851,6 +895,14 @@ class GpuEngine {
       maxVertexBuffers: 8,
       maxVertexAttributes: 16,
       maxColorAttachments: 4,
+      maxStorageBufferBindingSize: 16 * 1024 * 1024,
+      maxStorageBuffersPerShaderStage: 8,
+      maxComputeWorkgroupStorageSize: 16 * 1024,
+      maxComputeInvocationsPerWorkgroup: 256,
+      maxComputeWorkgroupSizeX: 256,
+      maxComputeWorkgroupSizeY: 256,
+      maxComputeWorkgroupSizeZ: 64,
+      maxComputeWorkgroupsPerDimension: 65_535,
     };
     const requested = {};
     for (const [name, ceiling] of Object.entries(ceilings)) {
@@ -905,6 +957,15 @@ class GpuEngine {
       8192,
       MAX_BATCH_BYTES,
       16 * 1024 * 1024,
+      requested.maxStorageBufferBindingSize,
+      requested.maxStorageBuffersPerShaderStage,
+      requested.maxComputeWorkgroupStorageSize,
+      requested.maxComputeInvocationsPerWorkgroup,
+      requested.maxComputeWorkgroupSizeX,
+      requested.maxComputeWorkgroupSizeY,
+      requested.maxComputeWorkgroupSizeZ,
+      requested.maxComputeWorkgroupsPerDimension,
+      MAX_DISPATCHES_PER_BATCH,
     ];
     return new GpuEngine(
       canvas,
@@ -1044,6 +1105,7 @@ class GpuEngine {
     const shadow = new Map(this.resources);
     const slots = new Map(this.handleSlots);
     let pass = false;
+    let computePass = false;
     const stats = resourceStats(shadow);
     const creations = {
       counts: new Map(),
@@ -1053,6 +1115,8 @@ class GpuEngine {
     };
     let renderPasses = 0;
     let draws = 0;
+    let computePasses = 0;
+    let dispatches = 0;
     const commands = batch.commands.map(parseCommand);
     for (const command of commands) {
       const index = command.index;
@@ -1204,7 +1268,7 @@ class GpuEngine {
             stats,
             creations,
             command.id,
-            "pipeline",
+            "renderPipeline",
             command,
             index
           );
@@ -1217,8 +1281,8 @@ class GpuEngine {
           break;
         }
         case 12:
-          if (pass) {
-            throw new ProtocolError("nested render pass", index);
+          if (pass || computePass) {
+            throw new ProtocolError("nested GPU pass", index);
           }
           if (command.surfaceGeneration !== this.surfaceGeneration) {
             throw new ProtocolError(
@@ -1247,7 +1311,7 @@ class GpuEngine {
           if (!pass) {
             throw new ProtocolError("pipeline set outside render pass", index);
           }
-          resource(shadow, command.id, "pipeline", index);
+          resource(shadow, command.id, "renderPipeline", index);
           break;
         case 14:
           if (command.slot >= this.limits[4]) {
@@ -1317,8 +1381,8 @@ class GpuEngine {
           pass = false;
           break;
         case 22:
-          if (pass) {
-            throw new ProtocolError("buffer copy inside render pass", index);
+          if (pass || computePass) {
+            throw new ProtocolError("buffer copy inside GPU pass", index);
           }
           resource(shadow, command.source, "buffer", index);
           resource(shadow, command.destination, "buffer", index);
@@ -1336,10 +1400,73 @@ class GpuEngine {
             index
           );
           break;
+        case 24:
+          resource(shadow, command.layout, "pipelineLayout", index);
+          resource(shadow, command.shader, "shader", index);
+          command.resourceEntry = createBoundedResource(
+            shadow,
+            slots,
+            stats,
+            creations,
+            command.id,
+            "computePipeline",
+            command,
+            index
+          );
+          break;
+        case 25:
+          if (pass || computePass) {
+            throw new ProtocolError("nested GPU pass", index);
+          }
+          computePasses++;
+          if (computePasses > MAX_COMPUTE_PASSES_PER_BATCH) {
+            throw new ProtocolError("too many compute passes", index);
+          }
+          computePass = true;
+          break;
+        case 26:
+          if (!computePass) {
+            throw new ProtocolError("compute pipeline set outside compute pass", index);
+          }
+          resource(shadow, command.id, "computePipeline", index);
+          break;
+        case 27:
+          if (command.bindIndex >= this.limits[3]) {
+            throw new ProtocolError(
+              "bind group index exceeds negotiated limits",
+              index
+            );
+          }
+          if (!computePass) {
+            throw new ProtocolError("bind group set outside compute pass", index);
+          }
+          resource(shadow, command.bindGroup, "bindGroup", index);
+          break;
+        case 28:
+          if (!computePass) {
+            throw new ProtocolError("dispatch outside compute pass", index);
+          }
+          if (command.values.some(value => value === 0 || value > this.limits[19])) {
+            throw new ProtocolError("dispatch exceeds negotiated limits", index);
+          }
+          dispatches++;
+          if (dispatches > MAX_DISPATCHES_PER_BATCH) {
+            throw new ProtocolError("too many dispatch commands", index);
+          }
+          break;
+        case 29:
+          if (!computePass) {
+            throw new ProtocolError("compute pass is not active", index);
+          }
+          computePass = false;
+          break;
       }
     }
     if (pass) {
       throw new ProtocolError("render pass was not ended");
+    }
+    if (computePass) {
+      throw new ProtocolError("compute pass was not ended");
     }
     return { commands, shadow, slots };
   }
@@ -1467,7 +1594,7 @@ class GpuEngine {
               entries: command.entries.map(item => ({
                 binding: item.binding,
                 resource:
-                  item.kind === 1 || item.kind === 4
+                  item.kind === 1 || item.kind === 4 || item.kind === 5
                     ? {
                         buffer: resource(
                           next,
@@ -1576,7 +1703,7 @@ class GpuEngine {
           }
           case 13:
             pass.setPipeline(
-              resource(next, command.id, "pipeline", command.index).value
+              resource(next, command.id, "renderPipeline", command.index).value
             );
             break;
           case 14:
@@ -1647,6 +1774,47 @@ class GpuEngine {
             });
             next.set(command.id, entry);
             created.push(entry);
+            break;
+          case 24:
+            entry.value = this.device.createComputePipeline({
+              layout: resource(
+                next,
+                command.layout,
+                "pipelineLayout",
+                command.index
+              ).value,
+              compute: {
+                module: resource(next, command.shader, "shader", command.index)
+                  .value,
+                entryPoint: "cs_main",
+              },
+            });
+            next.set(command.id, entry);
+            created.push(entry);
+            break;
+          case 25:
+            encoder ||= this.device.createCommandEncoder();
+            pass = encoder.beginComputePass();
+            break;
+          case 26:
+            pass.setPipeline(
+              resource(next, command.id, "computePipeline", command.index).value
+            );
+            break;
+          case 27:
+            pass.setBindGroup(
+              command.bindIndex,
+              resource(next, command.bindGroup, "bindGroup", command.index)
+                .value,
+              command.dynamicOffsets
+            );
+            break;
+          case 28:
+            pass.dispatchWorkgroups(...command.values);
+            break;
+          case 29:
+            pass.end();
+            pass = null;
             break;
         }
       }

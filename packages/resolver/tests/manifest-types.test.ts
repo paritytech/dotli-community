@@ -122,6 +122,27 @@ describe("validateExecutableManifest", () => {
     ).toBe(true);
     expect(
       validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          graphics: {
+            abiVersion: 1,
+            profile: "webgpu",
+            requiredFeatures: [],
+            requiredLimits: {
+              maxBufferSize: 1_048_576,
+              maxStorageBufferBindingSize: 1_048_576,
+              maxStorageBuffersPerShaderStage: 2,
+              maxComputeInvocationsPerWorkgroup: 64,
+              maxComputeWorkgroupSizeX: 64,
+              maxComputeWorkgroupsPerDimension: 1_024,
+            },
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
         $v: 2,
         kind: "app",
         appVersion: [1, 0, 0],
