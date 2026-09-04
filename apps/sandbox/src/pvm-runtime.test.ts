@@ -12,8 +12,10 @@ import {
   formatPvmMetrics,
   isPvmPackage,
   normalizedPointerDelta,
+  postFirstUiPlatformCommand,
   unsupportedPvmImport,
   resolvedParentOrigin,
+  validatedUiPlatformOutput,
   waitForTruapiPort,
   type TruapiPortScope,
   type TruapiPortTarget,
@@ -142,6 +144,75 @@ describe("PolkaVM advanced input encoding", () => {
     expect(encodedInput(13, 1)).toEqual(
       new Uint8Array([13, 1, 0, 0, 0, 0, 0, 0]),
     );
+  });
+});
+
+describe("PolkaVM UI platform output", () => {
+  const value = {
+    cursorIcon: "text",
+    mutableTextUnderCursor: true,
+    ime: {
+      rect: [10, 20, 210, 60],
+      cursorRect: [24, 22, 25, 58],
+    },
+    commands: [
+      { type: "copy-text", text: "hello" },
+      {
+        type: "open-url",
+        url: "https://example.test/path",
+        newSurface: true,
+      },
+    ],
+  };
+
+  it("validates bounded state and ordered commands", () => {
+    const output = validatedUiPlatformOutput(value);
+    expect(output).toEqual(value);
+    expect(
+      validatedUiPlatformOutput({ ...value, cursorIcon: "url(javascript:)" }),
+    ).toBeNull();
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        ime: { ...value.ime, cursorRect: [25, 22, 24, 58] },
+      }),
+    ).toBeNull();
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: Array.from({ length: 65 }, () => ({
+          type: "copy-text",
+          text: "",
+        })),
+      }),
+    ).toBeNull();
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: [{ type: "copy-text", text: "🦀".repeat(16_385) }],
+      }),
+    ).toBeNull();
+  });
+
+  it("posts only the first sensitive command to the owning host", () => {
+    const output = validatedUiPlatformOutput(value);
+    expect(output).not.toBeNull();
+    if (output === null) {
+      throw new Error("valid UI output was rejected");
+    }
+    const postMessage = vi.fn();
+    expect(postFirstUiPlatformCommand(output, { postMessage })).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        type: "dotli:pvm-ui-command",
+        command: { type: "copy-text", text: "hello" },
+      },
+      "*",
+    );
+    expect(
+      postFirstUiPlatformCommand({ ...output, commands: [] }, { postMessage }),
+    ).toBe(false);
+    expect(postMessage).toHaveBeenCalledTimes(1);
   });
 });
 

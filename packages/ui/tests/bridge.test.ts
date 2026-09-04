@@ -473,6 +473,134 @@ describe("bridge render lifecycle", () => {
     );
   });
 
+  it("mediates one PVM platform command per trusted app-frame activation", async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
+    // Import after the per-test module reset so bridge singleton state is isolated.
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain(
+      "ui-output-cid",
+      "ui-output",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const created = mocks.iframeHosts[0];
+    const source = created.iframe.contentWindow;
+    if (source === null) throw new Error("app frame has no content window");
+    const origin = new URL(created.iframeUrl).origin;
+    const activation = { isActive: false, hasBeenActive: false };
+    const activationDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      "userActivation",
+    );
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "userActivation", {
+      configurable: true,
+      value: activation,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const dispatch = (
+      data: unknown,
+      messageOrigin = origin,
+      messageSource: MessageEventSource = source,
+    ): void => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data,
+          origin: messageOrigin,
+          source: messageSource,
+        }),
+      );
+    };
+
+    try {
+      dispatch({
+        type: "dotli:pvm-ui-command",
+        command: { type: "copy-text", text: "automatic" },
+      });
+      await Promise.resolve();
+      expect(writeText).not.toHaveBeenCalled();
+
+      activation.isActive = true;
+      activation.hasBeenActive = true;
+      dispatch({ type: "dotli:pvm-user-activation" }, "https://evil.example");
+      dispatch({
+        type: "dotli:pvm-ui-command",
+        command: { type: "copy-text", text: "wrong-origin" },
+      });
+      await Promise.resolve();
+      expect(writeText).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:pvm-user-activation" });
+      dispatch({
+        type: "dotli:pvm-ui-command",
+        command: { type: "copy-text", text: "hello" },
+      });
+      await vi.waitFor(() => {
+        expect(writeText).toHaveBeenCalledExactlyOnceWith("hello");
+      });
+      dispatch({
+        type: "dotli:pvm-ui-command",
+        command: { type: "copy-text", text: "second" },
+      });
+      await Promise.resolve();
+      expect(writeText).toHaveBeenCalledTimes(1);
+
+      dispatch({ type: "dotli:pvm-user-activation" });
+      dispatch({
+        type: "dotli:pvm-ui-command",
+        command: {
+          type: "open-url",
+          url: "javascript:alert(1)",
+          newSurface: true,
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:pvm-user-activation" });
+      dispatch({
+        type: "dotli:pvm-ui-command",
+        command: {
+          type: "open-url",
+          url: "https://example.test/path",
+          newSurface: true,
+        },
+      });
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        "https://example.test/path",
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } finally {
+      open.mockRestore();
+      if (activationDescriptor === undefined) {
+        Reflect.deleteProperty(navigator, "userActivation");
+      } else {
+        Object.defineProperty(
+          navigator,
+          "userActivation",
+          activationDescriptor,
+        );
+      }
+      if (clipboardDescriptor === undefined) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+      }
+    }
+  });
+
   it("reconnects the TrUAPI MessagePort after a product iframe reload", async () => {
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const addEventListener = vi.spyOn(window, "addEventListener");

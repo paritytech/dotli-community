@@ -30,6 +30,49 @@
   const MAX_UI_SEMANTICS_BYTES = 256 * 1024;
   const MAX_UI_SEMANTIC_NODES = 1024;
   const MAX_UI_SEMANTIC_STRING_BYTES = 1024;
+  const UI_OUTPUT_HEADER_BYTES = 48;
+  const UI_OUTPUT_COMMAND_HEADER_BYTES = 8;
+  const MAX_UI_OUTPUT_BYTES = 256 * 1024;
+  const MAX_UI_OUTPUT_COMMANDS = 64;
+  const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
+  const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
+  const UI_CURSOR_ICONS = Object.freeze([
+    "default",
+    "none",
+    "context-menu",
+    "help",
+    "pointer",
+    "progress",
+    "wait",
+    "cell",
+    "crosshair",
+    "text",
+    "vertical-text",
+    "alias",
+    "copy",
+    "move",
+    "no-drop",
+    "not-allowed",
+    "grab",
+    "grabbing",
+    "all-scroll",
+    "ew-resize",
+    "nesw-resize",
+    "nwse-resize",
+    "ns-resize",
+    "e-resize",
+    "se-resize",
+    "s-resize",
+    "sw-resize",
+    "w-resize",
+    "nw-resize",
+    "n-resize",
+    "ne-resize",
+    "col-resize",
+    "row-resize",
+    "zoom-in",
+    "zoom-out",
+  ]);
   const MAX_GPU_BATCH_BYTES = 4 * 1024 * 1024;
   const MAX_GPU_EVENT_BYTES = 64 * 1024;
   const MAX_GPU_EVENTS = 256;
@@ -58,6 +101,7 @@
   const SYS_EXIT = 93n;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
+  const strictDecoder = new TextDecoder("utf-8", { fatal: true });
 
   function validUiSemantics(bytes) {
     let snapshot;
@@ -106,6 +150,114 @@
         (node) => node.parent === null || ids.has(node.parent),
       )
     );
+  }
+
+  function decodeUiOutput(bytes) {
+    if (
+      !(bytes instanceof Uint8Array) ||
+      bytes.byteLength < UI_OUTPUT_HEADER_BYTES ||
+      bytes.byteLength > MAX_UI_OUTPUT_BYTES
+    ) {
+      return null;
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (
+      bytes[0] !== 0x50 ||
+      bytes[1] !== 0x55 ||
+      bytes[2] !== 0x49 ||
+      bytes[3] !== 0x31 ||
+      view.getUint16(4, true) !== 1 ||
+      view.getUint16(6, true) !== UI_OUTPUT_HEADER_BYTES ||
+      view.getUint32(8, true) !== bytes.byteLength
+    ) {
+      return null;
+    }
+    const commandCount = view.getUint16(12, true);
+    const cursorIcon = UI_CURSOR_ICONS[bytes[14]];
+    const flags = bytes[15];
+    if (
+      commandCount > MAX_UI_OUTPUT_COMMANDS ||
+      cursorIcon === undefined ||
+      (flags & ~3) !== 0
+    ) {
+      return null;
+    }
+    const readRect = (offset) => [
+      view.getFloat32(offset, true),
+      view.getFloat32(offset + 4, true),
+      view.getFloat32(offset + 8, true),
+      view.getFloat32(offset + 12, true),
+    ];
+    const validRect = (rect) =>
+      rect.every(Number.isFinite) && rect[2] >= rect[0] && rect[3] >= rect[1];
+    let ime = null;
+    if (flags & 2) {
+      const rect = readRect(16);
+      const cursorRect = readRect(32);
+      if (!validRect(rect) || !validRect(cursorRect)) {
+        return null;
+      }
+      ime = { rect, cursorRect };
+    } else if (bytes.subarray(16, UI_OUTPUT_HEADER_BYTES).some((byte) => byte)) {
+      return null;
+    }
+
+    const commands = [];
+    let offset = UI_OUTPUT_HEADER_BYTES;
+    try {
+      for (let index = 0; index < commandCount; index++) {
+        if (offset + UI_OUTPUT_COMMAND_HEADER_BYTES > bytes.byteLength) {
+          return null;
+        }
+        const opcode = bytes[offset];
+        const commandFlags = bytes[offset + 1];
+        if (bytes[offset + 2] !== 0 || bytes[offset + 3] !== 0) {
+          return null;
+        }
+        const payloadLength = view.getUint32(offset + 4, true);
+        const payloadStart = offset + UI_OUTPUT_COMMAND_HEADER_BYTES;
+        const payloadEnd = payloadStart + payloadLength;
+        if (payloadEnd > bytes.byteLength) {
+          return null;
+        }
+        const payload = strictDecoder.decode(
+          bytes.subarray(payloadStart, payloadEnd),
+        );
+        if (opcode === 1) {
+          if (commandFlags !== 0 || payloadLength > MAX_UI_COPY_TEXT_BYTES) {
+            return null;
+          }
+          commands.push({ type: "copy-text", text: payload });
+        } else if (opcode === 2) {
+          if (
+            (commandFlags & ~1) !== 0 ||
+            payloadLength === 0 ||
+            payloadLength > MAX_UI_OPEN_URL_BYTES
+          ) {
+            return null;
+          }
+          commands.push({
+            type: "open-url",
+            url: payload,
+            newSurface: (commandFlags & 1) !== 0,
+          });
+        } else {
+          return null;
+        }
+        offset = payloadEnd;
+      }
+    } catch {
+      return null;
+    }
+    if (offset !== bytes.byteLength) {
+      return null;
+    }
+    return {
+      cursorIcon,
+      mutableTextUnderCursor: (flags & 1) !== 0,
+      ime,
+      commands,
+    };
   }
 
   function readMetadata(module) {
@@ -353,6 +505,7 @@
       this.truapiResponseBytes = 0;
       this.tri2dSubmitted = false;
       this.uiSemanticsSubmitted = false;
+      this.uiOutputSubmitted = false;
       this.maxGas = BigInt(maxGas);
       this.input = [];
       this.coreInput = [];
@@ -412,6 +565,7 @@
       this.gpuSubmits = 0;
       this.truapiRequests = 0;
       this.uiSemanticsSubmitted = false;
+      this.uiOutputSubmitted = false;
       this.truapiRequestBytes = 0;
       this.#resetBudget(
         this.coreVm && !this.coreVmStarted
@@ -823,6 +977,37 @@
           }
           this.emit({ type: "ui-semantics", bytes }, [bytes.buffer]);
           this.uiSemanticsSubmitted = true;
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "host_ui_output_submit": {
+          const length = this.#u32(a1);
+          if (
+            length < UI_OUTPUT_HEADER_BYTES ||
+            length > MAX_UI_OUTPUT_BYTES
+          ) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          this.#chargeBytes(length);
+          if (this.uiOutputSubmitted) {
+            this.#setReg(7, 2n);
+            return false;
+          }
+          let bytes;
+          try {
+            bytes = this.#range(this.#u32(a0), length).slice();
+          } catch {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          const output = decodeUiOutput(bytes);
+          if (output === null) {
+            this.#setReg(7, 1n);
+            return false;
+          }
+          this.emit({ type: "ui-output", output });
+          this.uiOutputSubmitted = true;
           this.#setReg(7, 0n);
           return false;
         }
@@ -1512,6 +1697,7 @@
     }
   }
 
+  globalThis.decodePvmUiOutput = decodeUiOutput;
   globalThis.TranslatedPvmRuntime = TranslatedPvmRuntime;
 })();
 
@@ -1660,6 +1846,23 @@ globalThis.createPvmRuntime = (endpoint) => {
     postMessage({ type: "ui-semantics", bytes }, [bytes.buffer]);
   }
 
+  function drainUiOutput() {
+    if (!pvm.pvm_browser_take_ui_output?.()) {
+      return;
+    }
+    const length = pvm.pvm_browser_ui_output_length();
+    const bytes = new Uint8Array(
+      pvm.memory.buffer,
+      pvm.pvm_browser_ui_output_pointer(),
+      length,
+    ).slice();
+    const output = globalThis.decodePvmUiOutput?.(bytes);
+    if (output == null) {
+      throw new Error("interpreter emitted invalid UI output");
+    }
+    postMessage({ type: "ui-output", output });
+  }
+
   function drainGpuBatches() {
     while (pvm.pvm_browser_take_gpu_batch?.()) {
       const length = pvm.pvm_browser_gpu_batch_length();
@@ -1743,6 +1946,7 @@ globalThis.createPvmRuntime = (endpoint) => {
         drainFrame();
         drainTri2d();
         drainUiSemantics();
+        drainUiOutput();
         drainGpuBatches();
         drainTruapiRequests();
         drainAudio();
@@ -2047,6 +2251,7 @@ globalThis.createPvmRuntime = (endpoint) => {
       }
       postMessage({ type: "startup", stage: "interpreter-initialized" });
       drainTri2d();
+      drainUiOutput();
       drainGpuBatches();
       drainTruapiRequests();
       drainLogs();
