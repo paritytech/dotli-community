@@ -8,9 +8,11 @@ import type { Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
+  getRemotePermissionStatus,
   isDevicePermission,
   isEnforceableDevicePermission,
   setPermissionStatus,
+  setRemotePermissionStatus,
   type EnforceablePermissionName,
 } from "../permissions";
 import { showPermissionRequestModal } from "../permission-modal";
@@ -22,9 +24,8 @@ import {
 } from "../blocking-modal-queue";
 import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 
-// Remote tags that don't reach a host enforcement point: WebRtc is gated
-// by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
-// reliably intercepted from inside the sandbox. Auto-grant either.
+// Domain access is handled separately because its persisted key includes the
+// requested hosts. WebRTC remains pre-resolved at iframe construction time.
 function gatedRemotePermissionName(
   tag: RemotePermission["tag"],
 ): EnforceablePermissionName | null {
@@ -68,6 +69,16 @@ export function createPromptPermission(
   };
 
   const remotePermission: Permissions["remotePermission"] = async (request) => {
+    if (request.permission.tag === "Remote") {
+      return {
+        granted: await decideRemoteDomainPermission(
+          label,
+          request.permission.value.domains,
+          limiter,
+          modalScope,
+        ),
+      };
+    }
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
       return { granted: true };
@@ -86,6 +97,56 @@ export function createPromptPermission(
   };
 
   return { devicePermission, remotePermission };
+}
+
+async function decideRemoteDomainPermission(
+  label: string,
+  domains: readonly string[],
+  limiter: SubmitRateLimiter,
+  modalScope: BlockingModalScope,
+): Promise<boolean> {
+  if (domains.length === 0) {
+    return false;
+  }
+  return modalScope.enqueue(async (signal) => {
+    const status = await getRemotePermissionStatus(label, domains);
+    throwIfAborted(signal);
+    if (status === "granted") {
+      return true;
+    }
+    if (status === "denied") {
+      showNotification({
+        label: withActiveTld(label),
+        text: `Access to ${domains.join(", ")} is blocked. Use the permissions menu in the top bar to change this.`,
+        dismissMs: 6000,
+        browserNotification: false,
+      });
+      return false;
+    }
+    if (!limiter.allow()) {
+      throw new Error("Permission prompt rate limited");
+    }
+    const decision = await showPermissionRequestModal(
+      label,
+      { kind: "Remote", domains },
+      signal,
+    );
+    throwIfAborted(signal);
+    if (decision === "dismissed") {
+      throw new Error("User dismissed permission dialog");
+    }
+    const granted = decision === "granted";
+    await setRemotePermissionStatus(
+      label,
+      domains,
+      granted ? "granted" : "denied",
+    );
+    throwIfAborted(signal);
+    window.dispatchEvent(
+      new CustomEvent("dotli:permission-changed", { detail: { label } }),
+    );
+    return granted;
+  });
 }
 
 export async function decidePromptPermission(

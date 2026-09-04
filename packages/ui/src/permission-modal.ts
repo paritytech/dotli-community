@@ -98,13 +98,21 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
 };
 
 export type PermissionPromptDecision = "granted" | "denied" | "dismissed";
+export interface RemoteDomainPermissionPrompt {
+  kind: "Remote";
+  domains: readonly string[];
+}
+
+export type PermissionPrompt =
+  | EnforceablePermissionName
+  | RemoteDomainPermissionPrompt;
 
 /**
  * Show a permission request modal.
  */
 export function showPermissionRequestModal(
   label: string,
-  permission: EnforceablePermissionName,
+  permission: PermissionPrompt,
   signal?: AbortSignal,
 ): Promise<PermissionPromptDecision> {
   return new Promise((resolve, reject) => {
@@ -117,7 +125,10 @@ export function showPermissionRequestModal(
     // Icon
     const iconWrap = document.createElement("div");
     iconWrap.className = "permission-modal-icon";
-    iconWrap.innerHTML = PERMISSION_ICONS[permission];
+    iconWrap.innerHTML =
+      typeof permission === "string"
+        ? PERMISSION_ICONS[permission]
+        : PERMISSION_ICONS.ChainSubmit;
     modal.appendChild(iconWrap);
 
     // Heading
@@ -154,12 +165,15 @@ export function showPermissionRequestModal(
 
     const permValue = document.createElement("div");
     permValue.className = "signing-field-value";
-    permValue.textContent = PERMISSION_DESCRIPTIONS[permission];
+    permValue.textContent =
+      typeof permission === "string"
+        ? PERMISSION_DESCRIPTIONS[permission]
+        : `Connect to ${permission.domains.join(", ")}`;
     permField.appendChild(permValue);
 
     desc.appendChild(permField);
 
-    if (isDevicePermission(permission)) {
+    if (typeof permission === "string" && isDevicePermission(permission)) {
       const notice = document.createElement("div");
       notice.className = "permission-modal-notice";
       notice.textContent =

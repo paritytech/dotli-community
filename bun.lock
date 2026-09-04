@@ -85,6 +85,7 @@
         "@dotli/shared": "workspace:*",
         "@dotli/storage": "workspace:*",
         "@dotli/ui": "workspace:*",
+        "@parity/truapi": "0.13.1",
         "@sentry/browser": "^10.57.0",
         "@sentry/vite-plugin": "^5.2.0",
       },

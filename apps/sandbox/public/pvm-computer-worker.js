@@ -35,6 +35,78 @@ let supervisor = null;
 let finished = false;
 // Input the guest's bounded queue could not accept yet (large pastes).
 const pendingInput = [];
+const pendingNetworkPermissions = new Map();
+let nextNetworkPermission = 0;
+
+class PermissionTcpSocket {
+  constructor(provider, address, activity) {
+    this.provider = provider;
+    this.address = address;
+    this.activity = activity;
+    this.socket = null;
+    this.denied = false;
+    this.closed = false;
+  }
+
+  resolve(granted) {
+    if (this.closed) {
+      return;
+    }
+    if (granted) {
+      this.socket = this.provider.connect(this.address);
+    } else {
+      this.denied = true;
+      this.activity();
+    }
+  }
+
+  read(capacity) {
+    if (this.denied) {
+      throw new Error("network permission denied");
+    }
+    return this.socket === null ? null : this.socket.read(capacity);
+  }
+
+  write(bytes) {
+    if (this.denied) {
+      throw new Error("network permission denied");
+    }
+    return this.socket === null ? null : this.socket.write(bytes);
+  }
+
+  close() {
+    this.closed = true;
+    this.socket?.close();
+  }
+}
+
+class PermissionTcpProvider {
+  constructor(provider, activity) {
+    this.provider = provider;
+    this.activity = activity;
+  }
+
+  connect(address) {
+    const separator = address.lastIndexOf(":");
+    const domain = address.slice(0, separator).toLowerCase();
+    if (
+      separator <= 0 ||
+      address.indexOf(":") !== separator ||
+      !/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain)
+    ) {
+      throw new Error("invalid network target");
+    }
+    const socket = new PermissionTcpSocket(
+      this.provider,
+      address,
+      this.activity,
+    );
+    const nonce = `network-${String(nextNetworkPermission++)}`;
+    pendingNetworkPermissions.set(nonce, socket);
+    self.postMessage({ type: "network-permission", nonce, domain });
+    return socket;
+  }
+}
 
 function fail(error) {
   finished = true;
@@ -133,10 +205,14 @@ async function start(message) {
   const started = performance.now();
   const program = await translator.translate(message.program);
   const context = computerContext(message.argv, message.environment);
+  const networkActivity = () => {
+    queueMicrotask(pump);
+  };
   const networkProvider = message.networkEnabled
-    ? new WebSocketTcpProvider(message.relayUrl, () => {
-        queueMicrotask(pump);
-      })
+    ? new PermissionTcpProvider(
+        new WebSocketTcpProvider(message.relayUrl, networkActivity),
+        networkActivity,
+      )
     : null;
   supervisor = new ComputerSupervisor(
     program,
@@ -197,6 +273,15 @@ self.onmessage = (event) => {
           }
           providePackage(message).catch(fail);
         }
+        break;
+      }
+      case "network-permission-result": {
+        const socket = pendingNetworkPermissions.get(message.nonce);
+        if (socket === undefined) {
+          throw new Error(`unexpected network permission ${message.nonce}`);
+        }
+        pendingNetworkPermissions.delete(message.nonce);
+        socket.resolve(message.granted === true);
         break;
       }
       case "package-error": {
