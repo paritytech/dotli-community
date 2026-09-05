@@ -1841,8 +1841,8 @@ globalThis.createPvmRuntime = (endpoint) => {
   const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
   const MAX_ASSET_FILES = 2048;
   const MAX_ASSET_NAME_BYTES = 1024;
-  const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
-  const MAX_ASSET_BYTES = 128 * 1024 * 1024;
+  const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
+  const MAX_ASSET_BYTES = 256 * 1024 * 1024;
   const MOTION_SAMPLE_BYTES = 48;
   const FORCE_INTERPRETER = Symbol("force-interpreter");
   const decoder = new TextDecoder();
