@@ -172,6 +172,9 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
       iframe.id = "pvm-product";
+      iframe.style.width = "400px";
+      iframe.style.height = "400px";
+      iframe.style.border = "0";
       iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
       document.body.replaceChildren(iframe);
     },
@@ -189,23 +192,50 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("width", "320");
   await expect(canvas).toHaveAttribute("height", "200");
-  expect(
-    await canvas.evaluate((element) => {
-      const style = getComputedStyle(element);
+  const canvasBounds = async () =>
+    canvas.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
       return {
-        position: style.position,
-        top: style.top,
-        right: style.right,
-        bottom: style.bottom,
-        left: style.left,
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+        width: bounds.width,
+        height: bounds.height,
+        left: bounds.left,
+        top: bounds.top,
       };
-    }),
-  ).toEqual({
-    position: "absolute",
-    top: "0px",
-    right: "0px",
-    bottom: "0px",
-    left: "0px",
+    });
+  expect(await canvasBounds()).toEqual({
+    viewportWidth: 400,
+    viewportHeight: 400,
+    width: 400,
+    height: 250,
+    left: 0,
+    top: 75,
+  });
+  const productElement = page.locator("#pvm-product");
+  await productElement.evaluate((element) => {
+    element.style.width = "640px";
+    element.style.height = "300px";
+  });
+  await expect.poll(canvasBounds).toEqual({
+    viewportWidth: 640,
+    viewportHeight: 300,
+    width: 480,
+    height: 300,
+    left: 80,
+    top: 0,
+  });
+  await productElement.evaluate((element) => {
+    element.style.width = "200px";
+    element.style.height = "400px";
+  });
+  await expect.poll(canvasBounds).toEqual({
+    viewportWidth: 200,
+    viewportHeight: 400,
+    width: 200,
+    height: 125,
+    left: 0,
+    top: 137.5,
   });
 
   // The host-owned PVM canvas retains its verified launch contract so a
