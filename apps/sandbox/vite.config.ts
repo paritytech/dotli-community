@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
+import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
 // `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
@@ -146,6 +147,14 @@ export default defineConfig({
   plugins: [
     wasm(),
     runtimeNetworkConfigScript(),
+    socialMetaTags({
+      title: "Polkadot Web",
+      description:
+        "A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.",
+      siteName: "Polkadot Web",
+      image: "/icon-512.png",
+      imageAlt: "Polkadot logo",
+    }),
     preloadCriticalAssets(),
     buildServiceWorker(),
     sentry(),
