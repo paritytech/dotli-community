@@ -60,6 +60,8 @@
   const MAX_OPEN_SOCKETS = 4;
   const FIRST_SOCKET_HANDLE = 0x1000;
   const MAX_NET_ADDRESS_BYTES = 256;
+  const MAX_NET_BUFFER_BYTES = 1024 * 1024;
+  const MAX_NET_BUFFER_CHUNKS = 1024;
   const MAX_FS_TRANSFER = 1024 * 1024;
   const FS_OPEN_READ = 1;
   const FS_OPEN_WRITE = 2;
@@ -225,10 +227,21 @@
       }
     }
 
+    missingStatus(path) {
+      for (
+        let ancestor = parentPath(path);
+        ancestor.startsWith("/home");
+        ancestor = parentPath(ancestor)
+      ) {
+        if (this.entries.get(ancestor)?.kind === 1) return STATUS_NOT_DIRECTORY;
+      }
+      return STATUS_NOT_FOUND;
+    }
+
     parentStatus(path) {
       const parent = this.entries.get(parentPath(path));
       return parent === undefined
-        ? STATUS_NOT_FOUND
+        ? this.missingStatus(parentPath(path))
         : parent.kind !== 2
           ? STATUS_NOT_DIRECTORY
           : 0;
@@ -509,15 +522,19 @@
     constructor(relayUrl, address, onActivity, WebSocketClass) {
       this.incoming = [];
       this.incomingOffset = 0;
+      this.incomingBytes = 0;
+      this.receiveFailed = false;
       this.connected = false;
       this.closed = false;
       this.onActivity = onActivity;
       this.socket = new WebSocketClass(relayUrl);
       this.socket.binaryType = "arraybuffer";
       this.socket.onopen = () => {
+        if (this.closed) return;
         this.socket.send(JSON.stringify({ version: 1, address }));
       };
       this.socket.onmessage = (event) => {
+        if (this.closed) return;
         if (typeof event.data === "string") {
           let message;
           try {
@@ -548,8 +565,22 @@
           this.#terminate();
           return;
         }
+        if (
+          !this.connected ||
+          this.incomingBytes + bytes.byteLength > MAX_NET_BUFFER_BYTES ||
+          (bytes.byteLength > 0 &&
+            this.incoming.length >= MAX_NET_BUFFER_CHUNKS)
+        ) {
+          this.receiveFailed = true;
+          this.incoming.length = 0;
+          this.incomingOffset = 0;
+          this.incomingBytes = 0;
+          this.#terminate();
+          return;
+        }
         if (bytes.byteLength > 0) {
           this.incoming.push(bytes.slice());
+          this.incomingBytes += bytes.byteLength;
         }
         this.#activity();
       };
@@ -558,6 +589,9 @@
     }
 
     read(capacity) {
+      if (this.receiveFailed) {
+        throw new Error("TCP relay receive limit or protocol violation");
+      }
       if (this.incoming.length === 0) {
         return this.closed ? new Uint8Array() : null;
       }
@@ -572,6 +606,7 @@
           written,
         );
         written += count;
+        this.incomingBytes -= count;
         this.incomingOffset += count;
         if (this.incomingOffset === chunk.byteLength) {
           this.incoming.shift();
@@ -589,7 +624,7 @@
         return null;
       }
       // Bound browser buffering; the guest yields and retries after activity.
-      if (this.socket.bufferedAmount > 1024 * 1024) {
+      if (this.socket.bufferedAmount + bytes.byteLength > MAX_NET_BUFFER_BYTES) {
         return null;
       }
       const owned = bytes.slice();
@@ -641,10 +676,7 @@
     setNetworkEnabled(enabled) {
       this.networkEnabled = enabled;
       if (!enabled) {
-        for (const socket of this.sockets.values()) {
-          socket.close();
-        }
-        this.sockets.clear();
+        for (const handle of this.sockets.keys()) this.netClose(handle);
       }
     }
 
@@ -731,8 +763,12 @@
         return STATUS_BAD_HANDLE;
       }
       this.sockets.delete(handle);
-      socket.close();
-      return 0;
+      try {
+        socket.close();
+        return 0;
+      } catch {
+        return STATUS_INVALID;
+      }
     }
 
     pushTerminalInput(bytes) {
@@ -879,6 +915,8 @@
       const entry = fs.entries.get(path);
       if (entry !== undefined && exclusive) return STATUS_EXISTS;
       if (entry?.kind === 2) return STATUS_IS_DIRECTORY;
+      if (entry === undefined && fs.missingStatus(path) === STATUS_NOT_DIRECTORY)
+        return STATUS_NOT_DIRECTORY;
       if (this.openFiles.size >= MAX_OPEN_COMPUTER_FILES) return STATUS_LIMIT;
       if (entry === undefined) {
         if (!create) return STATUS_NOT_FOUND;
@@ -1039,7 +1077,7 @@
       if (validPath(path) === null) return STATUS_INVALID;
       const fs = this.filesystem;
       const entry = fs.entries.get(path);
-      if (entry === undefined) return STATUS_NOT_FOUND;
+      if (entry === undefined) return fs.missingStatus(path);
       if (entry.kind === 2) return STATUS_IS_DIRECTORY;
       if (fs.isOpen(path)) return STATUS_DENIED;
       if (!fs.canMutate()) return STATUS_LIMIT;
@@ -1067,7 +1105,7 @@
       if (validPath(path) === null) return STATUS_INVALID;
       const fs = this.filesystem;
       const entry = fs.entries.get(path);
-      if (entry === undefined) return STATUS_NOT_FOUND;
+      if (entry === undefined) return fs.missingStatus(path);
       if (entry.kind !== 2) return STATUS_NOT_DIRECTORY;
       if (path === "/home") return STATUS_DENIED;
       if (fs.isOpen(path, true)) return STATUS_DENIED;
@@ -1085,7 +1123,7 @@
         return STATUS_INVALID;
       const fs = this.filesystem;
       const source = fs.entries.get(oldPath);
-      if (source === undefined) return STATUS_NOT_FOUND;
+      if (source === undefined) return fs.missingStatus(oldPath);
       if (oldPath === newPath) return 0;
       if (oldPath === "/home" || newPath === "/home") return STATUS_DENIED;
       if (source.kind === 2 && newPath.startsWith(`${oldPath}/`))
@@ -1139,7 +1177,7 @@
     fsMetadata(path) {
       if (validPath(path) === null) return { status: STATUS_INVALID };
       const entry = this.filesystem.entries.get(path);
-      if (entry === undefined) return { status: STATUS_NOT_FOUND };
+      if (entry === undefined) return { status: this.filesystem.missingStatus(path) };
       const record = new Uint8Array(24);
       const view = new DataView(record.buffer);
       view.setUint32(0, entry.kind, true);
@@ -1160,7 +1198,7 @@
       if (validPath(path) === null) return { status: STATUS_INVALID };
       const fs = this.filesystem;
       const entry = fs.entries.get(path);
-      if (entry === undefined) return { status: STATUS_NOT_FOUND };
+      if (entry === undefined) return { status: fs.missingStatus(path) };
       if (entry.kind !== 2) return { status: STATUS_NOT_DIRECTORY };
       const children = [...fs.entries]
         .filter(([child]) => child !== "/home" && parentPath(child) === path)
@@ -2095,6 +2133,9 @@
       for (const child of this.background) {
         child.process.setNetworkEnabled(enabled);
       }
+      for (const child of this.workspaceChildren) {
+        child.supervisor.setNetworkEnabled(enabled);
+      }
       this.network = enabled;
     }
 
@@ -2105,6 +2146,12 @@
       if (!enabled) {
         for (const child of this.workspaceChildren) child.supervisor.dispose();
         this.workspaceChildren.length = 0;
+        if (this.pendingResolution?.mode === "workspace") {
+          this.pendingResolution = null;
+          this.#foreground().resolveSpawn(STATUS_DENIED);
+        } else if (this.pendingResolution?.mode === "childRoute") {
+          this.pendingResolution = null;
+        }
       }
     }
 
@@ -2183,6 +2230,7 @@
         throw error;
       }
     }
+
 
     #run() {
       if (this.pendingResolution !== null) {
@@ -2269,6 +2317,7 @@
         this.dispose();
         return { kind: "exited", code: root.exitStatus };
       }
+      this.pendingResolution = null;
       this.#popForeground(130);
       return { kind: "yielded" };
     }
@@ -2591,8 +2640,11 @@
         } catch {
           // Fault: reported below as FAULTED_CHILD_STATUS.
         }
-        const output = child.supervisor.takeTerminalOutput();
-        if (output) {
+        for (
+          let output = child.supervisor.takeTerminalOutput();
+          output !== null;
+          output = child.supervisor.takeTerminalOutput()
+        ) {
           const available = MAX_TTY_OUTPUT_BYTES - child.output.length;
           const count = Math.min(output.byteLength, Math.max(0, available));
           for (let offset = 0; offset < count; offset++) {
