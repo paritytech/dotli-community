@@ -18,15 +18,6 @@
   const MOTION_ERROR_PERMISSION_DENIED = -2;
   const MOTION_ERROR_INVALID_GUEST_RANGE = -3;
   const MOTION_ERROR_BUFFER_TOO_SMALL = -4;
-  const INPUT_POINTER_CAPTURE = 15;
-  const POINTER_CAPTURE_IMPORT = "host_pointer_capture";
-  const POINTER_CAPTURE_RELEASE = 0;
-  const POINTER_CAPTURE_ARM = 1;
-  const POINTER_CAPTURE_RELEASED = 0;
-  const POINTER_CAPTURE_ARMED = 1;
-  const POINTER_CAPTURE_ACTIVE = 2;
-  const POINTER_CAPTURE_UNSUPPORTED = -1;
-  const POINTER_CAPTURE_INVALID_REQUEST = -2;
   const MAX_INPUT_EVENTS = 4096;
   const MAX_HOSTCALLS_PER_INIT = 1024 * 1024;
   const MAX_HOSTCALLS_PER_UPDATE = 65536;
@@ -532,12 +523,6 @@
       this.pointer = null;
       this.setMotionAvailability(motionAvailability);
       this.motionSample = null;
-      this.pointerCapture = {
-        supported: false,
-        armed: false,
-        active: false,
-        request: null,
-      };
       this.timeMs = null;
       this.clockStartedAt = performance.now();
       this.hostcalls = 0;
@@ -580,59 +565,6 @@
 
     usesMotion() {
       return this.imports.includes("host_motion_read");
-    }
-
-    usesPointerCapture() {
-      return this.imports.includes(POINTER_CAPTURE_IMPORT);
-    }
-
-    setPointerCaptureSupported(supported) {
-      this.pointerCapture.supported = supported === true;
-      if (!this.pointerCapture.supported) {
-        this.pointerCapture.armed = false;
-        this.pointerCapture.request = null;
-      }
-    }
-
-    setPointerCaptureActive(active) {
-      const next = active === true;
-      if (this.pointerCapture.active === next) {
-        return;
-      }
-      this.pointerCapture.active = next;
-      if (next) {
-        this.pointerCapture.armed = false;
-      }
-      const record = new Uint8Array(INPUT_EVENT_BYTES);
-      record[0] = INPUT_POINTER_CAPTURE;
-      record[1] = next ? 1 : 0;
-      this.sendInput(record);
-    }
-
-    takePointerCaptureRequest() {
-      const request = this.pointerCapture.request;
-      this.pointerCapture.request = null;
-      return request;
-    }
-
-    #requestPointerCapture(request) {
-      const state = this.pointerCapture;
-      if (!state.supported) {
-        return POINTER_CAPTURE_UNSUPPORTED;
-      }
-      if (request === POINTER_CAPTURE_ARM) {
-        state.armed = true;
-        state.request = true;
-      } else if (request === POINTER_CAPTURE_RELEASE) {
-        state.armed = false;
-        state.request = false;
-      } else {
-        return POINTER_CAPTURE_INVALID_REQUEST;
-      }
-      if (state.active) {
-        return POINTER_CAPTURE_ACTIVE;
-      }
-      return state.armed ? POINTER_CAPTURE_ARMED : POINTER_CAPTURE_RELEASED;
     }
 
     update(timeMs) {
@@ -1200,11 +1132,6 @@
         }
         case "host_motion_read":
           return this.#readMotion();
-        case POINTER_CAPTURE_IMPORT: {
-          const status = this.#requestPointerCapture(this.#u32(a0));
-          this.#setReg(7, BigInt(status));
-          return false;
-        }
         case "host_time_ms": {
           const timeMs = this.timeMs ?? performance.now() - this.clockStartedAt;
           this.#setU64Result(BigInt(Math.max(0, Math.trunc(timeMs))));
@@ -1474,7 +1401,6 @@
         case "host_frame_send":
         case "host_frame_poll":
         case "host_motion_read":
-        case POINTER_CAPTURE_IMPORT:
           return this.#handleCooperativeCall(name);
         case "pvm_set_palette": {
           const palette = this.#read(this.#u32(this.#reg(7)), 256 * 3);
@@ -1855,7 +1781,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   let disposed = false;
   let motionAvailability = 0;
   let pendingMotionSample = null;
-  let pointerCaptureSupported = false;
   let pendingGpuCapabilities = null;
   let timer;
   let startedAt = 0;
@@ -2060,7 +1985,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     postMessage({ type: "pointer-capture", capture: request });
   }
-
   function tick() {
     if (!running) {
       return;
@@ -2088,7 +2012,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         drainSave();
         drainLogs();
       }
-      drainPointerCapture();
     } catch (error) {
       stopRuntime();
       postMessage({ type: "error", message: error.message });
@@ -2242,7 +2165,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     const program = validateStartMessage(message);
     motionAvailability = message.motionAvailability ?? 0;
-    pointerCaptureSupported = message.pointerCaptureSupported === true;
     pendingGpuCapabilities =
       message.gpuCapabilities instanceof ArrayBuffer
         ? new Uint8Array(message.gpuCapabilities).slice()
@@ -2319,7 +2241,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       if (pendingMotionSample !== null) {
         translated.sendMotionSample(pendingMotionSample);
       }
-      translated.setPointerCaptureSupported(pointerCaptureSupported);
       translated.initialize();
       pendingGpuCapabilities = null;
       pendingMotionSample = null;
@@ -2418,7 +2339,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       type: "ready",
       backend,
       usesMotion,
-      usesPointerCapture,
       cacheHit,
       translationMs,
       compilationMs,
@@ -2514,7 +2434,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       "report PolkaVM browser pointer capture state",
     );
   }
-
   function sendMotionSample(bytes) {
     if (bytes.byteLength !== MOTION_SAMPLE_BYTES) {
       throw new Error("invalid PolkaVM browser motion sample");
@@ -2600,28 +2519,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     } else if (message?.type === "motion-status") {
       try {
         setMotionAvailability(message.availability);
-      } catch (error) {
-        stopRuntime();
-        postMessage({ type: "error", message: error.message });
-        postMessage({ type: "terminated" });
-      }
-    } else if (message?.type === "pointer-capture-support") {
-      try {
-        if (typeof message.supported !== "boolean") {
-          throw new Error("invalid PolkaVM browser pointer capture support");
-        }
-        setPointerCaptureSupported(message.supported);
-      } catch (error) {
-        stopRuntime();
-        postMessage({ type: "error", message: error.message });
-        postMessage({ type: "terminated" });
-      }
-    } else if (message?.type === "pointer-capture-state") {
-      try {
-        if (typeof message.active !== "boolean") {
-          throw new Error("invalid PolkaVM browser pointer capture state");
-        }
-        setPointerCaptureActive(message.active);
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });
