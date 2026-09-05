@@ -16,6 +16,7 @@ import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
+import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -396,6 +397,14 @@ export default defineConfig({
   plugins: [
     wasm(),
     runtimeNetworkConfigScript(),
+    socialMetaTags({
+      title: "Polkadot - The decentralized web, in your browser",
+      description:
+        "A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.",
+      siteName: "Polkadot Web",
+      image: "/icon-512.png",
+      imageAlt: "Polkadot logo",
+    }),
     preconnectBootnodes(),
     preloadCriticalAssets(),
     previewCoepHeaders(),
