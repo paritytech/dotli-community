@@ -105,7 +105,17 @@ async function decideRemoteDomainPermission(
   limiter: SubmitRateLimiter,
   modalScope: BlockingModalScope,
 ): Promise<boolean> {
-  if (domains.length === 0) {
+  if (
+    domains.length === 0 ||
+    domains.length > 8 ||
+    domains.some(
+      (domain) =>
+        domain.length > 253 ||
+        !domain.split(".").every((part) =>
+          /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(part),
+        ),
+    )
+  ) {
     return false;
   }
   return modalScope.enqueue(async (signal) => {
@@ -117,7 +127,7 @@ async function decideRemoteDomainPermission(
     if (status === "denied") {
       showNotification({
         label: withActiveTld(label),
-        text: `Access to ${domains.join(", ")} is blocked. Use the permissions menu in the top bar to change this.`,
+        text: `Access to ${domains.join(", ")} is blocked by a remembered decision for this app.`,
         dismissMs: 6000,
         browserNotification: false,
       });
