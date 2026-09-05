@@ -1168,6 +1168,7 @@ function createShell(controls: string[]): {
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
     #dotli-polkavm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
+    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100vw,calc(100vh * var(--dotli-polkavm-frame-aspect,1)));height:min(100vh,calc(100vw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
@@ -2094,8 +2095,7 @@ export async function runPolkaVmApplication(
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
   const ancestorOrigins = Reflect.get(location, "ancestorOrigins") as
-    | DOMStringList
-    | undefined;
+    DOMStringList | undefined;
   const parentOrigin = resolvedParentOrigin(
     ancestorOrigins?.item(0) ?? null,
     document.referrer,
@@ -2382,8 +2382,20 @@ export async function runPolkaVmApplication(
           );
           return;
         }
+        const resized =
+          canvas.width !== frame.width || canvas.height !== frame.height;
         canvas.width = frame.width;
         canvas.height = frame.height;
+        if (resized) {
+          canvas.style.setProperty(
+            "--dotli-pvm-frame-aspect",
+            String(frame.width / frame.height),
+          );
+          canvas.style.setProperty(
+            "--dotli-pvm-frame-inverse-aspect",
+            String(frame.height / frame.width),
+          );
+        }
         const pixels = new Uint8ClampedArray(frame.pixels.byteLength);
         pixels.set(frame.pixels);
         context.putImageData(
