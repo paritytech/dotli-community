@@ -6,14 +6,14 @@
 // Protocol (structured clone, buffers transferred where possible):
 //   page -> worker:
 //     { type: "start", runtime, program, packages: [{ name, bytes }],
-//       files: [{ path, bytes }], argv, environment, columns, rows,
+//       files: [{ path, bytes }], filesystemMetadata, argv, environment, columns, rows,
 //       networkEnabled, workspaceEnabled, relayUrl, maxGas }
 //     { type: "package", name, bytes, files } resolved child program and seeds
 //     { type: "resize", columns, rows }
 //   worker -> page:
 //     { type: "started", translationMs }
 //     { type: "output", bytes }            terminal ANSI byte stream
-//     { type: "files", entries, removed }  changed /home entries
+//     { type: "files", entries, removed, metadata } atomic filesystem checkpoint
 //     { type: "log", message }             guest host_log diagnostics
 //     { type: "error", message }           supervisor fault; computer is dead
 
@@ -114,30 +114,36 @@ class PermissionTcpProvider {
 
 function fail(error) {
   finished = true;
+  if (supervisor !== null) {
+    drainOutput();
+    supervisor.dispose();
+  }
   self.postMessage({
     type: "error",
     message: error instanceof Error ? error.message : String(error),
   });
 }
 
-function drainOutput() {
+function drainOutput(includeMetadata = false) {
   const output = supervisor.takeTerminalOutput();
   if (output !== null && output.byteLength > 0) {
     self.postMessage({ type: "output", bytes: output }, [output.buffer]);
   }
   const entries = supervisor.takeModifiedFiles();
-  if (entries.length > 0) {
+  const removed = supervisor.takeRemovedFiles();
+  const metadata =
+    supervisor.takeFilesystemMetadata() ??
+    (includeMetadata ? supervisor.exportFilesystemMetadata() : null);
+  if (entries.length > 0 || removed.length > 0 || metadata !== null) {
     self.postMessage(
       {
         type: "files",
         entries: entries.map(([path, bytes]) => ({ path, bytes })),
+        removed,
+        metadata,
       },
       entries.map(([, bytes]) => bytes.buffer),
     );
-  }
-  const removed = supervisor.takeRemovedFiles();
-  if (removed.length > 0) {
-    self.postMessage({ type: "files", entries: [], removed });
   }
 }
 
@@ -198,6 +204,7 @@ async function providePackage(message) {
   for (const file of message.files ?? []) {
     supervisor.mountFile(file.path, new Uint8Array(file.bytes));
   }
+  drainOutput(true);
   const module = await translator.translate(message.bytes);
   supervisor.providePackage(module);
   resolvingPackage = null;
@@ -239,6 +246,13 @@ async function start(message) {
   for (const file of message.files) {
     supervisor.mountFile(file.path, new Uint8Array(file.bytes));
   }
+  if (
+    message.filesystemMetadata !== null &&
+    message.filesystemMetadata !== undefined
+  ) {
+    supervisor.importFilesystemMetadata(message.filesystemMetadata);
+  }
+  drainOutput(true);
   self.postMessage({
     type: "started",
     translationMs: performance.now() - started,
