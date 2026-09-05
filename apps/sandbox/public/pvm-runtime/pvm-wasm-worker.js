@@ -884,6 +884,14 @@
         : BigInt.asUintN(32, BigInt(value));
       this.pvm[`r${index}`].value = normalized;
     }
+    #setU64Result(value) {
+      const normalized = BigInt.asUintN(64, BigInt(value));
+      this.#setReg(7, normalized);
+      if (!this.metadata.is64Bit) {
+        this.#setReg(8, normalized >> 32n);
+      }
+    }
+
 
     #u32(value) {
       return Number(value & 0xffffffffn) >>> 0;
@@ -1199,7 +1207,7 @@
         }
         case "host_time_ms": {
           const timeMs = this.timeMs ?? performance.now() - this.clockStartedAt;
-          this.#setReg(7, BigInt(Math.max(0, Math.trunc(timeMs))));
+          this.#setU64Result(BigInt(Math.max(0, Math.trunc(timeMs))));
           return false;
         }
         case "host_sleep_ms":
@@ -1572,7 +1580,7 @@
         }
         case "pvm_time_ms": {
           const timeMs = this.timeMs ?? performance.now() - this.clockStartedAt;
-          this.#setReg(7, BigInt(Math.max(0, Math.trunc(timeMs))));
+          this.#setU64Result(BigInt(Math.max(0, Math.trunc(timeMs))));
           return false;
         }
         case "host_log": {
