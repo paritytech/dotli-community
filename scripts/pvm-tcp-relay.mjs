@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { isIPv4 } from "node:net";
 
-const port = Number.parseInt(process.env.PORT ?? "8787", 10);
+const port = Number.parseInt(process.env.PVM_TCP_RELAY_PORT ?? process.env.PORT ?? "8787", 10);
 const allowedPorts = new Set(
   (process.env.PVM_TCP_ALLOWED_PORTS ?? "80,443")
     .split(",")

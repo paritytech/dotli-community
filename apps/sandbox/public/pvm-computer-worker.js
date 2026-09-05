@@ -62,14 +62,17 @@ class PermissionTcpSocket {
 
   read(capacity) {
     if (this.denied) {
-      throw new Error("network permission denied");
+      // The browser runtime catches Errors from socket.read() and maps
+      // them to STATUS_INVALID; set denied flag so the runtime returns
+      // STATUS_DENIED (EACCES) instead.
+      return null;
     }
     return this.socket === null ? null : this.socket.read(capacity);
   }
 
   write(bytes) {
     if (this.denied) {
-      throw new Error("network permission denied");
+      return null;
     }
     return this.socket === null ? null : this.socket.write(bytes);
   }

@@ -15,6 +15,8 @@
  * pvm-browser-runtime.wasm, and every hostcall is handled here.
  *
  * Networking is denied unless the embedding Host injects a byte-stream provider.
+ * Workspace management is denied unless the embedder grants host.workspace
+ * to the root computer through setWorkspaceEnabled.
  */
 
 "use strict";
@@ -46,6 +48,7 @@
   const MAX_COMPUTER_CONTEXT_ENTRIES = 1024;
   const MAX_COMPUTER_PROCESSES = 4;
   const MAX_BACKGROUND_PROCESSES = 4;
+  const MAX_WORKSPACE_CHILDREN = 4;
   const FIRST_FILE_HANDLE = 16;
   const MAX_TTY_TRANSFER = 64 * 1024;
   const MAX_RANDOM_BYTES = 4 * 1024;
@@ -60,6 +63,7 @@
   const FAULTED_CHILD_STATUS = 139;
   const MAX_FAULT_POPS_PER_RUN = 32;
   const MAX_DRIVE_STEPS = 1024;
+  const MAX_WORKSPACE_DRIVE_STEPS = 64;
   const AT_PAGESZ = 6n;
 
   const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -435,6 +439,11 @@
       if (socket === undefined) {
         return { status: STATUS_BAD_HANDLE, bytes: new Uint8Array() };
       }
+      // The embedder's socket provider sets `denied = true` on a
+      // permission-gated socket whose connect request was refused.
+      if (socket.denied === true) {
+        return { status: STATUS_DENIED, bytes: new Uint8Array() };
+      }
       try {
         const bytes = socket.read(capacity);
         if (bytes === null) {
@@ -453,6 +462,9 @@
       const socket = this.sockets.get(handle);
       if (socket === undefined) {
         return STATUS_BAD_HANDLE;
+      }
+      if (socket.denied === true) {
+        return STATUS_DENIED;
       }
       try {
         const written = socket.write(bytes);
@@ -1189,6 +1201,73 @@
         case "polkadot_host_0_1_pipe_close":
           this.pendingChildRequest = { kind: "pipeClose", pid: this.#u32(a0) };
           return "child";
+        case "polkadot_host_0_1_workspace_spawn": {
+          const a4 = this.#reg(11);
+          const a5 = this.#reg(12);
+          const pkg = this.#readString(a0, a1, 64);
+          const argumentsList =
+            pkg === null ? null : this.#readStringRecord(a2, a3);
+          if (
+            pkg === null ||
+            argumentsList === null ||
+            a4 > 0xffffffffn ||
+            a5 > 0xffffffffn
+          ) {
+            this.#setReg(7, BigInt(STATUS_INVALID));
+            return "continue";
+          }
+          this.pendingChildRequest = {
+            kind: "workspaceSpawn",
+            package: pkg,
+            arguments: argumentsList,
+            columns: this.#u32(a4),
+            rows: this.#u32(a5),
+          };
+          return "child";
+        }
+        case "polkadot_host_0_1_workspace_send_input": {
+          const length = Math.min(this.#u32(a2), MAX_TTY_TRANSFER);
+          this.pendingChildRequest = {
+            kind: "workspaceSendInput",
+            handle: this.#u32(a0),
+            bytes: this.#read(this.#u32(a1), length),
+          };
+          return "child";
+        }
+        case "polkadot_host_0_1_workspace_read": {
+          const capacity = Math.min(this.#u32(a2), MAX_TTY_TRANSFER);
+          if (capacity === 0) {
+            this.#setReg(7, BigInt(STATUS_INVALID));
+            return "continue";
+          }
+          this.pendingChildRequest = {
+            kind: "workspaceRead",
+            handle: this.#u32(a0),
+            destination: this.#u32(a1),
+            capacity,
+          };
+          return "child";
+        }
+        case "polkadot_host_0_1_workspace_resize":
+          this.pendingChildRequest = {
+            kind: "workspaceResize",
+            handle: this.#u32(a0),
+            columns: this.#u32(a1),
+            rows: this.#u32(a2),
+          };
+          return "child";
+        case "polkadot_host_0_1_workspace_wait":
+          this.pendingChildRequest = {
+            kind: "workspaceWait",
+            handle: this.#u32(a0),
+          };
+          return "child";
+        case "polkadot_host_0_1_workspace_close":
+          this.pendingChildRequest = {
+            kind: "workspaceClose",
+            handle: this.#u32(a0),
+          };
+          return "child";
         case "polkadot_host_0_1_net_tcp_connect": {
           const address = this.#readString(a0, a1, MAX_NET_ADDRESS_BYTES);
           this.#setReg(
@@ -1391,6 +1470,7 @@
         ),
       ];
       this.background = [];
+      this.workspaceChildren = [];
       this.nextPid = 2;
       this.pendingOutput = [];
       this.environment = context.environment.map((pair) => pair.slice());
@@ -1400,6 +1480,7 @@
       this.maxGas = maxGas;
       this.emitLog = emitLog;
       this.network = false;
+      this.workspace = false;
       this.columns = 80;
       this.rows = 24;
       // Open spawn: when enabled, a spawn naming an unregistered package
@@ -1481,6 +1562,15 @@
         child.process.setNetworkEnabled(enabled);
       }
       this.network = enabled;
+    }
+
+    /** Grants or revokes the workspace capability for the root process.
+     * Revocation reaps every live workspace child. */
+    setWorkspaceEnabled(enabled) {
+      this.workspace = enabled;
+      if (!enabled) {
+        this.workspaceChildren.length = 0;
+      }
     }
 
     setTerminalSize(columns, rows) {
@@ -1609,6 +1699,7 @@
           root.exitStatus = 130;
         }
         this.background.length = 0;
+        this.workspaceChildren.length = 0;
         return { kind: "exited", code: root.exitStatus };
       }
       this.#popForeground(130);
@@ -1703,6 +1794,16 @@
 
     #handleChildRequest(request) {
       const resolve = (value) => this.#foreground().resolveSpawn(value);
+      if (request.kind.startsWith("workspace")) {
+        // Only the root computer holding the workspace grant may manage
+        // children; nested computers are never granted it.
+        if (!this.workspace || this.stack.length !== 1) {
+          resolve(STATUS_DENIED);
+          return;
+        }
+        this.#handleWorkspaceRequest(request, resolve);
+        return;
+      }
       if (request.kind === "spawn") {
         if (this.background.length >= MAX_BACKGROUND_PROCESSES) {
           resolve(STATUS_LIMIT);
@@ -1835,6 +1936,200 @@
         }
         entry.process.resolveSpawn(STATUS_DENIED);
       }
+    }
+
+    /** Executes one workspace operation and resolves it into the root
+     * guest (mirror of handle_workspace_request). */
+    #handleWorkspaceRequest(request, resolve) {
+      if (request.kind === "workspaceSpawn") {
+        if (this.workspaceChildren.length >= MAX_WORKSPACE_CHILDREN) {
+          resolve(STATUS_LIMIT);
+          return;
+        }
+        resolve(
+          this.#spawnWorkspaceChild(
+            request.package,
+            request.arguments,
+            request.columns,
+            request.rows,
+          ),
+        );
+        return;
+      }
+      const index = this.#workspaceIndex(request.handle);
+      if (index < 0) {
+        resolve(STATUS_BAD_HANDLE);
+        return;
+      }
+      const child = this.workspaceChildren[index];
+      if (request.kind === "workspaceSendInput") {
+        if (child.exit !== null) {
+          resolve(STATUS_INVALID);
+          return;
+        }
+        const space = child.supervisor.terminalInputSpace();
+        const written = Math.min(request.bytes.byteLength, space);
+        if (written > 0) {
+          child.supervisor.sendTerminalInput(
+            request.bytes.subarray(0, written),
+          );
+        }
+        this.#driveWorkspaceChild(index);
+        resolve(written);
+        return;
+      }
+      if (request.kind === "workspaceRead") {
+        if (child.output.length === 0) {
+          this.#driveWorkspaceChild(index);
+        }
+        if (child.output.length > 0) {
+          const count = Math.min(child.output.length, request.capacity);
+          const bytes = Uint8Array.from(child.output.slice(0, count));
+          child.output.splice(0, count);
+          this.#foreground().resolveRead(request.destination, bytes);
+        } else if (child.exit !== null) {
+          resolve(0);
+        } else {
+          resolve(STATUS_WOULD_BLOCK);
+        }
+        return;
+      }
+      if (request.kind === "workspaceResize") {
+        if (child.exit !== null) {
+          resolve(STATUS_INVALID);
+          return;
+        }
+        try {
+          child.supervisor.setTerminalSize(request.columns, request.rows);
+        } catch {
+          resolve(STATUS_INVALID);
+          return;
+        }
+        resolve(0);
+        return;
+      }
+      if (request.kind === "workspaceWait") {
+        this.#driveWorkspaceChild(index);
+        // The handle stays valid after exit so remaining output can be
+        // drained; workspace_close reclaims the slot.
+        resolve(child.exit !== null ? child.exit & 0xff : STATUS_WOULD_BLOCK);
+        return;
+      }
+      // workspaceClose: file changes were merged after every drive.
+      this.workspaceChildren.splice(index, 1);
+      resolve(0);
+    }
+
+    /** Resolves a workspace child handle to its slot. */
+    #workspaceIndex(handle) {
+      return this.workspaceChildren.findIndex(
+        (child) => child.handle === handle,
+      );
+    }
+
+    /** Runs a workspace child until it exits or blocks awaiting input,
+     * merging its terminal output and `/home` changes into the parent.
+     *
+     * Cooperative scheduling: workspace children only execute while the
+     * workspace guest is suspended inside a workspace hostcall. */
+    #driveWorkspaceChild(index) {
+      for (let step = 0; step < MAX_WORKSPACE_DRIVE_STEPS; step++) {
+        const child = this.workspaceChildren[index];
+        if (child.exit !== null) {
+          return;
+        }
+        // A faulted child fails alone; the workspace observes the fault
+        // status through wait. Its final output and writes still land.
+        let outcome = null;
+        try {
+          outcome = child.supervisor.run();
+        } catch {
+          // Fault: reported below as FAULTED_CHILD_STATUS.
+        }
+        const output = child.supervisor.takeTerminalOutput();
+        if (output) {
+          const available = MAX_TTY_OUTPUT_BYTES - child.output.length;
+          const count = Math.min(output.byteLength, Math.max(0, available));
+          for (let offset = 0; offset < count; offset++) {
+            child.output.push(output[offset]);
+          }
+        }
+        for (const path of child.supervisor.takeRemovedFiles()) {
+          this.files.delete(path);
+          this.modified.delete(path);
+          this.removed.add(path);
+        }
+        for (const [path, bytes] of child.supervisor.takeModifiedFiles()) {
+          this.files.set(path, bytes);
+          this.modified.set(path, bytes.slice());
+          this.removed.delete(path);
+        }
+        let exit = null;
+        if (outcome === null) {
+          exit = FAULTED_CHILD_STATUS;
+        } else if (outcome.kind === "exited") {
+          exit = outcome.code & 0xff;
+        } else if (outcome.kind !== "yielded") {
+          // A nested supervisor only surfaces yielded or exited.
+          exit = FAULTED_CHILD_STATUS;
+        }
+        if (exit !== null) {
+          child.exit = exit;
+          return;
+        }
+        if (!child.supervisor.hasTerminalInput()) {
+          return;
+        }
+      }
+    }
+
+    /** Launches an independently supervised workspace child: a complete
+     * nested computer whose terminal endpoint is the parent-held handle. */
+    #spawnWorkspaceChild(pkg, argumentsList, columns, rows) {
+      if (columns < 1 || columns > 1000 || rows < 1 || rows > 1000) {
+        return STATUS_INVALID;
+      }
+      const module = this.packages.get(pkg);
+      if (module === undefined) {
+        return STATUS_NOT_FOUND;
+      }
+      let child;
+      try {
+        const context = computerContext(
+          [pkg, ...argumentsList],
+          this.environment,
+        );
+        child = new ComputerSupervisor(
+          module,
+          context,
+          this.maxGas,
+          this.emitLog,
+          { networkProvider: this.networkProvider },
+        );
+        // The nested computer shares the Host-authorized package registry
+        // so a shell pane can run editors; it is never granted
+        // host.workspace.
+        child.packages = new Map(this.packages);
+        child.setTerminalSize(columns, rows);
+        child.setNetworkEnabled(this.network);
+      } catch {
+        return STATUS_INVALID;
+      }
+      try {
+        for (const [path, bytes] of this.files) {
+          child.mountFile(path, bytes);
+        }
+      } catch {
+        return STATUS_LIMIT;
+      }
+      const handle = this.nextPid++;
+      this.workspaceChildren.push({
+        handle,
+        supervisor: child,
+        output: [],
+        exit: null,
+      });
+      return handle;
     }
   }
 
