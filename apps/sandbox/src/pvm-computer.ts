@@ -87,10 +87,15 @@ function object(value: unknown): Record<string, unknown> | null {
 }
 
 function cleanPath(value: unknown): string | null {
-  if (typeof value !== "string" || value === "" || value.includes("\\")) {
+  if (
+    typeof value !== "string" ||
+    value === "" ||
+    value.startsWith("/") ||
+    value.includes("\\")
+  ) {
     return null;
   }
-  const path = value.replace(/^\/+/, "");
+  const path = value;
   const parts = path.split("/");
   return parts.some((part) => part === "" || part === "." || part === "..")
     ? null
@@ -609,7 +614,7 @@ export async function runComputerApplication(
         executableManifest?: string;
         message?: string;
       } | null;
-      if (data?.nonce !== nonce) {
+      if (event.source !== window.parent || data?.nonce !== nonce) {
         return;
       }
       if (
@@ -688,9 +693,7 @@ export async function runComputerApplication(
       ) {
         const mountedPath = `/${path}`;
         if (!mounts.has(mountedPath)) {
-          const owned = ownedBytes(bytes);
-          mounts.set(mountedPath, owned);
-          childFiles.push({ path: mountedPath, bytes: ownedBytes(owned) });
+          childFiles.push({ path: mountedPath, bytes: ownedBytes(bytes) });
         }
       }
     }
@@ -736,7 +739,7 @@ export async function runComputerApplication(
       });
   };
 
-  let running = true;
+  let running = false;
   worker.onmessage = (event: MessageEvent) => {
     const message = event.data as {
       type: string;
@@ -779,6 +782,7 @@ export async function runComputerApplication(
         }
         break;
       case "started":
+        running = true;
         status.textContent = "";
         screen.dataset.computerReady = "true";
         if (typeof message.translationMs === "number") {

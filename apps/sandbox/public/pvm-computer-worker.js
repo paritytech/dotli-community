@@ -34,6 +34,7 @@ const MAX_SLICES_PER_PUMP = 100_000;
 
 let supervisor = null;
 let finished = false;
+let initialized = false;
 // Input the guest's bounded queue could not accept yet (large pastes).
 const pendingInput = [];
 const pendingNetworkPermissions = new Map();
@@ -115,7 +116,9 @@ class PermissionTcpProvider {
 function fail(error) {
   finished = true;
   if (supervisor !== null) {
-    drainOutput();
+    if (initialized) {
+      drainOutput();
+    }
     supervisor.dispose();
   }
   self.postMessage({
@@ -124,7 +127,7 @@ function fail(error) {
   });
 }
 
-function drainOutput(includeMetadata = false) {
+function drainOutput(includeMetadata = false, mountedFiles = []) {
   for (
     let output = supervisor.takeTerminalOutput();
     output !== null;
@@ -134,7 +137,10 @@ function drainOutput(includeMetadata = false) {
       self.postMessage({ type: "output", bytes: output }, [output.buffer]);
     }
   }
-  const entries = supervisor.takeModifiedFiles();
+  const entries = [
+    ...mountedFiles.map(({ path, bytes }) => [path, bytes]),
+    ...supervisor.takeModifiedFiles(),
+  ];
   const removed = supervisor.takeRemovedFiles();
   const metadata =
     supervisor.takeFilesystemMetadata() ??
@@ -175,7 +181,7 @@ let translator = null;
 let resolvingPackage = null;
 
 function pump() {
-  if (supervisor === null || finished || resolvingPackage !== null) {
+  if (!initialized || finished || resolvingPackage !== null) {
     return;
   }
   try {
@@ -185,6 +191,7 @@ function pump() {
       drainOutput();
       if (status.kind === "exited") {
         finished = true;
+        supervisor.dispose();
         self.postMessage({ type: "exit", code: status.code });
         return;
       }
@@ -206,12 +213,24 @@ function pump() {
 }
 
 async function providePackage(message) {
-  for (const file of message.files ?? []) {
-    supervisor.mountFile(file.path, new Uint8Array(file.bytes));
+  const mountedFiles = [];
+  try {
+    const module = await translator.translate(message.bytes);
+    for (const file of message.files ?? []) {
+      supervisor.mountFile(file.path, new Uint8Array(file.bytes));
+      mountedFiles.push(file);
+    }
+    supervisor.providePackage(module);
+  } catch (error) {
+    self.postMessage({
+      type: "log",
+      message: `package ${message.name} failed: ${String(error)}`,
+    });
+    supervisor.rejectPackage();
   }
-  drainOutput(true);
-  const module = await translator.translate(message.bytes);
-  supervisor.providePackage(module);
+  // Mounts are not reported as guest writes by the runtime. Include accepted
+  // seeds with their metadata so the page never checkpoints unmounted bytes.
+  drainOutput(true, mountedFiles);
   resolvingPackage = null;
   pump();
 }
@@ -257,6 +276,7 @@ async function start(message) {
   ) {
     supervisor.importFilesystemMetadata(message.filesystemMetadata);
   }
+  initialized = true;
   drainOutput(true);
   self.postMessage({
     type: "started",
