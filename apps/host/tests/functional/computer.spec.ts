@@ -601,12 +601,54 @@ test("a workspace app tiles independently sandboxed shell panes", async ({
     .poll(async () => screenText(product), { timeout: 30_000 })
     .toContain("PolkaVM computer shell");
 
-  // Close the focused pane; the layout retiles down to two.
+  // The run prompt spawns any Host-resolvable app directly as a pane —
+  // no shell needed, no manifest declaration; kilo joined the shared
+  // registry when the pane shell resolved it above.
+  await page.keyboard.press("Control+b");
+  await page.keyboard.type("o");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("run:");
+  // Unlike the shell, the launcher passes arguments verbatim: apps that
+  // take paths need the absolute /home form.
+  await page.keyboard.type("kilo /home/notes.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("[4:kilo");
+
+  // Rearranging: swap the focused kilo pane with its left neighbor.
+  await page.keyboard.press("Control+b");
+  await page.keyboard.type("H");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("[3:kilo");
+
+  // Virtual workspaces: 2 starts empty, gets its own pane, and 1 returns
+  // with its layout intact.
+  await page.keyboard.press("Control+b");
+  await page.keyboard.type("2");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("ws2");
+  await page.keyboard.press("Control+b");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("[1:shell");
+  await page.keyboard.press("Control+b");
+  await page.keyboard.type("1");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("[3:kilo");
+
+  // Close the focused pane (kilo, after the swap); the layout retiles
+  // back to the three shells.
   await page.keyboard.press("Control+b");
   await page.keyboard.type("x");
   await expect
     .poll(async () => screenText(product), { timeout: 30_000 })
-    .not.toContain("[3:shell");
+    .not.toContain(":kilo");
 
   // Quit the workspace; the computer exits cleanly.
   await page.keyboard.press("Control+b");

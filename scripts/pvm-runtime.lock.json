@@ -3,13 +3,13 @@
   "bridgeRepository": "https://github.com/paritytech/host-rust-core.git",
   "bridgeRevision": "1755e7975d15f26e411b07d2b551e80d0c8fd4f9",
   "runtimeRepository": "https://github.com/paritytech/pvm-host-runtime",
-  "runtimeRevision": "a33bb6d48a103abad81eb14ab6f369f832a4b698",
+  "runtimeRevision": "7ad6778a6b882186053ab4b33dc8024775c35081",
   "releaseTag": "v0.1.10 + browser-computer + workspace (prototype)",
-  "provenance": "bridge-owned core runtime v0.1.10 plus the prototype pvm-computer.js adapter (host.workspace contract with open package resolution) pinned on runtime feat/workspace-tiling at a33bb6d48a103abad81eb14ab6f369f832a4b698 and the 32-compilation pvm-gpu-worker.js from feat/browser-computer at 691f7f2e7a465bb0081d6a0b7ca92103b3916651",
+  "provenance": "bridge-owned core runtime v0.1.10 plus the prototype pvm-computer.js adapter (host.workspace contract with open package resolution) pinned on runtime feat/workspace-tiling at 7ad6778a6b882186053ab4b33dc8024775c35081 and the 32-compilation pvm-gpu-worker.js from feat/browser-computer at 691f7f2e7a465bb0081d6a0b7ca92103b3916651",
   "assets": {
     "pvm-browser-runtime.wasm": "7082fa7765d212e3934ca6ab5024dc489c7f9b574bab9c3bbe998296ae8de81e",
     "pvm-wasm-worker.js": "c0ea902cde5705729a037bf000911b45289b7a67ae8f7719d658016f1f6fc347",
     "pvm-gpu-worker.js": "b24f4db361c99358e721bbd76921ae13aa05fc4cb9ffb4acc8ccad22b1a8d712",
-    "pvm-computer.js": "2e971cede2c09e2b79a69ae34fab4b44ffab285c8b6e244147ecd5af5a12a04d"
+    "pvm-computer.js": "c6b76bb262196e505f5e4dc7813a0bedc407e905587adf576d0b7cf3d28d1853"
   }
 }
