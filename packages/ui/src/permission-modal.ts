@@ -39,7 +39,11 @@ export const PERMISSION_DESCRIPTIONS: Record<
   StatementSubmit: "Submit signed statements to the statement store",
 };
 
-const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
+const PERMISSION_ICONS: Record<EnforceablePermissionName | "Remote", string> = {
+  Remote:
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/>' +
+    '<path d="M2 12h20"/></svg>',
   Notifications:
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>' +
@@ -128,7 +132,7 @@ export function showPermissionRequestModal(
     iconWrap.innerHTML =
       typeof permission === "string"
         ? PERMISSION_ICONS[permission]
-        : PERMISSION_ICONS.ChainSubmit;
+        : PERMISSION_ICONS.Remote;
     modal.appendChild(iconWrap);
 
     // Heading

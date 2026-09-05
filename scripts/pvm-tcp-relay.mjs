@@ -1,7 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { isIPv4 } from "node:net";
 
-const port = Number.parseInt(process.env.PVM_TCP_RELAY_PORT ?? process.env.PORT ?? "8787", 10);
+const port = Number.parseInt(process.env.PVM_TCP_RELAY_PORT ?? "8787", 10);
+const MAX_PENDING_BYTES = 1024 * 1024;
 const allowedPorts = new Set(
   (process.env.PVM_TCP_ALLOWED_PORTS ?? "80,443")
     .split(",")
@@ -90,13 +91,30 @@ async function resolvePublicTarget(target) {
 
 function closeState(state) {
   clearTimeout(state.timer);
-  state.socket?.end();
-  state.socket = null;
+  const socket = state.socket;
   state.phase = "closed";
+  state.socket = null;
+  state.pending.length = 0;
+  state.pendingBytes = 0;
+  socket?.terminate();
+}
+
+function flushPending(state) {
+  while (state.phase === "connected" && state.pending.length > 0) {
+    const bytes = state.pending[0];
+    const written = state.socket.write(bytes);
+    state.pendingBytes -= written;
+    if (written < bytes.byteLength) {
+      state.pending[0] = bytes.subarray(written);
+      return;
+    }
+    state.pending.shift();
+  }
 }
 
 const server = Bun.serve({
   port,
+  hostname: "127.0.0.1",
   fetch(request, server) {
     const url = new URL(request.url);
     const origin = request.headers.get("origin") ?? "";
@@ -108,6 +126,8 @@ const server = Bun.serve({
         phase: "handshake",
         socket: null,
         timer: null,
+        pending: [],
+        pendingBytes: 0,
       },
     });
     return upgraded
@@ -115,12 +135,16 @@ const server = Bun.serve({
       : new Response("WebSocket upgrade required", { status: 426 });
   },
   websocket: {
+    maxPayloadLength: 64 * 1024,
+    backpressureLimit: MAX_PENDING_BYTES,
+    closeOnBackpressureLimit: true,
     open(ws) {
       ws.data.timer = setTimeout(() => {
         ws.send(
           JSON.stringify({ type: "error", message: "handshake timed out" }),
         );
         ws.close(1008, "handshake timed out");
+        closeState(ws.data);
       }, 10_000);
     },
     async message(ws, message) {
@@ -131,7 +155,18 @@ const server = Bun.serve({
           closeState(state);
           return;
         }
-        state.socket.write(message);
+        if (state.pendingBytes + message.byteLength > MAX_PENDING_BYTES) {
+          ws.close(1009, "TCP send buffer exceeded");
+          closeState(state);
+          return;
+        }
+        const written =
+          state.pending.length === 0 ? state.socket.write(message) : 0;
+        if (written < message.byteLength) {
+          const pending = Uint8Array.from(message.subarray(written));
+          state.pending.push(pending);
+          state.pendingBytes += pending.byteLength;
+        }
         return;
       }
       if (state.phase !== "handshake" || typeof message !== "string") {
@@ -146,17 +181,33 @@ const server = Bun.serve({
           request?.version === 1 ? parseTarget(request.address) : null;
         if (target === null) throw new Error("invalid or denied target");
         const hostname = await resolvePublicTarget(target);
-        state.socket = await Bun.connect({
+        if (state.phase === "closed") return;
+        const socket = await Bun.connect({
           hostname,
           port: target.port,
           socket: {
-            open() {
+            open(socket) {
+              if (state.phase === "closed") {
+                socket.terminate();
+                return;
+              }
+              state.socket = socket;
               clearTimeout(state.timer);
               state.phase = "connected";
               ws.send(JSON.stringify({ type: "connected" }));
             },
-            data(_socket, bytes) {
-              if (state.phase === "connected") ws.send(bytes);
+            data(socket, bytes) {
+              if (state.phase !== "connected") return;
+              const sent = ws.send(bytes);
+              if (sent === -1) {
+                socket.pause();
+              } else if (sent === 0) {
+                ws.close(1011, "WebSocket send failed");
+                closeState(state);
+              }
+            },
+            drain() {
+              flushPending(state);
             },
             close() {
               if (state.phase !== "closed") ws.close(1000, "TCP stream closed");
@@ -173,7 +224,9 @@ const server = Bun.serve({
             },
           },
         });
+        if (state.phase === "closed") socket.terminate();
       } catch (error) {
+        if (state.phase === "closed") return;
         ws.send(
           JSON.stringify({
             type: "error",
@@ -184,6 +237,9 @@ const server = Bun.serve({
         ws.close(1008, "TCP target rejected");
         closeState(state);
       }
+    },
+    drain(ws) {
+      if (ws.data.phase === "connected") ws.data.socket.resume();
     },
     close(ws) {
       closeState(ws.data);

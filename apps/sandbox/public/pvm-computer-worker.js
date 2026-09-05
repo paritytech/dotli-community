@@ -48,6 +48,7 @@ class PermissionTcpSocket {
     this.socket = null;
     this.denied = false;
     this.closed = false;
+    this.error = null;
   }
 
   resolve(granted) {
@@ -55,7 +56,12 @@ class PermissionTcpSocket {
       return;
     }
     if (granted) {
-      this.socket = this.provider.connect(this.address);
+      try {
+        this.socket = this.provider.connect(this.address);
+      } catch (error) {
+        this.error = error instanceof Error ? error : new Error(String(error));
+        this.activity();
+      }
     } else {
       this.denied = true;
       this.activity();
@@ -63,6 +69,7 @@ class PermissionTcpSocket {
   }
 
   read(capacity) {
+    if (this.error !== null) throw this.error;
     if (this.denied) {
       // The browser runtime catches Errors from socket.read() and maps
       // them to STATUS_INVALID; set denied flag so the runtime returns
@@ -73,6 +80,7 @@ class PermissionTcpSocket {
   }
 
   write(bytes) {
+    if (this.error !== null) throw this.error;
     if (this.denied) {
       return null;
     }
