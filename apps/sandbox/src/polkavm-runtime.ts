@@ -230,6 +230,33 @@ const keyCodes: Readonly<Record<string, number>> = Object.freeze({
   Space: 0x2c,
   Minus: 0x2d,
   Equal: 0x2e,
+  BracketLeft: 0x2f,
+  BracketRight: 0x30,
+  Backslash: 0x31,
+  Semicolon: 0x33,
+  Quote: 0x34,
+  Backquote: 0x35,
+  Comma: 0x36,
+  Period: 0x37,
+  Slash: 0x38,
+  F1: 0x3a,
+  F2: 0x3b,
+  F3: 0x3c,
+  F4: 0x3d,
+  F5: 0x3e,
+  F6: 0x3f,
+  F7: 0x40,
+  F8: 0x41,
+  F9: 0x42,
+  F10: 0x43,
+  F11: 0x44,
+  F12: 0x45,
+  Insert: 0x49,
+  Home: 0x4a,
+  PageUp: 0x4b,
+  Delete: 0x4c,
+  End: 0x4d,
+  PageDown: 0x4e,
   ArrowRight: 0x4f,
   ArrowLeft: 0x50,
   ArrowDown: 0x51,
@@ -237,9 +264,11 @@ const keyCodes: Readonly<Record<string, number>> = Object.freeze({
   ControlLeft: 0xe0,
   ShiftLeft: 0xe1,
   AltLeft: 0xe2,
+  MetaLeft: 0xe3,
   ControlRight: 0xe4,
   ShiftRight: 0xe5,
   AltRight: 0xe6,
+  MetaRight: 0xe7,
 });
 const pointerButtons: Readonly<Record<number, number>> = Object.freeze({
   0: 1,
@@ -1431,13 +1460,18 @@ function installInput(
   };
   const syncFocus = (): void => {
     const focused =
-      document.activeElement === canvas ||
-      (textInput !== null && document.activeElement === textInput);
+      document.hasFocus() &&
+      (document.activeElement === canvas ||
+        (textInput !== null && document.activeElement === textInput));
     if (focused === reportedFocused) {
       return;
     }
     reportedFocused = focused;
     if (!focused) {
+      for (const code of pressed) {
+        send(encodedInput(2, code));
+      }
+      pressed.clear();
       if (composing && inputFeatureSet.has("ime")) {
         send(encodedInput(12, 0));
       }
@@ -1519,11 +1553,11 @@ function installInput(
       releasePointerLock();
       return;
     }
-    if (!(event.code in keyCodes) || event.repeat) {
+    if (!(event.code in keyCodes)) {
       return;
     }
     const code = keyCodes[event.code];
-    if (pressed.has(code)) {
+    if (pressed.has(code) && !event.repeat) {
       return;
     }
     if (event.isTrusted) {
@@ -1617,7 +1651,7 @@ function installInput(
   const surfaceScale = (): number =>
     Math.max(1 / 32, Math.min(4, window.devicePixelRatio || 1));
   const sendSurfaceMetrics = (): void => {
-    if (graphicsProfile !== "tri2d") {
+    if (graphicsProfile === "framebuffer") {
       return;
     }
     const bounds = canvas.getBoundingClientRect();
@@ -1654,7 +1688,7 @@ function installInput(
     }
   };
   const resizeObserver =
-    graphicsProfile === "tri2d"
+    graphicsProfile !== "framebuffer"
       ? new ResizeObserver(() => {
           sendSurfaceMetrics();
         })
@@ -1662,6 +1696,8 @@ function installInput(
   resizeObserver?.observe(canvas);
   canvas.addEventListener("focus", focusChanged);
   canvas.addEventListener("blur", focusChanged);
+  window.addEventListener("focus", focusChanged);
+  window.addEventListener("blur", focusChanged);
   if (textInput !== null) {
     textInput.addEventListener("beforeinput", beforeInput);
     textInput.addEventListener("input", input);
@@ -1716,6 +1752,8 @@ function installInput(
       window.removeEventListener("devicemotion", deviceMotion);
       canvas.removeEventListener("focus", focusChanged);
       canvas.removeEventListener("blur", focusChanged);
+      window.removeEventListener("focus", focusChanged);
+      window.removeEventListener("blur", focusChanged);
       if (textInput !== null) {
         textInput.removeEventListener("beforeinput", beforeInput);
         textInput.removeEventListener("input", input);
