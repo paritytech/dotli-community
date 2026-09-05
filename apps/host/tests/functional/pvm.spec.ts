@@ -497,6 +497,16 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     throw new Error("PolkaVM product frame did not mount");
   }
   if (expectedPointerLock) {
+    // Doom owns capture: enter a level before expecting the guest to arm it.
+    for (const key of ["Escape", "Enter", "Enter", "Enter"]) {
+      await page.keyboard.press(key);
+    }
+    await expect(canvas).toHaveAttribute(
+      "data-pvm-pointer-capture-armed",
+      "true",
+      { timeout: 60_000 },
+    );
+    await canvas.click({ position: { x: 160, y: 100 } });
     await expect
       .poll(async () =>
         productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
@@ -508,6 +518,18 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
         productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
       )
       .toBeNull();
+    await canvas.click({ position: { x: 160, y: 100 } });
+    await expect
+      .poll(async () =>
+        productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
+      )
+      .toBeNull();
+    await page.keyboard.press("Escape");
+    await expect(canvas).toHaveAttribute(
+      "data-pvm-pointer-capture-armed",
+      "true",
+      { timeout: 60_000 },
+    );
     await canvas.click({ position: { x: 160, y: 100 } });
     await expect
       .poll(async () =>

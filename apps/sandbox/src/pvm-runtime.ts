@@ -1250,6 +1250,8 @@ function installInput(
   const pointerCaptureSupported =
     typeof canvas.requestPointerLock === "function" &&
     typeof document.exitPointerLock === "function";
+  canvas.dataset.pvmPointerCaptureArmed = "false";
+  canvas.dataset.pvmPointerCaptured = "false";
   let motionSequence = 0;
   let motionX = 0;
   let motionY = 0;
@@ -1394,6 +1396,10 @@ function installInput(
     if (pointerCaptureRequested()) {
       sendPointerCaptureState(active);
     }
+    canvas.dataset.pvmPointerCaptureArmed = pointerCaptureArmed
+      ? "true"
+      : "false";
+    canvas.dataset.pvmPointerCaptured = active ? "true" : "false";
   };
   const canvasPosition = (event: PointerEvent): [number, number] => {
     const bounds = canvas.getBoundingClientRect();
@@ -1668,6 +1674,9 @@ function installInput(
     sendSurfaceMetrics,
     setPointerCaptureRequest: (capture) => {
       pointerCaptureArmed = capture && pointerCaptureSupported;
+      canvas.dataset.pvmPointerCaptureArmed = pointerCaptureArmed
+        ? "true"
+        : "false";
       if (!capture && document.pointerLockElement === canvas) {
         document.exitPointerLock();
       }
