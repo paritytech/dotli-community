@@ -125,9 +125,14 @@ function fail(error) {
 }
 
 function drainOutput(includeMetadata = false) {
-  const output = supervisor.takeTerminalOutput();
-  if (output !== null && output.byteLength > 0) {
-    self.postMessage({ type: "output", bytes: output }, [output.buffer]);
+  for (
+    let output = supervisor.takeTerminalOutput();
+    output !== null;
+    output = supervisor.takeTerminalOutput()
+  ) {
+    if (output.byteLength > 0) {
+      self.postMessage({ type: "output", bytes: output }, [output.buffer]);
+    }
   }
   const entries = supervisor.takeModifiedFiles();
   const removed = supervisor.takeRemovedFiles();
