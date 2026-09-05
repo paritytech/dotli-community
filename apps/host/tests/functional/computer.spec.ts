@@ -301,6 +301,8 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
     .poll(async () => screenText(product))
     .toContain("bytes written on disk");
   await page.keyboard.press("Control+q");
+  // Child output and the resumed shell prompt must both drain without another key.
+  await expect.poll(async () => screenText(product)).toMatch(/\$\s*$/);
   await page.keyboard.type("cat notes.txt");
   await page.keyboard.press("Enter");
   await expect
