@@ -2093,7 +2093,8 @@ export async function runPvmApplication(
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
   const ancestorOrigins = Reflect.get(location, "ancestorOrigins") as
-    DOMStringList | undefined;
+    | DOMStringList
+    | undefined;
   const parentOrigin = resolvedParentOrigin(
     ancestorOrigins?.item(0) ?? null,
     document.referrer,
