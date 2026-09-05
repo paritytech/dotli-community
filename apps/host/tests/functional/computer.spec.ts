@@ -615,3 +615,72 @@ test("a workspace app tiles independently sandboxed shell panes", async ({
     timeout: 30_000,
   });
 });
+
+test("a workspace pane open-spawns Lynx with its seed files", async ({
+  page,
+}) => {
+  // Seed-propagation proof: Lynx's home/ seeds (lynx.cfg, cacert.pem,
+  // index.html) arrive at resolution time — AFTER the pane spawned. The
+  // supervisor forwards live mounts to every child, so the already-running
+  // pane sees them; without that, Lynx reports its configuration file
+  // missing and never fetches the startfile.
+  const workspace = await appCar([
+    ["manifest.json", "workspace-net-manifest.json"],
+    ["workspace.polkavm", "workspace.polkavm"],
+    ["packages/shell.polkavm", "shell.polkavm"],
+  ]);
+  const lynx = await appCar([
+    ["manifest.json", "lynx-manifest.json"],
+    ["app.polkavm", "lynx.polkavm"],
+    ["home/cacert.pem", "lynx-cacert.pem"],
+    ["home/lynx.cfg", "lynx.cfg"],
+    ["home/lynx.lss", "lynx.lss"],
+    ["home/index.html", "lynx-index.html"],
+  ]);
+  await routeCar(page, workspace);
+  await routeCar(page, lynx);
+  await page.goto("http://localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  await answerResolutions(page, {
+    lynx: { cid: lynx.cid, manifest: lynx.manifest },
+  });
+  const requestedDomains = await grantRemotePermissions(page);
+  const product = await mountComputer(page, workspace, true, "ws-lynx");
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await expect.poll(async () => screenText(product)).toContain("C-b");
+
+  await screen.click();
+  await page.keyboard.press("Control+b");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("PolkaVM computer shell");
+
+  // The pane shell resolves Lynx as a published app. Its home/ seeds are
+  // mounted at resolution time — after the pane spawned — so the greeting
+  // (from the seeded index.html) rendering inside the pane proves live
+  // parent->child mount propagation.
+  await page.keyboard.type("lynx");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 60_000 })
+    .toContain("PolkaVM Lynx");
+
+  // Browsing HTTPS exercises the remaining seeds and the whole chain
+  // inside a pane: cacert.pem for guest TLS, the permission grant, and
+  // the TCP relay.
+  await page.keyboard.type("g");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("URL to open");
+  await page.keyboard.type("https://example.com/");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 60_000 })
+    .toContain("Example Domain");
+  expect(requestedDomains).toEqual(["example.com"]);
+});
