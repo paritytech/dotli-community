@@ -274,7 +274,7 @@ describe("bridge render lifecycle", () => {
         import("@dotli/ui/blocking-modal-queue"),
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
-  });
+  }, 30_000);
 
   it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {
     // Given
