@@ -123,7 +123,7 @@ try {
   for (const [exportedName, destinationName] of bridgeMappings) {
     await syncAsset(bridgeExportedRoot, exportedName, destinationName);
   }
-  // Keep the reviewed core/GPU release while evolving the computer adapter.
+  // Keep the bridge core, GPU runtime and computer adapter independently pinned.
   const computerCheckout = checkoutRevision(
     "PVM_COMPUTER_RUNTIME_ROOT",
     "pvm-host-runtime-computer",
@@ -160,7 +160,7 @@ Provenance: ${lock.provenance}
 Bridge-owned artifacts:
 ${[...bridgeMappings.values()].map((path) => `- ${path}`).join("\n")}
 
-Release runtime artifacts:
+GPU runtime artifacts:
 - pvm-gpu-worker.js
 
 Computer prototype artifacts:
