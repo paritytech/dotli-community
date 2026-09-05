@@ -545,16 +545,17 @@ function parseCommand(command) {
               command.index
             );
           }
+          let type = "storage";
+          if (kind === 1) {
+            type = "uniform";
+          } else if (kind === 4) {
+            type = "read-only-storage";
+          }
           entry = {
             binding,
             visibility,
             buffer: {
-              type:
-                kind === 1
-                  ? "uniform"
-                  : kind === 4
-                    ? "read-only-storage"
-                    : "storage",
+              type,
               hasDynamicOffset: Boolean(flags & 1),
               minBindingSize,
             },

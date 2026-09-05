@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "bridgeRepository": "https://github.com/paritytech/host-rust-core.git",
-  "bridgeRevision": "2d16dcec2f6838af8747ff6486137964f6b16e27",
+  "bridgeRevision": "e6345f3b280c1713ea47e62ec1215ee176cdbada",
   "runtimeRepository": "https://github.com/paritytech/pvm-host-runtime",
-  "runtimeRevision": "1e7609a460b696a12a5e1bad038c209861b4e9fe",
-  "releaseTag": "v0.1.12",
+  "runtimeRevision": "7f7f1dcfd499a269f582b89ab4dfba2f962d18fb",
+  "releaseTag": "v0.1.13",
   "assets": {
-    "pvm-browser-runtime.wasm": "ab977dcb0fca1e56e1179d6e4eadb03bab10eb17f7e5f199ec35df584ac8dc1b",
+    "pvm-browser-runtime.wasm": "35269671166d45924a999c8ffcdc3c57ba4de57c0dde382f7f9ac4bc76a3e3c7",
     "pvm-wasm-worker.js": "19a225d02747ce5db0190c775df7e65adf7fbb9916f4f2542023d62328eccf48",
-    "pvm-gpu-worker.js": "13a1d354904667dd288d88ac6cffc17e9bb0401cafb2aee8b5e71d85a7e16c60"
+    "pvm-gpu-worker.js": "aba03efea899e6e20410c7a03b988b34d69fc8bcdd462d3945781c46aa00ceca"
   }
 }
