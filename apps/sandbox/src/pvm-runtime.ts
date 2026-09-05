@@ -1813,13 +1813,21 @@ export async function runPvmApplication(
     assets.push({ path: "save/cartridge.sav", bytes: ownedBytes(save) });
   }
 
-  const worker = new Worker(`${PVM_RUNTIME_ROOT}/pvm-wasm-worker.js`);
   const {
     promise: startedPromise,
     resolve: resolveStarted,
     reject: rejectStarted,
   } = Promise.withResolvers<undefined>();
   const truapiPort = await waitForTruapiPort();
+  const worker = new Worker(`${PVM_RUNTIME_ROOT}/pvm-wasm-worker.js`);
+  const closeTruapiPort = (): void => {
+    truapiPort.onmessage = null;
+    truapiPort.onmessageerror = null;
+    truapiPort.close();
+    if (window.__HOST_API_PORT__ === truapiPort) {
+      delete window.__HOST_API_PORT__;
+    }
+  };
   canvas.dataset.pvmTruapiRequests = "0";
   canvas.dataset.pvmTruapiResponses = "0";
   const failTruapi = (error: Error): void => {
@@ -1827,9 +1835,7 @@ export async function runPvmApplication(
     rejectStarted(error);
     worker.postMessage({ type: "stop" });
     worker.terminate();
-    truapiPort.onmessage = null;
-    truapiPort.onmessageerror = null;
-    truapiPort.close();
+    closeTruapiPort();
   };
   let truapiReady = false;
   let pendingTruapiBytes = 0;
@@ -2054,7 +2060,16 @@ export async function runPvmApplication(
         rejectStarted(error);
       },
     });
-    gpuCapabilities = await webGpu.capabilities;
+    try {
+      gpuCapabilities = await webGpu.capabilities;
+    } catch (error) {
+      webGpu.dispose();
+      worker.terminate();
+      closeTruapiPort();
+      void audioContext?.close();
+      rejectStarted(error);
+      return startedPromise;
+    }
   }
 
   let usesMotion = false;
@@ -2175,11 +2190,10 @@ export async function runPvmApplication(
     window.removeEventListener("message", onParentMotion);
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
+    worker.terminate();
     webGpu?.dispose();
     void audioContext?.close();
-    truapiPort.onmessage = null;
-    truapiPort.onmessageerror = null;
-    truapiPort.close();
+    closeTruapiPort();
   };
   window.addEventListener("pagehide", stop, { once: true });
   // Mobile browsers may discard the worker-owned GPU device while the screen
