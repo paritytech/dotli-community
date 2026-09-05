@@ -22,11 +22,11 @@ import { waitForTruapiPort } from "./pvm-runtime";
 
 const PVM_RUNTIME_ROOT = "/pvm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
-const MAX_SAVE_BYTES = 1024 * 1024;
+const MAX_SAVE_BYTES = 64 * 1024 * 1024 + 128 * 1024;
 const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
-const SAVE_FORMAT_VERSION = 1;
+const SAVE_FORMAT_VERSION = 2;
 const HOME_PREFIX = "home/";
 const MAX_GAS = 8_000_000_000;
 const TCP_RELAY_URL =
@@ -61,6 +61,23 @@ interface ComputerDescriptor {
 interface WorkerFileEntry {
   path: string;
   bytes: Uint8Array;
+}
+
+interface FilesystemMetadata {
+  version: 1;
+  nextInode: string;
+  clockNs: string;
+  entries: {
+    path: string;
+    kind: 1 | 2;
+    mtimeNs: string;
+    inode: string;
+  }[];
+}
+
+interface SavedFilesystem {
+  files: Map<string, Uint8Array>;
+  metadata: FilesystemMetadata | null;
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -223,12 +240,16 @@ function validateComputerFiles(
 }
 
 // ---------------------------------------------------------------------------
-// /home persistence: one IndexedDB record per computer holding every
-// modified file, length-prefixed. Same database the cartridge save path
-// uses; the key namespace ("computer") keeps the records apart.
+// /home persistence: one atomic IndexedDB record containing file bytes and
+// namespace metadata. Version 1 byte-only records migrate on the next save.
+// The key namespace ("computer") keeps these apart from cartridge saves.
 
-function encodeFilesystem(files: Map<string, Uint8Array>): Uint8Array | null {
-  let total = 1;
+function encodeFilesystem(
+  files: Map<string, Uint8Array>,
+  metadata: FilesystemMetadata,
+): Uint8Array | null {
+  const metadataBytes = encoder.encode(JSON.stringify(metadata));
+  let total = 5 + metadataBytes.byteLength;
   for (const [path, bytes] of files) {
     total += 8 + encoder.encode(path).byteLength + bytes.byteLength;
   }
@@ -238,7 +259,9 @@ function encodeFilesystem(files: Map<string, Uint8Array>): Uint8Array | null {
   const record = new Uint8Array(total);
   const view = new DataView(record.buffer);
   record[0] = SAVE_FORMAT_VERSION;
-  let offset = 1;
+  view.setUint32(1, metadataBytes.byteLength, true);
+  record.set(metadataBytes, 5);
+  let offset = 5 + metadataBytes.byteLength;
   for (const [path, bytes] of files) {
     const pathBytes = encoder.encode(path);
     view.setUint32(offset, pathBytes.byteLength, true);
@@ -251,10 +274,14 @@ function encodeFilesystem(files: Map<string, Uint8Array>): Uint8Array | null {
   return record;
 }
 
-function decodeFilesystem(record: Uint8Array): Map<string, Uint8Array> {
+function decodeFilesystem(record: Uint8Array): SavedFilesystem {
   const files = new Map<string, Uint8Array>();
-  if (record.byteLength === 0 || record[0] !== SAVE_FORMAT_VERSION) {
-    return files;
+  if (record.byteLength === 0) {
+    return { files, metadata: null };
+  }
+  const version = record[0];
+  if (version !== 1 && version !== SAVE_FORMAT_VERSION) {
+    throw new Error("unsupported computer filesystem save version");
   }
   const view = new DataView(
     record.buffer,
@@ -262,28 +289,44 @@ function decodeFilesystem(record: Uint8Array): Map<string, Uint8Array> {
     record.byteLength,
   );
   let offset = 1;
-  while (offset + 8 <= record.byteLength) {
-    const pathLength = view.getUint32(offset, true);
+  let metadata: FilesystemMetadata | null = null;
+  const readBytes = (): Uint8Array => {
+    if (offset + 4 > record.byteLength) {
+      throw new Error("truncated computer filesystem save");
+    }
+    const length = view.getUint32(offset, true);
     offset += 4;
-    if (offset + pathLength + 4 > record.byteLength) {
-      return files;
+    if (length > record.byteLength - offset) {
+      throw new Error("truncated computer filesystem save");
     }
-    let path: string;
-    try {
-      path = decoder.decode(record.subarray(offset, offset + pathLength));
-    } catch {
-      return files;
+    const bytes = record.subarray(offset, offset + length);
+    offset += length;
+    return bytes;
+  };
+  if (version === SAVE_FORMAT_VERSION) {
+    const value: unknown = JSON.parse(decoder.decode(readBytes()));
+    const candidate = object(value);
+    if (
+      candidate?.version !== 1 ||
+      typeof candidate.nextInode !== "string" ||
+      typeof candidate.clockNs !== "string" ||
+      !Array.isArray(candidate.entries)
+    ) {
+      throw new Error("invalid computer filesystem metadata");
     }
-    offset += pathLength;
-    const dataLength = view.getUint32(offset, true);
-    offset += 4;
-    if (offset + dataLength > record.byteLength) {
-      return files;
-    }
-    files.set(path, ownedBytes(record.subarray(offset, offset + dataLength)));
-    offset += dataLength;
+    // The runtime validates every path, inode, timestamp and file/directory
+    // relation atomically before starting the guest.
+    metadata = value as FilesystemMetadata;
   }
-  return files;
+  while (offset < record.byteLength) {
+    const path = decoder.decode(readBytes());
+    const bytes = readBytes();
+    if (files.has(path)) {
+      throw new Error("duplicate path in computer filesystem save");
+    }
+    files.set(path, ownedBytes(bytes));
+  }
+  return { files, metadata };
 }
 
 function openSaveDb(): Promise<IDBDatabase> {
@@ -316,9 +359,13 @@ async function loadSave(key: string): Promise<Uint8Array | null> {
       reject(request.error ?? new Error("save read failed"));
     };
     const value = await promise;
-    return value instanceof ArrayBuffer && value.byteLength <= MAX_SAVE_BYTES
-      ? new Uint8Array(value)
-      : null;
+    if (value === undefined) {
+      return null;
+    }
+    if (!(value instanceof ArrayBuffer) || value.byteLength > MAX_SAVE_BYTES) {
+      throw new Error("invalid computer filesystem save");
+    }
+    return new Uint8Array(value);
   } finally {
     db.close();
   }
@@ -326,7 +373,7 @@ async function loadSave(key: string): Promise<Uint8Array | null> {
 
 async function storeSave(key: string, bytes: Uint8Array): Promise<void> {
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_SAVE_BYTES) {
-    return;
+    throw new Error("computer filesystem save exceeds its size limit");
   }
   const db = await openSaveDb();
   try {
@@ -338,6 +385,9 @@ async function storeSave(key: string, bytes: Uint8Array): Promise<void> {
     };
     transaction.onerror = () => {
       reject(transaction.error ?? new Error("save write failed"));
+    };
+    transaction.onabort = () => {
+      reject(transaction.error ?? new Error("save transaction aborted"));
     };
     await promise;
   } finally {
@@ -494,12 +544,14 @@ export async function runComputerApplication(
   // Restore /home, then let archive seeds fill anything the user has not
   // touched. Seeds live under `home/` in the archive and mount at `/home/`.
   const saveKey = `${location.hostname}:computer:${cid}`;
-  const persisted = decodeFilesystem(
+  const restored = decodeFilesystem(
     (await loadSave(saveKey)) ?? new Uint8Array(),
   );
+  let filesystemMetadata = restored.metadata;
   const mounts = new Map<string, Uint8Array>();
   for (const [path, bytes] of Object.entries(files)) {
     if (
+      restored.metadata === null &&
       path.startsWith(HOME_PREFIX) &&
       path.length > HOME_PREFIX.length &&
       !path.endsWith("/")
@@ -507,9 +559,10 @@ export async function runComputerApplication(
       mounts.set(`/${path}`, ownedBytes(bytes));
     }
   }
-  for (const [path, bytes] of persisted) {
+  for (const [path, bytes] of restored.files) {
     mounts.set(path, bytes);
   }
+  const persisted = mounts;
 
   const workerFiles: WorkerFileEntry[] = [...mounts.entries()].map(
     ([path, bytes]) => ({ path, bytes: ownedBytes(bytes) }),
@@ -663,20 +716,24 @@ export async function runComputerApplication(
     }
   };
 
-  let persistWarned = false;
-  // Modified-file drains are coarse (editor saves, child exits), so each one
-  // is written straight to IndexedDB; a debounce here would race reloads.
+  let pendingSave = Promise.resolve();
+  // Bytes and metadata from one worker checkpoint become one IDB record.
+  // Serializing writes prevents an older asynchronous save replacing a newer one.
   const persistNow = (): void => {
-    const record = encodeFilesystem(persisted);
-    if (record === null) {
-      if (!persistWarned) {
-        persistWarned = true;
-        status.textContent =
-          "Files exceed the 1 MiB save budget — changes are not persisted.";
-      }
+    if (filesystemMetadata === null) {
       return;
     }
-    void storeSave(saveKey, record);
+    const record = encodeFilesystem(persisted, filesystemMetadata);
+    if (record === null) {
+      status.textContent =
+        "Filesystem exceeds the save budget — changes are not persisted.";
+      return;
+    }
+    pendingSave = pendingSave
+      .then(() => storeSave(saveKey, record))
+      .catch((error: unknown) => {
+        status.textContent = `Filesystem save failed: ${error instanceof Error ? error.message : String(error)}`;
+      });
   };
 
   let running = true;
@@ -686,6 +743,7 @@ export async function runComputerApplication(
       bytes?: Uint8Array;
       entries?: WorkerFileEntry[];
       removed?: string[];
+      metadata?: FilesystemMetadata | null;
       code?: number;
       message?: string;
       name?: string;
@@ -742,6 +800,9 @@ export async function runComputerApplication(
         }
         for (const path of message.removed ?? []) {
           persisted.delete(path);
+        }
+        if (message.metadata !== undefined && message.metadata !== null) {
+          filesystemMetadata = message.metadata;
         }
         persistNow();
         break;
@@ -835,6 +896,7 @@ export async function runComputerApplication(
       program,
       packages,
       files: workerFiles,
+      filesystemMetadata,
       argv: [
         descriptor.programPath
           .replace(/\.polkavm$/, "")

@@ -54,7 +54,9 @@ function exportAssets(checkout, output, cargoArguments) {
     [...cargoArguments, "--", "--output", output],
     { cwd: root, stdio: "inherit" },
   );
-  if (exported.status !== 0) process.exit(exported.status ?? 1);
+  if (exported.status !== 0) {
+    throw new Error(`asset export failed (${exported.signal ?? exported.status ?? "spawn error"})`);
+  }
 }
 
 async function syncAsset(exportedRoot, exportedName, destinationName) {
@@ -119,13 +121,26 @@ try {
   for (const [exportedName, destinationName] of bridgeMappings) {
     await syncAsset(bridgeExportedRoot, exportedName, destinationName);
   }
-  // The gpu worker rides the runtime pin until the bridge re-exports a
-  // release containing the 32-compilation bound GPUI's renderer needs.
-  await syncAsset(
-    runtimeExportedRoot,
-    "pvm-gpu-worker.js",
-    "pvm-gpu-worker.js",
+  // GPU rendering and the experimental computer adapter evolve on separate
+  // runtime revisions. Never silently replace the GPU worker while updating fs.
+  const gpuCheckout = checkoutRevision(
+    "PVM_GPU_RUNTIME_ROOT",
+    "pvm-host-runtime-gpu",
+    lock.runtimeRepository,
+    lock.gpuRuntimeRevision,
   );
+  const gpuExportedRoot = resolve(temporary, "gpu-exported");
+  exportAssets(gpuCheckout, gpuExportedRoot, [
+    "run",
+    "--locked",
+    "--manifest-path",
+    resolve(gpuCheckout, "Cargo.toml"),
+    "-p",
+    "pvm-assets-export",
+    "--bin",
+    "pvm-assets-export",
+  ]);
+  await syncAsset(gpuExportedRoot, "pvm-gpu-worker.js", "pvm-gpu-worker.js");
   await syncAsset(runtimeExportedRoot, "pvm-computer.js", "pvm-computer.js");
 
   const source = `PolkaVM App v2 browser runtime
@@ -133,6 +148,7 @@ Bridge repository: ${lock.bridgeRepository}
 Bridge commit: ${lock.bridgeRevision}
 Runtime repository: ${lock.runtimeRepository}
 Runtime commit: ${lock.runtimeRevision}
+GPU runtime commit: ${lock.gpuRuntimeRevision}
 Release: ${lock.releaseTag}
 Provenance: ${lock.provenance}
 
