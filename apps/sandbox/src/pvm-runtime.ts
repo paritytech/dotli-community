@@ -1232,7 +1232,11 @@ function installInput(
   }
   let composing = false;
   let suppressCommittedInput = false;
-  let wantsTextInput = false;
+  // An app that requires committed text gets the hidden text surface from
+  // the first click; ui-output refines this once the guest reports cursor
+  // context. Without the default, a text-requiring guest that never emits
+  // ui-output (the Zed editor) could not receive typing at all.
+  let wantsTextInput = inputFeatureSet.has("text");
   let reportedFocused = false;
   let firstMoveAfterPointerLock = false;
   let relativeX = 0;
