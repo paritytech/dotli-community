@@ -331,6 +331,8 @@ const expectedMotionSource =
   process.env.DOTLI_PVM_EXPECTED_MOTION_SOURCE ?? "pointer";
 const pointerLockUnavailable =
   process.env.DOTLI_PVM_POINTER_LOCK_UNAVAILABLE === "1";
+const expectedPointerCapture =
+  process.env.DOTLI_PVM_EXPECTED_POINTER_CAPTURE === "1";
 const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
   .split(",")
   .filter(Boolean);
@@ -391,8 +393,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   );
   const carBytes = new Uint8Array(await readFile(doomV2CarPath as string));
   const manifest = await readFile(doomV2ManifestPath as string, "utf8");
-  const expectedPointerLock =
-    expectedV2Profile !== "tri2d" && !pointerLockUnavailable;
+  const expectedPointerLock = expectedPointerCapture && !pointerLockUnavailable;
   const reader = await CarReader.fromBytes(carBytes);
   const [root] = await reader.getRoots();
   if (root === undefined) throw new Error("Doom v2 CAR has no root");

@@ -121,6 +121,7 @@ interface WorkerReady {
   startupMs?: number;
   translatedWasmBytes?: number;
   usesMotion?: boolean;
+  usesPointerCapture?: boolean;
 }
 
 interface WorkerStartup {
@@ -1208,12 +1209,15 @@ function installInput(
   send: (bytes: Uint8Array) => void,
   sendMotion: (bytes: Uint8Array) => void,
   sendMotionStatus: (availability: 0 | 1 | 2) => void,
+  sendPointerCaptureState: (active: boolean) => void,
+  pointerCaptureRequested: () => boolean,
   motionRequested: () => boolean,
   resumeAudio: () => void,
 ): {
   applyUiOutput: (output: UiPlatformOutput) => void;
   cleanup: () => void;
   sendSurfaceMetrics: () => void;
+  setPointerCaptureRequest: (capture: boolean) => void;
 } {
   const pressed = new Set<number>();
   const inputFeatureSet = new Set(inputFeatures);
@@ -1242,6 +1246,10 @@ function installInput(
   let relativeX = 0;
   let relativeY = 0;
   let relativeFrame: number | null = null;
+  let pointerCaptureArmed = false;
+  const pointerCaptureSupported =
+    typeof canvas.requestPointerLock === "function" &&
+    typeof document.exitPointerLock === "function";
   let motionSequence = 0;
   let motionX = 0;
   let motionY = 0;
@@ -1378,7 +1386,14 @@ function installInput(
     motionY = 0;
     motionWindowStarted = performance.now();
     previousPointer = null;
-    firstMoveAfterPointerLock = document.pointerLockElement === canvas;
+    const active = document.pointerLockElement === canvas;
+    firstMoveAfterPointerLock = active;
+    if (active) {
+      pointerCaptureArmed = false;
+    }
+    if (pointerCaptureRequested()) {
+      sendPointerCaptureState(active);
+    }
   };
   const canvasPosition = (event: PointerEvent): [number, number] => {
     const bounds = canvas.getBoundingClientRect();
@@ -1477,6 +1492,11 @@ function installInput(
     requestDeviceMotionPermission();
     if (event.code === "Escape" && document.pointerLockElement === canvas) {
       event.preventDefault();
+      const code = keyCodes.Escape;
+      send(encodedInput(1, code));
+      window.setTimeout(() => {
+        send(encodedInput(2, code));
+      }, 50);
       document.exitPointerLock();
       return;
     }
@@ -1561,7 +1581,7 @@ function installInput(
     move(event);
     pointer(event, 3);
     if (
-      graphicsProfile !== "tri2d" &&
+      pointerCaptureArmed &&
       event.button === 0 &&
       typeof canvas.requestPointerLock === "function" &&
       document.pointerLockElement !== canvas
@@ -1646,6 +1666,12 @@ function installInput(
   return {
     applyUiOutput,
     sendSurfaceMetrics,
+    setPointerCaptureRequest: (capture) => {
+      pointerCaptureArmed = capture && pointerCaptureSupported;
+      if (!capture && document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+      }
+    },
     cleanup: () => {
       resizeObserver?.disconnect();
       if (
@@ -2001,6 +2027,7 @@ export async function runPvmApplication(
   }
 
   let usesMotion = false;
+  let usesPointerCapture = false;
   let relayedMotionSequence = 0;
   const sendMotion = (bytes: Uint8Array): void => {
     const flags = new DataView(
@@ -2088,6 +2115,7 @@ export async function runPvmApplication(
     applyUiOutput,
     cleanup: cleanupInput,
     sendSurfaceMetrics,
+    setPointerCaptureRequest,
   } = installInput(
     canvas,
     descriptor.graphicsProfile,
@@ -2099,6 +2127,10 @@ export async function runPvmApplication(
     (availability) => {
       worker.postMessage({ type: "motion-status", availability });
     },
+    (active) => {
+      worker.postMessage({ type: "pointer-capture-state", active });
+    },
+    () => usesPointerCapture,
     () => usesMotion,
     resumeAudio,
   );
@@ -2223,6 +2255,15 @@ export async function runPvmApplication(
           );
         }
         usesMotion = ready.usesMotion === true;
+        usesPointerCapture = ready.usesPointerCapture === true;
+        if (usesPointerCapture) {
+          worker.postMessage({
+            type: "pointer-capture-support",
+            supported:
+              typeof canvas.requestPointerLock === "function" &&
+              typeof document.exitPointerLock === "function",
+          });
+        }
         if (usesMotion && parentOrigin !== null) {
           window.parent.postMessage(
             { type: "dotli:pvm-motion-request" },
@@ -2235,6 +2276,18 @@ export async function runPvmApplication(
           pendingTruapiBytes -= response.byteLength;
           sendTruapiResponse(response);
         }
+        break;
+      }
+      case "pointer-capture": {
+        if (!usesPointerCapture || typeof message.capture !== "boolean") {
+          rejectStarted(
+            new Error(
+              "PolkaVM guest emitted an invalid pointer capture request",
+            ),
+          );
+          return;
+        }
+        setPointerCaptureRequest(message.capture);
         break;
       }
       case "truapi-request": {
