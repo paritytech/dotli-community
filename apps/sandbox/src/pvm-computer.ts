@@ -816,9 +816,10 @@ export async function runComputerApplication(
   observer.observe(screen);
 
   scheduleRender();
-  if (descriptor.networkEnabled && TCP_RELAY_URL === "") {
-    throw new Error("network app requires VITE_PVM_TCP_RELAY_URL");
-  }
+  // When the build has no TCP relay configured, boot the app but keep
+  // networking disabled: the guest still works for shell, editing, etc.
+  // and every TCP hostcall returns STATUS_DENIED.
+  const networkEnabled = descriptor.networkEnabled && TCP_RELAY_URL !== "";
   worker.postMessage(
     {
       type: "start",
@@ -838,7 +839,7 @@ export async function runComputerApplication(
       ],
       columns: geometry.columns,
       rows: geometry.rows,
-      networkEnabled: descriptor.networkEnabled,
+      networkEnabled,
       relayUrl: TCP_RELAY_URL,
       maxGas: MAX_GAS,
     },
