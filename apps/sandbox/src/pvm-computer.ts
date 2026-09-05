@@ -719,9 +719,23 @@ export async function runComputerApplication(
     }
   };
 
-  let pendingSave = Promise.resolve();
-  // Bytes and metadata from one worker checkpoint become one IDB record.
-  // Serializing writes prevents an older asynchronous save replacing a newer one.
+  let pendingSave: Uint8Array | null = null;
+  let saving = false;
+  const flushSaves = async (): Promise<void> => {
+    saving = true;
+    while (pendingSave !== null) {
+      const record = pendingSave;
+      pendingSave = null;
+      try {
+        await storeSave(saveKey, record);
+      } catch (error) {
+        status.textContent = `Filesystem save failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+    saving = false;
+  };
+  // Serialize writes and retain only the newest waiting checkpoint. Each
+  // record can contain 64 MiB, so a promise chain would grow without bound.
   const persistNow = (): void => {
     if (filesystemMetadata === null) {
       return;
@@ -732,11 +746,10 @@ export async function runComputerApplication(
         "Filesystem exceeds the save budget — changes are not persisted.";
       return;
     }
-    pendingSave = pendingSave
-      .then(() => storeSave(saveKey, record))
-      .catch((error: unknown) => {
-        status.textContent = `Filesystem save failed: ${error instanceof Error ? error.message : String(error)}`;
-      });
+    pendingSave = record;
+    if (!saving) {
+      void flushSaves();
+    }
   };
 
   let running = false;
