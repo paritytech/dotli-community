@@ -305,14 +305,6 @@ export function resolvedParentOrigin(
   }
 }
 
-export function shouldReloadAfterWake(
-  wasHidden: boolean,
-  visibilityState: DocumentVisibilityState,
-  restoredFromPageCache: boolean,
-): boolean {
-  return restoredFromPageCache || (wasHidden && visibilityState === "visible");
-}
-
 function uiPlatformRect(value: unknown): UiPlatformRect | null {
   if (
     !Array.isArray(value) ||
@@ -2203,15 +2195,13 @@ export async function runPolkaVmApplication(
     closeHostFramePort();
   };
   window.addEventListener("pagehide", stop, { once: true });
-  // Mobile browsers may discard the worker-owned GPU device while the screen
-  // is locked. Reload only this product frame on wake: that recreates the
-  // OffscreenCanvas, worker, and input listeners while the top-level motion
-  // permission relay remains active.
+  // pagehide stops the runtime, so a back-forward cache restore must recreate
+  // it. Ordinary tab/app switches only change visibility and must preserve
+  // the live guest and its session-only state.
   if (
     descriptor.graphicsProfile === "webgpu-raster" ||
     descriptor.graphicsProfile === "webgpu"
   ) {
-    let wasHidden = document.visibilityState === "hidden";
     let reloadRequested = false;
     const reloadAfterWake = (): void => {
       if (reloadRequested) {
@@ -2220,23 +2210,8 @@ export async function runPolkaVmApplication(
       reloadRequested = true;
       location.reload();
     };
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        wasHidden = true;
-        return;
-      }
-      if (shouldReloadAfterWake(wasHidden, document.visibilityState, false)) {
-        reloadAfterWake();
-      }
-    });
     window.addEventListener("pageshow", (event) => {
-      if (
-        shouldReloadAfterWake(
-          wasHidden,
-          document.visibilityState,
-          event.persisted,
-        )
-      ) {
+      if (event.persisted) {
         reloadAfterWake();
       }
     });
