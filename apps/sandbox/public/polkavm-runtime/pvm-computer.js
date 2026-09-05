@@ -1592,8 +1592,22 @@
       this.packages.set(name, module);
     }
 
+    /** Mounts one persistent file into the shared `/home` store. The mount
+     * reaches every live process — foreground stack, piped children, and
+     * workspace children — so a file provided after a child spawned (e.g.
+     * the seeds of an open-resolved package) is visible tree-wide. */
     mountFile(path, bytes) {
       this.#foreground().mountFile(path, bytes);
+      for (const child of this.background) {
+        if (child.exit === null) {
+          child.process.mountFile(path, bytes);
+        }
+      }
+      for (const child of this.workspaceChildren) {
+        if (child.exit === null) {
+          child.supervisor.mountFile(path, bytes);
+        }
+      }
       this.files.set(path, Uint8Array.from(bytes));
       this.removed.delete(path);
     }
