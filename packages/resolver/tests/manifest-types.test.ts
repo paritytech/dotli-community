@@ -237,6 +237,17 @@ describe("validateExecutableManifest", () => {
     ).toBe(true);
   });
 
+  it("accepts the workspace host interface", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: [...HOST_REQUIRES, "polkadot-host/0.1/workspace"] },
+        },
+      }).ok,
+    ).toBe(true);
+  });
+
   it("rejects host apps that do not require the core interface", () => {
     expect(
       validateExecutableManifest({
