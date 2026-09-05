@@ -446,17 +446,18 @@ window.addEventListener("message", (event: MessageEvent) => {
     return;
   }
   const product = currentProduct;
+  const source = currentHost?.iframe.contentWindow;
   if (
     product?.mode !== "subdomain" ||
-    event.origin !== getAppOrigin(product.label)
+    event.origin !== getAppOrigin(product.label) ||
+    source === null ||
+    source === undefined ||
+    event.source !== source
   ) {
     return;
   }
   if (type === "dotli:pvm-motion-request") {
-    const source = currentHost?.iframe.contentWindow;
-    if (source !== null && source !== undefined && event.source === source) {
-      offerTopLevelMotionPermission(source, event.origin, product.label);
-    }
+    offerTopLevelMotionPermission(source, event.origin, product.label);
     return;
   }
   if (type === "dotli:host-update-required") {

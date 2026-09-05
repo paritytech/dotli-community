@@ -680,12 +680,15 @@ describe("bridge render lifecycle", () => {
     window.addEventListener("dotli:host-update-required", updateRequired, {
       once: true,
     });
+    const targetWindow = mocks.iframeHosts[0].iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
     const appOrigin = new URL(mocks.iframeHosts[0].iframeUrl).origin;
 
     window.dispatchEvent(
       new MessageEvent("message", {
         data: { type: "dotli:host-update-required" },
         origin: "https://evil.example",
+        source: targetWindow,
       }),
     );
     expect(updateRequired).not.toHaveBeenCalled();
@@ -694,6 +697,16 @@ describe("bridge render lifecycle", () => {
       new MessageEvent("message", {
         data: { type: "dotli:host-update-required" },
         origin: appOrigin,
+        source: window,
+      }),
+    );
+    expect(updateRequired).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:host-update-required" },
+        origin: appOrigin,
+        source: targetWindow,
       }),
     );
     expect(updateRequired).toHaveBeenCalledTimes(1);
