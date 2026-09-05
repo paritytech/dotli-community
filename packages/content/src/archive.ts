@@ -219,7 +219,11 @@ export async function walkUnixFsDag(
         await runBounded(node.Links.length, async (i) => {
           chunks[i] = await getChunkData(node.Links[i].Hash);
         });
-        content = concatBytes(...chunks);
+        const inline = uf?.data;
+        content =
+          inline !== undefined && inline.byteLength > 0
+            ? concatBytes(inline, ...chunks)
+            : concatBytes(...chunks);
       }
 
       // Same root-only CAR-packed exception as the RAW branch. Here the

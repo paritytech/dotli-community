@@ -38,6 +38,7 @@ function getInstalledExecutableDb(): Promise<IDBDatabase> {
       const db = request.result;
       db.onversionchange = () => {
         db.close();
+        installedDbPromise = null;
       };
       db.onclose = () => {
         installedDbPromise = null;

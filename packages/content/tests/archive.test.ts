@@ -163,7 +163,8 @@ describe("parseIpfsResponse", () => {
     );
   });
 
-  it("assembles a file chunked through nested dag-pb stem nodes", async () => {
+  it("As a user, I load all inline and nested file bytes in order", async () => {
+    // Given
     const blocks: { cid: CID; bytes: Uint8Array }[] = [];
 
     async function putRaw(bytes: Uint8Array): Promise<CID> {
@@ -201,13 +202,18 @@ describe("parseIpfsResponse", () => {
         }),
       );
     }
+    const prefix = new Uint8Array([9, 8, 7]);
     const fileCid = await putNode({
-      Data: new UnixFS({ type: "file", blockSizes: [2048n, 2048n] }).marshal(),
+      Data: new UnixFS({
+        type: "file",
+        data: prefix,
+        blockSizes: [2048n, 2048n],
+      }).marshal(),
       Links: stems.map((cid) => ({ Hash: cid, Tsize: 2048 })),
     });
     const rootCid = await putNode({
       Data: new UnixFS({ type: "directory" }).marshal(),
-      Links: [{ Name: "app.polkavm", Hash: fileCid, Tsize: 4096 }],
+      Links: [{ Name: "app.polkavm", Hash: fileCid, Tsize: 4099 }],
     });
 
     const { writer, out } = CarWriter.create([rootCid]);
@@ -231,10 +237,11 @@ describe("parseIpfsResponse", () => {
       offset += chunk.byteLength;
     }
 
+    // When
     const result = await parseIpfsResponse(car, rootCid);
-    const program = result["app.polkavm"];
-    expect(program.byteLength).toBe(4096);
-    expect(program.slice(0, 1024)).toEqual(leaves[0]);
-    expect(program.slice(3072)).toEqual(leaves[3]);
+    // Then
+    expect(result["app.polkavm"]).toEqual(
+      new Uint8Array([...prefix, ...leaves.flatMap((leaf) => [...leaf])]),
+    );
   });
 });
