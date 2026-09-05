@@ -115,11 +115,17 @@ try {
   const bridgeMappings = new Map([
     ["pvm-browser-runtime.wasm", "pvm-browser-runtime.wasm"],
     ["pvm-worker.js", "pvm-wasm-worker.js"],
-    ["pvm-gpu-worker.js", "pvm-gpu-worker.js"],
   ]);
   for (const [exportedName, destinationName] of bridgeMappings) {
     await syncAsset(bridgeExportedRoot, exportedName, destinationName);
   }
+  // The gpu worker rides the runtime pin until the bridge re-exports a
+  // release containing the 32-compilation bound GPUI's renderer needs.
+  await syncAsset(
+    runtimeExportedRoot,
+    "pvm-gpu-worker.js",
+    "pvm-gpu-worker.js",
+  );
   await syncAsset(runtimeExportedRoot, "pvm-computer.js", "pvm-computer.js");
 
   const source = `PolkaVM App v2 browser runtime
@@ -133,7 +139,8 @@ Provenance: ${lock.provenance}
 Bridge-owned artifacts:
 ${[...bridgeMappings.values()].map((path) => `- ${path}`).join("\n")}
 
-Runtime prototype artifact:
+Runtime prototype artifacts:
+- pvm-gpu-worker.js
 - pvm-computer.js
 `;
   const sourcePath = resolve(destination, "SOURCE");
