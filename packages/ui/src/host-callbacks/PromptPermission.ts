@@ -111,9 +111,11 @@ async function decideRemoteDomainPermission(
     domains.some(
       (domain) =>
         domain.length > 253 ||
-        !domain.split(".").every((part) =>
-          /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(part),
-        ),
+        !domain
+          .split(".")
+          .every((part) =>
+            /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(part),
+          ),
     )
   ) {
     return false;
