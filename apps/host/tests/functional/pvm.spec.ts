@@ -228,6 +228,33 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     timeout: 30_000,
   });
   await expect(canvas).toHaveAttribute("data-pvm-translation-ms", "0");
+  const teardown = await productFrame.evaluate(() => {
+    const target = document.querySelector("#dotli-pvm-canvas");
+    if (!(target instanceof HTMLCanvasElement)) {
+      throw new Error("PolkaVM canvas is unavailable");
+    }
+    let locked = true;
+    let releases = 0;
+    Object.defineProperty(document, "pointerLockElement", {
+      configurable: true,
+      get: () => (locked ? target : null),
+    });
+    Object.defineProperty(document, "exitPointerLock", {
+      configurable: true,
+      value: () => {
+        releases++;
+        locked = false;
+        document.dispatchEvent(new Event("pointerlockchange"));
+      },
+    });
+    document.dispatchEvent(new Event("pointerlockchange"));
+    window.dispatchEvent(new PageTransitionEvent("pagehide"));
+    return {
+      captured: target.dataset.pvmPointerCaptured,
+      releases,
+    };
+  });
+  expect(teardown).toEqual({ captured: "false", releases: 1 });
 });
 
 test("a WebGPU PolkaVM package selects its web fallback without an adapter", async ({

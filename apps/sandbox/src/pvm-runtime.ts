@@ -1373,7 +1373,7 @@ function installInput(
     );
     relativeFrame ??= window.requestAnimationFrame(flushRelativePointer);
   };
-  const pointerLockChanged = (): void => {
+  const clearPointerMotion = (): void => {
     if (relativeFrame !== null) {
       window.cancelAnimationFrame(relativeFrame);
       relativeFrame = null;
@@ -1388,6 +1388,21 @@ function installInput(
     motionY = 0;
     motionWindowStarted = performance.now();
     previousPointer = null;
+  };
+  const releasePointerLock = (): void => {
+    if (document.pointerLockElement !== canvas) {
+      return;
+    }
+    try {
+      document.exitPointerLock();
+    } catch (error) {
+      console.warn(
+        `Could not release PolkaVM pointer lock: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+  const pointerLockChanged = (): void => {
+    clearPointerMotion();
     const active = document.pointerLockElement === canvas;
     firstMoveAfterPointerLock = active;
     if (active) {
@@ -1503,7 +1518,7 @@ function installInput(
       window.setTimeout(() => {
         send(encodedInput(2, code));
       }, 50);
-      document.exitPointerLock();
+      releasePointerLock();
       return;
     }
     if (!(event.code in keyCodes) || event.repeat) {
@@ -1673,12 +1688,15 @@ function installInput(
     applyUiOutput,
     sendSurfaceMetrics,
     setPointerCaptureRequest: (capture) => {
-      pointerCaptureArmed = capture && pointerCaptureSupported;
+      pointerCaptureArmed =
+        capture &&
+        pointerCaptureSupported &&
+        document.pointerLockElement !== canvas;
       canvas.dataset.pvmPointerCaptureArmed = pointerCaptureArmed
         ? "true"
         : "false";
-      if (!capture && document.pointerLockElement === canvas) {
-        document.exitPointerLock();
+      if (!capture) {
+        releasePointerLock();
       }
     },
     cleanup: () => {
@@ -1689,7 +1707,11 @@ function installInput(
       ) {
         (document.activeElement as HTMLElement).blur();
       }
-      pointerLockChanged();
+      pointerCaptureArmed = false;
+      canvas.dataset.pvmPointerCaptureArmed = "false";
+      canvas.dataset.pvmPointerCaptured = "false";
+      releasePointerLock();
+      clearPointerMotion();
       document.removeEventListener("pointerlockchange", pointerLockChanged);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
@@ -2143,7 +2165,12 @@ export async function runPvmApplication(
     () => usesMotion,
     resumeAudio,
   );
+  let stopped = false;
   const stop = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
     cleanupInput();
     window.removeEventListener("message", onParentMotion);
     tri2d?.dispose();
@@ -2449,6 +2476,7 @@ export async function runPvmApplication(
             : "PolkaVM runtime failed";
         const error = new Error(text);
         status.textContent = error.message;
+        stop();
         rejectStarted(error);
         break;
       }
@@ -2462,6 +2490,7 @@ export async function runPvmApplication(
           : "PolkaVM worker failed",
       ),
     );
+    stop();
   };
 
   const runtimeCopy = runtime.slice(0);
