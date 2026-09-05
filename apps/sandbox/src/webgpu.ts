@@ -42,6 +42,8 @@ export class WebGpuBridge {
   readonly #resizeObserver: ResizeObserver;
   readonly capabilities: Promise<Uint8Array>;
   #stopped = false;
+  #physicalWidth = 1;
+  #physicalHeight = 1;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -69,6 +71,24 @@ export class WebGpuBridge {
         message.bytes instanceof Uint8Array
       ) {
         const bytes = message.bytes.slice();
+        const view = new DataView(
+          bytes.buffer,
+          bytes.byteOffset,
+          bytes.byteLength,
+        );
+        if (
+          bytes.byteLength < 56 ||
+          view.getUint32(0, true) !== 0x31434745 ||
+          view.getUint16(4, true) !== 1 ||
+          view.getUint32(8, true) !== bytes.byteLength
+        ) {
+          const error = new Error("Invalid WebGPU capability record");
+          reject(error);
+          callbacks.error(error);
+          return;
+        }
+        this.#physicalWidth = view.getUint32(16, true);
+        this.#physicalHeight = view.getUint32(20, true);
         window.clearTimeout(timer);
         canvas.dataset.pvmGpu = "ready";
         callbacks.capabilities(bytes);
@@ -112,6 +132,14 @@ export class WebGpuBridge {
       }
     });
     this.#resizeObserver.observe(canvas);
+  }
+
+  get physicalWidth(): number {
+    return this.#physicalWidth;
+  }
+
+  get physicalHeight(): number {
+    return this.#physicalHeight;
   }
 
   submit(bytes: Uint8Array): void {

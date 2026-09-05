@@ -1204,6 +1204,7 @@ function createShell(controls: string[]): {
 
 function installInput(
   canvas: HTMLCanvasElement,
+  webGpu: WebGpuBridge | null,
   graphicsProfile: GraphicsProfile,
   inputFeatures: readonly string[],
   send: (bytes: Uint8Array) => void,
@@ -1422,8 +1423,12 @@ function installInput(
       return [0, 0];
     }
     return [
-      ((event.clientX - bounds.left) * canvas.width) / bounds.width,
-      ((event.clientY - bounds.top) * canvas.height) / bounds.height,
+      ((event.clientX - bounds.left) *
+        (webGpu?.physicalWidth ?? canvas.width)) /
+        bounds.width,
+      ((event.clientY - bounds.top) *
+        (webGpu?.physicalHeight ?? canvas.height)) /
+        bounds.height,
     ];
   };
   const sendTextRecords = (type: 8 | 9 | 10, text: string): void => {
@@ -2066,7 +2071,6 @@ export async function runPvmApplication(
       webGpu.dispose();
       worker.terminate();
       closeTruapiPort();
-      void audioContext?.close();
       rejectStarted(error);
       return startedPromise;
     }
@@ -2164,6 +2168,7 @@ export async function runPvmApplication(
     setPointerCaptureRequest,
   } = installInput(
     canvas,
+    webGpu,
     descriptor.graphicsProfile,
     descriptor.inputFeatures,
     (bytes) => {
