@@ -90,19 +90,21 @@ export function setResolverPeopleProvider(
  *   - Config changes (chain backend switch) that require a new client.
  */
 export function destroyResolverClient(): void {
-  if (clientInstance !== null) {
+  const api = apiInstance;
+  const client = clientInstance;
+  clientInstance = null;
+  apiInstance = null;
+  clientPromise = null;
+  if (client !== null) {
     log.warn("[dot.li resolve] Destroying resolver client");
     try {
-      apiInstance?.destroy();
-      clientInstance.destroy();
-      // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: if smoldot already panicked the client may throw; we still must clear our references below so the next ensureClient() starts fresh.
+      api?.destroy();
+      client.destroy();
+      // eslint-disable-next-line no-restricted-syntax -- teardown can race a dead transport; cached references were cleared before notifying onStop.
     } catch {
       /* already dead, clear references anyway */
     }
   }
-  clientInstance = null;
-  apiInstance = null;
-  clientPromise = null;
 }
 
 /**
@@ -136,9 +138,12 @@ function ensureClient(
   if (clientPromise !== null) {
     return clientPromise;
   }
-  clientPromise = doCreateClient(onStatus, onPhase).finally(() => {
-    clientPromise = null;
+  const creating = doCreateClient(onStatus, onPhase).finally(() => {
+    if (clientPromise === creating) {
+      clientPromise = null;
+    }
   });
+  clientPromise = creating;
   return clientPromise;
 }
 
@@ -243,20 +248,24 @@ async function doCreateClient(
     // the next `ensureClient` redials against a fresh smoldot chain. Without
     // this, every subsequent read returns `null` silently (the "name not
     // found" path) even though the upstream is dead.
+    clientInstance = client;
+    apiInstance = api;
     api.onStop(() => {
+      if (apiInstance !== api) {
+        return;
+      }
       log.warn(
         "[dot.li resolve] chainHead follow stopped, invalidating resolver client",
       );
       destroyResolverClient();
     });
+    await api.whenReady();
 
-    clientInstance = client;
-    apiInstance = api;
     stopPresync();
     log.warn(`[dot.li resolve] Ready (${dur(initStart)} total)`);
     onPhase?.("asset-hub-ready");
     onStatus?.("Connected to Asset Hub Paseo");
-    return apiInstance;
+    return api;
   } finally {
     unsubConnectionIssue();
   }
@@ -296,11 +305,13 @@ let peopleApiInstance: Api | null = null;
 let peoplePromise: Promise<Api> | null = null;
 
 function destroyPeopleClient(): void {
-  peopleApiInstance?.destroy();
-  peopleClientInstance?.destroy();
+  const api = peopleApiInstance;
+  const client = peopleClientInstance;
   peopleApiInstance = null;
   peopleClientInstance = null;
   peoplePromise = null;
+  api?.destroy();
+  client?.destroy();
 }
 
 export async function waitForPeopleFinalized(
@@ -355,15 +366,19 @@ export async function waitForPeopleFinalized(
 
     // If the follow dies, invalidate so the next warm rebuilds against a fresh
     // smoldot chain instead of reusing a dead one.
+    peopleClientInstance = client;
+    peopleApiInstance = api;
     api.onStop(() => {
+      if (peopleApiInstance !== api) {
+        return;
+      }
       log.warn(
         "[dot.li resolve] People chainHead follow stopped, invalidating warm client",
       );
       destroyPeopleClient();
     });
+    await api.whenReady();
 
-    peopleClientInstance = client;
-    peopleApiInstance = api;
     log.warn(`[dot.li resolve] People chain warmed (${dur(initStart)})`);
     return api;
   })();
