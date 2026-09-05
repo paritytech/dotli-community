@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "bridgeRepository": "https://github.com/paritytech/host-rust-core.git",
-  "bridgeRevision": "1755e7975d15f26e411b07d2b551e80d0c8fd4f9",
+  "bridgeRevision": "e6345f3b280c1713ea47e62ec1215ee176cdbada",
   "runtimeRepository": "https://github.com/paritytech/pvm-host-runtime",
-  "runtimeRevision": "2784454dede884e6acf8ea87a47b4c83836fd710",
-  "gpuRuntimeRevision": "691f7f2e7a465bb0081d6a0b7ca92103b3916651",
-  "releaseTag": "v0.1.10 + browser-computer + shared filesystem (prototype)",
-  "provenance": "bridge-owned core runtime v0.1.10 plus the prototype pvm-computer.js adapter (shared filesystem, atomic namespace operations and metadata checkpoints) pinned on runtime feat/workspace-tiling at 2784454dede884e6acf8ea87a47b4c83836fd710 and the 32-compilation pvm-gpu-worker.js from feat/browser-computer at 691f7f2e7a465bb0081d6a0b7ca92103b3916651",
+  "runtimeRevision": "7f7f1dcfd499a269f582b89ab4dfba2f962d18fb",
+  "computerRuntimeRevision": "2e359dc3bee53f08cf5bd11bbfbe36ed872a0847",
+  "releaseTag": "v0.1.13 + reviewed computer workspace prototype",
+  "provenance": "Preserves PR 185's bridge-owned v0.1.13 core and GPU artifacts. The separately pinned pvm-computer.js adapter adds shared filesystem checkpoints, host-supervised workspaces and cancellation-safe package resolution.",
   "assets": {
-    "pvm-browser-runtime.wasm": "7082fa7765d212e3934ca6ab5024dc489c7f9b574bab9c3bbe998296ae8de81e",
-    "pvm-wasm-worker.js": "c0ea902cde5705729a037bf000911b45289b7a67ae8f7719d658016f1f6fc347",
-    "pvm-gpu-worker.js": "b24f4db361c99358e721bbd76921ae13aa05fc4cb9ffb4acc8ccad22b1a8d712",
-    "pvm-computer.js": "66796d28b531a17b3eb846910f95945cc3bca5e58acc9cba2587129c55c48bc6"
+    "pvm-browser-runtime.wasm": "35269671166d45924a999c8ffcdc3c57ba4de57c0dde382f7f9ac4bc76a3e3c7",
+    "pvm-wasm-worker.js": "19a225d02747ce5db0190c775df7e65adf7fbb9916f4f2542023d62328eccf48",
+    "pvm-gpu-worker.js": "aba03efea899e6e20410c7a03b988b34d69fc8bcdd462d3945781c46aa00ceca",
+    "pvm-computer.js": "55c704a375a2fbc3584d19927a9c52800b362b575a8c77d78b0b94f074756487"
   }
 }

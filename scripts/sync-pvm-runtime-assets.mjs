@@ -55,7 +55,9 @@ function exportAssets(checkout, output, cargoArguments) {
     { cwd: root, stdio: "inherit" },
   );
   if (exported.status !== 0) {
-    throw new Error(`asset export failed (${exported.signal ?? exported.status ?? "spawn error"})`);
+    throw new Error(
+      `asset export failed (${exported.signal ?? exported.status ?? "spawn error"})`,
+    );
   }
 }
 
@@ -121,42 +123,47 @@ try {
   for (const [exportedName, destinationName] of bridgeMappings) {
     await syncAsset(bridgeExportedRoot, exportedName, destinationName);
   }
-  // GPU rendering and the experimental computer adapter evolve on separate
-  // runtime revisions. Never silently replace the GPU worker while updating fs.
-  const gpuCheckout = checkoutRevision(
-    "PVM_GPU_RUNTIME_ROOT",
-    "pvm-host-runtime-gpu",
+  // Keep the reviewed core/GPU release while evolving the computer adapter.
+  const computerCheckout = checkoutRevision(
+    "PVM_COMPUTER_RUNTIME_ROOT",
+    "pvm-host-runtime-computer",
     lock.runtimeRepository,
-    lock.gpuRuntimeRevision,
+    lock.computerRuntimeRevision,
   );
-  const gpuExportedRoot = resolve(temporary, "gpu-exported");
-  exportAssets(gpuCheckout, gpuExportedRoot, [
+  const computerExportedRoot = resolve(temporary, "computer-exported");
+  exportAssets(computerCheckout, computerExportedRoot, [
     "run",
     "--locked",
     "--manifest-path",
-    resolve(gpuCheckout, "Cargo.toml"),
+    resolve(computerCheckout, "Cargo.toml"),
     "-p",
     "pvm-assets-export",
     "--bin",
     "pvm-assets-export",
   ]);
-  await syncAsset(gpuExportedRoot, "pvm-gpu-worker.js", "pvm-gpu-worker.js");
-  await syncAsset(runtimeExportedRoot, "pvm-computer.js", "pvm-computer.js");
+  await syncAsset(
+    runtimeExportedRoot,
+    "pvm-gpu-worker.js",
+    "pvm-gpu-worker.js",
+  );
+  await syncAsset(computerExportedRoot, "pvm-computer.js", "pvm-computer.js");
 
   const source = `PolkaVM App v2 browser runtime
 Bridge repository: ${lock.bridgeRepository}
 Bridge commit: ${lock.bridgeRevision}
 Runtime repository: ${lock.runtimeRepository}
 Runtime commit: ${lock.runtimeRevision}
-GPU runtime commit: ${lock.gpuRuntimeRevision}
+Computer runtime commit: ${lock.computerRuntimeRevision}
 Release: ${lock.releaseTag}
 Provenance: ${lock.provenance}
 
 Bridge-owned artifacts:
 ${[...bridgeMappings.values()].map((path) => `- ${path}`).join("\n")}
 
-Runtime prototype artifacts:
+Release runtime artifacts:
 - pvm-gpu-worker.js
+
+Computer prototype artifacts:
 - pvm-computer.js
 `;
   const sourcePath = resolve(destination, "SOURCE");
@@ -168,7 +175,7 @@ Runtime prototype artifacts:
     await writeFile(sourcePath, source);
   }
   console.log(
-    `${checkOnly ? "Verified" : "Synchronized"} bridge ${lock.bridgeRevision} and computer runtime ${lock.runtimeRevision}`,
+    `${checkOnly ? "Verified" : "Synchronized"} bridge ${lock.bridgeRevision} and computer runtime ${lock.computerRuntimeRevision}`,
   );
 } finally {
   await rm(temporary, { recursive: true, force: true });

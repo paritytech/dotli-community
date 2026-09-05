@@ -1,16 +1,18 @@
 PolkaVM App v2 browser runtime
 Bridge repository: https://github.com/paritytech/host-rust-core.git
-Bridge commit: 1755e7975d15f26e411b07d2b551e80d0c8fd4f9
+Bridge commit: e6345f3b280c1713ea47e62ec1215ee176cdbada
 Runtime repository: https://github.com/paritytech/pvm-host-runtime
-Runtime commit: 2784454dede884e6acf8ea87a47b4c83836fd710
-GPU runtime commit: 691f7f2e7a465bb0081d6a0b7ca92103b3916651
-Release: v0.1.10 + browser-computer + shared filesystem (prototype)
-Provenance: bridge-owned core runtime v0.1.10 plus the prototype pvm-computer.js adapter (shared filesystem, atomic namespace operations and metadata checkpoints) pinned on runtime feat/workspace-tiling at 2784454dede884e6acf8ea87a47b4c83836fd710 and the 32-compilation pvm-gpu-worker.js from feat/browser-computer at 691f7f2e7a465bb0081d6a0b7ca92103b3916651
+Runtime commit: 7f7f1dcfd499a269f582b89ab4dfba2f962d18fb
+Computer runtime commit: 2e359dc3bee53f08cf5bd11bbfbe36ed872a0847
+Release: v0.1.13 + reviewed computer workspace prototype
+Provenance: Preserves PR 185's bridge-owned v0.1.13 core and GPU artifacts. The separately pinned pvm-computer.js adapter adds shared filesystem checkpoints, host-supervised workspaces and cancellation-safe package resolution.
 
 Bridge-owned artifacts:
 - pvm-browser-runtime.wasm
 - pvm-wasm-worker.js
 
-Runtime prototype artifacts:
+Release runtime artifacts:
 - pvm-gpu-worker.js
+
+Computer prototype artifacts:
 - pvm-computer.js
