@@ -473,3 +473,58 @@ test("Lynx browses HTTPS through the guest TLS stack", async ({ page }) => {
   // exact domain; dotli's bridge turns this request into a user prompt.
   expect(requestedDomains).toEqual(["example.com"]);
 });
+
+test("a network app boots even when no TCP relay is granted", async ({
+  page,
+}) => {
+  // Contract: requiring polkadot-host/0.1/net never gates booting. When the
+  // build has no VITE_PVM_TCP_RELAY_URL the sandbox clamps networking off and
+  // TCP hostcalls return DENIED; the terminal still works. This test asserts
+  // only relay-independent behavior so it passes on both build flavors.
+  const lynx = await appCar([
+    ["manifest.json", "lynx-manifest.json"],
+    ["app.polkavm", "lynx.polkavm"],
+    ["home/cacert.pem", "lynx-cacert.pem"],
+    ["home/lynx.cfg", "lynx.cfg"],
+    ["home/lynx.lss", "lynx.lss"],
+    ["home/index.html", "lynx-index.html"],
+  ]);
+  await routeCar(page, lynx);
+  await page.goto("http://localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  const product = await mountComputer(page, lynx, true, "lynx-offline");
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await expect
+    .poll(async () => screenText(product))
+    .toContain("H)elp O)ptions");
+
+  // A connect attempt is refused (no relay, or no permission grant when a
+  // relay exists) without killing the computer. Lynx's failure alert is a
+  // transient status line, so assert the stable outcome instead: the event
+  // loop survives and reopens the URL prompt on demand. The 30s poll
+  // outlasts the sandbox's 10s TrUAPI permission-port timeout.
+  await screen.click();
+  await page.keyboard.type("g");
+  await expect.poll(async () => screenText(product)).toContain("URL to open");
+  await page.keyboard.type("https://example.com/");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(
+      async () => {
+        const text = await screenText(product);
+        if (text.includes("URL to open")) {
+          return text;
+        }
+        // Denied and redrawn to the main screen: ask for the prompt again.
+        await page.keyboard.type("g");
+        return screenText(product);
+      },
+      { timeout: 30_000 },
+    )
+    .toContain("URL to open");
+  await expect(screen).not.toHaveAttribute("data-computer-exit");
+});
