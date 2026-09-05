@@ -2,10 +2,10 @@ PolkaVM App v2 browser runtime
 Bridge repository: https://github.com/paritytech/host-rust-core.git
 Bridge commit: 251fb03a340351751c082ff182e0e90122426612
 Runtime repository: https://github.com/paritytech/pvm-host-runtime
-Runtime commit: 1bcaecc9d2297d579f3679714b1f7f394e9f5345
-Computer runtime commit: 2e359dc3bee53f08cf5bd11bbfbe36ed872a0847
-Release: v0.1.14 core + expanded game assets + reviewed GPU and computer prototypes
-Provenance: Preserves the bridge-owned v0.1.14 core with complete u64 browser clock results and PR 201's 32-compilation GPU capability using the reviewed GPU runtime. The bridge core and browser workers pin pvm-host-runtime#45, raising the bounded package asset ceilings to 128 MiB per file and 256 MiB aggregate so complete libre game data sets can run. The separately pinned pvm-computer.js adapter adds shared filesystem checkpoints, host-supervised workspaces and cancellation-safe package resolution.
+Runtime commit: a2ba857b4ecea78a5362ff707342b34ca8100578
+Computer runtime commit: a2ba857b4ecea78a5362ff707342b34ca8100578
+Release: v0.1.14 core + expanded game assets + merged GPU and computer contracts
+Provenance: Preserves the bridge-owned v0.1.14 core with complete u64 browser clock results and PR 201's 32-compilation GPU capability using the merged runtime. The bridge core and browser workers pin pvm-host-runtime#45, raising the bounded package asset ceilings to 128 MiB per file and 256 MiB aggregate so complete libre game data sets can run. The separately pinned GPU worker and pvm-computer.js adapter consume merged pvm-host-runtime#33 and #34, including shared filesystem checkpoints, host-supervised workspaces, cancellation-safe package resolution and inherited child terminal dimensions.
 
 Bridge-owned artifacts:
 - pvm-browser-runtime.wasm

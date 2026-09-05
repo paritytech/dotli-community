@@ -2379,6 +2379,7 @@
           this.networkProvider,
           this.filesystem,
         );
+        child.setTerminalSize(this.columns, this.rows);
         child.setNetworkEnabled(this.network);
       } catch {
         child?.dispose();
