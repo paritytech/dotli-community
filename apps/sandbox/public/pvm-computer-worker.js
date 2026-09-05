@@ -6,7 +6,8 @@
 // Protocol (structured clone, buffers transferred where possible):
 //   page -> worker:
 //     { type: "start", runtime, program, packages: [{ name, bytes }],
-//       files: [{ path, bytes }], argv, environment, columns, rows, maxGas }
+//       files: [{ path, bytes }], argv, environment, columns, rows,
+//       networkEnabled, workspaceEnabled, relayUrl, maxGas }
 //     { type: "package", name, bytes, files } resolved child program and seeds
 //     { type: "resize", columns, rows }
 //   worker -> page:
@@ -233,6 +234,7 @@ async function start(message) {
     );
   }
   supervisor.setNetworkEnabled(message.networkEnabled === true);
+  supervisor.setWorkspaceEnabled(message.workspaceEnabled === true);
   supervisor.setTerminalSize(message.columns, message.rows);
   for (const file of message.files) {
     supervisor.mountFile(file.path, new Uint8Array(file.bytes));

@@ -528,3 +528,62 @@ test("a network app boots even when no TCP relay is granted", async ({
     .toContain("URL to open");
   await expect(screen).not.toHaveAttribute("data-computer-exit");
 });
+
+test("a workspace app tiles independently sandboxed shell panes", async ({
+  page,
+}) => {
+  // The ADR's third proof: one .pvm workspace application launches multiple
+  // independent child PVM computers, tiles their terminal surfaces, and
+  // routes input to the focused pane. Bindings are tmux-style Ctrl-B.
+  const workspace = await appCar([
+    ["manifest.json", "workspace-manifest.json"],
+    ["workspace.polkavm", "workspace.polkavm"],
+    ["packages/shell.polkavm", "shell.polkavm"],
+  ]);
+  await routeCar(page, workspace);
+  await page.goto("http://localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  const product = await mountComputer(page, workspace, true, "ws-fixture");
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  // The workspace draws its status bar before any pane exists.
+  await expect.poll(async () => screenText(product)).toContain("C-b");
+
+  // Spawn three shell panes; the status bar tracks count and focus.
+  await screen.click();
+  for (let pane = 1; pane <= 3; pane += 1) {
+    await page.keyboard.press("Control+b");
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(async () => screenText(product), { timeout: 30_000 })
+      .toContain(`[${String(pane)}:shell`);
+  }
+  // Each pane is a real shell child rendering into its tile.
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("PolkaVM computer shell");
+
+  // Input routes to the focused pane only.
+  await page.keyboard.type("help");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("ls");
+
+  // Close the focused pane; the layout retiles down to two.
+  await page.keyboard.press("Control+b");
+  await page.keyboard.type("x");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .not.toContain("[3:shell");
+
+  // Quit the workspace; the computer exits cleanly.
+  await page.keyboard.press("Control+b");
+  await page.keyboard.type("q");
+  await expect(screen).toHaveAttribute("data-computer-exit", "0", {
+    timeout: 30_000,
+  });
+});

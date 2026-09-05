@@ -46,6 +46,7 @@ const HOST_INTERFACES: readonly string[] = [
   "polkadot-host/0.1/tty",
   "polkadot-host/0.1/process",
   "polkadot-host/0.1/net",
+  "polkadot-host/0.1/workspace",
 ];
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -54,6 +55,7 @@ interface ComputerDescriptor {
   programPath: string;
   packages: { name: string; path: string }[];
   networkEnabled: boolean;
+  workspaceEnabled: boolean;
 }
 
 interface WorkerFileEntry {
@@ -194,6 +196,7 @@ function parseComputerManifest(
     programPath,
     packages,
     networkEnabled: requires.includes("polkadot-host/0.1/net"),
+    workspaceEnabled: requires.includes("polkadot-host/0.1/workspace"),
   };
 }
 
@@ -618,6 +621,11 @@ export async function runComputerApplication(
     if (childDescriptor.networkEnabled && !descriptor.networkEnabled) {
       throw new Error(`${label} cannot elevate the parent network capability`);
     }
+    if (childDescriptor.workspaceEnabled && !descriptor.workspaceEnabled) {
+      throw new Error(
+        `${label} cannot elevate the parent workspace capability`,
+      );
+    }
     const childFiles: WorkerFileEntry[] = [];
     for (const [path, bytes] of Object.entries(result.files)) {
       if (
@@ -840,6 +848,7 @@ export async function runComputerApplication(
       columns: geometry.columns,
       rows: geometry.rows,
       networkEnabled,
+      workspaceEnabled: descriptor.workspaceEnabled,
       relayUrl: TCP_RELAY_URL,
       maxGas: MAX_GAS,
     },
