@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "bridgeRepository": "https://github.com/paritytech/host-rust-core.git",
-  "bridgeRevision": "251fb03a340351751c082ff182e0e90122426612",
+  "bridgeRevision": "feee57d8d3a6d0fa39ea87698639b5c7a332a661",
   "runtimeRepository": "https://github.com/paritytech/pvm-host-runtime",
   "runtimeRevision": "a2ba857b4ecea78a5362ff707342b34ca8100578",
   "computerRuntimeRevision": "a2ba857b4ecea78a5362ff707342b34ca8100578",
-  "releaseTag": "v0.1.14 core + expanded game assets + merged GPU and computer contracts",
-  "provenance": "Preserves the bridge-owned v0.1.14 core with complete u64 browser clock results and PR 201's 32-compilation GPU capability using the merged runtime. The bridge core and browser workers pin pvm-host-runtime#45, raising the bounded package asset ceilings to 128 MiB per file and 256 MiB aggregate so complete libre game data sets can run. The separately pinned GPU worker and pvm-computer.js adapter consume merged pvm-host-runtime#33 and #34, including shared filesystem checkpoints, host-supervised workspaces, cancellation-safe package resolution and inherited child terminal dimensions.",
+  "releaseTag": "v0.1.14 core + grouped browser compiler + merged GPU and computer contracts",
+  "provenance": "Preserves the bridge-owned v0.1.14 core with complete u64 clock results and bounded large-game assets; adds pvm-host-runtime#47's grouped Wasm compiler for large PolkaVM guests. The independently pinned GPU runtime retains PR 201's 32-compilation capability. The GPU worker and pvm-computer.js adapter retain merged pvm-host-runtime#33 and #34, including shared filesystem checkpoints, host-supervised workspaces, cancellation-safe package resolution and inherited child terminal dimensions.",
   "assets": {
-    "pvm-browser-runtime.wasm": "492a144003ff06fd58b65ca5d673029057f386163e1f09e647bef2f1f83336d5",
+    "pvm-browser-runtime.wasm": "9f79cdc323df7ccdbc912dae9cee28ac21b29fc7c073e4a5699c338aaeb40cd0",
     "pvm-wasm-worker.js": "7445a46405de366ab3cac88c7d053109b72867b1d0c47df5f618cb3d1002bfe3",
     "pvm-gpu-worker.js": "86cb899953b303dca45b0a5f2f2409713809e7223b9a9a5b853c9660d152edec",
     "pvm-computer.js": "55a77833038d07dbaebba9369eead718c3a487c3cff297af4689a2afd551b976"

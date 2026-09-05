@@ -26,7 +26,7 @@ const SAVE_DB_NAME = "dotli-pvm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "pvm-host-runtime-f49d662c";
+const RUNTIME_SOURCE = "pvm-host-runtime-654c5ed5";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -822,7 +822,7 @@ async function programDigest(program: Uint8Array): Promise<string> {
 
 function runtimeBytes(): Promise<ArrayBuffer> {
   runtimeBytesPromise ??= fetch(
-    `${PVM_RUNTIME_ROOT}/pvm-browser-runtime.wasm`,
+    `${PVM_RUNTIME_ROOT}/pvm-browser-runtime.wasm?v=${RUNTIME_SOURCE}`,
     {
       cache: "force-cache",
     },
