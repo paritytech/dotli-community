@@ -540,9 +540,19 @@ test("a workspace app tiles independently sandboxed shell panes", async ({
     ["workspace.polkavm", "workspace.polkavm"],
     ["packages/shell.polkavm", "shell.polkavm"],
   ]);
+  const kilo = await appCar([
+    ["manifest.json", "kilo-manifest.json"],
+    ["kilo.polkavm", "kilo.polkavm"],
+  ]);
   await routeCar(page, workspace);
+  await routeCar(page, kilo);
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
+  });
+  // kilo is NOT bundled in the workspace archive: the pane's shell resolves
+  // it as a published app through the host bridge (open spawn).
+  await answerResolutions(page, {
+    kilo: { cid: kilo.cid, manifest: kilo.manifest },
   });
   const product = await mountComputer(page, workspace, true, "ws-fixture");
   const screen = product.locator("#dotli-computer-screen");
@@ -572,6 +582,24 @@ test("a workspace app tiles independently sandboxed shell panes", async ({
   await expect
     .poll(async () => screenText(product), { timeout: 30_000 })
     .toContain("ls");
+
+  // Any published app runs inside a pane without being declared in the
+  // workspace manifest: the pane shell open-spawns kilo, which suspends
+  // the tree until the page resolves the label through the host bridge.
+  await page.keyboard.type("kilo notes.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 60_000 })
+    .toContain("HELP: Ctrl-S");
+  await page.keyboard.type("resolved inside a pane");
+  await page.keyboard.press("Control+s");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("bytes written on disk");
+  await page.keyboard.press("Control+q");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("PolkaVM computer shell");
 
   // Close the focused pane; the layout retiles down to two.
   await page.keyboard.press("Control+b");
