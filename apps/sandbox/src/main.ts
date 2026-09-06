@@ -393,9 +393,11 @@ async function storeArchiveInSW(
     const timer = setTimeout(() => {
       navigator.serviceWorker.removeEventListener("message", handler);
       reject(
-        new Error("Service worker did not acknowledge archive within 10s"),
+        new Error(
+          `Service worker did not acknowledge archive within ${String(TIMEOUTS.SW_ARCHIVE_STORE / 1000)}s`,
+        ),
       );
-    }, 10_000);
+    }, TIMEOUTS.SW_ARCHIVE_STORE);
 
     const handler = (evt: MessageEvent): void => {
       const msg = evt.data as { type?: string; reason?: string } | null;
