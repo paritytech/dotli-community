@@ -134,14 +134,24 @@ for (const [name, expected] of Object.entries(lock.assets)) {
     await copyFile(installedSources.get(name), path);
     if (name === "SOURCE.json") {
       const provenance = JSON.parse(await readFile(path, "utf8"));
-      await writeFile(
-        path,
-        `${JSON.stringify(
-          { ...provenance, sourceRevision: lock.sourceRevision },
-          null,
-          2,
-        )}\n`,
-      );
+      if (
+        provenance.sourceRevision !== undefined &&
+        provenance.sourceRevision !== lock.sourceRevision
+      ) {
+        throw new Error(
+          `upstream SOURCE.json declares conflicting source revision ${String(provenance.sourceRevision)}`,
+        );
+      }
+      if (provenance.sourceRevision === undefined) {
+        await writeFile(
+          path,
+          `${JSON.stringify(
+            { ...provenance, sourceRevision: lock.sourceRevision },
+            null,
+            2,
+          )}\n`,
+        );
+      }
     }
   }
   const actual = createHash("sha256").update(await readFile(path)).digest("hex");
