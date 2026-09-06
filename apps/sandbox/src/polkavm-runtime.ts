@@ -1195,7 +1195,7 @@ function createShell(controls: string[]): {
   const style = document.createElement("style");
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
-    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) auto;position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) minmax(29px,auto);position:relative;overflow:hidden;background:#050505}
     #dotli-polkavm-surface{position:relative;min-width:0;min-height:0;overflow:hidden;container-type:size}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
     #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100cqw,calc(100cqh * var(--dotli-polkavm-frame-aspect,1)));height:min(100cqh,calc(100cqw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
@@ -1553,6 +1553,11 @@ function installInput(
     send(encodedInput(14, 0, event.deltaX * scale, event.deltaY * scale));
   };
   const keydown = (event: KeyboardEvent): void => {
+    // Candidate navigation and confirmation belong to the active IME, not the
+    // guest's editor shortcuts. Text arrives through the composition records.
+    if (composing || event.isComposing) {
+      return;
+    }
     requestDeviceMotionPermission();
     if (event.code === "Escape" && document.pointerLockElement === canvas) {
       event.preventDefault();
