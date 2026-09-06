@@ -3,7 +3,11 @@
 
 import type { ArchiveFiles } from "@dotli/content/archive";
 import { Tri2dRenderer } from "./tri2d-renderer";
-import { WebGpuBridge, type WebGpuRequirements } from "./webgpu";
+import {
+  WebGpuBridge,
+  observeSurfaceDimensions,
+  type WebGpuRequirements,
+} from "./webgpu";
 
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
@@ -608,7 +612,11 @@ function parseManifest(
       (feature) =>
         (feature as string)[0].toUpperCase() + (feature as string).slice(1),
     );
-    inputFeatures = deviceFeatures as string[];
+    // Device input is baseline App ABI behavior, not a manifest opt-in.
+    inputFeatures = ["pointer", "keyboard", "text", "ime", "focus", "wheel"];
+    if (deviceFeatures.includes("motion")) {
+      inputFeatures.push("motion");
+    }
     audioEnabled = audio !== null;
     manifestVersion = 2;
     if (enforceExternal) {
@@ -1187,13 +1195,14 @@ function createShell(controls: string[]): {
   const style = document.createElement("style");
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
-    #dotli-polkavm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) auto;position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-surface{position:relative;min-width:0;min-height:0;overflow:hidden;container-type:size}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
-    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100vw,calc(100vh * var(--dotli-polkavm-frame-aspect,1)));height:min(100vh,calc(100vw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
+    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100cqw,calc(100cqh * var(--dotli-polkavm-frame-aspect,1)));height:min(100cqh,calc(100cqw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
-    #dotli-polkavm-metrics{top:12px;max-width:min(460px,calc(100vw - 24px));overflow:hidden;pointer-events:auto}
+    #dotli-polkavm-metrics{position:relative;left:auto;max-height:35vh;overflow:auto;pointer-events:auto;border-radius:0}
     #dotli-polkavm-metrics[hidden]{display:none}
     #dotli-polkavm-metrics summary{padding:6px 9px;cursor:pointer;white-space:nowrap;font-weight:600;user-select:none}
     #dotli-polkavm-metrics pre{margin:0;padding:7px 9px;border-top:1px solid #ffffff1f;white-space:pre-wrap;color:#c9ced3;font:inherit;font-weight:400}
@@ -1201,6 +1210,8 @@ function createShell(controls: string[]): {
   `;
   const shell = document.createElement("main");
   shell.id = "dotli-polkavm-shell";
+  const surface = document.createElement("div");
+  surface.id = "dotli-polkavm-surface";
   const canvas = document.createElement("canvas");
   canvas.id = "dotli-polkavm-canvas";
   canvas.tabIndex = 0;
@@ -1218,7 +1229,8 @@ function createShell(controls: string[]): {
   const controlText = document.createElement("div");
   controlText.id = "dotli-polkavm-controls";
   controlText.textContent = controls.join(" · ");
-  shell.append(canvas, status, metrics, controlText);
+  surface.append(canvas, status, controlText);
+  shell.append(surface, metrics);
   document.head.append(style);
   document.body.replaceChildren(shell);
   return { canvas, status, metrics, metricsSummary, metricsDetails };
@@ -1243,6 +1255,7 @@ function installInput(
   setPointerCaptureRequest: (capture: boolean) => void;
 } {
   const pressed = new Set<number>();
+  const heldPointerButtons = new Set<number>();
   const inputFeatureSet = new Set(inputFeatures);
   const textInput =
     inputFeatureSet.has("text") || inputFeatureSet.has("ime")
@@ -1259,11 +1272,9 @@ function installInput(
   }
   let composing = false;
   let suppressCommittedInput = false;
-  // An app that requires committed text gets the hidden text surface from
-  // the first click; ui-output refines this once the guest reports cursor
-  // context. Without the default, a text-requiring guest that never emits
-  // ui-output (the Zed editor) could not receive typing at all.
-  let wantsTextInput = inputFeatureSet.has("text");
+  // The active guest text context requests focus through UI output. Baseline
+  // text support must not open the software keyboard for non-text applications.
+  let wantsTextInput = false;
   let reportedFocused = false;
   let firstMoveAfterPointerLock = false;
   let relativeX = 0;
@@ -1593,6 +1604,12 @@ function installInput(
     }
     event.preventDefault();
     resumeAudio();
+    const button = pointerButtons[event.button];
+    if (type === 3) {
+      heldPointerButtons.add(button);
+    } else if (!heldPointerButtons.delete(button)) {
+      return;
+    }
     const [x, y] = canvasPosition(event);
     send(encodedInput(type, pointerButtons[event.button], x, y));
   };
@@ -1626,6 +1643,9 @@ function installInput(
     requestDeviceMotionPermission();
     if (event.isTrusted && event.button in pointerButtons) {
       window.parent.postMessage({ type: "dotli:polkavm-user-activation" }, "*");
+      if (document.pointerLockElement !== canvas) {
+        canvas.setPointerCapture(event.pointerId);
+      }
     }
     previousPointer = [event.clientX, event.clientY];
     (wantsTextInput && textInput !== null ? textInput : canvas).focus({
@@ -1644,6 +1664,19 @@ function installInput(
   };
   const up = (event: PointerEvent): void => {
     pointer(event, 4);
+  };
+  const cancelPointer = (event: PointerEvent): void => {
+    if (
+      event.type === "lostpointercapture" &&
+      document.pointerLockElement === canvas
+    ) {
+      return;
+    }
+    const [x, y] = canvasPosition(event);
+    for (const button of heldPointerButtons) {
+      send(encodedInput(4, button, x, y));
+    }
+    heldPointerButtons.clear();
   };
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
@@ -1674,8 +1707,10 @@ function installInput(
     }
 
     const bounds = canvas.getBoundingClientRect();
-    const logicalWidth = canvas.width / surfaceScale();
-    const logicalHeight = canvas.height / surfaceScale();
+    const logicalWidth =
+      (webGpu?.physicalWidth ?? canvas.width) / surfaceScale();
+    const logicalHeight =
+      (webGpu?.physicalHeight ?? canvas.height) / surfaceScale();
     const scaleX = bounds.width / Math.max(1, logicalWidth);
     const scaleY = bounds.height / Math.max(1, logicalHeight);
     const cursor = output.ime.cursorRect;
@@ -1687,13 +1722,10 @@ function installInput(
       textInput.focus({ preventScroll: true });
     }
   };
-  const resizeObserver =
+  const stopObservingDimensions =
     graphicsProfile !== "framebuffer"
-      ? new ResizeObserver(() => {
-          sendSurfaceMetrics();
-        })
+      ? observeSurfaceDimensions(canvas, sendSurfaceMetrics)
       : null;
-  resizeObserver?.observe(canvas);
   canvas.addEventListener("focus", focusChanged);
   canvas.addEventListener("blur", focusChanged);
   window.addEventListener("focus", focusChanged);
@@ -1717,6 +1749,8 @@ function installInput(
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointercancel", cancelPointer);
+  canvas.addEventListener("lostpointercapture", cancelPointer);
   canvas.addEventListener("contextmenu", contextmenu);
   return {
     applyUiOutput,
@@ -1734,7 +1768,7 @@ function installInput(
       }
     },
     cleanup: () => {
-      resizeObserver?.disconnect();
+      stopObservingDimensions?.();
       if (
         document.activeElement === canvas ||
         (textInput !== null && document.activeElement === textInput)
@@ -1768,6 +1802,9 @@ function installInput(
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointercancel", cancelPointer);
+      canvas.removeEventListener("lostpointercapture", cancelPointer);
+      heldPointerButtons.clear();
       canvas.removeEventListener("contextmenu", contextmenu);
     },
   };
@@ -2125,8 +2162,7 @@ export async function runPolkaVmApplication(
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
   const ancestorOrigins = Reflect.get(location, "ancestorOrigins") as
-    | DOMStringList
-    | undefined;
+    DOMStringList | undefined;
   const parentOrigin = resolvedParentOrigin(
     ancestorOrigins?.item(0) ?? null,
     document.referrer,
