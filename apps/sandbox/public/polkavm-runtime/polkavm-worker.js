@@ -1843,8 +1843,8 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
   const MAX_ASSET_FILES = 2048;
   const MAX_ASSET_NAME_BYTES = 1024;
-  const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
-  const MAX_ASSET_BYTES = 128 * 1024 * 1024;
+  const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
+  const MAX_ASSET_BYTES = 256 * 1024 * 1024;
   const MOTION_SAMPLE_BYTES = 48;
   const FORCE_INTERPRETER = Symbol("force-interpreter");
   const decoder = new TextDecoder();
@@ -2656,7 +2656,26 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       }
     } else if (message?.type === "host-frame-response") {
       try {
-        if (!sendHostFrameResponse(new Uint8Array(message.bytes))) {
+        const seq = message.seq;
+        if (
+          seq !== undefined &&
+          (!Number.isSafeInteger(seq) || seq < 0)
+        ) {
+          throw new Error(
+            "invalid PolkaVM browser host frame response sequence",
+          );
+        }
+        if (sendHostFrameResponse(new Uint8Array(message.bytes))) {
+          if (seq !== undefined) {
+            postMessage({ type: "host-frame-response-accepted", seq });
+          }
+        } else if (seq !== undefined) {
+          postMessage({
+            type: "host-frame-response-rejected",
+            reason: "queue-full",
+            seq,
+          });
+        } else {
           postMessage({
             type: "host-frame-response-rejected",
             reason: "queue-full",
