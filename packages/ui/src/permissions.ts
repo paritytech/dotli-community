@@ -171,20 +171,6 @@ function authorizationRequest(
   return { tag: "Device", value: permission };
 }
 
-function remoteAuthorizationRequest(
-  domains: readonly string[],
-): PermissionAuthorizationRequest {
-  return {
-    tag: "Remote",
-    value: {
-      permission: {
-        tag: "Remote",
-        value: { domains: [...domains] },
-      },
-    },
-  };
-}
-
 function fromAuthorizationStatus(
   status: PermissionAuthorizationStatus,
 ): PermissionStatus {
@@ -244,36 +230,6 @@ export async function setPermissionStatus(
   }
   await provider.setPermissionAuthorizationStatus(
     authorizationRequest(permission),
-    toAuthorizationStatus(status),
-  );
-}
-
-export async function getRemotePermissionStatus(
-  label: string,
-  domains: readonly string[],
-): Promise<PermissionStatus> {
-  const provider = providerFor(label);
-  if (provider === null) {
-    return "ask";
-  }
-  return fromAuthorizationStatus(
-    await provider.getPermissionAuthorizationStatus(
-      remoteAuthorizationRequest(domains),
-    ),
-  );
-}
-
-export async function setRemotePermissionStatus(
-  label: string,
-  domains: readonly string[],
-  status: PermissionStatus,
-): Promise<void> {
-  const provider = providerFor(label);
-  if (provider === null) {
-    return;
-  }
-  await provider.setPermissionAuthorizationStatus(
-    remoteAuthorizationRequest(domains),
     toAuthorizationStatus(status),
   );
 }

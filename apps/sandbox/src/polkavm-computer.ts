@@ -22,10 +22,16 @@ import {
   type TerminalSnapshot,
 } from "./computer-terminal";
 import {
+  computerNetworkEnabled,
+  createNetworkPermissionSession,
   createRetryableLazyPromise,
+  ensureComputerDatabaseStores,
   expectedComputerHostOrigin,
 } from "./polkavm-computer-contract";
-import { waitForTruapiPort } from "./polkavm-runtime";
+import {
+  installPageCacheRestoreReload,
+  waitForTruapiPort,
+} from "./polkavm-runtime";
 import PolkaVmComputerWorker from "./polkavm-computer-worker.js?worker&inline";
 
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
@@ -46,6 +52,8 @@ const MAX_COLUMNS = 240;
 const MIN_ROWS = 6;
 const MAX_ROWS = 100;
 const RESOLVE_TIMEOUT_MS = 30_000;
+const MAX_NETWORK_PERMISSION_DOMAINS = 32;
+const MAX_CONCURRENT_NETWORK_PERMISSION_REQUESTS = 4;
 const PACKAGE_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const TRUAPI_FAILURE_STATUS =
   "Network permission unavailable — retrying on next request.";
@@ -352,9 +360,7 @@ function openSaveDb(): Promise<IDBDatabase> {
     reject(request.error ?? new Error("save DB failed"));
   };
   request.onupgradeneeded = () => {
-    if (!request.result.objectStoreNames.contains(SAVE_STORE)) {
-      request.result.createObjectStore(SAVE_STORE);
-    }
+    ensureComputerDatabaseStores(request.result);
   };
   request.onsuccess = () => {
     resolve(request.result);
@@ -531,6 +537,21 @@ export async function runComputerApplication(
     throw new Error("package is not a PolkaVM computer");
   }
   validateComputerFiles(files, descriptor);
+  const networkEnabled = computerNetworkEnabled(
+    descriptor.networkEnabled,
+    TCP_RELAY_URL,
+  );
+  const ancestorOrigins = window.location.ancestorOrigins as
+    | DOMStringList
+    | undefined;
+  const hostOrigin = expectedComputerHostOrigin(
+    window.location.hostname,
+    window.location.protocol,
+    window.location.port,
+    BASE_DOMAIN,
+    ancestorOrigins?.item(0) ?? null,
+    document.referrer,
+  );
 
   const { screen, status } = createComputerShell();
   const geometry = terminalGeometry(screen);
@@ -543,7 +564,10 @@ export async function runComputerApplication(
   // denies the current request and the next request retries.
   let truapiPort: MessagePort | null = null;
   const truapi = createRetryableLazyPromise(async (): Promise<TrUApiClient> => {
-    const port = await waitForTruapiPort();
+    if (hostOrigin === null) {
+      throw new Error("cannot authenticate the computer host origin");
+    }
+    const port = await waitForTruapiPort(window, window.parent, hostOrigin);
     truapiPort = port;
     return createClient(createTransport(createMessagePortProvider(port)));
   });
@@ -613,15 +637,6 @@ export async function runComputerApplication(
   // executable record and contenthash, then fetches and verifies the
   // archive exactly like a top-level app before handing the program to
   // the worker. The host (not this code) owns any consent policy.
-  const ancestorOrigins = window.location.ancestorOrigins as
-    | DOMStringList
-    | undefined;
-  const hostOrigin = expectedComputerHostOrigin(
-    window.location.hostname,
-    ancestorOrigins?.item(0) ?? null,
-    document.referrer,
-    BASE_DOMAIN,
-  );
   let resolveNonce = 0;
   const resolveAppRecord = (
     label: string,
@@ -787,6 +802,10 @@ export async function runComputerApplication(
     }
   };
 
+  const networkPermissions = createNetworkPermissionSession(
+    MAX_NETWORK_PERMISSION_DOMAINS,
+    MAX_CONCURRENT_NETWORK_PERMISSION_REQUESTS,
+  );
   let running = false;
   worker.onmessage = (event: MessageEvent) => {
     const message = event.data as {
@@ -809,19 +828,24 @@ export async function runComputerApplication(
           typeof message.nonce === "string"
         ) {
           const { domain, nonce } = message;
-          void truapi()
-            .then((client) => {
-              if (status.textContent === TRUAPI_FAILURE_STATUS) {
-                status.textContent = "";
-              }
-              return client.permissions.requestRemotePermission({
-                permission: {
-                  tag: "Remote",
-                  value: { domains: [domain] },
-                },
-              });
-            })
-            .then((result) => result.isOk() && result.value.granted)
+          const decision = networkEnabled
+            ? networkPermissions.decide(domain, () =>
+                truapi()
+                  .then((client) => {
+                    if (status.textContent === TRUAPI_FAILURE_STATUS) {
+                      status.textContent = "";
+                    }
+                    return client.permissions.requestRemotePermission({
+                      permission: {
+                        tag: "Remote",
+                        value: { domains: [domain] },
+                      },
+                    });
+                  })
+                  .then((result) => result.isOk() && result.value.granted),
+              )
+            : Promise.resolve(false);
+          void decision
             .catch((error: unknown) => {
               log.warn(
                 `[dot.li computer] TrUAPI handshake or permission request failed; denied ${domain}: ${serializeError(error)}`,
@@ -949,7 +973,6 @@ export async function runComputerApplication(
   // When the build has no TCP relay configured, boot the app but keep
   // networking disabled: the guest still works for shell, editing, etc.
   // and every TCP hostcall returns STATUS_DENIED.
-  const networkEnabled = descriptor.networkEnabled && TCP_RELAY_URL !== "";
   worker.postMessage(
     {
       type: "start",
@@ -1002,9 +1025,5 @@ export async function runComputerApplication(
     truapiPort = null;
   };
   window.addEventListener("pagehide", stop, { once: true });
-  window.addEventListener("pageshow", (event) => {
-    if (event.persisted) {
-      location.reload();
-    }
-  });
+  installPageCacheRestoreReload();
 }

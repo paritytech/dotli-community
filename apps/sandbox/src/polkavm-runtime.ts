@@ -311,6 +311,29 @@ export function expectedPolkaVmParentOrigin(
   return `${protocol}//${parentHostname}${port === "" ? "" : `:${port}`}`;
 }
 
+interface PageCacheTarget {
+  addEventListener(
+    type: "pageshow",
+    listener: (event: PageTransitionEvent) => void,
+  ): void;
+}
+
+export function installPageCacheRestoreReload(
+  target: PageCacheTarget = window,
+  reload: () => void = () => {
+    location.reload();
+  },
+): void {
+  let reloadRequested = false;
+  target.addEventListener("pageshow", (event) => {
+    if (!event.persisted || reloadRequested) {
+      return;
+    }
+    reloadRequested = true;
+    reload();
+  });
+}
+
 function uiPlatformRect(value: unknown): UiPlatformRect | null {
   if (
     !Array.isArray(value) ||
@@ -2229,24 +2252,7 @@ export async function runPolkaVmApplication(
   // pagehide stops the runtime, so a back-forward cache restore must recreate
   // it. Ordinary tab/app switches only change visibility and must preserve
   // the live guest and its session-only state.
-  if (
-    descriptor.graphicsProfile === "webgpu-raster" ||
-    descriptor.graphicsProfile === "webgpu"
-  ) {
-    let reloadRequested = false;
-    const reloadAfterWake = (): void => {
-      if (reloadRequested) {
-        return;
-      }
-      reloadRequested = true;
-      location.reload();
-    };
-    window.addEventListener("pageshow", (event) => {
-      if (event.persisted) {
-        reloadAfterWake();
-      }
-    });
-  }
+  installPageCacheRestoreReload();
 
   let translationStorePromise: Promise<void> = Promise.resolve();
   worker.onmessage = async (event: MessageEvent<unknown>): Promise<void> => {

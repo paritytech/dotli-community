@@ -12,6 +12,7 @@ import {
   formatPolkaVmMetrics,
   isPolkaVmPackage,
   normalizedPointerDelta,
+  installPageCacheRestoreReload,
   postFirstUiPlatformCommand,
   polkavmWebFallbackEntrypoint,
   unsupportedPolkaVmImport,
@@ -347,6 +348,36 @@ describe("PolkaVM parent motion relay", () => {
     expect(
       expectedPolkaVmParentOrigin("app.westendli.dev", "file:", ""),
     ).toBeNull();
+  });
+});
+
+describe("PolkaVM page-cache restore", () => {
+  it("reloads every graphics profile exactly once after restoration", () => {
+    for (const profile of [
+      "framebuffer",
+      "tri2d",
+      "webgpu-raster",
+      "webgpu",
+    ]) {
+      const listeners: ((event: PageTransitionEvent) => void)[] = [];
+      const reload = vi.fn();
+      installPageCacheRestoreReload(
+        {
+          addEventListener(_type, listener) {
+            listeners.push(listener);
+          },
+        },
+        reload,
+      );
+      const listener = listeners[0];
+      if (listener === undefined) {
+        throw new Error(`pageshow listener missing for ${profile}`);
+      }
+      listener({ persisted: false } as PageTransitionEvent);
+      listener({ persisted: true } as PageTransitionEvent);
+      listener({ persisted: true } as PageTransitionEvent);
+      expect(reload, profile).toHaveBeenCalledTimes(1);
+    }
   });
 });
 

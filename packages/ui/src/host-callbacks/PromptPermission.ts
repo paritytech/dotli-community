@@ -8,11 +8,9 @@ import type { Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
-  getRemotePermissionStatus,
   isDevicePermission,
   isEnforceableDevicePermission,
   setPermissionStatus,
-  setRemotePermissionStatus,
   type EnforceablePermissionName,
 } from "../permissions";
 import { showPermissionRequestModal } from "../permission-modal";
@@ -24,8 +22,11 @@ import {
 } from "../blocking-modal-queue";
 import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 
-// Domain access is handled separately because its persisted key includes the
-// requested hosts. WebRTC remains pre-resolved at iframe construction time.
+const MAX_SESSION_REMOTE_DOMAINS = 32;
+const MAX_CONCURRENT_REMOTE_PROMPTS = 4;
+
+// Domain access is handled separately because decisions are scoped to this
+// callback session and keyed by the normalized requested hosts.
 function gatedRemotePermissionName(
   tag: RemotePermission["tag"],
 ): EnforceablePermissionName | null {
@@ -48,6 +49,8 @@ export function createPromptPermission(
   // its prompt budget by alternating prompt kinds.
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
+  const remoteDomainDecisions = new Map<string, Promise<boolean>>();
+  let pendingRemotePrompts = 0;
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
@@ -70,14 +73,39 @@ export function createPromptPermission(
 
   const remotePermission: Permissions["remotePermission"] = async (request) => {
     if (request.permission.tag === "Remote") {
-      return {
-        granted: await decideRemoteDomainPermission(
-          label,
-          request.permission.value.domains,
-          limiter,
-          modalScope,
-        ),
-      };
+      const domains = normalizedRemoteDomains(
+        request.permission.value.domains,
+      );
+      if (domains === null) {
+        return { granted: false };
+      }
+      const key = domains.join("\0");
+      const existing = remoteDomainDecisions.get(key);
+      if (existing !== undefined) {
+        return { granted: await existing };
+      }
+      if (
+        remoteDomainDecisions.size >= MAX_SESSION_REMOTE_DOMAINS ||
+        pendingRemotePrompts >= MAX_CONCURRENT_REMOTE_PROMPTS
+      ) {
+        return { granted: false };
+      }
+      pendingRemotePrompts += 1;
+      const decision = decideRemoteDomainPermission(
+        label,
+        domains,
+        limiter,
+        modalScope,
+      ).finally(() => {
+        pendingRemotePrompts -= 1;
+      });
+      remoteDomainDecisions.set(key, decision);
+      void decision.catch(() => {
+        if (remoteDomainDecisions.get(key) === decision) {
+          remoteDomainDecisions.delete(key);
+        }
+      });
+      return { granted: await decision };
     }
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
@@ -99,12 +127,9 @@ export function createPromptPermission(
   return { devicePermission, remotePermission };
 }
 
-async function decideRemoteDomainPermission(
-  label: string,
+function normalizedRemoteDomains(
   domains: readonly string[],
-  limiter: SubmitRateLimiter,
-  modalScope: BlockingModalScope,
-): Promise<boolean> {
+): readonly string[] | null {
   if (
     domains.length === 0 ||
     domains.length > 8 ||
@@ -118,23 +143,18 @@ async function decideRemoteDomainPermission(
           ),
     )
   ) {
-    return false;
+    return null;
   }
+  return [...new Set(domains.map((domain) => domain.toLowerCase()))].sort();
+}
+
+async function decideRemoteDomainPermission(
+  label: string,
+  domains: readonly string[],
+  limiter: SubmitRateLimiter,
+  modalScope: BlockingModalScope,
+): Promise<boolean> {
   return modalScope.enqueue(async (signal) => {
-    const status = await getRemotePermissionStatus(label, domains);
-    throwIfAborted(signal);
-    if (status === "granted") {
-      return true;
-    }
-    if (status === "denied") {
-      showNotification({
-        label: withActiveTld(label),
-        text: `Access to ${domains.join(", ")} is blocked by a remembered decision for this app.`,
-        dismissMs: 6000,
-        browserNotification: false,
-      });
-      return false;
-    }
     if (!limiter.allow()) {
       throw new Error("Permission prompt rate limited");
     }
@@ -147,17 +167,7 @@ async function decideRemoteDomainPermission(
     if (decision === "dismissed") {
       throw new Error("User dismissed permission dialog");
     }
-    const granted = decision === "granted";
-    await setRemotePermissionStatus(
-      label,
-      domains,
-      granted ? "granted" : "denied",
-    );
-    throwIfAborted(signal);
-    window.dispatchEvent(
-      new CustomEvent("dotli:permission-changed", { detail: { label } }),
-    );
-    return granted;
+    return decision === "granted";
   });
 }
 
