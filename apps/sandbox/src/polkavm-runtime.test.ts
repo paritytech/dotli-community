@@ -352,29 +352,22 @@ describe("PolkaVM parent motion relay", () => {
 });
 
 describe("PolkaVM page-cache restore", () => {
-  it("reloads every graphics profile exactly once after restoration", () => {
-    for (const profile of [
-      "framebuffer",
-      "tri2d",
-      "webgpu-raster",
-      "webgpu",
-    ]) {
-      const listeners: ((event: PageTransitionEvent) => void)[] = [];
-      const reload = vi.fn();
-      installPageCacheRestoreReload(
-        {
-          addEventListener(_type, listener) {
-            listeners.push(listener);
-          },
+  it("reloads once only for a persisted page-cache restore", () => {
+    const listeners: ((event: PageTransitionEvent) => void)[] = [];
+    const reload = vi.fn();
+    installPageCacheRestoreReload(
+      {
+        addEventListener(_type, listener) {
+          listeners.push(listener);
         },
-        reload,
-      );
-      const listener = listeners[0];
-      listener({ persisted: false } as PageTransitionEvent);
-      listener({ persisted: true } as PageTransitionEvent);
-      listener({ persisted: true } as PageTransitionEvent);
-      expect(reload, profile).toHaveBeenCalledTimes(1);
-    }
+      },
+      reload,
+    );
+    const listener = listeners[0];
+    listener({ persisted: false } as PageTransitionEvent);
+    listener({ persisted: true } as PageTransitionEvent);
+    listener({ persisted: true } as PageTransitionEvent);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 
