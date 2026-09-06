@@ -16,5 +16,6 @@
       "minor": 1
     }
   },
-  "assetChecksums": "dist/SHA256SUMS"
+  "assetChecksums": "dist/SHA256SUMS",
+  "sourceRevision": "143e54645cb8b14abef4fc19c9e5646459b2a417"
 }
