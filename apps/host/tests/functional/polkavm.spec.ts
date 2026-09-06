@@ -682,3 +682,129 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(framesBeforeInput);
 });
+
+test("a touch gesture scrolls the guest instead of the host page", async ({
+  page,
+}) => {
+  const fixture = await polkavmCar();
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await installTruapiPortResponder(page);
+  // Input records reach the guest through the runtime worker, so recording the
+  // worker traffic is the only way to observe what the guest actually received.
+  await page.addInitScript(() => {
+    const scope = window as typeof window & {
+      __polkavmInput?: number[][];
+    };
+    scope.__polkavmInput = [];
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (
+      this: Worker,
+      message: unknown,
+      transfer?: unknown,
+    ): void {
+      const record = message as { type?: unknown; bytes?: unknown };
+      if (record.type === "input" && ArrayBuffer.isView(record.bytes)) {
+        scope.__polkavmInput?.push(
+          Array.from(new Uint8Array(record.bytes.buffer.slice(0))),
+        );
+      }
+      (post as (message: unknown, transfer?: unknown) => void).call(
+        this,
+        message,
+        transfer,
+      );
+    } as typeof Worker.prototype.postMessage;
+  });
+  await page.evaluate(
+    ({ cid, schemaVersion }) => {
+      const iframe = document.createElement("iframe");
+      iframe.id = "polkavm-product";
+      iframe.style.cssText = "width:100%;height:100%;border:0";
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      (document.getElementById("app") ?? document.body).replaceChildren(iframe);
+    },
+    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+  );
+
+  const product = page.frameLocator("#polkavm-product");
+  const canvas = product.locator("#dotli-polkavm-canvas");
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
+    timeout: 30_000,
+  });
+
+  const productFrame = page
+    .frames()
+    .find((frame) => frame.url().includes("polkavm-fixture.app.localhost"));
+  if (productFrame === undefined) {
+    throw new Error("PolkaVM product frame did not mount");
+  }
+  const gesture = await productFrame.evaluate(() => {
+    const scope = window as typeof window & { __polkavmInput?: number[][] };
+    const target = document.querySelector("#dotli-polkavm-canvas");
+    if (!(target instanceof HTMLCanvasElement)) {
+      throw new Error("PolkaVM canvas is unavailable");
+    }
+    const bounds = target.getBoundingClientRect();
+    const touch = (
+      type: string,
+      pointerId: number,
+      isPrimary: boolean,
+      offsetY: number,
+    ): void => {
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId,
+          pointerType: "touch",
+          isPrimary,
+          button: 0,
+          buttons: type === "pointerup" || type === "pointercancel" ? 0 : 1,
+          clientX: bounds.left + bounds.width / 2,
+          clientY: bounds.top + bounds.height / 2 + offsetY,
+        }),
+      );
+    };
+    const before = scope.__polkavmInput?.length ?? 0;
+    touch("pointerdown", 1, true, 0);
+    touch("pointermove", 1, true, -40);
+    // A second finger must not retarget the single-pointer ABI stream.
+    touch("pointerdown", 2, false, 120);
+    touch("pointermove", 2, false, 120);
+    // The browser claims the gesture and never sends `pointerup`.
+    touch("pointercancel", 1, true, -40);
+    const records = (scope.__polkavmInput ?? []).slice(before);
+    return {
+      types: records.map((record) => record[0]),
+      captured: target.hasPointerCapture(1),
+      scrollTop: document.scrollingElement?.scrollTop ?? 0,
+    };
+  });
+
+  // Button down, the drag that carries the scroll, then the synthesised release.
+  expect(gesture.types.filter((type) => type === 3)).toHaveLength(1);
+  expect(gesture.types.filter((type) => type === 4)).toHaveLength(1);
+  expect(gesture.types.filter((type) => type === 5).length).toBeGreaterThan(0);
+  expect(gesture.types.at(-1)).toBe(4);
+  expect(gesture.captured).toBe(false);
+  expect(gesture.scrollTop).toBe(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // The browser only routes a touch drag to the guest when the canvas claims
+  // every gesture; otherwise it pans and cancels the pointer stream instead.
+  expect(
+    await canvas.evaluate((element) => getComputedStyle(element).touchAction),
+  ).toBe("none");
+  expect(
+    await page.evaluate(() => {
+      const body = getComputedStyle(document.body);
+      return { overflow: body.overflow, overscroll: body.overscrollBehaviorY };
+    }),
+  ).toEqual({ overflow: "hidden", overscroll: "none" });
+});
