@@ -2133,7 +2133,6 @@ export async function runPolkaVmApplication(
   };
   const onParentMotion = (event: MessageEvent<unknown>): void => {
     if (
-      parentOrigin === null ||
       event.source !== window.parent ||
       event.origin !== parentOrigin
     ) {
@@ -2352,7 +2351,7 @@ export async function runPolkaVmApplication(
               typeof document.exitPointerLock === "function",
           });
         }
-        if (usesMotion && parentOrigin !== null) {
+        if (usesMotion) {
           window.parent.postMessage(
             { type: "dotli:polkavm-motion-request" },
             parentOrigin,

@@ -254,7 +254,7 @@ describe("PolkaVM UI platform output", () => {
     expect(openUrl).toBeDefined();
     expect(
       postFirstUiPlatformCommand(
-        { ...output, commands: openUrl === undefined ? [] : [openUrl] },
+        { ...output, commands: [openUrl] },
         { postMessage },
         "https://chinpokomon-polkavm.westendli.dev",
       ),
