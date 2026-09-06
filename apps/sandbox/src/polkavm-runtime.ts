@@ -164,7 +164,7 @@ export type UiPlatformRect = readonly [number, number, number, number];
 
 export type UiPlatformCommand =
   | Readonly<{ type: "copy-text"; text: string }>
-  | Readonly<{ type: "open-url"; url: string; newSurface: boolean }>;
+  | Readonly<{ type: "open-url"; url: string }>;
 
 export interface UiPlatformOutput {
   cursorIcon: string;
@@ -375,7 +375,6 @@ export function validatedUiPlatformOutput(
       commands.push({
         type: "open-url",
         url: command.url,
-        newSurface: command.newSurface,
       });
       continue;
     }
@@ -781,8 +780,9 @@ export interface TruapiPortTarget {
 }
 
 export function waitForTruapiPort(
-  scope: TruapiPortScope = window,
-  target: TruapiPortTarget = window.parent,
+  scope: TruapiPortScope,
+  target: TruapiPortTarget,
+  parentOrigin: string,
   timeoutMs = TRUAPI_PORT_TIMEOUT_MS,
 ): Promise<MessagePort> {
   if (scope.__HOST_API_PORT__ instanceof MessagePort) {
@@ -796,7 +796,11 @@ export function waitForTruapiPort(
     scope.removeEventListener("message", onMessage);
   };
   const onMessage = (event: MessageEvent<unknown>): void => {
-    if (event.source !== target || object(event.data)?.type !== "truapi-init") {
+    if (
+      event.source !== target ||
+      event.origin !== parentOrigin ||
+      object(event.data)?.type !== "truapi-init"
+    ) {
       return;
     }
     const [port] = event.ports;
@@ -818,7 +822,7 @@ export function waitForTruapiPort(
       ),
     );
   }, timeoutMs);
-  target.postMessage({ type: "truapi-ready" }, "*");
+  target.postMessage({ type: "truapi-ready" }, parentOrigin);
   return promise;
 }
 
@@ -1832,12 +1836,24 @@ export async function runPolkaVmApplication(
     assets.push({ path: "save/cartridge.sav", bytes: ownedBytes(save) });
   }
 
+  const parentOrigin = expectedPolkaVmParentOrigin(
+    location.hostname,
+    location.protocol,
+    location.port,
+  );
+  if (parentOrigin === null) {
+    throw new Error("cannot authenticate the PolkaVM host origin");
+  }
   const {
     promise: startedPromise,
     resolve: resolveStarted,
     reject: rejectStarted,
   } = Promise.withResolvers<undefined>();
-  const hostFramePort = await waitForTruapiPort();
+  const hostFramePort = await waitForTruapiPort(
+    window,
+    window.parent,
+    parentOrigin,
+  );
   const worker = new Worker(`${POLKAVM_RUNTIME_ROOT}/polkavm-worker.js`);
   const closeHostFramePort = (): void => {
     hostFramePort.onmessage = null;
@@ -2107,11 +2123,6 @@ export async function runPolkaVmApplication(
       (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
-  const parentOrigin = expectedPolkaVmParentOrigin(
-    location.hostname,
-    location.protocol,
-    location.port,
-  );
   const onParentMotion = (event: MessageEvent<unknown>): void => {
     if (
       parentOrigin === null ||
