@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   accumulateRelativePointerDelta,
+  HostFrameResponseQueue,
   describePolkaVmPackage,
   encodedInput,
   encodedTextInput,
@@ -21,6 +22,7 @@ import {
   validatedUiPlatformOutput,
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
+  type HostFrameResponseQueueOptions,
   type TruapiPortScope,
   type TruapiPortTarget,
 } from "./polkavm-runtime";
@@ -852,6 +854,142 @@ describe("PolkaVM host-frame transport", () => {
       { type: "truapi-ready" },
       parentOrigin,
     );
+  });
+});
+
+describe("PolkaVM host-frame response backpressure", () => {
+  function harness(options: HostFrameResponseQueueOptions = {}): {
+    queue: HostFrameResponseQueue;
+    posted: Uint8Array[];
+    failures: Error[];
+    runNextTimer: () => void;
+  } {
+    const timers = new Map<number, () => void>();
+    let nextTimer = 1;
+    const posted: Uint8Array[] = [];
+    const failures: Error[] = [];
+    const queue = new HostFrameResponseQueue(
+      {
+        postMessage(message: unknown) {
+          if (
+            message !== null &&
+            typeof message === "object" &&
+            "bytes" in message &&
+            message.bytes instanceof Uint8Array
+          ) {
+            posted.push(message.bytes);
+          }
+        },
+      },
+      (error) => failures.push(error),
+      {
+        setTimer: (callback) => {
+          const id = nextTimer++;
+          timers.set(id, callback);
+          return id;
+        },
+        clearTimer: (id) => void timers.delete(id),
+        ...options,
+      },
+    );
+    const runNextTimer = (): void => {
+      const next = timers.entries().next().value;
+      if (next === undefined) {
+        throw new Error("expected a scheduled timer");
+      }
+      timers.delete(next[0]);
+      next[1]();
+    };
+    return { queue, posted, failures, runNextTimer };
+  }
+
+  it("retains a rejected response and retries in order after guest progress", () => {
+    const { queue, posted, failures, runNextTimer } = harness();
+    queue.enqueue(Uint8Array.of(1, 2));
+    expect(posted).toEqual([]);
+    queue.start();
+    queue.enqueue(Uint8Array.of(3));
+    expect(posted).toEqual([Uint8Array.of(1, 2)]);
+    expect(queue.pendingCount).toBe(2);
+    expect(queue.pendingBytes).toBe(3);
+
+    expect(
+      queue.handleMessage({
+        type: "host-frame-response-rejected",
+        reason: "queue-full",
+      }),
+    ).toBe(true);
+    // A rejection is nonfatal and never triggers an immediate re-post.
+    expect(posted).toHaveLength(1);
+    expect(failures).toEqual([]);
+
+    // Guest progress cancels the paced retry and re-delivers the retained
+    // bytes ahead of every later response.
+    expect(queue.handleMessage({ type: "frame" })).toBe(false);
+    expect(posted).toEqual([Uint8Array.of(1, 2), Uint8Array.of(1, 2)]);
+
+    // Further progress without a rejection confirms delivery and unblocks
+    // the next queued response.
+    queue.handleMessage({ type: "save" });
+    runNextTimer();
+    expect(posted).toEqual([
+      Uint8Array.of(1, 2),
+      Uint8Array.of(1, 2),
+      Uint8Array.of(3),
+    ]);
+    expect(queue.pendingCount).toBe(1);
+
+    queue.handleMessage({ type: "host-frame-request" });
+    runNextTimer();
+    expect(queue.pendingCount).toBe(0);
+    expect(queue.pendingBytes).toBe(0);
+    expect(failures).toEqual([]);
+  });
+
+  it("retries on a paced timer when no progress message arrives", () => {
+    const { queue, posted, runNextTimer, failures } = harness();
+    queue.start();
+    queue.enqueue(Uint8Array.of(7));
+    queue.handleMessage({
+      type: "host-frame-response-rejected",
+      reason: "queue-full",
+    });
+    expect(posted).toHaveLength(1);
+    runNextTimer();
+    expect(posted).toEqual([Uint8Array.of(7), Uint8Array.of(7)]);
+    expect(failures).toEqual([]);
+  });
+
+  it("fails the session only when bounds are exhausted", () => {
+    const overflow = harness({ maxResponses: 1 });
+    overflow.queue.start();
+    overflow.queue.enqueue(Uint8Array.of(1));
+    overflow.queue.enqueue(Uint8Array.of(2));
+    expect(overflow.failures).toHaveLength(1);
+    expect(overflow.failures[0]?.message).toMatch(/queue overflow/);
+    expect(overflow.queue.pendingCount).toBe(0);
+
+    const retried = harness({ maxRetries: 1 });
+    retried.queue.start();
+    retried.queue.enqueue(Uint8Array.of(9));
+    retried.queue.handleMessage({
+      type: "host-frame-response-rejected",
+      reason: "queue-full",
+    });
+    retried.runNextTimer();
+    retried.queue.handleMessage({
+      type: "host-frame-response-rejected",
+      reason: "queue-full",
+    });
+    expect(retried.failures[0]?.message).toMatch(/retry limit exceeded/);
+
+    const idle = harness();
+    idle.queue.start();
+    idle.queue.handleMessage({
+      type: "host-frame-response-rejected",
+      reason: "queue-full",
+    });
+    expect(idle.failures[0]?.message).toMatch(/invalid host-frame rejection/);
   });
 });
 
