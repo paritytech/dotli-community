@@ -16,21 +16,26 @@ export function hostResolveStarted(page: Page): Promise<boolean> {
   );
 }
 
+interface InstalledExecutableScope {
+  label: string;
+  network: string;
+}
+
 /**
- * Browser-side check for a cached CID entry under `label`.
- *
- * Defined as a standalone function so the two Playwright entry points
- * below (`hasCachedCid` via `page.evaluate`, `waitForCachedCid` via
- * `page.waitForFunction`) share one IDB query body instead of two
- * copies that can drift.
+ * Browser-side check for a cached app executable under a network-scoped label.
  */
-const cachedCidExists = (label: string): Promise<boolean> =>
-  new Promise<boolean>((resolve) => {
-    const open = indexedDB.open("dotli", 1);
+const cachedInstalledExecutableExists = ({
+  label,
+  network,
+}: InstalledExecutableScope): Promise<boolean> => {
+  return new Promise<boolean>((resolve) => {
+    const open = indexedDB.open("dotli-installed-executables", 1);
     open.onsuccess = () => {
       try {
-        const tx = open.result.transaction("cids", "readonly");
-        const req = tx.objectStore("cids").get(label);
+        const tx = open.result.transaction("installed_executables", "readonly");
+        const req = tx
+          .objectStore("installed_executables")
+          .get([network, "app", label]);
         req.onsuccess = () => {
           resolve(req.result !== undefined);
         };
@@ -45,28 +50,32 @@ const cachedCidExists = (label: string): Promise<boolean> =>
       resolve(false);
     };
   });
+};
 
-/** Snapshot whether the host has a cached CID for `label`. */
-export function hasCachedCid(page: Page, label: string): Promise<boolean> {
-  return page.evaluate(cachedCidExists, label);
+/** Snapshot whether the host has a cached installed app executable. */
+export function hasCachedInstalledExecutable(
+  page: Page,
+  label: string,
+  network = "paseo-next-v2",
+): Promise<boolean> {
+  return page.evaluate(cachedInstalledExecutableExists, { label, network });
 }
 
-/**
- * Wait until the host has a cached CID for `label`.
- *
- * `setCachedCid` runs inside `requestIdleCallback` after
- * `dotli:app:end`, so a warm reload kicked off too quickly could
- * otherwise race the write.
- */
-export async function waitForCachedCid(
+/** Wait until the host commits the complete installed executable record. */
+export async function waitForCachedInstalledExecutable(
   page: Page,
   label: string,
   timeoutMs: number,
+  network = "paseo-next-v2",
 ): Promise<void> {
-  await page.waitForFunction(cachedCidExists, label, {
-    timeout: timeoutMs,
-    polling: 200,
-  });
+  await page.waitForFunction(
+    cachedInstalledExecutableExists,
+    { label, network },
+    {
+      timeout: timeoutMs,
+      polling: 200,
+    },
+  );
 }
 
 /**

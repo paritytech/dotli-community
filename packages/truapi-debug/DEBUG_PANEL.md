@@ -132,8 +132,8 @@ Dotli-internal host-side orchestration, captured by
 `onDotliDebugEvent` from `@dotli/truapi-debug/dotli-debug-bus`.
 
 - `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`,
-  `url_parsed`, `cid_cache_checked`, `landing_page_shown`, `ready`,
-  `failed`.
+  `url_parsed`, `installed_executable_cache_checked`, `landing_page_shown`,
+  `ready`, `failed`.
 - `resolve:*` — `started`, `phase`, `storage_read`, `completed`,
   `failed`.
 - `render:*` — `iframe_begin`, `iframe_ready`.

@@ -53,6 +53,7 @@ const mocks = vi.hoisted(() => ({
   iframeHosts: [] as {
     iframeUrl: string;
     allowedOrigin: string;
+    allow: string;
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
@@ -247,6 +248,7 @@ describe("bridge render lifecycle", () => {
       (args: {
         iframeUrl: string;
         allowedOrigin: string;
+        allow: string;
         container: HTMLElement;
       }) => {
         const iframe = document.createElement("iframe");
@@ -258,6 +260,7 @@ describe("bridge render lifecycle", () => {
         const host = {
           iframeUrl: args.iframeUrl,
           allowedOrigin: args.allowedOrigin,
+          allow: args.allow,
           iframe,
           dispose,
         };
@@ -271,7 +274,7 @@ describe("bridge render lifecycle", () => {
         import("@dotli/ui/blocking-modal-queue"),
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
-  });
+  }, 30_000);
 
   it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {
     // Given
@@ -372,6 +375,364 @@ describe("bridge render lifecycle", () => {
       "cid=second-cid",
     );
   }, 10_000);
+
+  it("threads exact executable manifest text into the sandbox contract", async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+    const render = renderAppSubdomain(
+      "manifest-cid",
+      "manifest-app",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const iframeUrl = new URL(mocks.iframeHosts[0].iframeUrl);
+    expect(iframeUrl.searchParams.get("executableManifest")).toBe(
+      executableManifest,
+    );
+    expect(mocks.iframeHosts[0].allow).not.toContain("accelerometer");
+    expect(mocks.iframeHosts[0].allow).not.toContain("gyroscope");
+  });
+
+  it("delegates motion sensors to PolkaVM product frames with web fallbacks", async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+    const render = renderAppSubdomain(
+      "motion-cid",
+      "motion-app",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const directives = mocks.iframeHosts[0].allow.split("; ");
+    expect(directives).toContain("accelerometer");
+    expect(directives).toContain("gyroscope");
+  });
+
+  it("requests motion at top level and relays physical samples to the PolkaVM frame", async () => {
+    class TestDeviceMotionEvent extends Event {
+      static requestPermission = vi.fn(async () => "granted" as const);
+      readonly accelerationIncludingGravity = { x: 1, y: 2, z: 9 };
+      readonly rotationRate = { alpha: 3, beta: 4, gamma: 5 };
+    }
+    vi.stubGlobal("DeviceMotionEvent", TestDeviceMotionEvent);
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain(
+      "motion-relay-cid",
+      "motion-relay",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const created = mocks.iframeHosts[0];
+    const targetWindow = created.iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
+    const postMessage = vi
+      .spyOn(targetWindow!, "postMessage")
+      .mockImplementation(() => {});
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:polkavm-motion-request" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:polkavm-motion-request" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(
+      [...document.querySelectorAll(".notif-action")].filter(
+        (element) => element.textContent === "Enable motion",
+      ),
+    ).toHaveLength(1);
+    const enable = document.querySelector<HTMLButtonElement>(".notif-action");
+    expect(enable?.textContent).toBe("Enable motion");
+    enable?.click();
+    enable?.click();
+    await vi.waitFor(() => {
+      expect(TestDeviceMotionEvent.requestPermission).toHaveBeenCalledOnce();
+      expect(postMessage).toHaveBeenCalledWith(
+        { type: "dotli:polkavm-motion-status", availability: 1 },
+        created.allowedOrigin,
+      );
+    });
+    const prompt = enable?.closest(".notif-card");
+    expect(prompt).not.toBeNull();
+    expect(prompt?.classList.contains("notif-leave")).toBe(true);
+    prompt?.dispatchEvent(new Event("animationend"));
+    expect(document.body.textContent).not.toContain(
+      "Enable motion to tilt this application",
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:polkavm-motion-request" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(document.body.textContent).not.toContain(
+      "Enable motion to tilt this application",
+    );
+
+    window.dispatchEvent(new TestDeviceMotionEvent("devicemotion"));
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        type: "dotli:polkavm-motion-sample",
+        timestampMs: expect.any(Number),
+        acceleration: { x: 1, y: 2, z: 9 },
+        rotation: { alpha: 3, beta: 4, gamma: 5 },
+      },
+      created.allowedOrigin,
+    );
+  });
+
+  it("mediates one PolkaVM platform command per trusted app-frame activation", async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
+    // Import after the per-test module reset so bridge singleton state is isolated.
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain(
+      "ui-output-cid",
+      "ui-output",
+      executableManifest,
+    );
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const created = mocks.iframeHosts[0];
+    const source = created.iframe.contentWindow;
+    if (source === null) throw new Error("app frame has no content window");
+    const origin = new URL(created.iframeUrl).origin;
+    const activation = { isActive: false, hasBeenActive: false };
+    const activationDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      "userActivation",
+    );
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      "clipboard",
+    );
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "userActivation", {
+      configurable: true,
+      value: activation,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const dispatch = (
+      data: unknown,
+      messageOrigin = origin,
+      messageSource: MessageEventSource = source,
+    ): void => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data,
+          origin: messageOrigin,
+          source: messageSource,
+        }),
+      );
+    };
+
+    try {
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: { type: "copy-text", text: "automatic" },
+      });
+      await Promise.resolve();
+      expect(writeText).not.toHaveBeenCalled();
+
+      activation.isActive = true;
+      activation.hasBeenActive = true;
+      dispatch(
+        { type: "dotli:polkavm-user-activation" },
+        "https://evil.example",
+      );
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: { type: "copy-text", text: "wrong-origin" },
+      });
+      await Promise.resolve();
+      expect(writeText).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: { type: "copy-text", text: "hello" },
+      });
+      await vi.waitFor(() => {
+        expect(writeText).toHaveBeenCalledExactlyOnceWith("hello");
+      });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: { type: "copy-text", text: "second" },
+      });
+      await Promise.resolve();
+      expect(writeText).toHaveBeenCalledTimes(1);
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "javascript:alert(1)",
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "https://example.test/ignored-control",
+          newSurface: false,
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "http://example.test/insecure",
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "https://example.test/path",
+        },
+      });
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        "https://example.test/path",
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } finally {
+      open.mockRestore();
+      if (activationDescriptor === undefined) {
+        Reflect.deleteProperty(navigator, "userActivation");
+      } else {
+        Object.defineProperty(
+          navigator,
+          "userActivation",
+          activationDescriptor,
+        );
+      }
+      if (clipboardDescriptor === undefined) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+      }
+    }
+  });
+
+  it("reconnects the TrUAPI MessagePort after a product iframe reload", async () => {
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const addEventListener = vi.spyOn(window, "addEventListener");
+    const render = renderAppSubdomain("reload-cid", "reload-app");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const created = mocks.iframeHosts[0];
+    const targetWindow = created.iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
+    const postMessage = vi
+      .spyOn(targetWindow!, "postMessage")
+      .mockImplementation(() => {});
+    const probe = addEventListener.mock.calls
+      .filter(([type]) => type === "message")
+      .at(-1)?.[1] as EventListener | undefined;
+    addEventListener.mockRestore();
+    expect(probe).toBeTypeOf("function");
+    const ready = (): void => {
+      probe?.({
+        data: { type: "truapi-ready" },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      } as MessageEvent);
+    };
+
+    ready();
+    expect(postMessage).not.toHaveBeenCalled();
+    ready();
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    const [message, origin, ports] = postMessage.mock.calls[0];
+    expect(message).toEqual({ type: "truapi-init" });
+    expect(origin).toBe(created.allowedOrigin);
+    expect(ports).toHaveLength(1);
+    expect(ports?.[0]).toHaveProperty("postMessage");
+  });
+
+  it("forwards a sandbox schema mismatch as a host PWA update request", async () => {
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const render = renderAppSubdomain("manifest-cid", "manifest-app");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const updateRequired = vi.fn();
+    window.addEventListener("dotli:host-update-required", updateRequired, {
+      once: true,
+    });
+    const targetWindow = mocks.iframeHosts[0].iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
+    const appOrigin = new URL(mocks.iframeHosts[0].iframeUrl).origin;
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:host-update-required" },
+        origin: "https://evil.example",
+        source: targetWindow,
+      }),
+    );
+    expect(updateRequired).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:host-update-required" },
+        origin: appOrigin,
+        source: window,
+      }),
+    );
+    expect(updateRequired).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:host-update-required" },
+        origin: appOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(updateRequired).toHaveBeenCalledTimes(1);
+  });
 
   it.each(["/x.dot@evil.com/pay", "/foo.dotify/pay"])(
     "As a user, the host keeps an adversarial deep path on the app sandbox origin: %s",

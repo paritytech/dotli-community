@@ -21,6 +21,7 @@ import { SW_ARCHIVE_CACHE_MAX } from "@dotli/config/config";
 // Base path, derived at runtime from the SW script location.
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");
 const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
+const POLKAVM_RUNTIME_PREFIX = `${BASE}polkavm-runtime/`;
 
 function hasExtension(path: string): boolean {
   const lastSlash = path.lastIndexOf("/");
@@ -400,6 +401,12 @@ self.addEventListener("fetch", (event: FetchEvent) => {
     event.request.mode === "navigate" &&
     !url.pathname.startsWith(DOTLI_APP_PREFIX)
   ) {
+    return;
+  }
+
+  // PolkaVM products run inside a host-owned runtime. Package files must never
+  // shadow the translator, worker, Wasm interpreter, or their license notices.
+  if (url.pathname.startsWith(POLKAVM_RUNTIME_PREFIX)) {
     return;
   }
 

@@ -32,10 +32,10 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       }
       return "URL parsed: landing page (no subdomain).";
     }
-    case "boot:cid_cache_checked":
+    case "boot:installed_executable_cache_checked":
       return p.hit === true
-        ? `CID cache hit for ${str(p.label)} → ${str(p.cid)}.`
-        : `CID cache miss for ${str(p.label)}.`;
+        ? `Installed executable cache hit for ${str(p.label)} → ${str(p.contenthash)}.`
+        : `Installed executable cache miss for ${str(p.label)}.`;
     case "boot:landing_page_shown":
       return "Landing page rendered (no subdomain to resolve).";
     case "boot:ready":

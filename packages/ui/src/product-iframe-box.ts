@@ -38,6 +38,6 @@ export function productIframeBox(opts: {
     top,
     left: SAFE_LEFT,
     width: `calc(100% - ${SAFE_LEFT} - ${SAFE_RIGHT})`,
-    height: `calc(100vh - ${top} - ${SAFE_BOTTOM})`,
+    height: `calc(100dvh - ${top} - ${SAFE_BOTTOM})`,
   };
 }

@@ -16,9 +16,10 @@
 // re-resolve. Archive caching still keys on the CID so a new CID under
 // the same name is never served a stale archive.
 //
-// Schema v3 (current):
+// Schema v4 (current):
 //
 //   Required:
+//     ?v=<schema version integer>
 //     ?cid=<IPFS content id the host resolved from the dotns label>
 //     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
 //     ?network=<"paseo-next-v1" | "paseo-next-v2">
@@ -26,7 +27,7 @@
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">
 //     ?fullReset=<"0" | "1">
-//     ?v=<schema version integer, reserved for future breakage>
+//     ?executableManifest=<exact UTF-8 App executable text record>
 //
 // When we add a new required param, bump SANDBOX_SCHEMA_VERSION and
 // have the validator reject unmatched versions so stale host builds
@@ -34,7 +35,7 @@
 
 import { isValidNetwork, type Network } from "./network";
 
-export const SANDBOX_SCHEMA_VERSION = 3;
+export const SANDBOX_SCHEMA_VERSION = 4;
 
 // Cheap CID charset gate (base32 cidv1 / base58btc cidv0 are alphanumeric).
 // The sandbox does the authoritative CID.parse, then hash-verifies fetched
@@ -62,6 +63,7 @@ export const SANDBOX_CONTRACT_PARAMS = {
   network: "network",
   skipArchiveCache: "skipArchiveCache",
   fullReset: "fullReset",
+  executableManifest: "executableManifest",
   v: "v",
 } as const;
 
@@ -74,11 +76,17 @@ export interface SandboxParams {
   network: Network;
   skipArchiveCache: boolean;
   fullReset: boolean;
+  executableManifest: string | null;
 }
 
 export type SandboxParamsResult =
   | { ok: true; params: SandboxParams }
-  | { ok: false; reason: string; recoverable?: boolean };
+  | {
+      ok: false;
+      reason: string;
+      recoverable?: boolean;
+      hostUpdateRequired?: boolean;
+    };
 
 /**
  * Validate a sandbox URL against the host-to-sandbox contract.
@@ -97,15 +105,18 @@ export type SandboxParamsResult =
 export function validateSandboxParams(
   search: URLSearchParams,
 ): SandboxParamsResult {
-  // Version gate: if the host sends an explicit version token, it must
-  // match. Absent `?v=` means "pre-versioned host", a path now rejected
-  // post-collapse because the `?backend=` requirement is also new and a
-  // pre-collapse host would not emit it.
+  // A contract carrying a CID is an active host launch and must identify its
+  // schema. A URL with no contract keys is the supported post-boot reload
+  // shape; let the missing-CID path below ask the host to reconstruct it.
   const version = search.get(SANDBOX_CONTRACT_PARAMS.v);
-  if (version !== null && version !== String(SANDBOX_SCHEMA_VERSION)) {
+  if (
+    (version === null && search.has(SANDBOX_CONTRACT_PARAMS.cid)) ||
+    (version !== null && version !== String(SANDBOX_SCHEMA_VERSION))
+  ) {
     return {
       ok: false,
-      reason: `Sandbox contract version mismatch (got v=${version}, expected v=${String(SANDBOX_SCHEMA_VERSION)}). Reload from the host to pick up the matching build.`,
+      hostUpdateRequired: true,
+      reason: `Sandbox contract version mismatch (got ${version === null ? "no version" : `v=${version}`}, expected v=${String(SANDBOX_SCHEMA_VERSION)}). Update dot.li to load the matching host build.`,
     };
   }
 
@@ -176,6 +187,21 @@ export function validateSandboxParams(
     };
   }
 
+  const executableManifest = search.get(
+    SANDBOX_CONTRACT_PARAMS.executableManifest,
+  );
+  if (
+    executableManifest !== null &&
+    (executableManifest.length === 0 ||
+      new TextEncoder().encode(executableManifest).byteLength > 64 * 1024)
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Invalid executableManifest — expected a non-empty App manifest within 65536 UTF-8 bytes.",
+    };
+  }
+
   return {
     ok: true,
     params: {
@@ -187,6 +213,7 @@ export function validateSandboxParams(
       network,
       skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",
+      executableManifest,
     },
   };
 }

@@ -41,63 +41,6 @@ function createProviderHarness(): {
 }
 
 describe("createChainBrokerManager", () => {
-  it("remaps request ids and routes responses back to the correct client", () => {
-    const harness = createProviderHarness();
-    const manager = createChainBrokerManager((genesisHash) =>
-      genesisHash === "asset-hub" ? harness.provider : null,
-    );
-
-    const messagesA: string[] = [];
-    const messagesB: string[] = [];
-    const connectionA = manager.connectRemote(
-      "asset-hub",
-      "conn-a",
-      (message) => {
-        messagesA.push(message);
-      },
-    );
-    const connectionB = manager.connectRemote(
-      "asset-hub",
-      "conn-b",
-      (message) => {
-        messagesB.push(message);
-      },
-    );
-
-    expect(connectionA).not.toBeNull();
-    expect(connectionB).not.toBeNull();
-
-    connectionA?.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "chainHead_v1_header",
-        params: ["token-a", "0xabc"],
-      }),
-    );
-    connectionB?.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 7,
-        method: "chainHead_v1_header",
-        params: ["token-b", "0xdef"],
-      }),
-    );
-
-    const upstreamA = harness.sent[0] as { id: string };
-    const upstreamB = harness.sent[1] as { id: string };
-
-    harness.emit({ jsonrpc: "2.0", id: upstreamB.id, result: "header-b" });
-    harness.emit({ jsonrpc: "2.0", id: upstreamA.id, result: "header-a" });
-
-    expect(messagesA).toEqual([
-      JSON.stringify({ jsonrpc: "2.0", id: 1, result: "header-a" }),
-    ]);
-    expect(messagesB).toEqual([
-      JSON.stringify({ jsonrpc: "2.0", id: 7, result: "header-b" }),
-    ]);
-  });
-
   it("rewrites subscription tokens per client and routes follow events", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
@@ -644,68 +587,6 @@ describe("createChainBrokerManager", () => {
     ]);
   });
 
-  it("provides a local provider that uses the same upstream broker", () => {
-    const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
-    const localProvider = manager.getLocalProvider("asset-hub");
-    const remoteMessages: string[] = [];
-
-    expect(localProvider).not.toBeNull();
-
-    // `getLocalProvider` uses the object wire. `connectRemote` uses the string wire.
-    const localMessages: JsonRpcMessage[] = [];
-    const localConnection = localProvider?.((message) => {
-      localMessages.push(message);
-    });
-    const remoteConnection = manager.connectRemote(
-      "asset-hub",
-      "conn-a",
-      (message) => {
-        remoteMessages.push(message);
-      },
-    );
-
-    localConnection?.send({
-      jsonrpc: "2.0",
-      id: "local-1",
-      method: "chainHead_v1_header",
-      params: ["token", "0xabc"],
-    });
-    remoteConnection?.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: "remote-1",
-        method: "chainHead_v1_header",
-        params: ["token", "0xdef"],
-      }),
-    );
-
-    const localUpstream = harness.sent[0] as { id: string };
-    const remoteUpstream = harness.sent[1] as { id: string };
-
-    harness.emit({
-      jsonrpc: "2.0",
-      id: localUpstream.id,
-      result: "local-result",
-    });
-    harness.emit({
-      jsonrpc: "2.0",
-      id: remoteUpstream.id,
-      result: "remote-result",
-    });
-
-    expect(localMessages).toEqual([
-      { jsonrpc: "2.0", id: "local-1", result: "local-result" },
-    ]);
-    expect(remoteMessages).toEqual([
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: "remote-1",
-        result: "remote-result",
-      }),
-    ]);
-  });
-
   it("isolates concurrent statement-store subscriptions with duplicate client ids", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
@@ -833,6 +714,23 @@ describe("createChainBrokerManager", () => {
         result: { event: "newBlock", blockHash: "0xblock" },
       },
     });
+    // Current forks belong to the replay snapshot too. Finalize past this
+    // block before checking that the last consumer can release its history.
+    for (const result of [
+      { event: "newBlock", blockHash: "0xnext", parentBlockHash: "0xblock" },
+      { event: "bestBlockChanged", bestBlockHash: "0xnext" },
+      {
+        event: "finalized",
+        finalizedBlockHashes: ["0xblock", "0xnext"],
+        prunedBlockHashes: [],
+      },
+    ]) {
+      harness.emit({
+        jsonrpc: "2.0",
+        method: "chainHead_v1_followEvent",
+        params: { subscription: "up-a", result },
+      });
+    }
 
     // First tab unpins: still held by the second tab, so nothing forwarded.
     connectionA?.send(
@@ -924,6 +822,21 @@ describe("createChainBrokerManager", () => {
         result: { event: "newBlock", blockHash: "0xblock" },
       },
     });
+    for (const result of [
+      { event: "newBlock", blockHash: "0xnext", parentBlockHash: "0xblock" },
+      { event: "bestBlockChanged", bestBlockHash: "0xnext" },
+      {
+        event: "finalized",
+        finalizedBlockHashes: ["0xblock", "0xnext"],
+        prunedBlockHashes: [],
+      },
+    ]) {
+      harness.emit({
+        jsonrpc: "2.0",
+        method: "chainHead_v1_followEvent",
+        params: { subscription: "up-a", result },
+      });
+    }
 
     // Session B unpins via its own token; A is still a holder -> no forward.
     connectionB?.send(

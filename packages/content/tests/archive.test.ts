@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
+import { CarWriter } from "@ipld/car";
+import * as dagPb from "@ipld/dag-pb";
+import { UnixFS } from "ipfs-unixfs";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 import {
   isCarFile,
   packArchive,
@@ -155,6 +160,88 @@ describe("parseIpfsResponse", () => {
     expect(Object.keys(result)).toEqual(["index.html"]);
     expect(new TextDecoder().decode(result["index.html"])).toBe(
       "<html><body>Hello</body></html>",
+    );
+  });
+
+  it("As a user, I load all inline and nested file bytes in order", async () => {
+    // Given
+    const blocks: { cid: CID; bytes: Uint8Array }[] = [];
+
+    async function putRaw(bytes: Uint8Array): Promise<CID> {
+      const cid = CID.createV1(0x55, await sha256.digest(bytes));
+      blocks.push({ cid, bytes });
+      return cid;
+    }
+
+    async function putNode(node: dagPb.PBNode): Promise<CID> {
+      const bytes = dagPb.encode(node);
+      const cid = CID.createV1(0x70, await sha256.digest(bytes));
+      blocks.push({ cid, bytes });
+      return cid;
+    }
+
+    // Four distinct raw leaves under two intermediate file stems, so the
+    // program bytes are reachable only by recursing through dag-pb chunks.
+    const leaves = Array.from({ length: 4 }, (_, i) =>
+      new Uint8Array(1024).fill(i + 1),
+    );
+    const stems: CID[] = [];
+    for (let stem = 0; stem < 2; stem++) {
+      const pair = leaves.slice(stem * 2, stem * 2 + 2);
+      const links = [];
+      for (const leaf of pair) {
+        links.push({ Hash: await putRaw(leaf), Tsize: leaf.byteLength });
+      }
+      stems.push(
+        await putNode({
+          Data: new UnixFS({
+            type: "file",
+            blockSizes: [1024n, 1024n],
+          }).marshal(),
+          Links: links,
+        }),
+      );
+    }
+    const prefix = new Uint8Array([9, 8, 7]);
+    const fileCid = await putNode({
+      Data: new UnixFS({
+        type: "file",
+        data: prefix,
+        blockSizes: [2048n, 2048n],
+      }).marshal(),
+      Links: stems.map((cid) => ({ Hash: cid, Tsize: 2048 })),
+    });
+    const rootCid = await putNode({
+      Data: new UnixFS({ type: "directory" }).marshal(),
+      Links: [{ Name: "app.polkavm", Hash: fileCid, Tsize: 4099 }],
+    });
+
+    const { writer, out } = CarWriter.create([rootCid]);
+    const carChunks: Uint8Array[] = [];
+    const collected = (async () => {
+      for await (const chunk of out) {
+        carChunks.push(chunk);
+      }
+    })();
+    for (const block of blocks) {
+      await writer.put(block);
+    }
+    await writer.close();
+    await collected;
+    const car = new Uint8Array(
+      carChunks.reduce((total, chunk) => total + chunk.byteLength, 0),
+    );
+    let offset = 0;
+    for (const chunk of carChunks) {
+      car.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    // When
+    const result = await parseIpfsResponse(car, rootCid);
+    // Then
+    expect(result["app.polkavm"]).toEqual(
+      new Uint8Array([...prefix, ...leaves.flatMap((leaf) => [...leaf])]),
     );
   });
 });

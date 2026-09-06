@@ -8,6 +8,7 @@
     "build": "tsc && bunx --bun vite build",
     "build:prod": "tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
     "lint": "bunx eslint src/",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -18,7 +19,8 @@
     "prettier": "^3.8.3",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
-    "vite-plugin-wasm": "^3.5.0"
+    "vite-plugin-wasm": "^3.5.0",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@dotli/config": "workspace:*",

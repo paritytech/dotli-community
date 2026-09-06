@@ -476,10 +476,10 @@ function fireBrowserNotification(
   }
 }
 
-export function showNotification(params: NotificationParams): void {
+export function showNotification(params: NotificationParams): () => void {
   const text = sanitizeText(params.text);
   if (!text) {
-    return;
+    return () => undefined;
   }
   const deeplink = validateDeeplink(params.deeplink);
   const dismissMs = params.dismissMs ?? NOTIFICATION_DISMISS_MS;
@@ -515,4 +515,7 @@ export function showNotification(params: NotificationParams): void {
   if (useBrowserNotif && document.visibilityState !== "visible") {
     fireBrowserNotification(text, deeplink, params.label);
   }
+  return () => {
+    dismiss(id);
+  };
 }
