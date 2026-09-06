@@ -27,7 +27,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-30770959f66db81d46163f70f72f83f1a5507f6d";
+  "useragent-kit-polkavm-runtime-d1e3d77dce34c9490196754c1e2bab9596b993f0";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -290,19 +290,25 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function resolvedParentOrigin(
-  ancestorOrigin: string | null,
-  referrer: string,
+export function expectedPolkaVmParentOrigin(
+  hostname: string,
+  protocol: string,
+  port: string,
 ): string | null {
-  const candidate = ancestorOrigin ?? referrer;
-  if (candidate === "") {
+  const marker = ".app.";
+  const markerIndex = hostname.lastIndexOf(marker);
+  if (
+    markerIndex <= 0 ||
+    markerIndex + marker.length >= hostname.length ||
+    (protocol !== "https:" && protocol !== "http:")
+  ) {
     return null;
   }
-  try {
-    return new URL(candidate).origin;
-  } catch {
-    return null;
-  }
+  const parentHostname =
+    hostname.slice(0, markerIndex) +
+    "." +
+    hostname.slice(markerIndex + marker.length);
+  return `${protocol}//${parentHostname}${port === "" ? "" : `:${port}`}`;
 }
 
 function uiPlatformRect(value: unknown): UiPlatformRect | null {
@@ -325,7 +331,7 @@ export function validatedUiPlatformOutput(
   if (
     output === null ||
     typeof output.cursorIcon !== "string" ||
-    !uiCursorIcons[output.cursorIcon] ||
+    !Object.hasOwn(uiCursorIcons, output.cursorIcon) ||
     typeof output.mutableTextUnderCursor !== "boolean" ||
     !Array.isArray(output.commands) ||
     output.commands.length > MAX_UI_OUTPUT_COMMANDS
@@ -387,12 +393,16 @@ export function validatedUiPlatformOutput(
 export function postFirstUiPlatformCommand(
   output: UiPlatformOutput,
   target: UiPlatformCommandTarget,
+  targetOrigin: string | null,
 ): boolean {
   const command = output.commands.at(0);
-  if (command === undefined) {
+  if (command === undefined || targetOrigin === null) {
     return false;
   }
-  target.postMessage({ type: "dotli:polkavm-ui-command", command }, "*");
+  target.postMessage(
+    { type: "dotli:polkavm-ui-command", command },
+    targetOrigin,
+  );
   return true;
 }
 
@@ -1206,6 +1216,7 @@ function installInput(
   sendPointerCaptureState: (active: boolean) => void,
   pointerCaptureRequested: () => boolean,
   motionRequested: () => boolean,
+  parentOrigin: string | null,
   resumeAudio: () => void,
 ): {
   applyUiOutput: (output: UiPlatformOutput) => void;
@@ -1526,8 +1537,11 @@ function installInput(
     if (pressed.has(code)) {
       return;
     }
-    if (event.isTrusted) {
-      window.parent.postMessage({ type: "dotli:polkavm-user-activation" }, "*");
+    if (event.isTrusted && parentOrigin !== null) {
+      window.parent.postMessage(
+        { type: "dotli:polkavm-user-activation" },
+        parentOrigin,
+      );
     }
     if (
       textInput === null ||
@@ -1590,8 +1604,15 @@ function installInput(
   };
   const down = (event: PointerEvent): void => {
     requestDeviceMotionPermission();
-    if (event.isTrusted && event.button in pointerButtons) {
-      window.parent.postMessage({ type: "dotli:polkavm-user-activation" }, "*");
+    if (
+      event.isTrusted &&
+      event.button in pointerButtons &&
+      parentOrigin !== null
+    ) {
+      window.parent.postMessage(
+        { type: "dotli:polkavm-user-activation" },
+        parentOrigin,
+      );
     }
     previousPointer = [event.clientX, event.clientY];
     (wantsTextInput && textInput !== null ? textInput : canvas).focus({
@@ -2086,12 +2107,10 @@ export async function runPolkaVmApplication(
       (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
-  const ancestorOrigins = Reflect.get(location, "ancestorOrigins") as
-    | DOMStringList
-    | undefined;
-  const parentOrigin = resolvedParentOrigin(
-    ancestorOrigins?.item(0) ?? null,
-    document.referrer,
+  const parentOrigin = expectedPolkaVmParentOrigin(
+    location.hostname,
+    location.protocol,
+    location.port,
   );
   const onParentMotion = (event: MessageEvent<unknown>): void => {
     if (
@@ -2177,6 +2196,7 @@ export async function runPolkaVmApplication(
     },
     () => usesPointerCapture,
     () => usesMotion,
+    parentOrigin,
     resumeAudio,
   );
   let stopped = false;
@@ -2433,7 +2453,7 @@ export async function runPolkaVmApplication(
             Number(canvas.dataset.polkavmNavigationRequests ?? 0) + 1,
           );
         }
-        postFirstUiPlatformCommand(output, window.parent);
+        postFirstUiPlatformCommand(output, window.parent, parentOrigin);
         break;
       }
       case "gpu-batch": {

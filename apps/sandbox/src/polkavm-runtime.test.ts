@@ -16,7 +16,15 @@ import {
   polkavmWebFallbackEntrypoint,
   unsupportedPolkaVmImport,
   validateFiles,
-  resolvedParentOrigin,
+7:   "upstreamRevision": "d1e3d77dce34c9490196754c1e2bab9596b993f0",
+8:   expectedPolkaVmParentOrigin,
+  shouldReloadAfterWake,
+9:   "sourceRevision": "143e54645cb8b14abef4fc19c9e5646459b2a417",
+  "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
+  "upstreamRevision": "d1e3d77dce34c9490196754c1e2bab9596b993f0",
+10:     "polkavm-computer.js": "baa5353c8a3abc87d85340b32902f645c9c3797f637e352e032f78e52b9a5902",
+    "SHA256SUMS": "c6e229d6044153e9789f1cb2431d491941cb07395d4690d94518f32b6a405808",
+    "SOURCE.json": "42e37e06d4790c0f31cec4ece96cbbfafe9970ee96e11f97c804c7668ed6a240",
   validatedUiPlatformOutput,
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
@@ -223,16 +231,26 @@ describe("PolkaVM UI platform output", () => {
       throw new Error("valid UI output was rejected");
     }
     const postMessage = vi.fn();
-    expect(postFirstUiPlatformCommand(output, { postMessage })).toBe(true);
+    expect(
+      postFirstUiPlatformCommand(
+        output,
+        { postMessage },
+        "https://chinpokomon-polkavm.westendli.dev",
+      ),
+    ).toBe(true);
     expect(postMessage).toHaveBeenCalledWith(
       {
         type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "hello" },
       },
-      "*",
+      "https://chinpokomon-polkavm.westendli.dev",
     );
     expect(
-      postFirstUiPlatformCommand({ ...output, commands: [] }, { postMessage }),
+      postFirstUiPlatformCommand(
+        { ...output, commands: [] },
+        { postMessage },
+        "https://chinpokomon-polkavm.westendli.dev",
+      ),
     ).toBe(false);
     expect(postMessage).toHaveBeenCalledTimes(1);
   });
@@ -282,21 +300,30 @@ describe("MotionSample v1 encoding", () => {
 });
 
 describe("PolkaVM parent motion relay", () => {
-  it("uses the browser-provided ancestor when referrer policy hides referrer", () => {
+  it("derives the authenticated parent from the sandbox origin contract", () => {
     expect(
-      resolvedParentOrigin("https://chinpokomon-polkavm.westendli.dev", ""),
-    ).toBe("https://chinpokomon-polkavm.westendli.dev");
-  });
-
-  it("falls back to a valid referrer and rejects a missing parent origin", () => {
-    expect(
-      resolvedParentOrigin(
-        null,
-        "https://chinpokomon-polkavm.westendli.dev/product",
+      expectedPolkaVmParentOrigin(
+        "chinpokomon-polkavm.app.westendli.dev",
+        "https:",
+        "",
       ),
     ).toBe("https://chinpokomon-polkavm.westendli.dev");
-    expect(resolvedParentOrigin(null, "")).toBeNull();
-    expect(resolvedParentOrigin(null, "not a URL")).toBeNull();
+    expect(
+      expectedPolkaVmParentOrigin(
+        "chinpokomon-polkavm.app.localhost",
+        "http:",
+        "5173",
+      ),
+    ).toBe("http://chinpokomon-polkavm.localhost:5173");
+  });
+
+  it("rejects top-level and non-HTTP origins", () => {
+    expect(
+      expectedPolkaVmParentOrigin("westendli.dev", "https:", ""),
+    ).toBeNull();
+    expect(
+      expectedPolkaVmParentOrigin("app.westendli.dev", "file:", ""),
+    ).toBeNull();
   });
 });
 

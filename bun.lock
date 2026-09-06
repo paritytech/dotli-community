@@ -329,7 +329,7 @@
   },
   "overrides": {
     "brace-expansion": "^5.0.9",
-    "browserslist": ">=4.28.8",
+    "browserslist": "^4.28.8",
     "deepmerge-ts": "^8.0.1",
     "esbuild": "^0.28.1",
     "fast-uri": "3.1.7",

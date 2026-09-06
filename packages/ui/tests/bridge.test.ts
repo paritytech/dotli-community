@@ -606,7 +606,7 @@ describe("bridge render lifecycle", () => {
         command: {
           type: "open-url",
           url: "https://example.test/path",
-          newSurface: true,
+          newSurface: false,
         },
       });
       expect(open).toHaveBeenCalledExactlyOnceWith(

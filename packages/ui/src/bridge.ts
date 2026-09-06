@@ -585,11 +585,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   if (destination.protocol !== "https:" && destination.protocol !== "http:") {
     return;
   }
-  if (command.newSurface) {
-    window.open(destination.href, "_blank", "noopener,noreferrer");
-  } else {
-    window.location.assign(destination.href);
-  }
+  window.open(destination.href, "_blank", "noopener,noreferrer");
 });
 
 let bridgeEventListenersInitialized = false;
