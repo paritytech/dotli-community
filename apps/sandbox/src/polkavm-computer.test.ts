@@ -160,9 +160,9 @@ describe("PolkaVM computer network permissions", () => {
   it("memoizes a domain decision only within one session", async () => {
     const session = createNetworkPermissionSession(4, 2);
     let requests = 0;
-    const request = async (): Promise<boolean> => {
+    const request = (): Promise<boolean> => {
       requests += 1;
-      return true;
+      return Promise.resolve(true);
     };
 
     await expect(session.decide("API.Example.", request)).resolves.toBe(true);
@@ -187,9 +187,9 @@ describe("PolkaVM computer network permissions", () => {
     await Promise.resolve();
 
     await expect(
-      session.decide("two.example", async () => {
+      session.decide("two.example", () => {
         requests += 1;
-        return true;
+        return Promise.resolve(true);
       }),
     ).resolves.toBe(false);
     expect(requests).toBe(1);
@@ -197,15 +197,15 @@ describe("PolkaVM computer network permissions", () => {
     first.resolve(true);
     await expect(pending).resolves.toBe(true);
     await expect(
-      session.decide("two.example", async () => {
+      session.decide("two.example", () => {
         requests += 1;
-        return true;
+        return Promise.resolve(true);
       }),
     ).resolves.toBe(true);
     await expect(
-      session.decide("three.example", async () => {
+      session.decide("three.example", () => {
         requests += 1;
-        return true;
+        return Promise.resolve(true);
       }),
     ).resolves.toBe(false);
     expect(requests).toBe(2);

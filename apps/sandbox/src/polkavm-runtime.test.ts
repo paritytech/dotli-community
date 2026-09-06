@@ -370,9 +370,6 @@ describe("PolkaVM page-cache restore", () => {
         reload,
       );
       const listener = listeners[0];
-      if (listener === undefined) {
-        throw new Error(`pageshow listener missing for ${profile}`);
-      }
       listener({ persisted: false } as PageTransitionEvent);
       listener({ persisted: true } as PageTransitionEvent);
       listener({ persisted: true } as PageTransitionEvent);
