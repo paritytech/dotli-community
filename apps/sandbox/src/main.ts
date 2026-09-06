@@ -837,11 +837,9 @@ async function main(): Promise<void> {
   if (result.type === "single") {
     html = new TextDecoder().decode(result.content);
   } else {
-    // Persist every verified archive before choosing its runtime. HTML products
-    // use the SW as a virtual file system; PolkaVM products use the same cache
-    // as their immutable asset source on the next launch.
-    await storeArchiveInSW(result.files, cid, cid, chainBackend);
-    log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+    // Native PolkaVM products run entirely from the verified in-memory files.
+    // Start them before persisting the archive: IndexedDB can take minutes for
+    // maximum-size packages, and caching must not block the first frame.
     const polkavmRuntime = await runPolkaVmIfPresent(
       result.files,
       cid,
@@ -849,8 +847,22 @@ async function main(): Promise<void> {
     );
     if (polkavmRuntime === null) {
       stopApp();
+      void storeArchiveInSW(result.files, cid, cid, chainBackend)
+        .then(() => {
+          log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+        })
+        .catch((error: unknown) => {
+          log.warn(
+            "[dot.li app] background archive persistence failed:",
+            error,
+          );
+        });
       return;
     }
+    // HTML products and PolkaVM web fallbacks need the SW as a synchronous
+    // virtual filesystem before their document can request sub-resources.
+    await storeArchiveInSW(result.files, cid, cid, chainBackend);
+    log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
     const htmlPath =
       typeof polkavmRuntime === "string" ? polkavmRuntime : "index.html";
     const indexHtml = result.files[htmlPath] as Uint8Array | undefined;
