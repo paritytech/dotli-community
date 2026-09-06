@@ -71,10 +71,6 @@ async function polkavmCar(): Promise<TestCar> {
   return archiveCar([
     ["manifest.json", manifest],
     ["app.polkavm", program],
-    [
-      "polkavm-runtime/polkavm-browser-runtime.wasm",
-      new TextEncoder().encode("package-owned runtime"),
-    ],
   ]);
 }
 
@@ -155,6 +151,12 @@ async function installTruapiPortResponder(page: Page): Promise<void> {
   });
 }
 
+async function waitForHostInitialization(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => performance.getEntriesByName("dotli:main:end").length > 0,
+  );
+}
+
 test("a verified PolkaVM package translates and renders in the sandbox", async ({
   page,
 }) => {
@@ -167,6 +169,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
@@ -309,6 +312,7 @@ test("a WebGPU PolkaVM package selects its web fallback without an adapter", asy
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, manifest, schemaVersion }) => {
@@ -349,6 +353,7 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
@@ -471,6 +476,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ artifactCid, executableManifest, schemaVersion }) => {
@@ -695,6 +701,7 @@ test("a touch gesture scrolls the guest instead of the host page", async ({
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   // Input records reach the guest through the runtime worker, so recording the
   // worker traffic is the only way to observe what the guest actually received.
