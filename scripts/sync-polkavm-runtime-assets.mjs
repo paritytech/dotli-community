@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { copyFile, readFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +55,17 @@ for (const [name, expected] of Object.entries(lock.assets)) {
   const path = resolve(destination, name);
   if (!checkOnly) {
     await copyFile(installedSources.get(name), path);
+    if (name === "SOURCE.json") {
+      const provenance = JSON.parse(await readFile(path, "utf8"));
+      await writeFile(
+        path,
+        `${JSON.stringify(
+          { ...provenance, sourceRevision: lock.sourceRevision },
+          null,
+          2,
+        )}\n`,
+      );
+    }
   }
   const actual = createHash("sha256").update(await readFile(path)).digest("hex");
   if (actual !== expected) {
@@ -66,6 +77,7 @@ const source = JSON.parse(
   await readFile(resolve(destination, "SOURCE.json"), "utf8"),
 );
 if (
+  source.sourceRevision !== lock.sourceRevision ||
   source.upstreamRevision !== lock.upstreamRevision ||
   source.polkavmRevision !== lock.polkavmRevision ||
   source.abi?.runtime !== lock.abi.runtime ||

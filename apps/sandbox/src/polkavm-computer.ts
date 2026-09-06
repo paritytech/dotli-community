@@ -13,11 +13,18 @@ import {
   createTransport,
   type TrUApiClient,
 } from "@parity/truapi";
+import { BASE_DOMAIN } from "@dotli/config/config";
+import { log } from "@dotli/shared/log";
+import { serializeError } from "@dotli/shared/errors";
 import {
   ComputerTerminal,
   keyEventToBytes,
   type TerminalSnapshot,
 } from "./computer-terminal";
+import {
+  createRetryableLazyPromise,
+  expectedComputerHostOrigin,
+} from "./polkavm-computer-contract";
 import { waitForTruapiPort } from "./polkavm-runtime";
 
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
@@ -39,6 +46,8 @@ const MIN_ROWS = 6;
 const MAX_ROWS = 100;
 const RESOLVE_TIMEOUT_MS = 30_000;
 const PACKAGE_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const TRUAPI_FAILURE_STATUS =
+  "Network permission unavailable — retrying on next request.";
 
 // Interfaces this sandbox host provides; ids per the runtime ADR namespace.
 const HOST_INTERFACES: readonly string[] = [
@@ -520,21 +529,23 @@ export async function runComputerApplication(
   if (descriptor === null) {
     throw new Error("package is not a PolkaVM computer");
   }
-  // Permission prompts route through the product's TrUAPI connection. Resolve
-  // it lazily: a computer that never touches the network must boot (and keep
-  // working) without the Host port, and the port handshake must not gate the
-  // terminal.
-  let truapiPromise: Promise<TrUApiClient> | null = null;
-  const lazyTruapi = async (): Promise<TrUApiClient> =>
-    createClient(
-      createTransport(createMessagePortProvider(await waitForTruapiPort())),
-    );
-  const truapi = (): Promise<TrUApiClient> => (truapiPromise ??= lazyTruapi());
   validateComputerFiles(files, descriptor);
 
   const { screen, status } = createComputerShell();
   const geometry = terminalGeometry(screen);
   const terminal = new ComputerTerminal(geometry.columns, geometry.rows);
+
+  // Permission prompts route through the product's TrUAPI connection. Resolve
+  // it lazily: a computer that never touches the network must boot (and keep
+  // working) without the Host port, and the port handshake must not gate the
+  // terminal. Rejected handshakes are not cached, so a transient failure only
+  // denies the current request and the next request retries.
+  const truapi = createRetryableLazyPromise(
+    async (): Promise<TrUApiClient> =>
+      createClient(
+        createTransport(createMessagePortProvider(await waitForTruapiPort())),
+      ),
+  );
 
   const runtime = await fetch(
     `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
@@ -582,7 +593,9 @@ export async function runComputerApplication(
   }));
   const program = ownedBytes(files[descriptor.programPath]);
 
-  const worker = new Worker("/polkavm-computer-worker.js");
+  const worker = new Worker(
+    `${POLKAVM_RUNTIME_ROOT}/polkavm-computer-worker.js`,
+  );
 
   let renderQueued = false;
   const scheduleRender = (): void => {
@@ -601,6 +614,15 @@ export async function runComputerApplication(
   // executable record and contenthash, then fetches and verifies the
   // archive exactly like a top-level app before handing the program to
   // the worker. The host (not this code) owns any consent policy.
+  const ancestorOrigins = window.location.ancestorOrigins as
+    | DOMStringList
+    | undefined;
+  const hostOrigin = expectedComputerHostOrigin(
+    window.location.hostname,
+    ancestorOrigins?.item(0) ?? null,
+    document.referrer,
+    BASE_DOMAIN,
+  );
   let resolveNonce = 0;
   const resolveAppRecord = (
     label: string,
@@ -618,7 +640,12 @@ export async function runComputerApplication(
         executableManifest?: string;
         message?: string;
       } | null;
-      if (event.source !== window.parent || data?.nonce !== nonce) {
+      if (
+        hostOrigin === null ||
+        event.source !== window.parent ||
+        event.origin !== hostOrigin ||
+        data?.nonce !== nonce
+      ) {
         return;
       }
       if (
@@ -642,9 +669,14 @@ export async function runComputerApplication(
       window.removeEventListener("message", onMessage);
     };
     window.addEventListener("message", onMessage);
+    if (hostOrigin === null) {
+      cleanup();
+      reject(new Error("cannot authenticate the computer host origin"));
+      return promise;
+    }
     window.parent.postMessage(
       { type: "dotli:computer-resolve-app", label, nonce },
-      "*",
+      hostOrigin,
     );
     return promise;
   };
@@ -779,16 +811,25 @@ export async function runComputerApplication(
         ) {
           const { domain, nonce } = message;
           void truapi()
-            .then((client) =>
-              client.permissions.requestRemotePermission({
+            .then((client) => {
+              if (status.textContent === TRUAPI_FAILURE_STATUS) {
+                status.textContent = "";
+              }
+              return client.permissions.requestRemotePermission({
                 permission: {
                   tag: "Remote",
                   value: { domains: [domain] },
                 },
-              }),
-            )
+              });
+            })
             .then((result) => result.isOk() && result.value.granted)
-            .catch(() => false)
+            .catch((error: unknown) => {
+              log.warn(
+                `[dot.li computer] TrUAPI handshake or permission request failed; denied ${domain}: ${serializeError(error)}`,
+              );
+              status.textContent = TRUAPI_FAILURE_STATUS;
+              return false;
+            })
             .then((granted) => {
               worker.postMessage({
                 type: "network-permission-result",

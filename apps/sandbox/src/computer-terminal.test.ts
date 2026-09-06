@@ -242,6 +242,34 @@ describe("ComputerTerminal vim-like output", () => {
     terminal.write(Uint8Array.from([0xc3, 0xa9, 0xe2, 0x82, 0xac]));
     expect(terminal.text()).toBe("é€\n");
   });
+
+  it.each([
+    [
+      "lead byte above F4",
+      [0xf5, 0x80, 0x80, 0x80],
+      "\ufffd\ufffd\ufffd\ufffd",
+    ],
+    [
+      "code point above U+10FFFF",
+      [0xf4, 0x90, 0x80, 0x80],
+      "\ufffd\ufffd\ufffd\ufffd",
+    ],
+    ["overlong two-byte sequence", [0xc0, 0xaf], "\ufffd\ufffd"],
+    ["overlong three-byte sequence", [0xe0, 0x80, 0x80], "\ufffd\ufffd\ufffd"],
+    ["UTF-16 surrogate", [0xed, 0xa0, 0x80], "\ufffd\ufffd\ufffd"],
+    ["bad continuation", [0xe2, 0x28, 0xa1], "\ufffd(\ufffd"],
+  ])("replaces a malformed UTF-8 %s", (_name, bytes, replacement) => {
+    const terminal = new ComputerTerminal(20, 2);
+    terminal.write(Uint8Array.from([...bytes, 0x41]));
+    expect(terminal.text()).toBe(`${replacement}A\n`);
+  });
+
+  it("streams the highest valid Unicode code point across writes", () => {
+    const terminal = new ComputerTerminal(10, 2);
+    terminal.write(Uint8Array.from([0xf4, 0x8f]));
+    terminal.write(Uint8Array.from([0xbf, 0xbf]));
+    expect(terminal.text()).toBe("\u{10ffff}\n");
+  });
 });
 
 describe("keyEventToBytes", () => {

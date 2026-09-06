@@ -75,7 +75,13 @@ import type {
   RootManifest,
 } from "@dotli/resolver/manifest";
 import { parseExecutableManifest } from "@dotli/resolver/manifest-types";
-import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
+import {
+  BASE_DOMAIN,
+  DEBUG,
+  SITE_ID,
+  isLocalhost,
+  sandboxOriginForLabel,
+} from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
@@ -332,11 +338,15 @@ let computerResolutionListenerInstalled = false;
  * wrong answer here fails verification rather than running unintended
  * code. Consent policy (prompting before fetching) belongs here later.
  */
-function listenForComputerResolutions(chainBackend: Backend): void {
+function listenForComputerResolutions(
+  productLabel: string,
+  chainBackend: Backend,
+): void {
   if (computerResolutionListenerInstalled) {
     return;
   }
   computerResolutionListenerInstalled = true;
+  const expectedSandboxOrigin = sandboxOriginForLabel(productLabel);
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data as {
       type?: unknown;
@@ -349,16 +359,16 @@ function listenForComputerResolutions(chainBackend: Backend): void {
     const source = event.source;
     if (
       source === null ||
+      event.origin !== expectedSandboxOrigin ||
       typeof data.label !== "string" ||
       !/^[a-z0-9-]{1,63}$/.test(data.label) ||
-      typeof data.nonce !== "string" ||
-      !new URL(event.origin).hostname.includes(".app.")
+      typeof data.nonce !== "string"
     ) {
       return;
     }
     const { label, nonce } = data;
     const reply = (message: Record<string, unknown>): void => {
-      (source as Window).postMessage(message, event.origin);
+      (source as Window).postMessage(message, expectedSandboxOrigin);
     };
     void (async () => {
       try {
@@ -1343,7 +1353,7 @@ async function main(): Promise<void> {
           );
           await m.span(S.E2E_FAST, async () => {
             setShieldState(shieldState);
-            listenForComputerResolutions(chainBackend);
+            listenForComputerResolutions(label, chainBackend);
             const { renderAppSubdomain } = await renderChunkPromise;
             advancePhase(contentFetchPhase);
             await renderAppSubdomain(
@@ -1520,7 +1530,7 @@ async function main(): Promise<void> {
     }
 
     setShieldState(shieldState);
-    listenForComputerResolutions(chainBackend);
+    listenForComputerResolutions(label, chainBackend);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(

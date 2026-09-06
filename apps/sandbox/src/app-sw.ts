@@ -17,6 +17,7 @@ declare const __SW_VERSION__: string;
 import { getMimeType } from "@dotli/shared/mime";
 import { computeArchiveDigest } from "@dotli/shared/archive-digest";
 import { SW_ARCHIVE_CACHE_MAX } from "@dotli/config/config";
+import { shadowsHostOwnedPath } from "./host-owned-paths";
 
 // Base path, derived at runtime from the SW script location.
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");
@@ -128,6 +129,10 @@ async function loadArchiveFromDBByDomain(
       return entry;
     }
 
+    if (Object.keys(entry.files).some(shadowsHostOwnedPath)) {
+      return null;
+    }
+
     // Discard entries whose persisted bytes don't match their integrity tag
     // (corruption / tampering), and legacy entries that predate the tag. A
     // miss makes the page re-fetch (and re-persist with a digest), which is
@@ -226,10 +231,10 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data.packed as ArrayBuffer | undefined;
-    const idx = data.index as { p: string; o: number; l: number }[] | undefined;
+    const packed = data.packed;
+    const idx = data.index;
 
-    if (packed === undefined || idx === undefined) {
+    if (!(packed instanceof ArrayBuffer) || !Array.isArray(idx)) {
       if (event.source) {
         (event.source as Client).postMessage({
           type: "ARCHIVE_ERROR",
@@ -239,8 +244,40 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       return;
     }
 
+    const malformed = idx.find(
+      (entry): boolean =>
+        typeof entry !== "object" ||
+        entry === null ||
+        typeof (entry as Record<string, unknown>).p !== "string" ||
+        typeof (entry as Record<string, unknown>).o !== "number" ||
+        typeof (entry as Record<string, unknown>).l !== "number",
+    );
+    if (malformed !== undefined) {
+      if (event.source) {
+        (event.source as Client).postMessage({
+          type: "ARCHIVE_ERROR",
+          reason: "SET_ARCHIVE contains a malformed index entry",
+        });
+      }
+      return;
+    }
+
+    const index = idx as { p: string; o: number; l: number }[];
+    const reserved = index.find((entry) => shadowsHostOwnedPath(entry.p));
+    if (reserved !== undefined) {
+      if (event.source) {
+        (event.source as Client).postMessage({
+          type: "ARCHIVE_ERROR",
+          reason: `archive path is reserved by the host: ${reserved.p}`,
+        });
+      }
+      return;
+    }
+
     archivePacked = packed;
-    archiveFileIndex = new Map(idx.map((e) => [e.p, { o: e.o, l: e.l }]));
+    archiveFileIndex = new Map(
+      index.map((entry) => [entry.p, { o: entry.o, l: entry.l }]),
+    );
 
     const domain = data.domain as string | undefined;
     const cid = data.cid as string | undefined;
@@ -406,7 +443,10 @@ self.addEventListener("fetch", (event: FetchEvent) => {
 
   // PolkaVM products run inside a host-owned runtime. Package files must never
   // shadow the translator, worker, Wasm interpreter, or their license notices.
-  if (url.pathname.startsWith(POLKAVM_RUNTIME_PREFIX)) {
+  if (
+    url.pathname.startsWith(POLKAVM_RUNTIME_PREFIX) ||
+    url.pathname === `${BASE}polkavm-computer-worker.js`
+  ) {
     return;
   }
 

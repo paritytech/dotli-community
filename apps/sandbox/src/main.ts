@@ -56,6 +56,7 @@ import {
   unsupportedPolkaVmImport,
 } from "./polkavm-runtime";
 import { isComputerPackage, runComputerApplication } from "./polkavm-computer";
+import { assertNoHostOwnedPaths } from "./host-owned-paths";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -379,6 +380,8 @@ async function storeArchiveInSW(
   cid: string,
   contentBackend: string,
 ): Promise<void> {
+  assertNoHostOwnedPaths(Object.keys(files));
+
   const sw = navigator.serviceWorker.controller;
   if (!sw) {
     return;

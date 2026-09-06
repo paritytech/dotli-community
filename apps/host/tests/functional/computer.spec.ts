@@ -134,7 +134,7 @@ async function answerResolutions(
               cid: app.cid,
               executableManifest: app.manifest,
             };
-      (event.source as Window).postMessage(reply, "*");
+      (event.source as Window).postMessage(reply, event.origin);
     });
   }, apps);
 }
@@ -265,7 +265,9 @@ test("a PolkaVM computer open-spawns a published editor and persists /home", asy
   ]);
   await routeCar(page, computer);
   await routeCar(page, kilo);
-  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://computer-fixture.localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
   await answerResolutions(page, {
     kilo: { cid: kilo.cid, manifest: kilo.manifest },
   });
@@ -347,7 +349,9 @@ test("Vim runs as a standalone published computer app", async ({ page }) => {
     ["vim.polkavm", "vim.polkavm"],
   ]);
   await routeCar(page, vim);
-  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://vim-fixture.localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
   const product = await mountComputer(page, vim, true, "vim-fixture");
   const screen = product.locator("#dotli-computer-screen");
   await expect(screen).toHaveAttribute("data-computer-ready", "true", {
@@ -376,7 +380,9 @@ test("Kilo runs as a standalone published computer app", async ({ page }) => {
     ["kilo.polkavm", "kilo.polkavm"],
   ]);
   await routeCar(page, kilo);
-  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://kilo-fixture.localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
   const product = await mountComputer(page, kilo, true, "kilo-fixture");
   const screen = product.locator("#dotli-computer-screen");
   await expect(screen).toHaveAttribute("data-computer-ready", "true", {
@@ -414,7 +420,7 @@ test("a network computer open-spawns Lynx by published name", async ({
   ]);
   await routeCar(page, computer);
   await routeCar(page, lynx);
-  await page.goto("http://localhost:5173/", {
+  await page.goto("http://lynx-child-fixture.localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
   await answerResolutions(page, {
@@ -448,7 +454,7 @@ test("Lynx browses HTTPS through the guest TLS stack", async ({ page }) => {
     ["home/index.html", "lynx-index.html"],
   ]);
   await routeCar(page, lynx);
-  await page.goto("http://localhost:5173/", {
+  await page.goto("http://lynx-fixture.localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
   // The functional harness has no dotli bridge; stand in for the Host core
@@ -492,7 +498,7 @@ test("a network app boots even when no TCP relay is granted", async ({
     ["home/index.html", "lynx-index.html"],
   ]);
   await routeCar(page, lynx);
-  await page.goto("http://localhost:5173/", {
+  await page.goto("http://lynx-offline.localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
   const product = await mountComputer(page, lynx, true, "lynx-offline");
@@ -548,7 +554,7 @@ test("a workspace app tiles independently sandboxed shell panes", async ({
   ]);
   await routeCar(page, workspace);
   await routeCar(page, kilo);
-  await page.goto("http://localhost:5173/", {
+  await page.goto("http://ws-fixture.localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
   // kilo is NOT bundled in the workspace archive: the pane's shell resolves
@@ -683,7 +689,7 @@ test("a workspace pane open-spawns Lynx with its seed files", async ({
   ]);
   await routeCar(page, workspace);
   await routeCar(page, lynx);
-  await page.goto("http://localhost:5173/", {
+  await page.goto("http://ws-lynx.localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
   await answerResolutions(page, {

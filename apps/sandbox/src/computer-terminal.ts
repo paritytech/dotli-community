@@ -98,6 +98,9 @@ export class ComputerTerminal {
   // Streaming UTF-8 decode state for ground bytes.
   private utf8Pending = 0;
   private utf8CodePoint = 0;
+  private utf8MinimumCodePoint = 0;
+  private utf8NextMinimum = 0x80;
+  private utf8NextMaximum = 0xbf;
 
   constructor(columns: number, rows: number) {
     this.columns = Math.max(1, columns);
@@ -200,17 +203,32 @@ export class ComputerTerminal {
 
   private writeGround(byte: number): void {
     if (this.utf8Pending > 0) {
-      if ((byte & 0xc0) === 0x80) {
+      if (byte >= this.utf8NextMinimum && byte <= this.utf8NextMaximum) {
         this.utf8CodePoint = (this.utf8CodePoint << 6) | (byte & 0x3f);
         this.utf8Pending -= 1;
+        this.utf8NextMinimum = 0x80;
+        this.utf8NextMaximum = 0xbf;
         if (this.utf8Pending === 0) {
-          this.put(String.fromCodePoint(this.utf8CodePoint));
+          const codePoint = this.utf8CodePoint;
+          const valid =
+            codePoint >= this.utf8MinimumCodePoint &&
+            (codePoint < 0xd800 || codePoint > 0xdfff) &&
+            codePoint <= 0x10ffff;
+          this.resetUtf8();
+          this.put(valid ? String.fromCodePoint(codePoint) : "\ufffd");
         }
         return;
       }
-      // Malformed sequence: drop it and reinterpret the current byte.
-      this.utf8Pending = 0;
+
+      // Replace the malformed sequence, then reinterpret the byte that broke
+      // it. This matches the streaming UTF-8 decoder recovery rule and keeps
+      // ASCII controls (including ESC) effective after malformed guest output.
+      this.resetUtf8();
+      this.put("\ufffd");
+      this.writeGround(byte);
+      return;
     }
+
     switch (byte) {
       case ESCAPE:
         this.state = ParseState.Escape;
@@ -233,19 +251,59 @@ export class ComputerTerminal {
       default:
         break;
     }
+
     if (byte >= 0x20 && byte <= 0x7e) {
       this.put(String.fromCharCode(byte));
-    } else if ((byte & 0xe0) === 0xc0) {
-      this.utf8Pending = 1;
-      this.utf8CodePoint = byte & 0x1f;
-    } else if ((byte & 0xf0) === 0xe0) {
-      this.utf8Pending = 2;
-      this.utf8CodePoint = byte & 0x0f;
-    } else if ((byte & 0xf8) === 0xf0) {
-      this.utf8Pending = 3;
-      this.utf8CodePoint = byte & 0x07;
+      return;
     }
-    // Remaining C0/C1 bytes are ignored.
+    if (byte >= 0xc2 && byte <= 0xdf) {
+      this.beginUtf8(1, byte & 0x1f, 0x80);
+      return;
+    }
+    if (byte >= 0xe0 && byte <= 0xef) {
+      this.beginUtf8(2, byte & 0x0f, 0x800);
+      if (byte === 0xe0) {
+        this.utf8NextMinimum = 0xa0;
+      } else if (byte === 0xed) {
+        this.utf8NextMaximum = 0x9f;
+      }
+      return;
+    }
+    if (byte >= 0xf0 && byte <= 0xf4) {
+      this.beginUtf8(3, byte & 0x07, 0x10000);
+      if (byte === 0xf0) {
+        this.utf8NextMinimum = 0x90;
+      } else if (byte === 0xf4) {
+        this.utf8NextMaximum = 0x8f;
+      }
+      return;
+    }
+
+    // Remaining ASCII C0 controls are ignored. Every non-ASCII byte reaching
+    // this point is malformed UTF-8 (stray continuations, C0/C1, and F5-FF).
+    if (byte >= 0x80) {
+      this.put("\ufffd");
+    }
+  }
+
+  private beginUtf8(
+    pending: number,
+    codePoint: number,
+    minimumCodePoint: number,
+  ): void {
+    this.utf8Pending = pending;
+    this.utf8CodePoint = codePoint;
+    this.utf8MinimumCodePoint = minimumCodePoint;
+    this.utf8NextMinimum = 0x80;
+    this.utf8NextMaximum = 0xbf;
+  }
+
+  private resetUtf8(): void {
+    this.utf8Pending = 0;
+    this.utf8CodePoint = 0;
+    this.utf8MinimumCodePoint = 0;
+    this.utf8NextMinimum = 0x80;
+    this.utf8NextMaximum = 0xbf;
   }
 
   private writeEscape(byte: number): void {
