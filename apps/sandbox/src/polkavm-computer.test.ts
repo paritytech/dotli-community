@@ -88,14 +88,13 @@ describe("PolkaVM computer host boundary", () => {
 });
 
 describe("host-owned archive paths", () => {
-  it("reserves the runtime tree and both current and legacy supervisor paths", () => {
+  it("reserves the host-owned runtime tree", () => {
     expect(
       shadowsHostOwnedPath("polkavm-runtime/polkavm-computer-worker.js"),
     ).toBe(true);
     expect(shadowsHostOwnedPath("/polkavm-runtime/polkavm-worker.js")).toBe(
       true,
     );
-    expect(shadowsHostOwnedPath("polkavm-computer-worker.js")).toBe(true);
     expect(shadowsHostOwnedPath("assets/polkavm-computer-worker.js")).toBe(
       false,
     );

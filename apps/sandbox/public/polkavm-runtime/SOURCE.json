@@ -3,15 +3,7 @@
   "upstreamPackage": "@parity/polkavm-browser-runtime",
   "upstreamVersion": "0.2.0",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-7:   "upstreamRevision": "d1e3d77dce34c9490196754c1e2bab9596b993f0",
-8:   expectedPolkaVmParentOrigin,
-  shouldReloadAfterWake,
-9:   "sourceRevision": "143e54645cb8b14abef4fc19c9e5646459b2a417",
-  "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
   "upstreamRevision": "d1e3d77dce34c9490196754c1e2bab9596b993f0",
-10:     "polkavm-computer.js": "baa5353c8a3abc87d85340b32902f645c9c3797f637e352e032f78e52b9a5902",
-    "SHA256SUMS": "c6e229d6044153e9789f1cb2431d491941cb07395d4690d94518f32b6a405808",
-    "SOURCE.json": "42e37e06d4790c0f31cec4ece96cbbfafe9970ee96e11f97c804c7668ed6a240",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
   "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {
@@ -25,5 +17,5 @@
     }
   },
   "assetChecksums": "dist/SHA256SUMS",
-  "sourceRevision": "c6b8925468f0452661f9b69218b6f1a83ec17b44"
+  "sourceRevision": "143e54645cb8b14abef4fc19c9e5646459b2a417"
 }

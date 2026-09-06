@@ -26,6 +26,7 @@ import {
   expectedComputerHostOrigin,
 } from "./polkavm-computer-contract";
 import { waitForTruapiPort } from "./polkavm-runtime";
+import PolkaVmComputerWorker from "./polkavm-computer-worker.js?worker&inline";
 
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
@@ -540,12 +541,12 @@ export async function runComputerApplication(
   // working) without the Host port, and the port handshake must not gate the
   // terminal. Rejected handshakes are not cached, so a transient failure only
   // denies the current request and the next request retries.
-  const truapi = createRetryableLazyPromise(
-    async (): Promise<TrUApiClient> =>
-      createClient(
-        createTransport(createMessagePortProvider(await waitForTruapiPort())),
-      ),
-  );
+  let truapiPort: MessagePort | null = null;
+  const truapi = createRetryableLazyPromise(async (): Promise<TrUApiClient> => {
+    const port = await waitForTruapiPort();
+    truapiPort = port;
+    return createClient(createTransport(createMessagePortProvider(port)));
+  });
 
   const runtime = await fetch(
     `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
@@ -593,9 +594,7 @@ export async function runComputerApplication(
   }));
   const program = ownedBytes(files[descriptor.programPath]);
 
-  const worker = new Worker(
-    `${POLKAVM_RUNTIME_ROOT}/polkavm-computer-worker.js`,
-  );
+  const worker = new PolkaVmComputerWorker();
 
   let renderQueued = false;
   const scheduleRender = (): void => {
@@ -983,4 +982,29 @@ export async function runComputerApplication(
       ...workerFiles.map((entry) => entry.bytes.buffer),
     ],
   );
+
+  let stopped = false;
+  const stop = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    persistNow();
+    running = false;
+    observer.disconnect();
+    window.clearTimeout(resizeTimer);
+    worker.postMessage({ type: "stop" });
+    worker.terminate();
+    truapiPort?.close();
+    if (window.__HOST_API_PORT__ === truapiPort) {
+      delete window.__HOST_API_PORT__;
+    }
+    truapiPort = null;
+  };
+  window.addEventListener("pagehide", stop, { once: true });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      location.reload();
+    }
+  });
 }

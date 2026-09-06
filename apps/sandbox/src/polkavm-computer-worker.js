@@ -69,7 +69,9 @@ class PermissionTcpSocket {
   }
 
   read(capacity) {
-    if (this.error !== null) throw this.error;
+    if (this.error !== null) {
+      throw this.error;
+    }
     if (this.denied) {
       // The browser runtime catches Errors from socket.read() and maps
       // them to STATUS_INVALID; set denied flag so the runtime returns
@@ -80,7 +82,9 @@ class PermissionTcpSocket {
   }
 
   write(bytes) {
-    if (this.error !== null) throw this.error;
+    if (this.error !== null) {
+      throw this.error;
+    }
     if (this.denied) {
       return null;
     }
@@ -135,7 +139,7 @@ function fail(error) {
   });
 }
 
-function drainOutput(includeMetadata = false, mountedFiles = []) {
+function drainTerminalOutput() {
   for (
     let output = supervisor.takeTerminalOutput();
     output !== null;
@@ -145,6 +149,14 @@ function drainOutput(includeMetadata = false, mountedFiles = []) {
       self.postMessage({ type: "output", bytes: output }, [output.buffer]);
     }
   }
+}
+
+let filesystemDirty = false;
+function flushFilesystem(includeMetadata = false, mountedFiles = []) {
+  if (!filesystemDirty && !includeMetadata && mountedFiles.length === 0) {
+    return;
+  }
+  filesystemDirty = false;
   const entries = [
     ...mountedFiles.map(({ path, bytes }) => [path, bytes]),
     ...supervisor.takeModifiedFiles(),
@@ -164,6 +176,11 @@ function drainOutput(includeMetadata = false, mountedFiles = []) {
       entries.map(([, bytes]) => bytes.buffer),
     );
   }
+}
+
+function drainOutput(includeMetadata = false, mountedFiles = []) {
+  drainTerminalOutput();
+  flushFilesystem(includeMetadata, mountedFiles);
 }
 
 function flushPendingInput() {
@@ -195,9 +212,11 @@ function pump() {
   try {
     for (let slice = 0; slice < MAX_SLICES_PER_PUMP; slice += 1) {
       flushPendingInput();
+      filesystemDirty = true;
       const status = supervisor.run();
-      drainOutput();
+      drainTerminalOutput();
       if (status.kind === "exited") {
+        flushFilesystem();
         finished = true;
         supervisor.dispose();
         self.postMessage({ type: "exit", code: status.code });
@@ -206,11 +225,13 @@ function pump() {
       if (status.kind === "package") {
         // Open spawn: ask the page to resolve the name (DotNS) and hand
         // back program bytes; the computer stays suspended meanwhile.
+        flushFilesystem();
         resolvingPackage = status.package;
         self.postMessage({ type: "resolve-package", name: status.package });
         return;
       }
       if (!supervisor.hasTerminalInput() && pendingInput.length === 0) {
+        flushFilesystem();
         return;
       }
     }
@@ -345,6 +366,16 @@ self.onmessage = (event) => {
           resolvingPackage = null;
           pump();
         }
+        break;
+      }
+      case "stop": {
+        if (supervisor !== null && !finished) {
+          drainOutput(true);
+          finished = true;
+          supervisor.dispose();
+          supervisor = null;
+        }
+        self.close();
         break;
       }
       default:

@@ -163,7 +163,6 @@ function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
-
 function parseArchiveIndex(
   value: unknown,
   packedLength: number,
@@ -476,10 +475,7 @@ self.addEventListener("fetch", (event: FetchEvent) => {
 
   // PolkaVM products run inside a host-owned runtime. Package files must never
   // shadow the translator, worker, Wasm interpreter, or their license notices.
-  if (
-    url.pathname.startsWith(POLKAVM_RUNTIME_PREFIX) ||
-    url.pathname === `${BASE}polkavm-computer-worker.js`
-  ) {
+  if (url.pathname.startsWith(POLKAVM_RUNTIME_PREFIX)) {
     return;
   }
 
