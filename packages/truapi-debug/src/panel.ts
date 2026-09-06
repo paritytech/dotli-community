@@ -192,38 +192,77 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
 /** Adjust the currently-mounted product iframe so the panel doesn't overlay it. */
 function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+  const iframe = productIframe();
   if (iframe === null) {
     return;
   }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? 56 : 0;
   if (state.dock === "right") {
-    iframe.style.height = `calc(100vh - ${String(topOffset)}px)`;
+    iframe.style.height = usableHeight();
     // When collapsed, the 32px header bar overlays the top-right corner
     // of the iframe rather than reserving a full-height column. Mirrors
     // how bottom-dock collapse overlays only the bottom 32px.
     iframe.style.width = state.collapsed
-      ? "100%"
-      : `calc(100vw - ${String(panel.offsetWidth)}px)`;
+      ? usableWidth()
+      : `calc(${usableWidth()} - ${String(panel.offsetWidth)}px)`;
   } else {
-    // Host's renderIframe sets inline width:100%. Restore
-    // that explicitly. Clearing to "" falls back to the HTML iframe
-    // default of 300px and breaks the layout.
-    iframe.style.width = "100%";
-    const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
-    iframe.style.height = `calc(100vh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
+    iframe.style.width = usableWidth();
+    // The panel is fixed to the bottom edge, so its box already contains the
+    // bottom inset that `usableHeight` also reserves. Subtracting the panel
+    // from the viewport instead of from the usable height counts it once.
+    const panelBox = state.collapsed
+      ? `calc(32px + ${SAFE_BOTTOM})`
+      : `${String(panel.offsetHeight)}px`;
+    iframe.style.height = `calc(100dvh - ${topInset()} - ${panelBox})`;
   }
 }
 
 function restoreIframeLayout(): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+  const iframe = productIframe();
   if (iframe === null) {
     return;
   }
+  iframe.style.height = usableHeight();
+  iframe.style.width = usableWidth();
+}
+
+/**
+ * The mounted product frame. Bare `iframe` also matches the 0x0 protocol
+ * iframe the protocol client appends to the document — it is aria-hidden, so
+ * the same predicate the topbar uses skips it here.
+ */
+function productIframe(): HTMLIFrameElement | null {
+  return document.querySelector<HTMLIFrameElement>(
+    'iframe:not([aria-hidden="true"])',
+  );
+}
+
+// Host geometry tokens, defined in `@dotli/ui`'s `base.css` and applied to the
+// product frame by `productIframeBox`. They are repeated here — with the px
+// fallbacks inline styles need — because `@dotli/ui` depends on this package,
+// so importing that module back would close a cycle.
+const SAFE_TOP = "var(--safe-top, 0px)";
+const SAFE_BOTTOM = "var(--safe-bottom, 0px)";
+const SAFE_LEFT = "var(--safe-left, 0px)";
+const SAFE_RIGHT = "var(--safe-right, 0px)";
+const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
+
+/**
+ * Space above the product iframe. `--topbar-height` already includes the top
+ * safe inset, so with a topbar one term covers both.
+ */
+function topInset(): string {
   const hasTopbar = document.getElementById("topbar") !== null;
-  iframe.style.height = hasTopbar ? "calc(100vh - 40px)" : "100vh";
-  iframe.style.width = "100%";
+  return hasTopbar ? TOPBAR_HEIGHT : SAFE_TOP;
+}
+
+/** Product-iframe height with no panel taking space: the host content rect. */
+function usableHeight(): string {
+  return `calc(100dvh - ${topInset()} - ${SAFE_BOTTOM})`;
+}
+
+/** Product-iframe width with no panel taking space. */
+function usableWidth(): string {
+  return `calc(100% - ${SAFE_LEFT} - ${SAFE_RIGHT})`;
 }
 
 type PanelView = "list" | "timeline";
