@@ -188,9 +188,15 @@ describe("PolkaVM UI platform output", () => {
     ],
   };
 
-  it("validates bounded state and ordered commands", () => {
+  it("validates bounded ABI state and drops guest-only URL controls", () => {
     const output = validatedUiPlatformOutput(value);
-    expect(output).toEqual(value);
+    expect(output).toEqual({
+      ...value,
+      commands: [
+        { type: "copy-text", text: "hello" },
+        { type: "open-url", url: "https://example.test/path" },
+      ],
+    });
     expect(
       validatedUiPlatformOutput({ ...value, cursorIcon: "url(javascript:)" }),
     ).toBeNull();
@@ -213,6 +219,12 @@ describe("PolkaVM UI platform output", () => {
       validatedUiPlatformOutput({
         ...value,
         commands: [{ type: "copy-text", text: "🦀".repeat(16_385) }],
+      }),
+    ).toBeNull();
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: [{ type: "open-url", url: "https://example.test/path" }],
       }),
     ).toBeNull();
   });
@@ -238,6 +250,25 @@ describe("PolkaVM UI platform output", () => {
       },
       "https://chinpokomon-polkavm.westendli.dev",
     );
+    const openUrl = output.commands[1];
+    expect(openUrl).toBeDefined();
+    expect(
+      postFirstUiPlatformCommand(
+        { ...output, commands: openUrl === undefined ? [] : [openUrl] },
+        { postMessage },
+        "https://chinpokomon-polkavm.westendli.dev",
+      ),
+    ).toBe(true);
+    expect(postMessage).toHaveBeenLastCalledWith(
+      {
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "https://example.test/path",
+        },
+      },
+      "https://chinpokomon-polkavm.westendli.dev",
+    );
     expect(
       postFirstUiPlatformCommand(
         { ...output, commands: [] },
@@ -245,7 +276,7 @@ describe("PolkaVM UI platform output", () => {
         "https://chinpokomon-polkavm.westendli.dev",
       ),
     ).toBe(false);
-    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -743,15 +774,20 @@ describe("PolkaVM host-frame transport", () => {
       removeEventListener: vi.fn(),
     } satisfies TruapiPortScope;
     const target = { postMessage: vi.fn() } satisfies TruapiPortTarget;
-    await expect(waitForTruapiPort(scope, target, 0)).resolves.toBe(
-      channel.port1,
-    );
+    await expect(
+      waitForTruapiPort(
+        scope,
+        target,
+        "https://chinpokomon-polkavm.westendli.dev",
+        0,
+      ),
+    ).resolves.toBe(channel.port1);
     expect(target.postMessage).not.toHaveBeenCalled();
     channel.port1.close();
     channel.port2.close();
   });
 
-  it("negotiates and adopts a transferred Host port", async () => {
+  it("negotiates a transferred Host port only with the owning origin", async () => {
     const channel = new MessageChannel();
     let listener: ((event: MessageEvent<unknown>) => void) | null = null;
     const scope: TruapiPortScope = {
@@ -770,24 +806,33 @@ describe("PolkaVM host-frame transport", () => {
         }
       },
     };
+    const parentOrigin = "https://chinpokomon-polkavm.westendli.dev";
     const target = {
       postMessage(message: unknown, targetOrigin: string) {
         expect(message).toEqual({ type: "truapi-ready" });
-        expect(targetOrigin).toBe("*");
+        expect(targetOrigin).toBe(parentOrigin);
         if (listener === null) {
           throw new Error("message listener was not ready");
         }
         listener({
           source: target as unknown as MessageEventSource,
+          origin: "https://evil.example",
+          data: { type: "truapi-init" },
+          ports: [channel.port1],
+        } as unknown as MessageEvent<unknown>);
+        expect(scope.__HOST_API_PORT__).toBeUndefined();
+        listener({
+          source: target as unknown as MessageEventSource,
+          origin: parentOrigin,
           data: { type: "truapi-init" },
           ports: [channel.port1],
         } as unknown as MessageEvent<unknown>);
       },
     } satisfies TruapiPortTarget;
 
-    await expect(waitForTruapiPort(scope, target, 100)).resolves.toBe(
-      channel.port1,
-    );
+    await expect(
+      waitForTruapiPort(scope, target, parentOrigin, 100),
+    ).resolves.toBe(channel.port1);
     expect(scope.__HOST_API_PORT__).toBe(channel.port1);
     channel.port1.close();
     channel.port2.close();
@@ -799,12 +844,13 @@ describe("PolkaVM host-frame transport", () => {
       removeEventListener: vi.fn(),
     } satisfies TruapiPortScope;
     const target = { postMessage: vi.fn() } satisfies TruapiPortTarget;
-    await expect(waitForTruapiPort(scope, target, 0)).rejects.toThrow(
-      /TrUAPI Host port was not available/,
-    );
+    const parentOrigin = "https://chinpokomon-polkavm.westendli.dev";
+    await expect(
+      waitForTruapiPort(scope, target, parentOrigin, 0),
+    ).rejects.toThrow(/TrUAPI Host port was not available/);
     expect(target.postMessage).toHaveBeenCalledWith(
       { type: "truapi-ready" },
-      "*",
+      parentOrigin,
     );
   });
 });

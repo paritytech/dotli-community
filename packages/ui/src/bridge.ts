@@ -477,7 +477,7 @@ window.addEventListener("message", (event: MessageEvent) => {
 
 type PolkaVmPlatformCommand =
   | Readonly<{ type: "copy-text"; text: string }>
-  | Readonly<{ type: "open-url"; url: string; newSurface: boolean }>;
+  | Readonly<{ type: "open-url"; url: string }>;
 
 const POLKAVM_PLATFORM_ACTIVATION_MS = 1_000;
 const MAX_POLKAVM_COPY_TEXT_BYTES = 64 * 1024;
@@ -507,19 +507,15 @@ function validatedPolkaVmPlatformCommand(
   }
   if (
     command.type === "open-url" &&
-    Object.keys(command).every((key) =>
-      ["type", "url", "newSurface"].includes(key),
-    ) &&
+    Object.keys(command).every((key) => key === "type" || key === "url") &&
     typeof command.url === "string" &&
     command.url !== "" &&
     polkavmPlatformEncoder.encode(command.url).byteLength <=
-      MAX_POLKAVM_OPEN_URL_BYTES &&
-    typeof command.newSurface === "boolean"
+      MAX_POLKAVM_OPEN_URL_BYTES
   ) {
     return {
       type: "open-url",
       url: command.url,
-      newSurface: command.newSurface,
     };
   }
   return null;
@@ -582,7 +578,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   } catch {
     return;
   }
-  if (destination.protocol !== "https:" && destination.protocol !== "http:") {
+  if (destination.protocol !== "https:") {
     return;
   }
   window.open(destination.href, "_blank", "noopener,noreferrer");

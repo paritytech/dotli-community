@@ -595,7 +595,27 @@ describe("bridge render lifecycle", () => {
         command: {
           type: "open-url",
           url: "javascript:alert(1)",
-          newSurface: true,
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "https://example.test/ignored-control",
+          newSurface: false,
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: {
+          type: "open-url",
+          url: "http://example.test/insecure",
         },
       });
       expect(open).not.toHaveBeenCalled();
@@ -606,7 +626,6 @@ describe("bridge render lifecycle", () => {
         command: {
           type: "open-url",
           url: "https://example.test/path",
-          newSurface: false,
         },
       });
       expect(open).toHaveBeenCalledExactlyOnceWith(
