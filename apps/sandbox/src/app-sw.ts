@@ -153,6 +153,50 @@ async function loadArchiveFromDBByDomain(
 let archivePacked: ArrayBuffer | null = null;
 let archiveFileIndex: Map<string, { o: number; l: number }> | null = null;
 
+interface ArchiveIndexEntry {
+  p: string;
+  o: number;
+  l: number;
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+
+function parseArchiveIndex(
+  value: unknown,
+  packedLength: number,
+): ArchiveIndexEntry[] | null {
+  if (!isUnknownArray(value)) {
+    return null;
+  }
+
+  const index: ArchiveIndexEntry[] = [];
+  for (const candidate of value) {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      !("p" in candidate) ||
+      typeof candidate.p !== "string" ||
+      !("o" in candidate) ||
+      typeof candidate.o !== "number" ||
+      !Number.isSafeInteger(candidate.o) ||
+      candidate.o < 0 ||
+      !("l" in candidate) ||
+      typeof candidate.l !== "number" ||
+      !Number.isSafeInteger(candidate.l) ||
+      candidate.l < 0 ||
+      candidate.o > packedLength ||
+      candidate.l > packedLength - candidate.o
+    ) {
+      return null;
+    }
+    index.push({ p: candidate.p, o: candidate.o, l: candidate.l });
+  }
+  return index;
+}
+
 const archiveCache = new Map<string, ArchiveEntry>();
 
 function archiveCacheSet(key: string, value: ArchiveEntry): void {
@@ -231,10 +275,8 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data.packed;
-    const idx = data.index;
-
-    if (!(packed instanceof ArrayBuffer) || !Array.isArray(idx)) {
+    const packed: unknown = data.packed;
+    if (!(packed instanceof ArrayBuffer)) {
       if (event.source) {
         (event.source as Client).postMessage({
           type: "ARCHIVE_ERROR",
@@ -244,15 +286,8 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       return;
     }
 
-    const malformed = idx.find(
-      (entry): boolean =>
-        typeof entry !== "object" ||
-        entry === null ||
-        typeof (entry as Record<string, unknown>).p !== "string" ||
-        typeof (entry as Record<string, unknown>).o !== "number" ||
-        typeof (entry as Record<string, unknown>).l !== "number",
-    );
-    if (malformed !== undefined) {
+    const index = parseArchiveIndex(data.index, packed.byteLength);
+    if (index === null) {
       if (event.source) {
         (event.source as Client).postMessage({
           type: "ARCHIVE_ERROR",
@@ -261,8 +296,6 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       }
       return;
     }
-
-    const index = idx as { p: string; o: number; l: number }[];
     const reserved = index.find((entry) => shadowsHostOwnedPath(entry.p));
     if (reserved !== undefined) {
       if (event.source) {
@@ -298,7 +331,7 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       cid !== ""
     ) {
       const p = packed;
-      const i = idx;
+      const i = index;
       const d = domain;
       const c = cid;
       const cb = contentBackend;

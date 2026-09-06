@@ -72,12 +72,12 @@ describe("PolkaVM computer host boundary", () => {
   it("retries a rejected lazy handshake while caching a successful one", async () => {
     const client = { connected: true };
     let attempts = 0;
-    const connect = createRetryableLazyPromise(async () => {
+    const connect = createRetryableLazyPromise(() => {
       attempts += 1;
       if (attempts === 1) {
-        throw new Error("transient handshake failure");
+        return Promise.reject(new Error("transient handshake failure"));
       }
-      return client;
+      return Promise.resolve(client);
     });
 
     await expect(connect()).rejects.toThrow("transient handshake failure");
@@ -99,11 +99,11 @@ describe("host-owned archive paths", () => {
     expect(shadowsHostOwnedPath("assets/polkavm-computer-worker.js")).toBe(
       false,
     );
-    expect(() =>
+    expect(() => {
       assertNoHostOwnedPaths([
         "index.html",
         "polkavm-runtime/polkavm-computer-worker.js",
-      ]),
-    ).toThrow("archive path is reserved by the host");
+      ]);
+    }).toThrow("archive path is reserved by the host");
   });
 });
