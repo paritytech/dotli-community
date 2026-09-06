@@ -44,7 +44,7 @@
   "overrides": {
     "fast-uri": "3.1.7",
     "smoldot": "3.4.1",
-    "browserslist": ">=4.28.8",
+    "browserslist": "^4.28.8",
     "esbuild": "^0.28.1",
     "brace-expansion": "^5.0.9",
     "postcss": "^8.5.24",
