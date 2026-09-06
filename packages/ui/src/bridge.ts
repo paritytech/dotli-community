@@ -304,7 +304,10 @@ function sendMotionStatus(
   origin: string,
   availability: 0 | 1 | 2,
 ): void {
-  source.postMessage({ type: "dotli:pvm-motion-status", availability }, origin);
+  source.postMessage(
+    { type: "dotli:polkavm-motion-status", availability },
+    origin,
+  );
 }
 
 function offerTopLevelMotionPermission(
@@ -377,7 +380,7 @@ function offerTopLevelMotionPermission(
               const rotation = event.rotationRate;
               source.postMessage(
                 {
-                  type: "dotli:pvm-motion-sample",
+                  type: "dotli:polkavm-motion-sample",
                   timestampMs: performance.now(),
                   acceleration:
                     acceleration === null
@@ -441,7 +444,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   if (
     type !== "dotli:sandbox-recover" &&
     type !== "dotli:host-update-required" &&
-    type !== "dotli:pvm-motion-request"
+    type !== "dotli:polkavm-motion-request"
   ) {
     return;
   }
@@ -456,7 +459,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   ) {
     return;
   }
-  if (type === "dotli:pvm-motion-request") {
+  if (type === "dotli:polkavm-motion-request") {
     offerTopLevelMotionPermission(source, event.origin, product.label);
     return;
   }
@@ -472,23 +475,23 @@ window.addEventListener("message", (event: MessageEvent) => {
   rerenderProduct(product);
 });
 
-type PvmPlatformCommand =
+type PolkaVmPlatformCommand =
   | Readonly<{ type: "copy-text"; text: string }>
   | Readonly<{ type: "open-url"; url: string; newSurface: boolean }>;
 
-const PVM_PLATFORM_ACTIVATION_MS = 1_000;
-const MAX_PVM_COPY_TEXT_BYTES = 64 * 1024;
-const MAX_PVM_OPEN_URL_BYTES = 8 * 1024;
-const pvmPlatformEncoder = new TextEncoder();
-let pvmPlatformActivation: Readonly<{
+const POLKAVM_PLATFORM_ACTIVATION_MS = 1_000;
+const MAX_POLKAVM_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_POLKAVM_OPEN_URL_BYTES = 8 * 1024;
+const polkavmPlatformEncoder = new TextEncoder();
+let polkavmPlatformActivation: Readonly<{
   source: MessageEventSource;
   origin: string;
   expiresAt: number;
 }> | null = null;
 
-function validatedPvmPlatformCommand(
+function validatedPolkaVmPlatformCommand(
   value: unknown,
-): PvmPlatformCommand | null {
+): PolkaVmPlatformCommand | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -497,8 +500,8 @@ function validatedPvmPlatformCommand(
     command.type === "copy-text" &&
     Object.keys(command).every((key) => key === "type" || key === "text") &&
     typeof command.text === "string" &&
-    pvmPlatformEncoder.encode(command.text).byteLength <=
-      MAX_PVM_COPY_TEXT_BYTES
+    polkavmPlatformEncoder.encode(command.text).byteLength <=
+      MAX_POLKAVM_COPY_TEXT_BYTES
   ) {
     return { type: "copy-text", text: command.text };
   }
@@ -509,8 +512,8 @@ function validatedPvmPlatformCommand(
     ) &&
     typeof command.url === "string" &&
     command.url !== "" &&
-    pvmPlatformEncoder.encode(command.url).byteLength <=
-      MAX_PVM_OPEN_URL_BYTES &&
+    polkavmPlatformEncoder.encode(command.url).byteLength <=
+      MAX_POLKAVM_OPEN_URL_BYTES &&
     typeof command.newSurface === "boolean"
   ) {
     return {
@@ -525,8 +528,8 @@ function validatedPvmPlatformCommand(
 window.addEventListener("message", (event: MessageEvent) => {
   const data = event.data as { type?: unknown; command?: unknown } | null;
   if (
-    data?.type !== "dotli:pvm-user-activation" &&
-    data?.type !== "dotli:pvm-ui-command"
+    data?.type !== "dotli:polkavm-user-activation" &&
+    data?.type !== "dotli:polkavm-ui-command"
   ) {
     return;
   }
@@ -540,18 +543,18 @@ window.addEventListener("message", (event: MessageEvent) => {
   ) {
     return;
   }
-  if (data.type === "dotli:pvm-user-activation") {
+  if (data.type === "dotli:polkavm-user-activation") {
     if (navigator.userActivation.isActive) {
-      pvmPlatformActivation = {
+      polkavmPlatformActivation = {
         source,
         origin: event.origin,
-        expiresAt: performance.now() + PVM_PLATFORM_ACTIVATION_MS,
+        expiresAt: performance.now() + POLKAVM_PLATFORM_ACTIVATION_MS,
       };
     }
     return;
   }
-  const activation = pvmPlatformActivation;
-  pvmPlatformActivation = null;
+  const activation = polkavmPlatformActivation;
+  polkavmPlatformActivation = null;
   if (activation === null) {
     return;
   }
@@ -563,13 +566,13 @@ window.addEventListener("message", (event: MessageEvent) => {
   ) {
     return;
   }
-  const command = validatedPvmPlatformCommand(data.command);
+  const command = validatedPolkaVmPlatformCommand(data.command);
   if (command === null) {
     return;
   }
   if (command.type === "copy-text") {
     void navigator.clipboard.writeText(command.text).catch((error: unknown) => {
-      log.warn("[dot.li] PVM clipboard request was declined:", error);
+      log.warn("[dot.li] PolkaVM clipboard request was declined:", error);
     });
     return;
   }

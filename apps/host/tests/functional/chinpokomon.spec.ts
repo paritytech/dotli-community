@@ -4,8 +4,8 @@
 /**
  * Runtime-variant proof for the shipped Chinpokomon product bundle.
  *
- * Unlike the synthetic fixtures in `pvm.spec.ts`, this suite serves the real
- * `pvm-apps/chinpokomon/bundle` directory, so it also covers the fallback's
+ * Unlike the synthetic fixtures in `polkavm.spec.ts`, this suite serves the real
+ * `polkavm-apps/chinpokomon/bundle` directory, so it also covers the fallback's
  * sub-resource load (`/fallback/app.js`) through the sandbox service worker.
  *
  * Point `DOTLI_CHINPOKOMON_BUNDLE` at the built bundle to enable it.
@@ -201,7 +201,7 @@ test.describe("Chinpokomon runtime variants", () => {
         timeout: 30_000,
       })
       .toBeGreaterThan(2);
-    await expect(product.locator("#dotli-pvm-canvas")).toHaveCount(0);
+    await expect(product.locator("#dotli-polkavm-canvas")).toHaveCount(0);
   });
 
   test("runs the PolkaVM program when the browser exposes a WebGPU adapter", async ({
@@ -211,20 +211,27 @@ test.describe("Chinpokomon runtime variants", () => {
       process.env.DOTLI_WEBGPU !== "1",
       "DOTLI_WEBGPU=1 enables the SwiftShader WebGPU adapter",
     );
-    await mountProduct(page, "chinpokomon-pvm", "chinpokomon-pvm");
+    await mountProduct(page, "chinpokomon-polkavm", "chinpokomon-polkavm");
 
-    const product = page.frameLocator("#chinpokomon-pvm");
-    const canvas = product.locator("#dotli-pvm-canvas");
-    await expect(canvas).toHaveAttribute("data-pvm-profile", "webgpu-raster", {
-      timeout: 60_000,
-    });
-    await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    const product = page.frameLocator("#chinpokomon-polkavm");
+    const canvas = product.locator("#dotli-polkavm-canvas");
+    await expect(canvas).toHaveAttribute(
+      "data-polkavm-profile",
+      "webgpu-raster",
+      {
+        timeout: 60_000,
+      },
+    );
+    await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
       timeout: 120_000,
     });
     await expect
-      .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")), {
-        timeout: 120_000,
-      })
+      .poll(
+        async () => Number(await canvas.getAttribute("data-polkavm-frames")),
+        {
+          timeout: 120_000,
+        },
+      )
       .toBeGreaterThan(2);
     await expect(
       product.locator("canvas[data-runtime='webgl-fallback']"),

@@ -53,7 +53,7 @@ export class WebGpuBridge {
     if (typeof canvas.transferControlToOffscreen !== "function") {
       throw new Error("WebGPU OffscreenCanvas is unavailable");
     }
-    const worker = new Worker("/pvm-runtime/pvm-gpu-worker.js");
+    const worker = new Worker("/polkavm-runtime/polkavm-gpu-worker.js");
     const offscreen = canvas.transferControlToOffscreen();
     const { promise, resolve, reject } = Promise.withResolvers<Uint8Array>();
     const timer = window.setTimeout(() => {
@@ -90,7 +90,7 @@ export class WebGpuBridge {
         this.#physicalWidth = view.getUint32(16, true);
         this.#physicalHeight = view.getUint32(20, true);
         window.clearTimeout(timer);
-        canvas.dataset.pvmGpu = "ready";
+        canvas.dataset.polkavmGpu = "ready";
         callbacks.capabilities(bytes);
         resolve(bytes);
       } else if (

@@ -5,7 +5,7 @@ import type { ArchiveFiles } from "@dotli/content/archive";
 import { Tri2dRenderer } from "./tri2d-renderer";
 import { WebGpuBridge, type WebGpuRequirements } from "./webgpu";
 
-const PVM_RUNTIME_ROOT = "/pvm-runtime";
+const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
 const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
@@ -13,20 +13,21 @@ const MAX_ASSET_BYTES = 128 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
 const MAX_SAVE_BYTES = 1024 * 1024;
 const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
-const MAX_TRUAPI_FRAME_BYTES = 1024 * 1024;
-const MAX_TRUAPI_PENDING_FRAMES = 32;
-const MAX_TRUAPI_PENDING_BYTES = 4 * 1024 * 1024;
+const MAX_HOST_FRAME_BYTES = 1024 * 1024;
+const MAX_PENDING_HOST_FRAMES = 32;
+const MAX_PENDING_HOST_FRAME_BYTES = 4 * 1024 * 1024;
 const MAX_UI_OUTPUT_COMMANDS = 64;
 const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
 const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
 const START_TIMEOUT_MS = 30_000;
 const INTERPRETER_START_TIMEOUT_MS = 180_000;
-const SAVE_DB_NAME = "dotli-pvm";
+const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE = "pvm-host-runtime-f49d662c";
+const RUNTIME_SOURCE =
+  "useragent-kit-polkavm-runtime-30770959f66db81d46163f70f72f83f1a5507f6d";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -34,7 +35,7 @@ const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
 let runtimeBytesPromise: Promise<ArrayBuffer> | null = null;
 
-export interface PvmMetrics {
+export interface PolkaVmMetrics {
   backend: "compiler" | "interpreter" | "starting";
   cacheHit: boolean;
   translationMs: number;
@@ -53,8 +54,8 @@ export interface PvmMetrics {
   audioSamples: number;
 }
 
-type PvmMetricsDisplaySource = Pick<
-  PvmMetrics,
+type PolkaVmMetricsDisplaySource = Pick<
+  PolkaVmMetrics,
   | "backend"
   | "fps"
   | "startupStage"
@@ -65,7 +66,7 @@ type PvmMetricsDisplaySource = Pick<
   | "updateMaxMs"
 >;
 
-export function formatPvmMetrics(metrics: PvmMetricsDisplaySource): {
+export function formatPolkaVmMetrics(metrics: PolkaVmMetricsDisplaySource): {
   summary: string;
   details: string;
 } {
@@ -85,7 +86,7 @@ export function formatPvmMetrics(metrics: PvmMetricsDisplaySource): {
   };
 }
 
-export function unsupportedPvmImport(message: string): string | null {
+export function unsupportedPolkaVmImport(message: string): string | null {
   return (
     /translated (?:PolkaVM|CoreVM) guest uses unsupported import ([A-Za-z][A-Za-z0-9_]*)/.exec(
       message,
@@ -95,12 +96,12 @@ export function unsupportedPvmImport(message: string): string | null {
 
 declare global {
   interface Window {
-    __dotliPvmMetrics?: PvmMetrics;
+    __dotliPolkaVmMetrics?: PolkaVmMetrics;
     __HOST_API_PORT__?: MessagePort;
   }
 }
 
-interface PvmDescriptor {
+interface PolkaVmDescriptor {
   programPath: string;
   graphicsProfile: GraphicsProfile;
   webGpuRequirements: WebGpuRequirements | null;
@@ -179,7 +180,7 @@ export interface UiPlatformOutput {
 export interface UiPlatformCommandTarget {
   postMessage(
     message: Readonly<{
-      type: "dotli:pvm-ui-command";
+      type: "dotli:polkavm-ui-command";
       command: UiPlatformCommand;
     }>,
     targetOrigin: string,
@@ -400,7 +401,7 @@ export function postFirstUiPlatformCommand(
   if (command === undefined) {
     return false;
   }
-  target.postMessage({ type: "dotli:pvm-ui-command", command }, "*");
+  target.postMessage({ type: "dotli:polkavm-ui-command", command }, "*");
   return true;
 }
 
@@ -437,7 +438,7 @@ function parseManifest(
   files: ArchiveFiles,
   externalManifest: string | null = null,
   enforceExternal = true,
-): PvmDescriptor | null {
+): PolkaVmDescriptor | null {
   if (!Object.hasOwn(files, "manifest.json")) {
     return null;
   }
@@ -467,8 +468,8 @@ function parseManifest(
   let manifestVersion: number | null = null;
   let webFallbackPath: string | null = null;
   if (manifest?.$v === 2 && manifest.kind === "app") {
-    if (runtime.abiVersion !== 1) {
-      throw new Error("PolkaVM App v2 runtime requires ABI version 1");
+    if (runtime.abiVersion !== 2) {
+      throw new Error("PolkaVM App v2 runtime requires ABI version 2");
     }
     if (runtime.fallback !== undefined) {
       const fallback = object(runtime.fallback);
@@ -657,14 +658,14 @@ function parseManifest(
   };
 }
 
-export function isPvmPackage(files: ArchiveFiles): boolean {
+export function isPolkaVmPackage(files: ArchiveFiles): boolean {
   return parseManifest(files, null, false) !== null;
 }
 
-export function describePvmPackage(
+export function describePolkaVmPackage(
   files: ArchiveFiles,
   externalManifest: string | null = null,
-): PvmDescriptor | null {
+): PolkaVmDescriptor | null {
   return parseManifest(files, externalManifest);
 }
 
@@ -688,7 +689,7 @@ export function webGpuAdapterMeetsRequirements(
   );
 }
 
-export async function pvmWebFallbackEntrypoint(
+export async function polkavmWebFallbackEntrypoint(
   files: ArchiveFiles,
   externalManifest: string | null,
 ): Promise<string | null> {
@@ -722,7 +723,7 @@ export async function pvmWebFallbackEntrypoint(
 
 export function validateFiles(
   files: ArchiveFiles,
-  descriptor: PvmDescriptor,
+  descriptor: PolkaVmDescriptor,
 ): void {
   if (!Object.hasOwn(files, descriptor.programPath)) {
     throw new Error("PolkaVM package is missing its program");
@@ -831,7 +832,7 @@ async function programDigest(program: Uint8Array): Promise<string> {
 
 function runtimeBytes(): Promise<ArrayBuffer> {
   runtimeBytesPromise ??= fetch(
-    `${PVM_RUNTIME_ROOT}/pvm-browser-runtime.wasm`,
+    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
     {
       cache: "force-cache",
     },
@@ -1166,35 +1167,35 @@ function createShell(controls: string[]): {
   const style = document.createElement("style");
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
-    #dotli-pvm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
-    #dotli-pvm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
-    .dotli-pvm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
-    #dotli-pvm-status{top:12px;padding:5px 8px;pointer-events:none}
-    #dotli-pvm-status:empty{display:none}
-    #dotli-pvm-metrics{top:12px;max-width:min(460px,calc(100vw - 24px));overflow:hidden;pointer-events:auto}
-    #dotli-pvm-metrics[hidden]{display:none}
-    #dotli-pvm-metrics summary{padding:6px 9px;cursor:pointer;white-space:nowrap;font-weight:600;user-select:none}
-    #dotli-pvm-metrics pre{margin:0;padding:7px 9px;border-top:1px solid #ffffff1f;white-space:pre-wrap;color:#c9ced3;font:inherit;font-weight:400}
-    #dotli-pvm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
+    #dotli-polkavm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
+    .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
+    #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
+    #dotli-polkavm-status:empty{display:none}
+    #dotli-polkavm-metrics{top:12px;max-width:min(460px,calc(100vw - 24px));overflow:hidden;pointer-events:auto}
+    #dotli-polkavm-metrics[hidden]{display:none}
+    #dotli-polkavm-metrics summary{padding:6px 9px;cursor:pointer;white-space:nowrap;font-weight:600;user-select:none}
+    #dotli-polkavm-metrics pre{margin:0;padding:7px 9px;border-top:1px solid #ffffff1f;white-space:pre-wrap;color:#c9ced3;font:inherit;font-weight:400}
+    #dotli-polkavm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
   `;
   const shell = document.createElement("main");
-  shell.id = "dotli-pvm-shell";
+  shell.id = "dotli-polkavm-shell";
   const canvas = document.createElement("canvas");
-  canvas.id = "dotli-pvm-canvas";
+  canvas.id = "dotli-polkavm-canvas";
   canvas.tabIndex = 0;
   const status = document.createElement("div");
-  status.id = "dotli-pvm-status";
-  status.className = "dotli-pvm-overlay";
+  status.id = "dotli-polkavm-status";
+  status.className = "dotli-polkavm-overlay";
   status.textContent = "Translating PolkaVM application…";
   const metrics = document.createElement("details");
-  metrics.id = "dotli-pvm-metrics";
-  metrics.className = "dotli-pvm-overlay";
+  metrics.id = "dotli-polkavm-metrics";
+  metrics.className = "dotli-polkavm-overlay";
   metrics.hidden = true;
   const metricsSummary = document.createElement("summary");
   const metricsDetails = document.createElement("pre");
   metrics.append(metricsSummary, metricsDetails);
   const controlText = document.createElement("div");
-  controlText.id = "dotli-pvm-controls";
+  controlText.id = "dotli-polkavm-controls";
   controlText.textContent = controls.join(" · ");
   shell.append(canvas, status, metrics, controlText);
   document.head.append(style);
@@ -1251,8 +1252,8 @@ function installInput(
   const pointerCaptureSupported =
     typeof canvas.requestPointerLock === "function" &&
     typeof document.exitPointerLock === "function";
-  canvas.dataset.pvmPointerCaptureArmed = "false";
-  canvas.dataset.pvmPointerCaptured = "false";
+  canvas.dataset.polkavmPointerCaptureArmed = "false";
+  canvas.dataset.polkavmPointerCaptured = "false";
   let motionSequence = 0;
   let motionX = 0;
   let motionY = 0;
@@ -1412,10 +1413,10 @@ function installInput(
     if (pointerCaptureRequested()) {
       sendPointerCaptureState(active);
     }
-    canvas.dataset.pvmPointerCaptureArmed = pointerCaptureArmed
+    canvas.dataset.polkavmPointerCaptureArmed = pointerCaptureArmed
       ? "true"
       : "false";
-    canvas.dataset.pvmPointerCaptured = active ? "true" : "false";
+    canvas.dataset.polkavmPointerCaptured = active ? "true" : "false";
   };
   const canvasPosition = (event: PointerEvent): [number, number] => {
     const bounds = canvas.getBoundingClientRect();
@@ -1534,7 +1535,7 @@ function installInput(
       return;
     }
     if (event.isTrusted) {
-      window.parent.postMessage({ type: "dotli:pvm-user-activation" }, "*");
+      window.parent.postMessage({ type: "dotli:polkavm-user-activation" }, "*");
     }
     if (
       textInput === null ||
@@ -1598,7 +1599,7 @@ function installInput(
   const down = (event: PointerEvent): void => {
     requestDeviceMotionPermission();
     if (event.isTrusted && event.button in pointerButtons) {
-      window.parent.postMessage({ type: "dotli:pvm-user-activation" }, "*");
+      window.parent.postMessage({ type: "dotli:polkavm-user-activation" }, "*");
     }
     previousPointer = [event.clientX, event.clientY];
     (wantsTextInput && textInput !== null ? textInput : canvas).focus({
@@ -1697,7 +1698,7 @@ function installInput(
         capture &&
         pointerCaptureSupported &&
         document.pointerLockElement !== canvas;
-      canvas.dataset.pvmPointerCaptureArmed = pointerCaptureArmed
+      canvas.dataset.polkavmPointerCaptureArmed = pointerCaptureArmed
         ? "true"
         : "false";
       if (!capture) {
@@ -1713,8 +1714,8 @@ function installInput(
         (document.activeElement as HTMLElement).blur();
       }
       pointerCaptureArmed = false;
-      canvas.dataset.pvmPointerCaptureArmed = "false";
-      canvas.dataset.pvmPointerCaptured = "false";
+      canvas.dataset.polkavmPointerCaptureArmed = "false";
+      canvas.dataset.polkavmPointerCaptured = "false";
       releasePointerLock();
       clearPointerMotion();
       document.removeEventListener("pointerlockchange", pointerLockChanged);
@@ -1742,7 +1743,7 @@ function installInput(
   };
 }
 
-export async function runPvmApplication(
+export async function runPolkaVmApplication(
   files: ArchiveFiles,
   cid: string,
   externalManifest: string | null = null,
@@ -1753,7 +1754,7 @@ export async function runPvmApplication(
   }
   validateFiles(files, descriptor);
   const forceInterpreter =
-    new URLSearchParams(location.search).get("pvmMode") === "interpreter";
+    new URLSearchParams(location.search).get("polkavmMode") === "interpreter";
 
   const started = performance.now();
   if (
@@ -1782,7 +1783,7 @@ export async function runPvmApplication(
   }
   const tri2d =
     descriptor.graphicsProfile === "tri2d" ? new Tri2dRenderer(canvas) : null;
-  canvas.dataset.pvmProfile = descriptor.graphicsProfile;
+  canvas.dataset.polkavmProfile = descriptor.graphicsProfile;
 
   const runtime = await runtimeBytes();
   const program = ownedBytes(files[descriptor.programPath]);
@@ -1823,71 +1824,71 @@ export async function runPvmApplication(
     resolve: resolveStarted,
     reject: rejectStarted,
   } = Promise.withResolvers<undefined>();
-  const truapiPort = await waitForTruapiPort();
-  const worker = new Worker(`${PVM_RUNTIME_ROOT}/pvm-wasm-worker.js`);
-  const closeTruapiPort = (): void => {
-    truapiPort.onmessage = null;
-    truapiPort.onmessageerror = null;
-    truapiPort.close();
-    if (window.__HOST_API_PORT__ === truapiPort) {
+  const hostFramePort = await waitForTruapiPort();
+  const worker = new Worker(`${POLKAVM_RUNTIME_ROOT}/polkavm-worker.js`);
+  const closeHostFramePort = (): void => {
+    hostFramePort.onmessage = null;
+    hostFramePort.onmessageerror = null;
+    hostFramePort.close();
+    if (window.__HOST_API_PORT__ === hostFramePort) {
       delete window.__HOST_API_PORT__;
     }
   };
-  canvas.dataset.pvmTruapiRequests = "0";
-  canvas.dataset.pvmTruapiResponses = "0";
-  const failTruapi = (error: Error): void => {
+  canvas.dataset.polkavmHostFrameRequests = "0";
+  canvas.dataset.polkavmHostFrameResponses = "0";
+  const failHostFrame = (error: Error): void => {
     status.textContent = error.message;
     rejectStarted(error);
     worker.postMessage({ type: "stop" });
     worker.terminate();
-    closeTruapiPort();
+    closeHostFramePort();
   };
-  let truapiReady = false;
-  let pendingTruapiBytes = 0;
-  const pendingTruapiResponses: Uint8Array<ArrayBuffer>[] = [];
-  const sendTruapiResponse = (value: Uint8Array): void => {
+  let hostFrameReady = false;
+  let pendingHostFrameBytes = 0;
+  const pendingHostFrameResponses: Uint8Array<ArrayBuffer>[] = [];
+  const sendHostFrameResponse = (value: Uint8Array): void => {
     const bytes = ownedBytes(value);
-    worker.postMessage({ type: "truapi-response", bytes }, [bytes.buffer]);
+    worker.postMessage({ type: "host-frame-response", bytes }, [bytes.buffer]);
   };
-  truapiPort.onmessage = (event: MessageEvent<unknown>): void => {
+  hostFramePort.onmessage = (event: MessageEvent<unknown>): void => {
     if (
       !(event.data instanceof Uint8Array) ||
       event.data.byteLength === 0 ||
-      event.data.byteLength > MAX_TRUAPI_FRAME_BYTES
+      event.data.byteLength > MAX_HOST_FRAME_BYTES
     ) {
-      failTruapi(new Error("TrUAPI Host returned an invalid PVM frame"));
+      failHostFrame(new Error("Host returned an invalid host frame"));
       return;
     }
     const bytes = ownedBytes(event.data);
-    canvas.dataset.pvmTruapiResponses = String(
-      Number(canvas.dataset.pvmTruapiResponses) + 1,
+    canvas.dataset.polkavmHostFrameResponses = String(
+      Number(canvas.dataset.polkavmHostFrameResponses) + 1,
     );
-    if (truapiReady) {
-      sendTruapiResponse(bytes);
+    if (hostFrameReady) {
+      sendHostFrameResponse(bytes);
       return;
     }
     if (
-      pendingTruapiResponses.length === MAX_TRUAPI_PENDING_FRAMES ||
-      pendingTruapiBytes + bytes.byteLength > MAX_TRUAPI_PENDING_BYTES
+      pendingHostFrameResponses.length === MAX_PENDING_HOST_FRAMES ||
+      pendingHostFrameBytes + bytes.byteLength > MAX_PENDING_HOST_FRAME_BYTES
     ) {
-      failTruapi(
-        new Error("TrUAPI response queue overflow during PVM startup"),
+      failHostFrame(
+        new Error("Host-frame response queue overflow during PolkaVM startup"),
       );
       return;
     }
-    pendingTruapiBytes += bytes.byteLength;
-    pendingTruapiResponses.push(bytes);
+    pendingHostFrameBytes += bytes.byteLength;
+    pendingHostFrameResponses.push(bytes);
   };
-  truapiPort.onmessageerror = () => {
-    failTruapi(new Error("TrUAPI Host port could not decode a PVM frame"));
+  hostFramePort.onmessageerror = () => {
+    failHostFrame(new Error("Host port could not decode a host frame"));
   };
-  truapiPort.start();
+  hostFramePort.start();
   let audioContext: AudioContext | null = null;
   let audioCursor = 0;
   let firstFrame = false;
   let frameWindowStarted = performance.now();
   let frameWindowCount = 0;
-  const pvmMetrics: PvmMetrics = {
+  const polkavmMetrics: PolkaVmMetrics = {
     backend: "starting",
     cacheHit: false,
     translationMs: 0,
@@ -1905,51 +1906,52 @@ export async function runPvmApplication(
     audioChunks: 0,
     audioSamples: 0,
   };
-  window.__dotliPvmMetrics = pvmMetrics;
+  window.__dotliPolkaVmMetrics = polkavmMetrics;
 
   const updateMetrics = (): void => {
-    const display = formatPvmMetrics(pvmMetrics);
+    const display = formatPolkaVmMetrics(polkavmMetrics);
     metricsSummary.textContent = display.summary;
     metricsDetails.textContent = display.details;
-    canvas.dataset.pvmBackend = pvmMetrics.backend;
-    canvas.dataset.pvmCacheHit = String(pvmMetrics.cacheHit);
-    canvas.dataset.pvmTranslationMs = String(pvmMetrics.translationMs);
-    canvas.dataset.pvmCompilationMs = String(pvmMetrics.compilationMs);
-    canvas.dataset.pvmStartupMs = String(pvmMetrics.startupMs);
-    canvas.dataset.pvmStartupStage = pvmMetrics.startupStage;
-    canvas.dataset.pvmFirstFrameMs = String(pvmMetrics.firstFrameMs);
-    canvas.dataset.pvmFrames = String(pvmMetrics.frames);
-    canvas.dataset.pvmFps = String(pvmMetrics.fps);
-    canvas.dataset.pvmUpdates = String(pvmMetrics.updates);
-    canvas.dataset.pvmUpdateP50Ms = String(pvmMetrics.updateP50Ms);
-    canvas.dataset.pvmUpdateP95Ms = String(pvmMetrics.updateP95Ms);
-    canvas.dataset.pvmUpdateMaxMs = String(pvmMetrics.updateMaxMs);
-    canvas.dataset.pvmAudioChunks = String(pvmMetrics.audioChunks);
-    canvas.dataset.pvmAudioSamples = String(pvmMetrics.audioSamples);
+    canvas.dataset.polkavmBackend = polkavmMetrics.backend;
+    canvas.dataset.polkavmCacheHit = String(polkavmMetrics.cacheHit);
+    canvas.dataset.polkavmTranslationMs = String(polkavmMetrics.translationMs);
+    canvas.dataset.polkavmCompilationMs = String(polkavmMetrics.compilationMs);
+    canvas.dataset.polkavmStartupMs = String(polkavmMetrics.startupMs);
+    canvas.dataset.polkavmStartupStage = polkavmMetrics.startupStage;
+    canvas.dataset.polkavmFirstFrameMs = String(polkavmMetrics.firstFrameMs);
+    canvas.dataset.polkavmFrames = String(polkavmMetrics.frames);
+    canvas.dataset.polkavmFps = String(polkavmMetrics.fps);
+    canvas.dataset.polkavmUpdates = String(polkavmMetrics.updates);
+    canvas.dataset.polkavmUpdateP50Ms = String(polkavmMetrics.updateP50Ms);
+    canvas.dataset.polkavmUpdateP95Ms = String(polkavmMetrics.updateP95Ms);
+    canvas.dataset.polkavmUpdateMaxMs = String(polkavmMetrics.updateMaxMs);
+    canvas.dataset.polkavmAudioChunks = String(polkavmMetrics.audioChunks);
+    canvas.dataset.polkavmAudioSamples = String(polkavmMetrics.audioSamples);
   };
   const setStartupStage = (stage: string): void => {
     if (firstFrame) {
       return;
     }
-    pvmMetrics.startupStage = stage;
-    status.textContent = `PVM startup: ${stage.replaceAll("-", " ")}…`;
+    polkavmMetrics.startupStage = stage;
+    status.textContent = `PolkaVM startup: ${stage.replaceAll("-", " ")}…`;
     updateMetrics();
   };
   const presentedFrame = (): void => {
-    pvmMetrics.frames++;
-    canvas.dataset.pvmFrames = String(pvmMetrics.frames);
+    polkavmMetrics.frames++;
+    canvas.dataset.polkavmFrames = String(polkavmMetrics.frames);
     frameWindowCount++;
     const now = performance.now();
     if (now - frameWindowStarted >= 500) {
-      pvmMetrics.fps = (frameWindowCount * 1000) / (now - frameWindowStarted);
+      polkavmMetrics.fps =
+        (frameWindowCount * 1000) / (now - frameWindowStarted);
       frameWindowStarted = now;
       frameWindowCount = 0;
       updateMetrics();
     }
     if (!firstFrame) {
       firstFrame = true;
-      pvmMetrics.firstFrameMs = now - started;
-      pvmMetrics.startupStage = "first-frame";
+      polkavmMetrics.firstFrameMs = now - started;
+      polkavmMetrics.startupStage = "first-frame";
       status.textContent = "";
       metricsElement.hidden = false;
       window.clearTimeout(timer);
@@ -1979,15 +1981,15 @@ export async function runPvmApplication(
     ) {
       return;
     }
-    pvmMetrics.audioChunks++;
-    pvmMetrics.audioSamples += message.samples.byteLength / 2;
-    canvas.dataset.pvmAudioChunks = String(pvmMetrics.audioChunks);
-    canvas.dataset.pvmAudioSamples = String(pvmMetrics.audioSamples);
+    polkavmMetrics.audioChunks++;
+    polkavmMetrics.audioSamples += message.samples.byteLength / 2;
+    canvas.dataset.polkavmAudioChunks = String(polkavmMetrics.audioChunks);
+    canvas.dataset.polkavmAudioSamples = String(polkavmMetrics.audioSamples);
     if (
-      canvas.dataset.pvmAudioNonzero !== "true" &&
+      canvas.dataset.polkavmAudioNonzero !== "true" &&
       message.samples.some((byte) => byte !== 0)
     ) {
-      canvas.dataset.pvmAudioNonzero = "true";
+      canvas.dataset.polkavmAudioNonzero = "true";
     }
     resumeAudio();
     if (audioContext?.state !== "running") {
@@ -2030,12 +2032,12 @@ export async function runPvmApplication(
     : START_TIMEOUT_MS;
   const onStartTimeout = (): void => {
     const label =
-      forceInterpreter || pvmMetrics.backend === "interpreter"
+      forceInterpreter || polkavmMetrics.backend === "interpreter"
         ? "PolkaVM interpreter"
         : "PolkaVM application";
     rejectStarted(
       new Error(
-        `${label} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${pvmMetrics.startupStage})`,
+        `${label} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
       ),
     );
   };
@@ -2070,7 +2072,7 @@ export async function runPvmApplication(
     } catch (error) {
       webGpu.dispose();
       worker.terminate();
-      closeTruapiPort();
+      closeHostFramePort();
       rejectStarted(error);
       return startedPromise;
     }
@@ -2085,10 +2087,10 @@ export async function runPvmApplication(
       bytes.byteOffset,
       bytes.byteLength,
     ).getUint16(6, true);
-    canvas.dataset.pvmMotionSamples = String(
-      Number(canvas.dataset.pvmMotionSamples ?? 0) + 1,
+    canvas.dataset.polkavmMotionSamples = String(
+      Number(canvas.dataset.polkavmMotionSamples ?? 0) + 1,
     );
-    canvas.dataset.pvmMotionSource =
+    canvas.dataset.polkavmMotionSource =
       (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
@@ -2109,7 +2111,7 @@ export async function runPvmApplication(
     }
     const message = object(event.data);
     if (
-      message?.type === "dotli:pvm-motion-status" &&
+      message?.type === "dotli:polkavm-motion-status" &&
       Number.isInteger(message.availability) &&
       Number(message.availability) >= 0 &&
       Number(message.availability) <= 2
@@ -2120,7 +2122,7 @@ export async function runPvmApplication(
       });
       return;
     }
-    if (message?.type !== "dotli:pvm-motion-sample") {
+    if (message?.type !== "dotli:polkavm-motion-sample") {
       return;
     }
     const acceleration = object(message.acceleration);
@@ -2198,7 +2200,7 @@ export async function runPvmApplication(
     worker.terminate();
     webGpu?.dispose();
     void audioContext?.close();
-    closeTruapiPort();
+    closeHostFramePort();
   };
   window.addEventListener("pagehide", stop, { once: true });
   // Mobile browsers may discard the worker-owned GPU device while the screen
@@ -2288,15 +2290,15 @@ export async function runPvmApplication(
       case "ready": {
         await translationStorePromise;
         const ready = message as unknown as WorkerReady;
-        pvmMetrics.backend = ready.backend;
-        pvmMetrics.cacheHit = ready.cacheHit === true;
-        pvmMetrics.translationMs = ready.translationMs ?? 0;
-        pvmMetrics.compilationMs = ready.compilationMs ?? 0;
-        pvmMetrics.startupMs = ready.startupMs ?? 0;
-        pvmMetrics.translatedWasmBytes = ready.translatedWasmBytes ?? 0;
-        pvmMetrics.startupStage = "ready";
-        status.textContent = `${ready.backend === "compiler" ? "PVM→Wasm JIT" : "PVM interpreter"} ready`;
-        canvas.dataset.pvmReady = "true";
+        polkavmMetrics.backend = ready.backend;
+        polkavmMetrics.cacheHit = ready.cacheHit === true;
+        polkavmMetrics.translationMs = ready.translationMs ?? 0;
+        polkavmMetrics.compilationMs = ready.compilationMs ?? 0;
+        polkavmMetrics.startupMs = ready.startupMs ?? 0;
+        polkavmMetrics.translatedWasmBytes = ready.translatedWasmBytes ?? 0;
+        polkavmMetrics.startupStage = "ready";
+        status.textContent = `${ready.backend === "compiler" ? "PolkaVM→Wasm JIT" : "PolkaVM interpreter"} ready`;
+        canvas.dataset.polkavmReady = "true";
         updateMetrics();
         if (ready.backend === "interpreter" && !forceInterpreter) {
           // Translation fell back to the interpreter, so the compiler start
@@ -2321,15 +2323,15 @@ export async function runPvmApplication(
         }
         if (usesMotion && parentOrigin !== null) {
           window.parent.postMessage(
-            { type: "dotli:pvm-motion-request" },
+            { type: "dotli:polkavm-motion-request" },
             parentOrigin,
           );
         }
         sendSurfaceMetrics();
-        truapiReady = true;
-        for (const response of pendingTruapiResponses.splice(0)) {
-          pendingTruapiBytes -= response.byteLength;
-          sendTruapiResponse(response);
+        hostFrameReady = true;
+        for (const response of pendingHostFrameResponses.splice(0)) {
+          pendingHostFrameBytes -= response.byteLength;
+          sendHostFrameResponse(response);
         }
         break;
       }
@@ -2345,23 +2347,23 @@ export async function runPvmApplication(
         setPointerCaptureRequest(message.capture);
         break;
       }
-      case "truapi-request": {
+      case "host-frame-request": {
         const bytes = message.bytes;
         if (
           !(bytes instanceof Uint8Array) ||
           bytes.byteLength === 0 ||
-          bytes.byteLength > MAX_TRUAPI_FRAME_BYTES
+          bytes.byteLength > MAX_HOST_FRAME_BYTES
         ) {
-          failTruapi(
-            new Error("PolkaVM guest emitted an invalid TrUAPI frame"),
+          failHostFrame(
+            new Error("PolkaVM guest emitted an invalid host frame"),
           );
           return;
         }
         const request = ownedBytes(bytes);
-        canvas.dataset.pvmTruapiRequests = String(
-          Number(canvas.dataset.pvmTruapiRequests) + 1,
+        canvas.dataset.polkavmHostFrameRequests = String(
+          Number(canvas.dataset.polkavmHostFrameRequests) + 1,
         );
-        truapiPort.postMessage(request, [request.buffer]);
+        hostFramePort.postMessage(request, [request.buffer]);
         break;
       }
       case "frame": {
@@ -2407,9 +2409,9 @@ export async function runPvmApplication(
         }
         try {
           const metadata = tri2d.render(frame.bytes);
-          canvas.dataset.pvmTri2dDraws = String(metadata.drawCount);
-          canvas.dataset.pvmTri2dVertices = String(metadata.vertexCount);
-          canvas.dataset.pvmTri2dIndices = String(metadata.indexCount);
+          canvas.dataset.polkavmTri2dDraws = String(metadata.drawCount);
+          canvas.dataset.polkavmTri2dVertices = String(metadata.vertexCount);
+          canvas.dataset.polkavmTri2dIndices = String(metadata.indexCount);
           presentedFrame();
         } catch (error) {
           rejectStarted(error);
@@ -2425,22 +2427,23 @@ export async function runPvmApplication(
           return;
         }
         applyUiOutput(output);
-        canvas.dataset.pvmCursor = output.cursorIcon;
-        canvas.dataset.pvmIme = String(output.ime !== null);
-        canvas.dataset.pvmUiCommands = String(
-          Number(canvas.dataset.pvmUiCommands ?? 0) + output.commands.length,
+        canvas.dataset.polkavmCursor = output.cursorIcon;
+        canvas.dataset.polkavmIme = String(output.ime !== null);
+        canvas.dataset.polkavmUiCommands = String(
+          Number(canvas.dataset.polkavmUiCommands ?? 0) +
+            output.commands.length,
         );
-        canvas.dataset.pvmUiLastCommands = output.commands
+        canvas.dataset.polkavmUiLastCommands = output.commands
           .map((command) => command.type)
           .join(",");
         const command = output.commands.at(0);
         if (command?.type === "copy-text") {
-          canvas.dataset.pvmClipboardRequests = String(
-            Number(canvas.dataset.pvmClipboardRequests ?? 0) + 1,
+          canvas.dataset.polkavmClipboardRequests = String(
+            Number(canvas.dataset.polkavmClipboardRequests ?? 0) + 1,
           );
         } else if (command !== undefined) {
-          canvas.dataset.pvmNavigationRequests = String(
-            Number(canvas.dataset.pvmNavigationRequests ?? 0) + 1,
+          canvas.dataset.polkavmNavigationRequests = String(
+            Number(canvas.dataset.polkavmNavigationRequests ?? 0) + 1,
           );
         }
         postFirstUiPlatformCommand(output, window.parent);
@@ -2476,10 +2479,10 @@ export async function runPvmApplication(
       }
       case "metrics": {
         const values = message as unknown as WorkerMetrics;
-        pvmMetrics.updates = values.updates;
-        pvmMetrics.updateP50Ms = values.updateP50Ms;
-        pvmMetrics.updateP95Ms = values.updateP95Ms;
-        pvmMetrics.updateMaxMs = values.updateMaxMs;
+        polkavmMetrics.updates = values.updates;
+        polkavmMetrics.updateP50Ms = values.updateP50Ms;
+        polkavmMetrics.updateP95Ms = values.updateP95Ms;
+        polkavmMetrics.updateMaxMs = values.updateMaxMs;
         updateMetrics();
         break;
       }

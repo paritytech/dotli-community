@@ -60,8 +60,8 @@ async function archiveCar(
   return { cid: root.toString(), bytes: car };
 }
 
-async function pvmCar(): Promise<TestCar> {
-  const fixture = join(import.meta.dirname, "fixtures/pvm");
+async function polkavmCar(): Promise<TestCar> {
+  const fixture = join(import.meta.dirname, "fixtures/polkavm");
   const manifest = new Uint8Array(
     await readFile(join(fixture, "manifest.json")),
   );
@@ -72,21 +72,21 @@ async function pvmCar(): Promise<TestCar> {
     ["manifest.json", manifest],
     ["app.polkavm", program],
     [
-      "pvm-runtime/pvm-browser-runtime.wasm",
+      "polkavm-runtime/polkavm-browser-runtime.wasm",
       new TextEncoder().encode("package-owned runtime"),
     ],
   ]);
 }
 
 async function webGpuFallbackCar(): Promise<TestCar & { manifest: string }> {
-  const fixture = join(import.meta.dirname, "fixtures/pvm");
+  const fixture = join(import.meta.dirname, "fixtures/polkavm");
   const manifest = JSON.stringify({
     $v: 2,
     kind: "app",
     appVersion: [1, 0, 0],
     runtime: {
       kind: "polkavm",
-      abiVersion: 1,
+      abiVersion: 2,
       entrypoint: "app.polkavm",
       fallback: { kind: "web", entrypoint: "fallback/index.html" },
     },
@@ -158,7 +158,7 @@ async function installTruapiPortResponder(page: Page): Promise<void> {
 test("a verified PolkaVM package translates and renders in the sandbox", async ({
   page,
 }) => {
-  const fixture = await pvmCar();
+  const fixture = await polkavmCar();
   await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -171,21 +171,21 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
   await page.evaluate(
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
-      iframe.id = "pvm-product";
-      iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      iframe.id = "polkavm-product";
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
       document.body.replaceChildren(iframe);
     },
     { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
-  const product = page.frameLocator("#pvm-product");
-  const canvas = product.locator("#dotli-pvm-canvas");
-  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+  const product = page.frameLocator("#polkavm-product");
+  const canvas = product.locator("#dotli-polkavm-canvas");
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
     timeout: 30_000,
   });
-  await expect(canvas).toHaveAttribute("data-pvm-backend", "compiler");
+  await expect(canvas).toHaveAttribute("data-polkavm-backend", "compiler");
   await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+    .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("width", "320");
   await expect(canvas).toHaveAttribute("height", "200");
@@ -208,13 +208,13 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     left: "0px",
   });
 
-  // The host-owned PVM canvas retains its verified launch contract so a
+  // The host-owned PolkaVM canvas retains its verified launch contract so a
   // browser/frame reload restarts the same CID without relying on parent state.
   const productFrame = page
     .frames()
-    .find((frame) => frame.url().includes("pvm-fixture.app.localhost"));
+    .find((frame) => frame.url().includes("polkavm-fixture.app.localhost"));
   if (productFrame === undefined) {
-    throw new Error("PVM product frame did not mount");
+    throw new Error("PolkaVM product frame did not mount");
   }
   expect(new URL(productFrame.url()).searchParams.get("cid")).toBe(fixture.cid);
   expect(new URL(productFrame.url()).searchParams.has("fullReset")).toBe(false);
@@ -224,12 +224,12 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
       window.location.reload();
     }),
   ]);
-  await expect(canvas).toHaveAttribute("data-pvm-cache-hit", "true", {
+  await expect(canvas).toHaveAttribute("data-polkavm-cache-hit", "true", {
     timeout: 30_000,
   });
-  await expect(canvas).toHaveAttribute("data-pvm-translation-ms", "0");
+  await expect(canvas).toHaveAttribute("data-polkavm-translation-ms", "0");
   const teardown = await productFrame.evaluate(() => {
-    const target = document.querySelector("#dotli-pvm-canvas");
+    const target = document.querySelector("#dotli-polkavm-canvas");
     if (!(target instanceof HTMLCanvasElement)) {
       throw new Error("PolkaVM canvas is unavailable");
     }
@@ -250,7 +250,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     document.dispatchEvent(new Event("pointerlockchange"));
     window.dispatchEvent(new PageTransitionEvent("pagehide"));
     return {
-      captured: target.dataset.pvmPointerCaptured,
+      captured: target.dataset.polkavmPointerCaptured,
       releases,
     };
   });
@@ -262,7 +262,7 @@ test("a WebGPU PolkaVM package selects its web fallback without an adapter", asy
 }) => {
   const fixture = await webGpuFallbackCar();
   await page.addInitScript(() => {
-    if (window.location.hostname === "pvm-fallback.app.localhost") {
+    if (window.location.hostname === "polkavm-fallback.app.localhost") {
       Object.defineProperty(navigator, "gpu", {
         configurable: true,
         value: { requestAdapter: () => Promise.resolve(null) },
@@ -282,14 +282,14 @@ test("a WebGPU PolkaVM package selects its web fallback without an adapter", asy
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, manifest, schemaVersion }) => {
-      const url = new URL("http://pvm-fallback.app.localhost:5173/");
+      const url = new URL("http://polkavm-fallback.app.localhost:5173/");
       url.searchParams.set("cid", cid);
       url.searchParams.set("v", String(schemaVersion));
       url.searchParams.set("chainBackend", "rpc-gateway");
       url.searchParams.set("network", "paseo-next-v2");
       url.searchParams.set("executableManifest", manifest);
       const iframe = document.createElement("iframe");
-      iframe.id = "pvm-fallback-product";
+      iframe.id = "polkavm-fallback-product";
       iframe.src = url.toString();
       document.body.replaceChildren(iframe);
     },
@@ -300,17 +300,17 @@ test("a WebGPU PolkaVM package selects its web fallback without an adapter", asy
     },
   );
 
-  const product = page.frameLocator("#pvm-fallback-product");
+  const product = page.frameLocator("#polkavm-fallback-product");
   await expect(product.locator("#webgl-fallback")).toHaveText(
     "WebGL fallback selected",
   );
-  await expect(product.locator("#dotli-pvm-canvas")).toHaveCount(0);
+  await expect(product.locator("#dotli-polkavm-canvas")).toHaveCount(0);
 });
 
 test("a PolkaVM package can bypass translation and use the interpreter", async ({
   page,
 }) => {
-  const fixture = await pvmCar();
+  const fixture = await polkavmCar();
   await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -323,44 +323,50 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
   await page.evaluate(
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
-      iframe.id = "pvm-interpreter-product";
-      iframe.src = `http://pvm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&pvmMode=interpreter`;
+      iframe.id = "polkavm-interpreter-product";
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkavmMode=interpreter`;
       document.body.replaceChildren(iframe);
     },
     { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
   );
 
   const canvas = page
-    .frameLocator("#pvm-interpreter-product")
-    .locator("#dotli-pvm-canvas");
-  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    .frameLocator("#polkavm-interpreter-product")
+    .locator("#dotli-polkavm-canvas");
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
     timeout: 30_000,
   });
-  await expect(canvas).toHaveAttribute("data-pvm-backend", "interpreter");
-  await expect(canvas).toHaveAttribute("data-pvm-translation-ms", "0");
+  await expect(canvas).toHaveAttribute("data-polkavm-backend", "interpreter");
+  await expect(canvas).toHaveAttribute("data-polkavm-translation-ms", "0");
   await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+    .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(2);
-  await expect(canvas).toHaveAttribute("data-pvm-startup-stage", "first-frame");
+  await expect(canvas).toHaveAttribute(
+    "data-polkavm-startup-stage",
+    "first-frame",
+  );
   await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-updates")))
+    .poll(async () => Number(await canvas.getAttribute("data-polkavm-updates")))
     .toBeGreaterThan(0);
 });
 
 const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
 const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
-const expectedV2Backend = process.env.DOTLI_PVM_EXPECTED_BACKEND ?? "compiler";
-const expectedV2Profile = process.env.DOTLI_PVM_EXPECTED_PROFILE;
-const expectedTruapi = process.env.DOTLI_PVM_EXPECTED_TRUAPI === "1";
-const expectedResize = process.env.DOTLI_PVM_EXPECTED_RESIZE === "1";
-const expectedMotion = process.env.DOTLI_PVM_EXPECTED_MOTION === "1";
+const expectedV2Backend =
+  process.env.DOTLI_POLKAVM_EXPECTED_BACKEND ?? "compiler";
+const expectedV2Profile = process.env.DOTLI_POLKAVM_EXPECTED_PROFILE;
+const expectedTruapi = process.env.DOTLI_POLKAVM_EXPECTED_TRUAPI === "1";
+const expectedResize = process.env.DOTLI_POLKAVM_EXPECTED_RESIZE === "1";
+const expectedMotion = process.env.DOTLI_POLKAVM_EXPECTED_MOTION === "1";
 const expectedMotionSource =
-  process.env.DOTLI_PVM_EXPECTED_MOTION_SOURCE ?? "pointer";
+  process.env.DOTLI_POLKAVM_EXPECTED_MOTION_SOURCE ?? "pointer";
 const pointerLockUnavailable =
-  process.env.DOTLI_PVM_POINTER_LOCK_UNAVAILABLE === "1";
+  process.env.DOTLI_POLKAVM_POINTER_LOCK_UNAVAILABLE === "1";
 const expectedPointerCapture =
-  process.env.DOTLI_PVM_EXPECTED_POINTER_CAPTURE === "1";
-const expectedInputKeys = (process.env.DOTLI_PVM_INPUT_KEYS ?? "ArrowUp,Space")
+  process.env.DOTLI_POLKAVM_EXPECTED_POINTER_CAPTURE === "1";
+const expectedInputKeys = (
+  process.env.DOTLI_POLKAVM_INPUT_KEYS ?? "ArrowUp,Space"
+)
   .split(",")
   .filter(Boolean);
 
@@ -456,46 +462,55 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
 
   const canvas = page
     .frameLocator("#doom-v2-product")
-    .locator("#dotli-pvm-canvas");
-  await expect(canvas).toHaveAttribute("data-pvm-ready", "true", {
+    .locator("#dotli-polkavm-canvas");
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
     timeout: 60_000,
   });
   await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")), {
-      timeout: 60_000,
-    })
+    .poll(
+      async () => Number(await canvas.getAttribute("data-polkavm-frames")),
+      {
+        timeout: 60_000,
+      },
+    )
     .toBeGreaterThan(2);
-  await expect(canvas).toHaveAttribute("data-pvm-backend", expectedV2Backend);
+  await expect(canvas).toHaveAttribute(
+    "data-polkavm-backend",
+    expectedV2Backend,
+  );
   if (expectedV2Profile !== undefined) {
-    await expect(canvas).toHaveAttribute("data-pvm-profile", expectedV2Profile);
+    await expect(canvas).toHaveAttribute(
+      "data-polkavm-profile",
+      expectedV2Profile,
+    );
   }
   if (expectedV2Profile === "tri2d") {
     await expect
       .poll(async () =>
-        Number(await canvas.getAttribute("data-pvm-tri2d-draws")),
+        Number(await canvas.getAttribute("data-polkavm-tri2d-draws")),
       )
       .toBeGreaterThan(0);
   } else if (
     expectedV2Profile === "webgpu-raster" ||
     expectedV2Profile === "webgpu"
   ) {
-    await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
+    await expect(canvas).toHaveAttribute("data-polkavm-gpu", "ready");
   }
   if (expectedTruapi) {
     await expect
       .poll(async () =>
-        Number(await canvas.getAttribute("data-pvm-truapi-requests")),
+        Number(await canvas.getAttribute("data-polkavm-host-frame-requests")),
       )
       .toBeGreaterThan(0);
     await expect
       .poll(async () =>
-        Number(await canvas.getAttribute("data-pvm-truapi-responses")),
+        Number(await canvas.getAttribute("data-polkavm-host-frame-responses")),
       )
       .toBeGreaterThan(0);
   }
   if (expectedResize) {
     const framesBeforeResize = Number(
-      await canvas.getAttribute("data-pvm-frames"),
+      await canvas.getAttribute("data-polkavm-frames"),
     );
     await page.locator("#doom-v2-product").evaluate((iframe) => {
       iframe.style.width = "100vw";
@@ -503,18 +518,20 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     });
     await page.setViewportSize({ width: 960, height: 640 });
     await expect
-      .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+      .poll(async () =>
+        Number(await canvas.getAttribute("data-polkavm-frames")),
+      )
       .toBeGreaterThan(framesBeforeResize);
-    await expect(canvas).toHaveAttribute("data-pvm-ready", "true");
+    await expect(canvas).toHaveAttribute("data-polkavm-ready", "true");
     if (
       expectedV2Profile === "webgpu-raster" ||
       expectedV2Profile === "webgpu"
     ) {
-      await expect(canvas).toHaveAttribute("data-pvm-gpu", "ready");
+      await expect(canvas).toHaveAttribute("data-polkavm-gpu", "ready");
     }
   }
   const framesBeforeInput = Number(
-    await canvas.getAttribute("data-pvm-frames"),
+    await canvas.getAttribute("data-polkavm-frames"),
   );
   await canvas.click({ position: { x: 160, y: 100 } });
   const productFrame = page
@@ -529,7 +546,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       await page.keyboard.press(key);
     }
     await expect(canvas).toHaveAttribute(
-      "data-pvm-pointer-capture-armed",
+      "data-polkavm-pointer-capture-armed",
       "true",
       { timeout: 60_000 },
     );
@@ -538,7 +555,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .poll(async () =>
         productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
       )
-      .toBe("dotli-pvm-canvas");
+      .toBe("dotli-polkavm-canvas");
     await page.keyboard.press("Escape");
     await expect
       .poll(async () =>
@@ -553,7 +570,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .toBeNull();
     await page.keyboard.press("Escape");
     await expect(canvas).toHaveAttribute(
-      "data-pvm-pointer-capture-armed",
+      "data-polkavm-pointer-capture-armed",
       "true",
       { timeout: 60_000 },
     );
@@ -562,7 +579,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
       .poll(async () =>
         productFrame.evaluate(() => document.pointerLockElement?.id ?? null),
       )
-      .toBe("dotli-pvm-canvas");
+      .toBe("dotli-polkavm-canvas");
   }
   if (expectedMotion) {
     if (expectedMotionSource === "device") {
@@ -593,7 +610,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
         .toBeGreaterThan(0);
     } else if (expectedPointerLock) {
       await productFrame.evaluate(() => {
-        const target = document.querySelector("#dotli-pvm-canvas");
+        const target = document.querySelector("#dotli-polkavm-canvas");
         if (!(target instanceof HTMLCanvasElement)) {
           throw new Error("PolkaVM canvas is unavailable");
         }
@@ -620,11 +637,11 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     }
     await expect
       .poll(async () =>
-        Number(await canvas.getAttribute("data-pvm-motion-samples")),
+        Number(await canvas.getAttribute("data-polkavm-motion-samples")),
       )
       .toBeGreaterThan(0);
     await expect(canvas).toHaveAttribute(
-      "data-pvm-motion-source",
+      "data-polkavm-motion-source",
       expectedMotionSource,
     );
   }
@@ -632,6 +649,6 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     await page.keyboard.press(key);
   }
   await expect
-    .poll(async () => Number(await canvas.getAttribute("data-pvm-frames")))
+    .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(framesBeforeInput);
 });

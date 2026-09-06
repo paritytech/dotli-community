@@ -400,7 +400,7 @@ describe("bridge render lifecycle", () => {
 
   it("delegates motion sensors to PolkaVM product frames with web fallbacks", async () => {
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
 
     const render = renderAppSubdomain(
@@ -425,7 +425,7 @@ describe("bridge render lifecycle", () => {
     }
     vi.stubGlobal("DeviceMotionEvent", TestDeviceMotionEvent);
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const render = renderAppSubdomain(
       "motion-relay-cid",
@@ -444,14 +444,14 @@ describe("bridge render lifecycle", () => {
       .mockImplementation(() => {});
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { type: "dotli:pvm-motion-request" },
+        data: { type: "dotli:polkavm-motion-request" },
         origin: created.allowedOrigin,
         source: targetWindow,
       }),
     );
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { type: "dotli:pvm-motion-request" },
+        data: { type: "dotli:polkavm-motion-request" },
         origin: created.allowedOrigin,
         source: targetWindow,
       }),
@@ -468,7 +468,7 @@ describe("bridge render lifecycle", () => {
     await vi.waitFor(() => {
       expect(TestDeviceMotionEvent.requestPermission).toHaveBeenCalledOnce();
       expect(postMessage).toHaveBeenCalledWith(
-        { type: "dotli:pvm-motion-status", availability: 1 },
+        { type: "dotli:polkavm-motion-status", availability: 1 },
         created.allowedOrigin,
       );
     });
@@ -481,7 +481,7 @@ describe("bridge render lifecycle", () => {
     );
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { type: "dotli:pvm-motion-request" },
+        data: { type: "dotli:polkavm-motion-request" },
         origin: created.allowedOrigin,
         source: targetWindow,
       }),
@@ -493,7 +493,7 @@ describe("bridge render lifecycle", () => {
     window.dispatchEvent(new TestDeviceMotionEvent("devicemotion"));
     expect(postMessage).toHaveBeenCalledWith(
       {
-        type: "dotli:pvm-motion-sample",
+        type: "dotli:polkavm-motion-sample",
         timestampMs: expect.any(Number),
         acceleration: { x: 1, y: 2, z: 9 },
         rotation: { alpha: 3, beta: 4, gamma: 5 },
@@ -502,9 +502,9 @@ describe("bridge render lifecycle", () => {
     );
   });
 
-  it("mediates one PVM platform command per trusted app-frame activation", async () => {
+  it("mediates one PolkaVM platform command per trusted app-frame activation", async () => {
     const executableManifest =
-      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":1,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
+      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
     // Import after the per-test module reset so bridge singleton state is isolated.
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const render = renderAppSubdomain(
@@ -555,7 +555,7 @@ describe("bridge render lifecycle", () => {
 
     try {
       dispatch({
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "automatic" },
       });
       await Promise.resolve();
@@ -563,32 +563,35 @@ describe("bridge render lifecycle", () => {
 
       activation.isActive = true;
       activation.hasBeenActive = true;
-      dispatch({ type: "dotli:pvm-user-activation" }, "https://evil.example");
+      dispatch(
+        { type: "dotli:polkavm-user-activation" },
+        "https://evil.example",
+      );
       dispatch({
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "wrong-origin" },
       });
       await Promise.resolve();
       expect(writeText).not.toHaveBeenCalled();
 
-      dispatch({ type: "dotli:pvm-user-activation" });
+      dispatch({ type: "dotli:polkavm-user-activation" });
       dispatch({
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "hello" },
       });
       await vi.waitFor(() => {
         expect(writeText).toHaveBeenCalledExactlyOnceWith("hello");
       });
       dispatch({
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "second" },
       });
       await Promise.resolve();
       expect(writeText).toHaveBeenCalledTimes(1);
 
-      dispatch({ type: "dotli:pvm-user-activation" });
+      dispatch({ type: "dotli:polkavm-user-activation" });
       dispatch({
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: {
           type: "open-url",
           url: "javascript:alert(1)",
@@ -597,9 +600,9 @@ describe("bridge render lifecycle", () => {
       });
       expect(open).not.toHaveBeenCalled();
 
-      dispatch({ type: "dotli:pvm-user-activation" });
+      dispatch({ type: "dotli:polkavm-user-activation" });
       dispatch({
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: {
           type: "open-url",
           url: "https://example.test/path",

@@ -4,17 +4,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   accumulateRelativePointerDelta,
-  describePvmPackage,
+  describePolkaVmPackage,
   encodedInput,
   encodedTextInput,
   encodedMotionSample,
   encodedPointerMotionSample,
-  formatPvmMetrics,
-  isPvmPackage,
+  formatPolkaVmMetrics,
+  isPolkaVmPackage,
   normalizedPointerDelta,
   postFirstUiPlatformCommand,
-  pvmWebFallbackEntrypoint,
-  unsupportedPvmImport,
+  polkavmWebFallbackEntrypoint,
+  unsupportedPolkaVmImport,
   validateFiles,
   resolvedParentOrigin,
   shouldReloadAfterWake,
@@ -23,7 +23,7 @@ import {
   waitForTruapiPort,
   type TruapiPortScope,
   type TruapiPortTarget,
-} from "./pvm-runtime";
+} from "./polkavm-runtime";
 
 const encoder = new TextEncoder();
 
@@ -58,7 +58,7 @@ function doomAppV2Manifest(): string {
     appVersion: [0, 1, 7],
     runtime: {
       kind: "polkavm",
-      abiVersion: 1,
+      abiVersion: 2,
       entrypoint: "app.polkavm",
     },
     capabilities: {
@@ -227,7 +227,7 @@ describe("PolkaVM UI platform output", () => {
     expect(postFirstUiPlatformCommand(output, { postMessage })).toBe(true);
     expect(postMessage).toHaveBeenCalledWith(
       {
-        type: "dotli:pvm-ui-command",
+        type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "hello" },
       },
       "*",
@@ -285,17 +285,17 @@ describe("MotionSample v1 encoding", () => {
 describe("PolkaVM parent motion relay", () => {
   it("uses the browser-provided ancestor when referrer policy hides referrer", () => {
     expect(
-      resolvedParentOrigin("https://chinpokomon-pvm.westendli.dev", ""),
-    ).toBe("https://chinpokomon-pvm.westendli.dev");
+      resolvedParentOrigin("https://chinpokomon-polkavm.westendli.dev", ""),
+    ).toBe("https://chinpokomon-polkavm.westendli.dev");
   });
 
   it("falls back to a valid referrer and rejects a missing parent origin", () => {
     expect(
       resolvedParentOrigin(
         null,
-        "https://chinpokomon-pvm.westendli.dev/product",
+        "https://chinpokomon-polkavm.westendli.dev/product",
       ),
-    ).toBe("https://chinpokomon-pvm.westendli.dev");
+    ).toBe("https://chinpokomon-polkavm.westendli.dev");
     expect(resolvedParentOrigin(null, "")).toBeNull();
     expect(resolvedParentOrigin(null, "not a URL")).toBeNull();
   });
@@ -326,14 +326,16 @@ describe("PolkaVM metrics display", () => {
   };
 
   it("keeps the default JIT badge to one concise line", () => {
-    const display = formatPvmMetrics(metrics);
+    const display = formatPolkaVmMetrics(metrics);
     expect(display.summary).toBe("PolkaVM / JIT · 59.9 FPS");
     expect(display.summary).not.toContain("Stage");
     expect(display.summary).not.toContain("Translate");
   });
 
   it("retains diagnostics in the expandable details", () => {
-    expect(formatPvmMetrics({ ...metrics, backend: "interpreter" })).toEqual({
+    expect(
+      formatPolkaVmMetrics({ ...metrics, backend: "interpreter" }),
+    ).toEqual({
       summary: "PolkaVM / Interpreter · 59.9 FPS",
       details:
         "Stage: first-frame\nTranslate 10.0 ms · Compile 5.0 ms\nUpdate p50 0.00 ms · p95 1.00 ms · max 4.00 ms",
@@ -344,19 +346,19 @@ describe("PolkaVM metrics display", () => {
 describe("PolkaVM compatibility errors", () => {
   it("extracts unsupported imports from translated guest failures", () => {
     expect(
-      unsupportedPvmImport(
+      unsupportedPolkaVmImport(
         "translated PolkaVM guest uses unsupported import host_motion_read",
       ),
     ).toBe("host_motion_read");
     expect(
-      unsupportedPvmImport(
+      unsupportedPolkaVmImport(
         "translated CoreVM guest uses unsupported import pvm_unknown",
       ),
     ).toBe("pvm_unknown");
   });
 
   it("leaves transport and content failures unclassified", () => {
-    expect(unsupportedPvmImport("IPFS request timed out")).toBeNull();
+    expect(unsupportedPolkaVmImport("IPFS request timed out")).toBeNull();
   });
 });
 
@@ -368,8 +370,8 @@ describe("PolkaVM package recognition", () => {
       "game/doom.wad": new Uint8Array([4, 5, 6]),
     };
 
-    expect(isPvmPackage(files)).toBe(true);
-    expect(describePvmPackage(files)).toEqual({
+    expect(isPolkaVmPackage(files)).toBe(true);
+    expect(describePolkaVmPackage(files)).toEqual({
       graphicsProfile: "framebuffer",
       webGpuRequirements: null,
       webFallbackPath: null,
@@ -390,7 +392,7 @@ describe("PolkaVM package recognition", () => {
       "game/doom.wad": new Uint8Array([4, 5, 6]),
     };
 
-    expect(describePvmPackage(files, manifest)).toEqual({
+    expect(describePolkaVmPackage(files, manifest)).toEqual({
       graphicsProfile: "framebuffer",
       webGpuRequirements: null,
       webFallbackPath: null,
@@ -401,10 +403,10 @@ describe("PolkaVM package recognition", () => {
       requiredAssets: [],
       manifestVersion: 2,
     });
-    expect(() => describePvmPackage(files)).toThrow(
+    expect(() => describePolkaVmPackage(files)).toThrow(
       /external App manifest is required/,
     );
-    expect(() => describePvmPackage(files, `${manifest}\n`)).toThrow(
+    expect(() => describePolkaVmPackage(files, `${manifest}\n`)).toThrow(
       /does not match/,
     );
   });
@@ -421,8 +423,8 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)?.inputFeatures).toEqual([]);
-    expect(describePvmPackage(files, manifest)?.controls).toEqual([]);
+    expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([]);
+    expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([]);
   });
 
   it("accepts required MotionSample v1 input", () => {
@@ -437,7 +439,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)?.controls).toEqual([
+    expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([
       "Pointer",
       "Keyboard",
       "Motion",
@@ -461,7 +463,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)?.inputFeatures).toEqual([
+    expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
       "pointer",
       "keyboard",
       "text",
@@ -477,7 +479,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)).toEqual({
+    expect(describePolkaVmPackage(files, manifest)).toEqual({
       graphicsProfile: "tri2d",
       webGpuRequirements: null,
       webFallbackPath: null,
@@ -496,7 +498,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)).toEqual({
+    expect(describePolkaVmPackage(files, manifest)).toEqual({
       graphicsProfile: "webgpu-raster",
       webGpuRequirements: {
         requiredFeatures: [],
@@ -522,7 +524,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array(51_425_059),
     };
-    const descriptor = describePvmPackage(files, manifest);
+    const descriptor = describePolkaVmPackage(files, manifest);
     if (descriptor === null) {
       throw new Error("GPUI package was not recognized");
     }
@@ -537,7 +539,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array(64 * 1024 * 1024 + 1),
     };
-    const descriptor = describePvmPackage(files, manifest);
+    const descriptor = describePolkaVmPackage(files, manifest);
     if (descriptor === null) {
       throw new Error("oversized package was not recognized");
     }
@@ -566,10 +568,10 @@ describe("PolkaVM package recognition", () => {
       gpu: { requestAdapter: vi.fn(() => Promise.resolve(null)) },
     });
     try {
-      expect(describePvmPackage(files, manifest)?.webFallbackPath).toBe(
+      expect(describePolkaVmPackage(files, manifest)?.webFallbackPath).toBe(
         "fallback/index.html",
       );
-      await expect(pvmWebFallbackEntrypoint(files, manifest)).resolves.toBe(
+      await expect(polkavmWebFallbackEntrypoint(files, manifest)).resolves.toBe(
         "fallback/index.html",
       );
     } finally {
@@ -623,7 +625,7 @@ describe("PolkaVM package recognition", () => {
     });
     try {
       await expect(
-        pvmWebFallbackEntrypoint(files, manifest),
+        polkavmWebFallbackEntrypoint(files, manifest),
       ).resolves.toBeNull();
     } finally {
       vi.unstubAllGlobals();
@@ -644,9 +646,9 @@ describe("PolkaVM package recognition", () => {
       gpu: { requestAdapter: vi.fn(() => Promise.resolve(null)) },
     });
     try {
-      await expect(pvmWebFallbackEntrypoint(files, manifest)).rejects.toThrow(
-        /web fallback entrypoint is missing/,
-      );
+      await expect(
+        polkavmWebFallbackEntrypoint(files, manifest),
+      ).rejects.toThrow(/web fallback entrypoint is missing/);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -658,7 +660,7 @@ describe("PolkaVM package recognition", () => {
       "manifest.json": encoder.encode(manifest),
       "app.polkavm": new Uint8Array([1, 2, 3]),
     };
-    expect(describePvmPackage(files, manifest)).toEqual({
+    expect(describePolkaVmPackage(files, manifest)).toEqual({
       graphicsProfile: "webgpu",
       webGpuRequirements: {
         requiredFeatures: [],
@@ -685,7 +687,7 @@ describe("PolkaVM package recognition", () => {
 
   it("leaves ordinary HTML archives on the existing sandbox path", () => {
     expect(
-      isPvmPackage({
+      isPolkaVmPackage({
         "index.html": encoder.encode("<h1>app</h1>"),
       }),
     ).toBe(false);
@@ -705,7 +707,7 @@ describe("PolkaVM package recognition", () => {
       }),
     );
     expect(() =>
-      isPvmPackage({
+      isPolkaVmPackage({
         "manifest.json": manifest,
         "app.polkavm": new Uint8Array([1]),
       }),
@@ -713,7 +715,7 @@ describe("PolkaVM package recognition", () => {
   });
 });
 
-describe("PolkaVM TrUAPI transport", () => {
+describe("PolkaVM host-frame transport", () => {
   it("adopts an existing Host-injected canonical MessagePort", async () => {
     const channel = new MessageChannel();
     const scope = {

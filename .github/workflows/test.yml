@@ -32,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify PVM bridge assets
-        run: bun run check:pvm-runtime
+      - name: Verify PolkaVM runtime assets
+        run: bun run check:polkavm-runtime
 
       - name: Run tests
         run: bunx --bun turbo run test

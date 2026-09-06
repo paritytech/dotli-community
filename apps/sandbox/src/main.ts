@@ -50,11 +50,11 @@ import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
 import {
-  isPvmPackage,
-  runPvmApplication,
-  pvmWebFallbackEntrypoint,
-  unsupportedPvmImport,
-} from "./pvm-runtime";
+  isPolkaVmPackage,
+  runPolkaVmApplication,
+  polkavmWebFallbackEntrypoint,
+  unsupportedPolkaVmImport,
+} from "./polkavm-runtime";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -92,7 +92,7 @@ function stripContractParamsFromUrl(): void {
 }
 /**
  * A full reset is a one-shot host signal. Consume only that flag after the
- * purge while retaining the PVM launch contract, so reloading the host-owned
+ * purge while retaining the PolkaVM launch contract, so reloading the host-owned
  * canvas can start again with the same verified CID and manifest.
  */
 function consumeFullResetParam(): void {
@@ -441,23 +441,26 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
   return injectSandboxChecker(html);
 }
 
-async function runPvmIfPresent(
+async function runPolkaVmIfPresent(
   files: ArchiveFiles,
   cid: string,
   executableManifest: string | null,
 ): Promise<false | null | string> {
-  if (!isPvmPackage(files)) {
+  if (!isPolkaVmPackage(files)) {
     return false;
   }
-  const fallback = await pvmWebFallbackEntrypoint(files, executableManifest);
+  const fallback = await polkavmWebFallbackEntrypoint(
+    files,
+    executableManifest,
+  );
   if (fallback !== null) {
     showStatus("Starting compatible web fallback...");
     return fallback;
   }
   showStatus("Starting PolkaVM application...");
-  // PVM apps are host-owned canvases, not package HTML. Retain their launch
+  // PolkaVM apps are host-owned canvases, not package HTML. Retain their launch
   // contract so a browser or frame reload can verify and restart the same CID.
-  await runPvmApplication(files, cid, executableManifest);
+  await runPolkaVmApplication(files, cid, executableManifest);
   notifyLoadingDone();
   performance.mark("dotli:app:end");
   return null;
@@ -729,19 +732,20 @@ async function main(): Promise<void> {
     : await getCachedArchive(cid, cid, chainBackend);
   if (cachedFiles !== null) {
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
-    const pvmRuntime = await runPvmIfPresent(
+    const polkavmRuntime = await runPolkaVmIfPresent(
       cachedFiles,
       cid,
       executableManifest,
     );
-    if (pvmRuntime === null) {
+    if (polkavmRuntime === null) {
       stopApp();
       return;
     }
 
     // Extract the selected HTML entrypoint and write it directly into this
     // window. An archive without that entrypoint is invalid.
-    const htmlPath = typeof pvmRuntime === "string" ? pvmRuntime : "index.html";
+    const htmlPath =
+      typeof polkavmRuntime === "string" ? polkavmRuntime : "index.html";
     const indexHtml = cachedFiles[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
@@ -823,16 +827,17 @@ async function main(): Promise<void> {
     // as their immutable asset source on the next launch.
     await storeArchiveInSW(result.files, cid, cid, chainBackend);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
-    const pvmRuntime = await runPvmIfPresent(
+    const polkavmRuntime = await runPolkaVmIfPresent(
       result.files,
       cid,
       executableManifest,
     );
-    if (pvmRuntime === null) {
+    if (polkavmRuntime === null) {
       stopApp();
       return;
     }
-    const htmlPath = typeof pvmRuntime === "string" ? pvmRuntime : "index.html";
+    const htmlPath =
+      typeof polkavmRuntime === "string" ? polkavmRuntime : "index.html";
     const indexHtml = result.files[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
@@ -901,7 +906,7 @@ function run(): void {
         attempt: String(runAttempts),
       });
       const message = err instanceof Error ? err.message : String(err);
-      const unsupportedImport = unsupportedPvmImport(message);
+      const unsupportedImport = unsupportedPolkaVmImport(message);
       if (unsupportedImport !== null) {
         const feature =
           unsupportedImport === "host_motion_read"

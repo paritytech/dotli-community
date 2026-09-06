@@ -108,12 +108,14 @@ executes package-owned HTML. The sandbox instead creates a host-owned canvas,
 loads the verified `app.polkavm` and immutable package assets, and translates
 the program to WebAssembly inside a worker. Keyboard, pointer, framebuffer,
 PCM-audio, asset, save, and UI integration traffic stays on the bounded
-PolkaVM Host ABI.
+PolkaVM runtime ABI 2. Guest Host requests use the neutral
+`host_frame_send`/`host_frame_poll` ABI; the browser worker exposes the same
+transport as `host-frame-request`/`host-frame-response` messages.
 
-App manifest v2 supports framebuffer, Tri2D, WebGPU Raster, and WebGPU ABI
-version 1. WebGPU commands execute in a dedicated Host worker after bounded
-capability negotiation; TrUAPI, MotionSample v1, text, IME, focus, and wheel
-input use the same pinned browser runtime as native Hosts. UI output v1 applies
+App manifest v2 uses runtime ABI 2 with framebuffer, Tri2D, WebGPU Raster, and
+WebGPU graphics ABI 1. WebGPU commands execute in a dedicated Host worker after
+bounded capability negotiation; TrUAPI, MotionSample v1, text, IME, focus, and
+wheel input use the same pinned browser runtime as native Hosts. UI output v1 applies
 cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S)
 navigation cross an origin-checked parent channel; the Host consumes at most
 one command per recent trusted input and does not grant the app iframe
@@ -121,11 +123,13 @@ clipboard permission. As an interim compatibility policy, framebuffer and
 WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
 free.
 
-Translated Wasm bytes are cached in product-origin IndexedDB by the SHA-256 of
-the PVM program and the pinned translator version. Warm launches skip PVM
-instruction lowering; WebAssembly compilation remains browser-owned. If
-translation or Wasm compilation fails, the same worker retries through the
-bounded interpreter.
+The browser artifacts are byte-for-byte copies of
+`@useragent-kit/polkavm-runtime` at the source revision recorded in
+`scripts/polkavm-runtime.lock.json`. Translated Wasm bytes are cached in
+product-origin IndexedDB by the SHA-256 of the PolkaVM program and the pinned
+translator revision. Warm launches skip PolkaVM instruction lowering;
+WebAssembly compilation remains browser-owned. If translation or Wasm
+compilation fails, the same worker retries through the bounded interpreter.
 
 ## Caching and verification
 
@@ -133,7 +137,7 @@ dotli uses three cache layers for fast repeat visits:
 
 1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
 2. **Archive cache** (Service Worker) — stores fetched file maps keyed by domain; a cache hit additionally requires the stored CID (and content backend) to match
-3. **PVM translation cache** (IndexedDB) — stores translated Wasm bytes keyed by translator version and PVM program digest
+3. **PolkaVM translation cache** (IndexedDB) — stores translated Wasm bytes keyed by translator version and PolkaVM program digest
 
 On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield shows how the current page was loaded:
 
