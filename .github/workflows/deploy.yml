@@ -119,7 +119,7 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
           VITE_NETWORKS: ${{ vars.NETWORKS }}
-          VITE_PVM_TCP_RELAY_URL: ${{ vars.PVM_TCP_RELAY_URL }}
+          VITE_POLKAVM_TCP_RELAY_URL: ${{ vars.POLKAVM_TCP_RELAY_URL }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0

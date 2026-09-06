@@ -40,6 +40,10 @@ if (!checkOnly) {
     require.resolve(`${lock.package}/gpu-worker`),
   );
   installedSources.set(
+    "polkavm-computer.js",
+    require.resolve(`${lock.package}/computer`),
+  );
+  installedSources.set(
     "SHA256SUMS",
     require.resolve(`${lock.package}/checksums`),
   );

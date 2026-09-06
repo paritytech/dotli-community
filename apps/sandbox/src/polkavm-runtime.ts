@@ -2364,11 +2364,11 @@ export async function runPolkaVmApplication(
         canvas.height = frame.height;
         if (resized) {
           canvas.style.setProperty(
-            "--dotli-pvm-frame-aspect",
+            "--dotli-polkavm-frame-aspect",
             String(frame.width / frame.height),
           );
           canvas.style.setProperty(
-            "--dotli-pvm-frame-inverse-aspect",
+            "--dotli-polkavm-frame-inverse-aspect",
             String(frame.height / frame.width),
           );
         }

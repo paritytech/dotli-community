@@ -131,6 +131,10 @@ translator revision. Warm launches skip PolkaVM instruction lowering;
 WebAssembly compilation remains browser-owned. If translation or Wasm
 compilation fails, the same worker retries through the bounded interpreter.
 
+Computer apps use the `polkadot-host/0.1/*` interface family (computer ABI
+0.1) rather than the graphics contract. The same pinned runtime package
+provides their translator and supervisor.
+
 ## Caching and verification
 
 dotli uses three cache layers for fast repeat visits:

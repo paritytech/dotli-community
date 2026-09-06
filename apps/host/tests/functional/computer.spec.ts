@@ -34,7 +34,7 @@ interface AppCar {
   manifest: string;
 }
 
-const fixtureRoot = join(import.meta.dirname, "fixtures/pvm-computer");
+const fixtureRoot = join(import.meta.dirname, "fixtures/polkavm-computer");
 
 async function appCar(entries: readonly string[][]): Promise<AppCar> {
   const files = await Promise.all(
@@ -480,7 +480,7 @@ test("a network app boots even when no TCP relay is granted", async ({
   page,
 }) => {
   // Contract: requiring polkadot-host/0.1/net never gates booting. When the
-  // build has no VITE_PVM_TCP_RELAY_URL the sandbox clamps networking off and
+  // build has no VITE_POLKAVM_TCP_RELAY_URL the sandbox clamps networking off and
   // TCP hostcalls return DENIED; the terminal still works. This test asserts
   // only relay-independent behavior so it passes on both build flavors.
   const lynx = await appCar([
@@ -534,8 +534,8 @@ test("a network app boots even when no TCP relay is granted", async ({
 test("a workspace app tiles independently sandboxed shell panes", async ({
   page,
 }) => {
-  // The ADR's third proof: one .pvm workspace application launches multiple
-  // independent child PVM computers, tiles their terminal surfaces, and
+  // The ADR's third proof: one .polkavm workspace application launches multiple
+  // independent child PolkaVM computers, tiles their terminal surfaces, and
   // routes input to the focused pane. Bindings are tmux-style Ctrl-B.
   const workspace = await appCar([
     ["manifest.json", "workspace-manifest.json"],

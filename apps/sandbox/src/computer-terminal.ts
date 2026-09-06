@@ -3,7 +3,7 @@
 
 // VT emulator and keyboard translation for the experimental polkavm-computer
 // app kind. Ported from the Rust reference implementation in
-// pvm-terminal (vt.rs, input.rs, render.rs); escape-sequence semantics follow
+// polkavm-terminal (vt.rs, input.rs, render.rs); escape-sequence semantics follow
 // that emulator with the additions vim (feature-tiny, TERM=xterm) relies on:
 // DECSTBM scroll regions, reverse index, insert/delete line and character,
 // alternate screen (?1049, treated as clear + cursor save/restore), and safe

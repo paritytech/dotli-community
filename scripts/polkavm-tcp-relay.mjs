@@ -1,20 +1,20 @@
 import { lookup } from "node:dns/promises";
 import { isIPv4 } from "node:net";
 
-const port = Number.parseInt(process.env.PVM_TCP_RELAY_PORT ?? "8787", 10);
+const port = Number.parseInt(process.env.POLKAVM_TCP_RELAY_PORT ?? "8787", 10);
 const MAX_PENDING_BYTES = 1024 * 1024;
 const allowedPorts = new Set(
-  (process.env.PVM_TCP_ALLOWED_PORTS ?? "80,443")
+  (process.env.POLKAVM_TCP_ALLOWED_PORTS ?? "80,443")
     .split(",")
     .map((value) => Number.parseInt(value.trim(), 10))
     .filter((value) => Number.isInteger(value) && value > 0 && value <= 65535),
 );
-const configuredOrigins = (process.env.PVM_TCP_ALLOWED_ORIGINS ?? "")
+const configuredOrigins = (process.env.POLKAVM_TCP_ALLOWED_ORIGINS ?? "")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
 if (process.env.NODE_ENV === "production" && configuredOrigins.length === 0) {
-  throw new Error("PVM_TCP_ALLOWED_ORIGINS is required in production");
+  throw new Error("POLKAVM_TCP_ALLOWED_ORIGINS is required in production");
 }
 
 function originAllowed(origin) {
@@ -118,7 +118,7 @@ const server = Bun.serve({
   fetch(request, server) {
     const url = new URL(request.url);
     const origin = request.headers.get("origin") ?? "";
-    if (url.pathname !== "/pvm-tcp" || !originAllowed(origin)) {
+    if (url.pathname !== "/polkavm-tcp" || !originAllowed(origin)) {
       return new Response("Not found", { status: 404 });
     }
     const upgraded = server.upgrade(request, {
@@ -247,4 +247,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`PVM TCP relay listening on ws://127.0.0.1:${server.port}/pvm-tcp`);
+console.log(`PolkaVM TCP relay listening on ws://127.0.0.1:${server.port}/polkavm-tcp`);

@@ -212,7 +212,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     left: 0,
     top: 75,
   });
-  const productElement = page.locator("#pvm-product");
+  const productElement = page.locator("#polkavm-product");
   await productElement.evaluate((element) => {
     element.style.width = "640px";
     element.style.height = "300px";

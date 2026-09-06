@@ -18,7 +18,7 @@
 //     { type: "error", message }           supervisor fault; computer is dead
 
 importScripts(
-  new URL("/pvm-runtime/pvm-computer.js", self.location.origin).href,
+  new URL("/polkavm-runtime/polkavm-computer.js", self.location.origin).href,
 );
 
 const {
@@ -26,7 +26,7 @@ const {
   ComputerTranslator,
   WebSocketTcpProvider,
   computerContext,
-} = globalThis.PvmComputer;
+} = globalThis.PolkaVmComputer;
 
 // One pump handles at most this many run slices before declaring the guest
 // wedged. A busy full-screen redraw needs a few dozen; 100k is a hang.

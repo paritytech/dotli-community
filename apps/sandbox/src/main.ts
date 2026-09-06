@@ -55,7 +55,7 @@ import {
   polkavmWebFallbackEntrypoint,
   unsupportedPolkaVmImport,
 } from "./polkavm-runtime";
-import { isComputerPackage, runComputerApplication } from "./pvm-computer";
+import { isComputerPackage, runComputerApplication } from "./polkavm-computer";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");

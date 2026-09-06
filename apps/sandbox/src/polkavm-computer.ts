@@ -3,7 +3,7 @@
 
 // Boot path for the experimental `polkadot-host-computer/0.1` contract.
 // A computer package is a shell program plus optional child packages; the
-// supervisor (and every VM) runs inside pvm-computer-worker.js, while this
+// supervisor (and every VM) runs inside polkavm-computer-worker.js, while this
 // module owns the DOM terminal, keyboard routing, and /home persistence.
 
 import type { ArchiveFiles } from "@dotli/content/archive";
@@ -18,19 +18,20 @@ import {
   keyEventToBytes,
   type TerminalSnapshot,
 } from "./computer-terminal";
-import { waitForTruapiPort } from "./pvm-runtime";
+import { waitForTruapiPort } from "./polkavm-runtime";
 
-const PVM_RUNTIME_ROOT = "/pvm-runtime";
+const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
 const MAX_SAVE_BYTES = 64 * 1024 * 1024 + 128 * 1024;
-const SAVE_DB_NAME = "dotli-pvm";
+const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const SAVE_FORMAT_VERSION = 2;
 const HOME_PREFIX = "home/";
 const MAX_GAS = 8_000_000_000;
 const TCP_RELAY_URL =
-  (import.meta.env.VITE_PVM_TCP_RELAY_URL as string | undefined)?.trim() ?? "";
+  (import.meta.env.VITE_POLKAVM_TCP_RELAY_URL as string | undefined)?.trim() ??
+  "";
 const RESIZE_DEBOUNCE_MS = 200;
 const MIN_COLUMNS = 20;
 const MAX_COLUMNS = 240;
@@ -535,9 +536,12 @@ export async function runComputerApplication(
   const geometry = terminalGeometry(screen);
   const terminal = new ComputerTerminal(geometry.columns, geometry.rows);
 
-  const runtime = await fetch(`${PVM_RUNTIME_ROOT}/pvm-browser-runtime.wasm`, {
-    cache: "force-cache",
-  }).then((response) => {
+  const runtime = await fetch(
+    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
+    {
+      cache: "force-cache",
+    },
+  ).then((response) => {
     if (!response.ok) {
       throw new Error(
         `PolkaVM runtime fetch failed: HTTP ${String(response.status)}`,
@@ -578,7 +582,7 @@ export async function runComputerApplication(
   }));
   const program = ownedBytes(files[descriptor.programPath]);
 
-  const worker = new Worker("/pvm-computer-worker.js");
+  const worker = new Worker("/polkavm-computer-worker.js");
 
   let renderQueued = false;
   const scheduleRender = (): void => {
@@ -714,7 +718,7 @@ export async function runComputerApplication(
       );
     } catch (error) {
       status.textContent = "";
-      console.warn(`[pvm computer] resolving ${name} failed:`, error);
+      console.warn(`[polkavm computer] resolving ${name} failed:`, error);
       worker.postMessage({ type: "package-error", name });
     }
   };
@@ -834,7 +838,7 @@ export async function runComputerApplication(
         status.textContent = `Computer exited with status ${String(message.code ?? 0)} — reload to restart.`;
         break;
       case "log":
-        console.warn(`[pvm computer] ${message.message ?? ""}`);
+        console.warn(`[polkavm computer] ${message.message ?? ""}`);
         break;
       case "error":
         running = false;

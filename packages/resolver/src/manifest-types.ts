@@ -266,8 +266,8 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     errors.push(...validateHostCapabilities(capabilities, runtime, p));
     return errors;
   }
-  if (runtime.abiVersion !== 1) {
-    errors.push(`${p}PolkaVM runtime abiVersion must be 1`);
+  if (runtime.abiVersion !== 2) {
+    errors.push(`${p}PolkaVM runtime abiVersion must be 2`);
   }
   const graphics =
     capabilities !== null && isPlainObject(capabilities.graphics)

@@ -7,12 +7,12 @@
  * contract over translated PolkaVM guests.
  *
  * The native reference implementation lives in
- * rust/crates/pvm-runtime/src/computer.rs; this file mirrors its observable
+ * rust/crates/polkavm-host-runtime/src/computer.rs; this file mirrors its observable
  * semantics (status codes, limits, record encodings, supervisor state
  * machine) and is held to it by running the same conformance fixtures in
  * test/computer.test.mjs. Guests are not recompiled for the web: their
  * PolkaVM bytecode is translated to wasm by the staged translator in
- * pvm-browser-runtime.wasm, and every hostcall is handled here.
+ * polkavm-browser-runtime.wasm, and every hostcall is handled here.
  *
  * Networking is denied unless the embedding Host injects a byte-stream provider.
  * Workspace management is denied unless the embedder grants host.workspace
@@ -2379,6 +2379,7 @@
           this.networkProvider,
           this.filesystem,
         );
+        child.setTerminalSize(this.columns, this.rows);
         child.setNetworkEnabled(this.network);
       } catch {
         child?.dispose();
@@ -2724,7 +2725,7 @@
   }
 
   /** Translates a `.polkavm` program to a wasm module through the staged
-   * translator in pvm-browser-runtime.wasm. */
+   * translator in polkavm-browser-runtime.wasm. */
   class ComputerTranslator {
     constructor(runtimeExports) {
       this.pvm = runtimeExports;
@@ -2736,15 +2737,15 @@
           ? { instance: new WebAssembly.Instance(runtimeWasm, {}) }
           : await WebAssembly.instantiate(runtimeWasm, {});
       const exports = instance.exports;
-      if (exports.pvm_browser_abi_version() !== 1) {
+      if (exports.polkavm_browser_abi_version() !== 2) {
         throw new Error("PolkaVM browser runtime ABI mismatch");
       }
       return new ComputerTranslator(exports);
     }
 
     #errorText() {
-      const pointer = this.pvm.pvm_browser_error_pointer();
-      const length = this.pvm.pvm_browser_error_length();
+      const pointer = this.pvm.polkavm_browser_error_pointer();
+      const length = this.pvm.polkavm_browser_error_length();
       return new TextDecoder().decode(
         new Uint8Array(this.pvm.memory.buffer, pointer, length),
       );
@@ -2755,18 +2756,18 @@
         programBytes instanceof Uint8Array
           ? programBytes
           : new Uint8Array(programBytes);
-      const pointer = this.pvm.pvm_browser_staging_reserve(source.byteLength);
+      const pointer = this.pvm.polkavm_browser_staging_reserve(source.byteLength);
       if (!pointer) {
         throw new Error(`reserve staging memory: ${this.#errorText()}`);
       }
       new Uint8Array(this.pvm.memory.buffer, pointer, source.byteLength).set(
         source,
       );
-      if (this.pvm.pvm_browser_translate_staged() !== 0) {
+      if (this.pvm.polkavm_browser_translate_staged() !== 0) {
         throw new Error(`translate computer guest: ${this.#errorText()}`);
       }
-      const output = this.pvm.pvm_browser_translation_pointer();
-      const length = this.pvm.pvm_browser_translation_length();
+      const output = this.pvm.polkavm_browser_translation_pointer();
+      const length = this.pvm.polkavm_browser_translation_length();
       const bytes = new Uint8Array(
         this.pvm.memory.buffer,
         output,
@@ -2776,7 +2777,7 @@
     }
   }
 
-  globalThis.PvmComputer = {
+  globalThis.PolkaVmComputer = {
     computerContext,
     ComputerDevices,
     ComputerProcess,

@@ -265,7 +265,7 @@ describe("validateExecutableManifest", () => {
         ...VALID_COMPUTER,
         runtime: {
           kind: "polkavm",
-          abiVersion: 1,
+          abiVersion: 2,
           entrypoint: "shell.polkavm",
         },
       }).ok,
