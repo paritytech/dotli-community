@@ -24,14 +24,14 @@ const MAX_UI_OUTPUT_COMMANDS = 64;
 const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
 const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
-const START_TIMEOUT_MS = 30_000;
-const INTERPRETER_START_TIMEOUT_MS = 180_000;
+// Both backends execute the same guest-defined initialization work.
+const START_TIMEOUT_MS = 180_000;
 const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-30770959f66db81d46163f70f72f83f1a5507f6d";
+  "polkavm-host-runtime-b3ec7175ffe50ebef5577a491010f5a0229dbbe8";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -860,7 +860,7 @@ async function programDigest(program: Uint8Array): Promise<string> {
 
 function runtimeBytes(): Promise<ArrayBuffer> {
   runtimeBytesPromise ??= fetch(
-    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
+    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm?v=${RUNTIME_SOURCE}`,
     {
       cache: "force-cache",
     },
@@ -2099,9 +2099,6 @@ export async function runPolkaVmApplication(
     audioCursor = start + buffer.duration;
   };
 
-  let startTimeoutMs = forceInterpreter
-    ? INTERPRETER_START_TIMEOUT_MS
-    : START_TIMEOUT_MS;
   const onStartTimeout = (): void => {
     const label =
       forceInterpreter || polkavmMetrics.backend === "interpreter"
@@ -2109,11 +2106,11 @@ export async function runPolkaVmApplication(
         : "PolkaVM application";
     rejectStarted(
       new Error(
-        `${label} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
+        `${label} did not present a frame within ${String(START_TIMEOUT_MS / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
       ),
     );
   };
-  let timer = window.setTimeout(onStartTimeout, startTimeoutMs);
+  const timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
   let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
   if (
@@ -2354,17 +2351,6 @@ export async function runPolkaVmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PolkaVM→Wasm JIT" : "PolkaVM interpreter"} ready`;
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
-        if (ready.backend === "interpreter" && !forceInterpreter) {
-          // Translation fell back to the interpreter, so the compiler start
-          // budget no longer applies; re-arm the frame watchdog with the
-          // interpreter budget instead of failing a live guest at 30s.
-          window.clearTimeout(timer);
-          startTimeoutMs = INTERPRETER_START_TIMEOUT_MS;
-          timer = window.setTimeout(
-            onStartTimeout,
-            INTERPRETER_START_TIMEOUT_MS,
-          );
-        }
         usesMotion = ready.usesMotion === true;
         usesPointerCapture = ready.usesPointerCapture === true;
         if (usesPointerCapture) {

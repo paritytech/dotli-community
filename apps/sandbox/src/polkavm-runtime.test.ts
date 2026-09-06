@@ -359,7 +359,6 @@ describe("PolkaVM package recognition", () => {
     );
   });
 
-
   it("accepts the deployed GPUI editor within the runtime program ceiling", () => {
     const manifest = webGpuRasterAppV2Manifest();
     const files = {
@@ -495,7 +494,6 @@ describe("PolkaVM package recognition", () => {
       vi.unstubAllGlobals();
     }
   });
-
 
   it("leaves ordinary HTML archives on the existing sandbox path", () => {
     expect(
