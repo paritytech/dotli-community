@@ -1180,9 +1180,9 @@ function createShell(controls: string[]): {
 } {
   const style = document.createElement("style");
   style.textContent = `
-    html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden}
+    html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden;overscroll-behavior:none}
     #dotli-polkavm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
-    #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none}
+    #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
@@ -1269,6 +1269,10 @@ function installInput(
     typeof document.exitPointerLock === "function";
   canvas.dataset.polkavmPointerCaptureArmed = "false";
   canvas.dataset.polkavmPointerCaptured = "false";
+  // The ABI carries one pointer, and a touch gesture that leaves the canvas or
+  // is claimed by the browser must still deliver its release, or the guest keeps
+  // a phantom button down.
+  let activePointer: { id: number; button: number } | null = null;
   let motionSequence = 0;
   let motionX = 0;
   let motionY = 0;
@@ -1589,6 +1593,9 @@ function installInput(
     send(encodedInput(type, pointerButtons[event.button], x, y));
   };
   const move = (event: PointerEvent): void => {
+    if (!event.isPrimary) {
+      return;
+    }
     if (document.pointerLockElement === canvas) {
       const delta = normalizedPointerDelta(
         event.movementX,
@@ -1615,6 +1622,9 @@ function installInput(
     previousPointer = [event.clientX, event.clientY];
   };
   const down = (event: PointerEvent): void => {
+    if (!event.isPrimary) {
+      return;
+    }
     requestDeviceMotionPermission();
     if (
       event.isTrusted &&
@@ -1640,9 +1650,52 @@ function installInput(
     ) {
       void canvas.requestPointerLock().catch(() => undefined);
     }
+    if (document.pointerLockElement !== canvas) {
+      activePointer = { id: event.pointerId, button: event.button };
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // Capture is an optimisation: a browser that refuses it still delivers
+        // events while the pointer stays over the canvas.
+        console.warn(
+          `Could not capture the PolkaVM pointer: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  };
+  const releaseCapturedPointer = (pointerId: number): void => {
+    try {
+      if (canvas.hasPointerCapture(pointerId)) {
+        canvas.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      console.warn(
+        `Could not release the PolkaVM pointer capture: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   };
   const up = (event: PointerEvent): void => {
+    if (!event.isPrimary) {
+      return;
+    }
+    releaseCapturedPointer(event.pointerId);
+    activePointer = null;
+    previousPointer = null;
     pointer(event, 4);
+  };
+  // Chrome cancels the pointer stream when it claims a gesture, and iOS cancels
+  // on system edge gestures. Neither delivers `pointerup`, so synthesise the
+  // release the guest is waiting for.
+  const cancel = (event: PointerEvent): void => {
+    if (activePointer?.id !== event.pointerId) {
+      return;
+    }
+    const button = activePointer.button;
+    releaseCapturedPointer(event.pointerId);
+    activePointer = null;
+    previousPointer = null;
+    const [x, y] = canvasPosition(event);
+    send(encodedInput(4, pointerButtons[button] ?? 1, x, y));
   };
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
@@ -1714,6 +1767,7 @@ function installInput(
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointercancel", cancel);
   canvas.addEventListener("contextmenu", contextmenu);
   return {
     applyUiOutput,
@@ -1763,6 +1817,7 @@ function installInput(
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointercancel", cancel);
       canvas.removeEventListener("contextmenu", contextmenu);
     },
   };
@@ -2132,10 +2187,7 @@ export async function runPolkaVmApplication(
     worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
   };
   const onParentMotion = (event: MessageEvent<unknown>): void => {
-    if (
-      event.source !== window.parent ||
-      event.origin !== parentOrigin
-    ) {
+    if (event.source !== window.parent || event.origin !== parentOrigin) {
       return;
     }
     const message = object(event.data);
