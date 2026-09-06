@@ -22,6 +22,7 @@ import type {
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
+import { createBlockingModalScope } from "@dotli/ui/blocking-modal-queue";
 
 type Store = Map<string, PermissionAuthorizationStatus>;
 
@@ -294,6 +295,67 @@ describe("device permission prompts", () => {
 
   it("As a product, my iframe reloads when a grant changes its allow attribute", async () => {
     expect(await grantAndCountReloads("Camera")).toBe(1);
+  });
+});
+
+describe("remote domain permission prompts", () => {
+  const request = {
+    permission: {
+      tag: "Remote" as const,
+      value: { domains: ["API.Example"] },
+    },
+  };
+
+  it("memoizes decisions for one callback session without persisting them", async () => {
+    const session = createPromptPermission("myapp");
+    const first = session.remotePermission(request);
+    await vi.waitFor(() => {
+      expect(document.querySelector(".signing-btn-sign")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await expect(first).resolves.toEqual({ granted: true });
+    expect(myappStore).toEqual(new Map());
+
+    await expect(
+      session.remotePermission({
+        permission: {
+          tag: "Remote",
+          value: { domains: ["api.example"] },
+        },
+      }),
+    ).resolves.toEqual({ granted: true });
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+
+    const nextSession = createPromptPermission("myapp");
+    const reconsidered = nextSession.remotePermission(request);
+    await vi.waitFor(() => {
+      expect(document.querySelector(".signing-btn-cancel")).not.toBeNull();
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+    await expect(reconsidered).resolves.toEqual({ granted: false });
+    expect(myappStore).toEqual(new Map());
+    document.body.replaceChildren();
+  });
+
+  it("bounds concurrently pending remote permission prompts", async () => {
+    const scope = createBlockingModalScope();
+    const session = createPromptPermission("myapp", scope);
+    const pending = Array.from({ length: 5 }, (_, index) =>
+      session.remotePermission({
+        permission: {
+          tag: "Remote",
+          value: { domains: [`host-${String(index)}.example`] },
+        },
+      }),
+    );
+
+    await expect(pending[4]).resolves.toEqual({ granted: false });
+    await vi.waitFor(() => {
+      expect(document.querySelector(".signing-modal-backdrop")).not.toBeNull();
+    });
+    scope.dispose("test complete");
+    await Promise.allSettled(pending.slice(0, 4));
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
   });
 });
 

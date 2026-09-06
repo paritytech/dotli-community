@@ -17,6 +17,7 @@ declare const __SW_VERSION__: string;
 import { getMimeType } from "@dotli/shared/mime";
 import { computeArchiveDigest } from "@dotli/shared/archive-digest";
 import { SW_ARCHIVE_CACHE_MAX } from "@dotli/config/config";
+import { shadowsHostOwnedPath } from "./host-owned-paths";
 
 // Base path, derived at runtime from the SW script location.
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");
@@ -128,6 +129,10 @@ async function loadArchiveFromDBByDomain(
       return entry;
     }
 
+    if (Object.keys(entry.files).some(shadowsHostOwnedPath)) {
+      return null;
+    }
+
     // Discard entries whose persisted bytes don't match their integrity tag
     // (corruption / tampering), and legacy entries that predate the tag. A
     // miss makes the page re-fetch (and re-persist with a digest), which is
@@ -147,6 +152,49 @@ async function loadArchiveFromDBByDomain(
 
 let archivePacked: ArrayBuffer | null = null;
 let archiveFileIndex: Map<string, { o: number; l: number }> | null = null;
+
+interface ArchiveIndexEntry {
+  p: string;
+  o: number;
+  l: number;
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+function parseArchiveIndex(
+  value: unknown,
+  packedLength: number,
+): ArchiveIndexEntry[] | null {
+  if (!isUnknownArray(value)) {
+    return null;
+  }
+
+  const index: ArchiveIndexEntry[] = [];
+  for (const candidate of value) {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      !("p" in candidate) ||
+      typeof candidate.p !== "string" ||
+      !("o" in candidate) ||
+      typeof candidate.o !== "number" ||
+      !Number.isSafeInteger(candidate.o) ||
+      candidate.o < 0 ||
+      !("l" in candidate) ||
+      typeof candidate.l !== "number" ||
+      !Number.isSafeInteger(candidate.l) ||
+      candidate.l < 0 ||
+      candidate.o > packedLength ||
+      candidate.l > packedLength - candidate.o
+    ) {
+      return null;
+    }
+    index.push({ p: candidate.p, o: candidate.o, l: candidate.l });
+  }
+  return index;
+}
 
 const archiveCache = new Map<string, ArchiveEntry>();
 
@@ -226,10 +274,8 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data.packed as ArrayBuffer | undefined;
-    const idx = data.index as { p: string; o: number; l: number }[] | undefined;
-
-    if (packed === undefined || idx === undefined) {
+    const packed: unknown = data.packed;
+    if (!(packed instanceof ArrayBuffer)) {
       if (event.source) {
         (event.source as Client).postMessage({
           type: "ARCHIVE_ERROR",
@@ -239,8 +285,31 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       return;
     }
 
+    const index = parseArchiveIndex(data.index, packed.byteLength);
+    if (index === null) {
+      if (event.source) {
+        (event.source as Client).postMessage({
+          type: "ARCHIVE_ERROR",
+          reason: "SET_ARCHIVE contains a malformed index entry",
+        });
+      }
+      return;
+    }
+    const reserved = index.find((entry) => shadowsHostOwnedPath(entry.p));
+    if (reserved !== undefined) {
+      if (event.source) {
+        (event.source as Client).postMessage({
+          type: "ARCHIVE_ERROR",
+          reason: `archive path is reserved by the host: ${reserved.p}`,
+        });
+      }
+      return;
+    }
+
     archivePacked = packed;
-    archiveFileIndex = new Map(idx.map((e) => [e.p, { o: e.o, l: e.l }]));
+    archiveFileIndex = new Map(
+      index.map((entry) => [entry.p, { o: entry.o, l: entry.l }]),
+    );
 
     const domain = data.domain as string | undefined;
     const cid = data.cid as string | undefined;
@@ -261,7 +330,7 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       cid !== ""
     ) {
       const p = packed;
-      const i = idx;
+      const i = index;
       const d = domain;
       const c = cid;
       const cb = contentBackend;

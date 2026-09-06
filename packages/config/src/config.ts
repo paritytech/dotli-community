@@ -125,6 +125,23 @@ export function isSandboxOrigin(origin: string): boolean {
   }
 }
 
+/**
+ * Exact sandbox origin for a validated DotNS label in this deployment.
+ *
+ * Keep this shared by iframe construction and host-side message
+ * authorization so those two boundaries cannot drift.
+ */
+export function sandboxOriginForLabel(label: string): string {
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) {
+    throw new Error(`invalid sandbox label: ${label}`);
+  }
+  if (isLocalhost) {
+    const port = import.meta.env.DEV ? "5174" : self.location.port;
+    return `http://${label}.app.localhost${port === "" ? "" : `:${port}`}`;
+  }
+  return `https://${label}.app.${BASE_DOMAIN}`;
+}
+
 /** Optional relay chain spec override for the statement store people chain.
  *  Value is the chain-spec file name without `.json`, e.g. "westend-local".
  *  When unset, the default Paseo relay chain is reused. */

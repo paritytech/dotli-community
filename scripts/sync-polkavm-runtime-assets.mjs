@@ -28,6 +28,7 @@ const synchronizedInventory = [
   "polkavm-browser-runtime.wasm",
   "polkavm-worker.js",
   "polkavm-gpu-worker.js",
+  "polkavm-computer.js",
   "SHA256SUMS",
   "SOURCE.json",
   "LICENSE-MPL-2.0",
@@ -108,6 +109,10 @@ if (!checkOnly) {
   installedSources.set(
     "polkavm-gpu-worker.js",
     require.resolve(`${lock.package}/gpu-worker`),
+  );
+  installedSources.set(
+    "polkavm-computer.js",
+    require.resolve(`${lock.package}/computer`),
   );
   installedSources.set(
     "SHA256SUMS",

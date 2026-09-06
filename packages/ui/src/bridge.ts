@@ -21,7 +21,7 @@ import {
   createMessagePortProvider,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import { BASE_DOMAIN } from "@dotli/config/config";
+import { sandboxOriginForLabel } from "@dotli/config/config";
 import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
@@ -452,7 +452,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   const source = currentHost?.iframe.contentWindow;
   if (
     product?.mode !== "subdomain" ||
-    event.origin !== getAppOrigin(product.label) ||
+    event.origin !== sandboxOriginForLabel(product.label) ||
     source === null ||
     source === undefined ||
     event.source !== source
@@ -533,7 +533,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   const source = currentHost?.iframe.contentWindow;
   if (
     product?.mode !== "subdomain" ||
-    event.origin !== getAppOrigin(product.label) ||
+    event.origin !== sandboxOriginForLabel(product.label) ||
     source === null ||
     event.source !== source
   ) {
@@ -1416,7 +1416,7 @@ export async function renderAppSubdomain(
   const chainBackend = getBackend();
   const network = getNetwork();
   const cache = getCacheSettings();
-  const appOrigin = getAppOrigin(label);
+  const appOrigin = sandboxOriginForLabel(label);
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
   // the first sandbox boot after "Save & Apply" wipes its own origin too.
@@ -1555,15 +1555,6 @@ export async function renderAppSubdomain(
     timestamp: Date.now(),
     payload: { label, mode: "subdomain" },
   });
-}
-
-function getAppOrigin(label: string): string {
-  const hostname = window.location.hostname;
-  if (hostname.endsWith(".localhost") || hostname === "localhost") {
-    const port = import.meta.env.DEV ? "5174" : window.location.port;
-    return `http://${label}.app.localhost:${port}`;
-  }
-  return `https://${label}.app.${BASE_DOMAIN}`;
 }
 
 function activateHost(

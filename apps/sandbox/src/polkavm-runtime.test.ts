@@ -13,12 +13,12 @@ import {
   formatPolkaVmMetrics,
   isPolkaVmPackage,
   normalizedPointerDelta,
+  installPageCacheRestoreReload,
   postFirstUiPlatformCommand,
   polkavmWebFallbackEntrypoint,
   unsupportedPolkaVmImport,
   validateFiles,
   expectedPolkaVmParentOrigin,
-  shouldReloadAfterWake,
   validatedUiPlatformOutput,
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
@@ -353,15 +353,23 @@ describe("PolkaVM parent motion relay", () => {
   });
 });
 
-describe("PolkaVM wake recovery", () => {
-  it("reloads a visible WebGPU application after suspension", () => {
-    expect(shouldReloadAfterWake(true, "visible", false)).toBe(true);
-    expect(shouldReloadAfterWake(false, "visible", false)).toBe(false);
-    expect(shouldReloadAfterWake(true, "hidden", false)).toBe(false);
-  });
-
-  it("reloads a page restored from the back-forward cache", () => {
-    expect(shouldReloadAfterWake(false, "visible", true)).toBe(true);
+describe("PolkaVM page-cache restore", () => {
+  it("reloads once only for a persisted page-cache restore", () => {
+    const listeners: ((event: PageTransitionEvent) => void)[] = [];
+    const reload = vi.fn();
+    installPageCacheRestoreReload(
+      {
+        addEventListener(_type, listener) {
+          listeners.push(listener);
+        },
+      },
+      reload,
+    );
+    const listener = listeners[0];
+    listener({ persisted: false } as PageTransitionEvent);
+    listener({ persisted: true } as PageTransitionEvent);
+    listener({ persisted: true } as PageTransitionEvent);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -45,6 +45,26 @@ const VALID_APP_V2 = {
   },
 };
 
+const HOST_REQUIRES = [
+  "polkadot-host/0.1/core",
+  "polkadot-host/0.1/fs",
+  "polkadot-host/0.1/tty",
+  "polkadot-host/0.1/process",
+];
+
+const VALID_COMPUTER = {
+  $v: 2,
+  kind: "app",
+  appVersion: [0, 1, 0],
+  runtime: {
+    kind: "polkavm",
+    entrypoint: "shell.polkavm",
+  },
+  capabilities: {
+    host: { requires: HOST_REQUIRES },
+  },
+};
+
 const VALID_WIDGET = {
   $v: 1,
   kind: "widget",
@@ -182,6 +202,153 @@ describe("validateExecutableManifest", () => {
         capabilities: {
           ...VALID_APP_V2.capabilities,
           audio: { abiVersion: 1, requiredFeatures: ["spatial"] },
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("accepts a minimal computer manifest", () => {
+    expect(validateExecutableManifest(VALID_COMPUTER).ok).toBe(true);
+  });
+
+  it("accepts a computer manifest with packages", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: HOST_REQUIRES },
+          packages: [
+            { name: "vim", path: "vim.polkavm" },
+            { name: "busybox-1", path: "tools/busybox.polkavm" },
+          ],
+        },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("accepts the network host interface", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: [...HOST_REQUIRES, "polkadot-host/0.1/net"] },
+        },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("accepts the workspace host interface", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: [...HOST_REQUIRES, "polkadot-host/0.1/workspace"] },
+        },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects host apps that do not require the core interface", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: ["polkadot-host/0.1/tty"] },
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("rejects host apps that declare runtime.abiVersion", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        runtime: {
+          kind: "polkavm",
+          abiVersion: 2,
+          entrypoint: "shell.polkavm",
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("rejects empty or duplicated host interface lists", () => {
+    for (const requires of [[], HOST_REQUIRES.concat(HOST_REQUIRES[0])]) {
+      expect(
+        validateExecutableManifest({
+          ...VALID_COMPUTER,
+          capabilities: { host: { requires } },
+        }).ok,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects duplicate computer package names", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: HOST_REQUIRES },
+          packages: [
+            { name: "vim", path: "vim.polkavm" },
+            { name: "vim", path: "vim2.polkavm" },
+          ],
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("rejects invalid computer package names", () => {
+    for (const name of ["Vim", "-vim", "vim!", "", "a".repeat(33)]) {
+      expect(
+        validateExecutableManifest({
+          ...VALID_COMPUTER,
+          capabilities: {
+            host: { requires: HOST_REQUIRES },
+            packages: [{ name, path: "pkg.polkavm" }],
+          },
+        }).ok,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects unsafe computer package paths", () => {
+    for (const path of ["/vim.polkavm", "../vim.polkavm"]) {
+      expect(
+        validateExecutableManifest({
+          ...VALID_COMPUTER,
+          capabilities: {
+            host: { requires: HOST_REQUIRES },
+            packages: [{ name: "vim", path }],
+          },
+        }).ok,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects computer package path equal to the entrypoint", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: HOST_REQUIRES },
+          packages: [{ name: "shell", path: "shell.polkavm" }],
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("rejects graphics capability on a computer manifest", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_COMPUTER,
+        capabilities: {
+          host: { requires: HOST_REQUIRES },
+          graphics: {
+            abiVersion: 1,
+            profile: "framebuffer",
+            requiredFeatures: [],
+          },
         },
       }).ok,
     ).toBe(false);

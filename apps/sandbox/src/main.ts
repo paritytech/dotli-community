@@ -55,6 +55,8 @@ import {
   polkavmWebFallbackEntrypoint,
   unsupportedPolkaVmImport,
 } from "./polkavm-runtime";
+import { isComputerPackage, runComputerApplication } from "./polkavm-computer";
+import { assertNoHostOwnedPaths } from "./host-owned-paths";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -378,6 +380,8 @@ async function storeArchiveInSW(
   cid: string,
   contentBackend: string,
 ): Promise<void> {
+  assertNoHostOwnedPaths(Object.keys(files));
+
   const sw = navigator.serviceWorker.controller;
   if (!sw) {
     return;
@@ -389,9 +393,11 @@ async function storeArchiveInSW(
     const timer = setTimeout(() => {
       navigator.serviceWorker.removeEventListener("message", handler);
       reject(
-        new Error("Service worker did not acknowledge archive within 10s"),
+        new Error(
+          `Service worker did not acknowledge archive within ${String(TIMEOUTS.SW_ARCHIVE_STORE / 1000)}s`,
+        ),
       );
-    }, 10_000);
+    }, TIMEOUTS.SW_ARCHIVE_STORE);
 
     const handler = (evt: MessageEvent): void => {
       const msg = evt.data as { type?: string; reason?: string } | null;
@@ -446,6 +452,15 @@ async function runPolkaVmIfPresent(
   cid: string,
   executableManifest: string | null,
 ): Promise<false | null | string> {
+  // The experimental computer contract is checked first: its host-interface
+  // capabilities discriminate it from the cooperative graphics runtime.
+  if (isComputerPackage(files)) {
+    showStatus("Starting PolkaVM computer...");
+    await runComputerApplication(files, cid, executableManifest);
+    notifyLoadingDone();
+    performance.mark("dotli:app:end");
+    return null;
+  }
   if (!isPolkaVmPackage(files)) {
     return false;
   }
@@ -822,11 +837,9 @@ async function main(): Promise<void> {
   if (result.type === "single") {
     html = new TextDecoder().decode(result.content);
   } else {
-    // Persist every verified archive before choosing its runtime. HTML products
-    // use the SW as a virtual file system; PolkaVM products use the same cache
-    // as their immutable asset source on the next launch.
-    await storeArchiveInSW(result.files, cid, cid, chainBackend);
-    log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+    // Native PolkaVM products run entirely from the verified in-memory files.
+    // Start them before persisting the archive: IndexedDB can take minutes for
+    // maximum-size packages, and caching must not block the first frame.
     const polkavmRuntime = await runPolkaVmIfPresent(
       result.files,
       cid,
@@ -834,8 +847,22 @@ async function main(): Promise<void> {
     );
     if (polkavmRuntime === null) {
       stopApp();
+      void storeArchiveInSW(result.files, cid, cid, chainBackend)
+        .then(() => {
+          log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+        })
+        .catch((error: unknown) => {
+          log.warn(
+            "[dot.li app] background archive persistence failed:",
+            error,
+          );
+        });
       return;
     }
+    // HTML products and PolkaVM web fallbacks need the SW as a synchronous
+    // virtual filesystem before their document can request sub-resources.
+    await storeArchiveInSW(result.files, cid, cid, chainBackend);
+    log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
     const htmlPath =
       typeof polkavmRuntime === "string" ? polkavmRuntime : "index.html";
     const indexHtml = result.files[htmlPath] as Uint8Array | undefined;

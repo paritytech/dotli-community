@@ -1,0 +1,19 @@
+{
+  "$v": 2,
+  "kind": "app",
+  "appVersion": [0, 1, 0],
+  "runtime": {
+    "kind": "polkavm",
+    "entrypoint": "kilo.polkavm"
+  },
+  "capabilities": {
+    "host": {
+      "requires": [
+        "polkadot-host/0.1/core",
+        "polkadot-host/0.1/fs",
+        "polkadot-host/0.1/tty",
+        "polkadot-host/0.1/process"
+      ]
+    }
+  }
+}

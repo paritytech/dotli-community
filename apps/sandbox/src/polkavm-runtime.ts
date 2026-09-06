@@ -8,8 +8,8 @@ import { WebGpuBridge, type WebGpuRequirements } from "./webgpu";
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
-const MAX_ASSET_FILE_BYTES = 64 * 1024 * 1024;
-const MAX_ASSET_BYTES = 128 * 1024 * 1024;
+const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
+const MAX_ASSET_BYTES = 256 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
 const MAX_SAVE_BYTES = 1024 * 1024;
 const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
@@ -20,8 +20,8 @@ const MAX_UI_OUTPUT_COMMANDS = 64;
 const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
 const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
-const START_TIMEOUT_MS = 30_000;
-const INTERPRETER_START_TIMEOUT_MS = 180_000;
+// Both backends execute the same guest-defined initialization work.
+const START_TIMEOUT_MS = 180_000;
 const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
@@ -29,7 +29,6 @@ const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
   "useragent-kit-polkavm-runtime-069f2ee4852f9d2b6053e1244b09136238b0c2eb";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
-
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
@@ -312,12 +311,27 @@ export function expectedPolkaVmParentOrigin(
   return `${protocol}//${parentHostname}${port === "" ? "" : `:${port}`}`;
 }
 
-export function shouldReloadAfterWake(
-  wasHidden: boolean,
-  visibilityState: DocumentVisibilityState,
-  restoredFromPageCache: boolean,
-): boolean {
-  return restoredFromPageCache || (wasHidden && visibilityState === "visible");
+interface PageCacheTarget {
+  addEventListener(
+    type: "pageshow",
+    listener: (event: PageTransitionEvent) => void,
+  ): void;
+}
+
+export function installPageCacheRestoreReload(
+  target: PageCacheTarget = window,
+  reload: () => void = () => {
+    location.reload();
+  },
+): void {
+  let reloadRequested = false;
+  target.addEventListener("pageshow", (event) => {
+    if (!event.persisted || reloadRequested) {
+      return;
+    }
+    reloadRequested = true;
+    reload();
+  });
 }
 
 function uiPlatformRect(value: unknown): UiPlatformRect | null {
@@ -1374,6 +1388,7 @@ function createShell(controls: string[]): {
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden;overscroll-behavior:none}
     #dotli-polkavm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100vw,calc(100vh * var(--dotli-polkavm-frame-aspect,1)));height:min(100vh,calc(100vw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
@@ -2289,9 +2304,6 @@ export async function runPolkaVmApplication(
     audioCursor = start + buffer.duration;
   };
 
-  let startTimeoutMs = forceInterpreter
-    ? INTERPRETER_START_TIMEOUT_MS
-    : START_TIMEOUT_MS;
   const onStartTimeout = (): void => {
     const label =
       forceInterpreter || polkavmMetrics.backend === "interpreter"
@@ -2299,11 +2311,11 @@ export async function runPolkaVmApplication(
         : "PolkaVM application";
     rejectStarted(
       new Error(
-        `${label} did not present a frame within ${String(startTimeoutMs / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
+        `${label} did not present a frame within ${String(START_TIMEOUT_MS / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
       ),
     );
   };
-  let timer = window.setTimeout(onStartTimeout, startTimeoutMs);
+  const timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
   let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
   if (
@@ -2456,44 +2468,10 @@ export async function runPolkaVmApplication(
     hostFrameQueue.close();
   };
   window.addEventListener("pagehide", stop, { once: true });
-  // Mobile browsers may discard the worker-owned GPU device while the screen
-  // is locked. Reload only this product frame on wake: that recreates the
-  // OffscreenCanvas, worker, and input listeners while the top-level motion
-  // permission relay remains active.
-  if (
-    descriptor.graphicsProfile === "webgpu-raster" ||
-    descriptor.graphicsProfile === "webgpu"
-  ) {
-    let wasHidden = document.visibilityState === "hidden";
-    let reloadRequested = false;
-    const reloadAfterWake = (): void => {
-      if (reloadRequested) {
-        return;
-      }
-      reloadRequested = true;
-      location.reload();
-    };
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        wasHidden = true;
-        return;
-      }
-      if (shouldReloadAfterWake(wasHidden, document.visibilityState, false)) {
-        reloadAfterWake();
-      }
-    });
-    window.addEventListener("pageshow", (event) => {
-      if (
-        shouldReloadAfterWake(
-          wasHidden,
-          document.visibilityState,
-          event.persisted,
-        )
-      ) {
-        reloadAfterWake();
-      }
-    });
-  }
+  // pagehide stops the runtime, so a back-forward cache restore must recreate
+  // it. Ordinary tab/app switches only change visibility and must preserve
+  // the live guest and its session-only state.
+  installPageCacheRestoreReload();
 
   let translationStorePromise: Promise<void> = Promise.resolve();
   worker.onmessage = async (event: MessageEvent<unknown>): Promise<void> => {
@@ -2556,17 +2534,6 @@ export async function runPolkaVmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PolkaVM→Wasm JIT" : "PolkaVM interpreter"} ready`;
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
-        if (ready.backend === "interpreter" && !forceInterpreter) {
-          // Translation fell back to the interpreter, so the compiler start
-          // budget no longer applies; re-arm the frame watchdog with the
-          // interpreter budget instead of failing a live guest at 30s.
-          window.clearTimeout(timer);
-          startTimeoutMs = INTERPRETER_START_TIMEOUT_MS;
-          timer = window.setTimeout(
-            onStartTimeout,
-            INTERPRETER_START_TIMEOUT_MS,
-          );
-        }
         usesMotion = ready.usesMotion === true;
         usesPointerCapture = ready.usesPointerCapture === true;
         if (usesPointerCapture) {
@@ -2635,8 +2602,20 @@ export async function runPolkaVmApplication(
           );
           return;
         }
+        const resized =
+          canvas.width !== frame.width || canvas.height !== frame.height;
         canvas.width = frame.width;
         canvas.height = frame.height;
+        if (resized) {
+          canvas.style.setProperty(
+            "--dotli-polkavm-frame-aspect",
+            String(frame.width / frame.height),
+          );
+          canvas.style.setProperty(
+            "--dotli-polkavm-frame-inverse-aspect",
+            String(frame.height / frame.width),
+          );
+        }
         const pixels = new Uint8ClampedArray(frame.pixels.byteLength);
         pixels.set(frame.pixels);
         context.putImageData(
