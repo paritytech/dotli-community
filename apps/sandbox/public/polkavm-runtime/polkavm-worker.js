@@ -791,12 +791,14 @@
       }
       if (
         this.hostFrameResponses.length === MAX_HOST_FRAMES ||
-        this.hostFrameResponseBytes + bytes.byteLength > MAX_QUEUED_HOST_FRAME_BYTES
+        this.hostFrameResponseBytes + bytes.byteLength >
+          MAX_QUEUED_HOST_FRAME_BYTES
       ) {
-        throw new Error("translated host-frame response queue overflow");
+        return false;
       }
       this.hostFrameResponses.push(bytes.slice());
       this.hostFrameResponseBytes += bytes.byteLength;
+      return true;
     }
 
     stop() {
@@ -2568,17 +2570,18 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
 
   function sendHostFrameResponse(bytes) {
     if (!running || !pvm || !bytes.byteLength) {
-      return;
+      return true;
     }
     if (translated) {
-      translated.sendHostFrameResponse(bytes);
-      return;
+      return translated.sendHostFrameResponse(bytes);
     }
     stage(bytes);
-    check(
-      pvm.polkavm_browser_send_host_frame_response(),
-      "send PolkaVM browser host-frame response",
-    );
+    const result = pvm.polkavm_browser_send_host_frame_response();
+    if (result === 2) {
+      return false;
+    }
+    check(result, "send PolkaVM browser host-frame response");
+    return true;
   }
 
   endpoint.onmessage = (event) => {
@@ -2653,7 +2656,12 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       }
     } else if (message?.type === "host-frame-response") {
       try {
-        sendHostFrameResponse(new Uint8Array(message.bytes));
+        if (!sendHostFrameResponse(new Uint8Array(message.bytes))) {
+          postMessage({
+            type: "host-frame-response-rejected",
+            reason: "queue-full",
+          });
+        }
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });

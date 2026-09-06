@@ -27,7 +27,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-d1e3d77dce34c9490196754c1e2bab9596b993f0";
+  "useragent-kit-polkavm-runtime-069f2ee4852f9d2b6053e1244b09136238b0c2eb";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -847,6 +847,227 @@ export function waitForTruapiPort(
   }, timeoutMs);
   target.postMessage({ type: "truapi-ready" }, parentOrigin);
   return promise;
+}
+
+const HOST_FRAME_RETRY_DELAY_MS = 16;
+const HOST_FRAME_CONFIRM_DELAY_MS = 50;
+const MAX_HOST_FRAME_RETRIES = 64;
+
+// Worker messages that prove the guest scheduler made progress, so a
+// previously rejected host-frame response is worth retrying and an
+// unrejected in-flight response can be confirmed as delivered.
+const hostFrameProgressTypes: Readonly<Partial<Record<string, true>>> =
+  Object.freeze({
+    frame: true,
+    tri2d: true,
+    "ui-output": true,
+    "gpu-batch": true,
+    "host-frame-request": true,
+    audio: true,
+    save: true,
+    log: true,
+    "pointer-capture": true,
+  });
+
+export interface HostFrameResponseTarget {
+  postMessage(message: unknown, transfer: Transferable[]): void;
+}
+
+export interface HostFrameResponseQueueOptions {
+  maxResponses?: number;
+  maxBytes?: number;
+  retryDelayMs?: number;
+  confirmDelayMs?: number;
+  maxRetries?: number;
+  setTimer?: (callback: () => void, delayMs: number) => number;
+  clearTimer?: (timer: number) => void;
+}
+
+interface HostFrameResponseEntry {
+  bytes: Uint8Array<ArrayBuffer>;
+  retries: number;
+}
+
+// The canonical worker bounds its internal host-frame response queue and
+// reports overflow with a nonfatal `host-frame-response-rejected` message
+// instead of killing the session. This queue retains every response until
+// the worker accepts it, retries rejected responses in their original order
+// once the guest demonstrably made progress, and never busy-loops: retries
+// are timer-paced and bounded per response. `fail` fires only on protocol
+// violations or exhausted retries.
+export class HostFrameResponseQueue {
+  private readonly target: HostFrameResponseTarget;
+  private readonly fail: (error: Error) => void;
+  private readonly maxResponses: number;
+  private readonly maxBytes: number;
+  private readonly retryDelayMs: number;
+  private readonly confirmDelayMs: number;
+  private readonly maxRetries: number;
+  private readonly setTimer: (callback: () => void, delayMs: number) => number;
+  private readonly clearTimer: (timer: number) => void;
+  private readonly queue: HostFrameResponseEntry[] = [];
+  private queuedBytes = 0;
+  private inFlight: HostFrameResponseEntry | null = null;
+  private retryTimer: number | null = null;
+  private confirmTimer: number | null = null;
+  private started = false;
+  private closed = false;
+
+  constructor(
+    target: HostFrameResponseTarget,
+    fail: (error: Error) => void,
+    options: HostFrameResponseQueueOptions = {},
+  ) {
+    this.target = target;
+    this.fail = fail;
+    this.maxResponses = options.maxResponses ?? MAX_PENDING_HOST_FRAMES;
+    this.maxBytes = options.maxBytes ?? MAX_PENDING_HOST_FRAME_BYTES;
+    this.retryDelayMs = options.retryDelayMs ?? HOST_FRAME_RETRY_DELAY_MS;
+    this.confirmDelayMs = options.confirmDelayMs ?? HOST_FRAME_CONFIRM_DELAY_MS;
+    this.maxRetries = options.maxRetries ?? MAX_HOST_FRAME_RETRIES;
+    this.setTimer =
+      options.setTimer ??
+      ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
+    this.clearTimer =
+      options.clearTimer ??
+      ((timer) => {
+        globalThis.clearTimeout(timer);
+      });
+  }
+
+  get pendingCount(): number {
+    return this.queue.length;
+  }
+
+  get pendingBytes(): number {
+    return this.queuedBytes;
+  }
+
+  enqueue(value: Uint8Array): void {
+    if (this.closed) {
+      return;
+    }
+    if (
+      this.queue.length >= this.maxResponses ||
+      this.queuedBytes + value.byteLength > this.maxBytes
+    ) {
+      this.abort(new Error("Host-frame response queue overflow"));
+      return;
+    }
+    this.queue.push({ bytes: ownedBytes(value), retries: 0 });
+    this.queuedBytes += value.byteLength;
+    this.pump();
+  }
+
+  // The worker only accepts host-frame responses once it reported `ready`.
+  start(): void {
+    if (this.started || this.closed) {
+      return;
+    }
+    this.started = true;
+    this.pump();
+  }
+
+  // Returns true when the message was a rejection consumed by the queue.
+  handleMessage(message: Record<string, unknown> | null): boolean {
+    const type = message?.type;
+    if (this.closed || typeof type !== "string") {
+      return false;
+    }
+    if (type === "host-frame-response-rejected") {
+      const entry = this.inFlight;
+      if (entry === null || message?.reason !== "queue-full") {
+        this.abort(
+          new Error("PolkaVM worker sent an invalid host-frame rejection"),
+        );
+        return true;
+      }
+      this.cancelConfirm();
+      entry.retries += 1;
+      if (entry.retries > this.maxRetries) {
+        this.abort(new Error("Host-frame response retry limit exceeded"));
+        return true;
+      }
+      this.inFlight = null;
+      this.scheduleRetry();
+      return true;
+    }
+    if (hostFrameProgressTypes[type] === true) {
+      if (this.retryTimer !== null) {
+        this.clearTimer(this.retryTimer);
+        this.retryTimer = null;
+        this.pump();
+      } else if (this.inFlight !== null && this.confirmTimer === null) {
+        this.scheduleConfirm(this.inFlight);
+      }
+    }
+    return false;
+  }
+
+  close(): void {
+    this.closed = true;
+    this.cancelConfirm();
+    if (this.retryTimer !== null) {
+      this.clearTimer(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.inFlight = null;
+    this.queue.length = 0;
+    this.queuedBytes = 0;
+  }
+
+  private abort(error: Error): void {
+    this.close();
+    this.fail(error);
+  }
+
+  private pump(): void {
+    if (
+      !this.started ||
+      this.closed ||
+      this.inFlight !== null ||
+      this.retryTimer !== null ||
+      this.queue.length === 0
+    ) {
+      return;
+    }
+    const entry = this.queue[0];
+    this.inFlight = entry;
+    const payload = ownedBytes(entry.bytes);
+    this.target.postMessage({ type: "host-frame-response", bytes: payload }, [
+      payload.buffer,
+    ]);
+  }
+
+  private scheduleConfirm(entry: HostFrameResponseEntry): void {
+    this.confirmTimer = this.setTimer(() => {
+      this.confirmTimer = null;
+      if (this.inFlight !== entry) {
+        return;
+      }
+      this.queue.shift();
+      this.queuedBytes -= entry.bytes.byteLength;
+      this.inFlight = null;
+      this.pump();
+    }, this.confirmDelayMs);
+  }
+
+  private scheduleRetry(): void {
+    if (this.retryTimer !== null) {
+      return;
+    }
+    this.retryTimer = this.setTimer(() => {
+      this.retryTimer = null;
+      this.pump();
+    }, this.retryDelayMs);
+  }
+
+  private cancelConfirm(): void {
+    if (this.confirmTimer !== null) {
+      this.clearTimer(this.confirmTimer);
+      this.confirmTimer = null;
+    }
+  }
 }
 
 async function programDigest(program: Uint8Array): Promise<string> {
@@ -1895,13 +2116,7 @@ export async function runPolkaVmApplication(
     worker.terminate();
     closeHostFramePort();
   };
-  let hostFrameReady = false;
-  let pendingHostFrameBytes = 0;
-  const pendingHostFrameResponses: Uint8Array<ArrayBuffer>[] = [];
-  const sendHostFrameResponse = (value: Uint8Array): void => {
-    const bytes = ownedBytes(value);
-    worker.postMessage({ type: "host-frame-response", bytes }, [bytes.buffer]);
-  };
+  const hostFrameQueue = new HostFrameResponseQueue(worker, failHostFrame);
   hostFramePort.onmessage = (event: MessageEvent<unknown>): void => {
     if (
       !(event.data instanceof Uint8Array) ||
@@ -1911,25 +2126,10 @@ export async function runPolkaVmApplication(
       failHostFrame(new Error("Host returned an invalid host frame"));
       return;
     }
-    const bytes = ownedBytes(event.data);
     canvas.dataset.polkavmHostFrameResponses = String(
       Number(canvas.dataset.polkavmHostFrameResponses) + 1,
     );
-    if (hostFrameReady) {
-      sendHostFrameResponse(bytes);
-      return;
-    }
-    if (
-      pendingHostFrameResponses.length === MAX_PENDING_HOST_FRAMES ||
-      pendingHostFrameBytes + bytes.byteLength > MAX_PENDING_HOST_FRAME_BYTES
-    ) {
-      failHostFrame(
-        new Error("Host-frame response queue overflow during PolkaVM startup"),
-      );
-      return;
-    }
-    pendingHostFrameBytes += bytes.byteLength;
-    pendingHostFrameResponses.push(bytes);
+    hostFrameQueue.enqueue(event.data);
   };
   hostFramePort.onmessageerror = () => {
     failHostFrame(new Error("Host port could not decode a host frame"));
@@ -2246,6 +2446,7 @@ export async function runPolkaVmApplication(
     webGpu?.dispose();
     void audioContext?.close();
     closeHostFramePort();
+    hostFrameQueue.close();
   };
   window.addEventListener("pagehide", stop, { once: true });
   // pagehide stops the runtime, so a back-forward cache restore must recreate
@@ -2256,6 +2457,9 @@ export async function runPolkaVmApplication(
   let translationStorePromise: Promise<void> = Promise.resolve();
   worker.onmessage = async (event: MessageEvent<unknown>): Promise<void> => {
     const message = object(event.data);
+    if (hostFrameQueue.handleMessage(message)) {
+      return;
+    }
     switch (message?.type) {
       case "startup": {
         const startup = message as unknown as WorkerStartup;
@@ -2339,11 +2543,7 @@ export async function runPolkaVmApplication(
           );
         }
         sendSurfaceMetrics();
-        hostFrameReady = true;
-        for (const response of pendingHostFrameResponses.splice(0)) {
-          pendingHostFrameBytes -= response.byteLength;
-          sendHostFrameResponse(response);
-        }
+        hostFrameQueue.start();
         break;
       }
       case "pointer-capture": {
