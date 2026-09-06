@@ -836,24 +836,7 @@ export function waitForTruapiPort(
 }
 
 const HOST_FRAME_RETRY_DELAY_MS = 16;
-const HOST_FRAME_CONFIRM_DELAY_MS = 50;
 const MAX_HOST_FRAME_RETRIES = 64;
-
-// Worker messages that prove the guest scheduler made progress, so a
-// previously rejected host-frame response is worth retrying and an
-// unrejected in-flight response can be confirmed as delivered.
-const hostFrameProgressTypes: Readonly<Partial<Record<string, true>>> =
-  Object.freeze({
-    frame: true,
-    tri2d: true,
-    "ui-output": true,
-    "gpu-batch": true,
-    "host-frame-request": true,
-    audio: true,
-    save: true,
-    log: true,
-    "pointer-capture": true,
-  });
 
 export interface HostFrameResponseTarget {
   postMessage(message: unknown, transfer: Transferable[]): void;
@@ -863,7 +846,6 @@ export interface HostFrameResponseQueueOptions {
   maxResponses?: number;
   maxBytes?: number;
   retryDelayMs?: number;
-  confirmDelayMs?: number;
   maxRetries?: number;
   setTimer?: (callback: () => void, delayMs: number) => number;
   clearTimer?: (timer: number) => void;
@@ -872,22 +854,23 @@ export interface HostFrameResponseQueueOptions {
 interface HostFrameResponseEntry {
   bytes: Uint8Array<ArrayBuffer>;
   retries: number;
+  seq: number;
 }
 
 // The canonical worker bounds its internal host-frame response queue and
-// reports overflow with a nonfatal `host-frame-response-rejected` message
-// instead of killing the session. This queue retains every response until
-// the worker accepts it, retries rejected responses in their original order
-// once the guest demonstrably made progress, and never busy-loops: retries
-// are timer-paced and bounded per response. `fail` fires only on protocol
-// violations or exhausted retries.
+// acknowledges every sequenced response with a synchronous
+// `host-frame-response-accepted` or nonfatal `host-frame-response-rejected`
+// ack echoing the delivery's `seq`. This queue attaches a fresh monotonically
+// increasing sequence to every post (retries included), dequeues only on the
+// matching accepted ack, retries rejected responses in their original order
+// on a paced timer, and consumes mismatched or late acks as no-ops. `fail`
+// fires only on protocol violations or exhausted retries.
 export class HostFrameResponseQueue {
   private readonly target: HostFrameResponseTarget;
   private readonly fail: (error: Error) => void;
   private readonly maxResponses: number;
   private readonly maxBytes: number;
   private readonly retryDelayMs: number;
-  private readonly confirmDelayMs: number;
   private readonly maxRetries: number;
   private readonly setTimer: (callback: () => void, delayMs: number) => number;
   private readonly clearTimer: (timer: number) => void;
@@ -895,7 +878,7 @@ export class HostFrameResponseQueue {
   private queuedBytes = 0;
   private inFlight: HostFrameResponseEntry | null = null;
   private retryTimer: number | null = null;
-  private confirmTimer: number | null = null;
+  private nextSeq = 1;
   private started = false;
   private closed = false;
 
@@ -909,7 +892,6 @@ export class HostFrameResponseQueue {
     this.maxResponses = options.maxResponses ?? MAX_PENDING_HOST_FRAMES;
     this.maxBytes = options.maxBytes ?? MAX_PENDING_HOST_FRAME_BYTES;
     this.retryDelayMs = options.retryDelayMs ?? HOST_FRAME_RETRY_DELAY_MS;
-    this.confirmDelayMs = options.confirmDelayMs ?? HOST_FRAME_CONFIRM_DELAY_MS;
     this.maxRetries = options.maxRetries ?? MAX_HOST_FRAME_RETRIES;
     this.setTimer =
       options.setTimer ??
@@ -940,7 +922,7 @@ export class HostFrameResponseQueue {
       this.abort(new Error("Host-frame response queue overflow"));
       return;
     }
-    this.queue.push({ bytes: ownedBytes(value), retries: 0 });
+    this.queue.push({ bytes: ownedBytes(value), retries: 0, seq: 0 });
     this.queuedBytes += value.byteLength;
     this.pump();
   }
@@ -954,21 +936,37 @@ export class HostFrameResponseQueue {
     this.pump();
   }
 
-  // Returns true when the message was a rejection consumed by the queue.
+  // Returns true when the message was a delivery ack consumed by the queue.
   handleMessage(message: Record<string, unknown> | null): boolean {
     const type = message?.type;
     if (this.closed || typeof type !== "string") {
       return false;
     }
+    if (type === "host-frame-response-accepted") {
+      const entry = this.inFlight;
+      if (entry !== null && message?.seq === entry.seq) {
+        this.inFlight = null;
+        this.queue.shift();
+        this.queuedBytes -= entry.bytes.byteLength;
+        this.pump();
+      }
+      // A mismatched ack belongs to a superseded delivery; the retained
+      // response stays owned by the current in-flight sequence.
+      return true;
+    }
     if (type === "host-frame-response-rejected") {
       const entry = this.inFlight;
-      if (entry === null || message?.reason !== "queue-full") {
+      if (entry === null || message?.seq !== entry.seq) {
+        // A late rejection for a sequence that already settled: the retained
+        // response is neither dropped nor re-posted.
+        return true;
+      }
+      if (message.reason !== "queue-full") {
         this.abort(
           new Error("PolkaVM worker sent an invalid host-frame rejection"),
         );
         return true;
       }
-      this.cancelConfirm();
       entry.retries += 1;
       if (entry.retries > this.maxRetries) {
         this.abort(new Error("Host-frame response retry limit exceeded"));
@@ -978,21 +976,11 @@ export class HostFrameResponseQueue {
       this.scheduleRetry();
       return true;
     }
-    if (hostFrameProgressTypes[type] === true) {
-      if (this.retryTimer !== null) {
-        this.clearTimer(this.retryTimer);
-        this.retryTimer = null;
-        this.pump();
-      } else if (this.inFlight !== null && this.confirmTimer === null) {
-        this.scheduleConfirm(this.inFlight);
-      }
-    }
     return false;
   }
 
   close(): void {
     this.closed = true;
-    this.cancelConfirm();
     if (this.retryTimer !== null) {
       this.clearTimer(this.retryTimer);
       this.retryTimer = null;
@@ -1018,24 +1006,13 @@ export class HostFrameResponseQueue {
       return;
     }
     const entry = this.queue[0];
+    entry.seq = this.nextSeq++;
     this.inFlight = entry;
     const payload = ownedBytes(entry.bytes);
-    this.target.postMessage({ type: "host-frame-response", bytes: payload }, [
-      payload.buffer,
-    ]);
-  }
-
-  private scheduleConfirm(entry: HostFrameResponseEntry): void {
-    this.confirmTimer = this.setTimer(() => {
-      this.confirmTimer = null;
-      if (this.inFlight !== entry) {
-        return;
-      }
-      this.queue.shift();
-      this.queuedBytes -= entry.bytes.byteLength;
-      this.inFlight = null;
-      this.pump();
-    }, this.confirmDelayMs);
+    this.target.postMessage(
+      { type: "host-frame-response", bytes: payload, seq: entry.seq },
+      [payload.buffer],
+    );
   }
 
   private scheduleRetry(): void {
@@ -1046,13 +1023,6 @@ export class HostFrameResponseQueue {
       this.retryTimer = null;
       this.pump();
     }, this.retryDelayMs);
-  }
-
-  private cancelConfirm(): void {
-    if (this.confirmTimer !== null) {
-      this.clearTimer(this.confirmTimer);
-      this.confirmTimer = null;
-    }
   }
 }
 

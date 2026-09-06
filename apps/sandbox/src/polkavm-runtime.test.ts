@@ -860,13 +860,13 @@ describe("PolkaVM host-frame transport", () => {
 describe("PolkaVM host-frame response backpressure", () => {
   function harness(options: HostFrameResponseQueueOptions = {}): {
     queue: HostFrameResponseQueue;
-    posted: Uint8Array[];
+    posted: { bytes: Uint8Array; seq: unknown }[];
     failures: Error[];
     runNextTimer: () => void;
   } {
     const timers = new Map<number, () => void>();
     let nextTimer = 1;
-    const posted: Uint8Array[] = [];
+    const posted: { bytes: Uint8Array; seq: unknown }[] = [];
     const failures: Error[] = [];
     const queue = new HostFrameResponseQueue(
       {
@@ -875,9 +875,10 @@ describe("PolkaVM host-frame response backpressure", () => {
             message !== null &&
             typeof message === "object" &&
             "bytes" in message &&
+            "seq" in message &&
             message.bytes instanceof Uint8Array
           ) {
-            posted.push(message.bytes);
+            posted.push({ bytes: message.bytes, seq: message.seq });
           }
         },
       },
@@ -903,60 +904,94 @@ describe("PolkaVM host-frame response backpressure", () => {
     return { queue, posted, failures, runNextTimer };
   }
 
-  it("retains a rejected response and retries in order after guest progress", () => {
-    const { queue, posted, failures, runNextTimer } = harness();
+  it("dequeues responses only on matching accepted acks", () => {
+    const { queue, posted, failures } = harness();
     queue.enqueue(Uint8Array.of(1, 2));
     expect(posted).toEqual([]);
     queue.start();
     queue.enqueue(Uint8Array.of(3));
-    expect(posted).toEqual([Uint8Array.of(1, 2)]);
+    expect(posted).toEqual([{ bytes: Uint8Array.of(1, 2), seq: 1 }]);
     expect(queue.pendingCount).toBe(2);
     expect(queue.pendingBytes).toBe(3);
 
+    // An accepted ack for a foreign sequence must not settle the delivery.
     expect(
-      queue.handleMessage({
-        type: "host-frame-response-rejected",
-        reason: "queue-full",
-      }),
+      queue.handleMessage({ type: "host-frame-response-accepted", seq: 999 }),
     ).toBe(true);
-    // A rejection is nonfatal and never triggers an immediate re-post.
     expect(posted).toHaveLength(1);
-    expect(failures).toEqual([]);
+    expect(queue.pendingCount).toBe(2);
 
-    // Guest progress cancels the paced retry and re-delivers the retained
-    // bytes ahead of every later response.
-    expect(queue.handleMessage({ type: "frame" })).toBe(false);
-    expect(posted).toEqual([Uint8Array.of(1, 2), Uint8Array.of(1, 2)]);
-
-    // Further progress without a rejection confirms delivery and unblocks
-    // the next queued response.
-    queue.handleMessage({ type: "save" });
-    runNextTimer();
-    expect(posted).toEqual([
-      Uint8Array.of(1, 2),
-      Uint8Array.of(1, 2),
-      Uint8Array.of(3),
-    ]);
+    expect(
+      queue.handleMessage({ type: "host-frame-response-accepted", seq: 1 }),
+    ).toBe(true);
     expect(queue.pendingCount).toBe(1);
+    expect(queue.pendingBytes).toBe(1);
+    expect(posted).toEqual([
+      { bytes: Uint8Array.of(1, 2), seq: 1 },
+      { bytes: Uint8Array.of(3), seq: 2 },
+    ]);
 
-    queue.handleMessage({ type: "host-frame-request" });
-    runNextTimer();
+    queue.handleMessage({ type: "host-frame-response-accepted", seq: 2 });
     expect(queue.pendingCount).toBe(0);
     expect(queue.pendingBytes).toBe(0);
     expect(failures).toEqual([]);
   });
 
-  it("retries on a paced timer when no progress message arrives", () => {
-    const { queue, posted, runNextTimer, failures } = harness();
+  it("retains and retries a rejected response before later responses", () => {
+    const { queue, posted, failures, runNextTimer } = harness();
     queue.start();
-    queue.enqueue(Uint8Array.of(7));
-    queue.handleMessage({
-      type: "host-frame-response-rejected",
-      reason: "queue-full",
-    });
+    queue.enqueue(Uint8Array.of(1, 2));
+    queue.enqueue(Uint8Array.of(3));
+
+    expect(
+      queue.handleMessage({
+        type: "host-frame-response-rejected",
+        reason: "queue-full",
+        seq: 1,
+      }),
+    ).toBe(true);
+    // A rejection is nonfatal and never triggers an immediate re-post.
     expect(posted).toHaveLength(1);
+    expect(queue.pendingCount).toBe(2);
+    expect(failures).toEqual([]);
+
     runNextTimer();
-    expect(posted).toEqual([Uint8Array.of(7), Uint8Array.of(7)]);
+    expect(posted).toHaveLength(2);
+    // A retried delivery gets a fresh sequence.
+    expect(posted[1]).toEqual({ bytes: Uint8Array.of(1, 2), seq: 2 });
+
+    // A late rejection for the superseded sequence must neither drop the
+    // in-flight response nor deliver it twice.
+    expect(
+      queue.handleMessage({
+        type: "host-frame-response-rejected",
+        reason: "queue-full",
+        seq: 1,
+      }),
+    ).toBe(true);
+    expect(posted).toHaveLength(2);
+    expect(queue.pendingCount).toBe(2);
+
+    queue.handleMessage({ type: "host-frame-response-accepted", seq: 2 });
+    expect(posted).toHaveLength(3);
+    expect(posted[2]).toEqual({ bytes: Uint8Array.of(3), seq: 3 });
+    expect(queue.pendingCount).toBe(1);
+
+    // A late rejection arriving after its response was accepted is ignored
+    // too.
+    expect(
+      queue.handleMessage({
+        type: "host-frame-response-rejected",
+        reason: "queue-full",
+        seq: 2,
+      }),
+    ).toBe(true);
+    expect(posted).toHaveLength(3);
+    expect(queue.pendingCount).toBe(1);
+
+    queue.handleMessage({ type: "host-frame-response-accepted", seq: 3 });
+    expect(queue.pendingCount).toBe(0);
+    expect(queue.pendingBytes).toBe(0);
     expect(failures).toEqual([]);
   });
 
@@ -975,21 +1010,28 @@ describe("PolkaVM host-frame response backpressure", () => {
     retried.queue.handleMessage({
       type: "host-frame-response-rejected",
       reason: "queue-full",
+      seq: 1,
     });
     retried.runNextTimer();
+    expect(retried.posted.at(-1)?.seq).toBe(2);
     retried.queue.handleMessage({
       type: "host-frame-response-rejected",
       reason: "queue-full",
+      seq: 2,
     });
     expect(retried.failures[0]?.message).toMatch(/retry limit exceeded/);
 
-    const idle = harness();
-    idle.queue.start();
-    idle.queue.handleMessage({
+    const invalid = harness();
+    invalid.queue.start();
+    invalid.queue.enqueue(Uint8Array.of(7));
+    invalid.queue.handleMessage({
       type: "host-frame-response-rejected",
-      reason: "queue-full",
+      reason: "nope",
+      seq: 1,
     });
-    expect(idle.failures[0]?.message).toMatch(/invalid host-frame rejection/);
+    expect(invalid.failures[0]?.message).toMatch(
+      /invalid host-frame rejection/,
+    );
   });
 });
 

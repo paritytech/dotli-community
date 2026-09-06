@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "package": "@useragent-kit/polkavm-runtime",
-  "sourceRevision": "a9cb1d141267381c32e08b30d42df1ddf065fe22",
+  "sourceRevision": "49097c0230f2f4bb8d93c2ba1cf7a0bbfa2d066c",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-  "upstreamRevision": "069f2ee4852f9d2b6053e1244b09136238b0c2eb",
+  "upstreamRevision": "552017692a50d74ef94792b460e614f71bceb1b5",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
   "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {
@@ -18,10 +18,10 @@
   },
   "assets": {
     "polkavm-browser-runtime.wasm": "b5b8b39affa759317c77d223ec530e61734869e2a3925f78c71e885a879b2911",
-    "polkavm-worker.js": "c6d290b5fb1d7c0fb560d2f8ed6928805beeffac51a5fda540c77d6e505e481d",
+    "polkavm-worker.js": "a075e02bf90e9c0fbd31fbb3c6084d34a69a1148e392f67c273ad7bd292047ca",
     "polkavm-gpu-worker.js": "86cb899953b303dca45b0a5f2f2409713809e7223b9a9a5b853c9660d152edec",
-    "SHA256SUMS": "aca122f20d459befdd2d8de687d837893789bfeba5d185de6437b22d64af18e8",
-    "SOURCE.json": "85c436a1590e834ccce3863743ed2d68f00e03d32142c7bb176abf941df1a3b9",
+    "SHA256SUMS": "b2d9f099e486d7f6b25a0419bef32e79a910c3981665b109313ba19d3c4c9b0a",
+    "SOURCE.json": "346b83513bb4682d8ec8aec4bc2c4e85bf888a00ea7a5eabfb36fc8074160434",
     "LICENSE-MPL-2.0": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1"
   }
 }

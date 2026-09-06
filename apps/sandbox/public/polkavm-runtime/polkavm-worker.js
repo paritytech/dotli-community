@@ -2656,7 +2656,26 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       }
     } else if (message?.type === "host-frame-response") {
       try {
-        if (!sendHostFrameResponse(new Uint8Array(message.bytes))) {
+        const seq = message.seq;
+        if (
+          seq !== undefined &&
+          (!Number.isSafeInteger(seq) || seq < 0)
+        ) {
+          throw new Error(
+            "invalid PolkaVM browser host frame response sequence",
+          );
+        }
+        if (sendHostFrameResponse(new Uint8Array(message.bytes))) {
+          if (seq !== undefined) {
+            postMessage({ type: "host-frame-response-accepted", seq });
+          }
+        } else if (seq !== undefined) {
+          postMessage({
+            type: "host-frame-response-rejected",
+            reason: "queue-full",
+            seq,
+          });
+        } else {
           postMessage({
             type: "host-frame-response-rejected",
             reason: "queue-full",
