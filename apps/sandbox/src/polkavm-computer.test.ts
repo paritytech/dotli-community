@@ -67,14 +67,7 @@ describe("PolkaVM computer host boundary", () => {
       ),
     ).toBeNull();
     expect(
-      expectedComputerHostOrigin(
-        "dot.li",
-        "https:",
-        "",
-        "dot.li",
-        null,
-        "",
-      ),
+      expectedComputerHostOrigin("dot.li", "https:", "", "dot.li", null, ""),
     ).toBeNull();
   });
 

@@ -73,9 +73,7 @@ export function createPromptPermission(
 
   const remotePermission: Permissions["remotePermission"] = async (request) => {
     if (request.permission.tag === "Remote") {
-      const domains = normalizedRemoteDomains(
-        request.permission.value.domains,
-      );
+      const domains = normalizedRemoteDomains(request.permission.value.domains);
       if (domains === null) {
         return { granted: false };
       }
