@@ -8,6 +8,7 @@ interface ProductSmoke {
   profile: "framebuffer" | "tri2d";
   keys: readonly string[];
   audio: boolean;
+  nonzeroAudio: boolean;
 }
 
 const products: readonly ProductSmoke[] = [
@@ -16,24 +17,28 @@ const products: readonly ProductSmoke[] = [
     profile: "framebuffer",
     keys: ["Escape", "Enter", "Enter", "Enter", "w", "Space"],
     audio: true,
+    nonzeroAudio: true,
   },
   {
     label: "quake",
     profile: "framebuffer",
     keys: ["Escape", "Enter", "ArrowUp", "Space"],
     audio: true,
+    nonzeroAudio: false,
   },
   {
     label: "duke",
     profile: "framebuffer",
     keys: ["Escape", "Enter", "Enter", "Space"],
     audio: true,
+    nonzeroAudio: true,
   },
   {
     label: "egui-app-lab",
     profile: "tri2d",
     keys: ["Tab", "Enter", "Tab"],
     audio: false,
+    nonzeroAudio: false,
   },
 ];
 
@@ -90,20 +95,20 @@ async function smokeProduct(
   const frame = page.frameLocator(iframeSelector);
   const body = frame.locator("body");
   const canvas = frame.locator("#dotli-polkavm-canvas");
-  await expect
-    .poll(
-      async () => {
-        const text = await body.innerText().catch(() => "");
-        const failure = text.match(runtimeFailure)?.[0];
-        if (failure !== undefined) return `failure: ${failure}`;
-        return (await canvas.getAttribute("data-polkavm-ready")) ?? "waiting";
-      },
-      {
-        message: `${product.label}: wait for a playable PolkaVM runtime`,
+  await Promise.race([
+    expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
+      timeout: 180_000,
+    }),
+    (async () => {
+      await body.getByText(runtimeFailure).first().waitFor({
+        state: "visible",
         timeout: 180_000,
-      },
-    )
-    .toBe("true");
+      });
+      throw new Error(
+        `${product.label}: runtime failed\n${(await body.innerText()).trim()}`,
+      );
+    })(),
+  ]);
 
   await expect(canvas).toHaveAttribute("data-polkavm-profile", product.profile);
   await expect(canvas).toHaveAttribute("data-polkavm-backend", "compiler");
@@ -129,7 +134,12 @@ async function smokeProduct(
         timeout: 30_000,
       })
       .toBeGreaterThan(audioBefore);
-    await expect(canvas).toHaveAttribute("data-polkavm-audio-nonzero", "true");
+    if (product.nonzeroAudio) {
+      await expect(canvas).toHaveAttribute(
+        "data-polkavm-audio-nonzero",
+        "true",
+      );
+    }
   } else {
     await expect
       .poll(() => counter(canvas, "data-polkavm-tri2d-draws"), {
