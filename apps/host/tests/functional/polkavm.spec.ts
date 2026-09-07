@@ -86,7 +86,7 @@ async function webGpuFallbackCar(): Promise<TestCar & { manifest: string }> {
     appVersion: [1, 0, 0],
     runtime: {
       kind: "polkavm",
-      abiVersion: 1,
+      abiVersion: 2,
       entrypoint: "app.polkavm",
       fallback: { kind: "web", entrypoint: "fallback/index.html" },
     },
