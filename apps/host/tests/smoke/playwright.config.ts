@@ -13,6 +13,17 @@ export default defineConfig({
     browserName: "chromium",
     headless: true,
     viewport: { width: 1280, height: 800 },
+    launchOptions: {
+      args:
+        process.env.DOTLI_WEBGPU === "1"
+          ? [
+              "--enable-unsafe-webgpu",
+              "--enable-features=Vulkan",
+              "--use-angle=swiftshader",
+              "--use-vulkan=swiftshader",
+            ]
+          : [],
+    },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
