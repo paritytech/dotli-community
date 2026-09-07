@@ -106,6 +106,13 @@ const CLI_USAGE_EXIT_CODE = 2;
 // identity backend is down" apart from "dot.li tests asserted false".
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
+// Concurrent CI runs registering the same lite username collide on the shared
+// testnet ("dotlitest is taken"), so every run derives a unique prefix. The
+// CLI appends its own entropy after the prefix; this only namespaces runs.
+const liteUsernamePrefix = `dotlitest${(
+  process.env.GITHUB_RUN_ID ?? Date.now().toString(36)
+).slice(-6)}`;
+
 const signingHostConfig: SigningHostConfig = {
   binary: SIGNING_HOST_BIN,
   basePath: SIGNING_HOST_BASE_PATH,
@@ -115,7 +122,7 @@ const signingHostConfig: SigningHostConfig = {
   // rejects auto-account naming flags.
   liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
     ? undefined
-    : "dotlitest",
+    : liteUsernamePrefix,
 };
 
 // Thrown when the CLI process dies before login; elapsedMs distinguishes
