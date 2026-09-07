@@ -149,7 +149,10 @@ if (!checkOnly) {
     );
   }
   const installedVersion = JSON.parse(
-    await readFile(resolve(dirname(dirname(checksumsPath)), "package.json"), "utf8"),
+    await readFile(
+      resolve(dirname(dirname(checksumsPath)), "package.json"),
+      "utf8",
+    ),
   ).version;
   if (installedVersion !== lock.packageVersion) {
     throw new Error(
@@ -205,7 +208,9 @@ for (const name of runtimeAssets.keys()) {
     throw new Error(`${name} does not match the vendored SHA256SUMS`);
   }
   if (lock.assets[name] !== vendoredChecksums.get(name)) {
-    throw new Error(`${name} lock digest does not match the vendored SHA256SUMS`);
+    throw new Error(
+      `${name} lock digest does not match the vendored SHA256SUMS`,
+    );
   }
 }
 
