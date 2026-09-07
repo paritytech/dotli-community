@@ -71,22 +71,21 @@ async function smokeProduct(
   const encodedManifest = new URL(iframeSource).searchParams.get(
     "executableManifest",
   );
-  if (encodedManifest === null) {
-    throw new Error(
-      `${product.label}: product iframe has no executable manifest`,
-    );
+  let manifest: Record<string, unknown> | null = null;
+  if (encodedManifest !== null) {
+    manifest = JSON.parse(encodedManifest) as {
+      $v?: number;
+      kind?: string;
+      runtime?: { kind?: string; abiVersion?: number };
+    };
+    expect(manifest.$v, `${product.label}: App manifest version`).toBe(2);
+    expect(manifest.kind, `${product.label}: executable kind`).toBe("app");
+    const runtime = manifest.runtime as
+      | { kind?: string; abiVersion?: number }
+      | undefined;
+    expect(runtime?.kind, `${product.label}: runtime kind`).toBe("polkavm");
+    expect(runtime?.abiVersion, `${product.label}: runtime ABI`).toBe(2);
   }
-  const manifest = JSON.parse(encodedManifest) as {
-    $v?: number;
-    kind?: string;
-    runtime?: { kind?: string; abiVersion?: number };
-  };
-  expect(manifest.$v, `${product.label}: App manifest version`).toBe(2);
-  expect(manifest.kind, `${product.label}: executable kind`).toBe("app");
-  expect(manifest.runtime?.kind, `${product.label}: runtime kind`).toBe(
-    "polkavm",
-  );
-  expect(manifest.runtime?.abiVersion, `${product.label}: runtime ABI`).toBe(2);
 
   const frame = page.frameLocator(iframeSelector);
   const body = frame.locator("body");

@@ -267,11 +267,10 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     errors.push(...validateHostCapabilities(capabilities, runtime, p));
     return errors;
   }
-  // The App manifest version ($v) and the runtime ABI version are independent:
-  // v2 manifests select the PolkaVM application runtime ABI v1, which is the
-  // only version the runtime contract defines and every published App declares.
-  if (runtime.abiVersion !== 1) {
-    errors.push(`${p}PolkaVM runtime abiVersion must be 1`);
+  // The App manifest and application-runtime contracts version independently.
+  // App manifest v2 selects the current PolkaVM application runtime ABI v2.
+  if (runtime.abiVersion !== 2) {
+    errors.push(`${p}PolkaVM runtime abiVersion must be 2`);
   }
   const graphics =
     capabilities !== null && isPlainObject(capabilities.graphics)

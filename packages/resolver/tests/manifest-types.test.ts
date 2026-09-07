@@ -28,7 +28,7 @@ const VALID_APP_V2 = {
   appVersion: [0, 1, 7],
   runtime: {
     kind: "polkavm",
-    abiVersion: 1,
+    abiVersion: 2,
     entrypoint: "app.polkavm",
   },
   capabilities: {
@@ -354,18 +354,16 @@ describe("validateExecutableManifest", () => {
     ).toBe(false);
   });
 
-  it("accepts only the published PolkaVM runtime ABI", () => {
-    // A v2 manifest versions the manifest, not the guest boundary: every App
-    // the kit publishes selects runtime ABI v1.
+  it("accepts only the current PolkaVM application runtime ABI", () => {
     expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
-    for (const abiVersion of [2, 0, "1", undefined]) {
+    for (const abiVersion of [1, 0, "2", undefined]) {
       const result = validateExecutableManifest({
         ...VALID_APP_V2,
         runtime: { ...VALID_APP_V2.runtime, abiVersion },
       });
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.errors.some((e) => /abiVersion must be 1/.test(e))).toBe(
+        expect(result.errors.some((e) => /abiVersion must be 2/.test(e))).toBe(
           true,
         );
       }
