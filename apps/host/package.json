@@ -14,6 +14,7 @@
     "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=explore PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
     "test:perf:compare": "bun tests/performance/compare.ts",
     "test:polkavm:doom": "playwright test --config=tests/performance/playwright.config.ts tests/performance/polkavm-doom.spec.ts",
+    "test:smoke:products": "playwright test --config=tests/smoke/playwright.config.ts tests/smoke/polkavm-products.spec.ts",
     "test:perf:compare:md": "bun tests/performance/compare.ts --markdown",
     "lint": "bunx eslint src/",
     "typecheck": "tsc --noEmit"
