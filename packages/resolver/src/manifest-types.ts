@@ -55,7 +55,7 @@ export interface PolkaVmAppManifestV2 {
   appVersion: AppVersion;
   runtime: {
     kind: "polkavm";
-    abiVersion: 2;
+    abiVersion: 1;
     entrypoint: string;
     fallback?: {
       kind: "web";
@@ -194,8 +194,11 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
   if (runtime.kind !== "polkavm") {
     return [`${p}runtime.kind must be web or polkavm`];
   }
-  if (runtime.abiVersion !== 2) {
-    errors.push(`${p}PolkaVM runtime abiVersion must be 2`);
+  // The App manifest version ($v) and the runtime ABI version are independent:
+  // v2 manifests select the PolkaVM application runtime ABI v1, which is the
+  // only version the runtime contract defines and every published App declares.
+  if (runtime.abiVersion !== 1) {
+    errors.push(`${p}PolkaVM runtime abiVersion must be 1`);
   }
   if (!relativeEntrypoint(runtime.entrypoint, ".polkavm")) {
     errors.push(`${p}PolkaVM entrypoint must be a relative .polkavm path`);

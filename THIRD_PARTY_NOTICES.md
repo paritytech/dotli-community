@@ -9,7 +9,7 @@ in its distribution under `node_modules`.
 
 GPL-family components (GPL-3.0 with the Classpath linking exception) are
 compatible with this project's AGPL-3.0 outbound license. The vendored
-`@useragent-kit/polkavm-runtime` browser artifacts remain under MPL-2.0.
+`@parity/pvm-browser-runtime` browser artifacts remain under MPL-2.0.
 Complete notices, per-file hashes, and source provenance ship beside the
 runtime. Build-time-only tooling under source-available FSL-1.1-MIT terms is
 not redistributed as part of the application.
@@ -78,7 +78,7 @@ smoldot, verifiablejs
 
 ## MPL-2.0
 
-@useragent-kit/polkavm-runtime browser artifacts, lightningcss, lightningcss-darwin-arm64
+@parity/pvm-browser-runtime browser artifacts, lightningcss, lightningcss-darwin-arm64
 
 ## FSL-1.1-MIT
 

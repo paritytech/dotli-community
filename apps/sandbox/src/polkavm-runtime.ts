@@ -27,7 +27,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-b2f4366a7ba83fc1558d2772a5f92272bd6edfc1";
+  "parity-pvm-browser-runtime-ffd7286411cf5bfee7ea9c0a3d3254a95cf71176";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -477,8 +477,11 @@ function parseManifest(
   let manifestVersion: number | null = null;
   let webFallbackPath: string | null = null;
   if (manifest?.$v === 2 && manifest.kind === "app") {
-    if (runtime.abiVersion !== 2) {
-      throw new Error("PolkaVM App v2 runtime requires ABI version 2");
+    // `$v: 2` versions the manifest, not the guest boundary. Every published
+    // App selects PolkaVM application runtime ABI v1, the only version the
+    // runtime contract defines.
+    if (runtime.abiVersion !== 1) {
+      throw new Error("PolkaVM App v2 runtime requires ABI version 1");
     }
     if (runtime.fallback !== undefined) {
       const fallback = object(runtime.fallback);
