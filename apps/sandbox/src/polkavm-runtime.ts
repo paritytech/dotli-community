@@ -477,8 +477,11 @@ function parseManifest(
   let manifestVersion: number | null = null;
   let webFallbackPath: string | null = null;
   if (manifest?.$v === 2 && manifest.kind === "app") {
-    if (runtime.abiVersion !== 2) {
-      throw new Error("PolkaVM App v2 runtime requires ABI version 2");
+    // `$v: 2` versions the manifest, not the guest boundary. Every published
+    // App selects PolkaVM application runtime ABI v1, the only version the
+    // runtime contract defines.
+    if (runtime.abiVersion !== 1) {
+      throw new Error("PolkaVM App v2 runtime requires ABI version 1");
     }
     if (runtime.fallback !== undefined) {
       const fallback = object(runtime.fallback);
