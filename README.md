@@ -120,16 +120,39 @@ If a background re-resolution finds the on-chain CID has changed, dotli shows a 
 
 Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:
 
-| Handler                        | What it does                                                           |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `accountGet`                   | Derives a per-app public key via HDKD soft derivation                  |
-| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host |
-| `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session     |
-| `chainConnection`              | Returns an isolated broker connection over the selected chain backend  |
-| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                |
-| `navigateTo`                   | Opens URLs in new tabs                                                 |
-| `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)   |
-| `connectionStatus`             | Streams auth state changes to the SPA                                  |
+| Handler                        | What it does                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| `accountGet`                   | Derives a per-app public key via HDKD soft derivation                                 |
+| `getLegacyAccounts`            | Returns non-derived (imported) accounts — always empty on the web host                |
+| `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
+| `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
+| `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
+| `navigateTo`                   | Opens URLs in new tabs                                                                |
+| `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
+| `connectionStatus`             | Streams auth state changes to the SPA                                                 |
+| `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
+
+### Product chat
+
+Products that declare `includes.chat` in their `worker.<label>.<tld>`
+executable manifest get a Worker-kind TrUAPI execution and a chat button in
+the topbar. The product drives the conversation over the core's chat
+surface (`chat.create_room`, `chat.register_bot`, `chat.post_message`,
+`chat.list_subscribe`, `chat.action_subscribe`); the user replies from the
+docked chat panel, and each reply reaches the product as a `MessagePosted`
+action. Rooms and messages persist in IndexedDB on the product origin and
+never leave the device. The core denies chat calls without an active
+session, so chat requires being logged in. The localhost debug paths enable
+chat unconditionally so local products can be tested without publishing a
+manifest.
+
+Custom messages (`ChatMessageContent::Custom`) render live: when a custom
+message cell scrolls into view, the panel asks the product to draw it
+(`chat.custom_message_render`) and renders the streamed tree with the
+host's own design system (`src/chat/custom-renderer.ts`). The tree is a
+closed vocabulary of layouts and design tokens, so a product can never
+inject markup, styles, or URLs. Button taps and text-field edits flow back
+as `ActionTriggered` actions, as do taps on `Actions`-content buttons.
 
 ### App iframe model
 
@@ -182,8 +205,13 @@ Local development uses wildcard subdomains:
 
 The product E2E suite can load the source checkout directly through dotli's
 localhost proxy instead of resolving the published `host-playground.dot` CID.
-By default it expects the product at `../../../host-playground` relative to this
-repository and the local signing bot at `http://localhost:3737/`:
+By default it expects the product at `../../../host-playground` relative to
+this repository, and the `truapi-host` CLI from
+[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+```
 
 ```bash
 bun run test:e2e:local
@@ -204,13 +232,17 @@ flow through either light-client backend:
 E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
 ```
 
-The signer can run natively or in Docker; set `SIGNER_BOT_BASE_URL`,
-`SIGNER_BOT_SVC_TOKEN`, and `SIGNER_BOT_NETWORK` when its published port or
-credentials differ from the defaults.
+Set `SIGNING_HOST_BIN` to a locally built binary (e.g.
+`../host-rust-core/target/debug/truapi-host`) instead of installing, and
+`SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI
+keeps its account state under `apps/host/tests/e2e/.auth/signing-host`, so
+repeat runs reuse one test account; the first run registers a fresh lite
+username on-chain and can take a few minutes.
 
 The command builds dotli with its debug-only localhost proxy enabled, starts
-both preview servers through Playwright, pairs once through the signer bot, and
-runs the same host-product suite used in CI.
+both preview servers through Playwright, extracts the login QR deeplink, pairs
+a headless `truapi-host signing-host` process that auto-signs for the rest of
+the run, and runs the same host-product suite used in CI.
 
 ### Running an approved build
 

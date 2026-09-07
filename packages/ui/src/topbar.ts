@@ -47,6 +47,8 @@ import {
   setPermissionStatus,
   type PermissionStatus,
 } from "./permissions";
+import type { LoginFailureKind } from "@parity/truapi-host";
+import { initChatPanel } from "./chat/panel";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
@@ -414,6 +416,9 @@ export function initTopBar(
   // Permissions
   initPermissions();
 
+  // Product chat button + docked panel
+  initChatPanel();
+
   window.addEventListener("dotli:blocking-modal-active", (event: Event) => {
     const { active } = (event as CustomEvent<{ active: boolean }>).detail;
     if (!active) {
@@ -477,7 +482,7 @@ function renderAuthState(state: DotliAuthState): void {
       break;
     case "LoginFailed":
       openModal();
-      renderError(state.reason);
+      renderError(state.reason, state.kind);
       break;
   }
 }
@@ -485,24 +490,32 @@ function renderAuthState(state: DotliAuthState): void {
 function renderLoggedOut(): void {
   authButton.innerHTML = USER_SVG;
   authButton.title = "Login with Polkadot Mobile";
+  setUserPopoverNoUsernameHint(false);
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
 
 function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
-  authButton.innerHTML = `<div class="user-badge">${escapeHtml(
-    shortenTruapiSessionName(state),
-  )}</div>`;
+  const initials = truapiSessionInitials(state);
+  authButton.innerHTML =
+    initials !== undefined
+      ? `<div class="user-badge">${escapeHtml(initials)}</div>`
+      : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
   authButton.title = "Account";
+  const username =
+    state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
   userPopoverUsername.textContent =
-    state.primaryUsername ??
-    state.fullUsername ??
-    state.liteUsername ??
+    username ??
     shortenAccount(state.identityAccountId ?? state.publicKey) ??
     "Connected with Polkadot Mobile";
+  setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
   window.dispatchEvent(new Event("dotli:authenticated"));
 }
 
-function shortenTruapiSessionName(state: TruapiSessionUiState): string {
+// A session can install without any username (the account has no dotNS record
+// on this network), so initials only come from real names, never account hex.
+function truapiSessionInitials(
+  state: TruapiSessionUiState,
+): string | undefined {
   const fullName = state.fullUsername;
   if (fullName !== undefined && fullName.length > 0) {
     const parts = fullName.split(" ").filter((part) => part.length > 0);
@@ -517,11 +530,25 @@ function shortenTruapiSessionName(state: TruapiSessionUiState): string {
   if (liteName !== undefined && liteName.length > 0) {
     return liteName.slice(0, 2).toUpperCase();
   }
-  const account = state.identityAccountId ?? state.publicKey;
-  if (account !== undefined && account.length >= 4) {
-    return account.slice(2, 4).toUpperCase();
+  return undefined;
+}
+
+// Explains the username-less state in the popover instead of leaving a bare
+// address that reads as a rendering bug.
+function setUserPopoverNoUsernameHint(show: boolean): void {
+  const existing = document.getElementById("user-popover-hint");
+  if (!show) {
+    existing?.remove();
+    return;
   }
-  return "??";
+  if (existing !== null) {
+    return;
+  }
+  const hint = document.createElement("div");
+  hint.id = "user-popover-hint";
+  hint.className = "user-popover-hint";
+  hint.textContent = "No username found for this account on this network.";
+  userPopoverUsername.insertAdjacentElement("afterend", hint);
 }
 
 function shortenAccount(account: string | undefined): string | undefined {
@@ -615,20 +642,24 @@ function renderAuthenticating(): void {
 const PENDING_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
+interface FriendlyAuthError {
+  title: string;
+  subtitle: string;
+  detail?: string;
+}
+
+function exhaustedAllowanceError(message: string): FriendlyAuthError {
+  return {
+    title: "No Statement Store slots left",
+    subtitle:
+      "Polkadot Mobile has no free slot to register this browser. Try again once the current allowance period rolls over.",
+    detail: message,
+  };
+}
+
 // Recognize known wallet-side SSO failures and return friendly copy, or null to
 // fall back to the raw error.
-function friendlyAuthError(
-  message: string,
-): { title: string; subtitle: string; detail?: string } | null {
-  if (
-    message.includes("no free statement-store slot for device registration")
-  ) {
-    return {
-      title: "No Statement Store slots left",
-      subtitle: "Polkadot Mobile could not register this browser as a device.",
-      detail: "no free statement-store slot for device registration",
-    };
-  }
+function friendlyAuthError(message: string): FriendlyAuthError | null {
   if (message.includes("Invalid Transaction")) {
     return {
       title: "Statement Store transaction rejected",
@@ -654,11 +685,14 @@ function friendlyAuthError(
   return null;
 }
 
-function renderError(message: string): void {
+function renderError(message: string, kind: LoginFailureKind): void {
   const container = document.createElement("div");
   container.className = "auth-modal-error-view";
 
-  const friendly = friendlyAuthError(message);
+  const exhaustedPeriod = kind === "NoFreeAllowanceSlots";
+  const friendly = exhaustedPeriod
+    ? exhaustedAllowanceError(message)
+    : friendlyAuthError(message);
   if (friendly) {
     const icon = document.createElement("div");
     icon.className = "auth-modal-pending-icon";
@@ -688,14 +722,16 @@ function renderError(message: string): void {
     container.appendChild(msg);
   }
 
-  const retry = document.createElement("button");
-  retry.className = "auth-modal-retry";
-  retry.textContent = "Retry";
-  retry.addEventListener("click", () => {
-    openModal();
-    requestTruapiLogin();
-  });
-  container.appendChild(retry);
+  if (!exhaustedPeriod) {
+    const retry = document.createElement("button");
+    retry.className = "auth-modal-retry";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => {
+      openModal();
+      requestTruapiLogin();
+    });
+    container.appendChild(retry);
+  }
 
   modalQr.innerHTML = "";
   modalQr.appendChild(container);

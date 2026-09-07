@@ -159,13 +159,6 @@ export const AUTH_SESSION_RESTORE = "auth.session_restore";
 export const WASM_LOAD = "wasm.load";
 
 /**
- * User clicked the "Use gateway instead" escape hatch on the loading
- * screen. Tagged with `from_backend` so we can see which verified path
- * (smoldot-direct vs smoldot-shared-worker) the user bailed out of.
- */
-export const GATEWAY_ESCAPE = "loading.gateway_escape";
-
-/**
  * Shared-storage request rejected before it could touch `localStorage`:
  * bad siteId, malformed key, disallowed origin, or unrecognised value
  * shape. Tagged with `store` (`auth` / `mode`) and `reason` so silent

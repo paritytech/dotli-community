@@ -506,6 +506,45 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
+  it("As a dotli integrator, the host renders product subtree resolution as structured product fields", async () => {
+    // Given
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "ProductSubtree",
+      value: {
+        productId: "truapi-playground.dot",
+      },
+    };
+
+    // When
+    const confirmation = confirmUserAction(review);
+
+    // Then
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Product Account",
+    );
+    expect(modalFields()).toEqual({
+      "Requesting product": "truapi-playground.dot",
+    });
+    // The answer is fixed for the pairing and cached, so the wording has to
+    // read as granting access rather than as signing something.
+    expect(
+      document.querySelector<HTMLButtonElement>(".signing-btn-sign")
+        ?.textContent,
+    ).toBe("Allow");
+    expect(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
+        ?.textContent,
+    ).toBe("Deny");
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(false);
+  });
+
   it("As a dotli integrator, the host rejects identity disclosure when the dialog is dismissed", async () => {
     // Given
     const { confirmUserAction } =

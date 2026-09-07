@@ -57,6 +57,7 @@ deploy.env
 
 # AI
 .claude/settings.local.json
+.claude/launch.json
 .claude/sessions/
 .claude/cache/
 .claude/worktrees

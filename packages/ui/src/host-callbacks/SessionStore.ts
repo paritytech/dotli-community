@@ -260,6 +260,23 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
     case "AuthSession":
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
+    // Peers address this device by the public counterpart, so the slot name
+    // must not move with the session.
+    case "DeviceEncryptionKey":
+      return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
+    // Keyed by session and product together: pairing again re-asks the
+    // Account Holder, so one session's answer must not be read back for
+    // another.
+    case "ProductSubtree":
+      return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
+    // The ledger bounds replays for one wallet and peer pair, so the whole
+    // triple has to discriminate the slot.
+    case "SsoResponderRequestLedger":
+      return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
   }
 }
 
@@ -267,7 +284,8 @@ function storesSecretMaterial(key: CoreStorageKey): boolean {
   return (
     key.tag === "AllowanceKeys" ||
     key.tag === "AutoSigningKey" ||
-    key.tag === "AutoSigningKeys"
+    key.tag === "AutoSigningKeys" ||
+    key.tag === "DeviceEncryptionKey"
   );
 }
 

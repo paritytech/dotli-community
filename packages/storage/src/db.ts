@@ -22,7 +22,7 @@ declare global {
 }
 
 const DB_NAME = "dotli";
-const DB_VERSION = 2;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -57,6 +57,27 @@ function openFresh(): Promise<IDBDatabase> {
         // keyPath: "productId". Value: { productId, next: number }.
         db.createObjectStore("notification_counters", { keyPath: "productId" });
       }
+      // v3: product chat rooms and messages.
+      if (!db.objectStoreNames.contains("chat_rooms")) {
+        db.createObjectStore("chat_rooms", {
+          keyPath: ["productId", "roomId"],
+        });
+      }
+      if (!db.objectStoreNames.contains("chat_messages")) {
+        const store = db.createObjectStore("chat_messages", {
+          keyPath: "seq",
+          autoIncrement: true,
+        });
+        store.createIndex("byRoom", ["productId", "roomId"], {
+          unique: false,
+        });
+      }
+      // v4: product chat bot identities.
+      if (!db.objectStoreNames.contains("chat_bots")) {
+        db.createObjectStore("chat_bots", {
+          keyPath: ["productId", "botId"],
+        });
+      }
     };
     req.onsuccess = () => {
       resolve(req.result);
@@ -72,6 +93,11 @@ function openFresh(): Promise<IDBDatabase> {
           cause ? { cause } : undefined,
         ),
       );
+    };
+    // A still-open tab on an older schema blocks the upgrade. Blocked fires
+    // neither onsuccess nor onerror, so reject rather than hang forever.
+    req.onblocked = () => {
+      reject(new Error("Failed to open dotli DB: blocked by another tab"));
     };
   });
 }
@@ -116,6 +142,17 @@ export function getDb(): Promise<IDBDatabase> {
       db.onclose = () => {
         if (dbGeneration === thisGeneration) {
           dbPromise = null;
+        }
+      };
+      // Another tab wants to upgrade the schema. Close so it is not blocked
+      // and drop the cached handles so the next access reopens.
+      db.onversionchange = () => {
+        db.close();
+        if (dbGeneration === thisGeneration) {
+          dbPromise = null;
+        }
+        if (typeof window !== "undefined") {
+          delete window.__dotliDb;
         }
       };
     })
