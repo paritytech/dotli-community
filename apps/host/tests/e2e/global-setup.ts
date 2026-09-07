@@ -108,10 +108,15 @@ export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
 // Concurrent CI runs registering the same lite username collide on the shared
 // testnet ("dotlitest is taken"), so every run derives a unique prefix. The
-// CLI appends its own entropy after the prefix; this only namespaces runs.
-const liteUsernamePrefix = `dotlitest${(
-  process.env.GITHUB_RUN_ID ?? Date.now().toString(36)
-).slice(-6)}`;
+// CLI requires lowercase ASCII letters only, so the run id digits are mapped
+// onto a-j; locally the timestamp seeds the same encoding.
+const runToken = process.env.GITHUB_RUN_ID ?? Date.now().toString();
+const liteUsernameSuffix = runToken
+  .slice(-6)
+  .replace(/[^a-z]/g, (char) =>
+    String.fromCharCode(97 + (char.charCodeAt(0) % 10)),
+  );
+const liteUsernamePrefix = `dotlitest${liteUsernameSuffix}`;
 
 const signingHostConfig: SigningHostConfig = {
   binary: SIGNING_HOST_BIN,
