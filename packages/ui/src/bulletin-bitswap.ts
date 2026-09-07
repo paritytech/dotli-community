@@ -18,7 +18,8 @@ import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
-// transient and retryable. INVALID_PARAMS and FAIL are terminal.
+// transient. INVALID_PARAMS is terminal. FAIL gets a bounded cold-connection
+// grace period, then remains terminal.
 const ERR_INVALID_PARAMS = -32602;
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
@@ -28,6 +29,11 @@ const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
+// A freshly-added Bulletin chain can answer FAIL before it has attached any
+// content peers. Give that cold connection a short discovery window, but keep
+// FAIL terminal after the first successful block so genuinely missing archive
+// blocks do not consume the full request budget.
+const COLD_START_FAIL_RETRIES = 5;
 
 interface PendingResolver {
   resolve: (bytes: Uint8Array) => void;
@@ -38,6 +44,7 @@ let nextId = 1;
 const pending = new Map<number, PendingResolver>();
 
 let connection: JsonRpcConnection | null = null;
+let hasSuccessfulBitswapBlock = false;
 
 function ensureConnection(): JsonRpcConnection {
   if (connection !== null) {
@@ -112,13 +119,26 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
     }
     const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining);
     try {
-      return await sendOnce(cid, callTimeout);
+      const bytes = await sendOnce(cid, callTimeout);
+      hasSuccessfulBitswapBlock = true;
+      return bytes;
     } catch (err) {
       const code = errorCode(err);
-      if (code === ERR_INVALID_PARAMS || code === ERR_FAIL) {
+      const coldStartFail =
+        code === ERR_FAIL &&
+        !hasSuccessfulBitswapBlock &&
+        attempt <= COLD_START_FAIL_RETRIES;
+      if (
+        code === ERR_INVALID_PARAMS ||
+        (code === ERR_FAIL && !coldStartFail)
+      ) {
         throw err;
       }
-      if (code === ERR_FAIL_RETRY || code === ERR_FAIL_BACKOFF) {
+      if (
+        coldStartFail ||
+        code === ERR_FAIL_RETRY ||
+        code === ERR_FAIL_BACKOFF
+      ) {
         const delay = Math.min(
           BACKOFF_CAP_MS,
           BACKOFF_BASE_MS * 2 ** Math.min(attempt - 1, 4),
