@@ -51,6 +51,14 @@ number nobody has shipped against.
 for that distribution. It is not the guest contract and MUST NOT be read as the
 value an App manifest declares.
 
+The vendored browser runtime therefore tracks
+`paritytech/polkavm-host-runtime` directly — the repository whose ABI v1
+contract this Host implements — through the `@parity/pvm-browser-runtime`
+release tarball recorded in `scripts/polkavm-runtime.lock.json`. Repinning to a
+redistribution that declares `abi.runtime: 2` reintroduces exactly the
+ambiguity this ADR settles, and drops whatever upstream has merged since that
+redistribution was cut.
+
 ## Consequences
 
 - `packages/resolver/src/manifest-types.ts` types `runtime.abiVersion` as `1`
