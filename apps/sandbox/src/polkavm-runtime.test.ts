@@ -60,7 +60,7 @@ function doomAppV2Manifest(): string {
     appVersion: [0, 1, 7],
     runtime: {
       kind: "polkavm",
-      abiVersion: 1,
+      abiVersion: 2,
       entrypoint: "app.polkavm",
     },
     capabilities: {

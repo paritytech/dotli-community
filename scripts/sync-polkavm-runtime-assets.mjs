@@ -16,12 +16,11 @@ const lock = JSON.parse(
 const destination = resolve(root, "apps/sandbox/public/polkavm-runtime");
 const require = createRequire(import.meta.url);
 
-// The upstream runtime ships its artifacts under a `pvm-` prefix. The host
-// serves them under the `polkavm-` names its service worker, sandbox, and
-// published manifests already reference, so every artifact is renamed on the
-// way in and the checksum manifest is rewritten to match. Nothing else about
-// the bytes changes: each file is verified against the upstream manifest under
-// its upstream name before it is written.
+// The runtime package ships its artifacts under the exact `polkavm-` names the
+// host's service worker, sandbox, and published manifests already reference,
+// so every artifact is copied in unchanged and its checksum manifest is
+// vendored byte-for-byte. Each file is verified against that manifest before
+// it is written.
 // Package export subpath every servable artifact is resolved through. Which of
 // them this host actually serves is the lockfile's decision.
 const runtimeExports = new Map([
@@ -34,36 +33,28 @@ const runtimeExports = new Map([
 // core, and the worker entry are embedded inside `polkavm-worker.js`, so they
 // are attested but never served on their own.
 const upstreamRuntimeInventory = [
-  "pvm-browser-runtime.wasm",
-  "pvm-worker.js",
-  "pvm-gpu-worker.js",
-  "pvm-wasm-translated.js",
-  "pvm-runtime-core.js",
-  "pvm-wasm-worker-entry.js",
-  "pvm-computer.js",
+  "polkavm-browser-runtime.wasm",
+  "polkavm-worker.js",
+  "polkavm-gpu-worker.js",
+  "polkavm-wasm-translated.js",
+  "polkavm-runtime-core.js",
+  "polkavm-wasm-worker-entry.js",
+  "polkavm-computer.js",
 ];
 const generatedInventory = ["SHA256SUMS", "SOURCE.json", "LICENSE-MPL-2.0"];
 const synchronizedInventory = Object.keys(lock.assets);
-const runtimeAssets = new Map(
-  synchronizedInventory
-    .filter((name) => !generatedInventory.includes(name))
-    .map((name) => [name, upstreamName(name)]),
+const runtimeAssets = synchronizedInventory.filter(
+  (name) => !generatedInventory.includes(name),
 );
+for (const name of runtimeAssets) {
+  if (!runtimeExports.has(name)) {
+    throw new Error(`runtime lock names an unknown artifact ${name}`);
+  }
+}
 const auxiliaryInventory = ["PolkaVM-LICENSE-APACHE", "PolkaVM-LICENSE-MIT"];
 
 function sorted(values) {
   return [...values].sort();
-}
-
-function hostName(upstreamName) {
-  return `polkavm-${upstreamName.slice("pvm-".length)}`;
-}
-
-function upstreamName(name) {
-  if (!runtimeExports.has(name)) {
-    throw new Error(`runtime lock names an unknown artifact ${name}`);
-  }
-  return `pvm-${name.slice("polkavm-".length)}`;
 }
 
 function sha256(bytes) {
@@ -99,20 +90,15 @@ function parseChecksumManifest(contents, expectedInventory, description) {
   return checksums;
 }
 
-/** The vendored manifest: the upstream one under the host's artifact names. */
-function renameChecksumManifest(upstreamChecksums) {
-  return `${upstreamRuntimeInventory
-    .map((name) => `${upstreamChecksums.get(name)}  ${hostName(name)}`)
-    .join("\n")}\n`;
-}
-
 /** The vendored provenance record, derived from the lockfile alone. */
 function provenanceRecord() {
   return `${JSON.stringify(
     {
       schemaVersion: 1,
-      upstreamPackage: lock.package,
-      upstreamVersion: lock.packageVersion,
+      sourcePackage: lock.package,
+      sourceVersion: lock.packageVersion,
+      sourceRepository: lock.sourceRepository,
+      sourceRevision: lock.sourceRevision,
       upstreamRepository: lock.upstreamRepository,
       upstreamRevision: lock.upstreamRevision,
       polkavmRepository: lock.polkavmRepository,
@@ -130,7 +116,7 @@ for (const name of generatedInventory) {
     throw new Error(`runtime lock is missing ${name}`);
   }
 }
-if (runtimeAssets.size === 0) {
+if (runtimeAssets.length === 0) {
   throw new Error("runtime lock names no runtime artifacts");
 }
 requireExactInventory(
@@ -164,25 +150,22 @@ if (!checkOnly) {
     upstreamRuntimeInventory,
     "upstream SHA256SUMS",
   );
-  for (const [name, upstreamName] of runtimeAssets) {
+  for (const name of runtimeAssets) {
     const path = resolve(destination, name);
     await copyFile(
       require.resolve(`${lock.package}/${runtimeExports.get(name)}`),
       path,
     );
     const digest = sha256(await readFile(path));
-    if (digest !== upstreamChecksums.get(upstreamName)) {
-      throw new Error(`${upstreamName} does not match the upstream SHA256SUMS`);
+    if (digest !== upstreamChecksums.get(name)) {
+      throw new Error(`${name} does not match the upstream SHA256SUMS`);
     }
   }
   await copyFile(
     resolve(dirname(dirname(checksumsPath)), "LICENSE-MPL-2.0"),
     resolve(destination, "LICENSE-MPL-2.0"),
   );
-  await writeFile(
-    resolve(destination, "SHA256SUMS"),
-    renameChecksumManifest(upstreamChecksums),
-  );
+  await copyFile(checksumsPath, resolve(destination, "SHA256SUMS"));
   await writeFile(resolve(destination, "SOURCE.json"), provenanceRecord());
 }
 
@@ -196,14 +179,14 @@ for (const [name, expected] of Object.entries(lock.assets)) {
 }
 
 // The vendored manifest attests every served artifact, including the three the
-// worker embeds rather than fetches, so a tampered file cannot hide behind the
-// rename.
+// worker embeds rather than fetches, so a tampered file cannot hide among the
+// unserved entries.
 const vendoredChecksums = parseChecksumManifest(
   await readFile(resolve(destination, "SHA256SUMS"), "utf8"),
-  upstreamRuntimeInventory.map(hostName),
+  upstreamRuntimeInventory,
   "vendored SHA256SUMS",
 );
-for (const name of runtimeAssets.keys()) {
+for (const name of runtimeAssets) {
   if (vendoredChecksums.get(name) !== actualDigests.get(name)) {
     throw new Error(`${name} does not match the vendored SHA256SUMS`);
   }
@@ -220,5 +203,5 @@ if (provenance !== provenanceRecord()) {
 }
 
 console.log(
-  `${checkOnly ? "Verified" : "Synchronized"} ${lock.package} ${lock.packageVersion} assets from upstream revision ${lock.upstreamRevision}`,
+  `${checkOnly ? "Verified" : "Synchronized"} ${lock.package} ${lock.packageVersion} assets from source revision ${lock.sourceRevision}`,
 );
