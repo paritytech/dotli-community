@@ -124,17 +124,13 @@ WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
 free.
 
 The browser artifacts are byte-for-byte copies of the
-`@parity/pvm-browser-runtime` release tarball at the upstream revision recorded
-in `scripts/polkavm-runtime.lock.json`, renamed from the upstream `pvm-` prefix
-to the `polkavm-` paths this Host serves. Translated Wasm bytes are cached in
+`@useragent-kit/polkavm-runtime` release tarball at the source revision
+recorded in `scripts/polkavm-runtime.lock.json`, already published under the
+`polkavm-` paths this Host serves. Translated Wasm bytes are cached in
 product-origin IndexedDB by the SHA-256 of the PolkaVM program and the pinned
 translator revision. Warm launches skip PolkaVM instruction lowering;
 WebAssembly compilation remains browser-owned. If translation or Wasm
 compilation fails, the same worker retries through the bounded interpreter.
-
-Computer apps use the `polkadot-host/0.1/*` interface family (computer ABI
-0.1) rather than the graphics contract. The same pinned runtime package
-provides their translator and supervisor.
 
 ## Caching and verification
 
