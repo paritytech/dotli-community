@@ -27,7 +27,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "parity-pvm-browser-runtime-ffd7286411cf5bfee7ea9c0a3d3254a95cf71176";
+  "useragent-kit-polkavm-runtime-b2f4366a7ba83fc1558d2772a5f92272bd6edfc1";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
