@@ -133,3 +133,18 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Install product smoke browser
+        if: matrix.environment == 'westendli.dev'
+        # Resolve the workspace's pinned Playwright: a root bunx fetches the
+        # latest release, whose browser builds the pinned runner cannot find.
+        working-directory: apps/host
+        run: bunx playwright install --with-deps chromium
+
+      - name: Smoke published PolkaVM products
+        if: matrix.environment == 'westendli.dev'
+        working-directory: apps/host
+        run: bun run test:smoke:products
+        env:
+          DOTLI_SMOKE_ROOT: ${{ matrix.environment }}
+          DOTLI_WEBGPU: "1"
