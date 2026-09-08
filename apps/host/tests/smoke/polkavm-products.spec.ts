@@ -22,7 +22,7 @@ const products: readonly ProductSmoke[] = [
   {
     label: "quake",
     profile: "framebuffer",
-    keys: ["Escape", "Enter", "ArrowUp", "Space"],
+    keys: ["Escape", "Enter", "Enter", "ArrowUp", "Space"],
     audio: true,
     nonzeroAudio: false,
   },
