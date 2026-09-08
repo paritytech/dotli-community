@@ -22,11 +22,16 @@ import {
   type TerminalSnapshot,
 } from "./computer-terminal";
 import {
+  MAX_SAVE_BYTES,
   computerNetworkEnabled,
   createNetworkPermissionSession,
   createRetryableLazyPromise,
+  decodeFilesystem,
+  encodeFilesystem,
   ensureComputerDatabaseStores,
   expectedComputerHostOrigin,
+  type FilesystemMetadata,
+  type SavedFilesystem,
 } from "./polkavm-computer-contract";
 import {
   installPageCacheRestoreReload,
@@ -36,11 +41,9 @@ import PolkaVmComputerWorker from "./polkavm-computer-worker.js?worker&inline";
 
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
-const MAX_SAVE_BYTES = 64 * 1024 * 1024 + 128 * 1024;
 const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
-const SAVE_FORMAT_VERSION = 2;
 const HOME_PREFIX = "home/";
 const MAX_GAS = 8_000_000_000;
 const TCP_RELAY_URL =
@@ -82,21 +85,9 @@ interface WorkerFileEntry {
   bytes: Uint8Array;
 }
 
-interface FilesystemMetadata {
-  version: 1;
-  nextInode: string;
-  clockNs: string;
-  entries: {
-    path: string;
-    kind: 1 | 2;
-    mtimeNs: string;
-    inode: string;
-  }[];
-}
-
-interface SavedFilesystem {
-  files: Map<string, Uint8Array>;
-  metadata: FilesystemMetadata | null;
+interface WorkerPackageEntry {
+  name: string;
+  bytes: Uint8Array;
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -261,96 +252,6 @@ function validateComputerFiles(
       throw new Error(`PolkaVM computer program ${path} has an invalid size`);
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// /home persistence: one atomic IndexedDB record containing file bytes and
-// namespace metadata. Version 1 byte-only records migrate on the next save.
-// The key namespace ("computer") keeps these apart from cartridge saves.
-
-function encodeFilesystem(
-  files: Map<string, Uint8Array>,
-  metadata: FilesystemMetadata,
-): Uint8Array | null {
-  const metadataBytes = encoder.encode(JSON.stringify(metadata));
-  let total = 5 + metadataBytes.byteLength;
-  for (const [path, bytes] of files) {
-    total += 8 + encoder.encode(path).byteLength + bytes.byteLength;
-  }
-  if (total > MAX_SAVE_BYTES) {
-    return null;
-  }
-  const record = new Uint8Array(total);
-  const view = new DataView(record.buffer);
-  record[0] = SAVE_FORMAT_VERSION;
-  view.setUint32(1, metadataBytes.byteLength, true);
-  record.set(metadataBytes, 5);
-  let offset = 5 + metadataBytes.byteLength;
-  for (const [path, bytes] of files) {
-    const pathBytes = encoder.encode(path);
-    view.setUint32(offset, pathBytes.byteLength, true);
-    record.set(pathBytes, offset + 4);
-    offset += 4 + pathBytes.byteLength;
-    view.setUint32(offset, bytes.byteLength, true);
-    record.set(bytes, offset + 4);
-    offset += 4 + bytes.byteLength;
-  }
-  return record;
-}
-
-function decodeFilesystem(record: Uint8Array): SavedFilesystem {
-  const files = new Map<string, Uint8Array>();
-  if (record.byteLength === 0) {
-    return { files, metadata: null };
-  }
-  const version = record[0];
-  if (version !== 1 && version !== SAVE_FORMAT_VERSION) {
-    throw new Error("unsupported computer filesystem save version");
-  }
-  const view = new DataView(
-    record.buffer,
-    record.byteOffset,
-    record.byteLength,
-  );
-  let offset = 1;
-  let metadata: FilesystemMetadata | null = null;
-  const readBytes = (): Uint8Array => {
-    if (offset + 4 > record.byteLength) {
-      throw new Error("truncated computer filesystem save");
-    }
-    const length = view.getUint32(offset, true);
-    offset += 4;
-    if (length > record.byteLength - offset) {
-      throw new Error("truncated computer filesystem save");
-    }
-    const bytes = record.subarray(offset, offset + length);
-    offset += length;
-    return bytes;
-  };
-  if (version === SAVE_FORMAT_VERSION) {
-    const value: unknown = JSON.parse(decoder.decode(readBytes()));
-    const candidate = object(value);
-    if (
-      candidate?.version !== 1 ||
-      typeof candidate.nextInode !== "string" ||
-      typeof candidate.clockNs !== "string" ||
-      !Array.isArray(candidate.entries)
-    ) {
-      throw new Error("invalid computer filesystem metadata");
-    }
-    // The runtime validates every path, inode, timestamp and file/directory
-    // relation atomically before starting the guest.
-    metadata = value as FilesystemMetadata;
-  }
-  while (offset < record.byteLength) {
-    const path = decoder.decode(readBytes());
-    const bytes = readBytes();
-    if (files.has(path)) {
-      throw new Error("duplicate path in computer filesystem save");
-    }
-    files.set(path, ownedBytes(bytes));
-  }
-  return { files, metadata };
 }
 
 function openSaveDb(): Promise<IDBDatabase> {
@@ -589,9 +490,15 @@ export async function runComputerApplication(
   // Restore /home, then let archive seeds fill anything the user has not
   // touched. Seeds live under `home/` in the archive and mount at `/home/`.
   const saveKey = `${location.hostname}:computer:${cid}`;
-  const restored = decodeFilesystem(
-    (await loadSave(saveKey)) ?? new Uint8Array(),
-  );
+  let restored: SavedFilesystem;
+  try {
+    restored = decodeFilesystem((await loadSave(saveKey)) ?? new Uint8Array());
+  } catch (error) {
+    console.warn(
+      `[polkavm computer] ignoring unreadable filesystem save: ${serializeError(error)}`,
+    );
+    restored = decodeFilesystem(new Uint8Array());
+  }
   let filesystemMetadata = restored.metadata;
   const mounts = new Map<string, Uint8Array>();
   for (const [path, bytes] of Object.entries(files)) {
@@ -697,7 +604,11 @@ export async function runComputerApplication(
 
   const fetchPackage = async (
     label: string,
-  ): Promise<{ bytes: Uint8Array; files: WorkerFileEntry[] }> => {
+  ): Promise<{
+    bytes: Uint8Array;
+    files: WorkerFileEntry[];
+    packages: WorkerPackageEntry[];
+  }> => {
     const record = await resolveAppRecord(label);
     // Dynamic on purpose: the fetch chunk and the bitswap bridge are
     // code-split exactly as in main.ts, so computers that never spawn a
@@ -750,6 +661,10 @@ export async function runComputerApplication(
     return {
       bytes: ownedBytes(result.files[childDescriptor.programPath]),
       files: childFiles,
+      packages: childDescriptor.packages.map((entry) => ({
+        name: entry.name,
+        bytes: ownedBytes(result.files[entry.path]),
+      })),
     };
   };
 
@@ -759,8 +674,18 @@ export async function runComputerApplication(
       const child = await fetchPackage(name);
       status.textContent = "";
       worker.postMessage(
-        { type: "package", name, bytes: child.bytes, files: child.files },
-        [child.bytes.buffer, ...child.files.map((entry) => entry.bytes.buffer)],
+        {
+          type: "package",
+          name,
+          bytes: child.bytes,
+          files: child.files,
+          packages: child.packages,
+        },
+        [
+          child.bytes.buffer,
+          ...child.files.map((entry) => entry.bytes.buffer),
+          ...child.packages.map((entry) => entry.bytes.buffer),
+        ],
       );
     } catch (error) {
       status.textContent = "";

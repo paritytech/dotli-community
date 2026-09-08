@@ -6,8 +6,11 @@ import {
   computerNetworkEnabled,
   createNetworkPermissionSession,
   createRetryableLazyPromise,
+  decodeFilesystem,
+  encodeFilesystem,
   ensureComputerDatabaseStores,
   expectedComputerHostOrigin,
+  type FilesystemMetadata,
 } from "./polkavm-computer-contract";
 import {
   assertNoHostOwnedPaths,
@@ -140,6 +143,74 @@ describe("PolkaVM computer storage", () => {
 
     ensureComputerDatabaseStores(database);
     expect(created).toEqual(["translations"]);
+  });
+
+  it("round-trips files with their filesystem metadata", () => {
+    const metadata: FilesystemMetadata = {
+      version: 1,
+      nextInode: "4",
+      clockNs: "2000000",
+      entries: [
+        {
+          path: "/home",
+          kind: 2,
+          mtimeNs: "1000000",
+          inode: "2",
+        },
+        {
+          path: "/home/notes.txt",
+          kind: 1,
+          mtimeNs: "2000000",
+          inode: "3",
+        },
+      ],
+    };
+    const files = new Map([
+      ["/home/notes.txt", new Uint8Array([0, 1, 2, 255])],
+    ]);
+
+    const encoded = encodeFilesystem(files, metadata);
+    expect(encoded).not.toBeNull();
+    const decoded = decodeFilesystem(encoded ?? new Uint8Array());
+
+    expect(decoded.metadata).toEqual(metadata);
+    expect([...decoded.files]).toEqual([...files]);
+  });
+
+  it("rejects a truncated filesystem record", () => {
+    const metadata: FilesystemMetadata = {
+      version: 1,
+      nextInode: "2",
+      clockNs: "0",
+      entries: [],
+    };
+    const encoded = encodeFilesystem(
+      new Map([["/home/data", new Uint8Array([1, 2, 3])]]),
+      metadata,
+    );
+    expect(encoded).not.toBeNull();
+    expect(() =>
+      decodeFilesystem((encoded ?? new Uint8Array()).subarray(0, -1)),
+    ).toThrow("truncated computer filesystem save");
+  });
+
+  it("loads v1 filesystem records without metadata", () => {
+    const path = new TextEncoder().encode("/home/legacy.txt");
+    const contents = new Uint8Array([4, 5, 6]);
+    const record = new Uint8Array(
+      1 + 4 + path.byteLength + 4 + contents.length,
+    );
+    const view = new DataView(record.buffer);
+    record[0] = 1;
+    view.setUint32(1, path.byteLength, true);
+    record.set(path, 5);
+    const contentsOffset = 5 + path.byteLength;
+    view.setUint32(contentsOffset, contents.byteLength, true);
+    record.set(contents, contentsOffset + 4);
+
+    const decoded = decodeFilesystem(record);
+    expect(decoded.metadata).toBeNull();
+    expect(decoded.files.get("/home/legacy.txt")).toEqual(contents);
   });
 });
 

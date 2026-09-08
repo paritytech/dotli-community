@@ -8,7 +8,7 @@
 //     { type: "start", runtime, program, packages: [{ name, bytes }],
 //       files: [{ path, bytes }], filesystemMetadata, argv, environment, columns, rows,
 //       networkEnabled, workspaceEnabled, relayUrl, maxGas }
-//     { type: "package", name, bytes, files } resolved child program and seeds
+//     { type: "package", name, bytes, files, packages } resolved child app
 //     { type: "resize", columns, rows }
 //   worker -> page:
 //     { type: "started", translationMs }
@@ -245,6 +245,16 @@ async function providePackage(message) {
   const mountedFiles = [];
   try {
     const module = await translator.translate(message.bytes);
+    const packages = [];
+    for (const entry of message.packages ?? []) {
+      packages.push({
+        name: entry.name,
+        module: await translator.translate(entry.bytes),
+      });
+    }
+    for (const entry of packages) {
+      supervisor.registerPackage(entry.name, entry.module);
+    }
     for (const file of message.files ?? []) {
       supervisor.mountFile(file.path, new Uint8Array(file.bytes));
       mountedFiles.push(file);

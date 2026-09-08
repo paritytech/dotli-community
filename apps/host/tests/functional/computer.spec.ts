@@ -666,6 +666,44 @@ test("a workspace app tiles independently sandboxed shell panes", async ({
   });
 });
 
+test("an open-spawned app retains its bundled package", async ({ page }) => {
+  const computer = await appCar([
+    ["manifest.json", "manifest.json"],
+    ["shell.polkavm", "shell.polkavm"],
+  ]);
+  const toolbox = await appCar([
+    ["manifest.json", "toolbox-manifest.json"],
+    ["shell.polkavm", "shell.polkavm"],
+    ["packages/kilo.polkavm", "kilo.polkavm"],
+  ]);
+  await routeCar(page, computer);
+  await routeCar(page, toolbox);
+  await page.goto("http://toolbox-child-fixture.localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
+  await answerResolutions(page, {
+    toolbox: { cid: toolbox.cid, manifest: toolbox.manifest },
+  });
+  const product = await mountComputer(
+    page,
+    computer,
+    true,
+    "toolbox-child-fixture",
+  );
+  const screen = product.locator("#dotli-computer-screen");
+  await expect(screen).toHaveAttribute("data-computer-ready", "true", {
+    timeout: 60_000,
+  });
+  await screen.click();
+  await page.keyboard.type("toolbox");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("kilo notes.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(async () => screenText(product), { timeout: 30_000 })
+    .toContain("HELP: Ctrl-S");
+});
+
 test("a workspace pane open-spawns Lynx with its seed files", async ({
   page,
 }) => {

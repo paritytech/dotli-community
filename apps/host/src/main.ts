@@ -328,6 +328,9 @@ function setShieldState(state: "validating" | "verified"): void {
   armTopbarAutoHide();
 }
 
+const MAX_COMPUTER_RESOLUTION_LABELS = 32;
+const MAX_CONCURRENT_COMPUTER_RESOLUTIONS = 4;
+const MAX_PENDING_COMPUTER_RESOLUTION_REPLIES = 64;
 let computerResolutionListenerInstalled = false;
 
 /**
@@ -347,6 +350,12 @@ function listenForComputerResolutions(
   }
   computerResolutionListenerInstalled = true;
   const expectedSandboxOrigin = sandboxOriginForLabel(productLabel);
+  const resolutions = new Map<
+    string,
+    Promise<{ cid: string; executableManifest: string }>
+  >();
+  let activeResolutions = 0;
+  let pendingReplies = 0;
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data as {
       type?: unknown;
@@ -368,29 +377,76 @@ function listenForComputerResolutions(
     }
     const { label, nonce } = data;
     const reply = (message: Record<string, unknown>): void => {
-      (source as Window).postMessage(message, expectedSandboxOrigin);
-    };
-    void (async () => {
       try {
-        const [manifestResult, cid] = await Promise.all([
-          loadAppExecutableManifest(label, chainBackend),
-          resolveAppContenthash(label, chainBackend),
-        ]);
+        (source as Window).postMessage(message, expectedSandboxOrigin);
+      } catch (error: unknown) {
+        log.warn(
+          `[dot.li computer] failed to reply to ${label}: ${serializeError(error)}`,
+        );
+      }
+    };
+    const replyWithError = (message: string): void => {
+      reply({ type: "dotli:computer-app-error", nonce, message });
+    };
+    if (pendingReplies >= MAX_PENDING_COMPUTER_RESOLUTION_REPLIES) {
+      replyWithError("too many pending computer app resolutions");
+      return;
+    }
+
+    let resolution = resolutions.get(label);
+    if (resolution === undefined) {
+      if (resolutions.size >= MAX_COMPUTER_RESOLUTION_LABELS) {
+        replyWithError("computer app resolution label limit reached");
+        return;
+      }
+      if (activeResolutions >= MAX_CONCURRENT_COMPUTER_RESOLUTIONS) {
+        replyWithError("computer app resolver is busy");
+        return;
+      }
+      activeResolutions += 1;
+      resolution = Promise.all([
+        loadAppExecutableManifest(label, chainBackend),
+        resolveAppContenthash(label, chainBackend),
+      ]).then(([manifestResult, cid]) => {
         const executableManifest = executableManifestText(manifestResult);
         if (cid === null || executableManifest === null) {
           throw new Error(
             `no computer app is published at ${withActiveTld(label)}`,
           );
         }
-        reply({ type: "dotli:computer-app", nonce, cid, executableManifest });
-      } catch (error: unknown) {
-        reply({
-          type: "dotli:computer-app-error",
-          nonce,
-          message: serializeError(error),
-        });
-      }
-    })();
+        return { cid, executableManifest };
+      });
+      resolutions.set(label, resolution);
+      void resolution.then(
+        () => {
+          activeResolutions -= 1;
+        },
+        () => {
+          // Cache failures too: one product page may resolve each distinct
+          // label once, so repeated missing labels cannot amplify work.
+          activeResolutions -= 1;
+        },
+      );
+    }
+
+    pendingReplies += 1;
+    void resolution
+      .then(
+        ({ cid, executableManifest }) => {
+          reply({ type: "dotli:computer-app", nonce, cid, executableManifest });
+        },
+        (error: unknown) => {
+          replyWithError(serializeError(error));
+        },
+      )
+      .then(
+        () => {
+          pendingReplies -= 1;
+        },
+        () => {
+          pendingReplies -= 1;
+        },
+      );
   });
 }
 
@@ -435,18 +491,16 @@ function installedExecutableFromManifest(
   contenthash: string,
   result: ManifestResult<ExecutableManifest> | null,
 ): InstalledExecutable | null {
-  return result?.kind === "ok" &&
-    result.value.kind === "app" &&
-    result.value.$v === 1
+  return result?.kind === "ok" && result.value.kind === "app"
     ? { contenthash, executableManifest: result.raw }
     : null;
 }
 
-function cachedV1AppManifest(
+function cachedAppManifest(
   executable: InstalledExecutable,
 ): ManifestResult<ExecutableManifest> | null {
   const parsed = parseExecutableManifest(executable.executableManifest);
-  return parsed.ok && parsed.value.kind === "app" && parsed.value.$v === 1
+  return parsed.ok && parsed.value.kind === "app"
     ? {
         kind: "ok",
         value: parsed.value,
@@ -1316,11 +1370,11 @@ async function main(): Promise<void> {
       },
     });
     if (cachedExecutable !== null) {
-      const cachedManifest = cachedV1AppManifest(cachedExecutable);
+      const cachedManifest = cachedAppManifest(cachedExecutable);
       if (cachedManifest === null) {
         await evictCachedInstalledExecutable(label, network, "app");
         log.warn(
-          `[dot.li installed-executable-cache] evicted invalid v1 app record for ${label}`,
+          `[dot.li installed-executable-cache] evicted invalid app record for ${label}`,
         );
       } else {
         const stopRevalidate = m.timer(S.CACHE_REVALIDATE_LATENCY);

@@ -612,6 +612,10 @@ export class Tri2dRenderer {
     return frame;
   }
 
+  isContextLost(): boolean {
+    return this.#gl.isContextLost();
+  }
+
   dispose(): void {
     const gl = this.#gl;
     for (const texture of this.#textures.values()) {

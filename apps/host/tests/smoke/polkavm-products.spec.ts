@@ -55,10 +55,49 @@ if (!/^[a-z0-9.-]+$/.test(root)) {
 }
 
 const runtimeFailure =
-  /Failed to load content|runtime requires ABI version|No connected peers|execution trapped|exceeded hostcall budget/i;
+  /Failed to load content|App feature isn't supported|external App manifest is required|unsupported import|runtime requires ABI version|No connected peers|execution trapped|exceeded hostcall budget/i;
 
 async function counter(canvas: Locator, name: string): Promise<number> {
   return Number((await canvas.getAttribute(name)) ?? 0);
+}
+
+async function waitForRuntimeReady(
+  page: Page,
+  body: Locator,
+  canvas: Locator,
+  label: string,
+): Promise<void> {
+  const deadline = Date.now() + 180_000;
+  let lastText = "";
+  while (Date.now() < deadline) {
+    const [ready, text] = await Promise.all([
+      canvas
+        .count()
+        .then((count) =>
+          count === 0
+            ? Promise.resolve(false)
+            : canvas
+                .getAttribute("data-polkavm-ready")
+                .then((value) => value === "true"),
+        ),
+      body
+        .count()
+        .then((count) =>
+          count === 0 ? Promise.resolve("") : body.innerText(),
+        ),
+    ]);
+    lastText = text.trim();
+    if (runtimeFailure.test(lastText)) {
+      throw new Error(`${label}: runtime failed\n${lastText}`);
+    }
+    if (ready) {
+      return;
+    }
+    await page.waitForTimeout(250);
+  }
+  throw new Error(
+    `${label}: runtime did not become ready within 180s\n${lastText}`,
+  );
 }
 
 async function smokeProduct(
@@ -83,39 +122,26 @@ async function smokeProduct(
   const encodedManifest = new URL(iframeSource).searchParams.get(
     "executableManifest",
   );
-  let manifest: Record<string, unknown> | null = null;
-  if (encodedManifest !== null) {
-    manifest = JSON.parse(encodedManifest) as {
-      $v?: number;
-      kind?: string;
-      runtime?: { kind?: string; abiVersion?: number };
-    };
-    expect(manifest.$v, `${product.label}: App manifest version`).toBe(2);
-    expect(manifest.kind, `${product.label}: executable kind`).toBe("app");
-    const runtime = manifest.runtime as
-      | { kind?: string; abiVersion?: number }
-      | undefined;
-    expect(runtime?.kind, `${product.label}: runtime kind`).toBe("polkavm");
-    expect(runtime?.abiVersion, `${product.label}: runtime ABI`).toBe(1);
+  if (encodedManifest === null) {
+    throw new Error(
+      `${product.label}: product iframe carries no executableManifest`,
+    );
   }
+  const manifest = JSON.parse(encodedManifest) as {
+    $v?: number;
+    kind?: string;
+    runtime?: { kind?: string; abiVersion?: number };
+  };
+  expect(manifest.$v, `${product.label}: App manifest version`).toBe(2);
+  expect(manifest.kind, `${product.label}: executable kind`).toBe("app");
+  const runtime = manifest.runtime;
+  expect(runtime?.kind, `${product.label}: runtime kind`).toBe("polkavm");
+  expect(runtime?.abiVersion, `${product.label}: runtime ABI`).toBe(1);
 
   const frame = page.frameLocator(iframeSelector);
   const body = frame.locator("body");
   const canvas = frame.locator("#dotli-polkavm-canvas");
-  await Promise.race([
-    expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
-      timeout: 180_000,
-    }),
-    (async () => {
-      await body.getByText(runtimeFailure).first().waitFor({
-        state: "visible",
-        timeout: 180_000,
-      });
-      throw new Error(
-        `${product.label}: runtime failed\n${(await body.innerText()).trim()}`,
-      );
-    })(),
-  ]);
+  await waitForRuntimeReady(page, body, canvas, product.label);
 
   await expect(canvas).toHaveAttribute("data-polkavm-profile", product.profile);
   await expect(canvas).toHaveAttribute("data-polkavm-backend", "compiler");
@@ -179,35 +205,28 @@ async function smokeProduct(
   };
 }
 
-test("published PolkaVM products reach playable states", async ({
-  browser,
-}, testInfo) => {
-  const failures: string[] = [];
-
-  for (const product of products) {
+for (const product of products) {
+  test(`${product.label} reaches a playable state`, async ({
+    browser,
+  }, testInfo) => {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
     const page = await context.newPage();
     try {
-      const metrics = await test.step(product.label, () =>
-        smokeProduct(page, product),
-      );
+      const metrics = await smokeProduct(page, product);
       await testInfo.attach(`${product.label}-smoke.json`, {
         body: Buffer.from(JSON.stringify(metrics, null, 2)),
         contentType: "application/json",
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(`${product.label}: ${message}`);
       await testInfo.attach(`${product.label}-failure.png`, {
         body: await page.screenshot({ fullPage: true }),
         contentType: "image/png",
       });
+      throw error;
     } finally {
       await context.close();
     }
-  }
-
-  expect(failures, failures.join("\n\n")).toEqual([]);
-});
+  });
+}

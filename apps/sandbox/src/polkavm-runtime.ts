@@ -2137,12 +2137,15 @@ export async function runPolkaVmApplication(
   };
   canvas.dataset.polkavmHostFrameRequests = "0";
   canvas.dataset.polkavmHostFrameResponses = "0";
-  const failHostFrame = (error: Error): void => {
+  let failRuntime = (error: Error): void => {
     status.textContent = error.message;
     rejectStarted(error);
     worker.postMessage({ type: "stop" });
     worker.terminate();
     closeHostFramePort();
+  };
+  const failHostFrame = (error: Error): void => {
+    failRuntime(error);
   };
   const hostFrameQueue = new HostFrameResponseQueue(worker, failHostFrame);
   hostFramePort.onmessage = (event: MessageEvent<unknown>): void => {
@@ -2312,7 +2315,7 @@ export async function runPolkaVmApplication(
       forceInterpreter || polkavmMetrics.backend === "interpreter"
         ? "PolkaVM interpreter"
         : "PolkaVM application";
-    rejectStarted(
+    failRuntime(
       new Error(
         `${label} did not present a frame within ${String(START_TIMEOUT_MS / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
       ),
@@ -2340,17 +2343,16 @@ export async function runPolkaVmApplication(
       },
       presented: presentedFrame,
       error: (error) => {
-        status.textContent = error.message;
-        rejectStarted(error);
+        failRuntime(error);
       },
     });
     try {
       gpuCapabilities = await webGpu.capabilities;
     } catch (error) {
       webGpu.dispose();
-      worker.terminate();
-      closeHostFramePort();
-      rejectStarted(error);
+      failRuntime(
+        error instanceof Error ? error : new Error("WebGPU startup failed"),
+      );
       return startedPromise;
     }
   }
@@ -2455,13 +2457,19 @@ export async function runPolkaVmApplication(
     resumeAudio,
   );
   let stopped = false;
+  function onTri2dContextLost(event: Event): void {
+    event.preventDefault();
+    recoverTri2d(new Error("Tri2D WebGL context was lost"));
+  }
   const stop = (): void => {
     if (stopped) {
       return;
     }
     stopped = true;
+    window.clearTimeout(timer);
     cleanupInput();
     window.removeEventListener("message", onParentMotion);
+    canvas.removeEventListener("webglcontextlost", onTri2dContextLost);
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
     worker.terminate();
@@ -2470,6 +2478,23 @@ export async function runPolkaVmApplication(
     closeHostFramePort();
     hostFrameQueue.close();
   };
+  failRuntime = (error: Error): void => {
+    status.textContent = error.message;
+    stop();
+    rejectStarted(error);
+  };
+  const recoverTri2d = (error: Error): void => {
+    if (stopped) {
+      return;
+    }
+    status.textContent = `${error.message}; restoring app…`;
+    stop();
+    rejectStarted(error);
+    window.parent.postMessage({ type: "dotli:sandbox-recover" }, parentOrigin);
+  };
+  if (tri2d !== null) {
+    canvas.addEventListener("webglcontextlost", onTri2dContextLost);
+  }
   window.addEventListener("pagehide", stop, { once: true });
   // pagehide stops the runtime, so a back-forward cache restore must recreate
   // it. Ordinary tab/app switches only change visibility and must preserve
@@ -2556,7 +2581,7 @@ export async function runPolkaVmApplication(
       }
       case "pointer-capture": {
         if (!usesPointerCapture || typeof message.capture !== "boolean") {
-          rejectStarted(
+          failRuntime(
             new Error(
               "PolkaVM guest emitted an invalid pointer capture request",
             ),
@@ -2573,9 +2598,7 @@ export async function runPolkaVmApplication(
           bytes.byteLength === 0 ||
           bytes.byteLength > MAX_HOST_FRAME_BYTES
         ) {
-          failHostFrame(
-            new Error("PolkaVM guest emitted an invalid host frame"),
-          );
+          failRuntime(new Error("PolkaVM guest emitted an invalid host frame"));
           return;
         }
         const request = ownedBytes(bytes);
@@ -2597,16 +2620,21 @@ export async function runPolkaVmApplication(
           !(frame.pixels instanceof Uint8Array) ||
           frame.pixels.byteLength !== frame.width * frame.height * 4
         ) {
-          rejectStarted(
+          failRuntime(
             new Error("PolkaVM guest emitted an invalid framebuffer"),
           );
           return;
         }
+        const pixelBuffer = frame.pixels.buffer;
+        if (!(pixelBuffer instanceof ArrayBuffer)) {
+          failRuntime(new Error("PolkaVM guest emitted a shared framebuffer"));
+          return;
+        }
         const resized =
           canvas.width !== frame.width || canvas.height !== frame.height;
-        canvas.width = frame.width;
-        canvas.height = frame.height;
         if (resized) {
+          canvas.width = frame.width;
+          canvas.height = frame.height;
           canvas.style.setProperty(
             "--dotli-polkavm-frame-aspect",
             String(frame.width / frame.height),
@@ -2616,8 +2644,11 @@ export async function runPolkaVmApplication(
             String(frame.height / frame.width),
           );
         }
-        const pixels = new Uint8ClampedArray(frame.pixels.byteLength);
-        pixels.set(frame.pixels);
+        const pixels = new Uint8ClampedArray(
+          pixelBuffer,
+          frame.pixels.byteOffset,
+          frame.pixels.byteLength,
+        );
         context.putImageData(
           new ImageData(pixels, frame.width, frame.height),
           0,
@@ -2633,7 +2664,7 @@ export async function runPolkaVmApplication(
           tri2d === null ||
           !(frame.bytes instanceof Uint8Array)
         ) {
-          rejectStarted(
+          failRuntime(
             new Error("PolkaVM guest emitted an invalid Tri2D frame"),
           );
           return;
@@ -2645,14 +2676,22 @@ export async function runPolkaVmApplication(
           canvas.dataset.polkavmTri2dIndices = String(metadata.indexCount);
           presentedFrame();
         } catch (error) {
-          rejectStarted(error);
+          const runtimeError =
+            error instanceof Error
+              ? error
+              : new Error("PolkaVM Tri2D rendering failed");
+          if (tri2d.isContextLost()) {
+            recoverTri2d(runtimeError);
+          } else {
+            failRuntime(runtimeError);
+          }
         }
         break;
       }
       case "ui-output": {
         const output = validatedUiPlatformOutput(message.output);
         if (output === null) {
-          rejectStarted(
+          failRuntime(
             new Error("PolkaVM guest emitted an invalid UI platform output"),
           );
           return;
@@ -2687,10 +2726,11 @@ export async function runPolkaVmApplication(
             descriptor.graphicsProfile !== "webgpu") ||
           webGpu === null ||
           !(batch.bytes instanceof Uint8Array) ||
+          !(batch.bytes.buffer instanceof ArrayBuffer) ||
           batch.bytes.byteLength === 0 ||
           batch.bytes.byteLength > 4 * 1024 * 1024
         ) {
-          rejectStarted(
+          failRuntime(
             new Error("PolkaVM guest emitted an invalid WebGPU batch"),
           );
           return;
@@ -2727,23 +2767,19 @@ export async function runPolkaVmApplication(
           typeof message.message === "string"
             ? message.message
             : "PolkaVM runtime failed";
-        const error = new Error(text);
-        status.textContent = error.message;
-        stop();
-        rejectStarted(error);
+        failRuntime(new Error(text));
         break;
       }
     }
   };
   worker.onerror = (event: ErrorEvent): void => {
-    rejectStarted(
+    failRuntime(
       new Error(
         event.message
           ? `PolkaVM worker failed: ${event.message}`
           : "PolkaVM worker failed",
       ),
     );
-    stop();
   };
 
   const runtimeCopy = runtime.slice(0);
