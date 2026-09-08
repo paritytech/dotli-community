@@ -667,8 +667,8 @@ interface AuthErrorRule {
   hideDetail?: boolean;
 }
 
-// First match wins, so chain-specific wording sits above the broad declined,
-// timeout, and transport buckets that would otherwise also match it.
+// First match wins, so chain-specific wording and runtime boot failures sit
+// above the broad declined, timeout, and transport buckets.
 const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   {
     match: /Invalid Transaction|rejected by the node|re-broadcast rejected/,
@@ -721,6 +721,13 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
   },
   {
     match:
+      /worker init failed|wasm|webassembly|dynamically imported module|auth host was disposed/i,
+    title: "The login service did not start",
+    subtitle:
+      "This page could not start its login runtime. Reload the page and try again.",
+  },
+  {
+    match:
       /disconnected|connection is closed|transport closed|not connected|connection (refused|reset|aborted)|network (unreachable|down)|host unreachable|failed to fetch|networkerror|load failed/i,
     title: "Connection to Polkadot Mobile was lost",
     subtitle:
@@ -731,13 +738,6 @@ const AUTH_ERROR_RULES: readonly AuthErrorRule[] = [
     title: "Pairing could not complete",
     subtitle:
       "This browser and Polkadot Mobile could not exchange their pairing messages. Try again in a moment.",
-  },
-  {
-    match:
-      /wasm|webassembly|dynamically imported module|auth host was disposed/i,
-    title: "The login service did not start",
-    subtitle:
-      "This page could not start its login runtime. Reload the page and try again.",
   },
 ];
 

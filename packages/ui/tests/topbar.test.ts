@@ -681,6 +681,48 @@ describe("topbar login cancellation", () => {
     expect(modalText).not.toContain("Retry");
   });
 
+  it("As a new user, a login runtime that fails to load reads as a page problem rather than a phone problem", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    // Observed with the asset server down: the auth worker never booted.
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "worker init failed: undefined",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("The login service did not start");
+    expect(modalText).toContain("Retry");
+  });
+
+  it("As a new user, a chunk that fails to fetch is a runtime problem, not a lost phone connection", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason:
+            "TypeError: Failed to fetch dynamically imported module: http://localhost:5173/assets/web-1228KImM.js",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("The login service did not start");
+    expect(modalText).not.toContain("Connection to Polkadot Mobile was lost");
+  });
+
   it("As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports", async () => {
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
