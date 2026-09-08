@@ -21,10 +21,19 @@ import init, {
   type Connection,
 } from "@parity/truapi-provider";
 import wasmUrl from "@parity/truapi-provider/truapi_provider_bg.wasm?url";
+import { createWarmStore } from "./warm-store";
 
 // One provider per host process: every connection shares the single embedded
 // light client.
 let handlePromise: Promise<ChainProviderHandle> | null = null;
+
+// A chain has finalized nothing worth keeping for the first few seconds, and
+// a snapshot is a full round trip against the light client, so the first one
+// waits before the steady cadence takes over.
+const FIRST_SNAPSHOT_MS = 30_000;
+const SNAPSHOT_INTERVAL_MS = 60_000;
+
+const scheduled = new Set<string>();
 
 function isLocalHost(): boolean {
   const host = globalThis.location.hostname;
@@ -62,7 +71,12 @@ function getHandle(): Promise<ChainProviderHandle> {
         __truapiProvider?: { setLogLevel: (level: string) => void };
       }
     ).__truapiProvider = { setLogLevel };
-    const handle = new ChainProviderBuilder().build();
+    const builder = new ChainProviderBuilder();
+    const store = createWarmStore();
+    if (store !== null) {
+      builder.setStorage(store);
+    }
+    const handle = builder.build();
     log.warn("[dot.li provider] truapi-provider ready (embedded smoldot wasm)");
     return handle;
   })().catch((error: unknown) => {
@@ -76,6 +90,59 @@ function getHandle(): Promise<ChainProviderHandle> {
 
 export function isChainSupported(genesisHash: string): boolean {
   return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
+}
+
+// Node-only no-op in browsers, lets vitest exit instead of hanging on timers.
+function unref(handle: ReturnType<typeof setTimeout>): void {
+  const h = handle as unknown as { unref?: () => void };
+  if (typeof h.unref === "function") {
+    h.unref();
+  }
+}
+
+async function resumeFromStore(
+  handle: ChainProviderHandle,
+  key: string,
+): Promise<void> {
+  try {
+    if (await handle.loadDatabase(key)) {
+      log.debug(`[dot.li provider] resuming ${key} from stored state`);
+    }
+  } catch (error) {
+    // Never block the connection on the store. Syncing from the chain-spec
+    // checkpoint is slower but correct.
+    log.warn(`[dot.li provider] warm start unavailable for ${key}:`, error);
+  }
+}
+
+// Snapshots run on a timer because the crate cannot drive them itself, and
+// neither `pagehide` nor a hidden tab is guaranteed to stay scheduled long
+// enough to finish one. A worker sees neither event at all.
+function scheduleSnapshots(handle: ChainProviderHandle, key: string): void {
+  if (scheduled.has(key)) {
+    return;
+  }
+  scheduled.add(key);
+  let inFlight = false;
+  const run = (): void => {
+    if (inFlight) {
+      return;
+    }
+    inFlight = true;
+    void (async () => {
+      try {
+        if (await handle.saveDatabase(key)) {
+          log.debug(`[dot.li provider] stored warm-start blob for ${key}`);
+        }
+      } catch (error) {
+        log.warn(`[dot.li provider] snapshot failed for ${key}:`, error);
+      } finally {
+        inFlight = false;
+      }
+    })();
+  };
+  unref(setTimeout(run, FIRST_SNAPSHOT_MS));
+  unref(setInterval(run, SNAPSHOT_INTERVAL_MS));
 }
 
 /**
@@ -107,11 +174,14 @@ export function createChainProvider(
     void (async () => {
       try {
         const handle = await getHandle();
+        // Must precede `connect`: only a chain's first add consumes a blob.
+        await resumeFromStore(handle, key);
         const candidate = await handle.connect(key);
         if (state.closed) {
           candidate.close();
           return;
         }
+        scheduleSnapshots(handle, key);
         state.connection = candidate;
         for (const message of queued) {
           candidate.send(message);
