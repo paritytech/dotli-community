@@ -25,7 +25,7 @@ const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const WARM_DOMAIN = process.env.WARM_DOMAIN ?? "browse";
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
 const WARM_BUDGET_MS = parseInt(process.env.WARM_BUDGET_MS ?? "2000", 10);
-/** The old `smoldot-db` wrote its first snapshot 30s after a chain was added. */
+/** Long enough for the provider to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
@@ -55,11 +55,6 @@ test.describe("Warm start across a browser restart", () => {
   test.setTimeout(SNAPSHOT_WINDOW_MS + TIMEOUT_MS * 3);
 
   test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resolves from persisted light-client state`, async () => {
-    // Expected to fail until the provider persists a warm-start blob: it never
-    // calls the crate's snapshot()/setDatabase(), so every session warp-syncs
-    // from scratch.
-    test.fail();
-
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));
     try {
       // Given
