@@ -53,8 +53,8 @@ the published guest ABI document and App manifests.
 
 The vendored browser runtime tracks `paritytech/polkavm-host-runtime` through
 `@useragent-kit/polkavm-runtime`, the distribution boundary shared by browser,
-Android, and Swift Hosts. Version 0.1.0 records host-runtime revision
-`6eb24c5fd4451ca339c82c73a308ac8af87b8e4b` and declares `abi.runtime: 1`.
+Android, and Swift Hosts. Browser package 0.1.1 records host-runtime revision
+`08cb7401087f8b715dc4f1be0007753caa4bd7c2` and declares `abi.runtime: 1`.
 The package pin, full provenance, and per-file digests are recorded in
 `scripts/polkavm-runtime.lock.json`.
 
