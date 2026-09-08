@@ -76,11 +76,10 @@
   overflow: visible;
 }
 .topbar-brand {
-  font-family: "DM Serif Display", serif;
-  font-size: 1.05rem;
-  font-weight: 400;
+  display: block;
+  height: 13px;
+  width: auto;
   color: rgba(255, 255, 255, 0.92);
-  letter-spacing: 0.02em;
 }
 .topbar-beta {
   font-size: 0.55rem;
