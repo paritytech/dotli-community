@@ -1954,7 +1954,6 @@ class GpuEngine {
     shaders.forEach(([entry, handle]) =>
       this.watchShader(entry, handle, batch.sequence)
     );
-    await this.device.queue.onSubmittedWorkDone();
     if (readback) {
       await readback.mapAsync(GPUMapMode.READ);
       const readbackBytes = new Uint8Array(readback.getMappedRange());
