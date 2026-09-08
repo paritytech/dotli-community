@@ -15,9 +15,8 @@ import { chromium, expect } from "@playwright/test";
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
-import { BACKENDS } from "./fixtures/settings";
+import { BACKENDS, seedSettings } from "./fixtures/settings";
 import { BROWSER_PERMISSIONS, seedPermissions } from "./fixtures/permissions";
-import { seedSettings } from "./fixtures/settings";
 import { test } from "./helpers/shared-mode-reset";
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -63,6 +62,7 @@ test.describe("Warm start across a browser restart", () => {
 
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));
     try {
+      // Given
       const first = await chromium.launchPersistentContext(profile, {
         permissions: [...BROWSER_PERMISSIONS],
       });
@@ -81,6 +81,7 @@ test.describe("Warm start across a browser restart", () => {
         await first.close();
       }
 
+      // When
       const second = await chromium.launchPersistentContext(profile, {
         permissions: [...BROWSER_PERMISSIONS],
       });
@@ -95,6 +96,7 @@ test.describe("Warm start across a browser restart", () => {
           "warm start, session 2",
         );
 
+        // Then
         const resolveMs = await page.evaluate(() => {
           const at = (name: string): number | undefined =>
             performance.getEntriesByName(name, "mark").at(0)?.startTime;

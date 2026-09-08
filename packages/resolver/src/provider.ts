@@ -82,7 +82,7 @@ export function isChainSupported(genesisHash: string): boolean {
  * Create a `JsonRpcProvider` for a genesis hash, backed by truapi-provider.
  * Returns `null` for a genesis the active network does not define.
  *
- * papi providers are object-wire; the truapi connection is a raw string pipe,
+ * papi providers are object-wire. The truapi connection is a raw string pipe,
  * so messages are stringified on send and parsed on receipt. Messages sent
  * before the async connect resolves are queued and flushed in order.
  */
