@@ -27,7 +27,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "parity-pvm-browser-runtime-ffd7286411cf5bfee7ea9c0a3d3254a95cf71176";
+  "useragent-kit-polkavm-runtime-0.6.29-a9156ad93c36c99bda6b72dfda5fecf1b778c921";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -2476,8 +2476,7 @@ export async function runPolkaVmApplication(
   // the live guest and its session-only state.
   installPageCacheRestoreReload();
 
-  let translationStorePromise: Promise<void> = Promise.resolve();
-  worker.onmessage = async (event: MessageEvent<unknown>): Promise<void> => {
+  worker.onmessage = (event: MessageEvent<unknown>): void => {
     const message = object(event.data);
     if (hostFrameQueue.handleMessage(message)) {
       return;
@@ -2496,14 +2495,13 @@ export async function runPolkaVmApplication(
           message.cacheKey === cacheKey &&
           message.bytes instanceof Uint8Array
         ) {
-          translationStorePromise = storeTranslation(
-            cacheKey,
-            message.bytes,
-          ).catch((error: unknown) => {
-            console.warn(
-              `PolkaVM translation cache write failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          });
+          void storeTranslation(cacheKey, message.bytes).catch(
+            (error: unknown) => {
+              console.warn(
+                `PolkaVM translation cache write failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            },
+          );
         }
         break;
       }
@@ -2525,7 +2523,6 @@ export async function runPolkaVmApplication(
         break;
       }
       case "ready": {
-        await translationStorePromise;
         const ready = message as unknown as WorkerReady;
         polkavmMetrics.backend = ready.backend;
         polkavmMetrics.cacheHit = ready.cacheHit === true;
