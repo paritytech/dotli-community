@@ -58,7 +58,7 @@ test.describe("Warm start across a browser restart", () => {
   test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resolves from persisted light-client state`, async () => {
     // Expected to fail until the provider persists a warm-start blob: it never
     // calls the crate's snapshot()/setDatabase(), so every session warp-syncs
-    // from scratch. See docs/plans/2026-09-08-truapi-provider-resolution-analysis.md.
+    // from scratch.
     test.fail();
 
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));
