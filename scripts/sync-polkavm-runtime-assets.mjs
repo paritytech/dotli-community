@@ -50,6 +50,20 @@ for (const name of runtimeAssets) {
     throw new Error(`runtime lock names an unknown artifact ${name}`);
   }
 }
+const assetOverrides = lock.assetOverrides ?? {};
+for (const [name, override] of Object.entries(assetOverrides)) {
+  if (!runtimeAssets.includes(name)) {
+    throw new Error(
+      `runtime override names an unsynchronized artifact ${name}`,
+    );
+  }
+  if (
+    typeof override.upstreamRevision !== "string" ||
+    typeof override.url !== "string"
+  ) {
+    throw new Error(`runtime override for ${name} is incomplete`);
+  }
+}
 const auxiliaryInventory = ["PolkaVM-LICENSE-APACHE", "PolkaVM-LICENSE-MIT"];
 
 function sorted(values) {
@@ -98,6 +112,7 @@ function provenanceRecord() {
       upstreamVersion: lock.packageVersion,
       upstreamRepository: lock.upstreamRepository,
       upstreamRevision: lock.upstreamRevision,
+      assetOverrides: lock.assetOverrides,
       polkavmRepository: lock.polkavmRepository,
       polkavmRevision: lock.polkavmRevision,
       abi: lock.abi,
@@ -149,20 +164,43 @@ if (!checkOnly) {
   );
   for (const name of runtimeAssets) {
     const path = resolve(destination, name);
-    await copyFile(
-      require.resolve(`${lock.package}/${runtimeExports.get(name)}`),
-      path,
-    );
-    const digest = sha256(await readFile(path));
-    if (digest !== packageChecksums.get(name)) {
-      throw new Error(`${name} does not match the package SHA256SUMS`);
+    const override = assetOverrides[name];
+    if (override === undefined) {
+      await copyFile(
+        require.resolve(`${lock.package}/${runtimeExports.get(name)}`),
+        path,
+      );
+      const digest = sha256(await readFile(path));
+      if (digest !== packageChecksums.get(name)) {
+        throw new Error(`${name} does not match the package SHA256SUMS`);
+      }
+      continue;
     }
+
+    const response = await fetch(override.url);
+    if (!response.ok) {
+      throw new Error(
+        `failed to download ${name} override: ${response.status} ${response.statusText}`,
+      );
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const digest = sha256(bytes);
+    if (digest !== lock.assets[name]) {
+      throw new Error(`${name} override has unexpected digest ${digest}`);
+    }
+    await writeFile(path, bytes);
+    packageChecksums.set(name, digest);
   }
   await copyFile(
     resolve(dirname(dirname(checksumsPath)), "LICENSE-MPL-2.0"),
     resolve(destination, "LICENSE-MPL-2.0"),
   );
-  await copyFile(checksumsPath, resolve(destination, "SHA256SUMS"));
+  await writeFile(
+    resolve(destination, "SHA256SUMS"),
+    `${runtimeInventory
+      .map((name) => `${packageChecksums.get(name)}  ${name}`)
+      .join("\n")}\n`,
+  );
   await writeFile(resolve(destination, "SOURCE.json"), provenanceRecord());
 }
 
@@ -202,11 +240,15 @@ const runtimeSource = await readFile(
   resolve(root, "apps/sandbox/src/polkavm-runtime.ts"),
   "utf8",
 );
+const sourceRevisions = [
+  lock.upstreamRevision,
+  ...Object.values(assetOverrides).map((override) => override.upstreamRevision),
+];
 const declaredRuntimeSource =
   /const RUNTIME_SOURCE\s*=\s*"([^"]+)";/.exec(runtimeSource)?.[1] ?? null;
 const expectedRuntimeSource = `${lock.package
   .replace(/^@/, "")
-  .replaceAll("/", "-")}-${lock.packageVersion}-${lock.upstreamRevision}`;
+  .replaceAll("/", "-")}-${lock.packageVersion}-${sourceRevisions.join("+")}`;
 if (declaredRuntimeSource !== expectedRuntimeSource) {
   throw new Error(
     `runtime cache identity is ${String(declaredRuntimeSource)}, expected ${expectedRuntimeSource}`,
@@ -214,5 +256,5 @@ if (declaredRuntimeSource !== expectedRuntimeSource) {
 }
 
 console.log(
-  `${checkOnly ? "Verified" : "Synchronized"} ${lock.package} ${lock.packageVersion} assets from upstream revision ${lock.upstreamRevision}`,
+  `${checkOnly ? "Verified" : "Synchronized"} ${lock.package} ${lock.packageVersion} assets from ${sourceRevisions.length} pinned upstream revision(s)`,
 );
