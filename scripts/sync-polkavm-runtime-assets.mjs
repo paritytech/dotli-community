@@ -26,6 +26,7 @@ const runtimeExports = new Map([
   ["polkavm-browser-runtime.wasm", "runtime.wasm"],
   ["polkavm-worker.js", "worker"],
   ["polkavm-gpu-worker.js", "gpu-worker"],
+  ["polkavm-computer.js", "computer"],
 ]);
 // Artifacts the package manifest covers. The translated backend, the runtime
 // core, and the worker entry are embedded inside `polkavm-worker.js`, so they

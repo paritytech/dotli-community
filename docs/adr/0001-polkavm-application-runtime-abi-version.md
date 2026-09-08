@@ -63,7 +63,9 @@ The package pin, full provenance, and per-file digests are recorded in
 - `packages/resolver/src/manifest-types.ts` types `runtime.abiVersion` as `1`
   and rejects anything else; `apps/sandbox/src/polkavm-runtime.ts` enforces the
   same value when it loads an App v2 manifest. The capability ABIs
-  (`graphics`, `deviceInput`, `audio`) stay at 1 and are unaffected.
+  (`graphics`, `deviceInput`, `audio`) stay at 1 and are unaffected; the
+  host-interface (computer) contract still forbids `runtime.abiVersion`
+  entirely, because its interface ids carry the version.
 - `apps/host/tests/smoke/polkavm-products.spec.ts` asserts the published
   products declare runtime ABI 1, so a regression fails the post-deploy smoke
   instead of the next person's phone.

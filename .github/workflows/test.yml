@@ -73,12 +73,12 @@ jobs:
             echo "::error::expected at least 9 executed tests, got $TOTAL."
             exit 1
           fi
-          RUNTIME_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
-          RUNTIME_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select((.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") and .ok == false)] | length' tests/functional/results.json)
+          RUNTIME_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts" or .file == "computer.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          RUNTIME_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select((.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts" or .file == "computer.spec.ts") and .ok == false)] | length' tests/functional/results.json)
           echo "Executed PolkaVM functional specs: $RUNTIME_EXECUTED"
           echo "PolkaVM functional failures: $RUNTIME_FAILED"
-          if [ "$RUNTIME_EXECUTED" -lt 4 ]; then
-            echo "::error::expected at least 4 executed PolkaVM functional specs, got $RUNTIME_EXECUTED."
+          if [ "$RUNTIME_EXECUTED" -lt 12 ]; then
+            echo "::error::expected at least 12 executed PolkaVM functional specs, got $RUNTIME_EXECUTED."
             exit 1
           fi
           if [ "$RUNTIME_FAILED" -gt 0 ]; then

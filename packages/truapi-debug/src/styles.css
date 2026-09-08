@@ -101,6 +101,10 @@
   opacity: 1;
 }
 
+/* The host sets `viewport-fit=cover`, so a fixed panel spans into the notch and
+   home-indicator bands. The safe padding is inside the panel box (border-box),
+   so `offsetHeight` still reports the space the panel takes from the product
+   iframe and the drag-resize math is unchanged. */
 #truapi-debug-panel {
   position: fixed;
   bottom: 0;
@@ -118,13 +122,16 @@
   height: 360px;
   max-height: 80vh;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  padding-bottom: var(--safe-bottom, 0px);
+  padding-left: var(--safe-left, 0px);
+  padding-right: var(--safe-right, 0px);
 }
 #truapi-debug-panel.hidden {
   display: none;
 }
 #truapi-debug-panel.collapsed {
   grid-template-rows: 0 32px 0 0;
-  height: 32px;
+  height: calc(32px + var(--safe-bottom, 0px));
 }
 
 /* Docked-right variant — panel pinned to the right edge spanning full
@@ -148,6 +155,7 @@
     "handle filters"
     "handle body";
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.4);
+  padding-top: var(--safe-top, 0px);
 }
 #truapi-debug-panel.docked-right .td-resize-handle {
   grid-area: handle;

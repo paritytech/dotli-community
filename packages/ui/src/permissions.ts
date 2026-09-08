@@ -116,7 +116,9 @@ export function isDevicePermission(name: string): boolean {
 
 type PermissionAuthorizationProvider = Pick<
   TrUApiProductProvider,
-  "getPermissionAuthorizationStatuses" | "setPermissionAuthorizationStatus"
+  | "getPermissionAuthorizationStatus"
+  | "getPermissionAuthorizationStatuses"
+  | "setPermissionAuthorizationStatus"
 >;
 
 const permissionProviders = new Map<

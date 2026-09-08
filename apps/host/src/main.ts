@@ -75,7 +75,13 @@ import type {
   RootManifest,
 } from "@dotli/resolver/manifest";
 import { parseExecutableManifest } from "@dotli/resolver/manifest-types";
-import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
+import {
+  BASE_DOMAIN,
+  DEBUG,
+  SITE_ID,
+  isLocalhost,
+  sandboxOriginForLabel,
+} from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
@@ -320,6 +326,136 @@ function setShieldState(state: "validating" | "verified"): void {
 
   shieldVerified = true;
   armTopbarAutoHide();
+}
+
+const MAX_COMPUTER_RESOLUTION_LABELS = 32;
+const MAX_CONCURRENT_COMPUTER_RESOLUTIONS = 4;
+const MAX_PENDING_COMPUTER_RESOLUTION_REPLIES = 64;
+const COMPUTER_RESOLUTION_RETRY_DELAY_MS = 5_000;
+class ComputerAppNotPublishedError extends Error {}
+
+let computerResolutionListenerInstalled = false;
+
+/**
+ * Answers open-spawn resolutions from a computer sandbox: the guest may
+ * name any published app; the sandbox cannot resolve DotNS itself, so it
+ * asks the host for the label's executable record and contenthash. The
+ * sandbox verifies the fetched archive against the returned record, so a
+ * wrong answer here fails verification rather than running unintended
+ * code. Consent policy (prompting before fetching) belongs here later.
+ */
+function listenForComputerResolutions(
+  productLabel: string,
+  chainBackend: Backend,
+): void {
+  if (computerResolutionListenerInstalled) {
+    return;
+  }
+  computerResolutionListenerInstalled = true;
+  const expectedSandboxOrigin = sandboxOriginForLabel(productLabel);
+  const resolutions = new Map<
+    string,
+    Promise<{ cid: string; executableManifest: string }>
+  >();
+  let activeResolutions = 0;
+  let pendingReplies = 0;
+  window.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as {
+      type?: unknown;
+      label?: unknown;
+      nonce?: unknown;
+    } | null;
+    if (data?.type !== "dotli:computer-resolve-app") {
+      return;
+    }
+    const source = event.source;
+    if (
+      source === null ||
+      event.origin !== expectedSandboxOrigin ||
+      typeof data.label !== "string" ||
+      !/^[a-z0-9-]{1,63}$/.test(data.label) ||
+      typeof data.nonce !== "string"
+    ) {
+      return;
+    }
+    const { label, nonce } = data;
+    const reply = (message: Record<string, unknown>): void => {
+      try {
+        (source as Window).postMessage(message, expectedSandboxOrigin);
+      } catch (error: unknown) {
+        log.warn(
+          `[dot.li computer] failed to reply to ${label}: ${serializeError(error)}`,
+        );
+      }
+    };
+    const replyWithError = (message: string): void => {
+      reply({ type: "dotli:computer-app-error", nonce, message });
+    };
+    if (pendingReplies >= MAX_PENDING_COMPUTER_RESOLUTION_REPLIES) {
+      replyWithError("too many pending computer app resolutions");
+      return;
+    }
+
+    let resolution = resolutions.get(label);
+    if (resolution === undefined) {
+      if (resolutions.size >= MAX_COMPUTER_RESOLUTION_LABELS) {
+        replyWithError("computer app resolution label limit reached");
+        return;
+      }
+      if (activeResolutions >= MAX_CONCURRENT_COMPUTER_RESOLUTIONS) {
+        replyWithError("computer app resolver is busy");
+        return;
+      }
+      activeResolutions += 1;
+      resolution = Promise.all([
+        resolveAppExecutableManifest(label, chainBackend),
+        resolveAppContenthash(label, chainBackend),
+      ]).then(([manifestResult, cid]) => {
+        const executableManifest = executableManifestText(manifestResult);
+        if (cid === null || executableManifest === null) {
+          throw new ComputerAppNotPublishedError(
+            `no computer app is published at ${withActiveTld(label)}`,
+          );
+        }
+        return { cid, executableManifest };
+      });
+      resolutions.set(label, resolution);
+      void resolution.then(
+        () => {
+          activeResolutions -= 1;
+        },
+        (error: unknown) => {
+          activeResolutions -= 1;
+          if (!(error instanceof ComputerAppNotPublishedError)) {
+            window.setTimeout(() => {
+              if (resolutions.get(label) === resolution) {
+                resolutions.delete(label);
+              }
+            }, COMPUTER_RESOLUTION_RETRY_DELAY_MS);
+          }
+        },
+      );
+    }
+
+    pendingReplies += 1;
+    void resolution
+      .then(
+        ({ cid, executableManifest }) => {
+          reply({ type: "dotli:computer-app", nonce, cid, executableManifest });
+        },
+        (error: unknown) => {
+          replyWithError(serializeError(error));
+        },
+      )
+      .then(
+        () => {
+          pendingReplies -= 1;
+        },
+        () => {
+          pendingReplies -= 1;
+        },
+      );
+  });
 }
 
 async function resolveAppExecutableManifest(
@@ -1311,6 +1447,7 @@ async function main(): Promise<void> {
           );
           await m.span(S.E2E_FAST, async () => {
             setShieldState(shieldState);
+            listenForComputerResolutions(label, chainBackend);
             const { renderAppSubdomain } = await renderChunkPromise;
             advancePhase(contentFetchPhase);
             await renderAppSubdomain(
@@ -1487,6 +1624,7 @@ async function main(): Promise<void> {
     }
 
     setShieldState(shieldState);
+    listenForComputerResolutions(label, chainBackend);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(

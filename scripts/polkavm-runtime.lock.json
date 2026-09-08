@@ -10,14 +10,19 @@
     "runtime": 1,
     "graphics": 1,
     "input": 1,
-    "audio": 1
+    "audio": 1,
+    "computer": {
+      "major": 0,
+      "minor": 1
+    }
   },
   "assets": {
     "polkavm-browser-runtime.wasm": "02ab78d2b986fd0b5f539b137da5c5ce465b7303d2242a96d5f5c3de8bf22026",
     "polkavm-worker.js": "cfd5237a988c07bf81bbfe81ec5ae8e79c5490e04ec010509a52d3a064c9bc38",
     "polkavm-gpu-worker.js": "eef5da62160416fb257053698ee90540702b05f39b2d534028fad9c149052b6b",
+    "polkavm-computer.js": "baa5353c8a3abc87d85340b32902f645c9c3797f637e352e032f78e52b9a5902",
     "SHA256SUMS": "0e2378779a8a296b6af673bc5d98709deb50b12370fcb5483d5846008725c01c",
-    "SOURCE.json": "695419da7f56089af99ff9a2c6bdfbd22d3c997025c64ebadc09907132537e28",
+    "SOURCE.json": "6f27455eb972f473401881ba09ff6f1d3bc7955af13d2734520abf22c863c246",
     "LICENSE-MPL-2.0": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1",
     "PolkaVM-LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
     "PolkaVM-LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
