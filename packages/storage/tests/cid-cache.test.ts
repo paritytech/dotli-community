@@ -3,6 +3,7 @@
 
 import "fake-indexeddb/auto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { Window } from "happy-dom";
 import {
   addRecentLabel,
   clearInstalledExecutableCache,
@@ -14,6 +15,11 @@ import {
   setCachedInstalledExecutable,
   type InstalledExecutable,
 } from "@dotli/storage/cid-cache";
+// Vitest's happy-dom environment omits global storage in isolated workers.
+vi.stubGlobal(
+  "localStorage",
+  new Window({ url: "https://host.dot.li/" }).localStorage,
+);
 
 // Recent labels live in localStorage. Installed executables live in IndexedDB.
 
@@ -260,6 +266,7 @@ describe("reconcileInstalledExecutable", () => {
         "app",
         OLD_EXECUTABLE,
         OLD_EXECUTABLE.contenthash,
+        OLD_EXECUTABLE.executableManifest,
       ),
     ).toEqual({ kind: "match" });
     expect(await getCachedInstalledExecutable("myapp", NETWORK, "app")).toEqual(
@@ -277,6 +284,7 @@ describe("reconcileInstalledExecutable", () => {
         "app",
         OLD_EXECUTABLE,
         NEW_EXECUTABLE.contenthash,
+        NEW_EXECUTABLE.executableManifest,
       ),
     ).toEqual({
       kind: "update",
@@ -292,6 +300,27 @@ describe("reconcileInstalledExecutable", () => {
     );
   });
 
+  it("evicts the pair when the executable manifest changes at the same contenthash", async () => {
+    await setCachedInstalledExecutable("myapp", NETWORK, "app", OLD_EXECUTABLE);
+
+    expect(
+      await reconcileInstalledExecutable(
+        "myapp",
+        NETWORK,
+        "app",
+        OLD_EXECUTABLE,
+        OLD_EXECUTABLE.contenthash,
+        NEW_EXECUTABLE.executableManifest,
+      ),
+    ).toEqual({
+      kind: "update",
+      contenthash: OLD_EXECUTABLE.contenthash,
+    });
+    expect(await getCachedInstalledExecutable("myapp", NETWORK, "app")).toEqual(
+      { kind: "miss" },
+    );
+  });
+
   it("evicts the pair when contenthash is cleared", async () => {
     await setCachedInstalledExecutable("myapp", NETWORK, "app", OLD_EXECUTABLE);
 
@@ -301,6 +330,7 @@ describe("reconcileInstalledExecutable", () => {
         NETWORK,
         "app",
         OLD_EXECUTABLE,
+        null,
         null,
       ),
     ).toEqual({ kind: "cleared" });

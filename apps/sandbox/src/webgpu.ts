@@ -44,6 +44,7 @@ export class WebGpuBridge {
   #stopped = false;
   #physicalWidth = 1;
   #physicalHeight = 1;
+  #capabilityTimer: number | undefined;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -56,7 +57,8 @@ export class WebGpuBridge {
     const worker = new Worker("/polkavm-runtime/polkavm-gpu-worker.js");
     const offscreen = canvas.transferControlToOffscreen();
     const { promise, resolve, reject } = Promise.withResolvers<Uint8Array>();
-    const timer = window.setTimeout(() => {
+    this.#capabilityTimer = window.setTimeout(() => {
+      this.#capabilityTimer = undefined;
       reject(new Error("WebGPU capability negotiation timed out"));
     }, GPU_READY_TIMEOUT_MS);
     this.#worker = worker;
@@ -82,6 +84,7 @@ export class WebGpuBridge {
           view.getUint16(4, true) !== 1 ||
           view.getUint32(8, true) !== bytes.byteLength
         ) {
+          this.#clearCapabilityTimer();
           const error = new Error("Invalid WebGPU capability record");
           reject(error);
           callbacks.error(error);
@@ -89,7 +92,7 @@ export class WebGpuBridge {
         }
         this.#physicalWidth = view.getUint32(16, true);
         this.#physicalHeight = view.getUint32(20, true);
-        window.clearTimeout(timer);
+        this.#clearCapabilityTimer();
         canvas.dataset.polkavmGpu = "ready";
         callbacks.capabilities(bytes);
         resolve(bytes);
@@ -101,6 +104,7 @@ export class WebGpuBridge {
       } else if (message?.type === "presented") {
         callbacks.presented();
       } else if (message?.type === "error") {
+        this.#clearCapabilityTimer();
         const error = new Error(
           typeof message.message === "string"
             ? message.message
@@ -111,6 +115,7 @@ export class WebGpuBridge {
       }
     };
     worker.onerror = (): void => {
+      this.#clearCapabilityTimer();
       const error = new Error("WebGPU worker failed");
       reject(error);
       callbacks.error(error);
@@ -134,6 +139,11 @@ export class WebGpuBridge {
     this.#resizeObserver.observe(canvas);
   }
 
+  #clearCapabilityTimer(): void {
+    window.clearTimeout(this.#capabilityTimer);
+    this.#capabilityTimer = undefined;
+  }
+
   get physicalWidth(): number {
     return this.#physicalWidth;
   }
@@ -154,6 +164,7 @@ export class WebGpuBridge {
       return;
     }
     this.#stopped = true;
+    this.#clearCapabilityTimer();
     this.#resizeObserver.disconnect();
     this.#worker.postMessage({ type: "stop" });
     this.#worker.terminate();

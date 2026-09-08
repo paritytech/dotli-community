@@ -13,12 +13,12 @@ import {
   formatPolkaVmMetrics,
   isPolkaVmPackage,
   normalizedPointerDelta,
+  installPageCacheRestoreReload,
   postFirstUiPlatformCommand,
   polkavmWebFallbackEntrypoint,
-  unsupportedPolkaVmImport,
+  polkaVmCompatibilityError,
   validateFiles,
   expectedPolkaVmParentOrigin,
-  shouldReloadAfterWake,
   validatedUiPlatformOutput,
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
@@ -353,15 +353,23 @@ describe("PolkaVM parent motion relay", () => {
   });
 });
 
-describe("PolkaVM wake recovery", () => {
-  it("reloads a visible WebGPU application after suspension", () => {
-    expect(shouldReloadAfterWake(true, "visible", false)).toBe(true);
-    expect(shouldReloadAfterWake(false, "visible", false)).toBe(false);
-    expect(shouldReloadAfterWake(true, "hidden", false)).toBe(false);
-  });
-
-  it("reloads a page restored from the back-forward cache", () => {
-    expect(shouldReloadAfterWake(false, "visible", true)).toBe(true);
+describe("PolkaVM page-cache restore", () => {
+  it("reloads once only for a persisted page-cache restore", () => {
+    const listeners: ((event: PageTransitionEvent) => void)[] = [];
+    const reload = vi.fn();
+    installPageCacheRestoreReload(
+      {
+        addEventListener(_type, listener) {
+          listeners.push(listener);
+        },
+      },
+      reload,
+    );
+    const listener = listeners[0];
+    listener({ persisted: false } as PageTransitionEvent);
+    listener({ persisted: true } as PageTransitionEvent);
+    listener({ persisted: true } as PageTransitionEvent);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -396,21 +404,41 @@ describe("PolkaVM metrics display", () => {
 });
 
 describe("PolkaVM compatibility errors", () => {
-  it("extracts unsupported imports from translated guest failures", () => {
+  it("explains obsolete TrUAPI transports as an app version mismatch", () => {
     expect(
-      unsupportedPolkaVmImport(
+      polkaVmCompatibilityError(
+        "translated PolkaVM guest uses unsupported import host_truapi_poll",
+      ),
+    ).toEqual({
+      title: "App version isn't supported",
+      detail:
+        "This app version uses the older PolkaVM interface host_truapi_poll, which this version of dot.li no longer supports. Update the app or ask its publisher to rebuild it.",
+    });
+  });
+
+  it("identifies unsupported host capabilities", () => {
+    expect(
+      polkaVmCompatibilityError(
         "translated PolkaVM guest uses unsupported import host_motion_read",
       ),
-    ).toBe("host_motion_read");
+    ).toEqual({
+      title: "App version isn't supported",
+      detail:
+        "This app requires motion input (host_motion_read), which this version of dot.li does not support. Update dot.li or open the app in a compatible host.",
+    });
     expect(
-      unsupportedPolkaVmImport(
+      polkaVmCompatibilityError(
         "translated CoreVM guest uses unsupported import pvm_unknown",
       ),
-    ).toBe("pvm_unknown");
+    ).toEqual({
+      title: "App version isn't supported",
+      detail:
+        "This app requires the PolkaVM interface pvm_unknown, which this version of dot.li does not support. Update dot.li or open the app in a compatible host.",
+    });
   });
 
   it("leaves transport and content failures unclassified", () => {
-    expect(unsupportedPolkaVmImport("IPFS request timed out")).toBeNull();
+    expect(polkaVmCompatibilityError("IPFS request timed out")).toBeNull();
   });
 });
 

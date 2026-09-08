@@ -2,63 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, test, type Page } from "@playwright/test";
-import { CarReader, CarWriter } from "@ipld/car";
-import * as dagPb from "@ipld/dag-pb";
-import type { PBLink } from "@ipld/dag-pb";
-import { UnixFS } from "ipfs-unixfs";
-import { CID } from "multiformats/cid";
-import * as raw from "multiformats/codecs/raw";
-import { sha256 } from "multiformats/hashes/sha2";
+import { CarReader } from "@ipld/car";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
-
-interface TestCar {
-  cid: string;
-  bytes: Uint8Array;
-}
-
-async function archiveCar(
-  sourceFiles: readonly (readonly [string, Uint8Array])[],
-): Promise<TestCar> {
-  const files = await Promise.all(
-    sourceFiles.map(async ([name, bytes]) => ({
-      name,
-      bytes,
-      cid: CID.createV1(raw.code, await sha256.digest(bytes)),
-    })),
-  );
-  const links: PBLink[] = files
-    .map(({ name, bytes, cid }) => ({
-      Name: name,
-      Tsize: bytes.length,
-      Hash: cid,
-    }))
-    .sort((left, right) => (left.Name ?? "").localeCompare(right.Name ?? ""));
-  const rootBytes = dagPb.encode({
-    Data: new UnixFS({ type: "directory" }).marshal(),
-    Links: links,
-  });
-  const root = CID.createV1(dagPb.code, await sha256.digest(rootBytes));
-  const { writer, out } = CarWriter.create([root]);
-  const chunksPromise = (async (): Promise<Uint8Array[]> => {
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of out) chunks.push(chunk);
-    return chunks;
-  })();
-  for (const { cid, bytes } of files) await writer.put({ cid, bytes });
-  await writer.put({ cid: root, bytes: rootBytes });
-  await writer.close();
-  const chunks = await chunksPromise;
-  const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
-  const car = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    car.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return { cid: root.toString(), bytes: car };
-}
+import {
+  archiveCar,
+  installTruapiPortResponder,
+  type TestCar,
+} from "./helpers/polkavm";
 
 async function polkavmCar(): Promise<TestCar> {
   const fixture = join(import.meta.dirname, "fixtures/polkavm");
@@ -71,10 +23,6 @@ async function polkavmCar(): Promise<TestCar> {
   return archiveCar([
     ["manifest.json", manifest],
     ["app.polkavm", program],
-    [
-      "polkavm-runtime/polkavm-browser-runtime.wasm",
-      new TextEncoder().encode("package-owned runtime"),
-    ],
   ]);
 }
 
@@ -119,40 +67,10 @@ async function webGpuFallbackCar(): Promise<TestCar & { manifest: string }> {
   return { ...car, manifest };
 }
 
-async function installTruapiPortResponder(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const channel = new MessageChannel();
-    const scope = window as typeof window & {
-      __HOST_API_PORT__?: MessagePort;
-    };
-    channel.port2.onmessage = (event) => {
-      if (!(event.data instanceof Uint8Array)) {
-        return;
-      }
-      const request = event.data;
-      const first = request[0];
-      if (first === undefined || (first & 3) !== 0) {
-        return;
-      }
-      const kindOffset = 1 + (first >> 2);
-      if (
-        request.length !== kindOffset + 3 ||
-        request[kindOffset] !== 0 ||
-        request[kindOffset + 1] !== 0 ||
-        request[kindOffset + 2] !== 1
-      ) {
-        return;
-      }
-      const response = new Uint8Array(kindOffset + 3);
-      response.set(request.subarray(0, kindOffset));
-      response[kindOffset] = 1;
-      response[kindOffset + 1] = 0;
-      response[kindOffset + 2] = 0;
-      channel.port2.postMessage(response, [response.buffer]);
-    };
-    channel.port2.start();
-    scope.__HOST_API_PORT__ = channel.port1;
-  });
+async function waitForHostInitialization(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => performance.getEntriesByName("dotli:main:end").length > 0,
+  );
 }
 
 test("a verified PolkaVM package translates and renders in the sandbox", async ({
@@ -167,11 +85,15 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-product";
+      iframe.style.width = "400px";
+      iframe.style.height = "400px";
+      iframe.style.border = "0";
       iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
       document.body.replaceChildren(iframe);
     },
@@ -189,23 +111,50 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("width", "320");
   await expect(canvas).toHaveAttribute("height", "200");
-  expect(
-    await canvas.evaluate((element) => {
-      const style = getComputedStyle(element);
+  const canvasBounds = async () =>
+    canvas.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
       return {
-        position: style.position,
-        top: style.top,
-        right: style.right,
-        bottom: style.bottom,
-        left: style.left,
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+        width: bounds.width,
+        height: bounds.height,
+        left: bounds.left,
+        top: bounds.top,
       };
-    }),
-  ).toEqual({
-    position: "absolute",
-    top: "0px",
-    right: "0px",
-    bottom: "0px",
-    left: "0px",
+    });
+  expect(await canvasBounds()).toEqual({
+    viewportWidth: 400,
+    viewportHeight: 400,
+    width: 400,
+    height: 250,
+    left: 0,
+    top: 75,
+  });
+  const productElement = page.locator("#polkavm-product");
+  await productElement.evaluate((element) => {
+    element.style.width = "640px";
+    element.style.height = "300px";
+  });
+  await expect.poll(canvasBounds).toEqual({
+    viewportWidth: 640,
+    viewportHeight: 300,
+    width: 480,
+    height: 300,
+    left: 80,
+    top: 0,
+  });
+  await productElement.evaluate((element) => {
+    element.style.width = "200px";
+    element.style.height = "400px";
+  });
+  await expect.poll(canvasBounds).toEqual({
+    viewportWidth: 200,
+    viewportHeight: 400,
+    width: 200,
+    height: 125,
+    left: 0,
+    top: 137.5,
   });
 
   // The host-owned PolkaVM canvas retains its verified launch contract so a
@@ -279,6 +228,7 @@ test("a WebGPU PolkaVM package selects its web fallback without an adapter", asy
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, manifest, schemaVersion }) => {
@@ -319,6 +269,7 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
@@ -441,6 +392,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   await page.goto("http://localhost:5173/", {
     waitUntil: "domcontentloaded",
   });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
     ({ artifactCid, executableManifest, schemaVersion }) => {
@@ -665,6 +617,7 @@ test("a touch gesture scrolls the guest instead of the host page", async ({
     });
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   // Input records reach the guest through the runtime worker, so recording the
   // worker traffic is the only way to observe what the guest actually received.

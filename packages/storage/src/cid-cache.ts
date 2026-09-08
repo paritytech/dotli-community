@@ -295,10 +295,10 @@ export type RevalidateOutcome =
   | { kind: "cleared" };
 
 /**
- * Reconcile a fresh contenthash against a cached installed executable.
+ * Reconcile a freshly resolved executable pair against its cached copy.
  *
- * A changed hash evicts the old pair. It is deliberately not cached until the
- * caller resolves the matching executable manifest and writes the full pair.
+ * Either half changing evicts the old pair. A newly resolved hash is never
+ * written until the caller has resolved and validated its matching manifest.
  */
 export async function reconcileInstalledExecutable(
   label: string,
@@ -306,13 +306,17 @@ export async function reconcileInstalledExecutable(
   modality: ExecutableModality,
   installed: InstalledExecutable,
   freshContenthash: string | null,
+  freshExecutableManifest: string | null,
 ): Promise<RevalidateOutcome> {
   if (freshContenthash === null) {
     await evictCachedInstalledExecutable(label, network, modality);
     m.count(S.CACHE_REVALIDATE_CLEARED);
     return { kind: "cleared" };
   }
-  if (freshContenthash === installed.contenthash) {
+  if (
+    freshContenthash === installed.contenthash &&
+    freshExecutableManifest === installed.executableManifest
+  ) {
     await setCachedInstalledExecutable(label, network, modality, installed);
     m.count(S.CACHE_REVALIDATE_MATCH);
     return { kind: "match" };

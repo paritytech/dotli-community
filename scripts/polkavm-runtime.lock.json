@@ -1,27 +1,25 @@
 {
   "schemaVersion": 1,
-  "package": "@parity/pvm-browser-runtime",
-  "packageVersion": "0.1.15",
+  "package": "@useragent-kit/polkavm-runtime",
+  "packageVersion": "0.1.0",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-  "upstreamRevision": "ffd7286411cf5bfee7ea9c0a3d3254a95cf71176",
+  "upstreamRevision": "6eb24c5fd4451ca339c82c73a308ac8af87b8e4b",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
-  "polkavmRevision": "3df1d0309c4c81a1aad0a755d83570d203bba1d9",
+  "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {
-    "runtime": 2,
+    "runtime": 1,
     "graphics": 1,
     "input": 1,
-    "audio": 1,
-    "computer": {
-      "major": 0,
-      "minor": 1
-    }
+    "audio": 1
   },
   "assets": {
-    "polkavm-browser-runtime.wasm": "128698a2251090a69fccdd362b33058c0840ce998791679b9375ef8835291a77",
-    "polkavm-worker.js": "7fa96b5014462c1fa88c594e571a4d04fa43657ba5b444e67db2f81c4ceddda2",
-    "polkavm-gpu-worker.js": "86cb899953b303dca45b0a5f2f2409713809e7223b9a9a5b853c9660d152edec",
-    "SHA256SUMS": "1e719d6bd44657b0f13f712ca1467f7e5a61453cbadb3975f71c787dc9aa3253",
-    "SOURCE.json": "a8c56d30ea15d39900afc357340c27a76a5490d94ffb24ef1c3c0e4aa75f1a66",
-    "LICENSE-MPL-2.0": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1"
+    "polkavm-browser-runtime.wasm": "02ab78d2b986fd0b5f539b137da5c5ce465b7303d2242a96d5f5c3de8bf22026",
+    "polkavm-worker.js": "cfd5237a988c07bf81bbfe81ec5ae8e79c5490e04ec010509a52d3a064c9bc38",
+    "polkavm-gpu-worker.js": "eef5da62160416fb257053698ee90540702b05f39b2d534028fad9c149052b6b",
+    "SHA256SUMS": "0e2378779a8a296b6af673bc5d98709deb50b12370fcb5483d5846008725c01c",
+    "SOURCE.json": "695419da7f56089af99ff9a2c6bdfbd22d3c997025c64ebadc09907132537e28",
+    "LICENSE-MPL-2.0": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1",
+    "PolkaVM-LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "PolkaVM-LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
   }
 }

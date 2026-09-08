@@ -7,6 +7,7 @@ import {
   SW_ARCHIVE_CACHE_MAX,
   BASE_DOMAIN,
   isSandboxOrigin,
+  sandboxOriginForLabel,
 } from "@dotli/config/config";
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
@@ -149,6 +150,13 @@ describe("config constants", () => {
       expect(isSandboxOrigin("garbage")).toBe(false);
       expect(isSandboxOrigin("")).toBe(false);
       expect(isSandboxOrigin(`name.app.${BASE_DOMAIN}`)).toBe(false);
+      expect(isSandboxOrigin("null")).toBe(false);
+    });
+
+    it("derives one exact sandbox origin for a label", () => {
+      const origin = sandboxOriginForLabel("my-app");
+      expect(new URL(origin).hostname).toBe("my-app.app.localhost");
+      expect(isSandboxOrigin(origin)).toBe(true);
     });
   });
 });

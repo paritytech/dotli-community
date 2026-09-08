@@ -32,7 +32,7 @@ import {
 } from "./errors";
 import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
 import type { StatusCallback } from "./access-raw-storage";
-import { createRawApi, type Api } from "./api";
+import { ApiStoppedError, createRawApi, type Api } from "./api";
 import { readExecutableManifest, readRootManifest } from "./manifest";
 import type {
   ExecutableKind,
@@ -57,6 +57,21 @@ let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
 let providerInstance: WsProviderHandle | null = null;
+async function retryStoppedGeneration<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!(error instanceof ApiStoppedError)) {
+      throw error;
+    }
+    log.warn(
+      "[dot.li rpc-resolve] chainHead follow stopped during resolution; retrying once",
+    );
+    return operation();
+  }
+}
 
 function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (apiInstance !== null) {
@@ -154,52 +169,54 @@ export async function resolveDotNameViaRpc(
   label: string,
   onStatus?: StatusCallback,
 ): Promise<string | null> {
-  log.warn(
-    `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
-  );
-  const api = await ensureClient(onStatus);
+  return retryStoppedGeneration(async () => {
+    log.warn(
+      `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
+    );
+    const api = await ensureClient(onStatus);
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-  const node = namehash(domain);
+    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+    const node = namehash(domain);
 
-  onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
-  const t0 = performance.now();
+    onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
+    const t0 = performance.now();
 
-  const dotns = getActiveServicesConfig().dotns;
-  const contenthashBytes = await readMappingBytes(
-    api,
-    dotns.DOTNS_CONTENT_RESOLVER,
-    node,
-    dotns.STORAGE_SLOTS.CONTENTHASH,
-  );
+    const dotns = getActiveServicesConfig().dotns;
+    const contenthashBytes = await readMappingBytes(
+      api,
+      dotns.DOTNS_CONTENT_RESOLVER,
+      node,
+      dotns.STORAGE_SLOTS.CONTENTHASH,
+    );
 
-  log.warn(
-    `[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`,
-  );
+    log.warn(
+      `[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`,
+    );
 
-  if (contenthashBytes === null) {
-    onStatus?.(`Domain "${domain}" not found or no content set`);
-    return null;
-  }
-
-  // Mirror the smoldot-side resolver in distinguishing "not registered" /
-  // "non-IPFS contenthash" / "decode error".
-  const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
-  switch (decoded.kind) {
-    case "ok":
-      log.warn(
-        `[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`,
-      );
-      onStatus?.(`Resolved "${domain}" via Trusted Provider`);
-      return decoded.cid;
-    case "empty":
+    if (contenthashBytes === null) {
       onStatus?.(`Domain "${domain}" not found or no content set`);
       return null;
-    case "unsupported-codec":
-      throw new UnsupportedContenthashCodecError(domain, decoded.codec);
-    case "decode-error":
-      throw new ContenthashDecodeError(domain, decoded.cause);
-  }
+    }
+
+    // Mirror the smoldot-side resolver in distinguishing "not registered" /
+    // "non-IPFS contenthash" / "decode error".
+    const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
+    switch (decoded.kind) {
+      case "ok":
+        log.warn(
+          `[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`,
+        );
+        onStatus?.(`Resolved "${domain}" via Trusted Provider`);
+        return decoded.cid;
+      case "empty":
+        onStatus?.(`Domain "${domain}" not found or no content set`);
+        return null;
+      case "unsupported-codec":
+        throw new UnsupportedContenthashCodecError(domain, decoded.codec);
+      case "decode-error":
+        throw new ContenthashDecodeError(domain, decoded.cause);
+    }
+  });
 }
 
 /**
@@ -213,18 +230,22 @@ export async function resolveExecutableManifestViaRpc(
   label: string,
   kind: ExecutableKind,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  const api = await ensureClient();
-  const dotns = getActiveServicesConfig().dotns;
-  return readExecutableManifest(api, dotns, label, kind);
+  return retryStoppedGeneration(async () => {
+    const api = await ensureClient();
+    const dotns = getActiveServicesConfig().dotns;
+    return readExecutableManifest(api, dotns, label, kind);
+  });
 }
 
 /** Gateway-backed reader for the root manifest at `<label>.<tld>`. */
 export async function resolveRootManifestViaRpc(
   label: string,
 ): Promise<ManifestResult<RootManifest>> {
-  const api = await ensureClient();
-  const dotns = getActiveServicesConfig().dotns;
-  return readRootManifest(api, dotns, label);
+  return retryStoppedGeneration(async () => {
+    const api = await ensureClient();
+    const dotns = getActiveServicesConfig().dotns;
+    return readRootManifest(api, dotns, label);
+  });
 }
 
 /**
@@ -234,18 +255,20 @@ export async function resolveRootManifestViaRpc(
 export async function resolveOwnerViaRpc(
   label: string,
 ): Promise<string | null> {
-  const api = await ensureClient();
+  return retryStoppedGeneration(async () => {
+    const api = await ensureClient();
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-  const node = namehash(domain);
+    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+    const node = namehash(domain);
 
-  const dotns = getActiveServicesConfig().dotns;
-  return readMappingAddress(
-    api,
-    dotns.DOTNS_REGISTRY,
-    node,
-    dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
-  );
+    const dotns = getActiveServicesConfig().dotns;
+    return readMappingAddress(
+      api,
+      dotns.DOTNS_REGISTRY,
+      node,
+      dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
+    );
+  });
 }
 
 /**

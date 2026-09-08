@@ -405,32 +405,43 @@ function program(gl: WebGL2RenderingContext): WebGLProgram {
       }
     `,
   );
-  const fragment = shader(
-    gl,
-    gl.FRAGMENT_SHADER,
-    `#version 300 es
-      precision mediump float;
-      uniform sampler2D image;
-      in vec2 textureUv;
-      in vec4 vertexColor;
-      out vec4 outputColor;
-      void main() {
-        outputColor = texture(image, textureUv) * vertexColor;
-      }
-    `,
-  );
-  const value = gl.createProgram();
-  gl.attachShader(value, vertex);
-  gl.attachShader(value, fragment);
-  gl.linkProgram(value);
-  gl.deleteShader(vertex);
-  gl.deleteShader(fragment);
-  if (gl.getProgramParameter(value, gl.LINK_STATUS) !== true) {
-    const message = gl.getProgramInfoLog(value) ?? "unknown link error";
-    gl.deleteProgram(value);
-    throw new Error(`Tri2D shader link failed: ${message}`);
+  let fragment: WebGLShader | null = null;
+  let value: WebGLProgram | null = null;
+  try {
+    fragment = shader(
+      gl,
+      gl.FRAGMENT_SHADER,
+      `#version 300 es
+        precision mediump float;
+        uniform sampler2D image;
+        in vec2 textureUv;
+        in vec4 vertexColor;
+        out vec4 outputColor;
+        void main() {
+          outputColor = texture(image, textureUv) * vertexColor;
+        }
+      `,
+    );
+    value = gl.createProgram();
+    gl.attachShader(value, vertex);
+    gl.attachShader(value, fragment);
+    gl.linkProgram(value);
+    if (gl.getProgramParameter(value, gl.LINK_STATUS) !== true) {
+      const message = gl.getProgramInfoLog(value) ?? "unknown link error";
+      throw new Error(`Tri2D shader link failed: ${message}`);
+    }
+    return value;
+  } catch (error) {
+    if (value !== null) {
+      gl.deleteProgram(value);
+    }
+    throw error;
+  } finally {
+    gl.deleteShader(vertex);
+    if (fragment !== null) {
+      gl.deleteShader(fragment);
+    }
   }
-  return value;
 }
 
 export class Tri2dRenderer {
@@ -610,6 +621,10 @@ export class Tri2dRenderer {
     }
     this.#textureBytes = frame.textureBytes;
     return frame;
+  }
+
+  isContextLost(): boolean {
+    return this.#gl.isContextLost();
   }
 
   dispose(): void {

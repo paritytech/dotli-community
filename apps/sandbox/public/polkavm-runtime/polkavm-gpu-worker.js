@@ -16,6 +16,9 @@ const HANDLE_SLOT_MASK = (1 << 20) - 1;
 const HANDLE_LIVE_BIT = 1 << 12;
 const MAX_COMPILATIONS_PER_BATCH = 32;
 const MAX_PENDING_BATCHES = 4;
+// A device that dies again straight after every rebuild is not coming back;
+// bound the attempts so a broken adapter cannot spin the worker forever.
+const MAX_DEVICE_RESTORES = 3;
 const BATCH_ERROR_STALE_SURFACE = 4;
 const MAX_RENDER_PASSES_PER_BATCH = 16;
 const MAX_DRAWS_PER_BATCH = 8_192;
@@ -837,7 +840,8 @@ class GpuEngine {
     limits,
     dimensions,
     testReadback,
-    testDeviceLoss
+    testDeviceLoss,
+    requirements
   ) {
     this.canvas = canvas;
     this.device = device;
@@ -845,12 +849,16 @@ class GpuEngine {
     this.format = format;
     this.formatId = formatIds.get(format);
     this.limits = limits;
+    // Restoring the device needs the same inputs the first one was built from.
+    this.requirements = requirements;
     this.resources = new Map();
     this.handleSlots = new Map();
     this.surfaceGeneration = 1;
     this.deviceGeneration = 1;
     this.lastSequence = 0;
     this.stopped = false;
+    this.disposed = false;
+    this.restoreAttempts = 0;
     this.queue = Promise.resolve();
     this.pendingBatches = 0;
     this.testReadbacksRemaining = testReadback ? 8 : 0;
@@ -858,6 +866,16 @@ class GpuEngine {
     this.pendingResize = null;
     this.resizeScheduled = false;
     this.resize(dimensions, false);
+    this.observeDevice(device);
+  }
+
+  /**
+   * A browser drops the device on driver resets, tab backgrounding, and memory
+   * pressure. The guest is told, the device is rebuilt, and the guest is told
+   * again; every GPU resource dies with the old device, so the guest owns
+   * recreating them.
+   */
+  observeDevice(device) {
     device.addEventListener("uncapturederror", event => {
       this.emitTextEvent(
         4,
@@ -867,20 +885,59 @@ class GpuEngine {
       );
     });
     void device.lost.then(info => {
-      if (!this.stopped) {
-        this.stopped = true;
-        this.emitTextEvent(7, 0, 1, info.message || "WebGPU device lost");
+      if (this.stopped || this.disposed || this.device !== device) {
+        return;
       }
+      this.stopped = true;
+      this.emitTextEvent(7, 0, 1, info.message || "WebGPU device lost");
+      void this.restore();
     });
   }
 
-  static async create(
-    canvas,
-    requirements,
-    dimensions,
-    testReadback,
-    testDeviceLoss
-  ) {
+  async restore() {
+    if (this.disposed || this.restoreAttempts >= MAX_DEVICE_RESTORES) {
+      return;
+    }
+    this.restoreAttempts++;
+    let replacement;
+    try {
+      replacement = await GpuEngine.acquireDevice(this.canvas, this.requirements);
+    } catch (error) {
+      // The guest already has the loss event; a Host that cannot rebuild the
+      // device leaves it there rather than pretending the surface came back.
+      postMessage({
+        type: "error",
+        message: `WebGPU device could not be restored: ${error.message || String(error)}`,
+      });
+      return;
+    }
+    if (this.disposed) {
+      replacement.device.destroy();
+      return;
+    }
+    // Every handle referred to the dead device, so the slot table starts empty
+    // and the guest re-creates what it needs after the restored event.
+    this.resources.clear();
+    this.handleSlots.clear();
+    this.device = replacement.device;
+    this.context = replacement.context;
+    this.format = replacement.format;
+    this.formatId = formatIds.get(replacement.format);
+    this.limits = replacement.limits;
+    this.deviceGeneration++;
+    this.lastSequence = 0;
+    this.pendingBatches = 0;
+    this.pendingResize = null;
+    this.queue = Promise.resolve();
+    this.stopped = false;
+    this.configureSurface();
+    this.observeDevice(replacement.device);
+    postBytes("capabilities", this.capabilities());
+    this.emitTextEvent(8, 0, 0, "WebGPU device restored");
+  }
+
+  /** Acquires an adapter, device, context and limit table for `requirements`. */
+  static async acquireDevice(canvas, requirements) {
     if (!globalThis.navigator?.gpu) {
       throw new Error("WebGPU is unavailable");
     }
@@ -968,15 +1025,27 @@ class GpuEngine {
       requested.maxComputeWorkgroupsPerDimension,
       MAX_DISPATCHES_PER_BATCH,
     ];
+    return { device, context, format, limits };
+  }
+
+  static async create(
+    canvas,
+    requirements,
+    dimensions,
+    testReadback,
+    testDeviceLoss
+  ) {
+    const acquired = await GpuEngine.acquireDevice(canvas, requirements);
     return new GpuEngine(
       canvas,
-      device,
-      context,
-      format,
-      limits,
+      acquired.device,
+      acquired.context,
+      acquired.format,
+      acquired.limits,
       dimensions,
       testReadback,
-      testDeviceLoss
+      testDeviceLoss,
+      requirements
     );
   }
 
@@ -1008,14 +1077,7 @@ class GpuEngine {
     this.scale = scale;
     this.canvas.width = physicalWidth;
     this.canvas.height = physicalHeight;
-    this.context.configure({
-      device: this.device,
-      format: this.format,
-      alphaMode: "opaque",
-      usage:
-        GPUTextureUsage.RENDER_ATTACHMENT |
-        (this.testReadbacksRemaining > 0 ? GPUTextureUsage.COPY_SRC : 0),
-    });
+    this.configureSurface();
     if (notify && changed) {
       this.surfaceGeneration++;
       postBytes("capabilities", this.capabilities());
@@ -1034,6 +1096,18 @@ class GpuEngine {
       view.setUint16(24, this.formatId, true);
       postBytes("event", makeEvent(6, 0, payload));
     }
+  }
+
+  /** Binds the canvas to the current device; a restored device needs this too. */
+  configureSurface() {
+    this.context.configure({
+      device: this.device,
+      format: this.format,
+      alphaMode: "opaque",
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        (this.testReadbacksRemaining > 0 ? GPUTextureUsage.COPY_SRC : 0),
+    });
   }
 
   scheduleResize(dimensions) {
@@ -1880,7 +1954,6 @@ class GpuEngine {
     shaders.forEach(([entry, handle]) =>
       this.watchShader(entry, handle, batch.sequence)
     );
-    await this.device.queue.onSubmittedWorkDone();
     if (readback) {
       await readback.mapAsync(GPUMapMode.READ);
       const readbackBytes = new Uint8Array(readback.getMappedRange());
@@ -1980,6 +2053,7 @@ class GpuEngine {
 
   stop() {
     this.stopped = true;
+    this.disposed = true;
     for (const entry of this.resources.values()) {
       entry.value?.destroy?.();
     }

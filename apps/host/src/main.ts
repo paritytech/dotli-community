@@ -363,18 +363,16 @@ function installedExecutableFromManifest(
   contenthash: string,
   result: ManifestResult<ExecutableManifest> | null,
 ): InstalledExecutable | null {
-  return result?.kind === "ok" &&
-    result.value.kind === "app" &&
-    result.value.$v === 1
+  return result?.kind === "ok" && result.value.kind === "app"
     ? { contenthash, executableManifest: result.raw }
     : null;
 }
 
-function cachedV1AppManifest(
+function cachedAppManifest(
   executable: InstalledExecutable,
 ): ManifestResult<ExecutableManifest> | null {
   const parsed = parseExecutableManifest(executable.executableManifest);
-  return parsed.ok && parsed.value.kind === "app" && parsed.value.$v === 1
+  return parsed.ok && parsed.value.kind === "app"
     ? {
         kind: "ok",
         value: parsed.value,
@@ -1228,7 +1226,12 @@ async function main(): Promise<void> {
       ? ({ kind: "miss" } as const)
       : await getCachedInstalledExecutable(label, network, "app");
     if (cacheResult.kind === "error") {
-      throw cacheResult.cause;
+      log.warn(
+        `[dot.li installed-executable-cache] read failed; resolving without cache: ${serializeError(cacheResult.cause)}`,
+      );
+      captureException(cacheResult.cause, {
+        kind: "installed_executable_cache_read_error",
+      });
     }
     const cachedExecutable =
       cacheResult.kind === "hit" ? cacheResult.executable : null;
@@ -1244,22 +1247,48 @@ async function main(): Promise<void> {
       },
     });
     if (cachedExecutable !== null) {
-      const cachedManifest = cachedV1AppManifest(cachedExecutable);
+      const cachedManifest = cachedAppManifest(cachedExecutable);
       if (cachedManifest === null) {
         await evictCachedInstalledExecutable(label, network, "app");
         log.warn(
-          `[dot.li installed-executable-cache] evicted invalid v1 app record for ${label}`,
+          `[dot.li installed-executable-cache] evicted invalid app record for ${label}`,
         );
       } else {
         const stopRevalidate = m.timer(S.CACHE_REVALIDATE_LATENCY);
         let freshContenthash: string | null;
+        let freshManifestResult: ManifestResult<ExecutableManifest>;
         try {
-          freshContenthash = await resolveAppContenthash(label, chainBackend);
-          stopRevalidate();
+          const [contenthashResult, manifestResult] = await Promise.allSettled([
+            resolveAppContenthash(label, chainBackend),
+            resolveAppExecutableManifest(label, chainBackend),
+          ]);
+          if (contenthashResult.status === "rejected") {
+            throw contenthashResult.reason;
+          }
+          freshContenthash = contenthashResult.value;
+          if (manifestResult.status === "rejected") {
+            if (
+              freshContenthash !== null &&
+              freshContenthash !== cachedExecutable.contenthash
+            ) {
+              throw manifestResult.reason;
+            }
+            if (freshContenthash !== null) {
+              m.count(S.CACHE_REVALIDATE_ERROR);
+              log.warn(
+                `[dot.li installed-executable-cache] manifest revalidation failed; reusing the cached pair: ${serializeError(manifestResult.reason)}`,
+              );
+            }
+            freshManifestResult = cachedManifest;
+          } else {
+            freshManifestResult = manifestResult.value;
+          }
+          appManifestPromise = Promise.resolve(freshManifestResult);
         } catch (error) {
-          stopRevalidate();
           m.count(S.CACHE_REVALIDATE_ERROR);
           throw error;
+        } finally {
+          stopRevalidate();
         }
         const outcome = await reconcileInstalledExecutable(
           label,
@@ -1267,6 +1296,7 @@ async function main(): Promise<void> {
           "app",
           cachedExecutable,
           freshContenthash,
+          executableManifestText(freshManifestResult),
         );
         if (outcome.kind === "cleared") {
           stopStatusTick();
@@ -1316,7 +1346,7 @@ async function main(): Promise<void> {
         }
         resolvedContenthash = outcome.contenthash;
         log.warn(
-          `[dot.li installed-executable-cache] deployment changed ${cachedExecutable.contenthash} -> ${resolvedContenthash}; resolving the matching manifest`,
+          `[dot.li installed-executable-cache] executable pair changed; resolving ${resolvedContenthash}`,
         );
       }
     }

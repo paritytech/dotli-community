@@ -28,10 +28,10 @@ Two numbering claims were in circulation:
   enforces 1 in `scripts/prepare-app.mjs` and asserts it in
   `tests/manifest-v2.test.mjs`, so every App the kit has ever packaged declares
   1.
-- **ABI 2.** The `@useragent-kit/polkavm-runtime` distribution records
-  `abi.runtime: 2` in its `SOURCE.json`, and the unmerged runtime PR
-  "rename runtime surfaces to PolkaVM" proposes versioning a future breaking
-  contract as App ABI v2.
+- **ABI 2 (rejected).** An earlier, unpublished
+  `@useragent-kit/polkavm-runtime` distribution recorded `abi.runtime: 2` in
+  its `SOURCE.json`, while an unmerged runtime PR proposed versioning a future
+  breaking contract as App ABI v2.
 
 A Host that requires 2 refuses every App the kit publishes; a Host that
 requires 1 refuses the products that were republished to match the strict-2
@@ -43,31 +43,28 @@ flip stranded whichever half of the fleet was not republished alongside it.
 **The PolkaVM application runtime ABI is version 1. Hosts accept
 `runtime.abiVersion === 1` and nothing else.**
 
-ABI 1 was never publicly released, so there is no compatibility pressure to
-retire it: a breaking change is spent inside v1 rather than burning a version
-number nobody has shipped against.
+ABI 1 is the established pre-1.0 contract. Breaking changes remain inside v1
+until the project intentionally adopts a stability guarantee; a new integer is
+not used to version implementation changes.
 
-`abi.runtime` in a runtime distribution's `SOURCE.json` is packaging metadata
-for that distribution. It is not the guest contract and MUST NOT be read as the
-value an App manifest declares.
+`abi.runtime` in a runtime distribution's `SOURCE.json` attests what contract
+the package implements; it does not define that contract. It MUST agree with
+the published guest ABI document and App manifests.
 
-The vendored browser runtime therefore tracks
-`paritytech/polkavm-host-runtime` directly — the repository whose ABI v1
-contract this Host implements — through the `@parity/pvm-browser-runtime`
-release tarball recorded in `scripts/polkavm-runtime.lock.json`. Repinning to a
-redistribution that declares `abi.runtime: 2` reintroduces exactly the
-ambiguity this ADR settles, and drops whatever upstream has merged since that
-redistribution was cut.
+The vendored browser runtime tracks `paritytech/polkavm-host-runtime` through
+`@useragent-kit/polkavm-runtime`, the distribution boundary shared by browser,
+Android, and Swift Hosts. Version 0.1.0 records host-runtime revision
+`6eb24c5fd4451ca339c82c73a308ac8af87b8e4b` and declares `abi.runtime: 1`.
+The package pin, full provenance, and per-file digests are recorded in
+`scripts/polkavm-runtime.lock.json`.
 
 ## Consequences
 
 - `packages/resolver/src/manifest-types.ts` types `runtime.abiVersion` as `1`
   and rejects anything else; `apps/sandbox/src/polkavm-runtime.ts` enforces the
   same value when it loads an App v2 manifest. The capability ABIs
-  (`graphics`, `deviceInput`, `audio`) stay at 1 and are unaffected; the
-  host-interface (computer) contract still forbids `runtime.abiVersion`
-  entirely, because its interface ids carry the version.
-- the post-deploy product smoke on `feat/pvm-computer` asserts the published
+  (`graphics`, `deviceInput`, `audio`) stay at 1 and are unaffected.
+- `apps/host/tests/smoke/polkavm-products.spec.ts` asserts the published
   products declare runtime ABI 1, so a regression fails the post-deploy smoke
   instead of the next person's phone.
 - Moving to ABI 2 requires, in this order: a published v2 contract document

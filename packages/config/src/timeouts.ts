@@ -11,6 +11,8 @@ export const TIMEOUTS = {
   SANDBOX_RECOVER: 6_000,
   /** Waiting for SW controllerchange after registration */
   SW_READY: 10_000,
+  /** Persisting a maximum-size application archive in the service worker. */
+  SW_ARCHIVE_STORE: 180_000,
   /** P2P fetch abort (per attempt) */
   P2P_FETCH: 30_000,
   /** SharedWorker readiness timeout. Must exceed `ASSET_HUB_FINALIZED_SYNC`

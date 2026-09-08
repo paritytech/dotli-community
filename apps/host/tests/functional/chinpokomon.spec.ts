@@ -12,16 +12,10 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { CarWriter } from "@ipld/car";
-import * as dagPb from "@ipld/dag-pb";
-import type { PBLink } from "@ipld/dag-pb";
-import { UnixFS } from "ipfs-unixfs";
-import { CID } from "multiformats/cid";
-import * as raw from "multiformats/codecs/raw";
-import { sha256 } from "multiformats/hashes/sha2";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
+import { archiveCar, installTruapiPortResponder } from "./helpers/polkavm";
 
 const bundleDir = process.env.DOTLI_CHINPOKOMON_BUNDLE;
 
@@ -41,91 +35,6 @@ async function bundleFiles(
     }
   }
   return files;
-}
-
-/**
- * UnixFS directory CAR with nested paths flattened into a single root, which
- * is exactly how the sandbox archive reader keys its files.
- */
-async function archiveCar(
-  sourceFiles: ReadonlyArray<readonly [string, Uint8Array]>,
-): Promise<{ cid: string; bytes: Uint8Array }> {
-  const files = await Promise.all(
-    sourceFiles.map(async ([name, bytes]) => ({
-      name,
-      bytes,
-      cid: CID.createV1(raw.code, await sha256.digest(bytes)),
-    })),
-  );
-  const links: PBLink[] = files
-    .map(({ name, bytes, cid }) => ({
-      Name: name,
-      Tsize: bytes.length,
-      Hash: cid,
-    }))
-    .sort((left, right) => (left.Name ?? "").localeCompare(right.Name ?? ""));
-  const rootBytes = dagPb.encode({
-    Data: new UnixFS({ type: "directory" }).marshal(),
-    Links: links,
-  });
-  const root = CID.createV1(dagPb.code, await sha256.digest(rootBytes));
-  const { writer, out } = CarWriter.create([root]);
-  const chunksPromise = (async (): Promise<Uint8Array[]> => {
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of out) chunks.push(chunk);
-    return chunks;
-  })();
-  for (const { cid, bytes } of files) await writer.put({ cid, bytes });
-  await writer.put({ cid: root, bytes: rootBytes });
-  await writer.close();
-  const chunks = await chunksPromise;
-  const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
-  const car = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    car.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return { cid: root.toString(), bytes: car };
-}
-/**
- * The sandbox blocks PolkaVM startup on a Host-injected TrUAPI port, so the
- * suite answers the sandbox's readiness probe the way the host shell does.
- */
-async function installTruapiPortResponder(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const channel = new MessageChannel();
-    const scope = window as typeof window & {
-      __HOST_API_PORT__?: MessagePort;
-    };
-    channel.port2.onmessage = (event) => {
-      if (!(event.data instanceof Uint8Array)) {
-        return;
-      }
-      const request = event.data;
-      const first = request[0];
-      if (first === undefined || (first & 3) !== 0) {
-        return;
-      }
-      const kindOffset = 1 + (first >> 2);
-      if (
-        request.length !== kindOffset + 3 ||
-        request[kindOffset] !== 0 ||
-        request[kindOffset + 1] !== 0 ||
-        request[kindOffset + 2] !== 1
-      ) {
-        return;
-      }
-      const response = new Uint8Array(kindOffset + 3);
-      response.set(request.subarray(0, kindOffset));
-      response[kindOffset] = 1;
-      response[kindOffset + 1] = 0;
-      response[kindOffset + 2] = 0;
-      channel.port2.postMessage(response, [response.buffer]);
-    };
-    channel.port2.start();
-    scope.__HOST_API_PORT__ = channel.port1;
-  });
 }
 
 async function mountProduct(
