@@ -11,7 +11,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, type Page } from "@playwright/test";
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
@@ -51,6 +51,33 @@ test.describe("Resolution across chain backends", () => {
   }
 });
 
+/**
+ * Open a session against `profile`, resolve `url`, then hand the page to `run`.
+ *
+ * The profile directory is locked while a context holds it, so each session
+ * must close before the next one opens against the same profile.
+ */
+async function withWarmSession<T>(
+  profile: string,
+  url: string,
+  label: string,
+  run: (page: Page) => Promise<T>,
+): Promise<T> {
+  const context = await chromium.launchPersistentContext(profile, {
+    permissions: [...BROWSER_PERMISSIONS],
+  });
+  try {
+    await seedPermissions(context);
+    await seedSettings(context, { backend: "smoldot-shared-worker" });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: "commit" });
+    await waitForResolutionOutcome(page, TIMEOUT_MS, label);
+    return await run(page);
+  } finally {
+    await context.close();
+  }
+}
+
 test.describe("Warm start across a browser restart", () => {
   test.setTimeout(SNAPSHOT_WINDOW_MS + TIMEOUT_MS * 3);
 
@@ -58,55 +85,33 @@ test.describe("Warm start across a browser restart", () => {
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));
     try {
       // Given
-      const first = await chromium.launchPersistentContext(profile, {
-        permissions: [...BROWSER_PERMISSIONS],
-      });
-      try {
-        await seedPermissions(first);
-        await seedSettings(first, { backend: "smoldot-shared-worker" });
-        const page = await first.newPage();
-        await page.goto(BASE_URL, { waitUntil: "commit" });
-        await waitForResolutionOutcome(
-          page,
-          TIMEOUT_MS,
-          "warm start, session 1",
-        );
-        await page.waitForTimeout(SNAPSHOT_WINDOW_MS);
-      } finally {
-        await first.close();
-      }
+      await withWarmSession(
+        profile,
+        BASE_URL,
+        "warm start, session 1",
+        (page) => page.waitForTimeout(SNAPSHOT_WINDOW_MS),
+      );
 
       // When
-      const second = await chromium.launchPersistentContext(profile, {
-        permissions: [...BROWSER_PERMISSIONS],
-      });
-      try {
-        await seedPermissions(second);
-        await seedSettings(second, { backend: "smoldot-shared-worker" });
-        const page = await second.newPage();
-        await page.goto(WARM_BASE_URL, { waitUntil: "commit" });
-        await waitForResolutionOutcome(
-          page,
-          TIMEOUT_MS,
-          "warm start, session 2",
-        );
+      const resolveMs = await withWarmSession(
+        profile,
+        WARM_BASE_URL,
+        "warm start, session 2",
+        (page) =>
+          page.evaluate(() => {
+            const at = (name: string): number | undefined =>
+              performance.getEntriesByName(name, "mark").at(0)?.startTime;
+            const start = at("dotli:resolve:start");
+            const end = at("dotli:resolve:end");
+            if (start === undefined || end === undefined) {
+              throw new Error("session 2 emitted no resolve marks");
+            }
+            return Math.round(end - start);
+          }),
+      );
 
-        // Then
-        const resolveMs = await page.evaluate(() => {
-          const at = (name: string): number | undefined =>
-            performance.getEntriesByName(name, "mark").at(0)?.startTime;
-          const start = at("dotli:resolve:start");
-          const end = at("dotli:resolve:end");
-          return start === undefined || end === undefined
-            ? null
-            : Math.round(end - start);
-        });
-
-        expect(resolveMs, "session 2 emitted no resolve marks").not.toBeNull();
-        expect(resolveMs).toBeLessThan(WARM_BUDGET_MS);
-      } finally {
-        await second.close();
-      }
+      // Then
+      expect(resolveMs).toBeLessThan(WARM_BUDGET_MS);
     } finally {
       rmSync(profile, { recursive: true, force: true });
     }
