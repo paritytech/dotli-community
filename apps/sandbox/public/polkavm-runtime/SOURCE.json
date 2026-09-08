@@ -1,15 +1,9 @@
 {
   "schemaVersion": 1,
   "upstreamPackage": "@useragent-kit/polkavm-runtime",
-  "upstreamVersion": "0.6.29",
+  "upstreamVersion": "0.1.0",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-  "upstreamRevision": "a9156ad93c36c99bda6b72dfda5fecf1b778c921",
-  "assetOverrides": {
-    "polkavm-gpu-worker.js": {
-      "upstreamRevision": "6eb24c5fd4451ca339c82c73a308ac8af87b8e4b",
-      "url": "https://raw.githubusercontent.com/paritytech/polkavm-host-runtime/6eb24c5fd4451ca339c82c73a308ac8af87b8e4b/rust/crates/polkavm-host-runtime-assets/assets/polkavm-gpu-worker.js"
-    }
-  },
+  "upstreamRevision": "6eb24c5fd4451ca339c82c73a308ac8af87b8e4b",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
   "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {
