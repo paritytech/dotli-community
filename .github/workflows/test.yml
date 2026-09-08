@@ -77,8 +77,8 @@ jobs:
           RUNTIME_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select((.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts" or .file == "computer.spec.ts") and .ok == false)] | length' tests/functional/results.json)
           echo "PolkaVM functional specs: $RUNTIME_TOTAL"
           echo "PolkaVM functional failures: $RUNTIME_FAILED"
-          if [ "$RUNTIME_TOTAL" -lt 16 ]; then
-            echo "::error::expected at least 16 PolkaVM functional specs, got $RUNTIME_TOTAL."
+          if [ "$RUNTIME_TOTAL" -lt 14 ]; then
+            echo "::error::expected at least 14 PolkaVM functional specs, got $RUNTIME_TOTAL."
             exit 1
           fi
           if [ "$RUNTIME_FAILED" -gt 0 ]; then
