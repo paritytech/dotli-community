@@ -3,7 +3,11 @@
 
 import type { ArchiveFiles } from "@dotli/content/archive";
 import { Tri2dRenderer } from "./tri2d-renderer";
-import { WebGpuBridge, type WebGpuRequirements } from "./webgpu";
+import {
+  WebGpuBridge,
+  observeSurfaceDimensions,
+  type WebGpuRequirements,
+} from "./webgpu";
 
 const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
@@ -27,7 +31,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-0.1.0-6eb24c5fd4451ca339c82c73a308ac8af87b8e4b";
+  "useragent-kit-polkavm-runtime-0.1.1-08cb7401087f8b715dc4f1be0007753caa4bd7c2";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -255,6 +259,34 @@ const keyCodes: Readonly<Record<string, number>> = Object.freeze({
   Space: 0x2c,
   Minus: 0x2d,
   Equal: 0x2e,
+  BracketLeft: 0x2f,
+  BracketRight: 0x30,
+  Backslash: 0x31,
+  Semicolon: 0x33,
+  Quote: 0x34,
+  Backquote: 0x35,
+  Comma: 0x36,
+  Period: 0x37,
+  Slash: 0x38,
+  CapsLock: 0x39,
+  F1: 0x3a,
+  F2: 0x3b,
+  F3: 0x3c,
+  F4: 0x3d,
+  F5: 0x3e,
+  F6: 0x3f,
+  F7: 0x40,
+  F8: 0x41,
+  F9: 0x42,
+  F10: 0x43,
+  F11: 0x44,
+  F12: 0x45,
+  Insert: 0x49,
+  Home: 0x4a,
+  PageUp: 0x4b,
+  Delete: 0x4c,
+  End: 0x4d,
+  PageDown: 0x4e,
   ArrowRight: 0x4f,
   ArrowLeft: 0x50,
   ArrowDown: 0x51,
@@ -262,9 +294,11 @@ const keyCodes: Readonly<Record<string, number>> = Object.freeze({
   ControlLeft: 0xe0,
   ShiftLeft: 0xe1,
   AltLeft: 0xe2,
+  MetaLeft: 0xe3,
   ControlRight: 0xe4,
   ShiftRight: 0xe5,
   AltRight: 0xe6,
+  MetaRight: 0xe7,
 });
 const pointerButtons: Readonly<Record<number, number>> = Object.freeze({
   0: 1,
@@ -639,7 +673,11 @@ function parseManifest(
       (feature) =>
         (feature as string)[0].toUpperCase() + (feature as string).slice(1),
     );
-    inputFeatures = deviceFeatures as string[];
+    // Device input is baseline App ABI behavior, not a manifest opt-in.
+    inputFeatures = ["pointer", "keyboard", "text", "ime", "focus", "wheel"];
+    if (deviceFeatures.includes("motion")) {
+      inputFeatures.push("motion");
+    }
     audioEnabled = audio !== null;
     manifestVersion = 2;
     if (enforceExternal) {
@@ -1414,13 +1452,14 @@ function createShell(controls: string[]): {
   const style = document.createElement("style");
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden;overscroll-behavior:none}
-    #dotli-polkavm-shell{width:100%;height:100%;display:grid;place-items:center;position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) minmax(29px,auto);position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-surface{position:relative;min-width:0;min-height:0;overflow:hidden;container-type:size}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100vw,calc(100vh * var(--dotli-polkavm-frame-aspect,1)));height:min(100vh,calc(100vw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
+    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100cqw,calc(100cqh * var(--dotli-polkavm-frame-aspect,1)));height:min(100cqh,calc(100cqw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
-    #dotli-polkavm-metrics{top:12px;max-width:min(460px,calc(100vw - 24px));overflow:hidden;pointer-events:auto}
+    #dotli-polkavm-metrics{position:relative;left:auto;max-height:35vh;overflow:auto;pointer-events:auto;border-radius:0}
     #dotli-polkavm-metrics[hidden]{display:none}
     #dotli-polkavm-metrics summary{padding:6px 9px;cursor:pointer;white-space:nowrap;font-weight:600;user-select:none}
     #dotli-polkavm-metrics pre{margin:0;padding:7px 9px;border-top:1px solid #ffffff1f;white-space:pre-wrap;color:#c9ced3;font:inherit;font-weight:400}
@@ -1428,6 +1467,8 @@ function createShell(controls: string[]): {
   `;
   const shell = document.createElement("main");
   shell.id = "dotli-polkavm-shell";
+  const surface = document.createElement("div");
+  surface.id = "dotli-polkavm-surface";
   const canvas = document.createElement("canvas");
   canvas.id = "dotli-polkavm-canvas";
   canvas.tabIndex = 0;
@@ -1445,7 +1486,8 @@ function createShell(controls: string[]): {
   const controlText = document.createElement("div");
   controlText.id = "dotli-polkavm-controls";
   controlText.textContent = controls.join(" · ");
-  shell.append(canvas, status, metrics, controlText);
+  surface.append(canvas, status, controlText);
+  shell.append(surface, metrics);
   document.head.append(style);
   document.body.replaceChildren(shell);
   return { canvas, status, metrics, metricsSummary, metricsDetails };
@@ -1471,6 +1513,7 @@ function installInput(
   setPointerCaptureRequest: (capture: boolean) => void;
 } {
   const pressed = new Set<number>();
+  const heldPointerButtons = new Set<number>();
   const inputFeatureSet = new Set(inputFeatures);
   const textInput =
     inputFeatureSet.has("text") || inputFeatureSet.has("ime")
@@ -1487,11 +1530,9 @@ function installInput(
   }
   let composing = false;
   let suppressCommittedInput = false;
-  // An app that requires committed text gets the hidden text surface from
-  // the first click; ui-output refines this once the guest reports cursor
-  // context. Without the default, a text-requiring guest that never emits
-  // ui-output (the Zed editor) could not receive typing at all.
-  let wantsTextInput = inputFeatureSet.has("text");
+  // The active guest text context requests focus through UI output. Baseline
+  // text support must not open the software keyboard for non-text applications.
+  let wantsTextInput = false;
   let reportedFocused = false;
   let firstMoveAfterPointerLock = false;
   let relativeX = 0;
@@ -1506,7 +1547,7 @@ function installInput(
   // The ABI carries one pointer, and a touch gesture that leaves the canvas or
   // is claimed by the browser must still deliver its release, or the guest keeps
   // a phantom button down.
-  let activePointer: { id: number; button: number } | null = null;
+  let activePointer: number | null = null;
   let motionSequence = 0;
   let motionX = 0;
   let motionY = 0;
@@ -1692,13 +1733,18 @@ function installInput(
   };
   const syncFocus = (): void => {
     const focused =
-      document.activeElement === canvas ||
-      (textInput !== null && document.activeElement === textInput);
+      document.hasFocus() &&
+      (document.activeElement === canvas ||
+        (textInput !== null && document.activeElement === textInput));
     if (focused === reportedFocused) {
       return;
     }
     reportedFocused = focused;
     if (!focused) {
+      for (const code of pressed) {
+        send(encodedInput(2, code));
+      }
+      pressed.clear();
       if (composing && inputFeatureSet.has("ime")) {
         send(encodedInput(12, 0));
       }
@@ -1769,6 +1815,11 @@ function installInput(
     send(encodedInput(14, 0, event.deltaX * scale, event.deltaY * scale));
   };
   const keydown = (event: KeyboardEvent): void => {
+    // Candidate navigation and confirmation belong to the active IME, not the
+    // guest's editor shortcuts. Text arrives through the composition records.
+    if (composing || event.isComposing) {
+      return;
+    }
     requestDeviceMotionPermission();
     if (event.code === "Escape" && document.pointerLockElement === canvas) {
       event.preventDefault();
@@ -1780,11 +1831,11 @@ function installInput(
       releasePointerLock();
       return;
     }
-    if (!(event.code in keyCodes) || event.repeat) {
+    if (!(event.code in keyCodes)) {
       return;
     }
     const code = keyCodes[event.code];
-    if (pressed.has(code)) {
+    if (pressed.has(code) && !event.repeat) {
       return;
     }
     if (event.isTrusted && parentOrigin !== null) {
@@ -1823,8 +1874,14 @@ function installInput(
     }
     event.preventDefault();
     resumeAudio();
+    const button = pointerButtons[event.button];
+    if (type === 3) {
+      heldPointerButtons.add(button);
+    } else if (!heldPointerButtons.delete(button)) {
+      return;
+    }
     const [x, y] = canvasPosition(event);
-    send(encodedInput(type, pointerButtons[event.button], x, y));
+    send(encodedInput(type, button, x, y));
   };
   const move = (event: PointerEvent): void => {
     if (!event.isPrimary) {
@@ -1884,8 +1941,11 @@ function installInput(
     ) {
       void canvas.requestPointerLock().catch(() => undefined);
     }
-    if (document.pointerLockElement !== canvas) {
-      activePointer = { id: event.pointerId, button: event.button };
+    if (
+      event.button in pointerButtons &&
+      document.pointerLockElement !== canvas
+    ) {
+      activePointer = event.pointerId;
       try {
         canvas.setPointerCapture(event.pointerId);
       } catch (error) {
@@ -1912,24 +1972,30 @@ function installInput(
     if (!event.isPrimary) {
       return;
     }
-    releaseCapturedPointer(event.pointerId);
+    pointer(event, 4);
     activePointer = null;
     previousPointer = null;
-    pointer(event, 4);
+    releaseCapturedPointer(event.pointerId);
   };
   // Chrome cancels the pointer stream when it claims a gesture, and iOS cancels
   // on system edge gestures. Neither delivers `pointerup`, so synthesise the
   // release the guest is waiting for.
   const cancel = (event: PointerEvent): void => {
-    if (activePointer?.id !== event.pointerId) {
+    if (
+      activePointer !== event.pointerId ||
+      (event.type === "lostpointercapture" &&
+        document.pointerLockElement === canvas)
+    ) {
       return;
     }
-    const button = activePointer.button;
-    releaseCapturedPointer(event.pointerId);
     activePointer = null;
     previousPointer = null;
     const [x, y] = canvasPosition(event);
-    send(encodedInput(4, pointerButtons[button] ?? 1, x, y));
+    for (const button of heldPointerButtons) {
+      send(encodedInput(4, button, x, y));
+    }
+    heldPointerButtons.clear();
+    releaseCapturedPointer(event.pointerId);
   };
   const contextmenu = (event: MouseEvent): void => {
     event.preventDefault();
@@ -1937,7 +2003,7 @@ function installInput(
   const surfaceScale = (): number =>
     Math.max(1 / 32, Math.min(4, window.devicePixelRatio || 1));
   const sendSurfaceMetrics = (): void => {
-    if (graphicsProfile !== "tri2d") {
+    if (graphicsProfile === "framebuffer") {
       return;
     }
     const bounds = canvas.getBoundingClientRect();
@@ -1960,8 +2026,10 @@ function installInput(
     }
 
     const bounds = canvas.getBoundingClientRect();
-    const logicalWidth = canvas.width / surfaceScale();
-    const logicalHeight = canvas.height / surfaceScale();
+    const logicalWidth =
+      (webGpu?.physicalWidth ?? canvas.width) / surfaceScale();
+    const logicalHeight =
+      (webGpu?.physicalHeight ?? canvas.height) / surfaceScale();
     const scaleX = bounds.width / Math.max(1, logicalWidth);
     const scaleY = bounds.height / Math.max(1, logicalHeight);
     const cursor = output.ime.cursorRect;
@@ -1973,15 +2041,14 @@ function installInput(
       textInput.focus({ preventScroll: true });
     }
   };
-  const resizeObserver =
-    graphicsProfile === "tri2d"
-      ? new ResizeObserver(() => {
-          sendSurfaceMetrics();
-        })
+  const stopObservingDimensions =
+    graphicsProfile !== "framebuffer"
+      ? observeSurfaceDimensions(canvas, sendSurfaceMetrics)
       : null;
-  resizeObserver?.observe(canvas);
   canvas.addEventListener("focus", focusChanged);
   canvas.addEventListener("blur", focusChanged);
+  window.addEventListener("focus", focusChanged);
+  window.addEventListener("blur", focusChanged);
   if (textInput !== null) {
     textInput.addEventListener("beforeinput", beforeInput);
     textInput.addEventListener("input", input);
@@ -2002,6 +2069,7 @@ function installInput(
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointermove", move);
   canvas.addEventListener("pointercancel", cancel);
+  canvas.addEventListener("lostpointercapture", cancel);
   canvas.addEventListener("contextmenu", contextmenu);
   return {
     applyUiOutput,
@@ -2019,7 +2087,7 @@ function installInput(
       }
     },
     cleanup: () => {
-      resizeObserver?.disconnect();
+      stopObservingDimensions?.();
       if (
         document.activeElement === canvas ||
         (textInput !== null && document.activeElement === textInput)
@@ -2037,6 +2105,8 @@ function installInput(
       window.removeEventListener("devicemotion", deviceMotion);
       canvas.removeEventListener("focus", focusChanged);
       canvas.removeEventListener("blur", focusChanged);
+      window.removeEventListener("focus", focusChanged);
+      window.removeEventListener("blur", focusChanged);
       if (textInput !== null) {
         textInput.removeEventListener("beforeinput", beforeInput);
         textInput.removeEventListener("input", input);
@@ -2052,6 +2122,8 @@ function installInput(
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointercancel", cancel);
+      canvas.removeEventListener("lostpointercapture", cancel);
+      heldPointerButtons.clear();
       canvas.removeEventListener("contextmenu", contextmenu);
     },
   };

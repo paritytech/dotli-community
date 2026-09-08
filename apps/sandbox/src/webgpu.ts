@@ -37,9 +37,33 @@ function dimensions(canvas: HTMLCanvasElement): Dimensions {
   };
 }
 
+export function observeSurfaceDimensions(
+  canvas: HTMLCanvasElement,
+  onChange: () => void,
+): () => void {
+  const observer = new ResizeObserver(onChange);
+  let resolution = window.matchMedia(
+    `(resolution: ${String(window.devicePixelRatio || 1)}dppx)`,
+  );
+  const scaleChanged = (): void => {
+    resolution.removeEventListener("change", scaleChanged);
+    resolution = window.matchMedia(
+      `(resolution: ${String(window.devicePixelRatio || 1)}dppx)`,
+    );
+    resolution.addEventListener("change", scaleChanged);
+    onChange();
+  };
+  resolution.addEventListener("change", scaleChanged);
+  observer.observe(canvas);
+  return () => {
+    observer.disconnect();
+    resolution.removeEventListener("change", scaleChanged);
+  };
+}
+
 export class WebGpuBridge {
   readonly #worker: Worker;
-  readonly #resizeObserver: ResizeObserver;
+  readonly #stopObservingDimensions: () => void;
   readonly capabilities: Promise<Uint8Array>;
   #stopped = false;
   #physicalWidth = 1;
@@ -131,12 +155,11 @@ export class WebGpuBridge {
       },
       [offscreen],
     );
-    this.#resizeObserver = new ResizeObserver(() => {
+    this.#stopObservingDimensions = observeSurfaceDimensions(canvas, () => {
       if (!this.#stopped) {
         worker.postMessage({ type: "resize", dimensions: dimensions(canvas) });
       }
     });
-    this.#resizeObserver.observe(canvas);
   }
 
   #clearCapabilityTimer(): void {
@@ -165,7 +188,7 @@ export class WebGpuBridge {
     }
     this.#stopped = true;
     this.#clearCapabilityTimer();
-    this.#resizeObserver.disconnect();
+    this.#stopObservingDimensions();
     this.#worker.postMessage({ type: "stop" });
     this.#worker.terminate();
   }

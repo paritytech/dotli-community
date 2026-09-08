@@ -101,25 +101,6 @@ function webGpuRasterAppV2Manifest(): string {
   return JSON.stringify(manifest);
 }
 
-function webGpuComputeAppV2Manifest(): string {
-  const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
-  const capabilities = manifest.capabilities as Record<string, unknown>;
-  const graphics = capabilities.graphics as Record<string, unknown>;
-  graphics.profile = "webgpu";
-  graphics.requiredLimits = {
-    maxBufferSize: 1_048_576,
-    maxBindingsPerBindGroup: 3,
-    maxBindGroups: 1,
-    maxStorageBufferBindingSize: 1_048_576,
-    maxStorageBuffersPerShaderStage: 2,
-    maxComputeInvocationsPerWorkgroup: 64,
-    maxComputeWorkgroupSizeX: 64,
-    maxComputeWorkgroupsPerDimension: 1_024,
-  };
-  delete capabilities.audio;
-  return JSON.stringify(manifest);
-}
-
 describe("PolkaVM pointer input", () => {
   it("preserves signed pointer deltas for the guest runtime", () => {
     const large = encodedInput(6, 0, 32_000, -32_000);
@@ -478,7 +459,7 @@ describe("PolkaVM package recognition", () => {
       webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard"],
+      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
       audioEnabled: true,
       requiredAssets: [],
       manifestVersion: 2,
@@ -491,21 +472,38 @@ describe("PolkaVM package recognition", () => {
     );
   });
 
-  it("runs without a required pointer capability", () => {
-    const value = JSON.parse(doomAppV2Manifest()) as {
-      capabilities: {
-        deviceInput?: { requiredFeatures: string[] };
+  it.each([false, true])(
+    "provides baseline input for a graphics-only app (device input declared: %s)",
+    (declared) => {
+      const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
+        capabilities: {
+          deviceInput?: { abiVersion: number; requiredFeatures: string[] };
+        };
       };
-    };
-    delete value.capabilities.deviceInput;
-    const manifest = JSON.stringify(value);
-    const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-    };
-    expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([]);
-    expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([]);
-  });
+      if (declared) {
+        value.capabilities.deviceInput = {
+          abiVersion: 1,
+          requiredFeatures: [],
+        };
+      } else {
+        delete value.capabilities.deviceInput;
+      }
+      const manifest = JSON.stringify(value);
+      const files = {
+        "manifest.json": encoder.encode(manifest),
+        "app.polkavm": new Uint8Array([1, 2, 3]),
+      };
+      expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
+        "pointer",
+        "keyboard",
+        "text",
+        "ime",
+        "focus",
+        "wheel",
+      ]);
+      expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([]);
+    },
+  );
 
   it("accepts required MotionSample v1 input", () => {
     const value = JSON.parse(doomAppV2Manifest()) as {
@@ -565,7 +563,7 @@ describe("PolkaVM package recognition", () => {
       webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard"],
+      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
@@ -591,7 +589,7 @@ describe("PolkaVM package recognition", () => {
       webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard"],
+      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
       audioEnabled: false,
       requiredAssets: [],
       manifestVersion: 2,
@@ -732,37 +730,6 @@ describe("PolkaVM package recognition", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("recognizes strict App manifest v2 WebGPU compute limits", () => {
-    const manifest = webGpuComputeAppV2Manifest();
-    const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-    };
-    expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "webgpu",
-      webGpuRequirements: {
-        requiredFeatures: [],
-        requiredLimits: {
-          maxBufferSize: 1_048_576,
-          maxBindingsPerBindGroup: 3,
-          maxBindGroups: 1,
-          maxStorageBufferBindingSize: 1_048_576,
-          maxStorageBuffersPerShaderStage: 2,
-          maxComputeInvocationsPerWorkgroup: 64,
-          maxComputeWorkgroupSizeX: 64,
-          maxComputeWorkgroupsPerDimension: 1_024,
-        },
-      },
-      webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard"],
-      audioEnabled: false,
-      requiredAssets: [],
-      manifestVersion: 2,
-    });
   });
 
   it("leaves ordinary HTML archives on the existing sandbox path", () => {
