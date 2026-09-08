@@ -47,6 +47,13 @@ const products: readonly ProductSmoke[] = [
     audio: false,
     nonzeroAudio: false,
   },
+  {
+    label: "chinpokomon",
+    profile: "webgpu-raster",
+    keys: [],
+    audio: false,
+    nonzeroAudio: false,
+  },
 ];
 
 const root = process.env.DOTLI_SMOKE_ROOT ?? "westendli.dev";
