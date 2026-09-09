@@ -478,10 +478,18 @@ window.addEventListener("message", (event: MessageEvent) => {
 
 type PolkaVmPlatformCommand =
   | Readonly<{ type: "copy-text"; text: string }>
+  | Readonly<{
+      type: "copy-image";
+      width: number;
+      height: number;
+      rgba: Uint8Array;
+    }>
   | Readonly<{ type: "open-url"; url: string }>;
 
 const POLKAVM_PLATFORM_ACTIVATION_MS = 1_000;
 const MAX_POLKAVM_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_POLKAVM_COPY_IMAGE_PIXELS = 1024 * 1024;
+const MAX_POLKAVM_COPY_IMAGE_DIMENSION = 2048;
 const MAX_POLKAVM_OPEN_URL_BYTES = 8 * 1024;
 const polkavmPlatformEncoder = new TextEncoder();
 let polkavmPlatformActivation: Readonly<{
@@ -507,6 +515,30 @@ function validatedPolkaVmPlatformCommand(
     return { type: "copy-text", text: command.text };
   }
   if (
+    command.type === "copy-image" &&
+    Object.keys(command).every((key) =>
+      ["type", "width", "height", "rgba"].includes(key),
+    ) &&
+    Number.isInteger(command.width) &&
+    Number.isInteger(command.height) &&
+    Number(command.width) > 0 &&
+    Number(command.height) > 0 &&
+    Number(command.width) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
+    Number(command.height) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
+    Number(command.width) * Number(command.height) <=
+      MAX_POLKAVM_COPY_IMAGE_PIXELS &&
+    command.rgba instanceof Uint8Array &&
+    command.rgba.byteLength ===
+      Number(command.width) * Number(command.height) * 4
+  ) {
+    return {
+      type: "copy-image",
+      width: Number(command.width),
+      height: Number(command.height),
+      rgba: command.rgba,
+    };
+  }
+  if (
     command.type === "open-url" &&
     Object.keys(command).every((key) => key === "type" || key === "url") &&
     typeof command.url === "string" &&
@@ -520,6 +552,44 @@ function validatedPolkaVmPlatformCommand(
     };
   }
   return null;
+}
+
+function clipboardImagePng(
+  command: Extract<PolkaVmPlatformCommand, { type: "copy-image" }>,
+): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = command.width;
+  canvas.height = command.height;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    return Promise.reject(new Error("2D canvas is unavailable"));
+  }
+  context.putImageData(
+    new ImageData(
+      new Uint8ClampedArray(command.rgba),
+      command.width,
+      command.height,
+    ),
+    0,
+    0,
+  );
+  const { promise, resolve, reject } = (
+    Promise as PromiseConstructor & {
+      withResolvers<T>(): {
+        promise: Promise<T>;
+        resolve: (value: T | PromiseLike<T>) => void;
+        reject: (reason?: unknown) => void;
+      };
+    }
+  ).withResolvers<Blob>();
+  canvas.toBlob((blob) => {
+    if (blob === null) {
+      reject(new Error("PNG encoding failed"));
+    } else {
+      resolve(blob);
+    }
+  }, "image/png");
+  return promise;
 }
 
 window.addEventListener("message", (event: MessageEvent) => {
@@ -571,6 +641,22 @@ window.addEventListener("message", (event: MessageEvent) => {
     void navigator.clipboard.writeText(command.text).catch((error: unknown) => {
       log.warn("[dot.li] PolkaVM clipboard request was declined:", error);
     });
+    return;
+  }
+  if (command.type === "copy-image") {
+    try {
+      const item = new ClipboardItem({
+        "image/png": clipboardImagePng(command),
+      });
+      void navigator.clipboard.write([item]).catch((error: unknown) => {
+        log.warn(
+          "[dot.li] PolkaVM image clipboard request was declined:",
+          error,
+        );
+      });
+    } catch (error) {
+      log.warn("[dot.li] PolkaVM image clipboard is unavailable:", error);
+    }
     return;
   }
   let destination: URL;

@@ -56,11 +56,12 @@ function physicalInset(
  */
 export function keyboardInsetsForFrame(
   frame: FrameRect,
-  viewport: ViewportMetrics | null,
+  viewport: ViewportMetrics | null | undefined,
   devicePixelRatio: number,
 ): ViewInsets {
   if (
     viewport === null ||
+    viewport === undefined ||
     !Number.isFinite(viewport.scale) ||
     Math.abs(viewport.scale - 1) > UNIT_SCALE_EPSILON
   ) {

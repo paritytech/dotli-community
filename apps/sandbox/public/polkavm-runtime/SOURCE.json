@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "upstreamPackage": "@useragent-kit/polkavm-runtime",
-  "upstreamVersion": "0.1.3",
+  "upstreamPackage": "@parity/polkavm-browser-runtime",
+  "upstreamVersion": "0.3.0",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-  "upstreamRevision": "73b9d318a71092bb8ddc05f280ef3efd17eaf918",
+  "upstreamRevision": "0b19c6a8e618b58dc6c323efe89e19586792de01",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
   "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {

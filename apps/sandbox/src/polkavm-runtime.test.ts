@@ -248,6 +248,29 @@ describe("PolkaVM UI platform output", () => {
     ).toBeNull();
   });
 
+  it("validates bounded image clipboard commands", () => {
+    const rgba = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128]);
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: [{ type: "copy-image", width: 2, height: 1, rgba }],
+      })?.commands,
+    ).toEqual([{ type: "copy-image", width: 2, height: 1, rgba }]);
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: [
+          {
+            type: "copy-image",
+            width: 2,
+            height: 2,
+            rgba,
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
   it("posts only the first sensitive command to the owning host", () => {
     const output = validatedUiPlatformOutput(value);
     expect(output).not.toBeNull();

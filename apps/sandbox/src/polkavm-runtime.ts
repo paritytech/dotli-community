@@ -26,6 +26,8 @@ const MAX_PENDING_HOST_FRAMES = 32;
 const MAX_PENDING_HOST_FRAME_BYTES = 4 * 1024 * 1024;
 const MAX_UI_OUTPUT_COMMANDS = 64;
 const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_UI_COPY_IMAGE_PIXELS = 1024 * 1024;
+const MAX_UI_COPY_IMAGE_DIMENSION = 2048;
 const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
 const INPUT_SAFE_AREA_INSETS = 16;
@@ -40,7 +42,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-0.1.3-73b9d318a71092bb8ddc05f280ef3efd17eaf918";
+  "parity-polkavm-browser-runtime-0.3.0-0b19c6a8e618b58dc6c323efe89e19586792de01";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -151,6 +153,12 @@ export type UiPlatformRect = readonly [number, number, number, number];
 
 export type UiPlatformCommand =
   | Readonly<{ type: "copy-text"; text: string }>
+  | Readonly<{
+      type: "copy-image";
+      width: number;
+      height: number;
+      rgba: Uint8Array;
+    }>
   | Readonly<{ type: "open-url"; url: string }>;
 
 export interface UiPlatformOutput {
@@ -434,6 +442,30 @@ export function validatedUiPlatformOutput(
         return null;
       }
       commands.push({ type: "copy-text", text: command.text });
+      continue;
+    }
+    if (command?.type === "copy-image") {
+      if (
+        !Number.isInteger(command.width) ||
+        !Number.isInteger(command.height) ||
+        Number(command.width) <= 0 ||
+        Number(command.height) <= 0 ||
+        Number(command.width) > MAX_UI_COPY_IMAGE_DIMENSION ||
+        Number(command.height) > MAX_UI_COPY_IMAGE_DIMENSION ||
+        Number(command.width) * Number(command.height) >
+          MAX_UI_COPY_IMAGE_PIXELS ||
+        !(command.rgba instanceof Uint8Array) ||
+        command.rgba.byteLength !==
+          Number(command.width) * Number(command.height) * 4
+      ) {
+        return null;
+      }
+      commands.push({
+        type: "copy-image",
+        width: Number(command.width),
+        height: Number(command.height),
+        rgba: command.rgba,
+      });
       continue;
     }
     if (command?.type === "open-url") {
@@ -1507,7 +1539,8 @@ function installInput(
     document.body.append(textInput);
   }
   let composing = false;
-  let suppressCommittedInput = false;
+  let lastPreedit: string | null = null;
+  let pendingCompositionCommit: string | null = null;
   // The active guest text context requests focus through UI output. Baseline
   // text support must not open the software keyboard for non-text applications.
   let wantsTextInput = false;
@@ -1522,10 +1555,10 @@ function installInput(
     typeof document.exitPointerLock === "function";
   canvas.dataset.polkavmPointerCaptureArmed = "false";
   canvas.dataset.polkavmPointerCaptured = "false";
-  // The ABI carries one pointer, and a touch gesture that leaves the canvas or
-  // is claimed by the browser must still deliver its release, or the guest keeps
-  // a phantom button down.
+  // Mouse/pen compatibility input remains single-pointer. Touch contacts use
+  // independent ABI records with IDs that stay stable for their full lifetime.
   let activePointer: number | null = null;
+  const activeTouches = new Map<number, { id: number; x: number; y: number }>();
   let motionSequence = 0;
   let motionX = 0;
   let motionY = 0;
@@ -1704,6 +1737,60 @@ function installInput(
         bounds.height,
     ];
   };
+  const allocateTouchId = (): number | null => {
+    for (let id = 0; id <= 0xff; id++) {
+      let used = false;
+      for (const touch of activeTouches.values()) {
+        used ||= touch.id === id;
+      }
+      if (!used) {
+        return id;
+      }
+    }
+    return null;
+  };
+  const touch = (event: PointerEvent, type: 18 | 19 | 20 | 21): void => {
+    const [x, y] = canvasPosition(event);
+    let contact = activeTouches.get(event.pointerId);
+    if (type === 18) {
+      if (contact !== undefined) {
+        return;
+      }
+      const id = allocateTouchId();
+      if (id === null) {
+        return;
+      }
+      contact = { id, x, y };
+      activeTouches.set(event.pointerId, contact);
+      requestDeviceMotionPermission();
+      if (event.isTrusted && parentOrigin !== null) {
+        window.parent.postMessage(
+          { type: "dotli:polkavm-user-activation" },
+          parentOrigin,
+        );
+      }
+      (wantsTextInput && textInput !== null ? textInput : canvas).focus({
+        preventScroll: true,
+      });
+      resumeAudio();
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch {
+        // Capture is optional; cancellation still closes a contact that leaves.
+      }
+    } else if (contact === undefined) {
+      return;
+    } else {
+      contact.x = x;
+      contact.y = y;
+    }
+    event.preventDefault();
+    send(encodedInput(type, contact.id, x, y));
+    if (type === 20 || type === 21) {
+      activeTouches.delete(event.pointerId);
+      releaseCapturedPointer(event.pointerId);
+    }
+  };
   const sendTextRecords = (type: 8 | 9 | 10, text: string): void => {
     for (const record of encodedTextInput(type, text)) {
       send(record);
@@ -1727,6 +1814,16 @@ function installInput(
         send(encodedInput(12, 0));
       }
       composing = false;
+      lastPreedit = null;
+      pendingCompositionCommit = null;
+      if (textInput !== null) {
+        textInput.value = "";
+      }
+      for (const [pointerId, contact] of activeTouches) {
+        send(encodedInput(21, contact.id, contact.x, contact.y));
+        releaseCapturedPointer(pointerId);
+      }
+      activeTouches.clear();
     }
     if (inputFeatureSet.has("focus")) {
       send(encodedInput(13, focused ? 1 : 0));
@@ -1740,38 +1837,58 @@ function installInput(
       !inputFeatureSet.has("text") ||
       composing ||
       event.isComposing ||
-      suppressCommittedInput ||
       event.data === null
     ) {
       return;
     }
+    if (
+      pendingCompositionCommit !== null &&
+      event.data === pendingCompositionCommit &&
+      (event.inputType === "insertText" ||
+        event.inputType === "insertCompositionText")
+    ) {
+      pendingCompositionCommit = null;
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      return;
+    }
+    pendingCompositionCommit = null;
     sendTextRecords(8, event.data);
     if (event.cancelable) {
       event.preventDefault();
     }
   };
   const input = (): void => {
+    pendingCompositionCommit = null;
     if (!composing && textInput !== null) {
       textInput.value = "";
     }
   };
   const compositionStart = (): void => {
+    if (composing) {
+      return;
+    }
     composing = true;
+    lastPreedit = null;
+    pendingCompositionCommit = null;
     if (inputFeatureSet.has("ime")) {
       send(encodedInput(11, 0));
     }
   };
   const compositionUpdate = (event: CompositionEvent): void => {
-    if (inputFeatureSet.has("ime")) {
+    if (composing && inputFeatureSet.has("ime") && event.data !== lastPreedit) {
+      lastPreedit = event.data;
       sendTextRecords(9, event.data);
     }
   };
   const compositionEnd = (event: CompositionEvent): void => {
+    if (!composing) {
+      return;
+    }
     composing = false;
-    suppressCommittedInput = true;
-    queueMicrotask(() => {
-      suppressCommittedInput = false;
-    });
+    lastPreedit = null;
+    pendingCompositionCommit = event.data;
     if (inputFeatureSet.has("ime")) {
       sendTextRecords(10, event.data);
       send(encodedInput(12, 0));
@@ -1862,6 +1979,10 @@ function installInput(
     send(encodedInput(type, button, x, y));
   };
   const move = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 19);
+      return;
+    }
     if (!event.isPrimary) {
       return;
     }
@@ -1891,6 +2012,10 @@ function installInput(
     previousPointer = [event.clientX, event.clientY];
   };
   const down = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 18);
+      return;
+    }
     if (!event.isPrimary) {
       return;
     }
@@ -1947,6 +2072,10 @@ function installInput(
     }
   };
   const up = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 20);
+      return;
+    }
     if (!event.isPrimary) {
       return;
     }
@@ -1959,6 +2088,10 @@ function installInput(
   // on system edge gestures. Neither delivers `pointerup`, so synthesise the
   // release the guest is waiting for.
   const cancel = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 21);
+      return;
+    }
     if (
       activePointer !== event.pointerId ||
       (event.type === "lostpointercapture" &&
@@ -1997,6 +2130,14 @@ function installInput(
       return;
     }
     if (output.ime === null) {
+      if (composing) {
+        composing = false;
+        lastPreedit = null;
+        pendingCompositionCommit = null;
+        if (inputFeatureSet.has("ime")) {
+          send(encodedInput(12, 0));
+        }
+      }
       if (document.activeElement === textInput) {
         canvas.focus({ preventScroll: true });
       }
@@ -2102,6 +2243,7 @@ function installInput(
       canvas.removeEventListener("pointercancel", cancel);
       canvas.removeEventListener("lostpointercapture", cancel);
       heldPointerButtons.clear();
+      activeTouches.clear();
       canvas.removeEventListener("contextmenu", contextmenu);
     },
   };
@@ -2831,7 +2973,7 @@ export async function runPolkaVmApplication(
           .map((command) => command.type)
           .join(",");
         const command = output.commands.at(0);
-        if (command?.type === "copy-text") {
+        if (command?.type === "copy-text" || command?.type === "copy-image") {
           canvas.dataset.polkavmClipboardRequests = String(
             Number(canvas.dataset.polkavmClipboardRequests ?? 0) + 1,
           );
