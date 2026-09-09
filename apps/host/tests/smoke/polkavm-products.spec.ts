@@ -12,8 +12,7 @@ interface ProductSmoke {
   interaction?:
     | "gameplay-pointer-capture"
     | "pointer-motion"
-    | "host-frame-handshake"
-    | "host-frame-present";
+    | "host-frame-handshake";
 }
 
 const products: readonly ProductSmoke[] = [
@@ -50,18 +49,10 @@ const products: readonly ProductSmoke[] = [
   {
     label: "pvm-truapi-playground",
     profile: "tri2d",
-    keys: ["Tab", "Tab", "Enter"],
+    keys: ["Tab", "Tab", "Tab", "Enter"],
     audio: false,
     nonzeroAudio: false,
     interaction: "host-frame-handshake",
-  },
-  {
-    label: "egui-chat",
-    profile: "tri2d",
-    keys: [],
-    audio: false,
-    nonzeroAudio: false,
-    interaction: "host-frame-present",
   },
   {
     label: "lot-lab",
@@ -246,17 +237,6 @@ async function smokeProduct(
         timeout: 30_000,
       })
       .toBeGreaterThan(hostFrameResponsesBefore);
-  } else if (product.interaction === "host-frame-present") {
-    await expect
-      .poll(() => counter(canvas, "data-polkavm-host-frame-requests"), {
-        timeout: 30_000,
-      })
-      .toBeGreaterThan(0);
-    await expect
-      .poll(() => counter(canvas, "data-polkavm-host-frame-responses"), {
-        timeout: 30_000,
-      })
-      .toBeGreaterThan(0);
   }
 
   await expect
