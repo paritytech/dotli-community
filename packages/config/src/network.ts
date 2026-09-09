@@ -586,7 +586,7 @@ export type ChainRole = (typeof CHAIN_ROLES)[number];
 /** What the visitor is told each chain is for. */
 export const CHAIN_ROLE_LABELS: Record<ChainRole, string> = {
   relay: "Relay",
-  assethub: "General",
+  assethub: "Hub",
   bulletin: "Storage",
   people: "Identity",
 };

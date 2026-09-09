@@ -59,7 +59,7 @@ describe("Block arrival colouring works", () => {
   });
 
   it("As a user on a 2s chain, the same gap is judged more harshly than on a 6s chain", () => {
-    // Given the measured rates, Storage at 6s and General at 2s. Six seconds is
+    // Given the measured rates, Storage at 6s and Hub at 2s. Six seconds is
     // exactly on time for one and exactly the far edge of late for the other,
     // which is the whole reason Bulletin cannot share a threshold with AssetHub.
     const gap = 6000;
@@ -92,7 +92,7 @@ describe("The network monitor tracks blocks", () => {
 
     // Then
     const labels = getNetworkStatus().map((c) => c.label);
-    expect(labels).toEqual(["Relay", "General", "Storage", "Identity"]);
+    expect(labels).toEqual(["Relay", "Hub", "Storage", "Identity"]);
   });
 
   it("As a user watching a chain, the first block anchors and later ones get bars", () => {
