@@ -1,23 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Origin-scoped IndexedDB storage for truapi-provider's warm-start blobs.
+// Origin-scoped IndexedDB storage for smoldot's finalized-database blobs.
 //
-// The crate keeps nothing of its own, so without a store every chain syncs
+// The crate keeps nothing of its own, so without storage every chain syncs
 // from its chain-spec checkpoint on every run. It calls `load` and `save`
 // here, keyed by `0x`-prefixed genesis hash, and resumes a chain from the
 // stored finalized state instead.
 
 import { log } from "@dotli/shared/log";
 
-const DB_NAME = "dotli-warm-store";
+const DB_NAME = "dotli-smoldot-db";
 const STORE = "chain-databases";
 // Which chains actually resumed from storage, by genesis hash, with the time
 // of the most recent resume. The provider runs in a SharedWorker in the
 // default backend, where its console and globals are unreachable, so this is
 // the only place warm start can be observed from outside.
 const LOADS_STORE = "loads";
-const DB_VERSION = 1;
+// The pre-provider implementation kept blobs in `chain-db` under this same
+// database. Version 2 drops it, so an upgrading browser reclaims the space
+// instead of carrying megabytes nothing reads.
+const LEGACY_STORE = "chain-db";
+const DB_VERSION = 2;
 // Real warp-sync blobs are hundreds of KB. Anything smaller is truncated or
 // garbage, and the light client may hang on it rather than discard it. The
 // floor is enforced on both save and load so we never persist a blob the
@@ -27,14 +31,14 @@ const MAX_VALID_BYTES = 8_000_000;
 const IDB_TIMEOUT_MS = 3_000;
 
 /**
- * Warm-start blob storage, in the shape `setStorage` expects.
+ * Database-blob storage, in the shape `setStorage` expects.
  *
  * `load` resolves to the stored blob or `null` when nothing is stored yet. It
  * rejects rather than resolving `null` when the store cannot answer, because
  * an empty read is read as "nothing stored" and would let a later snapshot
  * overwrite good state.
  */
-export interface WarmStore {
+export interface SmoldotDb {
   load(genesisHash: string): Promise<string | null>;
   save(genesisHash: string, blob: string): Promise<void>;
 }
@@ -48,6 +52,9 @@ function openDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(name)) {
           db.createObjectStore(name);
         }
+      }
+      if (db.objectStoreNames.contains(LEGACY_STORE)) {
+        db.deleteObjectStore(LEGACY_STORE);
       }
     };
     req.onsuccess = () => {
@@ -80,7 +87,7 @@ async function read(genesisHash: string): Promise<string | null> {
         resolve(req.result);
       };
       req.onerror = () => {
-        reject(req.error ?? new Error("warm-store read failed"));
+        reject(req.error ?? new Error("smoldot-db read failed"));
       };
     });
     if (typeof raw !== "string") {
@@ -88,7 +95,7 @@ async function read(genesisHash: string): Promise<string | null> {
     }
     if (raw.length < MIN_VALID_BYTES) {
       log.warn(
-        `[dot.li warm-store] Discarding undersized blob for ${genesisHash} (${String(raw.length)} bytes)`,
+        `[dot.li smoldot-db] Discarding undersized blob for ${genesisHash} (${String(raw.length)} bytes)`,
       );
       return null;
     }
@@ -111,7 +118,7 @@ async function recordLoad(genesisHash: string): Promise<void> {
           resolve();
         };
         tx.onerror = () => {
-          reject(tx.error ?? new Error("warm-store load marker failed"));
+          reject(tx.error ?? new Error("smoldot-db load marker failed"));
         };
       });
     } finally {
@@ -119,7 +126,7 @@ async function recordLoad(genesisHash: string): Promise<void> {
     }
   } catch (error) {
     log.debug(
-      `[dot.li warm-store] load marker failed for ${genesisHash}:`,
+      `[dot.li smoldot-db] load marker failed for ${genesisHash}:`,
       error,
     );
   }
@@ -135,7 +142,7 @@ async function write(genesisHash: string, blob: string): Promise<void> {
         resolve();
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("warm-store write failed"));
+        reject(tx.error ?? new Error("smoldot-db write failed"));
       };
     });
   } finally {
@@ -144,13 +151,13 @@ async function write(genesisHash: string, blob: string): Promise<void> {
 }
 
 /** Returns `null` where IndexedDB is unavailable, so warm start stays off. */
-export function createWarmStore(): WarmStore | null {
+export function createSmoldotDb(): SmoldotDb | null {
   if (typeof indexedDB === "undefined") {
     return null;
   }
   return {
     load: async (genesisHash) => {
-      const blob = await withTimeout(read(genesisHash), "warm-store load");
+      const blob = await withTimeout(read(genesisHash), "smoldot-db load");
       if (blob !== null) {
         void recordLoad(genesisHash);
       }
@@ -159,11 +166,11 @@ export function createWarmStore(): WarmStore | null {
     save: async (genesisHash, blob) => {
       if (blob.length < MIN_VALID_BYTES || blob.length > MAX_VALID_BYTES) {
         log.debug(
-          `[dot.li warm-store] Skipping save for ${genesisHash} (${String(blob.length)} bytes)`,
+          `[dot.li smoldot-db] Skipping save for ${genesisHash} (${String(blob.length)} bytes)`,
         );
         return;
       }
-      await withTimeout(write(genesisHash, blob), "warm-store save");
+      await withTimeout(write(genesisHash, blob), "smoldot-db save");
     },
   };
 }

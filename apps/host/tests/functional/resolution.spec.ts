@@ -24,7 +24,7 @@ const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 /** A second product, so session 2 cannot be answered from the content cache. */
 const WARM_DOMAIN = process.env.WARM_DOMAIN ?? "browse";
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
-/** The provider's warm-start store, on the protocol iframe's origin. */
+/** The provider's smoldot database store, on the protocol iframe's origin. */
 const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;
 /** Long enough for the provider to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
@@ -52,7 +52,7 @@ test.describe("Resolution across chain backends", () => {
   }
 });
 
-interface WarmStoreState {
+interface SmoldotDbState {
   /** Genesis hash of every chain with a stored database blob. */
   stored: string[];
   /** Genesis hash of every chain the provider resumed from storage. */
@@ -60,13 +60,13 @@ interface WarmStoreState {
 }
 
 /**
- * Read the provider's warm-start store from the protocol iframe.
+ * Read the provider's smoldot database store from the protocol iframe.
  *
  * The store lives on the protocol origin rather than the product's, and in
  * the default backend the provider writes it from a SharedWorker, so this is
  * the only vantage point the test has on warm start.
  */
-async function readWarmStore(page: Page): Promise<WarmStoreState> {
+async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
   const frame = page.frames().find((f) => f.url().startsWith(PROTOCOL_ORIGIN));
   if (frame === undefined) {
     throw new Error(`no protocol frame at ${PROTOCOL_ORIGIN}`);
@@ -91,12 +91,12 @@ async function readWarmStore(page: Page): Promise<WarmStoreState> {
       });
 
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open("dotli-warm-store");
+      const req = indexedDB.open("dotli-smoldot-db");
       req.onsuccess = () => {
         resolve(req.result);
       };
       req.onerror = () => {
-        reject(req.error ?? new Error("open warm store failed"));
+        reject(req.error ?? new Error("open smoldot-db failed"));
       };
     });
     try {
@@ -150,7 +150,7 @@ test.describe("Warm start across a browser restart", () => {
         "warm start, session 1",
         async (page) => {
           await page.waitForTimeout(SNAPSHOT_WINDOW_MS);
-          return readWarmStore(page);
+          return readSmoldotDb(page);
         },
       );
       expect(primed.stored, "session 1 stored no database blobs").not.toEqual(
@@ -163,7 +163,7 @@ test.describe("Warm start across a browser restart", () => {
         profile,
         WARM_BASE_URL,
         "warm start, session 2",
-        readWarmStore,
+        readSmoldotDb,
       );
 
       // Then

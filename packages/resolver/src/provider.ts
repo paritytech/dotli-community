@@ -21,7 +21,7 @@ import init, {
   type Connection,
 } from "@parity/truapi-provider";
 import wasmUrl from "@parity/truapi-provider/truapi_provider_bg.wasm?url";
-import { createWarmStore } from "./warm-store";
+import { createSmoldotDb } from "./smoldot-db";
 
 // One provider per host process: every connection shares the single embedded
 // light client.
@@ -72,7 +72,7 @@ function getHandle(): Promise<ChainProviderHandle> {
       }
     ).__truapiProvider = { setLogLevel };
     const builder = new ChainProviderBuilder();
-    const store = createWarmStore();
+    const store = createSmoldotDb();
     if (store !== null) {
       builder.setStorage(store);
     }
