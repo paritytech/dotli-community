@@ -14,6 +14,7 @@ import {
   stopNetworkWatch,
   subscribeNetwork,
   type BlockSource,
+  type ChainStatus,
 } from "@dotli/ui/network-monitor";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
@@ -1279,10 +1280,11 @@ function renderChainsPopover(parent: HTMLElement): void {
     paint();
   }
 
-  // A labelled strip per chain rather than a table. The peer count is gone: a
-  // raw number told the visitor nothing they could act on, where the bars show
-  // whether blocks are actually arriving.
+  // A labelled strip per chain rather than a table. The bars answer whether
+  // blocks are arriving; the peer count beside the name answers who they are
+  // arriving from, which is the question a stalled strip raises next.
   const barCells = new Map<ChainRole, HTMLElement>();
+  const peerCells = new Map<ChainRole, HTMLElement>();
   const pendingCells = new Map<
     ChainRole,
     { ghost: HTMLElement; text: HTMLElement }
@@ -1292,16 +1294,42 @@ function renderChainsPopover(parent: HTMLElement): void {
     group.className = "chains-group";
     const name = document.createElement("p");
     name.className = "chains-group-label";
-    name.textContent = chain.label;
+    const labelText = document.createElement("span");
+    labelText.textContent = chain.label;
+    const peers = document.createElement("span");
+    peers.className = "chains-group-peers";
+    name.append(labelText, peers);
     const bars = document.createElement("div");
     bars.className = "chains-bars-cell";
     group.append(name, bars);
     parent.appendChild(group);
     barCells.set(chain.role, bars);
+    peerCells.set(chain.role, peers);
   }
+
+  // Blank rather than "0 peers" until a sample lands: before the first reply
+  // the shell does not know the count, and zero is a different claim.
+  const renderPeers = (chain: ChainStatus): void => {
+    const cell = peerCells.get(chain.role);
+    if (cell === undefined) {
+      return;
+    }
+    if (trusted || !chain.reachable || chain.peers === null) {
+      cell.textContent = "";
+      cell.removeAttribute("aria-label");
+      return;
+    }
+    cell.textContent =
+      chain.peers === 1 ? "1 peer" : `${String(chain.peers)} peers`;
+    cell.setAttribute(
+      "aria-label",
+      `${chain.label}: ${String(chain.peers)} ${chain.peers === 1 ? "peer" : "peers"} connected`,
+    );
+  };
 
   const renderBars = (): void => {
     for (const chain of getNetworkStatus()) {
+      renderPeers(chain);
       const cell = barCells.get(chain.role);
       if (cell === undefined) {
         continue;

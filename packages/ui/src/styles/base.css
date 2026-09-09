@@ -446,11 +446,26 @@ body {
   padding: 8px 14px 2px;
 }
 .chains-group-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 11px;
   font-weight: 500;
   /* 7.85:1 */
   color: #a3a3a3;
   margin-bottom: 5px;
+}
+/* Secondary to the chain's name: the count is context for the bars below, not
+   a heading of its own. Tabular figures so a changing count cannot reflow the
+   row it sits on. */
+.chains-group-peers {
+  font-size: 10px;
+  font-weight: 400;
+  /* 5.74:1 */
+  color: #8a8a8a;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .chains-bars-cell {
   text-align: left;

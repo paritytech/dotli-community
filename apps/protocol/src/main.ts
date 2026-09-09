@@ -704,7 +704,9 @@ async function initDirectMode(): Promise<void> {
     // after the content phase begins, and takes roughly another second and
     // a half to find a peer, which used to be silent.
     milestones: ["relay", "asset-hub", "bulletin"],
-    peerCounts: ["relay", "asset-hub", "bulletin"],
+    // People is not on the loading path, but the network panel lists it, so
+    // it is sampled for peers without asking for milestones.
+    peerCounts: ["relay", "asset-hub", "bulletin", "people"],
   });
   const { onChainSync } = resolve;
 

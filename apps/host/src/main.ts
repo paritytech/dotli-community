@@ -41,6 +41,8 @@ import {
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
+import { chainRoleForKey } from "@dotli/ui/chain-roles";
+import { recordPeerCount } from "@dotli/ui/network-monitor";
 import {
   describeProgressStall,
   describeStall,
@@ -1346,6 +1348,9 @@ async function main(): Promise<void> {
           if (event.peers === undefined) {
             return;
           }
+          // The panel lists every chain of the network, including the ones the
+          // loading screen has no stall wording for.
+          recordPeerCount(chainRoleForKey(event.chain), event.peers);
           if (isCriticalChain(event.chain)) {
             livePeers.set(event.chain, event.peers);
           }

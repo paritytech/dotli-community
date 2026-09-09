@@ -176,8 +176,15 @@ export function enableSyncReporting(config: SyncReportingConfig): void {
 const FOLLOW_ID_PREFIX = "__dotli_lifecycle_follow__:";
 const HEALTH_ID_PREFIX = "__dotli_health__:";
 
+// Bootstrap is the impatient phase: the loading screen is on screen and a
+// second-old peer count is already stale. Once the chain is up the count only
+// feeds the network panel, which nobody watches tick by tick, so the poll
+// drops to a rate that keeps the number honest without holding the chain busy.
 const HEALTH_POLL_INTERVAL_MS = 1_000;
+const HEALTH_POLL_SETTLED_INTERVAL_MS = 15_000;
 const HEALTH_POLL_TIMEOUT_MS = 2_000;
+// Caps the bootstrap burst only. After `bootstrapComplete` the slow poll runs
+// for as long as the chain does, and ends with the connection.
 const HEALTH_POLL_MAX = 120;
 
 /** The fields of a JSON-RPC frame the tap itself looks at. */
@@ -255,6 +262,9 @@ export function attachChainSync(
 
   let polls = 0;
   let healthTimer: ReturnType<typeof setTimeout> | null = null;
+  // Flips on `bootstrapComplete`. The bootstrap cap stops applying from then
+  // on, because the slow poll is meant to run for the life of the chain.
+  let settled = false;
 
   const stopHealth = (): void => {
     if (healthTimer !== null) {
@@ -271,10 +281,10 @@ export function attachChainSync(
 
   // Polling is sequential by design. The next poll goes out one interval
   // after the previous response arrives, so a busy chain is never flooded,
-  // and a 2s timeout resends when a response never surfaces. Stops on
-  // `bootstrapComplete`, chain teardown, a dead chain, or a hard poll cap.
+  // and a 2s timeout resends when a response never surfaces. Stops on chain
+  // teardown, a dead chain, or the bootstrap cap before the chain settles.
   function sendHealth(): void {
-    if (stopped || polls >= HEALTH_POLL_MAX) {
+    if (stopped || (!settled && polls >= HEALTH_POLL_MAX)) {
       stopHealth();
       return;
     }
@@ -314,8 +324,12 @@ export function attachChainSync(
       return;
     }
     if (kind === "bootstrapComplete") {
-      // The chain is usable, so peer-count polling has served its purpose.
-      stopHealth();
+      // The loading screen is done with this chain, but the network panel
+      // still shows its peers, so the poll slows rather than stopping.
+      settled = true;
+      if (healthTimer !== null) {
+        scheduleHealth(HEALTH_POLL_SETTLED_INTERVAL_MS);
+      }
     }
     const reason =
       kind === "stalled" ? milestone?.reason : milestone?.previously;
@@ -336,7 +350,9 @@ export function attachChainSync(
   const handleHealthResponse = (result: unknown): void => {
     healthResponseSeen = true;
     if (!stopped && healthTimer !== null) {
-      scheduleHealth(HEALTH_POLL_INTERVAL_MS);
+      scheduleHealth(
+        settled ? HEALTH_POLL_SETTLED_INTERVAL_MS : HEALTH_POLL_INTERVAL_MS,
+      );
     }
     const health = result as { peers?: unknown; isSyncing?: unknown } | null;
     if (

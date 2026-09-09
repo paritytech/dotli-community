@@ -271,7 +271,7 @@ describe("Light client sync reporting works", () => {
     }
   });
 
-  it("As a user whose chain finished syncing, nothing keeps asking for peers", async () => {
+  it("As a user whose chain finished syncing, it stops being asked for peers every second", async () => {
     // Given
     vi.useFakeTimers();
     try {
@@ -284,10 +284,32 @@ describe("Light client sync reporting works", () => {
       // When
       pipe.deliver(milestone("sub-1", "bootstrapComplete"));
       const asked = pipe.healthRequests().length;
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(10_000);
 
       // Then
       expect(pipe.healthRequests().length).toBe(asked);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("As a user with the network panel open, the peer count keeps refreshing long after the chain is up", async () => {
+    // Given
+    vi.useFakeTimers();
+    try {
+      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+      const pipe = requirePipe("relay");
+      await vi.advanceTimersByTimeAsync(0);
+      pipe.deliver(FOLLOW_REPLY);
+      pipe.deliver(peerReport(1, 3));
+      pipe.deliver(milestone("sub-1", "bootstrapComplete"));
+      const asked = pipe.healthRequests().length;
+
+      // When
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      // Then
+      expect(pipe.healthRequests().length).toBe(asked + 1);
     } finally {
       vi.useRealTimers();
     }

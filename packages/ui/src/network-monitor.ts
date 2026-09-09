@@ -43,6 +43,12 @@ export interface ChainStatus {
   readonly blockTimeMs: number;
   /** False when the active network offers no endpoint for this chain. */
   readonly reachable: boolean;
+  /**
+   * Peers the light client currently holds for this chain, or null where the
+   * backend never reports one (a trusted provider, or a chain the shell did
+   * not opt into sampling).
+   */
+  readonly peers: number | null;
 }
 
 /** Bars kept per chain, about four minutes of relay at 6s. */
@@ -89,6 +95,10 @@ export interface BlockSource {
 
 let source: BlockSource | null = null;
 let chains = new Map<ChainRole, ChainState>();
+// Held apart from `chains` because peer samples arrive on the protocol's sync
+// stream whether or not the panel is open, and outlive a watch that was torn
+// down after the idle grace.
+let peerCounts = new Map<ChainRole, number>();
 let listeners = new Set<() => void>();
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let watching = false;
@@ -147,6 +157,21 @@ function detachAll(): void {
     state.unsubscribe?.();
     state.unsubscribe = null;
   }
+}
+
+/**
+ * Record what the light client reports about one chain's peers.
+ *
+ * Fed from the protocol's sync stream rather than polled here, so it costs the
+ * panel nothing. Unchanged counts are dropped: a steady connection reports the
+ * same number every second and would repaint for nothing.
+ */
+export function recordPeerCount(role: ChainRole, peers: number): void {
+  if (peerCounts.get(role) === peers) {
+    return;
+  }
+  peerCounts.set(role, peers);
+  notify();
 }
 
 /** Provide the transport. Call once, before the first watch. */
@@ -237,6 +262,7 @@ export function getNetworkStatus(): ChainStatus[] {
     reachable:
       state.role.hasEndpoint &&
       (source?.isReachable(state.role.genesis) ?? false),
+    peers: peerCounts.get(state.role.role) ?? null,
   }));
 }
 
@@ -244,6 +270,7 @@ export function getNetworkStatus(): ChainStatus[] {
 export function resetNetworkMonitor(): void {
   endNetworkWatch();
   chains = new Map();
+  peerCounts = new Map();
   listeners = new Set();
   source = null;
 }

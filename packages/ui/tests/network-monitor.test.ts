@@ -7,6 +7,7 @@ import {
   setBlockSource,
   startNetworkWatch,
   stopNetworkWatch,
+  recordPeerCount,
   subscribeNetwork,
   type BlockSource,
 } from "@dotli/ui/network-monitor";
@@ -246,6 +247,88 @@ describe("The network monitor tracks blocks", () => {
 
     // Then
     expect(liveCount()).toBe(0);
+  });
+});
+
+describe("The network monitor tracks peers", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetNetworkMonitor();
+  });
+
+  afterEach(() => {
+    resetNetworkMonitor();
+    vi.useRealTimers();
+  });
+
+  it("As a user opening the panel before any sample, no chain claims a peer count", () => {
+    // Given
+    const { source } = fakeSource();
+    setBlockSource(source);
+
+    // When
+    startNetworkWatch();
+
+    // Then
+    expect(getNetworkStatus().map((c) => c.peers)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("As a user watching the panel, each chain reports the peers it actually holds", () => {
+    // Given
+    const { source } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+
+    // When
+    recordPeerCount("relay", 7);
+    recordPeerCount("assethub", 3);
+
+    // Then
+    const byRole = new Map(getNetworkStatus().map((c) => [c.role, c.peers]));
+    expect(byRole.get("relay")).toBe(7);
+    expect(byRole.get("assethub")).toBe(3);
+    expect(byRole.get("people")).toBeNull();
+  });
+
+  it("As a renderer, I am woken when a peer count changes but not when it repeats", () => {
+    // Given
+    const { source } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    let woken = 0;
+    subscribeNetwork(() => {
+      woken += 1;
+    });
+
+    // When
+    recordPeerCount("relay", 4);
+    recordPeerCount("relay", 4);
+    recordPeerCount("relay", 5);
+
+    // Then
+    expect(woken).toBe(2);
+  });
+
+  it("As a user who closed the panel and reopened it, the peer count survived", () => {
+    // Given
+    const { source } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    recordPeerCount("relay", 6);
+
+    // When
+    stopNetworkWatch();
+    vi.advanceTimersByTime(GRACE_MS + 1_000);
+    startNetworkWatch();
+
+    // Then
+    const relay = getNetworkStatus().find((c) => c.role === "relay");
+    expect(relay?.peers).toBe(6);
   });
 });
 
