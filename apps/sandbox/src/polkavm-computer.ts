@@ -443,7 +443,8 @@ export async function runComputerApplication(
     TCP_RELAY_URL,
   );
   const ancestorOrigins = window.location.ancestorOrigins as
-    DOMStringList | undefined;
+    | DOMStringList
+    | undefined;
   const hostOrigin = expectedComputerHostOrigin(
     window.location.hostname,
     window.location.protocol,
