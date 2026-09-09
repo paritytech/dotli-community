@@ -7,6 +7,7 @@ interface ProductSmoke {
   label: string;
   profile: "framebuffer" | "tri2d" | "webgpu-raster";
   keys: readonly string[];
+  clickPosition?: { readonly x: number; readonly y: number };
   audio: boolean;
   nonzeroAudio: boolean;
   interaction?:
@@ -49,10 +50,11 @@ const products: readonly ProductSmoke[] = [
   {
     label: "pvm-truapi-playground",
     profile: "tri2d",
-    keys: ["Tab", "Tab", "Tab", "Enter"],
+    keys: [],
     audio: false,
     nonzeroAudio: false,
     interaction: "host-frame-handshake",
+    clickPosition: { x: 500, y: 250 },
   },
   {
     label: "lot-lab",
@@ -184,7 +186,9 @@ async function smokeProduct(
     "data-polkavm-host-frame-responses",
   );
 
-  await canvas.click({ position: { x: 160, y: 100 } });
+  await canvas.click({
+    position: product.clickPosition ?? { x: 160, y: 100 },
+  });
   for (const key of product.keys) await page.keyboard.press(key);
 
   if (product.interaction === "gameplay-pointer-capture") {

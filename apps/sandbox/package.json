@@ -26,6 +26,7 @@
     "@dotli/config": "workspace:*",
     "@dotli/metrics": "workspace:*",
     "@dotli/shared": "workspace:*",
+    "@dotli/truapi-debug": "workspace:*",
     "@dotli/storage": "workspace:*",
     "@dotli/content": "workspace:*",
     "@parity/truapi": "0.13.1",

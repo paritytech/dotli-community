@@ -302,6 +302,73 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
     .toBeGreaterThan(0);
 });
 
+test("shows PolkaVM diagnostics inside the docked debug panel", async ({
+  page,
+}) => {
+  const fixture = await polkavmCar();
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+  await page.goto("http://polkavm-fixture.localhost:5173/?debug=true", {
+    waitUntil: "domcontentloaded",
+  });
+  await installTruapiPortResponder(page);
+
+  const panel = page.locator("#truapi-debug-panel");
+  await expect(panel).toBeVisible();
+  await page.evaluate(
+    ({ cid, schemaVersion }) => {
+      const app = document.querySelector("#app");
+      if (app === null) {
+        throw new Error("host app container is missing");
+      }
+      const iframe = document.createElement("iframe");
+      iframe.id = "polkavm-debug-product";
+      iframe.style.cssText = "width:100%;height:100%;border:0";
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      app.replaceChildren(iframe);
+      window.dispatchEvent(
+        new CustomEvent("dotli:product-loaded", {
+          detail: { label: "polkavm-fixture", productId: "polkavm-fixture" },
+        }),
+      );
+    },
+    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+  );
+
+  const product = page.frameLocator("#polkavm-debug-product");
+  const canvas = product.locator("#dotli-polkavm-canvas");
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
+    timeout: 30_000,
+  });
+  await expect(product.locator("#dotli-polkavm-metrics")).toHaveCount(0);
+
+  const runtimeBadge = panel.locator(".td-runtime-badge");
+  await expect(runtimeBadge).toContainText("PVM JIT · FF");
+  await expect(runtimeBadge).toHaveAttribute(
+    "title",
+    /PolkaVM \/ JIT · first frame/,
+  );
+  await runtimeBadge.click();
+
+  const runtime = panel.locator(".td-runtime");
+  await expect(runtime).toBeVisible();
+  await expect(runtime.locator('[data-runtime-metric="backend"]')).toHaveText(
+    "JIT",
+  );
+  await expect(
+    runtime.locator('[data-runtime-metric="first-frame"]'),
+  ).not.toHaveText("pending");
+
+  await panel.locator(".td-dock").click();
+  await expect(panel).toHaveClass(/docked-right/);
+  await expect(runtime).toBeVisible();
+});
+
 const doomV2CarPath = process.env.DOTLI_DOOM_V2_CAR;
 const doomV2ManifestPath = process.env.DOTLI_DOOM_V2_MANIFEST;
 const expectedV2Backend =

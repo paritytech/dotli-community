@@ -111,7 +111,15 @@ import {
   parseSettingsFromSearch,
   writeSettingsToSearch,
 } from "@dotli/config/url-settings";
-import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
+import type {
+  DotliDebugEvent,
+  PolkaVmDebugSnapshot,
+} from "@dotli/truapi-debug/dotli-debug-types";
+import {
+  emitDotliDebugEvent,
+  emitPolkaVmDebugSnapshot,
+  enableDotliDebugBuffering,
+} from "@dotli/truapi-debug/dotli-debug-bus";
 import {
   describeError,
   FAILOVER_BTN_LABELS,
@@ -743,30 +751,85 @@ function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
   });
 }
 
+const POLKAVM_DEBUG_NUMBER_FIELDS = [
+  "translationMs",
+  "compilationMs",
+  "startupMs",
+  "firstFrameMs",
+  "translatedWasmBytes",
+  "frames",
+  "fps",
+  "updates",
+  "updateP50Ms",
+  "updateP95Ms",
+  "updateMaxMs",
+  "audioChunks",
+  "audioSamples",
+] as const satisfies readonly (keyof PolkaVmDebugSnapshot)[];
+
+function isPolkaVmDebugSnapshot(value: unknown): value is PolkaVmDebugSnapshot {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const snapshot = value as Partial<
+    Record<keyof PolkaVmDebugSnapshot, unknown>
+  >;
+  if (
+    snapshot.backend !== "compiler" &&
+    snapshot.backend !== "interpreter" &&
+    snapshot.backend !== "starting"
+  ) {
+    return false;
+  }
+  if (
+    typeof snapshot.cacheHit !== "boolean" ||
+    typeof snapshot.startupStage !== "string" ||
+    snapshot.startupStage.length > 128
+  ) {
+    return false;
+  }
+  for (const field of POLKAVM_DEBUG_NUMBER_FIELDS) {
+    const metric = snapshot[field];
+    if (typeof metric !== "number" || !Number.isFinite(metric) || metric < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
- * Accept `{ type: "dotli:debug-event", event: DotliDebugEvent }` from
- * any child iframe (specifically the sandbox at `<label>.app.dot.li`) and
- * push the payload into the local debug bus.
- *
- * The sandbox lives on a different origin and can't touch the host's
- * `emitDotliDebugEvent` directly, so it posts messages instead. We
- * validate the envelope (must be an object with a `sandbox` layer) and
- * ignore anything else. This listener sees the full `window.message`
- * stream, so non-debug TrUAPI and loading-status messages must pass
- * through cleanly.
+ * Accept debug messages from the active product iframe. Lifecycle events enter
+ * the event timeline; PolkaVM metrics update the panel's live Runtime view.
+ * Runtime snapshots are source-checked and structurally validated because the
+ * product iframe is an untrusted, cross-origin message sender.
  */
-function listenForSandboxDebugEvents(emit: EmitFn): void {
+function listenForSandboxDebugMessages(
+  emitEvent: EmitFn,
+  emitPolkaVmSnapshot: (snapshot: PolkaVmDebugSnapshot) => void,
+): void {
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data as
-      | { type?: unknown; event?: unknown }
+      | { type?: unknown; event?: unknown; metrics?: unknown }
       | null
       | undefined;
-    if (
-      data === null ||
-      data === undefined ||
-      typeof data !== "object" ||
-      data.type !== "dotli:debug-event"
-    ) {
+    if (data === null || data === undefined || typeof data !== "object") {
+      return;
+    }
+
+    if (data.type === "dotli:polkavm-metrics") {
+      const productFrame =
+        document.querySelector<HTMLIFrameElement>("#app iframe");
+      if (
+        event.source !== productFrame?.contentWindow ||
+        !isPolkaVmDebugSnapshot(data.metrics)
+      ) {
+        return;
+      }
+      emitPolkaVmSnapshot(data.metrics);
+      return;
+    }
+
+    if (data.type !== "dotli:debug-event") {
       return;
     }
     const payload = data.event as
@@ -782,7 +845,7 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
       return;
     }
     try {
-      emit(payload);
+      emitEvent(payload);
       // eslint-disable-next-line no-restricted-syntax -- best-effort forwarder. A malformed event from the sandbox must never break the host.
     } catch {
       /* ignore: a malformed event shouldn't kill the host */
@@ -977,8 +1040,6 @@ async function main(): Promise<void> {
   //
   // `?debug=off` and sessionStorage still let users silence the panel
   // on a per-tab basis after enabling it.
-  const { emitDotliDebugEvent, enableDotliDebugBuffering } =
-    await import("@dotli/truapi-debug/dotli-debug-bus");
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
@@ -1007,11 +1068,13 @@ async function main(): Promise<void> {
   // first.
   if (debugMode.enabled) {
     startMainThreadMonitor(bootFlowId, emitDotliDebugEvent);
-    // Forward sandbox-origin debug events up to the host's debug bus so
-    // the "what is the product iframe doing?" window (SW register,
-    // cache lookup, archive fetch, decrypt, document.write) is visible
-    // in the same System swimlane as the host's own events.
-    listenForSandboxDebugEvents(emitDotliDebugEvent);
+    // Forward sandbox lifecycle and PolkaVM runtime diagnostics into the
+    // docked panel. The active iframe source check keeps unrelated window
+    // messages out of the live runtime view.
+    listenForSandboxDebugMessages(
+      emitDotliDebugEvent,
+      emitPolkaVmDebugSnapshot,
+    );
   }
 
   // Seed settings from URL params before any consumer reads them, so the
