@@ -7,8 +7,8 @@ type PageLike = Page | Frame;
 
 /**
  * Click run-<testId>, click through dot.li's host-side dialogs, and wait for
- * the log entry to resolve. The bot signs automatically once the SignRequest
- * hits the Statement Store.
+ * the log entry to resolve. The signing-host CLI signs automatically once
+ * the SignRequest hits the Statement Store.
  */
 export async function runWebSignedTest(
   hostPage: Page,
@@ -55,8 +55,8 @@ export async function runWebSignedTest(
   await dialogTask;
   if (result === "error") {
     // On failure, dump the visible buttons on the host page. Invaluable for
-    // diagnosing modal selector mismatches when the bot signs but Playwright
-    // can't find the Allow/Sign button to click.
+    // diagnosing modal selector mismatches when the signer signs but
+    // Playwright can't find the Allow/Sign button to click.
     const visibleButtons = await hostPage
       .locator("button:visible")
       .evaluateAll((els) =>

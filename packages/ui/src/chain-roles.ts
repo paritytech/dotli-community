@@ -9,7 +9,7 @@
 // has to know both vocabularies.
 
 import type { ChainRole } from "@dotli/config/network";
-import type { ChainKey } from "@dotli/resolver/smoldot";
+import type { ChainKey } from "@dotli/resolver/chain-sync";
 
 /**
  * Which role each chain the resolver runs belongs to.

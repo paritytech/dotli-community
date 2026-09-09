@@ -7,7 +7,7 @@
 // so every line here says what is happening and, where it can, why. The copy
 // lives beside `errors.ts` because both are the host's user-facing words.
 
-import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
+import type { ChainKey, ChainSyncKind } from "@dotli/resolver/chain-sync";
 
 /**
  * How long a chain may sit in one lifecycle state before it owes an

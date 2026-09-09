@@ -5,6 +5,7 @@ import type {
   CreateTransactionReview,
   IdentityDisclosureReview,
   PreimageSubmitReview,
+  ProductSubtreeReview,
   ResourceAllocationReview,
   SignPayloadReview,
   SignRawReview,
@@ -178,7 +179,8 @@ function confirmationDisplay(
     case "AccountAccess":
       return { fields: createAccountAccessFields(review.value) };
     case "IdentityDisclosure":
-      return { fields: createIdentityDisclosureFields(review.value) };
+    case "ProductSubtree":
+      return { fields: createRequestingProductFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -344,8 +346,8 @@ function createAccountAccessFields(
   ];
 }
 
-function createIdentityDisclosureFields(
-  review: IdentityDisclosureReview,
+function createRequestingProductFields(
+  review: IdentityDisclosureReview | ProductSubtreeReview,
 ): ConfirmationField[] {
   return [{ label: "Requesting product", value: review.productId }];
 }
@@ -400,6 +402,12 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
     case "IdentityDisclosure":
       return {
         title: "Identity Disclosure",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
+    case "ProductSubtree":
+      return {
+        title: "Product Account",
         action: "Allow",
         cancelAction: "Deny",
       };

@@ -119,7 +119,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0x23e730eb1c6fecae09c917439a5038cb6122d0d48980e8b9bbf0ff56f94a2ca6",
+        "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a",
       rpcs: ["wss://paseo-asset-hub-next-rpc.polkadot.io"],
       blockTimeMs: 2000,
     },
@@ -132,7 +132,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     people: {
       genesis:
-        "0x89a63b11fef2c0273fc72c0d864da0793a665dade5db153e0cab995348c5440f",
+        "0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48",
       rpcs: ["wss://paseo-people-next-system-rpc.polkadot.io"],
       blockTimeMs: 2000,
     },
@@ -148,7 +148,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     description: "Product Preview Network",
     relay: {
       genesis:
-        "0x8c27ddf678c2ae9bef0efebfc485a9309f3d735c6d3fbb8d947afc3ace0e80f4",
+        "0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e",
       rpcs: [
         "wss://previewnet.substrate.dev/relay/alice",
         "wss://previewnet.substrate.dev/relay/bob",
@@ -157,20 +157,20 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0x4d11c803cc6921429e3876638977ad006ea1bba8cd3976a0bca2f164e7026210",
+        "0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe",
       rpcs: ["wss://previewnet.substrate.dev/asset-hub"],
       blockTimeMs: 2000,
     },
     bulletin: {
       genesis:
-        "0x2778b1c94c4362e49a54be57d3056bc714f3712e4486625312704ffb74eb973d",
+        "0xea9158d768971553e315b76323cbffda238b6b865f3d3d5e138350b12312173d",
       rpcs: ["wss://previewnet.substrate.dev/bulletin"],
       blockTimeMs: 6000,
       ipfsGateways: ["https://previewnet.substrate.dev"],
     },
     people: {
       genesis:
-        "0x3138c6d4ce58c760047a413c2a930e919b4673a841ab4890de59aac3bd037f3d",
+        "0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218",
       rpcs: ["wss://previewnet.substrate.dev/people"],
       blockTimeMs: 2000,
     },
@@ -178,7 +178,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
       DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
-      TLD: "dot",
+      TLD: "testnet",
     },
   },
 };

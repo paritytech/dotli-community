@@ -19,7 +19,10 @@ describe("theme host callbacks", () => {
     // Then
     expect(first.done).toBe(false);
     expect(first.value.isOk()).toBe(true);
-    expect(first.value._unsafeUnwrap()).toBe("Light");
+    expect(first.value._unsafeUnwrap()).toEqual({
+      name: { tag: "Default" },
+      variant: "Light",
+    });
   });
 
   it("As a dotli integrator, the host emits theme changes until unsubscribed", async () => {
@@ -42,10 +45,16 @@ describe("theme host callbacks", () => {
     // Then
     expect(first.done).toBe(false);
     expect(first.value.isOk()).toBe(true);
-    expect(first.value._unsafeUnwrap()).toBe("Dark");
+    expect(first.value._unsafeUnwrap()).toEqual({
+      name: { tag: "Default" },
+      variant: "Dark",
+    });
     expect(changed.done).toBe(false);
     expect(changed.value.isOk()).toBe(true);
-    expect(changed.value._unsafeUnwrap()).toBe("Light");
+    expect(changed.value._unsafeUnwrap()).toEqual({
+      name: { tag: "Default" },
+      variant: "Light",
+    });
     expect(afterReturn.done).toBe(true);
   });
 });

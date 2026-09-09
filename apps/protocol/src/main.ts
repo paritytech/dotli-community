@@ -675,16 +675,13 @@ async function initDirectMode(): Promise<void> {
   );
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
-  // the smoldot / chain-specs bundle cost (D-1).
-  const [{ createChainProvider, isChainSupported }, resolve, smoldotMod] =
+  // the chain-provider bundle cost (D-1).
+  const [{ createChainProvider, isChainSupported, onProviderFatal }, resolve] =
     await Promise.all([
-      import("@dotli/resolver/chains"),
+      import("@dotli/resolver/provider"),
       import("@dotli/resolver/resolve"),
-      import("@dotli/resolver/smoldot"),
     ]);
   const {
-    getRelayChain,
-    getSmoldot,
     resolveDotName,
     resolveExecutableManifest,
     resolveOwner,
@@ -693,13 +690,14 @@ async function initDirectMode(): Promise<void> {
     setResolverPeopleProvider,
     waitForPeopleFinalized,
   } = resolve;
-  const { terminateSmoldot, onSmoldotFatal, onChainSync } = smoldotMod;
-
   // Sync reporting is only worth its cost when a loading UI can observe it.
   // Direct mode is that case and the SharedWorker never enables it. The
   // host moves the bar on the relay and the Asset Hub, and shows a peer
   // count for the Asset Hub alone.
-  smoldotMod.enableSyncReporting({
+  //
+  // Enabled before the first `createChainProvider` call: a connection that
+  // opens without it carries no side channel.
+  resolve.enableSyncReporting({
     // All three chains the load waits on, in the order it waits on them.
     // The relay warps, the Asset Hub bootstraps on top of it, and Bulletin
     // serves the content over bitswap. Bulletin is not even created until
@@ -708,12 +706,12 @@ async function initDirectMode(): Promise<void> {
     milestones: ["relay", "asset-hub", "bulletin"],
     peerCounts: ["relay", "asset-hub", "bulletin"],
   });
+  const { onChainSync } = resolve;
 
-  // On a smoldot panic, broadcast a fatal envelope to the parent. Direct
-  // mode has no SharedWorker in the loop, so we post straight up to the
-  // host shell.
-  onSmoldotFatal((message) => {
-    log.error("[dot.li protocol] Smoldot panic detected, signaling fatal");
+  // Direct mode has no SharedWorker in the loop, so a dead chain is posted
+  // straight up to the host shell.
+  onProviderFatal((message) => {
+    log.error("[dot.li protocol] Chain death detected, signaling fatal");
     if (window.parent !== window) {
       window.parent.postMessage(
         {
@@ -775,10 +773,8 @@ async function initDirectMode(): Promise<void> {
     isChainSupported,
     onBrokerReady: (broker) => {
       // Route the resolver's Asset Hub reads AND the People warm-keep through
-      // the broker's shared follows (object-wire — see protocol-shared-worker
-      // for the rationale). A separate getSmProvider on either chain would race
-      // the broker's follow on the same smoldot chain and get its events
-      // misrouted (the broker then drops them as "unknown token").
+      // the broker's shared follows so they reuse the broker's single follow per
+      // chain instead of opening their own (see protocol-shared-worker).
       setResolverAssetHubProvider(() =>
         requireBrokerLocalProvider(
           broker,
@@ -794,22 +790,16 @@ async function initDirectMode(): Promise<void> {
         ),
       );
     },
-    onInit: () => {
-      getSmoldot();
-    },
-    onCleanup: () => {
-      terminateSmoldot();
-    },
-    onWarmup: async () => {
-      getSmoldot();
-      await getRelayChain();
+    onWarmup: () => {
       // Warm People in the background so legacy-account auth reads do not race
       // a cold parachain warp sync. Not needed for resolution, so do not await.
+      // The shared worker does the same at its own pre-sync.
       void waitForPeopleFinalized().catch((err: unknown) => {
         log.warn(
           `[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`,
         );
       });
+      return Promise.resolve();
     },
     resolveDotName,
     resolveOwner,
@@ -840,8 +830,6 @@ function initRpcMode(): void {
   const engine = createEngine({
     createChainProvider: createRpcChainProvider,
     isChainSupported: isRpcChainSupported,
-    // No onInit / onCleanup: the WS provider lifecycle is owned by the
-    // broker's `ensureUpstream` / `disconnectAll`.
     // No resolver: gateway-mode resolution doesn't go through this iframe.
   });
 
@@ -1108,15 +1096,11 @@ interface EngineOptions {
   createChainProvider: (genesisHash: string) => JsonRpcProvider | null;
   /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
-  /** Called once at engine creation, e.g. to kick off smoldot pre-sync. */
-  onInit?: () => void;
   /**
    * Called once right after the broker is created. Smoldot modes use this to
    * route the resolver's Asset Hub reads through the broker's shared follow.
    */
   onBrokerReady?: (broker: ChainBrokerManager) => void;
-  /** Called at cleanup time after broker teardown. */
-  onCleanup?: () => void;
   /** Called on `warmup` requests. If omitted, `warmup` resolves immediately. */
   onWarmup?: () => Promise<void>;
   /** Resolver implementations. If omitted, resolution methods reject with a
@@ -1147,7 +1131,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   const originConns = new Map<string, Set<string>>();
   const broker = createChainBrokerManager(options.createChainProvider);
   options.onBrokerReady?.(broker);
-  options.onInit?.();
 
   function assertStr(value: unknown, name: string): asserts value is string {
     if (typeof value !== "string" || value.length === 0) {
@@ -1379,7 +1362,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
     connections.clear();
     originConns.clear();
     broker.disconnectAll();
-    options.onCleanup?.();
   }
 
   return { handleRequest, cleanup };

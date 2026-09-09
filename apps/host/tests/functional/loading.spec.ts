@@ -243,7 +243,7 @@ test("As a user using smoldot in shared worker, when the worker dies silently, I
   );
 });
 
-test("As a user using smoldot directly, when the resolution times out I see the appropriate error and can switch backend", async ({
+test("As a user using smoldot directly, when the sync times out (>45s) I see the appropriate error and can switch backend", async ({
   page,
 }) => {
   // Given
@@ -275,7 +275,7 @@ test("As a user using smoldot directly, when the resolution times out I see the 
   );
 });
 
-test("As a user using smoldot in shared worker, when the resolution times out I see the appropriate error and can switch backend", async ({
+test("As a user using smoldot in shared worker, when the sync times out (>45s) I see the appropriate error and can switch backend", async ({
   page,
 }) => {
   // Given

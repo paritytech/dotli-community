@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainKey, ChainSyncKind } from "@dotli/resolver/smoldot";
+import type { ChainKey, ChainSyncKind } from "@dotli/resolver/chain-sync";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;

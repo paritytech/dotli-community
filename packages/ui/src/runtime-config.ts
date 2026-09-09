@@ -26,7 +26,7 @@ export function createTruapiRuntimeConfig(
   label: string,
   productId: string = labelToProductId(label),
 ): ProductRuntimeConfig {
-  return {
+  const config: ProductRuntimeConfig = {
     productId,
     host: {
       name: "Polkadot Web",
@@ -44,8 +44,12 @@ export function createTruapiRuntimeConfig(
     bulletin: {
       genesisHash: getActiveServicesConfig().bulletin.genesis,
     },
+    assetHub: {
+      genesisHash: getActiveServicesConfig().assethub.genesis,
+    },
     pairing: {
       deeplinkScheme: "polkadotapp",
     },
   };
+  return config;
 }
