@@ -9,6 +9,8 @@
   const STATUS_ECALL = -2;
   const STATUS_TRAP = -3;
   const STATUS_OUT_OF_GAS = -4;
+  const CORE_STATUS_INVALID = -3;
+  const CORE_STATUS_LIMIT = -6;
   const INPUT_EVENT_BYTES = 8;
   const MOTION_SAMPLE_BYTES = 48;
   const MOTION_STATUS_UNAVAILABLE = 0;
@@ -35,6 +37,7 @@
   const MAX_HOSTCALLS_PER_INIT = 1024 * 1024;
   const MAX_HOSTCALLS_PER_UPDATE = 65536;
   const MAX_HOSTCALL_BYTES = 32 * 1024 * 1024;
+  const MAX_CORE_RANDOM_BYTES = 4 * 1024;
   const MAX_LOG_BYTES = 4 * 1024;
   const MAX_SAVE_BYTES = 1024 * 1024;
   const MAX_AUDIO_SAMPLES = 48000 * 2;
@@ -1259,6 +1262,26 @@
           this.#setReg(7, BigInt(status));
           return false;
         }
+        case "polkadot_host_0_1_core_clock_wall":
+          this.#chargeBytes(8);
+          this.#writeU64(this.#u32(a0), BigInt(Date.now()) * 1_000_000n);
+          this.#setReg(7, 0n);
+          return false;
+        case "polkadot_host_0_1_core_random": {
+          const length = this.#u32(a1);
+          if (length === 0) {
+            this.#setReg(7, BigInt(CORE_STATUS_INVALID));
+            return false;
+          }
+          if (length > MAX_CORE_RANDOM_BYTES) {
+            this.#setReg(7, BigInt(CORE_STATUS_LIMIT));
+            return false;
+          }
+          this.#chargeBytes(length);
+          crypto.getRandomValues(this.#range(this.#u32(a0), length, true));
+          this.#setReg(7, 0n);
+          return false;
+        }
         case "host_time_ms": {
           const timeMs = this.timeMs ?? performance.now() - this.clockStartedAt;
           this.#setU64Result(BigInt(Math.max(0, Math.trunc(timeMs))));
@@ -1529,6 +1552,8 @@
         case "host_frame_poll":
         case "host_motion_read":
         case POINTER_CAPTURE_IMPORT:
+        case "polkadot_host_0_1_core_clock_wall":
+        case "polkadot_host_0_1_core_random":
           return this.#handleCooperativeCall(name);
         case "pvm_set_palette": {
           const palette = this.#read(this.#u32(this.#reg(7)), 256 * 3);
@@ -2131,10 +2156,15 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       postMessage({ type: "startup", stage: "first-update-started" });
     }
     const before = performance.now();
+    const wallTimeMs = Date.now();
     try {
       if (translated) {
         translated.update(before - startedAt);
       } else {
+        check(
+          pvm.polkavm_browser_set_wall_time_ms(wallTimeMs),
+          "set PolkaVM browser wall clock",
+        );
         check(
           pvm.polkavm_browser_update(before - startedAt),
           "update PolkaVM browser guest",
@@ -2414,6 +2444,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         "begin PolkaVM browser launch",
       );
       postMessage({ type: "startup", stage: "interpreter-launch-begun" });
+      stage(crypto.getRandomValues(new Uint8Array(32)));
+      check(
+        pvm.polkavm_browser_launch_set_random_seed(),
+        "seed PolkaVM browser CSPRNG",
+      );
       postMessage({ type: "startup", stage: "interpreter-mounting-assets" });
       for (const asset of message.assets) {
         addAsset(asset);
@@ -2453,6 +2488,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         );
         pendingGpuCapabilities = null;
       }
+      check(
+        pvm.polkavm_browser_set_wall_time_ms(Date.now()),
+        "set PolkaVM browser wall clock",
+      );
       postMessage({ type: "startup", stage: "interpreter-initializing" });
       try {
         check(pvm.polkavm_browser_init(), "initialize PolkaVM browser guest");
@@ -2667,7 +2706,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       return;
     }
     stage(bytes);
-    check(pvm.polkavm_browser_send_gpu_event(), "send PolkaVM browser GPU event");
+    check(
+      pvm.polkavm_browser_send_gpu_event(),
+      "send PolkaVM browser GPU event",
+    );
   }
 
   function sendHostFrameResponse(bytes) {
@@ -2773,10 +2815,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     } else if (message?.type === "host-frame-response") {
       try {
         const seq = message.seq;
-        if (
-          seq !== undefined &&
-          (!Number.isSafeInteger(seq) || seq < 0)
-        ) {
+        if (seq !== undefined && (!Number.isSafeInteger(seq) || seq < 0)) {
           throw new Error(
             "invalid PolkaVM browser host frame response sequence",
           );
