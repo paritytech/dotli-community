@@ -254,9 +254,7 @@ async function smokeProduct(
     updates: await counter(canvas, "data-polkavm-updates"),
     audioSamples: await counter(canvas, "data-polkavm-audio-samples"),
     tri2dDraws: await counter(canvas, "data-polkavm-tri2d-draws"),
-    pointerCaptured: await canvas.getAttribute(
-      "data-polkavm-pointer-captured",
-    ),
+    pointerCaptured: await canvas.getAttribute("data-polkavm-pointer-captured"),
     motionSamples: await counter(canvas, "data-polkavm-motion-samples"),
     motionSource: await canvas.getAttribute("data-polkavm-motion-source"),
   };
