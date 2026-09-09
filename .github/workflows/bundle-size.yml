@@ -73,7 +73,7 @@ jobs:
         run: |
           week_end=$(date -u -d 'last monday 00:00' +%Y-%m-%dT%H:%M:%SZ)
           sha=$(git rev-list -1 --first-parent --before="$week_end" origin/main -- \
-                  ':(exclude)docs/bundle-size.md' ':(exclude)docs/bundle-size-history.json')
+                  ':(exclude)docs/bundle-size.md' ':(exclude)docs/assets/bundle-size-history.json')
           if [ -z "$sha" ]; then
             echo "No commit on main before ${week_end}, nothing to record."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -91,7 +91,7 @@ jobs:
         run: |
           if git ls-remote --exit-code --heads origin chore/bundle-size-report; then
             git fetch origin chore/bundle-size-report
-            git checkout FETCH_HEAD -- docs/bundle-size-history.json docs/bundle-size.md
+            git checkout FETCH_HEAD -- docs/assets/bundle-size-history.json docs/bundle-size.md
           fi
 
       - name: Check out the measured commit
@@ -120,7 +120,7 @@ jobs:
           bun "${GITHUB_WORKSPACE}/scripts/bundle-size-report.ts" --record \
             --sha ${{ steps.week.outputs.sha }} \
             --week ${{ steps.week.outputs.week }} \
-            --history "${GITHUB_WORKSPACE}/docs/bundle-size-history.json" \
+            --history "${GITHUB_WORKSPACE}/docs/assets/bundle-size-history.json" \
             --out "${GITHUB_WORKSPACE}/docs/bundle-size.md"
 
       - name: Open or update the report PR
@@ -139,4 +139,4 @@ jobs:
             - Rows accumulate here until this lands, so a late merge loses nothing.
           add-paths: |
             docs/bundle-size.md
-            docs/bundle-size-history.json
+            docs/assets/bundle-size-history.json

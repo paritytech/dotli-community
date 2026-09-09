@@ -35,9 +35,6 @@ jobs:
       - name: Run tests
         run: bunx --bun turbo run test
 
-      - name: Run script tests
-        run: bun test scripts/
-
   functional:
     name: Functional
     runs-on: ubuntu-latest

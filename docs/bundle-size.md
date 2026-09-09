@@ -20,7 +20,7 @@ xychart-beta
 | 2026-08-14 15:35 UTC | [`29ef38b`](https://github.com/paritytech/dotli-community/commit/29ef38b) | 12.80 MB | +4.83 MB |
 | 2026-08-04 13:57 UTC | [`584af2d`](https://github.com/paritytech/dotli-community/commit/584af2d) | 7.98 MB |  |
 
-_Showing 5 of 5 recorded weeks. Full history in `bundle-size-history.json`._
+_Showing 5 of 5 recorded weeks. Full history in `assets/bundle-size-history.json`._
 
 ## Latest files at `6afeaaa`
 

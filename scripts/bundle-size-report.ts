@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Generates docs/bundle-size.md and maintains docs/bundle-size-history.json.
+// Generates docs/bundle-size.md and maintains its history sidecar.
 // Run with: bun scripts/bundle-size-report.ts --record
 
 import { readFile, writeFile, readdir, stat } from "node:fs/promises";
@@ -18,7 +18,7 @@ import {
 } from "./dist-sizes.ts";
 
 const DEFAULT_DISTS = ["apps/host/dist", "apps/sandbox/dist"];
-const DEFAULT_HISTORY = "docs/bundle-size-history.json";
+const DEFAULT_HISTORY = "docs/assets/bundle-size-history.json";
 const DEFAULT_OUT = "docs/bundle-size.md";
 const MAX_POINTS = 24;
 const RECENT_ROWS = 12;
@@ -198,7 +198,7 @@ export function renderTrendTable(entries: Entry[], repo: string): string {
   }
   lines.push("");
   lines.push(
-    `_Showing ${rows.length} of ${entries.length} recorded weeks. Full history in \`bundle-size-history.json\`._`,
+    `_Showing ${rows.length} of ${entries.length} recorded weeks. Full history in \`assets/bundle-size-history.json\`._`,
   );
   return lines.join("\n");
 }
