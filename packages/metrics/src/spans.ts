@@ -28,6 +28,19 @@ export const SMOLDOT_FINALIZED_BLOCK = "smoldot.finalized_block";
 /** Total presync duration (create + relay + asset hub + finalized block) */
 export const SMOLDOT_PRESYNC = "smoldot.presync";
 
+/**
+ * Liveness heartbeat for one light client, emitted as the constant `1`.
+ *
+ * Read it by SUMMING over a time bucket, never by taking the last value. Each
+ * live instance contributes exactly one point per interval, so the sum over a
+ * bucket is the number of instances that were running during it.
+ *
+ * It has to be a heartbeat rather than a create/destroy pair because there is
+ * no destroy: the instance dies with its tab or worker and emits nothing on the
+ * way out, so incrementing on create would only ever drift upward.
+ */
+export const SMOLDOT_ACTIVE = "smoldot.active";
+
 // Presync failures reuse the `SMOLDOT_PRESYNC` series. Callers emit
 // `m.count(SMOLDOT_PRESYNC, { outcome: "error", reason })` instead of a
 // parallel `_FAILURE` name so dashboards can chart one line per event.
