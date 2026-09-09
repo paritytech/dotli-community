@@ -791,24 +791,30 @@ test("a touch gesture scrolls the guest instead of the host page", async ({
     const before = scope.__polkavmInput?.length ?? 0;
     touch("pointerdown", 1, true, 0);
     touch("pointermove", 1, true, -40);
-    // A second finger must not retarget the single-pointer ABI stream.
+    // A second finger keeps an independent stable contact identity.
     touch("pointerdown", 2, false, 120);
     touch("pointermove", 2, false, 120);
     // The browser claims the gesture and never sends `pointerup`.
     touch("pointercancel", 1, true, -40);
+    touch("pointerup", 2, false, 120);
     const records = (scope.__polkavmInput ?? []).slice(before);
     return {
-      types: records.map((record) => record[0]),
-      captured: target.hasPointerCapture(1),
+      touches: records
+        .filter((record) => (record[0] ?? 0) >= 18 && (record[0] ?? 0) <= 21)
+        .map((record) => record.slice(0, 2)),
+      captured: target.hasPointerCapture(1) || target.hasPointerCapture(2),
       scrollTop: document.scrollingElement?.scrollTop ?? 0,
     };
   });
 
-  // Button down, the drag that carries the scroll, then the synthesised release.
-  expect(gesture.types.filter((type) => type === 3)).toHaveLength(1);
-  expect(gesture.types.filter((type) => type === 4)).toHaveLength(1);
-  expect(gesture.types.filter((type) => type === 5).length).toBeGreaterThan(0);
-  expect(gesture.types.at(-1)).toBe(4);
+  expect(gesture.touches).toEqual([
+    [18, 0],
+    [19, 0],
+    [18, 1],
+    [19, 1],
+    [21, 0],
+    [20, 1],
+  ]);
   expect(gesture.captured).toBe(false);
   expect(gesture.scrollTop).toBe(0);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
