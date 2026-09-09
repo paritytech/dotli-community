@@ -38,6 +38,7 @@ import {
   type FilterState,
 } from "./filters.ts";
 import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
+import { setupOperationsBanner } from "./operations-banner.ts";
 import {
   applyTimelineSelection,
   buildTimelineContainer,
@@ -131,6 +132,11 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   const ui = buildPanel(state, store);
   document.body.appendChild(ui.panel);
   applyDockPosition(ui, state, { persist: false });
+
+  // Floating "what is the host doing right now" card. Shares the panel's
+  // store so there is a single bus subscription, and its lifetime is the
+  // panel's: debug mode turns both on together.
+  const disposeOperationsBanner = setupOperationsBanner(store);
   if (state.collapsed) {
     ui.panel.classList.add("collapsed");
     ui.collapseBtn.textContent = "▲";
@@ -184,6 +190,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   return () => {
     unsubscribeDotli();
     unsubscribeStore();
+    disposeOperationsBanner();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
     ui.panel.remove();
     restoreIframeLayout();

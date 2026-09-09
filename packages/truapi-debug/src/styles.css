@@ -806,3 +806,167 @@
   opacity: 0.5;
   pointer-events: none;
 }
+
+/* ── Live-operations banner ────────────────────────────────── */
+
+/* Full-width strip so the card stays centred in whatever space the
+   docked panel leaves. The strip itself is click-through. */
+.td-ops {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  z-index: 940;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  font-family: system-ui, sans-serif;
+}
+.td-ops.hidden {
+  display: none;
+}
+
+.td-ops-card {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 460px;
+  max-height: 60vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #0b0b0b;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  color: #d4d4d4;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.td-ops-op {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.td-ops-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.td-ops-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e5e5e5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-ops-dismiss {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.td-ops-dismiss:hover {
+  color: #d4d4d4;
+}
+
+.td-ops-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 6px;
+}
+.td-ops-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.td-ops-step-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.td-ops-step-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-ops-detail {
+  color: #9ca3af;
+  font-size: 10.5px;
+  white-space: normal;
+}
+
+/* Indicator column. One 12px box per state so the step text lines up
+   whether the step is running, settled, or failed. */
+.td-ops-indicator {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+  display: inline-block;
+  text-align: center;
+  font-size: 11px;
+  line-height: 12px;
+}
+.td-ops-done .td-ops-indicator::before {
+  content: "✓";
+  color: #4ade80;
+}
+.td-ops-done .td-ops-step-title {
+  color: #a3a3a3;
+}
+.td-ops-failed .td-ops-indicator::before {
+  content: "!";
+  color: #f87171;
+  font-weight: 700;
+}
+.td-ops-failed .td-ops-step-title {
+  color: #fca5a5;
+}
+.td-ops-current .td-ops-indicator {
+  border: 1.5px solid #334155;
+  border-top-color: #e6007a;
+  border-radius: 50%;
+  box-sizing: border-box;
+  animation: td-ops-spin 0.7s linear infinite;
+}
+.td-ops-current .td-ops-step-title {
+  color: #f5f5f5;
+}
+
+@keyframes td-ops-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-ops-current .td-ops-indicator {
+    animation: none;
+  }
+}
+
+.td-ops-overflow {
+  align-self: flex-start;
+  padding: 0 0 0 6px;
+  border: 0;
+  background: none;
+  color: #9ca3af;
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.td-ops-overflow:hover {
+  color: #e5e5e5;
+}

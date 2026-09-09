@@ -7,3 +7,12 @@
 // filterable panel.
 
 export { setupTruapiDebugPanel, type SetupOptions } from "./panel.ts";
+export { setupOperationsBanner } from "./operations-banner.ts";
+export {
+  buildOperations,
+  DEFAULT_MAX_VISIBLE,
+  type Operation,
+  type OperationsSnapshot,
+  type OperationStep,
+  type StepState,
+} from "./operations.ts";
