@@ -92,14 +92,6 @@ export function isChainSupported(genesisHash: string): boolean {
   return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
 }
 
-// Node-only no-op in browsers, lets vitest exit instead of hanging on timers.
-function unref(handle: ReturnType<typeof setTimeout>): void {
-  const h = handle as unknown as { unref?: () => void };
-  if (typeof h.unref === "function") {
-    h.unref();
-  }
-}
-
 async function resumeFromStore(
   handle: ChainProviderHandle,
   key: string,
@@ -141,8 +133,8 @@ function scheduleSnapshots(handle: ChainProviderHandle, key: string): void {
       }
     })();
   };
-  unref(setTimeout(run, FIRST_SNAPSHOT_MS));
-  unref(setInterval(run, SNAPSHOT_INTERVAL_MS));
+  setTimeout(run, FIRST_SNAPSHOT_MS);
+  setInterval(run, SNAPSHOT_INTERVAL_MS);
 }
 
 /**
