@@ -304,10 +304,6 @@ export declare const ACCOUNT_RING_VRF_SIGN: {
     readonly request: 172;
     readonly response: 173;
 };
-export declare const ACCOUNT_PRODUCT_DEVICE_CHAT: {
-    readonly request: 174;
-    readonly response: 175;
-};
 export declare const SYSTEM_GET_PRODUCT_CONTEXT: {
     readonly request: 190;
     readonly response: 191;

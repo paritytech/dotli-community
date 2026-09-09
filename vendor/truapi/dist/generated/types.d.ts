@@ -48,14 +48,6 @@ export type AllocatableResource =
  | {
     tag: "AutoSigning";
     value?: undefined;
-}
-/**
- * Current UTC-day Statement Store allowance whose target is the product
- * account selected by this derivation index.
- */
- | {
-    tag: "ProductStatementStoreAllowance";
-    value: DerivationIndex;
 };
 export declare const AllocatableResource: S.Codec<AllocatableResource>;
 /** Outcome of allocating a single resource (RFC 0010). */
@@ -1464,30 +1456,6 @@ export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPay
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
-/** Versioned envelope for [`HostProductDeviceChatError`]. */
-export type VersionedHostProductDeviceChatError = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: HostProductDeviceChatError;
-};
-export declare const VersionedHostProductDeviceChatError: S.Codec<VersionedHostProductDeviceChatError>;
-/** Versioned envelope for [`HostProductDeviceChatRequest`]. */
-export type VersionedHostProductDeviceChatRequest = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: HostProductDeviceChatRequest;
-};
-export declare const VersionedHostProductDeviceChatRequest: S.Codec<VersionedHostProductDeviceChatRequest>;
-/** Versioned envelope for [`HostProductDeviceChatResponse`]. */
-export type VersionedHostProductDeviceChatResponse = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: HostProductDeviceChatResponse;
-};
-export declare const VersionedHostProductDeviceChatResponse: S.Codec<VersionedHostProductDeviceChatResponse>;
 /** Versioned envelope for [`HostPushNotificationCancelError`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -3716,99 +3684,6 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export declare const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest>;
-/** Product-device Chat v2 identity failure. */
-export type HostProductDeviceChatError = 
-/** No account-authority session is connected. */
-{
-    tag: "NotConnected";
-    value?: undefined;
-}
-/** The user or Host rejected the operation. */
- | {
-    tag: "Rejected";
-    value?: undefined;
-}
-/** The peer X25519 public key is invalid. */
- | {
-    tag: "InvalidPeerKey";
-    value?: undefined;
-}
-/** The ciphertext failed structural or authentication checks. */
- | {
-    tag: "InvalidCiphertext";
-    value?: undefined;
-}
-/** The Host could not complete the operation. */
- | {
-    tag: "Unknown";
-    value: {
-        reason: string;
-    };
-};
-export declare const HostProductDeviceChatError: S.Codec<HostProductDeviceChatError>;
-/**
- * Product-device Chat v2 identity operation.
- *
- * The wallet Chat identity secret and derived shared key remain host-private.
- */
-export type HostProductDeviceChatRequest = 
-/** Resolve the product account as a Chat device and bind it to the wallet identity. */
-{
-    tag: "Bind";
-    value: {
-        productAccountId: ProductAccountId;
-        peerIdentityAccountId: HexString;
-        peerChatPublicKey: HexString;
-    };
-}
-/** Seal identity-route plaintext for the peer with a host-generated nonce. */
- | {
-    tag: "Seal";
-    value: {
-        productAccountId: ProductAccountId;
-        peerChatPublicKey: HexString;
-        plaintext: HexString;
-    };
-}
-/** Open an identity-route combined nonce/ciphertext/tag value. */
- | {
-    tag: "Open";
-    value: {
-        productAccountId: ProductAccountId;
-        peerChatPublicKey: HexString;
-        combinedCiphertext: HexString;
-    };
-};
-export declare const HostProductDeviceChatRequest: S.Codec<HostProductDeviceChatRequest>;
-/** Result of a product-device Chat v2 identity operation. */
-export type HostProductDeviceChatResponse = 
-/** Wallet identity binding and deterministic peer routes. */
-{
-    tag: "IdentityBinding";
-    value: {
-        identityAccountId: HexString;
-        proof: HexString;
-        walletOwnSessionId: HexString;
-        peerOwnSessionId: HexString;
-        walletOutgoingChannelId: HexString;
-        walletIncomingChannelId: HexString;
-    };
-}
-/** Sealed identity-route payload. */
- | {
-    tag: "Sealed";
-    value: {
-        combinedCiphertext: HexString;
-    };
-}
-/** Opened identity-route payload. */
- | {
-    tag: "Opened";
-    value: {
-        plaintext: HexString;
-    };
-};
-export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [`HostPushNotificationResponse`]. */
