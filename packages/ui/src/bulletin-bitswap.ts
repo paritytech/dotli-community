@@ -18,8 +18,8 @@ import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
-// transient. INVALID_PARAMS is terminal. FAIL gets a bounded cold-connection
-// grace period, then remains terminal.
+// transient. INVALID_PARAMS is terminal. FAIL gets a bounded provider-discovery
+// grace period for each requested CID.
 const ERR_INVALID_PARAMS = -32602;
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
@@ -29,11 +29,10 @@ const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
-// A freshly-added Bulletin chain can answer FAIL before it has attached any
-// content peers. Give that cold connection a short discovery window, but keep
-// FAIL terminal after the first successful block so genuinely missing archive
-// blocks do not consume the full request budget.
-const COLD_START_FAIL_RETRIES = 5;
+// Connected peers can all answer DONT_HAVE before the peer that provides a CID
+// has attached. Give each CID a short discovery window; the bound keeps truly
+// missing archive blocks finite.
+const DISCOVERY_FAIL_RETRIES = 5;
 
 interface PendingResolver {
   resolve: (bytes: Uint8Array) => void;
@@ -44,7 +43,6 @@ let nextId = 1;
 const pending = new Map<number, PendingResolver>();
 
 let connection: JsonRpcConnection | null = null;
-let hasSuccessfulBitswapBlock = false;
 
 function ensureConnection(): JsonRpcConnection {
   if (connection !== null) {
@@ -119,23 +117,16 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
     }
     const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining);
     try {
-      const bytes = await sendOnce(cid, callTimeout);
-      hasSuccessfulBitswapBlock = true;
-      return bytes;
+      return await sendOnce(cid, callTimeout);
     } catch (err) {
       const code = errorCode(err);
-      const coldStartFail =
-        code === ERR_FAIL &&
-        !hasSuccessfulBitswapBlock &&
-        attempt <= COLD_START_FAIL_RETRIES;
-      if (
-        code === ERR_INVALID_PARAMS ||
-        (code === ERR_FAIL && !coldStartFail)
-      ) {
+      const discoveryFailRetry =
+        code === ERR_FAIL && attempt <= DISCOVERY_FAIL_RETRIES;
+      if (code === ERR_INVALID_PARAMS) {
         throw err;
       }
       if (
-        coldStartFail ||
+        discoveryFailRetry ||
         code === ERR_FAIL_RETRY ||
         code === ERR_FAIL_BACKOFF
       ) {
@@ -148,6 +139,15 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
         );
         await new Promise<void>((r) => setTimeout(r, delay));
         continue;
+      }
+      if (code === ERR_FAIL) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw Object.assign(
+          new Error(
+            `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(attempt)} attempts: ${detail}`,
+          ),
+          { code },
+        );
       }
       throw err;
     }
