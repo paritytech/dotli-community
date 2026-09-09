@@ -28,6 +28,11 @@ const MAX_UI_OUTPUT_COMMANDS = 64;
 const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
 const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
+const INPUT_SAFE_AREA_INSETS = 16;
+const INPUT_KEYBOARD_INSETS = 17;
+const MAX_VIEW_INSET_PIXELS = 65_535;
+const POLKAVM_VIEW_INSETS = "dotli:polkavm-view-insets";
+const POLKAVM_VIEW_INSETS_REQUEST = "dotli:polkavm-view-insets-request";
 // Both backends execute the same guest-defined initialization work.
 const START_TIMEOUT_MS = 180_000;
 const SAVE_DB_NAME = "dotli-polkavm";
@@ -300,6 +305,39 @@ function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+export interface PolkaVmViewInsets {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export function validatedPolkaVmViewInsets(
+  value: unknown,
+): PolkaVmViewInsets | null {
+  const message = object(value);
+  const keyboard = object(message?.keyboard);
+  if (message?.type !== POLKAVM_VIEW_INSETS || keyboard === null) {
+    return null;
+  }
+  const values = [keyboard.left, keyboard.top, keyboard.right, keyboard.bottom];
+  if (
+    values.some(
+      (inset) =>
+        !Number.isInteger(inset) ||
+        Number(inset) < 0 ||
+        Number(inset) > MAX_VIEW_INSET_PIXELS,
+    )
+  ) {
+    return null;
+  }
+  return {
+    left: Number(values[0]),
+    top: Number(values[1]),
+    right: Number(values[2]),
+    bottom: Number(values[3]),
+  };
 }
 
 export function expectedPolkaVmParentOrigin(
@@ -2392,6 +2430,45 @@ export async function runPolkaVmApplication(
   let usesMotion = false;
   let usesPointerCapture = false;
   let relayedMotionSequence = 0;
+  let workerReady = false;
+  let keyboardInsets: PolkaVmViewInsets = {
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  };
+  const postViewInsets = (
+    eventType: number,
+    insets: PolkaVmViewInsets,
+  ): void => {
+    worker.postMessage({
+      type: "view-insets",
+      eventType,
+      left: insets.left,
+      top: insets.top,
+      right: insets.right,
+      bottom: insets.bottom,
+    });
+  };
+  const onParentViewInsets = (event: MessageEvent<unknown>): void => {
+    if (event.source !== window.parent || event.origin !== parentOrigin) {
+      return;
+    }
+    const validated = validatedPolkaVmViewInsets(event.data);
+    if (validated === null) {
+      return;
+    }
+    keyboardInsets = validated;
+    canvas.dataset.polkavmKeyboardInsets = [
+      validated.left,
+      validated.top,
+      validated.right,
+      validated.bottom,
+    ].join(",");
+    if (workerReady) {
+      postViewInsets(INPUT_KEYBOARD_INSETS, keyboardInsets);
+    }
+  };
   const sendMotion = (bytes: Uint8Array): void => {
     const flags = new DataView(
       bytes.buffer,
@@ -2463,6 +2540,11 @@ export async function runPolkaVmApplication(
     );
   };
   window.addEventListener("message", onParentMotion);
+  window.addEventListener("message", onParentViewInsets);
+  window.parent.postMessage(
+    { type: POLKAVM_VIEW_INSETS_REQUEST },
+    parentOrigin,
+  );
   const {
     applyUiOutput,
     cleanup: cleanupInput,
@@ -2501,6 +2583,7 @@ export async function runPolkaVmApplication(
     window.clearTimeout(timer);
     cleanupInput();
     window.removeEventListener("message", onParentMotion);
+    window.removeEventListener("message", onParentViewInsets);
     canvas.removeEventListener("webglcontextlost", onTri2dContextLost);
     tri2d?.dispose();
     worker.postMessage({ type: "stop" });
@@ -2591,6 +2674,15 @@ export async function runPolkaVmApplication(
         status.textContent = `${ready.backend === "compiler" ? "PolkaVM→Wasm JIT" : "PolkaVM interpreter"} ready`;
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
+        workerReady = true;
+        postViewInsets(INPUT_SAFE_AREA_INSETS, {
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+        });
+        postViewInsets(INPUT_KEYBOARD_INSETS, keyboardInsets);
+        canvas.dataset.polkavmSafeAreaInsets = "0,0,0,0";
         usesMotion = ready.usesMotion === true;
         usesPointerCapture = ready.usesPointerCapture === true;
         if (usesPointerCapture) {

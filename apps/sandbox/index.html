@@ -3,39 +3,44 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-        <title>Polkadot Web</title>
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <style>
-            .error-page {
-                background: #0a0a0a;
-                height: 100vh
-            }
-        </style>
-    </head>
-    <body style="background: transparent">
-        <script>
-            (function(){
-                var petals = document.querySelectorAll('.loading-petal');
-                if (!petals.length) return;
-                var count = petals.length, cycle = 1400, start = null;
-                function tick(ts) {
-                    if (!start) start = ts;
-                    var p = ((ts - start) % cycle) / cycle;
-                    for (var i = 0; i < count; i++) {
-                        var dist = p - i / count;
-                        if (dist < 0) dist += 1;
-                        var b = Math.max(0.15, Math.pow(Math.max(0, 1 - dist * 2.5), 2));
-                        petals[i].style.opacity = b;
-                        petals[i].style.transform = 'scale(' + (0.92 + 0.08 * b) + ')';
-                    }
-                    requestAnimationFrame(tick);
-                }
-                requestAnimationFrame(tick);
-            })();
-        </script>
-        <script type="module" src="/src/main.ts"></script>
-    </body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <title>Polkadot Web</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      .error-page {
+        background: #0a0a0a;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body style="background: transparent">
+    <script>
+      (function () {
+        var petals = document.querySelectorAll(".loading-petal");
+        if (!petals.length) return;
+        var count = petals.length,
+          cycle = 1400,
+          start = null;
+        function tick(ts) {
+          if (!start) start = ts;
+          var p = ((ts - start) % cycle) / cycle;
+          for (var i = 0; i < count; i++) {
+            var dist = p - i / count;
+            if (dist < 0) dist += 1;
+            var b = Math.max(0.15, Math.pow(Math.max(0, 1 - dist * 2.5), 2));
+            petals[i].style.opacity = b;
+            petals[i].style.transform = "scale(" + (0.92 + 0.08 * b) + ")";
+          }
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      })();
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>
