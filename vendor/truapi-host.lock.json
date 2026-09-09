@@ -5,15 +5,18 @@
   "upstreamRevision": "be56ddc0430e22036153ec55d9f044edb9784d93",
   "pullRequest": "https://github.com/paritytech/host-rust-core/pull/540",
   "packages": {
-    "parity-truapi-0.13.1-host-be56ddc0.tgz": {
+    "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.13.1",
-      "sha256": "a3115b90306f1cd6c37c9d31cabe1f79a23b63f8a040814c53ae50b4996af019"
+      "sourceArchiveSha256": "a3115b90306f1cd6c37c9d31cabe1f79a23b63f8a040814c53ae50b4996af019",
+      "clientSha256": "12a36feace35b190d3d60d9ce8f7e09409d10b14ed1165404c1d1596fa5a0f6e"
     },
-    "parity-truapi-host-0.10.1-host-be56ddc0.tgz": {
+    "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.10.1",
-      "sha256": "1915dfd533d42aa06083bf59fc2b4e007f1c498ab74ece4a16779302d808df00"
+      "dependencyOverride": "@parity/truapi=file:../truapi",
+      "sourceArchiveSha256": "1915dfd533d42aa06083bf59fc2b4e007f1c498ab74ece4a16779302d808df00",
+      "wasmSha256": "5590f4ae2998d7b8799e63253bd2d2ab584fc337890957621266d044b6b21163"
     }
   }
 }

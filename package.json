@@ -39,10 +39,10 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "file:vendor/parity-truapi-0.13.1-host-be56ddc0.tgz"
+    "@parity/truapi": "file:vendor/truapi",
+    "@parity/truapi-host": "file:vendor/truapi-host"
   },
   "overrides": {
-    "@parity/truapi": "file:vendor/parity-truapi-0.13.1-host-be56ddc0.tgz",
     "fast-uri": "3.1.7",
     "smoldot": "3.4.1",
     "browserslist": "^4.28.8",
