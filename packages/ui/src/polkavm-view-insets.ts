@@ -85,7 +85,7 @@ export function installPolkaVmViewInsetsRelay(
   iframe: HTMLIFrameElement,
   targetOrigin: string,
 ): () => void {
-  let lastPayload = "";
+  let lastKeyboard: ViewInsets | null = null;
   let scheduledFrame: number | null = null;
   const send = (force = false): void => {
     const target = iframe.contentWindow;
@@ -97,11 +97,17 @@ export function installPolkaVmViewInsetsRelay(
       window.visualViewport,
       window.devicePixelRatio,
     );
-    const payload = `${keyboard.left}:${keyboard.top}:${keyboard.right}:${keyboard.bottom}`;
-    if (!force && payload === lastPayload) {
+    if (
+      !force &&
+      lastKeyboard !== null &&
+      keyboard.left === lastKeyboard.left &&
+      keyboard.top === lastKeyboard.top &&
+      keyboard.right === lastKeyboard.right &&
+      keyboard.bottom === lastKeyboard.bottom
+    ) {
       return;
     }
-    lastPayload = payload;
+    lastKeyboard = keyboard;
     target.postMessage({ type: POLKAVM_VIEW_INSETS, keyboard }, targetOrigin);
   };
   const schedule = (): void => {
