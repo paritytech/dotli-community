@@ -4,7 +4,7 @@
 // Network Configuration
 
 export const NetworkName = {
-  PASEO: "paseo",
+  PASEO: "paseo-next-v2",
   PREVIEWNET: "previewnet",
 } as const;
 
@@ -122,8 +122,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  * Runtime overrides for the tables above, so a deployment can point a network at
  * a locally forked chain without a source edit or a rebuild:
  *
- *   {"enabled":["paseo"],
- *    "networks":{"paseo":{"label":"My Fork",
+ *   {"enabled":["paseo-next-v2"],
+ *    "networks":{"paseo-next-v2":{"label":"My Fork",
  *                "assethub":{"rpcs":["ws://localhost:9944"]}}}}
  *
  * Delivered as `globalThis.__DOTLI_NETWORK__`, set by a blocking classic script
@@ -135,7 +135,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  *   * **Endpoints only** — `label`, `rpcs` and `ipfsGateways`. Never `genesis` or
  *     `dotns`, which are the trust root for name resolution: an override that
  *     could repoint the DotNS registry would let anything running in the page
- *     redirect every `.dot` lookup while `isVerifiedSession()` still reported
+ *     redirect every dotNS lookup while `isVerifiedSession()` still reported
  *     "verified". Limiting it to endpoints means the worst an override can do is
  *     move you to a different node for the *same* chain identity, which the light
  *     client verifies against the compiled-in genesis anyway. It is also why only
@@ -381,7 +381,7 @@ export function getEnabledNetworks(): Network[] {
 
   if (runtimeEnabled === undefined && source.entries.join("").trim() === "") {
     throw new Error(
-      'VITE_NETWORKS is not set. The deployment must declare a comma-separated list of networks (e.g. "paseo,previewnet").',
+      'VITE_NETWORKS is not set. The deployment must declare a comma-separated list of networks (e.g. "paseo-next-v2,previewnet").',
     );
   }
 

@@ -55,7 +55,7 @@ jobs:
           # Without it the host shell throws on boot and never mounts the
           # protocol/app iframes, so every test times out. deploy.yml supplies
           # this from repo vars; the test build needs its own value.
-          VITE_NETWORKS: paseo,previewnet
+          VITE_NETWORKS: paseo-next-v2,previewnet
         run: bunx --bun turbo run build
 
       - name: Run functional tests
@@ -98,7 +98,7 @@ jobs:
       # Must match the host's `defaultNetwork()` in
       # `packages/config/src/network.ts`. Setting explicitly so a host
       # network bump can't silently leave the CLI on the wrong chain.
-      SIGNING_HOST_NETWORK: paseo
+      SIGNING_HOST_NETWORK: paseo-next-v2
       # The CLI self-updates by default; keep CI runs deterministic.
       TRUAPI_HOST_NO_UPDATE: "1"
     steps:
@@ -125,7 +125,7 @@ jobs:
           # Without it the host shell throws on boot and never mounts the
           # protocol/app iframes, so every test times out. deploy.yml supplies
           # this from repo vars; the test build needs its own value.
-          VITE_NETWORKS: paseo,previewnet
+          VITE_NETWORKS: paseo-next-v2,previewnet
         run: bunx --bun turbo run build
 
       # Exit code 99 from playwright = pairing/signing infrastructure down

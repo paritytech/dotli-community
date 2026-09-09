@@ -21,7 +21,7 @@
 //   Required:
 //     ?cid=<IPFS content id the host resolved from the dotns label>
 //     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
-//     ?network=<"paseo" | "previewnet">
+//     ?network=<"paseo-next-v2" | "previewnet">
 //
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">

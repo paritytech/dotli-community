@@ -51,7 +51,7 @@ describe("parseSettingsFromSearch", () => {
   it("returns the typed value for each valid axis", () => {
     const parsed = parseSettingsFromSearch(
       new URLSearchParams(
-        "network=paseo&chainBackend=rpc-gateway&skipArchiveCache=0&skipCidCache=1&skipWorkerCache=1",
+        `network=${NetworkName.PASEO}&chainBackend=rpc-gateway&skipArchiveCache=0&skipCidCache=1&skipWorkerCache=1`,
       ),
     );
     expect(parsed.network).toBe(NetworkName.PASEO);

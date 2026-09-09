@@ -32,7 +32,7 @@ env:
   # Every built-in network is compiled in; the runtime config's `enabled` list
   # narrows the selector per run. Deliberately not parameterised — one artifact
   # has to serve every environment.
-  VITE_NETWORKS: paseo,previewnet
+  VITE_NETWORKS: paseo-next-v2,previewnet
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:

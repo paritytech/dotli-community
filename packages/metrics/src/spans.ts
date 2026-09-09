@@ -41,7 +41,7 @@ export const PROTOCOL_SW_READY = "protocol.sw_ready";
 /** Which protocol mode was selected */
 export const PROTOCOL_MODE = "protocol.mode";
 
-/** Total time to resolve a .dot name to CID */
+/** Total time to resolve a dotNS name to CID */
 export const RESOLVE_TOTAL = "resolve.total";
 
 /** Time for a single contract storage read */

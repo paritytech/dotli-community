@@ -23,6 +23,6 @@ export default defineConfig({
     // and the dotNS URL parser reads the active network's TLD. paseo
     // leads, so the default TLD is `.paseo`. The previewnet cases switch
     // network explicitly via `setNetworkOverride`.
-    "import.meta.env.VITE_NETWORKS": '"paseo,previewnet"',
+    "import.meta.env.VITE_NETWORKS": '"paseo-next-v2,previewnet"',
   },
 });

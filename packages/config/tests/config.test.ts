@@ -15,14 +15,14 @@ import {
 
 describe("config constants", () => {
   describe("contract addresses", () => {
-    const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO].dotns;
+    const paseo = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO].dotns;
 
-    it("V2 DOTNS_REGISTRY is a valid hex address", () => {
-      expect(v2.DOTNS_REGISTRY).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    it("Paseo DOTNS_REGISTRY is a valid hex address", () => {
+      expect(paseo.DOTNS_REGISTRY).toMatch(/^0x[0-9a-fA-F]{40}$/);
     });
 
-    it("V2 DOTNS_CONTENT_RESOLVER is a valid hex address", () => {
-      expect(v2.DOTNS_CONTENT_RESOLVER).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    it("Paseo DOTNS_CONTENT_RESOLVER is a valid hex address", () => {
+      expect(paseo.DOTNS_CONTENT_RESOLVER).toMatch(/^0x[0-9a-fA-F]{40}$/);
     });
   });
 
@@ -61,7 +61,7 @@ describe("config constants", () => {
   });
 
   describe("IPFS gateways", () => {
-    it("V2 first gateway is a valid HTTPS URL", () => {
+    it("Paseo first gateway is a valid HTTPS URL", () => {
       expect(
         NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO].bulletin
           .ipfsGateways[0],

@@ -32,7 +32,7 @@ import {
 } from "./fixtures/paths";
 
 // Must equal the host's default network (`packages/config/src/network.ts`
-// `defaultNetwork()`, "paseo" at time of writing). Required with no
+// `defaultNetwork()`, "paseo-next-v2" at time of writing). Required with no
 // default: a mismatch surfaces as "pair OK, user-badge never appears"
 // because the CLI attests on a different chain than the host listens on.
 const NETWORK = requiredEnv("SIGNING_HOST_NETWORK");

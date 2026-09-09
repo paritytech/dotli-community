@@ -35,7 +35,7 @@ RUN bun install --frozen-lockfile
 # deployments have no use for it and do not ship it. See
 # runtime-network-config-plugin.ts and RUNTIME_CONFIG_ENABLED in network.ts —
 # both halves are gated, so neither alone turns it on.
-ENV VITE_NETWORKS=paseo,previewnet \
+ENV VITE_NETWORKS=paseo-next-v2,previewnet \
     VITE_RUNTIME_NETWORK_CONFIG=true
 RUN bun run build:prod
 
