@@ -48,6 +48,16 @@ const PRODUCT_ID =
   (process.env.E2E_PRODUCT_URL === undefined
     ? `${process.env.E2E_HOST ?? "host-playground"}.dot`
     : new URL(process.env.E2E_PRODUCT_URL).host);
+// dotNS requires lowercase letters here. Use a stable per-run suffix so clean
+// CI runners never contend for the same globally unique lite username.
+const uniqueRunSuffix = (
+  process.env.GITHUB_RUN_ID ?? String(Date.now())
+).replace(/[0-9]/g, (digit) =>
+  String.fromCharCode("a".charCodeAt(0) + Number(digit)),
+);
+const LITE_USERNAME_PREFIX =
+  process.env.E2E_LITE_USERNAME_PREFIX?.trim() ||
+  `dotlit${uniqueRunSuffix.slice(-8)}`;
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
 const PORT = process.env.PORT ?? "5173";
@@ -115,7 +125,7 @@ const signingHostConfig: SigningHostConfig = {
   // rejects auto-account naming flags.
   liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
     ? undefined
-    : "dotlitest",
+    : LITE_USERNAME_PREFIX,
 };
 
 // Thrown when the CLI process dies before login; elapsedMs distinguishes
