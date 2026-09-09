@@ -12,8 +12,8 @@ import {
   observeSurfaceDimensions,
   type WebGpuRequirements,
 } from "./webgpu";
+import { polkaVmRuntimeAssetUrl } from "./polkavm-runtime-assets";
 
-const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
 const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
@@ -1070,7 +1070,7 @@ async function programDigest(program: Uint8Array): Promise<string> {
 
 function runtimeBytes(): Promise<ArrayBuffer> {
   runtimeBytesPromise ??= fetch(
-    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
+    polkaVmRuntimeAssetUrl("polkavm-browser-runtime.wasm"),
     {
       cache: "force-cache",
     },
@@ -2157,7 +2157,7 @@ export async function runPolkaVmApplication(
     window.parent,
     parentOrigin,
   );
-  const worker = new Worker(`${POLKAVM_RUNTIME_ROOT}/polkavm-worker.js`);
+  const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-worker.js"));
   const closeHostFramePort = (): void => {
     hostFramePort.onmessage = null;
     hostFramePort.onmessageerror = null;

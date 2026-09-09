@@ -1,5 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
+import { polkaVmRuntimeAssetUrl } from "./polkavm-runtime-assets";
 
 // Hosts the experimental `polkadot-host-computer/0.1` supervisor off the
 // main thread. The page owns the DOM terminal; this worker owns every VM.
@@ -17,9 +18,7 @@
 //     { type: "log", message }             guest host_log diagnostics
 //     { type: "error", message }           supervisor fault; computer is dead
 
-importScripts(
-  new URL("/polkavm-runtime/polkavm-computer.js", self.location.origin).href,
-);
+importScripts(polkaVmRuntimeAssetUrl("polkavm-computer.js"));
 
 const {
   ComputerSupervisor,
