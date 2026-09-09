@@ -1775,8 +1775,10 @@ function installInput(
       resumeAudio();
       try {
         canvas.setPointerCapture(event.pointerId);
-      } catch {
-        // Capture is optional; cancellation still closes a contact that leaves.
+      } catch (error) {
+        console.warn(
+          `Could not capture the PolkaVM touch pointer: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     } else if (contact === undefined) {
       return;
