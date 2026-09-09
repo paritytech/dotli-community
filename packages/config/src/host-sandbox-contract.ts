@@ -32,7 +32,7 @@
 // have the validator reject unmatched versions so stale host builds
 // don't feed malformed params to fresh sandbox deploys.
 
-import { isValidNetwork, type Network } from "./network";
+import { NetworkName, isValidNetwork, type Network } from "./network";
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 
@@ -156,7 +156,11 @@ export function validateSandboxParams(
   if (!isValidNetwork(network)) {
     return {
       ok: false,
-      reason: `Unknown network "${network}". Expected "paseo" or "previewnet".`,
+      reason: `Unknown network "${network}". Expected one of: ${Object.values(
+        NetworkName,
+      )
+        .map((n) => `"${n}"`)
+        .join(", ")}.`,
     };
   }
 

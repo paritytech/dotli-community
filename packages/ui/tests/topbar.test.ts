@@ -933,7 +933,7 @@ describe("topbar popover keyboard access", () => {
     initTopBar();
     document.getElementById("mode-button")?.click();
     const group = document.querySelector<HTMLElement>(
-      '[role="radiogroup"][aria-label="Backend"]',
+      '[role="radiogroup"][aria-label="Network Transport"]',
     );
     expect(group).not.toBeNull();
     const toggle = document.querySelector('[role="switch"]');

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, afterEach } from "vitest";
-import { setNetworkOverride } from "@dotli/config/network";
+import { NetworkName, setNetworkOverride } from "@dotli/config/network";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
 describe("parseDotNsDomain", () => {
@@ -271,12 +271,12 @@ describe("isDotDomain", () => {
 // the wrong namehash.
 describe("dotNS TLD per network", () => {
   afterEach(() => {
-    setNetworkOverride("paseo");
+    setNetworkOverride(NetworkName.PASEO);
   });
 
   it("As a user on Paseo Next V2, I open a .paseo name and reach the product", () => {
     // Given
-    setNetworkOverride("paseo");
+    setNetworkOverride(NetworkName.PASEO);
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain("mytestapp.paseo/some/path");
@@ -290,7 +290,7 @@ describe("dotNS TLD per network", () => {
 
   it("As a user on Paseo Next V2, I open a .dot name and get a regular website", () => {
     // Given
-    setNetworkOverride("paseo");
+    setNetworkOverride(NetworkName.PASEO);
 
     // When
     const isProduct = dotNsUrl.isDotDomain("mytestapp.dot");
@@ -301,7 +301,7 @@ describe("dotNS TLD per network", () => {
 
   it("As a user on Paseo Next V2, the gateway host paseo.li is not a product", () => {
     // Given
-    setNetworkOverride("paseo");
+    setNetworkOverride(NetworkName.PASEO);
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain("mytestapp.paseo.li");
@@ -312,7 +312,7 @@ describe("dotNS TLD per network", () => {
 
   it("As a user on previewnet, a .testnet name is a product and a .paseo name is not", () => {
     // Given
-    setNetworkOverride("previewnet");
+    setNetworkOverride(NetworkName.PREVIEWNET);
 
     // When
     const test = dotNsUrl.isDotDomain("mytestapp.testnet");
