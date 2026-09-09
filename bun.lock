@@ -5,7 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
-        "@parity/truapi": "0.13.1",
+        "@parity/truapi": "file:vendor/parity-truapi-0.13.1-host-be56ddc0.tgz",
       },
       "devDependencies": {
         "prettier": "3.8.4",
@@ -302,8 +302,8 @@
         "@dotli/storage": "workspace:*",
         "@dotli/truapi-debug": "workspace:*",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi": "0.13.1",
-        "@parity/truapi-host": "0.10.1",
+        "@parity/truapi": "file:../../vendor/parity-truapi-0.13.1-host-be56ddc0.tgz",
+        "@parity/truapi-host": "file:../../vendor/parity-truapi-host-0.10.1-host-be56ddc0.tgz",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
@@ -330,6 +330,7 @@
     },
   },
   "overrides": {
+    "@parity/truapi": "file:vendor/parity-truapi-0.13.1-host-be56ddc0.tgz",
     "brace-expansion": "^5.0.9",
     "browserslist": "^4.28.8",
     "deepmerge-ts": "^8.0.1",
@@ -668,9 +669,9 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.148.0", "", {}, "sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A=="],
 
-    "@parity/truapi": ["@parity/truapi@0.13.1", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-6gkfHskN8I7H5DwB7j96wRusVx7xuGzu1YGWLBLPCD1RtBSnkPaQq/8Ac3MwudNz8kYqKZ5kZao3EkJ4PN4nCg=="],
+    "@parity/truapi": ["@parity/truapi@vendor/parity-truapi-0.13.1-host-be56ddc0.tgz", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-bJ8PJ072Q32e44jobuiUyvhrRgA5JTAscEWd/exqdyp3UDzF3JX/uam+Y1jtOADIkitN6qUykLSKrjhbvYD9SA=="],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.10.1", "", { "dependencies": { "@parity/truapi": "^0.13.1" } }, "sha512-XcS8CeOVGBH/RBZb5KmFw5EnwHAsoqXnG2NyP3g7gMA5S575FEOzQxQf4FzIr7Jvz38JBYGZWIq079TOAtVRlw=="],
+    "@parity/truapi-host": ["@parity/truapi-host@../../vendor/parity-truapi-host-0.10.1-host-be56ddc0.tgz", { "dependencies": { "@parity/truapi": "^0.13.1" } }, "sha512-MzT/YzwRoaaXprUnESFlKXuCi+4llJrwYsOjuMhgtAiAPCclyk2xXC7kSO2bCS1+As6AbceRdsMIMKiVdMzXqQ=="],
 
     "@parity/truapi-provider": ["@parity/truapi-provider@0.1.0", "", {}, "sha512-7OY/XYHETWMOGnHePp46GEADkYj+CjiQiXi+JMqO+30x0uD/2vGVf8dyzYrDnrmxVZ0I9HbgId0579fQi/dhqA=="],
 

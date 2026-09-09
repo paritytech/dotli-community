@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "upstreamRepository": "https://github.com/paritytech/host-rust-core",
+  "upstreamBranch": "feat/pvm-app-runtime",
+  "upstreamRevision": "be56ddc0430e22036153ec55d9f044edb9784d93",
+  "pullRequest": "https://github.com/paritytech/host-rust-core/pull/540",
+  "packages": {
+    "parity-truapi-0.13.1-host-be56ddc0.tgz": {
+      "name": "@parity/truapi",
+      "version": "0.13.1",
+      "sha256": "a3115b90306f1cd6c37c9d31cabe1f79a23b63f8a040814c53ae50b4996af019"
+    },
+    "parity-truapi-host-0.10.1-host-be56ddc0.tgz": {
+      "name": "@parity/truapi-host",
+      "version": "0.10.1",
+      "sha256": "1915dfd533d42aa06083bf59fc2b4e007f1c498ab74ece4a16779302d808df00"
+    }
+  }
+}
