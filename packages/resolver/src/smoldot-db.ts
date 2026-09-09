@@ -27,7 +27,11 @@ const DB_VERSION = 2;
 // floor is enforced on both save and load so we never persist a blob the
 // loader would later reject.
 const MIN_VALID_BYTES = 100_000;
-const MAX_VALID_BYTES = 8_000_000;
+// Asset Hub's fresh checkpoint measures ~3.6 MB, the largest of the catalog
+// chains, so this leaves room to grow. Crossing it freezes whatever blob is
+// already stored, which is why the skip below is a warning and not a debug
+// line: the symptom is warm start quietly ageing into uselessness.
+const MAX_VALID_BYTES = 32_000_000;
 const IDB_TIMEOUT_MS = 3_000;
 
 /**
@@ -164,9 +168,15 @@ export function createSmoldotDb(): SmoldotDb | null {
       return blob;
     },
     save: async (genesisHash, blob) => {
-      if (blob.length < MIN_VALID_BYTES || blob.length > MAX_VALID_BYTES) {
+      if (blob.length < MIN_VALID_BYTES) {
         log.debug(
-          `[dot.li smoldot-db] Skipping save for ${genesisHash} (${String(blob.length)} bytes)`,
+          `[dot.li smoldot-db] Skipping save for ${genesisHash} (${String(blob.length)} bytes, below the floor)`,
+        );
+        return;
+      }
+      if (blob.length > MAX_VALID_BYTES) {
+        log.warn(
+          `[dot.li smoldot-db] Blob for ${genesisHash} is ${String(blob.length)} bytes, over the ${String(MAX_VALID_BYTES)} ceiling. Keeping the stored blob, which will not refresh.`,
         );
         return;
       }
