@@ -17,10 +17,10 @@ const STORE = "chain-databases";
 // default backend, where its console and globals are unreachable, so this is
 // the only place warm start can be observed from outside.
 const LOADS_STORE = "loads";
-// The pre-provider implementation kept blobs in `chain-db` under this same
-// database. Version 2 drops it, so an upgrading browser reclaims the space
-// instead of carrying megabytes nothing reads.
-const LEGACY_STORE = "chain-db";
+// Version 1 of this database kept blobs in `chain-db`, keyed by network and
+// chain name rather than genesis hash. Version 2 drops it, so an upgrading
+// browser reclaims the space instead of carrying megabytes nothing reads.
+const V1_STORE = "chain-db";
 const DB_VERSION = 2;
 // Real warp-sync blobs are hundreds of KB. Anything smaller is truncated or
 // garbage, and the light client may hang on it rather than discard it. The
@@ -57,14 +57,35 @@ function openDb(): Promise<IDBDatabase> {
           db.createObjectStore(name);
         }
       }
-      if (db.objectStoreNames.contains(LEGACY_STORE)) {
-        db.deleteObjectStore(LEGACY_STORE);
+      if (db.objectStoreNames.contains(V1_STORE)) {
+        db.deleteObjectStore(V1_STORE);
       }
     };
+    // A tab on the previous version holds the database at version 1, so the
+    // upgrade cannot run. Without this the request never fires `success` or
+    // `error`, and every caller waits on a promise that never settles. Give
+    // up instead: warm start degrades to a cold sync, and the reason says so
+    // rather than surfacing as a timeout.
+    let settled = false;
+    req.onblocked = () => {
+      settled = true;
+      reject(
+        new Error(
+          `${DB_NAME} upgrade to v${String(DB_VERSION)} is blocked by another tab`,
+        ),
+      );
+    };
     req.onsuccess = () => {
+      if (settled) {
+        // The blocking tab closed after we gave up. Nothing is waiting on
+        // this connection, so drop it rather than leaking it.
+        req.result.close();
+        return;
+      }
       resolve(req.result);
     };
     req.onerror = () => {
+      settled = true;
       reject(req.error ?? new Error("indexedDB.open failed"));
     };
   });
