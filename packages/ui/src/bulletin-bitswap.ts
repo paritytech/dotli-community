@@ -107,6 +107,7 @@ function errorCode(err: unknown): number | null {
 export async function bitswapGet(cid: string): Promise<Uint8Array> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   let attempt = 0;
+  let discoveryFailures = 0;
   for (;;) {
     attempt += 1;
     const remaining = deadline - Date.now();
@@ -120,8 +121,11 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
       return await sendOnce(cid, callTimeout);
     } catch (err) {
       const code = errorCode(err);
+      if (code === ERR_FAIL) {
+        discoveryFailures += 1;
+      }
       const discoveryFailRetry =
-        code === ERR_FAIL && attempt <= DISCOVERY_FAIL_RETRIES;
+        code === ERR_FAIL && discoveryFailures <= DISCOVERY_FAIL_RETRIES;
       if (code === ERR_INVALID_PARAMS) {
         throw err;
       }
@@ -130,9 +134,12 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
         code === ERR_FAIL_RETRY ||
         code === ERR_FAIL_BACKOFF
       ) {
+        const backoffAttempt = code === ERR_FAIL ? discoveryFailures : attempt;
+        const remainingBudget = Math.max(0, deadline - Date.now());
         const delay = Math.min(
+          remainingBudget,
           BACKOFF_CAP_MS,
-          BACKOFF_BASE_MS * 2 ** Math.min(attempt - 1, 4),
+          BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
         );
         log.warn(
           `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
@@ -144,7 +151,7 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
         const detail = err instanceof Error ? err.message : String(err);
         throw Object.assign(
           new Error(
-            `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(attempt)} attempts: ${detail}`,
+            `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryFailures)} failures (${String(attempt)} total attempts): ${detail}`,
           ),
           { code },
         );

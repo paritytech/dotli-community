@@ -37,14 +37,14 @@ function createPreimageLookupSubscribe(
       return createResultStream<Uint8Array | undefined>([cached], () => noop);
     }
 
-    let stopped = false;
+    const state = { stopped: false };
     return createResultStream<Uint8Array | undefined>(
       [undefined],
       (push, pushError) => {
         let intervalId: ReturnType<typeof setInterval> | null = null;
         let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
         const stopPolling = (): void => {
-          stopped = true;
+          state.stopped = true;
           if (intervalId !== null) {
             clearInterval(intervalId);
             intervalId = null;
@@ -54,48 +54,57 @@ function createPreimageLookupSubscribe(
             initialTimeoutId = null;
           }
         };
+        const isPollingStopped = (): boolean => state.stopped;
+        let pollInFlight = false;
         const poll = async (): Promise<void> => {
-          if (stopped) {
+          if (isPollingStopped() || pollInFlight) {
             return;
           }
-
-          const cached = preimageCache.get(key);
-          if (cached) {
-            push(cached);
-            stopPolling();
-            return;
-          }
-
-          const cid = hashToCid(key);
-          const cidString = cid.toString();
-          const backend = getBackend();
-          let data: Uint8Array;
+          pollInFlight = true;
           try {
-            if (backend !== "rpc-gateway") {
-              data = await bitswapGet(cidString);
-            } else {
-              const result = await fetchFromIpfs(cidString);
-              data = result.data;
+            const cached = preimageCache.get(key);
+            if (cached) {
+              push(cached);
+              stopPolling();
+              return;
             }
-          } catch (err) {
-            log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
-            return;
-          }
-          if (data.length === 0) {
-            return;
-          }
-          try {
-            assertBlockMatchesCid(cid, data);
-          } catch (err) {
+
+            const cid = hashToCid(key);
+            const cidString = cid.toString();
+            const backend = getBackend();
+            let data: Uint8Array;
+            try {
+              if (backend !== "rpc-gateway") {
+                data = await bitswapGet(cidString);
+              } else {
+                const result = await fetchFromIpfs(cidString);
+                data = result.data;
+              }
+            } catch (err) {
+              log.warn(
+                `[${label}] preimage lookup via ${backend} failed:`,
+                err,
+              );
+              return;
+            }
+            if (isPollingStopped() || data.length === 0) {
+              return;
+            }
+            try {
+              assertBlockMatchesCid(cid, data);
+            } catch (err) {
+              stopPolling();
+              pushError({
+                reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
+              });
+              return;
+            }
+            preimageCache.set(key, data);
+            push(data);
             stopPolling();
-            pushError({
-              reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
-            });
-            return;
+          } finally {
+            pollInFlight = false;
           }
-          preimageCache.set(key, data);
-          push(data);
-          stopPolling();
         };
 
         intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
