@@ -29,6 +29,7 @@
     "@dotli/truapi-debug": "workspace:*",
     "@dotli/storage": "workspace:*",
     "@dotli/content": "workspace:*",
+    "@parity/truapi": "0.13.1",
     "@dotli/ui": "workspace:*",
     "@dotli/sandbox-checker": "workspace:*",
     "@sentry/browser": "^10.57.0",

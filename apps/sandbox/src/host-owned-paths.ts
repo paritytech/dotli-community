@@ -5,6 +5,8 @@
  * Archive paths reserved for the sandbox's host-owned PolkaVM runtime.
  *
  * Archive entries cannot shadow any file below the host-owned runtime tree.
+ * The computer worker is bundled into the sandbox application rather than
+ * exposed at a stable package-shadowable URL.
  */
 const POLKAVM_RUNTIME_PATH_PREFIX = "polkavm-runtime/";
 
