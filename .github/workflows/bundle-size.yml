@@ -19,13 +19,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Flag mode-specific bundles that exceed budget. If
-  # `apps/protocol/dist/assets/index-*.js` exceeds 600 KB raw, it almost
-  # certainly means a static smoldot or chain-specs import crept back into
-  # the protocol iframe's cold-start chunk — which silently inflates
-  # RPC-mode users by ~3 MB. Overages emit a workflow warning but do NOT
-  # fail the job: the signal belongs in review, not the required-checks
-  # gate.
+  # A protocol entry over budget means smoldot or chain specs crept back into
+  # the iframe's cold-start chunk, costing RPC-mode users ~3 MB. Warns only:
+  # the signal belongs in review, not the required-checks gate.
   budget:
     name: Continuous Integration
     if: github.event_name == 'pull_request' || github.event_name == 'push'
@@ -63,11 +59,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The cron fires on Monday, but the week being recorded ended at
-      # Monday 00:00 UTC, so resolve the commit by date rather than trusting
-      # HEAD. The pathspec exclusions skip the bot's own report commits: a
-      # week whose last merge is the report PR must still point at the commit
-      # that actually moved the bundle.
+      # HEAD can already hold Monday merges, so resolve by date instead. The
+      # exclusions skip the bot's own commits, which never move the bundle.
       - name: Resolve the week to record
         id: week
         run: |
@@ -82,10 +75,9 @@ jobs:
           echo "week=$(date -u -d 'last monday' +%G-W%V)" >> "$GITHUB_OUTPUT"
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
-      # The report branch, not main, is the source of truth for history. A
-      # weekly PR needs a human approval, so it can sit unmerged for weeks;
-      # reading the branch back means each run adds a row to the open PR
-      # instead of overwriting the weeks that have not landed yet.
+      # The report branch is the source of truth, not main: a weekly PR waits
+      # on review, so each run appends to it rather than overwriting the weeks
+      # that have not landed yet.
       - name: Restore history from the open report branch
         if: steps.week.outputs.skip != 'true'
         run: |
@@ -111,8 +103,7 @@ jobs:
           bunx --bun turbo run build:prod
           find apps/*/dist -name '*.map' -delete
 
-      # Runs the current script against the old checkout, so a commit that
-      # predates this tooling can still be measured.
+      # The script comes from HEAD so commits predating it can still be measured.
       - name: Record the week
         if: steps.week.outputs.skip != 'true'
         working-directory: /tmp/measure
