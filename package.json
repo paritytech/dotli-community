@@ -38,8 +38,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.13.1",
-    "smoldot": "3.4.1"
+    "@parity/truapi": "0.13.1"
   },
   "overrides": {
     "fast-uri": "3.1.7",
