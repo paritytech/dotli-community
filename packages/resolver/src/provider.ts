@@ -80,6 +80,48 @@ function getHandle(): Promise<ChainProviderHandle> {
   return handlePromise;
 }
 
+// A connection that ends without `disconnect()` leaves every in-flight
+// request on that chain waiting forever: papi has no error channel on a
+// `JsonRpcProvider`, so a half-open transport is indistinguishable from a
+// quiet one. Surface it here and let the protocol layer reject pending work
+// the way the smoldot panic broadcast used to.
+type FatalCallback = (message: string) => void;
+const fatalListeners = new Set<FatalCallback>();
+let fatalMessage: string | null = null;
+
+export function onProviderFatal(cb: FatalCallback): () => void {
+  fatalListeners.add(cb);
+  // Replay for listeners registered after the failure so a late subscriber
+  // still sees it instead of waiting on a chain that is already gone.
+  if (fatalMessage !== null) {
+    try {
+      cb(fatalMessage);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast replay: one buggy late subscriber must not prevent the caller from registering.
+    } catch {
+      /* listener threw, safe to ignore on replay */
+    }
+  }
+  return () => {
+    fatalListeners.delete(cb);
+  };
+}
+
+function markFatal(message: string): void {
+  if (fatalMessage !== null) {
+    return;
+  }
+  fatalMessage = message;
+  log.error(`[dot.li provider] ${message}`);
+  for (const cb of fatalListeners) {
+    try {
+      cb(message);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast to all others.
+    } catch {
+      /* listener threw, do not let one listener break the broadcast */
+    }
+  }
+}
+
 export function isChainSupported(genesisHash: string): boolean {
   return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
 }
@@ -123,6 +165,10 @@ export function createChainProvider(
       connection: null,
       closed: false,
     };
+    // Read through a call so the early `state.closed` guard below does not
+    // narrow later reads to `false`. `disconnect` mutates it between awaits,
+    // which control-flow analysis cannot see.
+    const isClosed = (): boolean => state.closed;
     const queued: string[] = [];
 
     void (async () => {
@@ -143,12 +189,20 @@ export function createChainProvider(
         for (;;) {
           const response = await candidate.nextResponse();
           if (response === undefined) {
+            // Only `disconnect()` makes this an orderly end. Otherwise the
+            // transport died or overflowed its send budget, and no further
+            // response will ever arrive on this chain.
+            if (!isClosed()) {
+              markFatal(`chain ${key} stopped responding`);
+            }
             break;
           }
           onMessage(JSON.parse(response) as JsonRpcMessage);
         }
       } catch (error) {
-        log.error("[dot.li provider] chain connection failed:", error);
+        markFatal(
+          `chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     })();
 

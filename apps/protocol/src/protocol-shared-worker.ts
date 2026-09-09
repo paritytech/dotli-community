@@ -22,6 +22,7 @@ import {
 import {
   createChainProvider,
   isChainSupported,
+  onProviderFatal,
 } from "@dotli/resolver/provider";
 import {
   resolveDotName,
@@ -113,6 +114,26 @@ if (requestedNetwork === null) {
   m.setDefaults({ network: requestedNetwork });
   swLog(`Active network pinned to ${requestedNetwork}`);
 }
+
+// Chain-death broadcast. When a chain connection ends without a deliberate
+// disconnect, relay a `fatal` envelope to every connected port so the host
+// client rejects every in-flight request immediately instead of waiting for
+// a per-request timeout. `onProviderFatal` is idempotent and replays to late
+// subscribers, so firing this once at module load covers the SharedWorker's
+// lifetime.
+onProviderFatal((message) => {
+  swError(
+    `Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`,
+  );
+  const fatal: ProtocolEnvelope = {
+    namespace: "dotli:protocol",
+    kind: "fatal",
+    message,
+  };
+  for (const port of ports) {
+    sendToPort(port, fatal);
+  }
+});
 
 // Placeholder broker manager until pre-sync creates the real one.
 let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;

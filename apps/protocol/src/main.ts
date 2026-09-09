@@ -666,7 +666,7 @@ async function initDirectMode(): Promise<void> {
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
-  const [{ createChainProvider, isChainSupported }, resolve] =
+  const [{ createChainProvider, isChainSupported, onProviderFatal }, resolve] =
     await Promise.all([
       import("@dotli/resolver/provider"),
       import("@dotli/resolver/resolve"),
@@ -679,6 +679,22 @@ async function initDirectMode(): Promise<void> {
     setResolverAssetHubProvider,
     setResolverPeopleProvider,
   } = resolve;
+
+  // Direct mode has no SharedWorker in the loop, so a dead chain is posted
+  // straight up to the host shell.
+  onProviderFatal((message) => {
+    log.error("[dot.li protocol] Chain death detected, signaling fatal");
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          namespace: "dotli:protocol",
+          kind: "fatal",
+          message,
+        },
+        "*",
+      );
+    }
+  });
 
   const engine = createEngine({
     createChainProvider,
