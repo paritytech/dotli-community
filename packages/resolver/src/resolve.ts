@@ -206,7 +206,6 @@ async function doCreateClient(
     });
     await api.whenReady();
 
-
     log.warn(`[dot.li resolve] Ready (${dur(initStart)} total)`);
     onPhase?.("asset-hub-ready");
     onStatus?.("Connected to Asset Hub Paseo");
