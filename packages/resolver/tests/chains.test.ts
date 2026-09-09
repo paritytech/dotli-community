@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getActiveSupportedGenesisHashes } from "@dotli/config/network";
-import { isChainSupported } from "@dotli/resolver/chains";
+import { isChainSupported } from "@dotli/resolver/provider";
 
 describe("isChainSupported", () => {
   it("accepts every chain the host runtime can expose", () => {

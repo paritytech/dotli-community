@@ -25,7 +25,7 @@ vi.mock("@dotli/config/mode", () => ({
   getBackend: () => mocks.backend,
 }));
 
-vi.mock("@dotli/resolver/chains", () => ({
+vi.mock("@dotli/resolver/provider", () => ({
   createChainProvider: mocks.createSmoldotChainProvider,
   isChainSupported: mocks.isSmoldotChainSupported,
 }));
