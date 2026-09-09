@@ -678,6 +678,7 @@ async function initDirectMode(): Promise<void> {
     resolveRootManifest,
     setResolverAssetHubProvider,
     setResolverPeopleProvider,
+    waitForPeopleFinalized,
   } = resolve;
 
   // Direct mode has no SharedWorker in the loop, so a dead chain is posted
@@ -718,6 +719,17 @@ async function initDirectMode(): Promise<void> {
         ),
       );
     },
+    onWarmup: () => {
+      // Warm People in the background so legacy-account auth reads do not race
+      // a cold parachain warp sync. Not needed for resolution, so do not await.
+      // The shared worker does the same at its own pre-sync.
+      void waitForPeopleFinalized().catch((err: unknown) => {
+        log.warn(
+          `[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`,
+        );
+      });
+      return Promise.resolve();
+    },
     resolveDotName,
     resolveOwner,
     resolveExecutableManifest,
@@ -747,8 +759,6 @@ function initRpcMode(): void {
   const engine = createEngine({
     createChainProvider: createRpcChainProvider,
     isChainSupported: isRpcChainSupported,
-    // No onInit / onCleanup: the WS provider lifecycle is owned by the
-    // broker's `ensureUpstream` / `disconnectAll`.
     // No resolver: gateway-mode resolution doesn't go through this iframe.
   });
 
@@ -1015,15 +1025,11 @@ interface EngineOptions {
   createChainProvider: (genesisHash: string) => JsonRpcProvider | null;
   /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
-  /** Called once at engine creation, e.g. to kick off smoldot pre-sync. */
-  onInit?: () => void;
   /**
    * Called once right after the broker is created. Smoldot modes use this to
    * route the resolver's Asset Hub reads through the broker's shared follow.
    */
   onBrokerReady?: (broker: ChainBrokerManager) => void;
-  /** Called at cleanup time after broker teardown. */
-  onCleanup?: () => void;
   /** Called on `warmup` requests. If omitted, `warmup` resolves immediately. */
   onWarmup?: () => Promise<void>;
   /** Resolver implementations. If omitted, resolution methods reject with a
@@ -1054,7 +1060,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   const originConns = new Map<string, Set<string>>();
   const broker = createChainBrokerManager(options.createChainProvider);
   options.onBrokerReady?.(broker);
-  options.onInit?.();
 
   function assertStr(value: unknown, name: string): asserts value is string {
     if (typeof value !== "string" || value.length === 0) {
@@ -1286,7 +1291,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
     connections.clear();
     originConns.clear();
     broker.disconnectAll();
-    options.onCleanup?.();
   }
 
   return { handleRequest, cleanup };
