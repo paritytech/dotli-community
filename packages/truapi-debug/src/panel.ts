@@ -260,7 +260,6 @@ const SAFE_TOP = "var(--safe-top, 0px)";
 const SAFE_BOTTOM = "var(--safe-bottom, 0px)";
 const SAFE_LEFT = "var(--safe-left, 0px)";
 const SAFE_RIGHT = "var(--safe-right, 0px)";
-const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
 
 /**
  * Space above the product iframe. `--topbar-height` already includes the top
