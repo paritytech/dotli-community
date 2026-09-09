@@ -9,7 +9,10 @@ interface ProductSmoke {
   keys: readonly string[];
   audio: boolean;
   nonzeroAudio: boolean;
-  interaction?: "gameplay-pointer-capture" | "pointer-motion";
+  interaction?:
+    | "gameplay-pointer-capture"
+    | "pointer-motion"
+    | "host-frame-handshake";
 }
 
 const products: readonly ProductSmoke[] = [
@@ -42,6 +45,14 @@ const products: readonly ProductSmoke[] = [
     keys: ["Tab", "Enter", "Tab"],
     audio: false,
     nonzeroAudio: false,
+  },
+  {
+    label: "pvm-truapi-playground",
+    profile: "tri2d",
+    keys: ["Tab", "Tab", "Tab", "Enter"],
+    audio: false,
+    nonzeroAudio: false,
+    interaction: "host-frame-handshake",
   },
   {
     label: "lot-lab",
@@ -164,6 +175,14 @@ async function smokeProduct(
   const framesBefore = await counter(canvas, "data-polkavm-frames");
   const updatesBefore = await counter(canvas, "data-polkavm-updates");
   const audioBefore = await counter(canvas, "data-polkavm-audio-samples");
+  const hostFrameRequestsBefore = await counter(
+    canvas,
+    "data-polkavm-host-frame-requests",
+  );
+  const hostFrameResponsesBefore = await counter(
+    canvas,
+    "data-polkavm-host-frame-responses",
+  );
 
   await canvas.click({ position: { x: 160, y: 100 } });
   for (const key of product.keys) await page.keyboard.press(key);
@@ -207,6 +226,17 @@ async function smokeProduct(
       "data-polkavm-motion-source",
       "pointer",
     );
+  } else if (product.interaction === "host-frame-handshake") {
+    await expect
+      .poll(() => counter(canvas, "data-polkavm-host-frame-requests"), {
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(hostFrameRequestsBefore);
+    await expect
+      .poll(() => counter(canvas, "data-polkavm-host-frame-responses"), {
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(hostFrameResponsesBefore);
   }
 
   await expect
@@ -257,6 +287,14 @@ async function smokeProduct(
     pointerCaptured: await canvas.getAttribute("data-polkavm-pointer-captured"),
     motionSamples: await counter(canvas, "data-polkavm-motion-samples"),
     motionSource: await canvas.getAttribute("data-polkavm-motion-source"),
+    hostFrameRequests: await counter(
+      canvas,
+      "data-polkavm-host-frame-requests",
+    ),
+    hostFrameResponses: await counter(
+      canvas,
+      "data-polkavm-host-frame-responses",
+    ),
   };
 }
 
