@@ -34,9 +34,10 @@ vi.mock("@dotli/shared/log", () => ({
 
 import { bitswapGet } from "@dotli/ui/bulletin-bitswap";
 
-describe("Bulletin bitswap cold start", () => {
+describe("Bulletin bitswap provider discovery", () => {
   it("recovers when the first request races peer discovery", async () => {
     vi.useFakeTimers();
+    mocks.send.mockReset();
     try {
       let attempt = 0;
       mocks.send.mockImplementation((request: { id?: number }) => {
@@ -63,22 +64,89 @@ describe("Bulletin bitswap cold start", () => {
 
       await expect(fetched).resolves.toEqual(new Uint8Array([1, 2]));
       expect(mocks.send).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
+  it("recovers a child CID after the root CID succeeded", async () => {
+    vi.useFakeTimers();
+    mocks.send.mockReset();
+    try {
+      let childAttempts = 0;
+      mocks.send.mockImplementation(
+        (request: { id?: number; params?: string[] }) => {
+          const id = request.id;
+          const cid = request.params?.[0];
+          queueMicrotask(() => {
+            if (cid === "bafy-root") {
+              mocks.onMessage?.({ jsonrpc: "2.0", id, result: "0x01" });
+              return;
+            }
+            childAttempts += 1;
+            if (childAttempts === 1) {
+              mocks.onMessage?.({
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: -32810,
+                  message: "No connected peers have the CID requested.",
+                },
+              });
+            } else {
+              mocks.onMessage?.({ jsonrpc: "2.0", id, result: "0x02" });
+            }
+          });
+        },
+      );
+
+      await expect(bitswapGet("bafy-root")).resolves.toEqual(
+        new Uint8Array([1]),
+      );
+
+      const fetchedChild = bitswapGet("bafy-child");
+      await vi.advanceTimersByTimeAsync(500);
+
+      await expect(fetchedChild).resolves.toEqual(new Uint8Array([2]));
+      expect(mocks.send).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops retrying a missing CID after the discovery bound", async () => {
+    vi.useFakeTimers();
+    mocks.send.mockReset();
+    try {
       mocks.send.mockImplementation((request: { id?: number }) => {
         const id = request.id;
         queueMicrotask(() => {
           mocks.onMessage?.({
             jsonrpc: "2.0",
             id,
-            error: { code: -32810, message: "content missing" },
+            error: {
+              code: -32810,
+              message: "No connected peers have the CID requested.",
+            },
           });
         });
       });
 
-      await expect(bitswapGet("bafy-genuinely-missing")).rejects.toThrow(
-        /content missing/,
+      const fetched = bitswapGet("bafy-missing");
+      const outcome = fetched.then(
+        () => new Error("expected missing CID to fail"),
+        (err: unknown) => err,
       );
-      expect(mocks.send).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(12_500);
+
+      const err = await outcome;
+      if (!(err instanceof Error)) {
+        throw new Error("expected missing CID error");
+      }
+      expect(err.message).toMatch(
+        /bafy-missing.*provider discovery exhausted after 6 attempts/,
+      );
+      expect(mocks.send).toHaveBeenCalledTimes(6);
     } finally {
       vi.useRealTimers();
     }
