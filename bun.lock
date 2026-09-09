@@ -84,6 +84,7 @@
         "@dotli/sandbox-checker": "workspace:*",
         "@dotli/shared": "workspace:*",
         "@dotli/storage": "workspace:*",
+        "@dotli/truapi-debug": "workspace:*",
         "@dotli/ui": "workspace:*",
         "@parity/truapi": "0.13.1",
         "@sentry/browser": "^10.57.0",

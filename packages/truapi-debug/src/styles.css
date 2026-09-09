@@ -225,6 +225,32 @@
   color: #6b7280;
   font-size: 11px;
 }
+.td-runtime-badge {
+  min-width: 0;
+  max-width: min(420px, 35vw);
+  overflow: hidden;
+  border: 1px solid #1e40af;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #93c5fd;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.td-runtime-badge:hover {
+  border-color: #3b82f6;
+  color: #dbeafe;
+}
+.td-runtime-badge.hidden,
+.td-runtime-tab.hidden {
+  display: none;
+}
+#truapi-debug-panel.docked-right .td-runtime-badge {
+  max-width: 145px;
+}
 .td-spacer {
   margin-left: auto;
 }
@@ -249,6 +275,26 @@
 }
 .td-btn-icon {
   padding: 2px 8px;
+}
+#truapi-debug-panel.docked-right .td-header,
+#truapi-debug-panel.docked-right .td-filters,
+#truapi-debug-panel.docked-right .td-body {
+  min-width: 0;
+}
+#truapi-debug-panel.docked-right .td-header {
+  gap: 4px;
+  padding: 0 6px;
+}
+#truapi-debug-panel.docked-right .td-counts {
+  display: none;
+}
+#truapi-debug-panel.docked-right .td-btn {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+#truapi-debug-panel.docked-right .td-btn-icon {
+  padding-right: 5px;
+  padding-left: 5px;
 }
 .td-dock,
 .td-export,
@@ -353,6 +399,19 @@
 #truapi-debug-panel.collapsed .td-filters {
   display: none;
 }
+.td-body.runtime-only {
+  grid-template-columns: 1fr;
+}
+.td-body.runtime-only .td-body-splitter,
+.td-body.runtime-only .td-detail {
+  display: none;
+}
+#truapi-debug-panel.docked-right .td-body.runtime-only {
+  grid-template-rows: 1fr;
+}
+#truapi-debug-panel .td-body.runtime-only .td-views {
+  border-right: none;
+}
 
 /* Draggable divider between the views pane and the detail pane. */
 .td-body-splitter {
@@ -383,6 +442,7 @@
   grid-template-rows: 26px 1fr;
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
   border-right: 1px solid #1f1f1f;
 }
 .td-tabs {
@@ -413,6 +473,60 @@
 }
 .td-views > .hidden {
   display: none !important;
+}
+
+.td-runtime {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+.td-runtime-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.td-runtime-heading strong {
+  color: #f8fafc;
+  font-size: 18px;
+}
+.td-runtime-kicker,
+.td-runtime-stage {
+  color: #94a3b8;
+}
+.td-runtime-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.td-runtime-stage {
+  margin-left: auto;
+}
+.td-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid #1f2937;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #1f2937;
+}
+.td-runtime-grid > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: #0f1115;
+}
+.td-runtime-grid dt {
+  margin-bottom: 4px;
+  color: #94a3b8;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.td-runtime-grid dd {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 13px;
 }
 .td-views > .td-list,
 .td-views > .td-timeline {
