@@ -35,7 +35,7 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "useragent-kit-polkavm-runtime-0.1.2-dc98903e01a4325c06a796958de23e67c3c4d132";
+  "useragent-kit-polkavm-runtime-0.1.3-73b9d318a71092bb8ddc05f280ef3efd17eaf918";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
