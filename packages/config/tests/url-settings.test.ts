@@ -86,7 +86,7 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
       const search = new URLSearchParams("chainBackend=smoldot-direct");
       const changed = writeSettingsToSearch(
         {
-          network: NetworkName.PASEO_NEXT_V1,
+          network: NetworkName.PREVIEW_NET,
           chainBackend: "smoldot-direct",
           cache: {
             skipCidCache: true,
@@ -106,7 +106,7 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
       const search = new URLSearchParams();
       writeSettingsToSearch(
         {
-          network: NetworkName.PASEO_NEXT_V1,
+          network: NetworkName.PREVIEW_NET,
           chainBackend: "smoldot-shared-worker",
           cache: {
             skipCidCache: true,
@@ -125,7 +125,7 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
       const search = new URLSearchParams("chainBackend=smoldot-direct");
       writeSettingsToSearch(
         {
-          network: NetworkName.PASEO_NEXT_V1,
+          network: NetworkName.PREVIEW_NET,
           chainBackend: "smoldot-direct",
           cache: {
             skipCidCache: true,
@@ -143,7 +143,7 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
 describe("writeSettingsToSearch", () => {
   it("drops default-valued axes and preserves unrelated params", () => {
     const search = new URLSearchParams(
-      "network=paseo-next-v1&chainBackend=rpc-gateway&skipArchiveCache=1&keep=me",
+      "network=previewnet&chainBackend=rpc-gateway&skipArchiveCache=1&keep=me",
     );
     const changed = writeSettingsToSearch(
       {
@@ -169,7 +169,7 @@ describe("writeSettingsToSearch", () => {
     const search = new URLSearchParams();
     writeSettingsToSearch(
       {
-        network: NetworkName.PASEO_NEXT_V1,
+        network: NetworkName.PREVIEW_NET,
         chainBackend: "smoldot-direct",
         cache: {
           skipCidCache: true,
@@ -179,7 +179,7 @@ describe("writeSettingsToSearch", () => {
       },
       search,
     );
-    expect(search.get("network")).toBe(NetworkName.PASEO_NEXT_V1);
+    expect(search.get("network")).toBe(NetworkName.PREVIEW_NET);
     expect(search.get("chainBackend")).toBeNull();
     expect(search.get("skipCidCache")).toBe("1");
     expect(search.get("skipArchiveCache")).toBeNull();

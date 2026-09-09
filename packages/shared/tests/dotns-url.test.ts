@@ -6,9 +6,9 @@ import { setNetworkOverride } from "@dotli/config/network";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
 
 describe("parseDotNsDomain", () => {
-  it("parses bare .dot domain", () => {
-    expect(dotNsUrl.parseDotNsDomain("mytestapp.dot")).toEqual({
-      identifier: "mytestapp.dot",
+  it("parses bare .paseo domain", () => {
+    expect(dotNsUrl.parseDotNsDomain("mytestapp.paseo")).toEqual({
+      identifier: "mytestapp.paseo",
       pathname: "",
     });
   });
@@ -17,23 +17,23 @@ describe("parseDotNsDomain", () => {
     expect(dotNsUrl.parseDotNsDomain("mytestapp.dot.li")).toBeNull();
   });
 
-  it("parses .dot domain with https protocol", () => {
-    expect(dotNsUrl.parseDotNsDomain("https://mytestapp.dot")).toEqual({
-      identifier: "mytestapp.dot",
+  it("parses .paseo domain with https protocol", () => {
+    expect(dotNsUrl.parseDotNsDomain("https://mytestapp.paseo")).toEqual({
+      identifier: "mytestapp.paseo",
       pathname: "",
     });
   });
 
-  it("parses .dot domain with http protocol", () => {
-    expect(dotNsUrl.parseDotNsDomain("http://mytestapp.dot")).toEqual({
-      identifier: "mytestapp.dot",
+  it("parses .paseo domain with http protocol", () => {
+    expect(dotNsUrl.parseDotNsDomain("http://mytestapp.paseo")).toEqual({
+      identifier: "mytestapp.paseo",
       pathname: "",
     });
   });
 
-  it("parses .dot domain with pathname", () => {
-    expect(dotNsUrl.parseDotNsDomain("mytestapp.dot/some/path")).toEqual({
-      identifier: "mytestapp.dot",
+  it("parses .paseo domain with pathname", () => {
+    expect(dotNsUrl.parseDotNsDomain("mytestapp.paseo/some/path")).toEqual({
+      identifier: "mytestapp.paseo",
       pathname: "some/path",
     });
   });
@@ -42,95 +42,99 @@ describe("parseDotNsDomain", () => {
     expect(dotNsUrl.parseDotNsDomain("mytestapp.dot.li/some/path")).toBeNull();
   });
 
-  it("parses .dot domain with query only (no path before ?)", () => {
-    expect(dotNsUrl.parseDotNsDomain("pr508.faucet.dot?embed=1")).toEqual({
-      identifier: "pr508.faucet.dot",
+  it("parses .paseo domain with query only (no path before ?)", () => {
+    expect(dotNsUrl.parseDotNsDomain("pr508.faucet.paseo?embed=1")).toEqual({
+      identifier: "pr508.faucet.paseo",
       pathname: "?embed=1",
     });
   });
 
-  it("parses .dot domain with https and query only", () => {
+  it("parses .paseo domain with https and query only", () => {
     expect(
-      dotNsUrl.parseDotNsDomain("https://pr508.faucet.dot?embed=1"),
+      dotNsUrl.parseDotNsDomain("https://pr508.faucet.paseo?embed=1"),
     ).toEqual({
-      identifier: "pr508.faucet.dot",
+      identifier: "pr508.faucet.paseo",
       pathname: "?embed=1",
     });
   });
 
-  it("parses .dot domain with hash only", () => {
-    expect(dotNsUrl.parseDotNsDomain("pr508.faucet.dot#section=main")).toEqual({
-      identifier: "pr508.faucet.dot",
+  it("parses .paseo domain with hash only", () => {
+    expect(
+      dotNsUrl.parseDotNsDomain("pr508.faucet.paseo#section=main"),
+    ).toEqual({
+      identifier: "pr508.faucet.paseo",
       pathname: "#section=main",
     });
   });
 
-  it("parses .dot domain with pathname, query and hash", () => {
+  it("parses .paseo domain with pathname, query and hash", () => {
     expect(
       dotNsUrl.parseDotNsDomain(
-        "pr508.faucet.dot/nested/path?embed=1#frame=compact",
+        "pr508.faucet.paseo/nested/path?embed=1#frame=compact",
       ),
     ).toEqual({
-      identifier: "pr508.faucet.dot",
+      identifier: "pr508.faucet.paseo",
       pathname: "nested/path?embed=1#frame=compact",
     });
   });
 
-  it("parses .dot domain from polkadot:// URL host", () => {
+  it("parses .paseo domain from polkadot:// URL host", () => {
     expect(
-      dotNsUrl.parseDotNsDomain("polkadot://currenthost.dot/mytestapp.dot"),
+      dotNsUrl.parseDotNsDomain("polkadot://currenthost.paseo/mytestapp.paseo"),
     ).toEqual({
-      identifier: "currenthost.dot",
-      pathname: "mytestapp.dot",
+      identifier: "currenthost.paseo",
+      pathname: "mytestapp.paseo",
     });
   });
 
-  it("returns null for polkadot:// URL with .dot.li host (not a .dot domain)", () => {
+  it("returns null for polkadot:// URL with .dot.li host (not a .paseo domain)", () => {
     expect(
-      dotNsUrl.parseDotNsDomain("polkadot://currenthost.dot.li/mytestapp.dot"),
+      dotNsUrl.parseDotNsDomain(
+        "polkadot://currenthost.dot.li/mytestapp.paseo",
+      ),
     ).toBeNull();
   });
 
-  it("parses .dot domain with path from polkadot:// URL", () => {
+  it("parses .paseo domain with path from polkadot:// URL", () => {
     expect(
       dotNsUrl.parseDotNsDomain(
-        "polkadot://currenthost.dot/mytestapp.dot/settings",
+        "polkadot://currenthost.paseo/mytestapp.paseo/settings",
       ),
     ).toEqual({
-      identifier: "currenthost.dot",
-      pathname: "mytestapp.dot/settings",
+      identifier: "currenthost.paseo",
+      pathname: "mytestapp.paseo/settings",
     });
   });
 
-  it("parses .dot domain with query/hash from polkadot:// URL", () => {
+  it("parses .paseo domain with query/hash from polkadot:// URL", () => {
     expect(
       dotNsUrl.parseDotNsDomain(
-        "polkadot://currenthost.dot/mytestapp.dot?embed=1#frame=compact",
+        "polkadot://currenthost.paseo/mytestapp.paseo?embed=1#frame=compact",
       ),
     ).toEqual({
-      identifier: "currenthost.dot",
-      pathname: "mytestapp.dot?embed=1#frame=compact",
+      identifier: "currenthost.paseo",
+      pathname: "mytestapp.paseo?embed=1#frame=compact",
     });
   });
 
-  it("parses .dot domain from polkadot:// URL with regular path", () => {
+  it("parses .paseo domain from polkadot:// URL with regular path", () => {
     expect(
-      dotNsUrl.parseDotNsDomain("polkadot://currenthost.dot/settings"),
+      dotNsUrl.parseDotNsDomain("polkadot://currenthost.paseo/settings"),
     ).toEqual({
-      identifier: "currenthost.dot",
+      identifier: "currenthost.paseo",
       pathname: "settings",
     });
   });
 
-  it("returns null for polkadot:// URL without .dot host", () => {
+  it("returns null for polkadot:// URL without .paseo host", () => {
     expect(
       dotNsUrl.parseDotNsDomain("polkadot://example.com/settings"),
     ).toBeNull();
   });
 
-  it("parses subdomain .dot domain with path", () => {
-    expect(dotNsUrl.parseDotNsDomain("sub.acme.dot/path")).toEqual({
-      identifier: "sub.acme.dot",
+  it("parses subdomain .paseo domain with path", () => {
+    expect(dotNsUrl.parseDotNsDomain("sub.acme.paseo/path")).toEqual({
+      identifier: "sub.acme.paseo",
       pathname: "path",
     });
   });
@@ -142,8 +146,8 @@ describe("parseDotNsDomain", () => {
   });
 
   it("trims whitespace before parsing", () => {
-    expect(dotNsUrl.parseDotNsDomain("  mytestapp.dot/path  ")).toEqual({
-      identifier: "mytestapp.dot",
+    expect(dotNsUrl.parseDotNsDomain("  mytestapp.paseo/path  ")).toEqual({
+      identifier: "mytestapp.paseo",
       pathname: "path",
     });
   });
@@ -156,7 +160,7 @@ describe("parseDotNsDomain", () => {
     expect(dotNsUrl.parseDotNsDomain("http://localhost:3000/path")).toBeNull();
   });
 
-  it("returns null for non-.dot domain", () => {
+  it("returns null for non-.paseo domain", () => {
     expect(dotNsUrl.parseDotNsDomain("example.com")).toBeNull();
   });
 
@@ -230,8 +234,8 @@ describe("parseLocalhostUrl", () => {
     });
   });
 
-  it("returns null for .dot domain", () => {
-    expect(dotNsUrl.parseLocalhostUrl("mytestapp.dot")).toBeNull();
+  it("returns null for .paseo domain", () => {
+    expect(dotNsUrl.parseLocalhostUrl("mytestapp.paseo")).toBeNull();
   });
 
   it("returns null for empty string", () => {
@@ -244,15 +248,15 @@ describe("parseLocalhostUrl", () => {
 });
 
 describe("isDotDomain", () => {
-  it("returns true for .dot domain", () => {
-    expect(dotNsUrl.isDotDomain("mytestapp.dot")).toBe(true);
+  it("returns true for .paseo domain", () => {
+    expect(dotNsUrl.isDotDomain("mytestapp.paseo")).toBe(true);
   });
 
   it("returns false for .dot.li domain (regular website)", () => {
     expect(dotNsUrl.isDotDomain("mytestapp.dot.li")).toBe(false);
   });
 
-  it("returns false for non-.dot domain", () => {
+  it("returns false for non-.paseo domain", () => {
     expect(dotNsUrl.isDotDomain("example.com")).toBe(false);
   });
 
@@ -263,11 +267,11 @@ describe("isDotDomain", () => {
 
 // Paseo Next V2 registers names under `.paseo`, previewnet under `.testnet`. The
 // parser must follow the active network, otherwise a Paseo deployment silently
-// treats every product URL as a regular website, and a `.dot` name resolves
-// against the wrong namehash.
+// treats every product URL as a regular website, and a name resolves against
+// the wrong namehash.
 describe("dotNS TLD per network", () => {
   afterEach(() => {
-    setNetworkOverride("paseo-next-v1");
+    setNetworkOverride("paseo-next-v2");
   });
 
   it("As a user on Paseo Next V2, I open a .paseo name and reach the product", () => {
@@ -306,13 +310,13 @@ describe("dotNS TLD per network", () => {
     expect(parsed).toBeNull();
   });
 
-  it("As a user on previewnet, a .testnet name is a product and a .dot name is not", () => {
+  it("As a user on previewnet, a .testnet name is a product and a .paseo name is not", () => {
     // Given
     setNetworkOverride("previewnet");
 
     // When
     const test = dotNsUrl.isDotDomain("mytestapp.testnet");
-    const dot = dotNsUrl.isDotDomain("mytestapp.dot");
+    const dot = dotNsUrl.isDotDomain("mytestapp.paseo");
 
     // Then
     expect(test).toBe(true);
@@ -382,7 +386,7 @@ describe("isWebcontainerPreviewHost", () => {
   });
 
   it("rejects non-webcontainer hosts", () => {
-    expect(dotNsUrl.isWebcontainerPreviewHost("mytestapp.dot")).toBe(false);
+    expect(dotNsUrl.isWebcontainerPreviewHost("mytestapp.paseo")).toBe(false);
     expect(dotNsUrl.isWebcontainerPreviewHost("localhost:3000")).toBe(false);
     expect(dotNsUrl.isWebcontainerPreviewHost("evil-webcontainer-api.io")).toBe(
       false,

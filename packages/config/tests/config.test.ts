@@ -15,16 +15,7 @@ import {
 
 describe("config constants", () => {
   describe("contract addresses", () => {
-    const v1 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V1].dotns;
     const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V2].dotns;
-
-    it("V1 DOTNS_REGISTRY is a valid hex address", () => {
-      expect(v1.DOTNS_REGISTRY).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    });
-
-    it("V1 DOTNS_CONTENT_RESOLVER is a valid hex address", () => {
-      expect(v1.DOTNS_CONTENT_RESOLVER).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    });
 
     it("V2 DOTNS_REGISTRY is a valid hex address", () => {
       expect(v2.DOTNS_REGISTRY).toMatch(/^0x[0-9a-fA-F]{40}$/);
@@ -32,11 +23,6 @@ describe("config constants", () => {
 
     it("V2 DOTNS_CONTENT_RESOLVER is a valid hex address", () => {
       expect(v2.DOTNS_CONTENT_RESOLVER).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    });
-
-    it("V1 and V2 contract addresses differ (separate deployments)", () => {
-      expect(v1.DOTNS_REGISTRY).not.toBe(v2.DOTNS_REGISTRY);
-      expect(v1.DOTNS_CONTENT_RESOLVER).not.toBe(v2.DOTNS_CONTENT_RESOLVER);
     });
   });
 
@@ -75,13 +61,6 @@ describe("config constants", () => {
   });
 
   describe("IPFS gateways", () => {
-    it("V1 first gateway is a valid HTTPS URL", () => {
-      expect(
-        NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V1].bulletin
-          .ipfsGateways[0],
-      ).toMatch(/^https:\/\//);
-    });
-
     it("V2 first gateway is a valid HTTPS URL", () => {
       expect(
         NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V2].bulletin
