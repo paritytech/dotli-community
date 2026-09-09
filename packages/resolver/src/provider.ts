@@ -27,14 +27,6 @@ import { createSmoldotDb } from "./smoldot-db";
 // light client.
 let handlePromise: Promise<ChainProviderHandle> | null = null;
 
-// A chain has finalized nothing worth keeping for the first few seconds, and
-// a snapshot is a full round trip against the light client, so the first one
-// waits before the steady cadence takes over.
-const FIRST_SNAPSHOT_MS = 30_000;
-const SNAPSHOT_INTERVAL_MS = 60_000;
-
-const scheduled = new Set<string>();
-
 function isLocalHost(): boolean {
   const host = globalThis.location.hostname;
   return (
@@ -107,36 +99,6 @@ async function resumeFromStore(
   }
 }
 
-// Snapshots run on a timer because the crate cannot drive them itself, and
-// neither `pagehide` nor a hidden tab is guaranteed to stay scheduled long
-// enough to finish one. A worker sees neither event at all.
-function scheduleSnapshots(handle: ChainProviderHandle, key: string): void {
-  if (scheduled.has(key)) {
-    return;
-  }
-  scheduled.add(key);
-  let inFlight = false;
-  const run = (): void => {
-    if (inFlight) {
-      return;
-    }
-    inFlight = true;
-    void (async () => {
-      try {
-        if (await handle.saveDatabase(key)) {
-          log.debug(`[dot.li provider] stored warm-start blob for ${key}`);
-        }
-      } catch (error) {
-        log.warn(`[dot.li provider] snapshot failed for ${key}:`, error);
-      } finally {
-        inFlight = false;
-      }
-    })();
-  };
-  setTimeout(run, FIRST_SNAPSHOT_MS);
-  setInterval(run, SNAPSHOT_INTERVAL_MS);
-}
-
 /**
  * Create a `JsonRpcProvider` for a genesis hash, backed by truapi-provider.
  * Returns `null` for a genesis the active network does not define.
@@ -173,7 +135,6 @@ export function createChainProvider(
           candidate.close();
           return;
         }
-        scheduleSnapshots(handle, key);
         state.connection = candidate;
         for (const message of queued) {
           candidate.send(message);
