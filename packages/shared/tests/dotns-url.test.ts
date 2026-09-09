@@ -271,12 +271,12 @@ describe("isDotDomain", () => {
 // the wrong namehash.
 describe("dotNS TLD per network", () => {
   afterEach(() => {
-    setNetworkOverride("paseo-next-v2");
+    setNetworkOverride("paseo");
   });
 
   it("As a user on Paseo Next V2, I open a .paseo name and reach the product", () => {
     // Given
-    setNetworkOverride("paseo-next-v2");
+    setNetworkOverride("paseo");
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain("mytestapp.paseo/some/path");
@@ -290,7 +290,7 @@ describe("dotNS TLD per network", () => {
 
   it("As a user on Paseo Next V2, I open a .dot name and get a regular website", () => {
     // Given
-    setNetworkOverride("paseo-next-v2");
+    setNetworkOverride("paseo");
 
     // When
     const isProduct = dotNsUrl.isDotDomain("mytestapp.dot");
@@ -301,7 +301,7 @@ describe("dotNS TLD per network", () => {
 
   it("As a user on Paseo Next V2, the gateway host paseo.li is not a product", () => {
     // Given
-    setNetworkOverride("paseo-next-v2");
+    setNetworkOverride("paseo");
 
     // When
     const parsed = dotNsUrl.parseDotNsDomain("mytestapp.paseo.li");

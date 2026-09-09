@@ -10,7 +10,7 @@ import {
 
 describe("labelToProductId", () => {
   afterEach(() => {
-    setNetworkOverride("paseo-next-v2");
+    setNetworkOverride("paseo");
   });
 
   it("As a dotli integrator, the host maps dotli labels to the active network's TLD", () => {

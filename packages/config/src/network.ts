@@ -4,8 +4,8 @@
 // Network Configuration
 
 export const NetworkName = {
-  PASEO_NEXT_V2: "paseo-next-v2",
-  PREVIEW_NET: "previewnet",
+  PASEO: "paseo",
+  PREVIEWNET: "previewnet",
 } as const;
 
 export type NetworkName = (typeof NetworkName)[keyof typeof NetworkName];
@@ -46,7 +46,7 @@ export interface ServicesConfig {
 }
 
 const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
-  [NetworkName.PASEO_NEXT_V2]: {
+  [NetworkName.PASEO]: {
     label: "Paseo Next V2",
     description: "Upgraded Paseo Next system chains",
     relay: {
@@ -82,7 +82,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       TLD: "paseo",
     },
   },
-  [NetworkName.PREVIEW_NET]: {
+  [NetworkName.PREVIEWNET]: {
     label: "Previewnet",
     description: "Product Preview Network",
     relay: {
@@ -122,8 +122,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  * Runtime overrides for the tables above, so a deployment can point a network at
  * a locally forked chain without a source edit or a rebuild:
  *
- *   {"enabled":["paseo-next-v2"],
- *    "networks":{"paseo-next-v2":{"label":"My Fork",
+ *   {"enabled":["paseo"],
+ *    "networks":{"paseo":{"label":"My Fork",
  *                "assethub":{"rpcs":["ws://localhost:9944"]}}}}
  *
  * Delivered as `globalThis.__DOTLI_NETWORK__`, set by a blocking classic script
@@ -352,8 +352,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
 export const NETWORK_KEY = "dotli:network";
 
 const VALID_NETWORKS: ReadonlySet<string> = new Set<Network>([
-  NetworkName.PASEO_NEXT_V2,
-  NetworkName.PREVIEW_NET,
+  NetworkName.PASEO,
+  NetworkName.PREVIEWNET,
 ]);
 
 /**
@@ -381,7 +381,7 @@ export function getEnabledNetworks(): Network[] {
 
   if (runtimeEnabled === undefined && source.entries.join("").trim() === "") {
     throw new Error(
-      'VITE_NETWORKS is not set. The deployment must declare a comma-separated list of networks (e.g. "paseo-next-v2,previewnet").',
+      'VITE_NETWORKS is not set. The deployment must declare a comma-separated list of networks (e.g. "paseo,previewnet").',
     );
   }
 

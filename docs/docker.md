@@ -55,8 +55,8 @@ docker run -p 5173:5173 dotli
 
 # 2. Inline JSON
 docker run -p 5173:5173 \
-  -e DOTLI_NETWORK='{"enabled":["paseo-next-v2"],
-                     "networks":{"paseo-next-v2":{"label":"My Fork",
+  -e DOTLI_NETWORK='{"enabled":["paseo"],
+                     "networks":{"paseo":{"label":"My Fork",
                        "assethub":{"rpcs":["ws://host.docker.internal:9944"]}}}}' \
   dotli
 

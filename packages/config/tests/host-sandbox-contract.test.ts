@@ -17,7 +17,7 @@ function search(
   const base: Record<string, string> = {
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: "smoldot-direct",
-    [SANDBOX_CONTRACT_PARAMS.network]: "paseo-next-v2",
+    [SANDBOX_CONTRACT_PARAMS.network]: "paseo",
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
@@ -40,7 +40,7 @@ describe("validateSandboxParams: v3 cid contract", () => {
     if (result.ok) {
       expect(result.params.cid).toBe(VALID_CID);
       expect(result.params.chainBackend).toBe("smoldot-direct");
-      expect(result.params.network).toBe("paseo-next-v2");
+      expect(result.params.network).toBe("paseo");
     }
   });
 
