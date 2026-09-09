@@ -84,6 +84,7 @@
         "@dotli/sandbox-checker": "workspace:*",
         "@dotli/shared": "workspace:*",
         "@dotli/storage": "workspace:*",
+        "@dotli/truapi-debug": "workspace:*",
         "@dotli/ui": "workspace:*",
         "@sentry/browser": "^10.57.0",
         "@sentry/vite-plugin": "^5.2.0",

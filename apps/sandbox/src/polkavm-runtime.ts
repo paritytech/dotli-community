@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ArchiveFiles } from "@dotli/content/archive";
+import type {
+  PolkaVmDebugMessage,
+  PolkaVmDebugSnapshot,
+} from "@dotli/truapi-debug/dotli-debug-types";
 import { Tri2dRenderer } from "./tri2d-renderer";
 import {
   WebGpuBridge,
@@ -38,57 +42,6 @@ const encoder = new TextEncoder();
 const compiledModules = new Map<string, WebAssembly.Module>();
 let runtimeBytesPromise: Promise<ArrayBuffer> | null = null;
 
-export interface PolkaVmMetrics {
-  backend: "compiler" | "interpreter" | "starting";
-  cacheHit: boolean;
-  translationMs: number;
-  compilationMs: number;
-  startupMs: number;
-  startupStage: string;
-  firstFrameMs: number;
-  translatedWasmBytes: number;
-  frames: number;
-  fps: number;
-  updates: number;
-  updateP50Ms: number;
-  updateP95Ms: number;
-  updateMaxMs: number;
-  audioChunks: number;
-  audioSamples: number;
-}
-
-type PolkaVmMetricsDisplaySource = Pick<
-  PolkaVmMetrics,
-  | "backend"
-  | "fps"
-  | "startupStage"
-  | "translationMs"
-  | "compilationMs"
-  | "updateP50Ms"
-  | "updateP95Ms"
-  | "updateMaxMs"
->;
-
-export function formatPolkaVmMetrics(metrics: PolkaVmMetricsDisplaySource): {
-  summary: string;
-  details: string;
-} {
-  const backend =
-    metrics.backend === "compiler"
-      ? "JIT"
-      : metrics.backend === "interpreter"
-        ? "Interpreter"
-        : "Starting";
-  return {
-    summary: `PolkaVM / ${backend} · ${metrics.fps.toFixed(1)} FPS`,
-    details: [
-      `Stage: ${metrics.startupStage}`,
-      `Translate ${metrics.translationMs.toFixed(1)} ms · Compile ${metrics.compilationMs.toFixed(1)} ms`,
-      `Update p50 ${metrics.updateP50Ms.toFixed(2)} ms · p95 ${metrics.updateP95Ms.toFixed(2)} ms · max ${metrics.updateMaxMs.toFixed(2)} ms`,
-    ].join("\n"),
-  };
-}
-
 export function polkaVmCompatibilityError(message: string): {
   title: string;
   detail: string;
@@ -124,7 +77,7 @@ export function polkaVmCompatibilityError(message: string): {
 
 declare global {
   interface Window {
-    __dotliPolkaVmMetrics?: PolkaVmMetrics;
+    __dotliPolkaVmMetrics?: PolkaVmDebugSnapshot;
     __HOST_API_PORT__?: MessagePort;
   }
 }
@@ -1445,9 +1398,6 @@ export function accumulateRelativePointerDelta(
 function createShell(controls: string[]): {
   canvas: HTMLCanvasElement;
   status: HTMLElement;
-  metrics: HTMLDetailsElement;
-  metricsSummary: HTMLElement;
-  metricsDetails: HTMLElement;
 } {
   const style = document.createElement("style");
   style.textContent = `
@@ -1459,10 +1409,7 @@ function createShell(controls: string[]): {
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
-    #dotli-polkavm-metrics{position:relative;left:auto;max-height:35vh;overflow:auto;pointer-events:auto;border-radius:0}
-    #dotli-polkavm-metrics[hidden]{display:none}
-    #dotli-polkavm-metrics summary{padding:6px 9px;cursor:pointer;white-space:nowrap;font-weight:600;user-select:none}
-    #dotli-polkavm-metrics pre{margin:0;padding:7px 9px;border-top:1px solid #ffffff1f;white-space:pre-wrap;color:#c9ced3;font:inherit;font-weight:400}
+
     #dotli-polkavm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
   `;
   const shell = document.createElement("main");
@@ -1476,21 +1423,14 @@ function createShell(controls: string[]): {
   status.id = "dotli-polkavm-status";
   status.className = "dotli-polkavm-overlay";
   status.textContent = "Translating PolkaVM application…";
-  const metrics = document.createElement("details");
-  metrics.id = "dotli-polkavm-metrics";
-  metrics.className = "dotli-polkavm-overlay";
-  metrics.hidden = true;
-  const metricsSummary = document.createElement("summary");
-  const metricsDetails = document.createElement("pre");
-  metrics.append(metricsSummary, metricsDetails);
   const controlText = document.createElement("div");
   controlText.id = "dotli-polkavm-controls";
   controlText.textContent = controls.join(" · ");
   surface.append(canvas, status, controlText);
-  shell.append(surface, metrics);
+  shell.append(surface);
   document.head.append(style);
   document.body.replaceChildren(shell);
-  return { canvas, status, metrics, metricsSummary, metricsDetails };
+  return { canvas, status };
 }
 
 function installInput(
@@ -2150,13 +2090,7 @@ export async function runPolkaVmApplication(
   ) {
     throw new Error("required motion input is unavailable");
   }
-  const {
-    canvas,
-    status,
-    metrics: metricsElement,
-    metricsSummary,
-    metricsDetails,
-  } = createShell(descriptor.controls);
+  const { canvas, status } = createShell(descriptor.controls);
   if (forceInterpreter) {
     status.textContent = "Starting PolkaVM interpreter…";
   }
@@ -2268,7 +2202,7 @@ export async function runPolkaVmApplication(
   let firstFrame = false;
   let frameWindowStarted = performance.now();
   let frameWindowCount = 0;
-  const polkavmMetrics: PolkaVmMetrics = {
+  const polkavmMetrics: PolkaVmDebugSnapshot = {
     backend: "starting",
     cacheHit: false,
     translationMs: 0,
@@ -2289,9 +2223,6 @@ export async function runPolkaVmApplication(
   window.__dotliPolkaVmMetrics = polkavmMetrics;
 
   const updateMetrics = (): void => {
-    const display = formatPolkaVmMetrics(polkavmMetrics);
-    metricsSummary.textContent = display.summary;
-    metricsDetails.textContent = display.details;
     canvas.dataset.polkavmBackend = polkavmMetrics.backend;
     canvas.dataset.polkavmCacheHit = String(polkavmMetrics.cacheHit);
     canvas.dataset.polkavmTranslationMs = String(polkavmMetrics.translationMs);
@@ -2307,6 +2238,11 @@ export async function runPolkaVmApplication(
     canvas.dataset.polkavmUpdateMaxMs = String(polkavmMetrics.updateMaxMs);
     canvas.dataset.polkavmAudioChunks = String(polkavmMetrics.audioChunks);
     canvas.dataset.polkavmAudioSamples = String(polkavmMetrics.audioSamples);
+    const message: PolkaVmDebugMessage = {
+      type: "dotli:polkavm-metrics",
+      metrics: polkavmMetrics,
+    };
+    window.parent.postMessage(message, parentOrigin);
   };
   const setStartupStage = (stage: string): void => {
     if (firstFrame) {
@@ -2333,7 +2269,6 @@ export async function runPolkaVmApplication(
       polkavmMetrics.firstFrameMs = now - started;
       polkavmMetrics.startupStage = "first-frame";
       status.textContent = "";
-      metricsElement.hidden = false;
       window.clearTimeout(timer);
       updateMetrics();
       resolveStarted(undefined);
