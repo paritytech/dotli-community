@@ -5,7 +5,7 @@
  * Cold resolution test against every supported backend, plus warm start
  * across a browser restart.
  *
- * Env overrides: DOMAIN, PORT, TIMEOUT_MS, WARM_DOMAIN, WARM_BUDGET_MS
+ * Env overrides: DOMAIN, PORT, TIMEOUT_MS, WARM_DOMAIN
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -24,7 +24,8 @@ const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 /** A second product, so session 2 cannot be answered from the content cache. */
 const WARM_DOMAIN = process.env.WARM_DOMAIN ?? "browse";
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
-const WARM_BUDGET_MS = parseInt(process.env.WARM_BUDGET_MS ?? "2000", 10);
+/** The provider's warm-start store, on the protocol iframe's origin. */
+const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;
 /** Long enough for the provider to write its first warm-start blob to IndexedDB. */
 const SNAPSHOT_WINDOW_MS = 35_000;
 
@@ -50,6 +51,64 @@ test.describe("Resolution across chain backends", () => {
     });
   }
 });
+
+interface WarmStoreState {
+  /** Genesis hash of every chain with a stored database blob. */
+  stored: string[];
+  /** Genesis hash of every chain the provider resumed from storage. */
+  loaded: string[];
+}
+
+/**
+ * Read the provider's warm-start store from the protocol iframe.
+ *
+ * The store lives on the protocol origin rather than the product's, and in
+ * the default backend the provider writes it from a SharedWorker, so this is
+ * the only vantage point the test has on warm start.
+ */
+async function readWarmStore(page: Page): Promise<WarmStoreState> {
+  const frame = page.frames().find((f) => f.url().startsWith(PROTOCOL_ORIGIN));
+  if (frame === undefined) {
+    throw new Error(`no protocol frame at ${PROTOCOL_ORIGIN}`);
+  }
+  return frame.evaluate(async () => {
+    const keys = (db: IDBDatabase, store: string): Promise<string[]> =>
+      new Promise((resolve, reject) => {
+        if (!db.objectStoreNames.contains(store)) {
+          resolve([]);
+          return;
+        }
+        const req = db
+          .transaction(store, "readonly")
+          .objectStore(store)
+          .getAllKeys();
+        req.onsuccess = () => {
+          resolve(req.result.map(String));
+        };
+        req.onerror = () => {
+          reject(req.error ?? new Error(`read ${store} failed`));
+        };
+      });
+
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("dotli-warm-store");
+      req.onsuccess = () => {
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        reject(req.error ?? new Error("open warm store failed"));
+      };
+    });
+    try {
+      return {
+        stored: await keys(db, "chain-databases"),
+        loaded: await keys(db, "loads"),
+      };
+    } finally {
+      db.close();
+    }
+  });
+}
 
 /**
  * Open a session against `profile`, resolve `url`, then hand the page to `run`.
@@ -81,37 +140,38 @@ async function withWarmSession<T>(
 test.describe("Warm start across a browser restart", () => {
   test.setTimeout(SNAPSHOT_WINDOW_MS + TIMEOUT_MS * 3);
 
-  test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resolves from persisted light-client state`, async () => {
+  test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resumes the light client from stored state`, async () => {
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));
     try {
       // Given
-      await withWarmSession(
+      const primed = await withWarmSession(
         profile,
         BASE_URL,
         "warm start, session 1",
-        (page) => page.waitForTimeout(SNAPSHOT_WINDOW_MS),
+        async (page) => {
+          await page.waitForTimeout(SNAPSHOT_WINDOW_MS);
+          return readWarmStore(page);
+        },
       );
+      expect(primed.stored, "session 1 stored no database blobs").not.toEqual(
+        [],
+      );
+      expect(primed.loaded, "session 1 had nothing to resume from").toEqual([]);
 
       // When
-      const resolveMs = await withWarmSession(
+      const resumed = await withWarmSession(
         profile,
         WARM_BASE_URL,
         "warm start, session 2",
-        (page) =>
-          page.evaluate(() => {
-            const at = (name: string): number | undefined =>
-              performance.getEntriesByName(name, "mark").at(0)?.startTime;
-            const start = at("dotli:resolve:start");
-            const end = at("dotli:resolve:end");
-            if (start === undefined || end === undefined) {
-              throw new Error("session 2 emitted no resolve marks");
-            }
-            return Math.round(end - start);
-          }),
+        readWarmStore,
       );
 
       // Then
-      expect(resolveMs).toBeLessThan(WARM_BUDGET_MS);
+      expect(
+        resumed.loaded,
+        "session 2 resumed no chain from storage",
+      ).not.toEqual([]);
+      expect(primed.stored).toEqual(expect.arrayContaining(resumed.loaded));
     } finally {
       rmSync(profile, { recursive: true, force: true });
     }

@@ -12,6 +12,11 @@ import { log } from "@dotli/shared/log";
 
 const DB_NAME = "dotli-warm-store";
 const STORE = "chain-databases";
+// Which chains actually resumed from storage, by genesis hash, with the time
+// of the most recent resume. The provider runs in a SharedWorker in the
+// default backend, where its console and globals are unreachable, so this is
+// the only place warm start can be observed from outside.
+const LOADS_STORE = "loads";
 const DB_VERSION = 1;
 // Real warp-sync blobs are hundreds of KB. Anything smaller is truncated or
 // garbage, and the light client may hang on it rather than discard it. The
@@ -39,8 +44,10 @@ function openDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE);
+      for (const name of [STORE, LOADS_STORE]) {
+        if (!db.objectStoreNames.contains(name)) {
+          db.createObjectStore(name);
+        }
       }
     };
     req.onsuccess = () => {
@@ -91,6 +98,33 @@ async function read(genesisHash: string): Promise<string | null> {
   }
 }
 
+// Never blocks or fails a resume: losing the marker costs visibility, not
+// warm start.
+async function recordLoad(genesisHash: string): Promise<void> {
+  try {
+    const db = await openDb();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(LOADS_STORE, "readwrite");
+        tx.objectStore(LOADS_STORE).put(Date.now(), genesisHash);
+        tx.oncomplete = () => {
+          resolve();
+        };
+        tx.onerror = () => {
+          reject(tx.error ?? new Error("warm-store load marker failed"));
+        };
+      });
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    log.debug(
+      `[dot.li warm-store] load marker failed for ${genesisHash}:`,
+      error,
+    );
+  }
+}
+
 async function write(genesisHash: string, blob: string): Promise<void> {
   const db = await openDb();
   try {
@@ -115,7 +149,13 @@ export function createWarmStore(): WarmStore | null {
     return null;
   }
   return {
-    load: (genesisHash) => withTimeout(read(genesisHash), "warm-store load"),
+    load: async (genesisHash) => {
+      const blob = await withTimeout(read(genesisHash), "warm-store load");
+      if (blob !== null) {
+        void recordLoad(genesisHash);
+      }
+      return blob;
+    },
     save: async (genesisHash, blob) => {
       if (blob.length < MIN_VALID_BYTES || blob.length > MAX_VALID_BYTES) {
         log.debug(
