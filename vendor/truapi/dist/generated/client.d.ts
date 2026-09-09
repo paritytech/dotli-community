@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 1;
 export declare const TRUAPI_CODEC_VERSION: 1;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "d5113436b7c04f1d";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "0449982638d57658";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
@@ -36,11 +36,6 @@ export declare class AccountClient {
     listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
     /** Sign bytes directly with a registered ring-VRF member key. */
     ringVrfSign(request: T.HostAccountRingVrfSignRequest): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
-    /**
-     * Bind a product account as a Chat v2 device, or seal/open identity-route
-     * payloads without exposing the wallet Chat identity secret.
-     */
-    deviceChat(request: T.HostProductDeviceChatRequest): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
     /**
      * List non-product accounts the user owns.
      *

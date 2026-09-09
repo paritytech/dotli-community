@@ -84,7 +84,9 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
       body: Buffer.from(fixture.bytes),
     });
   });
-  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await page.goto("http://polkavm-fixture.localhost:5173/", {
+    waitUntil: "domcontentloaded",
+  });
   await waitForHostInitialization(page);
   await installTruapiPortResponder(page);
   await page.evaluate(
@@ -106,6 +108,29 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     timeout: 30_000,
   });
   await expect(canvas).toHaveAttribute("data-polkavm-backend", "compiler");
+  await expect(canvas).toHaveAttribute(
+    "data-polkavm-safe-area-insets",
+    "0,0,0,0",
+  );
+  await page.locator("#polkavm-product").evaluate((element) => {
+    if (
+      !(element instanceof HTMLIFrameElement) ||
+      element.contentWindow === null
+    ) {
+      throw new Error("PolkaVM product frame is unavailable");
+    }
+    element.contentWindow.postMessage(
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0, right: 0, bottom: 180 },
+      },
+      "http://polkavm-fixture.app.localhost:5173",
+    );
+  });
+  await expect(canvas).toHaveAttribute(
+    "data-polkavm-keyboard-insets",
+    "0,0,0,180",
+  );
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(2);

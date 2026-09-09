@@ -19,6 +19,7 @@ import {
   validateFiles,
   expectedPolkaVmParentOrigin,
   validatedUiPlatformOutput,
+  validatedPolkaVmViewInsets,
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
   type HostFrameResponseQueueOptions,
@@ -122,6 +123,42 @@ describe("PolkaVM pointer input", () => {
     expect([x, y]).toEqual([127, -127]);
 
     expect(accumulateRelativePointerDelta(x, y, -20, 20)).toEqual([107, -107]);
+  });
+});
+describe("PolkaVM viewport inset messages", () => {
+  it("accepts bounded integer keyboard insets from the authenticated host", () => {
+    expect(
+      validatedPolkaVmViewInsets({
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 2, top: 4, right: 6, bottom: 800 },
+      }),
+    ).toEqual({ left: 2, top: 4, right: 6, bottom: 800 });
+  });
+
+  it("rejects malformed or out-of-range host insets", () => {
+    const messages = [
+      null,
+      { type: "dotli:polkavm-view-insets" },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: -1, top: 0, right: 0, bottom: 0 },
+      },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0.5, right: 0, bottom: 0 },
+      },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0, right: 65_536, bottom: 0 },
+      },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0, right: 0, bottom: "20" },
+      },
+    ];
+    for (const message of messages) {
+      expect(validatedPolkaVmViewInsets(message)).toBeNull();
+    }
   });
 });
 

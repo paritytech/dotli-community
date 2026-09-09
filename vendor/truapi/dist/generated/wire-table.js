@@ -307,10 +307,6 @@ export const ACCOUNT_RING_VRF_SIGN = {
     request: 172,
     response: 173,
 };
-export const ACCOUNT_PRODUCT_DEVICE_CHAT = {
-    request: 174,
-    response: 175,
-};
 export const SYSTEM_GET_PRODUCT_CONTEXT = {
     request: 190,
     response: 191,

@@ -47,6 +47,7 @@ import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
+import { installPolkaVmViewInsetsRelay } from "./polkavm-view-insets";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
@@ -966,6 +967,7 @@ async function createHost(args: {
   container: HTMLElement;
   extraAllow?: readonly string[];
   debugFlowId: string;
+  viewInsetsRelay?: boolean;
 }): Promise<ActiveHost> {
   const coreProvider = await createCoreProvider(args.label, {
     productId: args.productId,
@@ -982,6 +984,7 @@ async function createHost(args: {
   // call sites in `dispose()` and the catch block below) exists only for the
   // legacy probe block tagged further down.
   let legacyProbeCleanup: (() => void) | null = null;
+  let disposeViewInsets: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
@@ -1012,6 +1015,12 @@ async function createHost(args: {
       container: args.container,
       onPort: connectProductPort,
     });
+    if (args.viewInsetsRelay === true) {
+      disposeViewInsets = installPolkaVmViewInsetsRelay(
+        host.iframe,
+        args.allowedOrigin,
+      );
+    }
 
     // DEPRECATED legacy host-API support. Modern products announce themselves
     // with `{type:"truapi-ready"}` and use the MessagePort wired above. Products
@@ -1091,6 +1100,7 @@ async function createHost(args: {
       },
       dispose() {
         unregisterPermissions();
+        disposeViewInsets?.();
         legacyProbeCleanup?.();
         cleanupProductSide();
         coreProvider.dispose();
@@ -1098,6 +1108,7 @@ async function createHost(args: {
       },
     };
   } catch (error) {
+    disposeViewInsets?.();
     unregisterPermissions();
     legacyProbeCleanup?.();
     cleanupProductSide();
@@ -1474,6 +1485,7 @@ export async function renderAppSubdomain(
   }
 
   const iframeUrl = new URL(url);
+  const isPolkaVm = isPolkaVmExecutableManifest(executableManifest);
   emitDotliDebugEvent({
     layer: "bridge",
     event: "setup_begin",
@@ -1494,9 +1506,8 @@ export async function renderAppSubdomain(
     sandbox:
       "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
     label,
-    extraAllow: isPolkaVmExecutableManifest(executableManifest)
-      ? ["accelerometer", "gyroscope"]
-      : [],
+    extraAllow: isPolkaVm ? ["accelerometer", "gyroscope"] : [],
+    viewInsetsRelay: isPolkaVm,
     container: app,
     debugFlowId: bridgeFlowId,
   });
