@@ -116,9 +116,12 @@ function collectDirectScopedDeps(
     .map(([name, version]) => ({ name, version }));
 }
 
-function readSmoldotVersion(): string {
-  const direct = collectDirectScopedDeps("smoldot");
-  return direct.find((p) => p.name === "smoldot")?.version ?? "unknown";
+function readLightClientVersion(): string {
+  const direct = collectDirectScopedDeps("@parity/truapi-provider");
+  return (
+    direct.find((p) => p.name === "@parity/truapi-provider")?.version ??
+    "unknown"
+  );
 }
 
 function readPolkadotApiVersion(): string {
@@ -136,47 +139,6 @@ function readHostVersion(): string {
     return "0.0.0";
   }
 }
-
-/**
- * Look up the paritytech/smoldot commit SHA for the npm-published `smoldot`
- * version we bundle. Smoldot's git repo tags its JS releases with the
- * `light-js-deno-v<version>` prefix, and the JS binding's published version
- * tracks that tag directly, so the commit behind `light-js-deno-v3.0.0` is the
- * commit that produced `smoldot@3.0.0` on npm.
- *
- * Neither `bun.lock` nor smoldot's package.json carries a commit. The
- * lockfile only stores the tarball integrity hash, so the GitHub API is
- * the only build-time source of truth. Failures are silent: if the build
- * host can't reach github.com (offline dev, locked-down CI), the
- * Diagnostics row degrades to just `<version>` instead of `<version>
- * (sha)` rather than failing the build.
- */
-async function resolveSmoldotCommit(version: string): Promise<string> {
-  if (version === "" || version === "unknown") {
-    return "";
-  }
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(
-      `https://api.github.com/repos/paritytech/smoldot/git/refs/tags/light-js-deno-v${version}`,
-      {
-        signal: controller.signal,
-        headers: { Accept: "application/vnd.github+json" },
-      },
-    );
-    clearTimeout(timer);
-    if (!res.ok) {
-      return "";
-    }
-    const data = (await res.json()) as { object?: { sha?: string } };
-    return data.object?.sha ?? "";
-  } catch {
-    return "";
-  }
-}
-
-const SMOLDOT_COMMIT = await resolveSmoldotCommit(readSmoldotVersion());
 
 /**
  * Vite plugin that injects conditional <link rel="modulepreload"> for
@@ -419,8 +381,7 @@ export default defineConfig({
     // missing package (shouldn't happen given the monorepo overrides)
     // falls back to empty/"unknown" rather than failing the build.
     __DOTLI_VERSION__: JSON.stringify(readHostVersion()),
-    __SMOLDOT_VERSION__: JSON.stringify(readSmoldotVersion()),
-    __SMOLDOT_COMMIT__: JSON.stringify(SMOLDOT_COMMIT),
+    __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
     __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
     __POLKADOT_API_VERSIONS__: JSON.stringify(
       collectDirectScopedDeps("@polkadot-api/"),

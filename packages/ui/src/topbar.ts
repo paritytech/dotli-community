@@ -1757,8 +1757,7 @@ function appendSectionHeader(parent: HTMLElement, text: string): void {
 // present in practice. `undefined` fallbacks are defensive for tests and
 // for any future caller that imports this module from a different bundle.
 declare const __DOTLI_VERSION__: string | undefined;
-declare const __SMOLDOT_VERSION__: string | undefined;
-declare const __SMOLDOT_COMMIT__: string | undefined;
+declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__:
   | { name: string; version: string }[]
@@ -1826,12 +1825,12 @@ function renderDiagnostics(parent: HTMLElement): void {
   // block rows entirely (the endpoints already appear under Chain) and
   // keep only the smoldot version so the dependency is still visible.
   const smoldotInfo: SmoldotInfo = {
-    version: buildSmoldotVersionLabel(),
+    version: buildLightClientVersionLabel(),
     blocks: { relay: "…", assetHub: "…", people: "…" },
   };
   const smoldotActive = getBackend() !== "rpc-gateway";
-  appendSectionHeader(parent, "@smoldot");
-  renderInfoRow(parent, "smoldot", smoldotInfo.version);
+  appendSectionHeader(parent, "Light client");
+  renderInfoRow(parent, "truapi-provider", smoldotInfo.version);
   if (smoldotActive) {
     const relayRow = renderInfoRow(parent, "Relay Chain", "…");
     const assetHubRow = renderInfoRow(parent, "Asset Hub", "…");
@@ -2093,17 +2092,13 @@ interface SmoldotInfo {
   blocks: { relay: string; assetHub: string; people: string };
 }
 
-function buildSmoldotVersionLabel(): string {
-  const smoldot =
-    typeof __SMOLDOT_VERSION__ === "string" ? __SMOLDOT_VERSION__ : "unknown";
-  // Smoldot's upstream commit is resolved at build time by the host's
-  // vite.config against paritytech/smoldot's release tags. Degrades to
-  // just `<version>` when the lookup wasn't possible (offline build).
-  const commit =
-    typeof __SMOLDOT_COMMIT__ === "string" && __SMOLDOT_COMMIT__.length > 0
-      ? ` (${shortSha(__SMOLDOT_COMMIT__)})`
-      : "";
-  return `${smoldot}${commit}`;
+// The light client is smoldot compiled into truapi-provider's wasm, so the
+// provider version is what identifies the build. There is no separate smoldot
+// version to report.
+function buildLightClientVersionLabel(): string {
+  return typeof __LIGHT_CLIENT_VERSION__ === "string"
+    ? __LIGHT_CLIENT_VERSION__
+    : "unknown";
 }
 
 /**
