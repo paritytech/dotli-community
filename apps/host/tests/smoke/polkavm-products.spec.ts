@@ -9,6 +9,7 @@ interface ProductSmoke {
   keys: readonly string[];
   audio: boolean;
   nonzeroAudio: boolean;
+  interaction?: "gameplay-pointer-capture" | "pointer-motion";
 }
 
 const products: readonly ProductSmoke[] = [
@@ -25,6 +26,7 @@ const products: readonly ProductSmoke[] = [
     keys: ["Escape", "Enter", "Enter", "ArrowUp", "Space"],
     audio: true,
     nonzeroAudio: false,
+    interaction: "gameplay-pointer-capture",
   },
   {
     label: "duke",
@@ -32,6 +34,7 @@ const products: readonly ProductSmoke[] = [
     keys: ["Escape", "Enter", "Enter", "Space"],
     audio: true,
     nonzeroAudio: true,
+    interaction: "gameplay-pointer-capture",
   },
   {
     label: "egui-app-lab",
@@ -53,6 +56,7 @@ const products: readonly ProductSmoke[] = [
     keys: [],
     audio: false,
     nonzeroAudio: false,
+    interaction: "pointer-motion",
   },
 ];
 
@@ -164,6 +168,47 @@ async function smokeProduct(
   await canvas.click({ position: { x: 160, y: 100 } });
   for (const key of product.keys) await page.keyboard.press(key);
 
+  if (product.interaction === "gameplay-pointer-capture") {
+    await expect(canvas).toHaveAttribute(
+      "data-polkavm-pointer-capture-armed",
+      "true",
+      { timeout: 60_000 },
+    );
+    await canvas.click({ position: { x: 160, y: 100 } });
+    await expect(canvas).toHaveAttribute(
+      "data-polkavm-pointer-captured",
+      "true",
+      { timeout: 10_000 },
+    );
+  } else if (product.interaction === "pointer-motion") {
+    const motionSamplesBefore = await counter(
+      canvas,
+      "data-polkavm-motion-samples",
+    );
+    const bounds = await canvas.boundingBox();
+    if (bounds === null) {
+      throw new Error(`${product.label}: runtime canvas has no bounds`);
+    }
+    await page.mouse.move(
+      bounds.x + bounds.width * 0.25,
+      bounds.y + bounds.height * 0.5,
+    );
+    await page.mouse.move(
+      bounds.x + bounds.width * 0.75,
+      bounds.y + bounds.height * 0.5,
+      { steps: 8 },
+    );
+    await expect
+      .poll(() => counter(canvas, "data-polkavm-motion-samples"), {
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(motionSamplesBefore);
+    await expect(canvas).toHaveAttribute(
+      "data-polkavm-motion-source",
+      "pointer",
+    );
+  }
+
   await expect
     .poll(() => counter(canvas, "data-polkavm-frames"), { timeout: 30_000 })
     .toBeGreaterThan(framesBefore + 30);
@@ -209,6 +254,9 @@ async function smokeProduct(
     updates: await counter(canvas, "data-polkavm-updates"),
     audioSamples: await counter(canvas, "data-polkavm-audio-samples"),
     tri2dDraws: await counter(canvas, "data-polkavm-tri2d-draws"),
+    pointerCaptured: await canvas.getAttribute("data-polkavm-pointer-captured"),
+    motionSamples: await counter(canvas, "data-polkavm-motion-samples"),
+    motionSource: await canvas.getAttribute("data-polkavm-motion-source"),
   };
 }
 
@@ -227,10 +275,14 @@ for (const product of products) {
         contentType: "application/json",
       });
     } catch (error) {
-      await testInfo.attach(`${product.label}-failure.png`, {
-        body: await page.screenshot({ fullPage: true }),
-        contentType: "image/png",
-      });
+      try {
+        await testInfo.attach(`${product.label}-failure.png`, {
+          body: await page.screenshot({ fullPage: true }),
+          contentType: "image/png",
+        });
+      } catch {
+        // Preserve the product failure if Chromium cannot capture its final state.
+      }
       throw error;
     } finally {
       await context.close();

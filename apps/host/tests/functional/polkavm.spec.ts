@@ -111,51 +111,52 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
     .toBeGreaterThan(2);
   await expect(canvas).toHaveAttribute("width", "320");
   await expect(canvas).toHaveAttribute("height", "200");
-  const canvasBounds = async () =>
-    canvas.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        viewportWidth: innerWidth,
-        viewportHeight: innerHeight,
-        width: bounds.width,
-        height: bounds.height,
-        left: bounds.left,
-        top: bounds.top,
-      };
-    });
-  expect(await canvasBounds()).toEqual({
-    viewportWidth: 400,
-    viewportHeight: 400,
-    width: 400,
-    height: 250,
-    left: 0,
-    top: 75,
-  });
+  const expectCanvasFits = async (
+    viewportWidth: number,
+    viewportHeight: number,
+  ) => {
+    await expect(async () => {
+      const geometry = await canvas.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const surface = element.parentElement!.getBoundingClientRect();
+        return {
+          viewportWidth: innerWidth,
+          viewportHeight: innerHeight,
+          width: bounds.width,
+          height: bounds.height,
+          centerX: bounds.left + bounds.width / 2,
+          centerY: bounds.top + bounds.height / 2,
+          surfaceWidth: surface.width,
+          surfaceHeight: surface.height,
+          surfaceCenterX: surface.left + surface.width / 2,
+          surfaceCenterY: surface.top + surface.height / 2,
+        };
+      });
+      expect(geometry.viewportWidth).toBe(viewportWidth);
+      expect(geometry.viewportHeight).toBe(viewportHeight);
+      // Fit and center in the drawable surface, independent of host chrome.
+      const width = Math.min(
+        geometry.surfaceWidth,
+        geometry.surfaceHeight * 1.6,
+      );
+      expect(geometry.width).toBeCloseTo(width, 1);
+      expect(geometry.height).toBeCloseTo(width / 1.6, 1);
+      expect(geometry.centerX).toBeCloseTo(geometry.surfaceCenterX, 1);
+      expect(geometry.centerY).toBeCloseTo(geometry.surfaceCenterY, 1);
+    }).toPass();
+  };
+  await expectCanvasFits(400, 400);
   const productElement = page.locator("#polkavm-product");
   await productElement.evaluate((element) => {
     element.style.width = "640px";
     element.style.height = "300px";
   });
-  await expect.poll(canvasBounds).toEqual({
-    viewportWidth: 640,
-    viewportHeight: 300,
-    width: 480,
-    height: 300,
-    left: 80,
-    top: 0,
-  });
+  await expectCanvasFits(640, 300);
   await productElement.evaluate((element) => {
     element.style.width = "200px";
     element.style.height = "400px";
   });
-  await expect.poll(canvasBounds).toEqual({
-    viewportWidth: 200,
-    viewportHeight: 400,
-    width: 200,
-    height: 125,
-    left: 0,
-    top: 137.5,
-  });
+  await expectCanvasFits(200, 400);
 
   // The host-owned PolkaVM canvas retains its verified launch contract so a
   // browser/frame reload restarts the same CID without relying on parent state.
