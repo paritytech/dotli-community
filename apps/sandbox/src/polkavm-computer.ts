@@ -38,8 +38,8 @@ import {
   waitForTruapiPort,
 } from "./polkavm-runtime";
 import PolkaVmComputerWorker from "./polkavm-computer-worker.js?worker&inline";
+import { polkaVmRuntimeAssetUrl } from "./polkavm-runtime-assets";
 
-const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 16 * 1024 * 1024;
 const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
@@ -443,8 +443,7 @@ export async function runComputerApplication(
     TCP_RELAY_URL,
   );
   const ancestorOrigins = window.location.ancestorOrigins as
-    | DOMStringList
-    | undefined;
+    DOMStringList | undefined;
   const hostOrigin = expectedComputerHostOrigin(
     window.location.hostname,
     window.location.protocol,
@@ -474,7 +473,7 @@ export async function runComputerApplication(
   });
 
   const runtime = await fetch(
-    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
+    polkaVmRuntimeAssetUrl("polkavm-browser-runtime.wasm"),
     {
       cache: "force-cache",
     },
