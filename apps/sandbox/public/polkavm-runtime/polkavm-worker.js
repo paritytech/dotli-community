@@ -10,6 +10,7 @@
   const STATUS_TRAP = -3;
   const STATUS_OUT_OF_GAS = -4;
   const CORE_STATUS_INVALID = -3;
+  const CORE_STATUS_DENIED = -5;
   const CORE_STATUS_LIMIT = -6;
   const INPUT_EVENT_BYTES = 8;
   const MOTION_SAMPLE_BYTES = 48;
@@ -1523,26 +1524,6 @@
           this.#setReg(7, BigInt(status));
           return false;
         }
-        case "polkadot_host_0_1_core_clock_wall":
-          this.#chargeBytes(8);
-          this.#writeU64(this.#u32(a0), BigInt(Date.now()) * 1_000_000n);
-          this.#setReg(7, 0n);
-          return false;
-        case "polkadot_host_0_1_core_random": {
-          const length = this.#u32(a1);
-          if (length === 0) {
-            this.#setReg(7, BigInt(CORE_STATUS_INVALID));
-            return false;
-          }
-          if (length > MAX_CORE_RANDOM_BYTES) {
-            this.#setReg(7, BigInt(CORE_STATUS_LIMIT));
-            return false;
-          }
-          this.#chargeBytes(length);
-          crypto.getRandomValues(this.#range(this.#u32(a0), length, true));
-          this.#setReg(7, 0n);
-          return false;
-        }
         case "host_input_register": {
           const kindLength = this.#u32(a1);
           const mediaTypeLength = this.#u32(a3);
@@ -1624,6 +1605,50 @@
             this.updateAfterMs === null
               ? delayMs
               : Math.min(this.updateAfterMs, delayMs);
+          return false;
+        }
+        case "polkadot_host_0_1_core_clock_monotonic": {
+          this.#chargeBytes(8);
+          const timeMs =
+            this.timeMs ?? performance.now() - this.clockStartedAt;
+          this.#writeU64(
+            this.#u32(a0),
+            BigInt(Math.max(0, Math.trunc(timeMs * 1_000_000))),
+          );
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "polkadot_host_0_1_core_clock_wall":
+          this.#chargeBytes(8);
+          this.#writeU64(this.#u32(a0), BigInt(Date.now()) * 1_000_000n);
+          this.#setReg(7, 0n);
+          return false;
+        case "polkadot_host_0_1_core_random": {
+          const length = this.#u32(a1);
+          if (length === 0) {
+            this.#setReg(7, BigInt(CORE_STATUS_INVALID));
+            return false;
+          }
+          if (length > MAX_CORE_RANDOM_BYTES) {
+            this.#setReg(7, BigInt(CORE_STATUS_LIMIT));
+            return false;
+          }
+          this.#chargeBytes(length);
+          let bytes;
+          try {
+            const browserCrypto = globalThis.crypto;
+            if (typeof browserCrypto?.getRandomValues !== "function") {
+              this.#setReg(7, BigInt(CORE_STATUS_DENIED));
+              return false;
+            }
+            bytes = new Uint8Array(length);
+            browserCrypto.getRandomValues(bytes);
+          } catch {
+            this.#setReg(7, BigInt(CORE_STATUS_DENIED));
+            return false;
+          }
+          this.#range(this.#u32(a0), length, true).set(bytes);
+          this.#setReg(7, 0n);
           return false;
         }
         case "host_time_ms": {
@@ -1896,6 +1921,7 @@
         case "host_frame_poll":
         case "host_motion_read":
         case POINTER_CAPTURE_IMPORT:
+        case "polkadot_host_0_1_core_clock_monotonic":
         case "polkadot_host_0_1_core_clock_wall":
         case "polkadot_host_0_1_core_random":
         case UPDATE_AFTER_IMPORT:
@@ -2279,6 +2305,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   const MAX_INSET_PIXELS = 65535;
   const UPDATE_AFTER_IDLE = 0xffffffff;
   const FORCE_INTERPRETER = Symbol("force-interpreter");
+  const CORE_STATUS_DENIED = -5;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -2589,15 +2616,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       postMessage({ type: "startup", stage: "first-update-started" });
     }
     const before = performance.now();
-    const wallTimeMs = Date.now();
     try {
       if (translated) {
         translated.update(before - startedAt);
       } else {
-        check(
-          pvm.polkavm_browser_set_wall_time_ms(wallTimeMs),
-          "set PolkaVM browser wall clock",
-        );
         check(
           pvm.polkavm_browser_update(before - startedAt),
           "update PolkaVM browser guest",
@@ -2795,7 +2817,35 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     let compilerFallbackReason;
     let compilerFallbackStage;
     postMessage({ type: "startup", stage: "runtime-instantiating" });
-    pvm = (await WebAssembly.instantiate(message.runtime, {})).instance.exports;
+    const runtimeImports = {
+      polkavm_browser: {
+        clock_wall_ms: () => Date.now(),
+        random_fill: (pointer, length) => {
+          if (pvm == null) {
+            return CORE_STATUS_DENIED;
+          }
+          try {
+            const browserCrypto = globalThis.crypto;
+            if (typeof browserCrypto?.getRandomValues !== "function") {
+              return CORE_STATUS_DENIED;
+            }
+            const bytes = new Uint8Array(length >>> 0);
+            browserCrypto.getRandomValues(bytes);
+            new Uint8Array(
+              pvm.memory.buffer,
+              pointer >>> 0,
+              length >>> 0,
+            ).set(bytes);
+            return 0;
+          } catch {
+            return CORE_STATUS_DENIED;
+          }
+        },
+      },
+    };
+    pvm = (
+      await WebAssembly.instantiate(message.runtime, runtimeImports)
+    ).instance.exports;
     if (pvm.polkavm_browser_abi_version() !== 2) {
       throw new Error("PolkaVM browser runtime has an incompatible ABI");
     }
@@ -2849,7 +2899,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
             `PolkaVM single-module compilation failed; compiling bounded code parts: ${error instanceof Error ? error.message : String(error)}`,
           );
           compilerStage = "compiler-translating-parts";
-          pvm = (await WebAssembly.instantiate(message.runtime, {})).instance.exports;
+          pvm = (
+            await WebAssembly.instantiate(message.runtime, runtimeImports)
+          ).instance.exports;
           stage(program);
           const translationStarted = performance.now();
           check(
@@ -2929,7 +2981,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         );
       }
       if (pvm === null) {
-        pvm = (await WebAssembly.instantiate(message.runtime, {})).instance.exports;
+        pvm = (
+          await WebAssembly.instantiate(message.runtime, runtimeImports)
+        ).instance.exports;
       }
       let presentation = 0;
       if (message.graphicsProfile === "tri2d") {
@@ -2954,11 +3008,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         "begin PolkaVM browser launch",
       );
       postMessage({ type: "startup", stage: "interpreter-launch-begun" });
-      stage(crypto.getRandomValues(new Uint8Array(32)));
-      check(
-        pvm.polkavm_browser_launch_set_random_seed(),
-        "seed PolkaVM browser CSPRNG",
-      );
       postMessage({ type: "startup", stage: "interpreter-mounting-assets" });
       for (const asset of message.assets) {
         addAsset(asset);
@@ -3005,10 +3054,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         );
         pendingGpuCapabilities = null;
       }
-      check(
-        pvm.polkavm_browser_set_wall_time_ms(Date.now()),
-        "set PolkaVM browser wall clock",
-      );
       postMessage({ type: "startup", stage: "interpreter-initializing" });
       try {
         check(pvm.polkavm_browser_init(), "initialize PolkaVM browser guest");
