@@ -175,6 +175,18 @@ export function serializeError(value: unknown): string {
   return serialize(value, new WeakSet());
 }
 
+/**
+ * Extract the error discriminator for wire transport.
+ *
+ * Pair with `serializeError` when writing an error into a protocol envelope.
+ * The message alone forces the receiver to pattern-match strings, while the
+ * name lets it branch on the class the sender actually threw. Non-`Error`
+ * throws have no meaningful discriminator, hence `undefined`.
+ */
+export function errorName(value: unknown): string | undefined {
+  return value instanceof Error ? value.name : undefined;
+}
+
 const CYCLE_MARKER = "[cycle]";
 const UNKNOWN_OBJECT = "[object Object]";
 const AGG_CAP = 3;

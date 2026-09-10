@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { TIMEOUTS } from "@dotli/config/config";
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
@@ -39,12 +41,14 @@ export interface ProtocolRequestEnvelope<
   deadlineMs?: number;
 }
 
-const RESPONSE_DELIVERY_GRACE_MS = 1_000;
-
 /**
  * Convert an untrusted request deadline into the resolver's remaining sync
  * budget. The grace period lets the typed resolver error cross postMessage
  * before the caller's generic request timeout fires.
+ *
+ * This is the only place the deadline is validated and normalized. Consumers
+ * receive a finite, positive number or `undefined`, so they branch on presence
+ * alone.
  */
 export function getRequestSyncTimeoutMs(
   request: ProtocolRequestEnvelope,
@@ -57,7 +61,9 @@ export function getRequestSyncTimeoutMs(
   }
   return Math.max(
     1,
-    Math.floor(request.deadlineMs - Date.now() - RESPONSE_DELIVERY_GRACE_MS),
+    Math.floor(
+      request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+    ),
   );
 }
 

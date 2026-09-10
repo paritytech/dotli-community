@@ -12,7 +12,7 @@ export const HOST_ERRORS = {
   SW_SYNC_TIMEOUT:
     "The light client couldn't sync in time on the shared worker.",
   SW_TIMED_OUT: "The light client timed out during startup.",
-  AH_SYNC_TIMEOUT:
+  HUB_SYNC_TIMEOUT:
     "Light client timed out syncing to Asset Hub - no connection with peers.",
   LIGHT_CLIENT_TIMEOUT: "Light client timed out - no connection with peers.",
   RPC_TIMEOUT: "The RPC endpoint didn't respond in time.",
@@ -76,14 +76,17 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
       recovery: "switch-backend",
     };
   }
-  if (err instanceof Error && err.name === "NetworkSyncTimeoutError") {
+  // Only the Hub arm needs naming here. A sync timeout on any other chain
+  // falls through to the generic timeout branch below, which already returns
+  // the same message and recovery for both modes.
+  if (
+    err instanceof Error &&
+    err.name === "NetworkSyncTimeoutError" &&
+    isP2p &&
+    msg.includes("Asset Hub")
+  ) {
     return {
-      message:
-        isP2p && msg.includes("Asset Hub")
-          ? HOST_ERRORS.AH_SYNC_TIMEOUT
-          : isP2p
-            ? HOST_ERRORS.LIGHT_CLIENT_TIMEOUT
-            : HOST_ERRORS.RPC_TIMEOUT,
+      message: HOST_ERRORS.HUB_SYNC_TIMEOUT,
       recovery: "switch-backend",
     };
   }

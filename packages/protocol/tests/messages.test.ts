@@ -133,19 +133,33 @@ describe("isProtocolEnvelope", () => {
 });
 
 describe("getRequestSyncTimeoutMs", () => {
+  // Restore here rather than inside a test body. A failing assertion would
+  // otherwise leak the `Date.now` mock into every test below it.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const requestWithDeadline = (
+    deadlineMs?: number,
+  ): ProtocolRequestEnvelope => ({
+    namespace: "dotli:protocol",
+    kind: "request",
+    id: "test-deadline",
+    method: "resolveDotName",
+    payload: { label: "chinpokomon" },
+    deadlineMs,
+  });
+
   it("reserves response-delivery time inside the caller's deadline", () => {
     vi.spyOn(Date, "now").mockReturnValue(10_000);
-    const request: ProtocolRequestEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "request",
-      id: "test-deadline",
-      method: "resolveDotName",
-      payload: { label: "chinpokomon" },
-      deadlineMs: 100_000,
-    };
 
-    expect(getRequestSyncTimeoutMs(request)).toBe(89_000);
-    vi.restoreAllMocks();
+    expect(getRequestSyncTimeoutMs(requestWithDeadline(100_000))).toBe(89_000);
+  });
+
+  it("clamps an already-expired deadline to a positive budget", () => {
+    vi.spyOn(Date, "now").mockReturnValue(100_000);
+
+    expect(getRequestSyncTimeoutMs(requestWithDeadline(10_000))).toBe(1);
   });
 
   it("ignores missing or non-finite deadlines", () => {

@@ -211,7 +211,13 @@ function bindMessageListener(): void {
           pending.resolve(msg.result);
         } else {
           const err = new Error(msg.error || "Unknown protocol error");
-          err.name = msg.errorName ?? "ProtocolResponseError";
+          // Keep the remote discriminator when it carries information. A bare
+          // `"Error"` does not, and overwriting with it would lose the "this
+          // crossed the protocol boundary" signal that dashboards filter on.
+          err.name =
+            msg.errorName !== undefined && msg.errorName !== "Error"
+              ? msg.errorName
+              : "ProtocolResponseError";
           pending.reject(err);
         }
         return;
@@ -486,7 +492,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // killing the request is not.
 const UNTIMED_METHODS: ReadonlySet<ProtocolRequestMethod> =
   new Set<ProtocolRequestMethod>(["warmup"]);
-const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
+/**
+ * Per-method request budgets. Exported so tests can derive the deadline a
+ * handler will see rather than restating the arithmetic.
+ */
+export const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   chainConnect: 30_000,
   resolveDotName: 90_000,
   resolveOwner: 90_000,
