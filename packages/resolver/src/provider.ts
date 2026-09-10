@@ -85,6 +85,14 @@ function heartbeatIntervalMs(): number {
 export function startLightClientHeartbeat(
   intervalMs: number = heartbeatIntervalMs(),
 ): () => void {
+  // A metrics-stripped build drops every gauge on the floor, and the timer on
+  // its own is not free: a pending interval is a live task that can keep an
+  // otherwise idle SharedWorker from being reclaimed.
+  if (!m.enabled) {
+    return () => {
+      /* nothing started */
+    };
+  }
   m.gauge(S.SMOLDOT_ACTIVE, 1);
   const timer: ReturnType<typeof setInterval> = setInterval(() => {
     m.gauge(S.SMOLDOT_ACTIVE, 1);

@@ -9,8 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const gauge = vi.fn();
 
+// A getter rather than a literal, so a test can flip it to reach the
+// metrics-stripped path without tearing down the module registry.
+const metrics = { enabled: true };
+
 vi.mock("@dotli/metrics/metrics", () => ({
   m: {
+    get enabled() {
+      return metrics.enabled;
+    },
     gauge: (...args: unknown[]) => {
       gauge(...args);
     },
@@ -26,6 +33,7 @@ describe("light client heartbeat", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     gauge.mockClear();
+    metrics.enabled = true;
   });
 
   afterEach(() => {
@@ -74,5 +82,22 @@ describe("light client heartbeat", () => {
 
     // Then
     expect(gauge).not.toHaveBeenCalled();
+  });
+
+  it("As a dotli operator on a metrics-stripped build, no timer is left running", async () => {
+    // Given
+    metrics.enabled = false;
+    const startLightClientHeartbeat = await loadHeartbeat();
+
+    // When
+    const stop = startLightClientHeartbeat(60_000);
+    await vi.advanceTimersByTimeAsync(300_000);
+
+    // Then
+    // The pending interval is the cost here, not the no-op gauge calls: it is a
+    // live task that can keep an idle SharedWorker from being reclaimed.
+    expect(vi.getTimerCount()).toBe(0);
+    expect(gauge).not.toHaveBeenCalled();
+    stop();
   });
 });
