@@ -575,6 +575,7 @@ self.addEventListener("connect", (event) => {
         id: envelope.id,
         ok: false,
         error: msg,
+        errorName: error instanceof Error ? error.name : undefined,
       });
     });
   });

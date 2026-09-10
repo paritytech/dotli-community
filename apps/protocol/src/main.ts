@@ -304,6 +304,7 @@ function bindSharedAuthListener(): void {
         id: data.id,
         ok: false,
         error: serializeError(error),
+        errorName: error instanceof Error ? error.name : undefined,
       });
     }
   });
@@ -801,6 +802,7 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
           id: data.id,
           ok: false,
           error: serializeError(error),
+          errorName: error instanceof Error ? error.name : undefined,
         });
       });
   });
@@ -936,6 +938,7 @@ function bindSharedModeListener(): void {
         id: data.id,
         ok: false,
         error: serializeError(error),
+        errorName: error instanceof Error ? error.name : undefined,
       });
     }
   });
