@@ -20,12 +20,14 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "typecheck": "turbo run typecheck",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "set-version": "bun scripts/set-version.ts",
     "link:truapi": "bun scripts/link-truapi-local.ts",
     "unlink:truapi": "bun scripts/unlink-truapi-local.ts",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.2",
     "prettier": "3.8.4",
     "turbo": "^2.9.18",
     "typescript": "^6.0.3"

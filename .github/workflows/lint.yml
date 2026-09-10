@@ -36,3 +36,7 @@ jobs:
 
       - name: Type check
         run: bunx --bun turbo run typecheck
+
+      # scripts/ is not a workspace, so turbo does not reach it.
+      - name: Type check scripts
+        run: bun run typecheck:scripts
