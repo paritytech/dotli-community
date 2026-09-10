@@ -122,6 +122,12 @@ clipboard permission. As an interim compatibility policy, framebuffer and
 WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
 free.
 
+While a guest text field is active, native paste shortcuts (`Cmd+V`, `Ctrl+V`,
+`Ctrl+Shift+V`, or `Shift+Insert`, where supported by the browser) deliver
+plain text through bounded text-input records. They do not also invoke the
+guest's internal clipboard paste action. Copy shortcuts remain guest-defined
+and use the origin- and activation-checked UI-output channel above.
+
 The browser artifacts are byte-for-byte copies of the
 `@parity/polkavm-browser-runtime` package pinned in
 `scripts/polkavm-runtime.lock.json`. The package already uses the `polkavm-`
