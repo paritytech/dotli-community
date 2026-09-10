@@ -1841,6 +1841,24 @@ function installInput(
   const focusChanged = (): void => {
     queueMicrotask(syncFocus);
   };
+  const paste = (event: ClipboardEvent): void => {
+    if (
+      !inputFeatureSet.has("text") ||
+      !wantsTextInput ||
+      composing ||
+      (document.activeElement !== canvas &&
+        document.activeElement !== textInput) ||
+      event.clipboardData?.types.includes("text/plain") !== true
+    ) {
+      return;
+    }
+    event.preventDefault();
+    pendingCompositionCommit = null;
+    sendTextRecords(8, event.clipboardData.getData("text/plain"));
+    if (textInput !== null) {
+      textInput.value = "";
+    }
+  };
   const beforeInput = (event: InputEvent): void => {
     if (
       !inputFeatureSet.has("text") ||
@@ -1940,13 +1958,35 @@ function installInput(
     }
     const code = keyCodes[event.code];
     if (pressed.has(code) && !event.repeat) {
-      return;
+      if (!event.metaKey || code >= 0xe0) {
+        return;
+      }
+      // A fresh Command chord can arrive without macOS releasing its last key.
+      send(encodedInput(2, code));
     }
     if (event.isTrusted && parentOrigin !== null) {
       window.parent.postMessage(
         { type: "dotli:polkavm-user-activation" },
         parentOrigin,
       );
+    }
+    if (
+      inputFeatureSet.has("text") &&
+      wantsTextInput &&
+      textInput !== null &&
+      (document.activeElement === canvas ||
+        document.activeElement === textInput) &&
+      !event.altKey &&
+      ((event.code === "KeyV" && (event.ctrlKey || event.metaKey)) ||
+        (event.code === "Insert" &&
+          event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey))
+    ) {
+      // Let the browser deliver clipboard data through the trusted paste event.
+      // Do not also dispatch the guest's session-clipboard paste shortcut.
+      textInput.focus({ preventScroll: true });
+      return;
     }
     if (
       textInput === null ||
@@ -1971,6 +2011,18 @@ function installInput(
     }
     event.preventDefault();
     send(encodedInput(2, code));
+    if (
+      !event.metaKey &&
+      (code === keyCodes.MetaLeft || code === keyCodes.MetaRight)
+    ) {
+      // macOS can omit keyup for keys released while Command is held.
+      for (const held of pressed) {
+        if (held < 0xe0) {
+          pressed.delete(held);
+          send(encodedInput(2, held));
+        }
+      }
+    }
   };
   const pointer = (event: PointerEvent, type: 3 | 4): void => {
     if (!(event.button in pointerButtons)) {
@@ -2192,6 +2244,7 @@ function installInput(
   document.addEventListener("pointerlockchange", pointerLockChanged);
   window.addEventListener("keydown", keydown);
   window.addEventListener("keyup", keyup);
+  window.addEventListener("paste", paste);
   window.addEventListener("devicemotion", deviceMotion);
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
@@ -2230,6 +2283,7 @@ function installInput(
       document.removeEventListener("pointerlockchange", pointerLockChanged);
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
+      window.removeEventListener("paste", paste);
       window.removeEventListener("devicemotion", deviceMotion);
       canvas.removeEventListener("focus", focusChanged);
       canvas.removeEventListener("blur", focusChanged);
