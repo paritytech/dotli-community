@@ -172,24 +172,6 @@ export function initSentry(source: SentrySource): void {
     tracePropagationTargets: [],
   });
 
-  // Anonymous per-browser UUID for Sentry user-level metrics. No PII.
-  try {
-    const ls = (globalThis as { localStorage?: Storage }).localStorage;
-    if (ls) {
-      let uuid = ls.getItem("dotli:sentry-uuid");
-      if (uuid === null) {
-        uuid = crypto.randomUUID();
-        ls.setItem("dotli:sentry-uuid", uuid);
-      }
-      Sentry.setUser({ id: uuid });
-    }
-  } catch (err) {
-    log.warn(
-      "[dot.li sentry] anonymous user id setup skipped (localStorage unavailable)",
-      err,
-    );
-  }
-
   m.bind(Sentry as unknown as Parameters<typeof m.bind>[0]);
   // Use the canonical schema keys documented in `metrics.ts` (`source`,
   // `env`). The metrics layer owns any Sentry-side prefixing, so pass bare

@@ -13,6 +13,11 @@
 import type { JsonRpcMessage } from "@polkadot-api/json-rpc-provider";
 import type { JsonRpcProvider } from "polkadot-api";
 import { getActiveSupportedGenesisHashes } from "@dotli/config/network";
+// Import via the package specifier, not a relative path. `prodNoAnalyticsAliases`
+// rewrites `@dotli/metrics/metrics` to the no-op at bundle time, and a relative
+// import would slip past that and pull real metrics into a stripped build.
+import { m } from "@dotli/metrics/metrics";
+import * as S from "@dotli/metrics/spans";
 import { log } from "@dotli/shared/log";
 import init, {
   ChainProviderBuilder,
@@ -52,6 +57,51 @@ function providerLogLevel(): string {
   return isLocalHost() ? "info" : "off";
 }
 
+const HEARTBEAT_DEFAULT_MS = 60_000;
+
+// A `sessionStorage` override, same shape as `dotli:truapi-provider-log` above.
+// Tests set it high so only the startup emission lands inside the run, which is
+// what makes the emitted count exact rather than a function of wall-clock.
+function heartbeatIntervalMs(): number {
+  const override = Number(sessionFlag("dotli:smoldot-heartbeat-ms"));
+  return Number.isFinite(override) && override > 0
+    ? override
+    : HEARTBEAT_DEFAULT_MS;
+}
+
+/**
+ * Report that a light client is alive in this context, once now and then on
+ * every tick.
+ *
+ * The immediate emission matters twice over. It keeps the first bucket from
+ * reading as zero while the client is already syncing, and it means a context
+ * contributes exactly one point from the moment it exists, so a reader counting
+ * startup points counts contexts.
+ *
+ * Deliberately not paired with a teardown call. `handlePromise` lives as long
+ * as the context does and nothing runs when a tab or worker is killed, so a
+ * stop function exists for tests rather than for production shutdown.
+ */
+export function startLightClientHeartbeat(
+  intervalMs: number = heartbeatIntervalMs(),
+): () => void {
+  // A metrics-stripped build drops every gauge on the floor, and the timer on
+  // its own is not free: a pending interval is a live task that can keep an
+  // otherwise idle SharedWorker from being reclaimed.
+  if (!m.enabled) {
+    return () => {
+      /* nothing started */
+    };
+  }
+  m.gauge(S.SMOLDOT_ACTIVE, 1);
+  const timer: ReturnType<typeof setInterval> = setInterval(() => {
+    m.gauge(S.SMOLDOT_ACTIVE, 1);
+  }, intervalMs);
+  return () => {
+    clearInterval(timer);
+  };
+}
+
 function getHandle(): Promise<ChainProviderHandle> {
   handlePromise ??= (async () => {
     await init({ module_or_path: wasmUrl });
@@ -69,6 +119,10 @@ function getHandle(): Promise<ChainProviderHandle> {
       builder.setStorage(store);
     }
     const handle = builder.build();
+    // Inside `getHandle`, so the heartbeat is scoped to the singleton rather
+    // than to callers. One context means one client means one emitter, whether
+    // that context is the SharedWorker serving every tab or a per-tab iframe.
+    startLightClientHeartbeat();
     log.warn("[dot.li provider] truapi-provider ready (embedded smoldot wasm)");
     return handle;
   })().catch((error: unknown) => {
