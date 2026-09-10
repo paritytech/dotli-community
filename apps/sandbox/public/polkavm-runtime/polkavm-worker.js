@@ -18,16 +18,6 @@
   const MOTION_ERROR_PERMISSION_DENIED = -2;
   const MOTION_ERROR_INVALID_GUEST_RANGE = -3;
   const MOTION_ERROR_BUFFER_TOO_SMALL = -4;
-  const MAX_MEDIATED_INPUT_KIND_BYTES = 32;
-  const MAX_MEDIATED_INPUT_MEDIA_TYPE_BYTES = 64;
-  const MAX_MEDIATED_INPUT_BYTES = 1024 * 1024;
-  const MAX_MEDIATED_INPUT_REGISTRATIONS = 8;
-  const MEDIATED_INPUT_STATUS_REGISTERED = 1;
-  const MEDIATED_INPUT_STATUS_ACTIVE = 2;
-  const MEDIATED_INPUT_STATUS_READY = 3;
-  const MEDIATED_INPUT_STATUS_CANCELLED = 4;
-  const MEDIATED_INPUT_STATUS_PERMISSION_DENIED = 5;
-  const MEDIATED_INPUT_STATUS_FAILED = 6;
   const INPUT_POINTER_CAPTURE = 15;
   const INPUT_SAFE_AREA_INSETS = 16;
   const INPUT_KEYBOARD_INSETS = 17;
@@ -47,6 +37,10 @@
   const MAX_HOSTCALLS_PER_UPDATE = 65536;
   const MAX_HOSTCALL_BYTES = 32 * 1024 * 1024;
   const MAX_LOG_BYTES = 4 * 1024;
+  const MAX_CORE_RANDOM_BYTES = 4 * 1024;
+  const CORE_STATUS_INVALID = -3;
+  const CORE_STATUS_DENIED = -5;
+  const CORE_STATUS_LIMIT = -6;
   const MAX_SAVE_BYTES = 1024 * 1024;
   const MAX_AUDIO_SAMPLES = 48000 * 2;
   const MAX_FRAME_BYTES = 16 * 1024 * 1024;
@@ -132,15 +126,6 @@
 
   function isWebGpuProfile(profile) {
     return profile === "webgpu-raster" || profile === "webgpu";
-  }
-
-  function validMediatedInputToken(value, maxBytes) {
-    const bytes = encoder.encode(value);
-    return (
-      bytes.byteLength > 0 &&
-      bytes.byteLength <= maxBytes &&
-      /^[a-z0-9][a-z0-9+._-]*[a-z0-9]$|^[a-z0-9]$/.test(value)
-    );
   }
 
   function isComputeOpcode(opcode) {
@@ -537,7 +522,6 @@
       graphicsProfile,
       gpuCapabilities = null,
       motionAvailability = MOTION_STATUS_UNAVAILABLE,
-      mediatedInputKinds = [],
     ) {
       this.metadata = readMetadata(module);
       this.instance = new WebAssembly.Instance(module, {});
@@ -581,22 +565,6 @@
       this.hostFrameRequestBytes = 0;
       this.hostFrameResponses = [];
       this.hostFrameResponseBytes = 0;
-      if (
-        !Array.isArray(mediatedInputKinds) ||
-        mediatedInputKinds.length > MAX_MEDIATED_INPUT_REGISTRATIONS ||
-        mediatedInputKinds.some(
-          (kind) =>
-            typeof kind !== "string" ||
-            !validMediatedInputToken(kind, MAX_MEDIATED_INPUT_KIND_BYTES),
-        ) ||
-        new Set(mediatedInputKinds).size !== mediatedInputKinds.length
-      ) {
-        throw new Error("translated PolkaVM runtime has invalid mediated-input kinds");
-      }
-      this.mediatedInputKinds = new Set(mediatedInputKinds);
-      this.mediatedInputRegistrations = new Map();
-      this.nextMediatedInputHandle = 0;
-      this.activeMediatedInputHandle = null;
       this.tri2dSubmitted = false;
       this.uiSemanticsSubmitted = false;
       this.uiOutputSubmitted = false;
@@ -968,119 +936,6 @@
       return true;
     }
 
-    sendMediatedInputResult(handle, status, bytes) {
-      const registration = this.mediatedInputRegistrations.get(handle);
-      if (
-        this.stopped ||
-        !registration ||
-        registration.status !== MEDIATED_INPUT_STATUS_ACTIVE ||
-        this.activeMediatedInputHandle !== handle ||
-        !Number.isInteger(status) ||
-        ![
-          MEDIATED_INPUT_STATUS_READY,
-          MEDIATED_INPUT_STATUS_CANCELLED,
-          MEDIATED_INPUT_STATUS_PERMISSION_DENIED,
-          MEDIATED_INPUT_STATUS_FAILED,
-        ].includes(status) ||
-        !(bytes instanceof Uint8Array)
-      ) {
-        throw new Error("invalid translated mediated-input result");
-      }
-      if (status === MEDIATED_INPUT_STATUS_READY) {
-        if (!bytes.byteLength || bytes.byteLength > registration.maxBytes) {
-          throw new Error("translated mediated-input result exceeds its registered bound");
-        }
-        registration.result = bytes.slice();
-      } else if (bytes.byteLength) {
-        throw new Error("translated mediated-input failure carries unexpected bytes");
-      } else {
-        registration.result = null;
-      }
-      this.activeMediatedInputHandle = null;
-      registration.status = status;
-    }
-
-    #registerMediatedInput(kind, mediaType, maxBytes) {
-      if (
-        !validMediatedInputToken(kind, MAX_MEDIATED_INPUT_KIND_BYTES) ||
-        !validMediatedInputToken(mediaType, MAX_MEDIATED_INPUT_MEDIA_TYPE_BYTES) ||
-        !Number.isInteger(maxBytes) ||
-        maxBytes < 1 ||
-        maxBytes > MAX_MEDIATED_INPUT_BYTES
-      ) {
-        return -1;
-      }
-      if (!this.mediatedInputKinds.has(kind)) {
-        return -2;
-      }
-      for (const [handle, registration] of this.mediatedInputRegistrations) {
-        if (
-          registration.kind === kind &&
-          registration.mediaType === mediaType &&
-          registration.maxBytes === maxBytes
-        ) {
-          return handle;
-        }
-      }
-      if (
-        this.mediatedInputRegistrations.size === MAX_MEDIATED_INPUT_REGISTRATIONS
-      ) {
-        return -3;
-      }
-      do {
-        this.nextMediatedInputHandle =
-          this.nextMediatedInputHandle >= 0x7fffffff
-            ? 1
-            : this.nextMediatedInputHandle + 1;
-      } while (
-        this.mediatedInputRegistrations.has(this.nextMediatedInputHandle)
-      );
-      this.mediatedInputRegistrations.set(this.nextMediatedInputHandle, {
-        kind,
-        mediaType,
-        maxBytes,
-        status: MEDIATED_INPUT_STATUS_REGISTERED,
-        result: null,
-      });
-      return this.nextMediatedInputHandle;
-    }
-
-    #triggerMediatedInput(handle) {
-      if (this.activeMediatedInputHandle !== null) {
-        return 2;
-      }
-      const registration = this.mediatedInputRegistrations.get(handle);
-      if (!registration) {
-        return 1;
-      }
-      registration.status = MEDIATED_INPUT_STATUS_ACTIVE;
-      this.activeMediatedInputHandle = handle;
-      registration.result = null;
-      this.emit({
-        type: "mediated-input-request",
-        handle,
-        kind: registration.kind,
-        mediaType: registration.mediaType,
-        maxBytes: registration.maxBytes,
-      });
-      return 0;
-    }
-
-    #cancelMediatedInput(handle) {
-      const registration = this.mediatedInputRegistrations.get(handle);
-      if (!registration) {
-        return 1;
-      }
-      if (registration.status !== MEDIATED_INPUT_STATUS_ACTIVE) {
-        return 2;
-      }
-      registration.status = MEDIATED_INPUT_STATUS_CANCELLED;
-      registration.result = null;
-      this.activeMediatedInputHandle = null;
-      this.emit({ type: "mediated-input-cancel", handle });
-      return 0;
-    }
-
     stop() {
       this.stopped = true;
       this.input.length = 0;
@@ -1090,8 +945,6 @@
       this.gpuEvents.length = 0;
       this.hostFrameResponses.length = 0;
       this.hostFrameResponseBytes = 0;
-      this.mediatedInputRegistrations.clear();
-      this.activeMediatedInputHandle = null;
     }
 
     #resetBudget(hostcalls) {
@@ -1483,87 +1336,52 @@
           this.#setReg(7, BigInt(status));
           return false;
         }
-        case "host_input_register": {
-          const kindLength = this.#u32(a1);
-          const mediaTypeLength = this.#u32(a3);
-          let result = -1;
-          if (
-            kindLength > 0 &&
-            kindLength <= MAX_MEDIATED_INPUT_KIND_BYTES &&
-            mediaTypeLength > 0 &&
-            mediaTypeLength <= MAX_MEDIATED_INPUT_MEDIA_TYPE_BYTES
-          ) {
-            this.#chargeBytes(kindLength + mediaTypeLength);
-            try {
-              const kind = strictDecoder.decode(
-                this.#read(this.#u32(a0), kindLength),
-              );
-              const mediaType = strictDecoder.decode(
-                this.#read(this.#u32(a2), mediaTypeLength),
-              );
-              result = this.#registerMediatedInput(
-                kind,
-                mediaType,
-                this.#u32(a4),
-              );
-            } catch {
-              result = -1;
-            }
-          }
-          this.#setReg(7, BigInt(result));
-          return false;
-        }
-        case "host_input_trigger": {
-          this.#setReg(
-            7,
-            BigInt(this.#triggerMediatedInput(this.#u32(a0))),
-          );
-          return false;
-        }
-        case "host_input_status": {
-          const registration = this.mediatedInputRegistrations.get(
-            this.#u32(a0),
-          );
-          this.#setReg(7, BigInt(registration?.status ?? 0));
-          return false;
-        }
-        case "host_input_read": {
-          const registration = this.mediatedInputRegistrations.get(
-            this.#u32(a0),
-          );
-          if (
-            !registration ||
-            registration.status !== MEDIATED_INPUT_STATUS_READY ||
-            !(registration.result instanceof Uint8Array)
-          ) {
-            this.#setReg(7, 0n);
-            return false;
-          }
-          const required = registration.result.byteLength;
-          if (this.#u32(a2) < required) {
-            this.#setReg(7, BigInt(-required));
-            return false;
-          }
-          this.#chargeBytes(required);
-          this.#write(this.#u32(a1), registration.result);
-          registration.result = null;
-          registration.status = MEDIATED_INPUT_STATUS_REGISTERED;
-          this.#setReg(7, BigInt(required));
-          return false;
-        }
-        case "host_input_cancel": {
-          this.#setReg(
-            7,
-            BigInt(this.#cancelMediatedInput(this.#u32(a0))),
-          );
-          return false;
-        }
         case UPDATE_AFTER_IMPORT: {
           const delayMs = this.#u32(a0);
           this.updateAfterMs =
             this.updateAfterMs === null
               ? delayMs
               : Math.min(this.updateAfterMs, delayMs);
+          return false;
+        }
+        case "polkadot_host_0_1_core_clock_monotonic": {
+          const timeMs =
+            this.timeMs ?? performance.now() - this.clockStartedAt;
+          this.#writeU64(
+            this.#u32(a0),
+            BigInt(Math.max(0, Math.trunc(timeMs * 1_000_000))),
+          );
+          this.#setReg(7, 0n);
+          return false;
+        }
+        case "polkadot_host_0_1_core_clock_wall":
+          this.#writeU64(this.#u32(a0), BigInt(Date.now()) * 1_000_000n);
+          this.#setReg(7, 0n);
+          return false;
+        case "polkadot_host_0_1_core_random": {
+          const length = this.#u32(a1);
+          if (length === 0) {
+            this.#setReg(7, BigInt(CORE_STATUS_INVALID));
+            return false;
+          }
+          if (length > MAX_CORE_RANDOM_BYTES) {
+            this.#setReg(7, BigInt(CORE_STATUS_LIMIT));
+            return false;
+          }
+          const browserCrypto = globalThis.crypto;
+          if (typeof browserCrypto?.getRandomValues !== "function") {
+            this.#setReg(7, BigInt(CORE_STATUS_DENIED));
+            return false;
+          }
+          const bytes = new Uint8Array(length);
+          try {
+            browserCrypto.getRandomValues(bytes);
+          } catch {
+            this.#setReg(7, BigInt(CORE_STATUS_DENIED));
+            return false;
+          }
+          this.#write(this.#u32(a0), bytes);
+          this.#setReg(7, 0n);
           return false;
         }
         case "host_time_ms": {
@@ -2206,8 +2024,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
   const MAX_ASSET_BYTES = 256 * 1024 * 1024;
   const MOTION_SAMPLE_BYTES = 48;
-  const MAX_MEDIATED_INPUT_KIND_BYTES = 32;
-  const MAX_MEDIATED_INPUT_REGISTRATIONS = 8;
   // Safe-area (16) and virtual-keyboard (17) inset records. Both records of one
   // update carry a single axis, so a Host sends them through the dedicated
   // `view-insets` message that queues the pair together; the runtime rejects a
@@ -2217,6 +2033,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   const MAX_INSET_PIXELS = 65535;
   const UPDATE_AFTER_IDLE = 0xffffffff;
   const FORCE_INTERPRETER = Symbol("force-interpreter");
+  const CORE_STATUS_DENIED = -5;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
 
@@ -2381,44 +2198,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
   }
 
-  function drainMediatedInputCommands() {
-    while (true) {
-      const operation = pvm.polkavm_browser_take_mediated_input_command?.() ?? 0;
-      if (operation === 0) {
-        return;
-      }
-      const handle = pvm.polkavm_browser_mediated_input_handle();
-      if (operation === 2) {
-        postMessage({ type: "mediated-input-cancel", handle });
-        continue;
-      }
-      if (operation !== 1) {
-        throw new Error("interpreter emitted an invalid mediated-input command");
-      }
-      const kind = decoder.decode(
-        new Uint8Array(
-          pvm.memory.buffer,
-          pvm.polkavm_browser_mediated_input_kind_pointer(),
-          pvm.polkavm_browser_mediated_input_kind_length(),
-        ),
-      );
-      const mediaType = decoder.decode(
-        new Uint8Array(
-          pvm.memory.buffer,
-          pvm.polkavm_browser_mediated_input_media_type_pointer(),
-          pvm.polkavm_browser_mediated_input_media_type_length(),
-        ),
-      );
-      postMessage({
-        type: "mediated-input-request",
-        handle,
-        kind,
-        mediaType,
-        maxBytes: pvm.polkavm_browser_mediated_input_max_bytes(),
-      });
-    }
-  }
-
   function drainAudio() {
     while (pvm.polkavm_browser_take_audio()) {
       const sampleRate = pvm.polkavm_browser_audio_sample_rate();
@@ -2541,7 +2320,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         drainUiOutput();
         drainGpuBatches();
         drainHostFrameRequests();
-        drainMediatedInputCommands();
         drainAudio();
         drainSave();
         drainLogs();
@@ -2688,20 +2466,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     ) {
       throw new Error("invalid PolkaVM browser motion availability");
     }
-    const mediatedInputKinds = message.mediatedInputKinds ?? [];
-    if (
-      !Array.isArray(mediatedInputKinds) ||
-      mediatedInputKinds.length > MAX_MEDIATED_INPUT_REGISTRATIONS ||
-      mediatedInputKinds.some(
-        (kind) =>
-          typeof kind !== "string" ||
-          encoder.encode(kind).byteLength > MAX_MEDIATED_INPUT_KIND_BYTES ||
-          !/^[a-z0-9][a-z0-9+._-]*[a-z0-9]$|^[a-z0-9]$/.test(kind),
-      ) ||
-      new Set(mediatedInputKinds).size !== mediatedInputKinds.length
-    ) {
-      throw new Error("invalid PolkaVM browser mediated-input kinds");
-    }
     return program;
   }
 
@@ -2725,7 +2489,32 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     let translatedWasmBytes = 0;
     let cacheHit = false;
     postMessage({ type: "startup", stage: "runtime-instantiating" });
-    const instantiated = await WebAssembly.instantiate(message.runtime, {});
+    const instantiated = await WebAssembly.instantiate(message.runtime, {
+      polkavm_browser: {
+        clock_wall_ms: () => Date.now(),
+        random_fill: (pointer, length) => {
+          const browserCrypto = globalThis.crypto;
+          if (
+            pvm === undefined ||
+            typeof browserCrypto?.getRandomValues !== "function"
+          ) {
+            return CORE_STATUS_DENIED;
+          }
+          try {
+            browserCrypto.getRandomValues(
+              new Uint8Array(
+                pvm.memory.buffer,
+                pointer >>> 0,
+                length >>> 0,
+              ),
+            );
+            return 0;
+          } catch {
+            return CORE_STATUS_DENIED;
+          }
+        },
+      },
+    });
     pvm = instantiated.instance.exports;
     if (pvm.polkavm_browser_abi_version() !== 2) {
       throw new Error("PolkaVM browser runtime has an incompatible ABI");
@@ -2787,7 +2576,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         message.graphicsProfile,
         pendingGpuCapabilities,
         motionAvailability,
-        message.mediatedInputKinds ?? [],
       );
       if (pendingMotionSample !== null) {
         translated.sendMotionSample(pendingMotionSample);
@@ -2844,13 +2632,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         ),
         "set PolkaVM browser pointer capture support",
       );
-      if ((message.mediatedInputKinds?.length ?? 0) > 0) {
-        stage(encoder.encode(message.mediatedInputKinds.join("\0")));
-        check(
-          pvm.polkavm_browser_set_mediated_input_kinds(),
-          "set PolkaVM browser mediated-input kinds",
-        );
-      }
       if (pendingMotionSample !== null) {
         stage(pendingMotionSample);
         check(
@@ -2879,7 +2660,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         drainLogs();
         throw initError;
       }
-      drainMediatedInputCommands();
       postMessage({ type: "startup", stage: "interpreter-initialized" });
       drainTri2d();
       drainUiOutput();
@@ -3114,28 +2894,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     return true;
   }
 
-  function sendMediatedInputResult(handle, status, bytes) {
-    if (
-      !running ||
-      !pvm ||
-      !Number.isInteger(handle) ||
-      handle <= 0 ||
-      !Number.isInteger(status) ||
-      status < 3 ||
-      status > 6
-    ) {
-      throw new Error("invalid PolkaVM browser mediated-input result");
-    }
-    if (translated) {
-      translated.sendMediatedInputResult(handle, status, bytes);
-      return;
-    }
-    stage(status === 3 ? bytes : new Uint8Array([0]));
-    check(
-      pvm.polkavm_browser_send_mediated_input_result(handle, status),
-      "send PolkaVM browser mediated-input result",
-    );
-  }
   endpoint.onmessage = (event) => {
     const message = event.data;
     if (message?.type === "start") {
@@ -3253,18 +3011,6 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
             reason: "queue-full",
           });
         }
-      } catch (error) {
-        stopRuntime();
-        postMessage({ type: "error", message: error.message });
-        postMessage({ type: "terminated" });
-      }
-    } else if (message?.type === "mediated-input-result") {
-      try {
-        sendMediatedInputResult(
-          message.handle,
-          message.status,
-          new Uint8Array(message.bytes),
-        );
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });
