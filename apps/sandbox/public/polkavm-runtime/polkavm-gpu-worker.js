@@ -16,9 +16,10 @@ const HANDLE_SLOT_MASK = (1 << 20) - 1;
 const HANDLE_LIVE_BIT = 1 << 12;
 const MAX_COMPILATIONS_PER_BATCH = 32;
 const MAX_PENDING_BATCHES = 4;
-// A device that dies again straight after every rebuild is not coming back;
-// bound the attempts so a broken adapter cannot spin the worker forever.
-const MAX_DEVICE_RESTORES = 3;
+// Adapter discovery can be briefly unavailable while a browser rebuilds its
+// graphics process after resize, backgrounding, or memory pressure.
+const MAX_DEVICE_RESTORE_ATTEMPTS = 3;
+const DEVICE_RESTORE_RETRY_DELAY_MS = 250;
 const BATCH_ERROR_STALE_SURFACE = 4;
 const MAX_RENDER_PASSES_PER_BATCH = 16;
 const MAX_DRAWS_PER_BATCH = 8_192;
@@ -858,7 +859,6 @@ class GpuEngine {
     this.lastSequence = 0;
     this.stopped = false;
     this.disposed = false;
-    this.restoreAttempts = 0;
     this.queue = Promise.resolve();
     this.pendingBatches = 0;
     this.testReadbacksRemaining = testReadback ? 8 : 0;
@@ -895,19 +895,36 @@ class GpuEngine {
   }
 
   async restore() {
-    if (this.disposed || this.restoreAttempts >= MAX_DEVICE_RESTORES) {
+    if (this.disposed) {
       return;
     }
-    this.restoreAttempts++;
     let replacement;
-    try {
-      replacement = await GpuEngine.acquireDevice(this.canvas, this.requirements);
-    } catch (error) {
+    let failure;
+    for (let attempt = 1; attempt <= MAX_DEVICE_RESTORE_ATTEMPTS; attempt++) {
+      if (this.disposed) {
+        return;
+      }
+      try {
+        replacement = await GpuEngine.acquireDevice(
+          this.canvas,
+          this.requirements
+        );
+        break;
+      } catch (error) {
+        failure = error;
+        if (attempt < MAX_DEVICE_RESTORE_ATTEMPTS) {
+          await new Promise(resolve => {
+            setTimeout(resolve, DEVICE_RESTORE_RETRY_DELAY_MS * attempt);
+          });
+        }
+      }
+    }
+    if (!replacement) {
       // The guest already has the loss event; a Host that cannot rebuild the
       // device leaves it there rather than pretending the surface came back.
       postMessage({
         type: "error",
-        message: `WebGPU device could not be restored: ${error.message || String(error)}`,
+        message: `WebGPU device could not be restored: ${failure?.message || String(failure)}`,
       });
       return;
     }
