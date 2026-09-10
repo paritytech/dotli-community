@@ -45,6 +45,17 @@ import {
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
+import {
+  CameraInputCancelledError,
+  CameraInputPermissionError,
+  scanCameraUr,
+} from "./mediated-input-camera";
+import {
+  MediatedInputHost,
+  validatedMediatedInputRequest,
+} from "./mediated-input-host";
+import { decidePromptPermission } from "./host-callbacks/PromptPermission";
+import { createSubmitRateLimiter } from "./host-callbacks/rate-limit";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
 import { installPolkaVmViewInsetsRelay } from "./polkavm-view-insets";
@@ -136,6 +147,74 @@ let renderGeneration = 0;
 const liveCoreProviders = new Set<CoreProvider>();
 let unsubscribeSessionStoreChanges: (() => void) | null = null;
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
+const mediatedInputPermissionLimiter = createSubmitRateLimiter();
+const mediatedInputHost = new MediatedInputHost({
+  authorize: async (label, signal) => {
+    const coordinator = blockingModalCoordinator;
+    if (coordinator === null) {
+      throw new Error("blocking modal coordinator is unavailable");
+    }
+    const scope = coordinator.createScope();
+    const abort = (): void => {
+      scope.dispose("mediated input cancelled");
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      return await decidePromptPermission(
+        label,
+        "Camera",
+        {
+          kind: "Device",
+          limiter: mediatedInputPermissionLimiter,
+          reloadOnGrant: false,
+        },
+        scope,
+      );
+    } finally {
+      signal.removeEventListener("abort", abort);
+      scope.dispose();
+    }
+  },
+  scan: (label, request, signal) => scanCameraUr(label, request, signal),
+  send: (owner, handle, status, bytes) => {
+    const product = currentProduct;
+    const source = currentHost?.iframe.contentWindow;
+    if (
+      product?.mode !== "subdomain" ||
+      source === null ||
+      source === undefined ||
+      owner !== source
+    ) {
+      return;
+    }
+    if (bytes === undefined) {
+      source.postMessage(
+        {
+          type: "dotli:polkavm-mediated-input-result",
+          handle,
+          status,
+        },
+        sandboxOriginForLabel(product.label),
+      );
+      return;
+    }
+    const result = new Uint8Array(bytes);
+    source.postMessage(
+      {
+        type: "dotli:polkavm-mediated-input-result",
+        handle,
+        status,
+        bytes: result,
+      },
+      sandboxOriginForLabel(product.label),
+      [result.buffer],
+    );
+  },
+  isCancellation: (error) =>
+    error instanceof CameraInputCancelledError ||
+    (error instanceof DOMException && error.name === "AbortError"),
+  isPermissionDenied: (error) => error instanceof CameraInputPermissionError,
+});
 
 function ensureStoredSessionForwarder(): void {
   if (unsubscribeSessionStoreChanges !== null) {
@@ -445,7 +524,9 @@ window.addEventListener("message", (event: MessageEvent) => {
   if (
     type !== "dotli:sandbox-recover" &&
     type !== "dotli:host-update-required" &&
-    type !== "dotli:polkavm-motion-request"
+    type !== "dotli:polkavm-motion-request" &&
+    type !== "dotli:polkavm-mediated-input-request" &&
+    type !== "dotli:polkavm-mediated-input-cancel"
   ) {
     return;
   }
@@ -462,6 +543,25 @@ window.addEventListener("message", (event: MessageEvent) => {
   }
   if (type === "dotli:polkavm-motion-request") {
     offerTopLevelMotionPermission(source, event.origin, product.label);
+    return;
+  }
+  if (type === "dotli:polkavm-mediated-input-request") {
+    const request = validatedMediatedInputRequest(data);
+    if (request !== null) {
+      mediatedInputHost.request(source, product.label, request);
+    }
+    return;
+  }
+  if (type === "dotli:polkavm-mediated-input-cancel") {
+    if (
+      data !== null &&
+      Object.keys(data).every((key) => key === "type" || key === "handle") &&
+      Number.isInteger(data.handle) &&
+      Number(data.handle) >= 1 &&
+      Number(data.handle) <= 0xffffffff
+    ) {
+      mediatedInputHost.cancel(source, Number(data.handle));
+    }
     return;
   }
   if (type === "dotli:host-update-required") {
@@ -1185,6 +1285,7 @@ async function createHost(args: {
         return coreProvider.disconnectSession();
       },
       dispose() {
+        mediatedInputHost.stop();
         unregisterPermissions();
         disposeViewInsets?.();
         legacyProbeCleanup?.();
@@ -1660,6 +1761,7 @@ function activateHost(
   retainedChildren: readonly HTMLElement[] = [],
 ): void {
   stopMotionRelay();
+  mediatedInputHost.stop();
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;

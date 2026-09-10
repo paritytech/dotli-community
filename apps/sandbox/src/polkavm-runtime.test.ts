@@ -553,6 +553,29 @@ describe("PolkaVM package recognition", () => {
     ]);
   });
 
+  it("accepts required decoded camera-UR input", () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: {
+        deviceInput: { requiredFeatures: string[] };
+      };
+    };
+    value.capabilities.deviceInput.requiredFeatures.push("camera-ur");
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+    };
+    expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
+      "pointer",
+      "keyboard",
+      "text",
+      "ime",
+      "focus",
+      "wheel",
+      "camera-ur",
+    ]);
+  });
+
   it("accepts required text, IME, focus, and wheel input", () => {
     const value = JSON.parse(doomAppV2Manifest()) as {
       capabilities: {

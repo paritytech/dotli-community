@@ -32,6 +32,7 @@ const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
 const MAX_UI_COPY_IMAGE_PIXELS = 1024 * 1024;
 const MAX_UI_COPY_IMAGE_DIMENSION = 2048;
 const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
+const MAX_MEDIATED_INPUT_BYTES = 1024 * 1024;
 const TRUAPI_PORT_TIMEOUT_MS = 10_000;
 const INPUT_SAFE_AREA_INSETS = 16;
 const INPUT_KEYBOARD_INSETS = 17;
@@ -684,6 +685,7 @@ function parseManifest(
             "focus",
             "wheel",
             "motion",
+            "camera-ur",
           ].includes(feature),
       )
     ) {
@@ -707,6 +709,9 @@ function parseManifest(
     inputFeatures = ["pointer", "keyboard", "text", "ime", "focus", "wheel"];
     if (deviceFeatures.includes("motion")) {
       inputFeatures.push("motion");
+    }
+    if (deviceFeatures.includes("camera-ur")) {
+      inputFeatures.push("camera-ur");
     }
     audioEnabled = audio !== null;
     manifestVersion = 2;
@@ -2580,6 +2585,9 @@ export async function runPolkaVmApplication(
 
   let usesMotion = false;
   let usesPointerCapture = false;
+  let activeMediatedInput:
+    | { handle: number; mediaType: string; maxBytes: number }
+    | undefined;
   let relayedMotionSequence = 0;
   let workerReady = false;
   let keyboardInsets: PolkaVmViewInsets = {
@@ -2638,6 +2646,47 @@ export async function runPolkaVmApplication(
       return;
     }
     const message = object(event.data);
+    if (message?.type === "dotli:polkavm-mediated-input-result") {
+      const active = activeMediatedInput;
+      const resultStatus = Number(message.status);
+      const resultBytes = message.bytes;
+      const ready = resultStatus === 3;
+      if (
+        active === undefined ||
+        message.handle !== active.handle ||
+        !Number.isInteger(resultStatus) ||
+        resultStatus < 3 ||
+        resultStatus > 6 ||
+        (ready &&
+          (!(resultBytes instanceof Uint8Array) ||
+            resultBytes.byteLength === 0 ||
+            resultBytes.byteLength > active.maxBytes ||
+            resultBytes.byteLength > MAX_MEDIATED_INPUT_BYTES)) ||
+        (!ready && resultBytes !== undefined)
+      ) {
+        return;
+      }
+      activeMediatedInput = undefined;
+      if (ready) {
+        const bytes = ownedBytes(resultBytes as Uint8Array);
+        worker.postMessage(
+          {
+            type: "mediated-input-result",
+            handle: active.handle,
+            status: resultStatus,
+            bytes,
+          },
+          [bytes.buffer],
+        );
+      } else {
+        worker.postMessage({
+          type: "mediated-input-result",
+          handle: active.handle,
+          status: resultStatus,
+        });
+      }
+      return;
+    }
     if (
       message?.type === "dotli:polkavm-motion-status" &&
       Number.isInteger(message.availability) &&
@@ -2732,6 +2781,16 @@ export async function runPolkaVmApplication(
     }
     stopped = true;
     window.clearTimeout(timer);
+    if (activeMediatedInput !== undefined) {
+      window.parent.postMessage(
+        {
+          type: "dotli:polkavm-mediated-input-cancel",
+          handle: activeMediatedInput.handle,
+        },
+        parentOrigin,
+      );
+      activeMediatedInput = undefined;
+    }
     cleanupInput();
     window.removeEventListener("message", onParentMotion);
     window.removeEventListener("message", onParentViewInsets);
@@ -2886,6 +2945,64 @@ export async function runPolkaVmApplication(
           return;
         }
         setPointerCaptureRequest(message.capture);
+        break;
+      }
+      case "mediated-input-request": {
+        const handle = Number(message.handle);
+        const maxBytes = Number(message.maxBytes);
+        if (
+          activeMediatedInput !== undefined ||
+          !descriptor.inputFeatures.includes("camera-ur") ||
+          message.kind !== "camera-ur" ||
+          !Number.isInteger(handle) ||
+          handle < 1 ||
+          handle > 0xffffffff ||
+          typeof message.mediaType !== "string" ||
+          message.mediaType.length > 64 ||
+          !/^[a-z0-9](?:[a-z0-9+._-]*[a-z0-9])?$/.test(message.mediaType) ||
+          !Number.isInteger(maxBytes) ||
+          maxBytes < 1 ||
+          maxBytes > MAX_MEDIATED_INPUT_BYTES
+        ) {
+          rejectStarted(
+            new Error(
+              "PolkaVM guest emitted an invalid mediated input request",
+            ),
+          );
+          return;
+        }
+        activeMediatedInput = {
+          handle,
+          mediaType: message.mediaType,
+          maxBytes,
+        };
+        window.parent.postMessage(
+          {
+            type: "dotli:polkavm-mediated-input-request",
+            handle,
+            kind: "camera-ur",
+            mediaType: message.mediaType,
+            maxBytes,
+          },
+          parentOrigin,
+        );
+        break;
+      }
+      case "mediated-input-cancel": {
+        const handle = Number(message.handle);
+        if (activeMediatedInput?.handle !== handle) {
+          rejectStarted(
+            new Error(
+              "PolkaVM guest emitted an invalid mediated input cancellation",
+            ),
+          );
+          return;
+        }
+        activeMediatedInput = undefined;
+        window.parent.postMessage(
+          { type: "dotli:polkavm-mediated-input-cancel", handle },
+          parentOrigin,
+        );
         break;
       }
       case "host-frame-request": {
@@ -3107,6 +3224,9 @@ export async function runPolkaVmApplication(
       compiledBytes: compiledBytes?.buffer,
       graphicsProfile: descriptor.graphicsProfile,
       gpuCapabilities: gpuCapabilitiesBuffer,
+      mediatedInputKinds: descriptor.inputFeatures.filter(
+        (feature) => feature === "camera-ur",
+      ),
       motionAvailability:
         typeof PointerEvent !== "undefined" ||
         typeof DeviceMotionEvent !== "undefined"
