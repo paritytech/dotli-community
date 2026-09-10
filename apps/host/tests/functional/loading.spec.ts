@@ -137,7 +137,10 @@ const successfulResolveResponse = (cid: string): string => `
     }
   });
 `;
-const stoppedThenSuccessfulResolve = (cid: string): string => `
+const stoppedThenSuccessfulResolve = (
+  cid: string,
+  stoppedAttempts = 1,
+): string => `
   ${READY}
   var resolveAttempts = 0;
   window.addEventListener("message", function(e) {
@@ -145,7 +148,7 @@ const stoppedThenSuccessfulResolve = (cid: string): string => `
       return;
     }
     resolveAttempts += 1;
-    if (resolveAttempts === 1) {
+    if (resolveAttempts <= ${String(stoppedAttempts)}) {
       window.parent.postMessage({
         namespace: "dotli:protocol",
         kind: "response",
@@ -217,6 +220,7 @@ test("As a user using smoldot in shared worker, when the light client panics mid
     RETRY_LABEL_FROM_SMOLDOT,
   );
 });
+
 test("As a user, a stopped chainHead follow reconnects once without showing a domain error", async ({
   page,
 }) => {
@@ -235,6 +239,32 @@ test("As a user, a stopped chainHead follow reconnects once without showing a do
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveCount(0);
+});
+
+test("As a user, repeated stopped chainHead follows remain bounded to one retry", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-shared-worker");
+  await mockProtocolIframe(
+    page,
+    stoppedThenSuccessfulResolve(
+      "bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa",
+      2,
+    ),
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    "Domain can't be reached",
+    { timeout: 10_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toContainText(
+    "chainHead follow stopped",
+  );
 });
 
 test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({
