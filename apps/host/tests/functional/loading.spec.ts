@@ -85,7 +85,11 @@ const fatalOnResolve = (message: string): string => `
   });
 `;
 
-const errorResolveResponse = (error: string, delayMs = 0): string => `
+const errorResolveResponse = (
+  error: string,
+  delayMs = 0,
+  errorName?: string,
+): string => `
   ${READY}
   window.addEventListener("message", function(e) {
     if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
@@ -97,6 +101,7 @@ const errorResolveResponse = (error: string, delayMs = 0): string => `
           id: id,
           ok: false,
           error: ${JSON.stringify(error)},
+          errorName: ${errorName === undefined ? "undefined" : JSON.stringify(errorName)},
         }, "*");
       }, ${String(delayMs)});
     }
@@ -253,6 +258,7 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
     errorResolveResponse(
       "Sync to Asset Hub Paseo timed out after 45s — unable to reach peers",
       1_500,
+      "NetworkSyncTimeoutError",
     ),
   );
 
@@ -275,6 +281,54 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
   );
 });
 
+test("As a user using smoldot directly, when every peer WebSocket is unavailable, I see a typed Asset Hub failure before the generic request timeout", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-direct");
+  await page.addInitScript(() => {
+    const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
+    globalThis.setTimeout = ((
+      handler: TimerHandler,
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
+      // The production request deadline is 90s. Only accelerate the resolver's
+      // derived 89s budget; the unchanged 90s client timer must lose this race.
+      const effectiveTimeout =
+        timeout !== undefined && timeout > 80_000 && timeout < 90_000
+          ? 1_000
+          : timeout;
+      return nativeSetTimeout(handler, effectiveTimeout, ...args);
+    }) as typeof globalThis.setTimeout;
+  });
+  let blockedSockets = 0;
+  const protocolLogs: string[] = [];
+  page.on("console", (message) => {
+    protocolLogs.push(message.text());
+  });
+  await page.context().routeWebSocket(/^wss?:\/\//, (socket) => {
+    blockedSockets += 1;
+    void socket.close();
+  });
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    "Domain can't be reached",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toHaveText(
+    HOST_ERRORS.AH_SYNC_TIMEOUT,
+  );
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    RETRY_LABEL_FROM_SMOLDOT,
+  );
+  expect(blockedSockets).toBeGreaterThan(0);
+});
+
 test("As a user using smoldot in shared worker, when the sync times out (>45s) I see the appropriate error and can switch backend", async ({
   page,
 }) => {
@@ -285,6 +339,7 @@ test("As a user using smoldot in shared worker, when the sync times out (>45s) I
     errorResolveResponse(
       "Sync to Asset Hub Paseo timed out after 45s — unable to reach peers",
       1_500,
+      "NetworkSyncTimeoutError",
     ),
   );
 

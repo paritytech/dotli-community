@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
@@ -9,6 +9,7 @@ import {
   setNetwork,
 } from "@dotli/config/network";
 import {
+  getRequestSyncTimeoutMs,
   isProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolResponseEnvelope,
@@ -128,6 +129,37 @@ describe("isProtocolEnvelope", () => {
 
   it("returns false for missing namespace", () => {
     expect(isProtocolEnvelope({ kind: "request" })).toBe(false);
+  });
+});
+
+describe("getRequestSyncTimeoutMs", () => {
+  it("reserves response-delivery time inside the caller's deadline", () => {
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const request: ProtocolRequestEnvelope = {
+      namespace: "dotli:protocol",
+      kind: "request",
+      id: "test-deadline",
+      method: "resolveDotName",
+      payload: { label: "chinpokomon" },
+      deadlineMs: 100_000,
+    };
+
+    expect(getRequestSyncTimeoutMs(request)).toBe(89_000);
+    vi.restoreAllMocks();
+  });
+
+  it("ignores missing or non-finite deadlines", () => {
+    const request: ProtocolRequestEnvelope = {
+      namespace: "dotli:protocol",
+      kind: "request",
+      id: "test-no-deadline",
+      method: "warmup",
+      payload: {},
+    };
+
+    expect(getRequestSyncTimeoutMs(request)).toBeUndefined();
+    request.deadlineMs = Number.POSITIVE_INFINITY;
+    expect(getRequestSyncTimeoutMs(request)).toBeUndefined();
   });
 });
 

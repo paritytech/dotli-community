@@ -76,8 +76,16 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
       recovery: "switch-backend",
     };
   }
-  if (msg.includes("Asset Hub") && msg.includes("timed out")) {
-    return { message: HOST_ERRORS.AH_SYNC_TIMEOUT, recovery: "switch-backend" };
+  if (err instanceof Error && err.name === "NetworkSyncTimeoutError") {
+    return {
+      message:
+        isP2p && msg.includes("Asset Hub")
+          ? HOST_ERRORS.AH_SYNC_TIMEOUT
+          : isP2p
+            ? HOST_ERRORS.LIGHT_CLIENT_TIMEOUT
+            : HOST_ERRORS.RPC_TIMEOUT,
+      recovery: "switch-backend",
+    };
   }
   if (err instanceof ProtocolInitFailedError) {
     return {

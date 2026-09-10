@@ -211,7 +211,7 @@ function bindMessageListener(): void {
           pending.resolve(msg.result);
         } else {
           const err = new Error(msg.error || "Unknown protocol error");
-          err.name = "ProtocolResponseError";
+          err.name = msg.errorName ?? "ProtocolResponseError";
           pending.reject(err);
         }
         return;
@@ -508,17 +508,17 @@ async function postRequest<M extends ProtocolRequestMethod>(
   }
 
   const id = createRequestId();
+  const timeoutMs = UNTIMED_METHODS.has(method)
+    ? null
+    : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
   const envelope: ProtocolRequestEnvelope<M> = {
     namespace: "dotli:protocol",
     kind: "request",
     id,
     method,
     payload,
+    ...(timeoutMs === null ? {} : { deadlineMs: Date.now() + timeoutMs }),
   };
-
-  const timeoutMs = UNTIMED_METHODS.has(method)
-    ? null
-    : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
   const stopReq = m.timer(S.PROTOCOL_REQUEST);
 
   return new Promise((resolve, reject) => {
