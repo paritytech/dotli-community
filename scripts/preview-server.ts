@@ -158,11 +158,80 @@ async function handleModeSync(req: Request, key: string): Promise<Response> {
   });
 }
 
+// Dev-only Sentry sink, and the only way a test can observe what the
+// SharedWorker reports. Sentry is configured with `tunnel: "/t"`, so envelopes
+// are same-origin POSTs that land here instead of going to Sentry. Playwright
+// route interception is not an option: it covers pages and frames, and a
+// SharedWorker's requests are neither, which would hide the exact case
+// `network-transport.spec.ts` exists to check.
+const METRICS_PATH = "/__dotli-metrics";
+const TUNNEL_PATH = "/t";
+const gaugePoints: { name: string; value: number; mode: string }[] = [];
+
+// A Sentry envelope is newline-delimited JSON: a header, then item
+// header/payload pairs. A malformed line must never turn into a non-200, or the
+// app under test starts behaving differently because it is being measured.
+//
+// Two shape details that are easy to get wrong. Metric NAMES carry the `dotli.`
+// prefix (`metrics.ts` adds it), but attribute KEYS do not: `mergeAttrs` passes
+// `setDefaults` keys through bare, and the `dotli.` prefix there applies only to
+// the Sentry tag mirror. And each attribute value is wrapped as
+// `{ value, type }` rather than being the bare value.
+function readAttr(
+  attrs: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const wrapped = attrs[key] as { value?: unknown } | undefined;
+  return typeof wrapped?.value === "string" ? wrapped.value : undefined;
+}
+
+function collectEnvelope(body: string): void {
+  for (const line of body.split("\n")) {
+    if (line === "") continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const items = (parsed as { items?: unknown }).items;
+    if (!Array.isArray(items)) continue;
+    for (const item of items as Record<string, unknown>[]) {
+      const name = item.name;
+      if (typeof name !== "string" || !name.startsWith("dotli.")) continue;
+      const attrs = (item.attributes ?? {}) as Record<string, unknown>;
+      gaugePoints.push({
+        name,
+        value: typeof item.value === "number" ? item.value : 0,
+        mode: readAttr(attrs, "protocol_mode") ?? "",
+      });
+    }
+  }
+}
+
+function handleMetrics(req: Request): Response {
+  const headers = { ...MODE_SYNC_CORS, "Content-Type": "application/json" };
+  if (req.method === "DELETE") {
+    gaugePoints.length = 0;
+    return new Response(null, { status: 204, headers: MODE_SYNC_CORS });
+  }
+  return new Response(JSON.stringify(gaugePoints), { headers });
+}
+
 Bun.serve({
   port: PORT,
   hostname: "0.0.0.0",
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
+
+    if (url.pathname === TUNNEL_PATH) {
+      collectEnvelope(await req.text());
+      return new Response(null, { status: 200, headers: MODE_SYNC_CORS });
+    }
+
+    if (url.pathname === METRICS_PATH) {
+      return handleMetrics(req);
+    }
 
     if (url.pathname.startsWith(MODE_SYNC_PREFIX)) {
       const key = decodeURIComponent(
