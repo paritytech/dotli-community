@@ -3036,7 +3036,7 @@ export const types = [
             {
                 name: "with_signed_transaction",
                 type: "boolean | undefined",
-                description: "Request signed transaction back.",
+                description: "Request signed transaction back, encoded as one byte: absent, true, or false.",
             },
         ],
     },

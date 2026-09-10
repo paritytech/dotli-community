@@ -1638,7 +1638,7 @@ export interface HostSignPayloadData {
     metadataHash?: HexString;
     /** Metadata mode. */
     mode?: number;
-    /** Request signed transaction back. */
+    /** Request signed transaction back, encoded as one byte: absent, true, or false. */
     withSignedTransaction?: boolean;
 }
 export declare const HostSignPayloadData: S.Codec<HostSignPayloadData>;

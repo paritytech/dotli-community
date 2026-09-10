@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 1;
 export const TRUAPI_CODEC_VERSION = 1;
-export const TRUAPI_WIRE_SCHEMA_HASH = "f1682972c34c8609";
+export const TRUAPI_WIRE_SCHEMA_HASH = "0e49a2f7d93138a3";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;

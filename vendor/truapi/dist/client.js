@@ -5,6 +5,23 @@ import { TRUAPI_CODEC_VERSION } from "./generated/client.js";
 import * as T from "./generated/types.js";
 import * as W from "./generated/wire-table.js";
 const UNANSWERED_WIRE_IDS = new Set(Object.values(W).flatMap((ids) => "response" in ids ? [ids.response] : [ids.stop, ids.interrupt, ids.receive]));
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+/** A request received no matching response before its transport deadline. */
+export class RequestTimeoutError extends Error {
+    /** Transport-assigned request identifier. */
+    requestId;
+    /** Wire discriminant of the unanswered request. */
+    discriminant;
+    /** Configured request deadline in milliseconds. */
+    timeoutMs;
+    constructor(requestId, discriminant, timeoutMs) {
+        super(`TrUAPI request ${requestId} (wire ${discriminant}) timed out after ${timeoutMs}ms`);
+        this.name = "RequestTimeoutError";
+        this.requestId = requestId;
+        this.discriminant = discriminant;
+        this.timeoutMs = timeoutMs;
+    }
+}
 /**
  * Convert a positive protocol version number into the generated version tag
  * used by TrUAPI wire wrappers.
@@ -103,6 +120,10 @@ function decodeUnsupportedMessage(payload) {
  */
 export function createTransport(provider, options = {}) {
     const codecVersion = options.codecVersion ?? TRUAPI_CODEC_VERSION;
+    const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+        throw new RangeError("requestTimeoutMs must be a positive finite number");
+    }
     let idCounter = 0;
     let closedError = null;
     const pending = new Map();
@@ -114,6 +135,15 @@ export function createTransport(provider, options = {}) {
     function toError(error) {
         return error instanceof Error ? error : new Error(String(error));
     }
+    /** Remove a pending request and cancel its deadline. */
+    function takePending(requestId) {
+        const entry = pending.get(requestId);
+        if (!entry)
+            return undefined;
+        pending.delete(requestId);
+        entry.cancelTimeout();
+        return entry;
+    }
     /**
      * Close the transport once, rejecting pending requests and notifying live
      * subscriptions.
@@ -124,9 +154,8 @@ export function createTransport(provider, options = {}) {
             return;
         }
         closedError = nextError;
-        for (const [requestId, entry] of pending) {
-            pending.delete(requestId);
-            entry.reject(nextError);
+        for (const requestId of pending.keys()) {
+            takePending(requestId)?.reject(nextError);
         }
         for (const [requestId, subscription] of subscriptions) {
             subscriptions.delete(requestId);
@@ -163,8 +192,7 @@ export function createTransport(provider, options = {}) {
             }
             const request = pending.get(requestId);
             if (request?.ids.request === discriminant) {
-                pending.delete(requestId);
-                request.resolveUnsupported();
+                takePending(requestId)?.resolveUnsupported();
                 return;
             }
             const subscription = subscriptions.get(requestId);
@@ -233,7 +261,7 @@ export function createTransport(provider, options = {}) {
         }
         const p = pending.get(requestId);
         if (p && payload.id === p.ids.response) {
-            pending.delete(requestId);
+            takePending(requestId);
             try {
                 p.resolve(payload.value);
             }
@@ -397,6 +425,9 @@ export function createTransport(provider, options = {}) {
                     return;
                 }
                 const requestId = `p:${++idCounter}`;
+                const timeout = setTimeout(() => {
+                    takePending(requestId)?.reject(new RequestTimeoutError(requestId, ids.request, requestTimeoutMs));
+                }, requestTimeoutMs);
                 pending.set(requestId, {
                     ids,
                     resolve: (response) => resolve(decodeResponse(response)),
@@ -405,6 +436,7 @@ export function createTransport(provider, options = {}) {
                         value: { tag: "Unsupported" },
                     }),
                     reject,
+                    cancelTimeout: () => clearTimeout(timeout),
                 });
                 try {
                     send({
@@ -416,7 +448,7 @@ export function createTransport(provider, options = {}) {
                     });
                 }
                 catch (error) {
-                    pending.delete(requestId);
+                    takePending(requestId);
                     reject(toError(error));
                 }
             });

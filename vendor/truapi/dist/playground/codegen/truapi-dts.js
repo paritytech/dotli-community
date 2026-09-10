@@ -2162,7 +2162,7 @@ export interface HostSignPayloadData {
     metadataHash?: HexString;
     /** Metadata mode. */
     mode?: number;
-    /** Request signed transaction back. */
+    /** Request signed transaction back, encoded as one byte: absent, true, or false. */
     withSignedTransaction?: boolean;
 }
 export const HostSignPayloadData: Codec<HostSignPayloadData>;
@@ -5364,6 +5364,16 @@ export import VrfTranscriptItem = T.VrfTranscriptItem;
 
 // client.d.ts
 export type { Subscription, TrUApiTransport };
+/** A request received no matching response before its transport deadline. */
+export declare class RequestTimeoutError extends Error {
+    /** Transport-assigned request identifier. */
+    readonly requestId: string;
+    /** Wire discriminant of the unanswered request. */
+    readonly discriminant: number;
+    /** Configured request deadline in milliseconds. */
+    readonly timeoutMs: number;
+    constructor(requestId: string, discriminant: number, timeoutMs: number);
+}
 /**
  * Version overrides used when constructing a transport.
  */
@@ -5376,6 +5386,13 @@ export interface CreateTransportOptions {
      * \`TRUAPI_CODEC_VERSION\` directly.
      */
     codecVersion?: number;
+    /**
+     * Maximum time to wait for a matching response before rejecting the request.
+     *
+     * Defaults to 120 seconds. This bounds dead hosts and missed transport
+     * handshakes while leaving interactive approval flows enough time to finish.
+     */
+    requestTimeoutMs?: number;
 }
 /**
  * Build a \`TrUApiTransport\` on top of a \`WireProvider\`, adding request/response
@@ -5439,6 +5456,14 @@ export declare const services: ServiceInfo[];
 
 
 // explorer/codegen/versions/0.13.1/types.d.ts
+export declare const types: DataType[];
+
+
+// explorer/codegen/versions/0.14.0/services.d.ts
+export declare const services: ServiceInfo[];
+
+
+// explorer/codegen/versions/0.14.0/types.d.ts
 export declare const types: DataType[];
 
 
@@ -5555,7 +5580,7 @@ export interface VersionEntry {
  * time. Mirrors the \`truapi\` crate version. Used by the explorer to render
  * the \`main\` selector label as \`main (x.y.z)\`.
  */
-export declare const packageVersion = "0.13.1";
+export declare const packageVersion = "0.14.0";
 export declare const versions: VersionEntry[];
 
 
@@ -5564,7 +5589,7 @@ export { ResultAsync, SubscriptionError };
 export type { ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 1;
 export declare const TRUAPI_CODEC_VERSION: 1;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "f1682972c34c8609";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "0e49a2f7d93138a3";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;

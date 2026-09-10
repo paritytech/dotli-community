@@ -185,7 +185,7 @@ export const VersionedHostRequestLoginResponse = S.lazy(() => S.indexedTaggedUni
 export const VersionedHostRequestResourceAllocationError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, ResourceAllocationError] }));
 export const VersionedHostRequestResourceAllocationRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRequestResourceAllocationRequest] }));
 export const VersionedHostRequestResourceAllocationResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRequestResourceAllocationResponse] }));
-export const HostSignPayloadData = S.lazy(() => S.Struct({ blockHash: S.Hex(), blockNumber: S.Hex(), era: S.Hex(), genesisHash: S.Hex(), method: S.Hex(), nonce: S.Hex(), specVersion: S.Hex(), tip: S.Hex(), transactionVersion: S.Hex(), signedExtensions: S.Vector(S.str), version: S.u32, assetId: S.Option(S.Hex()), metadataHash: S.Option(S.Hex()), mode: S.Option(S.u32), withSignedTransaction: S.Option(S.bool) }));
+export const HostSignPayloadData = S.lazy(() => S.Struct({ blockHash: S.Hex(), blockNumber: S.Hex(), era: S.Hex(), genesisHash: S.Hex(), method: S.Hex(), nonce: S.Hex(), specVersion: S.Hex(), tip: S.Hex(), transactionVersion: S.Hex(), signedExtensions: S.Vector(S.str), version: S.u32, assetId: S.Option(S.Hex()), metadataHash: S.Option(S.Hex()), mode: S.Option(S.u32), withSignedTransaction: S.OptionBool }));
 export const VersionedHostSignPayloadError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] }));
 export const VersionedHostSignPayloadRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadRequest] }));
 export const VersionedHostSignPayloadResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] }));
