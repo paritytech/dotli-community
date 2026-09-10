@@ -117,8 +117,9 @@ bounded capability negotiation; TrUAPI, MotionSample v1, text, IME, focus, and
 wheel input use the same pinned browser runtime as native Hosts. UI output v1 applies
 cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S)
 navigation cross an origin-checked parent channel; the Host consumes at most
-one command per recent trusted input and does not grant the app iframe
-clipboard permission. As an interim compatibility policy, framebuffer and
+one command per trusted input while browser transient activation remains live,
+with a five-second upper bound to accommodate cold guest execution. It does not
+grant the app iframe clipboard permission. As an interim compatibility policy, framebuffer and
 WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
 free.
 

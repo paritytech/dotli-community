@@ -586,7 +586,9 @@ type PolkaVmPlatformCommand =
     }>
   | Readonly<{ type: "open-url"; url: string }>;
 
-const POLKAVM_PLATFORM_ACTIVATION_MS = 1_000;
+// Cold guest work can exceed one second. Browser transient activation must
+// still be live when the command arrives; this bound never extends it.
+const POLKAVM_PLATFORM_ACTIVATION_MS = 5_000;
 const MAX_POLKAVM_COPY_TEXT_BYTES = 64 * 1024;
 const MAX_POLKAVM_COPY_IMAGE_PIXELS = 1024 * 1024;
 const MAX_POLKAVM_COPY_IMAGE_DIMENSION = 2048;
