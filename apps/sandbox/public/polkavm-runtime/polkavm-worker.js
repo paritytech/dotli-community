@@ -1672,6 +1672,7 @@
         case POINTER_CAPTURE_IMPORT:
         case "polkadot_host_0_1_core_clock_wall":
         case "polkadot_host_0_1_core_random":
+        case UPDATE_AFTER_IMPORT:
           return this.#handleCooperativeCall(name);
         case "pvm_set_palette": {
           const palette = this.#read(this.#u32(this.#reg(7)), 256 * 3);
@@ -2375,7 +2376,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     const requestedDelay = requestedUpdateDelay();
     if (requestedDelay !== null) {
-      scheduleTick(Math.max(0, requestedDelay - elapsed));
+      scheduleTick(
+        demandDriven ? requestedDelay : Math.max(0, requestedDelay - elapsed),
+      );
     }
   }
 
