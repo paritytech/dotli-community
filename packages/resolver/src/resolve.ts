@@ -3,7 +3,7 @@
 
 // dotNS name resolution via direct storage reads
 //
-// Uses polkadot-api with the shared Asset Hub provider from smoldot.ts.
+// Uses polkadot-api with the shared Asset Hub provider from provider.ts.
 
 import {
   createClient,
@@ -20,12 +20,6 @@ import {
 } from "./errors";
 import { dur } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
-import {
-  getSmoldot,
-  getRelayChain,
-  onConnectionIssue,
-  onSmoldotFatal,
-} from "./smoldot";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
@@ -45,13 +39,10 @@ export type {
   ResolvePhase,
 } from "./access-raw-storage";
 export { statusToPhase } from "./access-raw-storage";
-export { getSmoldot, getSmoldotDirect, getRelayChain } from "./smoldot";
-export { onConnectionIssue } from "./smoldot";
 
 let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
-let fatalUnsubscribe: (() => void) | null = null;
 
 // Asset Hub provider used to read dotNS. The host injects a broker-backed
 // provider during bootstrap so the resolver shares the broker's single Asset
@@ -81,13 +72,9 @@ export function setResolverPeopleProvider(
 
 /**
  * Tear down the cached resolver client. Callers that hold a reference to
- * `apiInstance` must discard it. Every subsequent `.` resolution will
- * rebuild against a fresh smoldot chain.
- *
- * Used by:
- *   - `onSmoldotFatal` to clear stale references after a WASM panic so
- *     the next `resolveDotName` doesn't hand the caller a dead client.
- *   - Config changes (chain backend switch) that require a new client.
+ * `apiInstance` must discard it. Every subsequent `.` resolution rebuilds
+ * against a fresh client. Used on a chain-backend switch that requires a new
+ * client.
  */
 export function destroyResolverClient(): void {
   if (clientInstance !== null) {
@@ -105,27 +92,10 @@ export function destroyResolverClient(): void {
   clientPromise = null;
 }
 
-/**
- * Register a one-shot listener against `onSmoldotFatal` so a WASM panic
- * clears the cached client before any subsequent `resolveDotName` runs.
- * Without this, the next caller would receive `apiInstance` pointing at a
- * client whose upstream chain is dead and hang indefinitely.
- */
-function ensureFatalListener(): void {
-  if (fatalUnsubscribe !== null) {
-    return;
-  }
-  fatalUnsubscribe = onSmoldotFatal((message) => {
-    log.error(`[dot.li resolve] Smoldot fatal, clearing client: ${message}`);
-    destroyResolverClient();
-  });
-}
-
 function ensureClient(
   onStatus?: StatusCallback,
   onPhase?: PhaseCallback,
 ): Promise<Api> {
-  ensureFatalListener();
   if (apiInstance !== null) {
     // Already synced. Emit the terminal phase so a late subscriber
     // still sees an accurate snapshot instead of staying on whatever
@@ -149,34 +119,9 @@ async function doCreateClient(
   const initStart = performance.now();
   const stopPresync = m.timer(S.SMOLDOT_PRESYNC);
 
-  // Forward bootnode drops to the loading UI, throttled to 1/sec because
-  // cold sync can fail hundreds of handshakes per second and would
-  // otherwise thrash the status line unreadably.
-  let lastBootnodeAt = 0;
-  const unsubConnectionIssue = onConnectionIssue((msg) => {
-    const now = performance.now();
-    if (now - lastBootnodeAt < 1000) {
-      return;
-    }
-    lastBootnodeAt = now;
-    onStatus?.(`Bootnode connection issue, ${msg}`);
-    m.count(S.BOOTNODE_ERROR, { source: "log-callback" });
-  });
-
   try {
     onPhase?.("light-client-starting");
     onStatus?.("Starting light client...");
-    m.span(S.SMOLDOT_CREATE, () => {
-      getSmoldot();
-    });
-    log.warn(`[dot.li resolve] Smoldot instance created (${dur(initStart)})`);
-
-    onPhase?.("relay-chain-adding");
-    onStatus?.("Adding Paseo relay chain...");
-    const relayStart = performance.now();
-    await m.span(S.SMOLDOT_RELAY_CHAIN, () => getRelayChain());
-    m.measure(S.SMOLDOT_RELAY_CHAIN, performance.now() - relayStart);
-    log.warn(`[dot.li resolve] Relay chain added (${dur(relayStart)})`);
 
     onPhase?.("asset-hub-connecting");
     onStatus?.("Connecting to Asset Hub Paseo...");
@@ -252,13 +197,12 @@ async function doCreateClient(
 
     clientInstance = client;
     apiInstance = api;
-    stopPresync();
     log.warn(`[dot.li resolve] Ready (${dur(initStart)} total)`);
     onPhase?.("asset-hub-ready");
     onStatus?.("Connected to Asset Hub Paseo");
     return apiInstance;
   } finally {
-    unsubConnectionIssue();
+    stopPresync();
   }
 }
 
