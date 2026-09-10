@@ -11,6 +11,7 @@ export { setupOperationsBanner } from "./operations-banner.ts";
 export {
   buildOperations,
   DEFAULT_MAX_VISIBLE,
+  DEFAULT_REVEAL_AFTER_MS,
   type Operation,
   type OperationsSnapshot,
   type OperationStep,

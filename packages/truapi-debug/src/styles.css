@@ -809,15 +809,16 @@
 
 /* ── Live-operations banner ────────────────────────────────── */
 
-/* Full-width strip so the card stays centred in whatever space the
-   docked panel leaves. The strip itself is click-through. */
+/* Pinned to the top-right corner. The wrapper is click-through so only the
+   card itself takes pointer events. `right` is set from script to clear a
+   right-docked panel. */
 .td-ops {
   position: fixed;
-  left: 12px;
   right: 12px;
+  width: min(420px, calc(100vw - 24px));
   z-index: 940;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   pointer-events: none;
   font-family: system-ui, sans-serif;
 }
@@ -828,7 +829,6 @@
 .td-ops-card {
   pointer-events: auto;
   width: 100%;
-  max-width: 460px;
   max-height: 60vh;
   overflow-y: auto;
   box-sizing: border-box;

@@ -3,10 +3,14 @@
 
 // Live-operations banner.
 //
-// A floating card pinned under the top bar listing what the host is doing
-// right now, one row per flow, each row a stack of steps. The web counterpart
-// of the iOS `StallBannerWindow`, minus its reveal latch: everything shows the
-// moment it starts rather than waiting for a flow to look stalled.
+// A floating card pinned to the top-right corner listing what the host is
+// doing right now, one row per flow, each row a stack of steps. The web
+// counterpart of the iOS `StallBannerWindow`, reveal latch included: a flow
+// only appears once it has been open for `DEFAULT_REVEAL_AFTER_MS`.
+//
+// Crossing that threshold is the passage of time, not an event, so while any
+// flow is still under it the banner re-evaluates on a one-second tick. The
+// tick stops as soon as nothing is waiting, matching `StallBoard.updateTick`.
 //
 // Clicks fall through everywhere except the card itself, so the product below
 // stays usable while the banner is up.
@@ -24,6 +28,7 @@ import {
 } from "./operations.ts";
 
 const BANNER_ID = "truapi-ops-banner";
+const TICK_MS = 1000;
 
 interface BannerState {
   dismissed: Set<string>;
@@ -59,7 +64,7 @@ export function setupOperationsBanner(store: EventStore): () => void {
     renderScheduled = true;
     requestAnimationFrame(() => {
       renderScheduled = false;
-      render(banner, store, state);
+      setTicking(render(banner, store, state));
     });
   };
 
@@ -82,6 +87,19 @@ export function setupOperationsBanner(store: EventStore): () => void {
     }
   });
 
+  let tick: ReturnType<typeof setInterval> | null = null;
+  const setTicking = (ticking: boolean): void => {
+    if (ticking === (tick !== null)) {
+      return;
+    }
+    if (ticking) {
+      tick = setInterval(scheduleRender, TICK_MS);
+    } else if (tick !== null) {
+      clearInterval(tick);
+      tick = null;
+    }
+  };
+
   const unsubscribeStore = store.subscribe(scheduleRender);
   window.addEventListener("resize", scheduleRender);
 
@@ -97,9 +115,10 @@ export function setupOperationsBanner(store: EventStore): () => void {
     panelResize.observe(panel);
   }
 
-  render(banner, store, state);
+  setTicking(render(banner, store, state));
 
   return () => {
+    setTicking(false);
     panelResize?.disconnect();
     window.removeEventListener("resize", scheduleRender);
     unsubscribeStore();
@@ -107,20 +126,23 @@ export function setupOperationsBanner(store: EventStore): () => void {
   };
 }
 
+/** Renders the banner and reports whether any flow is still waiting to cross
+ *  the reveal threshold, which is what decides if the tick keeps running. */
 function render(
   banner: HTMLElement,
   store: EventStore,
   state: BannerState,
-): void {
+): boolean {
   const snapshot = buildOperations(store.list(), {
     dismissed: state.dismissed,
     maxVisible: state.expanded ? Number.POSITIVE_INFINITY : DEFAULT_MAX_VISIBLE,
+    now: Date.now(),
   });
 
   if (snapshot.operations.length === 0) {
     banner.classList.add("hidden");
     banner.innerHTML = "";
-    return;
+    return snapshot.pending > 0;
   }
 
   position(banner);
@@ -135,6 +157,7 @@ function render(
         : "";
 
   banner.innerHTML = `<div class="td-ops-card">${rows}${overflow}</div>`;
+  return snapshot.pending > 0;
 }
 
 /** Keep the card under the top bar and clear of a right-docked panel. */

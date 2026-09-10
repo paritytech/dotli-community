@@ -12,6 +12,12 @@
 // single per-tab flow id that boot, resolve, render and bridge all carry, so
 // keying on the flow id alone would collapse the whole page load into one row.
 //
+// A flow only surfaces once it has been open for `revealAfterMs`, so a page
+// load that goes to plan stays silent and the banner is only ever about work
+// that is taking longer than it should. Same idea as `StallBoard.revealAfter`,
+// including the part where a flow that settles under the threshold is never
+// shown at all.
+//
 // Pure. The banner passes the store's buffer in and renders what comes back.
 
 import { withActiveTld } from "@dotli/config/network";
@@ -21,6 +27,9 @@ import { asObj } from "./shape.ts";
 /** Rows shown before the rest fold into the "+N more" line. Matches
  *  `StallBannerViewModelFactory.defaultMaxVisibleRows`. */
 export const DEFAULT_MAX_VISIBLE = 3;
+
+/** How long a flow has to stay open before it is worth showing. */
+export const DEFAULT_REVEAL_AFTER_MS = 3000;
 
 export type StepState = "done" | "current" | "failed";
 
@@ -45,11 +54,18 @@ export interface OperationsSnapshot {
   operations: Operation[];
   /** Operations trimmed off the end by `maxVisible`. */
   hiddenCount: number;
+  /** Open flows still under the reveal threshold. While this is non-zero the
+   *  banner has to keep re-evaluating on a timer, because crossing the
+   *  threshold is the passage of time rather than a new event. */
+  pending: number;
 }
 
 export interface BuildOptions {
   dismissed?: ReadonlySet<string>;
   maxVisible?: number;
+  /** Clock reading to measure flow age against. */
+  now?: number;
+  revealAfterMs?: number;
 }
 
 /** Events that close their flow. Once one lands, the flow stops showing a
@@ -78,6 +94,8 @@ export function buildOperations(
 ): OperationsSnapshot {
   const dismissed = options.dismissed ?? new Set<string>();
   const maxVisible = options.maxVisible ?? DEFAULT_MAX_VISIBLE;
+  const now = options.now ?? 0;
+  const revealAfterMs = options.revealAfterMs ?? DEFAULT_REVEAL_AFTER_MS;
 
   // Insertion order is arrival order, so the map already holds the flows
   // oldest-first, the same ordering the iOS board publishes.
@@ -98,15 +116,35 @@ export function buildOperations(
     }
   }
 
-  const all: Operation[] = [];
+  const revealed: Operation[] = [];
+  let pending = 0;
   for (const [id, group] of groups) {
-    all.push(toOperation(id, group));
+    const operation = toOperation(id, group);
+    // Measure an open flow against the clock and a settled one against the
+    // moment it settled, so a flow that finished quickly stays hidden for
+    // good instead of ageing into view.
+    const reference = endedAt(group) ?? now;
+    if (reference - group[0].receivedAt >= revealAfterMs) {
+      revealed.push(operation);
+    } else if (!operation.done) {
+      pending++;
+    }
   }
 
   return {
-    operations: all.slice(0, maxVisible),
-    hiddenCount: Math.max(0, all.length - maxVisible),
+    operations: revealed.slice(0, maxVisible),
+    hiddenCount: Math.max(0, revealed.length - maxVisible),
+    pending,
   };
+}
+
+function endedAt(group: StoredSystemEvent[]): number | null {
+  for (const ev of group) {
+    if (TERMINAL_EVENTS.has(`${ev.layer}:${ev.event}`)) {
+      return ev.receivedAt;
+    }
+  }
+  return null;
 }
 
 function toOperation(id: string, group: StoredSystemEvent[]): Operation {
