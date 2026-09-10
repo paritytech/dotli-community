@@ -198,21 +198,6 @@ if (provenance !== provenanceRecord()) {
   throw new Error("PolkaVM runtime provenance does not match the lockfile");
 }
 
-const runtimeSource = await readFile(
-  resolve(root, "apps/sandbox/src/polkavm-runtime.ts"),
-  "utf8",
-);
-const declaredRuntimeSource =
-  /const RUNTIME_SOURCE\s*=\s*"([^"]+)";/.exec(runtimeSource)?.[1] ?? null;
-const expectedRuntimeSource = `${lock.package
-  .replace(/^@/, "")
-  .replaceAll("/", "-")}-${lock.packageVersion}-${lock.upstreamRevision}`;
-if (declaredRuntimeSource !== expectedRuntimeSource) {
-  throw new Error(
-    `runtime cache identity is ${String(declaredRuntimeSource)}, expected ${expectedRuntimeSource}`,
-  );
-}
-
 console.log(
   `${checkOnly ? "Verified" : "Synchronized"} ${lock.package} ${lock.packageVersion} assets from upstream revision ${lock.upstreamRevision}`,
 );

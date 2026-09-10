@@ -6,6 +6,10 @@ import type {
   PolkaVmDebugMessage,
   PolkaVmDebugSnapshot,
 } from "@dotli/truapi-debug/dotli-debug-types";
+import {
+  POLKAVM_RUNTIME_SOURCE,
+  polkaVmRuntimeAssetUrl,
+} from "./polkavm-runtime-assets";
 import { Tri2dRenderer } from "./tri2d-renderer";
 import {
   WebGpuBridge,
@@ -13,7 +17,6 @@ import {
   type WebGpuRequirements,
 } from "./webgpu";
 
-const POLKAVM_RUNTIME_ROOT = "/polkavm-runtime";
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
 const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
@@ -41,8 +44,6 @@ const SAVE_DB_NAME = "dotli-polkavm";
 const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
-const RUNTIME_SOURCE =
-  "parity-polkavm-browser-runtime-0.3.0-e51fce2a64d4691cc5c23993793eb14264571bf2";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
@@ -1146,7 +1147,7 @@ async function programDigest(program: Uint8Array): Promise<string> {
 
 function runtimeBytes(): Promise<ArrayBuffer> {
   runtimeBytesPromise ??= fetch(
-    `${POLKAVM_RUNTIME_ROOT}/polkavm-browser-runtime.wasm`,
+    polkaVmRuntimeAssetUrl("polkavm-browser-runtime.wasm"),
     {
       cache: "force-cache",
     },
@@ -2295,7 +2296,7 @@ export async function runPolkaVmApplication(
 
   const runtime = await runtimeBytes();
   const program = ownedBytes(files[descriptor.programPath]);
-  const cacheKey = `${RUNTIME_SOURCE}:${await programDigest(program)}`;
+  const cacheKey = `${POLKAVM_RUNTIME_SOURCE}:${await programDigest(program)}`;
   const compiledProgram = forceInterpreter
     ? undefined
     : compiledPrograms.get(cacheKey);
@@ -2345,7 +2346,7 @@ export async function runPolkaVmApplication(
     window.parent,
     parentOrigin,
   );
-  const worker = new Worker(`${POLKAVM_RUNTIME_ROOT}/polkavm-worker.js`);
+  const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-worker.js"));
   const closeHostFramePort = (): void => {
     hostFramePort.onmessage = null;
     hostFramePort.onmessageerror = null;
