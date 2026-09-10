@@ -287,17 +287,13 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
   );
 });
 
-test("As a user using smoldot directly, when every peer WebSocket is unavailable, I see a typed Asset Hub failure before the generic request timeout", async ({
+test("As a user using smoldot directly, when every peer WebSocket is unavailable, I see a typed Hub failure before the generic request timeout", async ({
   page,
 }) => {
   // Given
   await setBackend(page, "smoldot-direct");
-  // Accelerate the resolver's derived budget and nothing else, so the
-  // unchanged 90s client timer loses this race. The budget is the deadline
-  // minus however long dispatch took, so it lands just under
-  // `RESOLVER_SYNC_BUDGET_MS` rather than on it. Match a window below that
-  // bound, which still excludes the 90s client timer and the 30s manifest
-  // budgets.
+  // A window, not equality: the budget is the deadline minus however long
+  // dispatch took, so it lands just under the constant.
   await page.addInitScript((budgetMs: number) => {
     const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
     globalThis.setTimeout = ((

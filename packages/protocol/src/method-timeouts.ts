@@ -4,10 +4,9 @@
 /**
  * Per-method request budgets for the protocol client.
  *
- * Kept in its own module so a consumer can read a budget without importing
- * the client. `client.ts` pulls in `@dotli/config/config`, which reads
- * `self.location` at module load, so importing it outside a browser throws.
- * The only import here is a type, which the compiler erases.
+ * Separate from `client.ts` so a consumer can read a budget outside a browser.
+ * `client.ts` pulls in the `config` barrel, which reads `self.location` at
+ * module load.
  */
 
 import type { ProtocolRequestMethod } from "./messages";
@@ -26,9 +25,11 @@ export const UNTIMED_METHODS: ReadonlySet<ProtocolRequestMethod> =
   new Set<ProtocolRequestMethod>(["warmup"]);
 
 /**
- * Budget per method, in ms. A caller stamps `deadlineMs` from this, and the
- * handler derives its own sync budget from that deadline, so tests should read
- * these values rather than restating the arithmetic.
+ * Budget per method, in ms.
+ *
+ * A caller stamps `deadlineMs` from this, and the handler derives its own sync
+ * budget from that deadline, so tests should read these values rather than
+ * restating the arithmetic.
  */
 export const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   chainConnect: 30_000,

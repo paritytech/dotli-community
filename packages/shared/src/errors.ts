@@ -176,12 +176,10 @@ export function serializeError(value: unknown): string {
 }
 
 /**
- * Extract the error discriminator for wire transport.
+ * Class name of a thrown value, or `undefined` if it was not an `Error`.
  *
- * Pair with `serializeError` when writing an error into a protocol envelope.
- * The message alone forces the receiver to pattern-match strings, while the
- * name lets it branch on the class the sender actually threw. Non-`Error`
- * throws have no meaningful discriminator, hence `undefined`.
+ * Pair with `serializeError` when writing an error into a wire format, so the
+ * receiver can branch on the class instead of matching on the message.
  */
 export function errorName(value: unknown): string | undefined {
   return value instanceof Error ? value.name : undefined;

@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Leaf import on purpose. `@dotli/config/config` reads `self.location` at
-// module load, which would make this module unimportable outside a browser.
+// Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from "@dotli/config/timeouts";
 
 export interface ProtocolRequestMap {
@@ -89,8 +88,14 @@ export interface ProtocolErrorEnvelope {
   kind: "response";
   id: string;
   ok: false;
+  /** Human-readable description of the failure, from `serializeError`. */
   error: string;
-  /** Original error discriminator, preserved across postMessage. */
+  /**
+   * Class name of what the sender threw, such as `NetworkSyncTimeoutError`.
+   *
+   * Lets the receiver branch on the failure kind instead of matching
+   * substrings in `error`. Absent when the sender threw a non-`Error` value.
+   */
   errorName?: string;
 }
 

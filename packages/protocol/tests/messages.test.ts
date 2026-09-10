@@ -133,8 +133,7 @@ describe("isProtocolEnvelope", () => {
 });
 
 describe("getRequestSyncTimeoutMs", () => {
-  // Restore here rather than inside a test body. A failing assertion would
-  // otherwise leak the `Date.now` mock into every test below it.
+  // Not inside a test body: a failing assertion would leak the mock onward.
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -151,15 +150,25 @@ describe("getRequestSyncTimeoutMs", () => {
   });
 
   it("reserves response-delivery time inside the caller's deadline", () => {
+    // Given
     vi.spyOn(Date, "now").mockReturnValue(10_000);
 
-    expect(getRequestSyncTimeoutMs(requestWithDeadline(100_000))).toBe(89_000);
+    // When
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(100_000));
+
+    // Then
+    expect(budget).toBe(89_000);
   });
 
-  it("clamps an already-expired deadline to a positive budget", () => {
+  it("As a handler reading an already-expired deadline, my budget stays positive", () => {
+    // Given
     vi.spyOn(Date, "now").mockReturnValue(100_000);
 
-    expect(getRequestSyncTimeoutMs(requestWithDeadline(10_000))).toBe(1);
+    // When
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(10_000));
+
+    // Then
+    expect(budget).toBe(1);
   });
 
   it("ignores missing or non-finite deadlines", () => {

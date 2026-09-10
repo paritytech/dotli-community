@@ -216,9 +216,8 @@ function bindMessageListener(): void {
           pending.resolve(msg.result);
         } else {
           const err = new Error(msg.error || "Unknown protocol error");
-          // Keep the remote discriminator when it carries information. A bare
-          // `"Error"` does not, and overwriting with it would lose the "this
-          // crossed the protocol boundary" signal that dashboards filter on.
+          // A bare `"Error"` carries nothing, and would cost us the
+          // "crossed the protocol boundary" signal dashboards filter on.
           err.name =
             msg.errorName !== undefined && msg.errorName !== "Error"
               ? msg.errorName

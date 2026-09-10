@@ -47,8 +47,6 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-// Type-only, so this does not pull the resolver into the eager bundle. The
-// implementation still arrives via the dynamic import in `initDirectMode`.
 import type { ResolveOptions } from "@dotli/resolver/resolve";
 import { isExecutableKind } from "@dotli/shared/executables";
 import {
@@ -1096,8 +1094,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
       );
     }
 
-    // One deadline for the whole request, read once. Deriving it per case
-    // would give each handler a slightly different budget.
     const syncTimeoutMs = getRequestSyncTimeoutMs(request);
 
     switch (request.method) {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { raceSyncTimeout, withSyncBudget } from "@dotli/resolver/sync-deadline";
+import { raceSyncTimeout, withSyncBudget } from "./sync-deadline";
 
 const CAP_MS = 180_000;
 
@@ -113,9 +113,7 @@ describe("withSyncBudget", () => {
     vi.useRealTimers();
   });
 
-  // This is what lets `ensureClient` hand the same in-flight client promise to
-  // every caller. A short manifest read giving up must not take a concurrent
-  // name resolution with it.
+  // The property that lets `ensureClient` share one in-flight client promise.
   it("As two callers sharing one sync, the tighter budget failing leaves the looser one alive", async () => {
     // Given
     vi.useFakeTimers();

@@ -316,8 +316,6 @@ async function handleRequest(
     );
   }
 
-  // One deadline for the whole request, read once. Deriving it per case
-  // would give each handler a slightly different budget.
   const syncTimeoutMs = getRequestSyncTimeoutMs(request);
 
   switch (request.method) {
