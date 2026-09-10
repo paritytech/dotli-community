@@ -54,6 +54,8 @@ export interface ProtocolErrorEnvelope {
   id: string;
   ok: false;
   error: string;
+  /** Original error discriminator, preserved across postMessage. */
+  errorName?: string;
 }
 
 export interface ProtocolChainMessageEnvelope {

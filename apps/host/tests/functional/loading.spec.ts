@@ -85,7 +85,11 @@ const fatalOnResolve = (message: string): string => `
   });
 `;
 
-const errorResolveResponse = (error: string, delayMs = 0): string => `
+const errorResolveResponse = (
+  error: string,
+  delayMs = 0,
+  errorName?: string,
+): string => `
   ${READY}
   window.addEventListener("message", function(e) {
     if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
@@ -97,6 +101,7 @@ const errorResolveResponse = (error: string, delayMs = 0): string => `
           id: id,
           ok: false,
           error: ${JSON.stringify(error)},
+          errorName: ${errorName === undefined ? "undefined" : JSON.stringify(errorName)},
         }, "*");
       }, ${String(delayMs)});
     }
@@ -130,6 +135,37 @@ const successfulResolveResponse = (cid: string): string => `
         result: ${JSON.stringify(cid)},
       }, "*");
     }
+  });
+`;
+const stoppedThenSuccessfulResolve = (
+  cid: string,
+  stoppedAttempts = 1,
+): string => `
+  ${READY}
+  var resolveAttempts = 0;
+  window.addEventListener("message", function(e) {
+    if (!e.data || e.data.namespace !== "dotli:protocol" || e.data.method !== "resolveDotName") {
+      return;
+    }
+    resolveAttempts += 1;
+    if (resolveAttempts <= ${String(stoppedAttempts)}) {
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ok: false,
+        error: "chainHead follow stopped (cause: ChainHead stopped)",
+        errorName: "ApiStoppedError",
+      }, "*");
+      return;
+    }
+    window.parent.postMessage({
+      namespace: "dotli:protocol",
+      kind: "response",
+      id: e.data.id,
+      ok: true,
+      result: ${JSON.stringify(cid)},
+    }, "*");
   });
 `;
 
@@ -182,6 +218,52 @@ test("As a user using smoldot in shared worker, when the light client panics mid
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
     RETRY_LABEL_FROM_SMOLDOT,
+  );
+});
+
+test("As a user, a stopped chainHead follow reconnects once without showing a domain error", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-shared-worker");
+  await mockProtocolIframe(
+    page,
+    stoppedThenSuccessfulResolve(
+      "bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa",
+    ),
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+  await findAppFrame(page, 10_000);
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveCount(0);
+});
+
+test("As a user, repeated stopped chainHead follows remain bounded to one retry", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-shared-worker");
+  await mockProtocolIframe(
+    page,
+    stoppedThenSuccessfulResolve(
+      "bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa",
+      2,
+    ),
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    "Domain can't be reached",
+    { timeout: 10_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toContainText(
+    "chainHead follow stopped",
   );
 });
 
