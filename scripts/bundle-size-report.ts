@@ -570,6 +570,11 @@ async function main(): Promise<void> {
     await backfill(historyPath, outPath, dists);
     return;
   }
+  if (flag("print-week") || flag("print-sha")) {
+    const week = arg("week") ?? previousWeek(isoWeek(new Date()));
+    console.log(flag("print-week") ? week : (resolveWeekSha(week) ?? ""));
+    return;
+  }
   if (flag("record")) {
     const week = arg("week") ?? previousWeek(isoWeek(new Date()));
     const sha = arg("sha") ?? resolveWeekSha(week);
@@ -591,7 +596,7 @@ async function main(): Promise<void> {
   }
 
   console.error(
-    "usage: bundle-size-report.ts --record | --budget-only | --render-only | --backfill",
+    "usage: bundle-size-report.ts --record | --budget-only | --render-only | --backfill | --print-week | --print-sha",
   );
   process.exit(1);
 }
