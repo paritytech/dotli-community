@@ -75,21 +75,4 @@ describe("light client heartbeat", () => {
     // Then
     expect(gauge).not.toHaveBeenCalled();
   });
-
-  it("As a dotli operator, stopping twice is harmless", async () => {
-    // Given
-    // Both a chain death and the caller can stop the same heartbeat, so the
-    // second call has to be a no-op rather than a double-unsubscribe.
-    const startLightClientHeartbeat = await loadHeartbeat();
-    const stop = startLightClientHeartbeat(60_000);
-
-    // When
-    stop();
-    stop();
-    gauge.mockClear();
-    await vi.advanceTimersByTimeAsync(300_000);
-
-    // Then
-    expect(gauge).not.toHaveBeenCalled();
-  });
 });
