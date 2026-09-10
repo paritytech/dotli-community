@@ -89,9 +89,23 @@ export function startLightClientHeartbeat(
   const timer: ReturnType<typeof setInterval> = setInterval(() => {
     m.gauge(S.SMOLDOT_ACTIVE, 1);
   }, intervalMs);
-  return () => {
+
+  // A client whose chain has died must stop counting as active. Without this
+  // the heartbeat keeps reporting until the tab or worker is killed, so a dead
+  // light client reads as a live one for as long as the page stays open, which
+  // is exactly the case the gauge exists to surface.
+  //
+  // `onProviderFatal` replays to late subscribers, but not here: this runs once
+  // per context immediately after `build()`, before any chain is connected, so
+  // there is never an earlier failure to replay.
+  let unsubscribe: (() => void) | null = null;
+  const stop = (): void => {
     clearInterval(timer);
+    unsubscribe?.();
+    unsubscribe = null;
   };
+  unsubscribe = onProviderFatal(stop);
+  return stop;
 }
 
 function getHandle(): Promise<ChainProviderHandle> {
