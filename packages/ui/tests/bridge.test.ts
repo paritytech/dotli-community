@@ -539,6 +539,8 @@ describe("bridge render lifecycle", () => {
       value: { writeText },
     });
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    let now = 10_000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
     const dispatch = (
       data: unknown,
       messageOrigin = origin,
@@ -575,6 +577,8 @@ describe("bridge render lifecycle", () => {
       expect(writeText).not.toHaveBeenCalled();
 
       dispatch({ type: "dotli:polkavm-user-activation" });
+      // Cold guest work can exceed one second while browser activation is live.
+      now += 1_500;
       dispatch({
         type: "dotli:polkavm-ui-command",
         command: { type: "copy-text", text: "hello" },
@@ -588,6 +592,23 @@ describe("bridge render lifecycle", () => {
       });
       await Promise.resolve();
       expect(writeText).toHaveBeenCalledTimes(1);
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      now += 5_001;
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: { type: "copy-text", text: "expired" },
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+
+      dispatch({ type: "dotli:polkavm-user-activation" });
+      activation.isActive = false;
+      dispatch({
+        type: "dotli:polkavm-ui-command",
+        command: { type: "copy-text", text: "browser-activation-expired" },
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+      activation.isActive = true;
 
       dispatch({ type: "dotli:polkavm-user-activation" });
       dispatch({
@@ -635,6 +656,7 @@ describe("bridge render lifecycle", () => {
       );
     } finally {
       open.mockRestore();
+      clock.mockRestore();
       if (activationDescriptor === undefined) {
         Reflect.deleteProperty(navigator, "userActivation");
       } else {
