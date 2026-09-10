@@ -181,13 +181,15 @@ export function renderChart(entries: Entry[], max = MAX_POINTS): string {
 export function renderTrendTable(entries: Entry[], repo: string): string {
   const rows = selectTableRows(entries);
   const scale = chartScale(Math.max(...entries.map((e) => e.total.br)));
-  const byWeek = new Map(entries.map((e) => [e.week, e]));
   const lines = [
     "| Snapshot | Commit | Total brotli | Change |",
     "| --- | --- | ---: | ---: |",
   ];
-  for (const entry of rows) {
-    const previous = byWeek.get(previousWeek(entry.week));
+  // Against the row below, not the previous week: once the older rows are
+  // sampled monthly, a week-over-week delta contradicts the two totals either
+  // side of it.
+  for (const [index, entry] of rows.entries()) {
+    const previous = rows[index + 1];
     const change = previous
       ? formatDelta(entry.total.br, previous.total.br)
       : "";
