@@ -2,7 +2,7 @@
 import * as S from '../scale.js';
 export const AccountId = S.lazy(() => S.Hex(32));
 export const ActionTrigger = S.lazy(() => S.Struct({ messageId: S.str, actionId: S.str, payload: S.Option(S.Hex()) }));
-export const AllocatableResource = S.lazy(() => S.TaggedUnion({ StatementStoreAllowance: S._void, BulletinAllowance: S._void, SmartContractAllowance: DerivationIndex, AutoSigning: S._void }));
+export const AllocatableResource = S.lazy(() => S.TaggedUnion({ StatementStoreAllowance: S._void, BulletinAllowance: S._void, SmartContractAllowance: DerivationIndex, AutoSigning: S._void, ProductStatementStoreAllowance: DerivationIndex }));
 export const AllocationOutcome = S.lazy(() => S.Status("Allocated", "Rejected", "NotAvailable"));
 export const Arrangement = S.lazy(() => S.Status("Start", "End", "Center", "SpaceBetween", "SpaceAround", "SpaceEvenly"));
 export const Background = S.lazy(() => S.Struct({ color: ColorToken, shape: S.Option(Shape) }));
@@ -169,6 +169,10 @@ export const VersionedHostPaymentTopUpError = S.lazy(() => S.indexedTaggedUnion(
 export const VersionedHostPaymentTopUpRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPaymentTopUpRequest] }));
 export const VersionedHostPaymentTopUpResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const HostPlatform = S.lazy(() => S.Status("Web", "Android", "Ios", "Desktop", "Cli", "Unknown"));
+export const HostProductDeviceChatCipherSuite = S.lazy(() => S.TaggedUnion({ LegacyV2: S._void, ContextBoundV1: S.Struct({ peerAccountId: S.Hex(32), channelId: S.Hex(32) }) }));
+export const VersionedHostProductDeviceChatError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProductDeviceChatError] }));
+export const VersionedHostProductDeviceChatRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProductDeviceChatRequest] }));
+export const VersionedHostProductDeviceChatResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProductDeviceChatResponse] }));
 export const VersionedHostPushNotificationCancelError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostPushNotificationCancelRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPushNotificationCancelRequest] }));
 export const VersionedHostPushNotificationCancelResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -181,7 +185,7 @@ export const VersionedHostRequestLoginResponse = S.lazy(() => S.indexedTaggedUni
 export const VersionedHostRequestResourceAllocationError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, ResourceAllocationError] }));
 export const VersionedHostRequestResourceAllocationRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRequestResourceAllocationRequest] }));
 export const VersionedHostRequestResourceAllocationResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostRequestResourceAllocationResponse] }));
-export const HostSignPayloadData = S.lazy(() => S.Struct({ blockHash: S.Hex(), blockNumber: S.Hex(), era: S.Hex(), genesisHash: S.Hex(), method: S.Hex(), nonce: S.Hex(), specVersion: S.Hex(), tip: S.Hex(), transactionVersion: S.Hex(), signedExtensions: S.Vector(S.str), version: S.u32, assetId: S.Option(S.Hex()), metadataHash: S.Option(S.Hex()), mode: S.Option(S.u32), withSignedTransaction: S.Option(S.bool) }));
+export const HostSignPayloadData = S.lazy(() => S.Struct({ blockHash: S.Hex(), blockNumber: S.Hex(), era: S.Hex(), genesisHash: S.Hex(), method: S.Hex(), nonce: S.Hex(), specVersion: S.Hex(), tip: S.Hex(), transactionVersion: S.Hex(), signedExtensions: S.Vector(S.str), version: S.u32, assetId: S.Option(S.Hex()), metadataHash: S.Option(S.Hex()), mode: S.Option(S.u32), withSignedTransaction: S.OptionBool }));
 export const VersionedHostSignPayloadError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] }));
 export const VersionedHostSignPayloadRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadRequest] }));
 export const VersionedHostSignPayloadResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] }));
@@ -373,6 +377,9 @@ export const HostPaymentStatusSubscribeItem = S.lazy(() => S.TaggedUnion({ Proce
 export const HostPaymentStatusSubscribeRequest = S.lazy(() => S.Struct({ paymentId: S.str }));
 export const HostPaymentTopUpError = S.lazy(() => S.TaggedUnion({ InsufficientFunds: S._void, InvalidSource: S._void, PartialPayment: S.Struct({ credited: Balance }), Unknown: S.Struct({ reason: S.str }) }));
 export const HostPaymentTopUpRequest = S.lazy(() => S.Struct({ into: S.Option(CoinPaymentPurseId), amount: Balance, source: PaymentTopUpSource }));
+export const HostProductDeviceChatError = S.lazy(() => S.TaggedUnion({ NotConnected: S._void, Rejected: S._void, InvalidPeerKey: S._void, InvalidCiphertext: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostProductDeviceChatRequest = S.lazy(() => S.TaggedUnion({ Bind: S.Struct({ productAccountId: ProductAccountId, peerIdentityAccountId: S.Hex(32), peerChatPublicKey: S.Hex(32) }), Seal: S.Struct({ productAccountId: ProductAccountId, peerChatPublicKey: S.Hex(32), cipherSuite: HostProductDeviceChatCipherSuite, plaintext: S.Hex() }), Open: S.Struct({ productAccountId: ProductAccountId, peerChatPublicKey: S.Hex(32), cipherSuite: HostProductDeviceChatCipherSuite, combinedCiphertext: S.Hex() }) }));
+export const HostProductDeviceChatResponse = S.lazy(() => S.TaggedUnion({ IdentityBinding: S.Struct({ identityAccountId: S.Hex(32), proof: S.Hex(32), walletOwnSessionId: S.Hex(32), peerOwnSessionId: S.Hex(32), walletOutgoingChannelId: S.Hex(32), walletIncomingChannelId: S.Hex(32) }), Sealed: S.Struct({ combinedCiphertext: S.Hex() }), Opened: S.Struct({ plaintext: S.Hex() }) }));
 export const HostPushNotificationCancelRequest = S.lazy(() => S.Struct({ id: NotificationId }));
 export const HostPushNotificationError = S.lazy(() => S.TaggedUnion({ ScheduleLimitReached: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPushNotificationRequest = S.lazy(() => S.Struct({ text: S.str, deeplink: S.Option(S.str), scheduledAt: S.Option(S.u64) }));

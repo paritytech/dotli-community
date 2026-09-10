@@ -1,7 +1,7 @@
 export type { ObservableLike, ObservableSource, Observer, Payload, ProtocolMessage, RequestFrameIds, RequestParams, SubscriptionFrameIds, Subscription, SubscribeRawParams, TrUApiTransport, UnsupportedCallError, WebSocketWireProvider, WireProvider, } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
 export { PROTOCOL_ERROR_ID, SubscriptionError, UnsupportedMessageError, createIframeProvider, createMessagePortProvider, createWebSocketProvider, decodeWireMessage, encodeWireMessage, } from "./transport.js";
-export { createTransport } from "./client.js";
+export { RequestTimeoutError, createTransport } from "./client.js";
 export * as scale from "./scale.js";
 export type { Codec, HexString } from "./scale.js";
 export * from "./generated/index.js";

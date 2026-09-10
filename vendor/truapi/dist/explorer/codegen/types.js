@@ -34,7 +34,7 @@ export const types = [
         id: "allocatable-resource",
         name: "AllocatableResource",
         category: "resource_allocation",
-        definition: 'export type AllocatableResource =\n  | { tag: "StatementStoreAllowance"; value?: undefined }\n  | { tag: "BulletinAllowance"; value?: undefined }\n  | { tag: "SmartContractAllowance"; value: DerivationIndex }\n  | { tag: "AutoSigning"; value?: undefined }\n;',
+        definition: 'export type AllocatableResource =\n  | { tag: "StatementStoreAllowance"; value?: undefined }\n  | { tag: "BulletinAllowance"; value?: undefined }\n  | { tag: "SmartContractAllowance"; value: DerivationIndex }\n  | { tag: "AutoSigning"; value?: undefined }\n  | { tag: "ProductStatementStoreAllowance"; value: DerivationIndex }\n;',
         description: "A resource the host can pre-allocate on behalf of the product (RFC 0010).\n\nFor the slot-table allowances (`StatementStoreAllowance`,\n`BulletinAllowance`, `SmartContractAllowance`), pre-allocation is\nopportunistic and the host may also fulfil the allowance implicitly on the\nfirst submission. `AutoSigning` must be requested explicitly through this\ncall.",
         variants: [
             {
@@ -56,6 +56,11 @@ export const types = [
                 name: "AutoSigning",
                 type: '{ tag: "AutoSigning"; value?: undefined }',
                 description: "Permission to sign on the product's behalf without per-call user prompts.",
+            },
+            {
+                name: "ProductStatementStoreAllowance",
+                type: '{ tag: "ProductStatementStoreAllowance"; value: DerivationIndex }',
+                description: "Current UTC-day Statement Store allowance whose target is the product\naccount selected by this derivation index.",
             },
         ],
     },
@@ -2700,6 +2705,107 @@ export const types = [
         ],
     },
     {
+        id: "host-product-device-chat-cipher-suite",
+        name: "HostProductDeviceChatCipherSuite",
+        category: "account",
+        definition: 'export type HostProductDeviceChatCipherSuite =\n  | { tag: "LegacyV2"; value?: undefined }\n  | { tag: "ContextBoundV1"; value: { peerAccountId: HexString; channelId: HexString } }\n;',
+        description: "Cipher suite used by product-device Chat identity-route operations.\n\nLegacy v2 preserves current mobile interoperability. Context-bound v1\nauthenticates the product/network, both account roles, route, and direction.",
+        variants: [
+            {
+                name: "LegacyV2",
+                type: '{ tag: "LegacyV2"; value?: undefined }',
+                description: "Existing Chat v2 CryptoKit-compatible empty-context HKDF and AEAD.",
+            },
+            {
+                name: "ContextBoundV1",
+                type: '{ tag: "ContextBoundV1"; value: { peerAccountId: HexString; channelId: HexString } }',
+                description: "Domain-separated encryption for peers that explicitly support it.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-error",
+        name: "HostProductDeviceChatError",
+        category: "account",
+        definition: 'export type HostProductDeviceChatError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "InvalidPeerKey"; value?: undefined }\n  | { tag: "InvalidCiphertext"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Product-device Chat v2 identity failure.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No account-authority session is connected.",
+            },
+            {
+                name: "Rejected",
+                type: '{ tag: "Rejected"; value?: undefined }',
+                description: "The user or Host rejected the operation.",
+            },
+            {
+                name: "InvalidPeerKey",
+                type: '{ tag: "InvalidPeerKey"; value?: undefined }',
+                description: "The peer X25519 public key is invalid.",
+            },
+            {
+                name: "InvalidCiphertext",
+                type: '{ tag: "InvalidCiphertext"; value?: undefined }',
+                description: "The ciphertext failed structural or authentication checks.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "The Host could not complete the operation.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-request",
+        name: "HostProductDeviceChatRequest",
+        category: "account",
+        definition: 'export type HostProductDeviceChatRequest =\n  | { tag: "Bind"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString } }\n  | { tag: "Seal"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; plaintext: HexString } }\n  | { tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }\n;',
+        description: "Product-device Chat v2 identity operation.\n\nThe wallet Chat identity secret and derived shared key remain host-private.",
+        variants: [
+            {
+                name: "Bind",
+                type: '{ tag: "Bind"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString } }',
+                description: "Resolve the product account as a Chat device and bind it to the wallet identity.",
+            },
+            {
+                name: "Seal",
+                type: '{ tag: "Seal"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; plaintext: HexString } }',
+                description: "Seal identity-route plaintext for the peer with a host-generated nonce.",
+            },
+            {
+                name: "Open",
+                type: '{ tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }',
+                description: "Open an identity-route combined nonce/ciphertext/tag value.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-response",
+        name: "HostProductDeviceChatResponse",
+        category: "account",
+        definition: 'export type HostProductDeviceChatResponse =\n  | { tag: "IdentityBinding"; value: { identityAccountId: HexString; proof: HexString; walletOwnSessionId: HexString; peerOwnSessionId: HexString; walletOutgoingChannelId: HexString; walletIncomingChannelId: HexString } }\n  | { tag: "Sealed"; value: { combinedCiphertext: HexString } }\n  | { tag: "Opened"; value: { plaintext: HexString } }\n;',
+        description: "Result of a product-device Chat v2 identity operation.",
+        variants: [
+            {
+                name: "IdentityBinding",
+                type: '{ tag: "IdentityBinding"; value: { identityAccountId: HexString; proof: HexString; walletOwnSessionId: HexString; peerOwnSessionId: HexString; walletOutgoingChannelId: HexString; walletIncomingChannelId: HexString } }',
+                description: "Wallet identity binding and deterministic peer routes.",
+            },
+            {
+                name: "Sealed",
+                type: '{ tag: "Sealed"; value: { combinedCiphertext: HexString } }',
+                description: "Sealed identity-route payload.",
+            },
+            {
+                name: "Opened",
+                type: '{ tag: "Opened"; value: { plaintext: HexString } }',
+                description: "Opened identity-route payload.",
+            },
+        ],
+    },
+    {
         id: "host-push-notification-cancel-request",
         name: "HostPushNotificationCancelRequest",
         category: "notifications",
@@ -2930,7 +3036,7 @@ export const types = [
             {
                 name: "with_signed_transaction",
                 type: "boolean | undefined",
-                description: "Request signed transaction back.",
+                description: "Request signed transaction back, encoded as one byte: absent, true, or false.",
             },
         ],
     },

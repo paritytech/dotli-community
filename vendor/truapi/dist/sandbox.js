@@ -88,6 +88,7 @@ function resolveHostOrigin() {
     return null;
 }
 const HOST_PORT_TIMEOUT_MS = 20_000;
+const IFRAME_READY_INTERVAL_MS = 50;
 /**
  * Resolve the host-injected `MessagePort`, polling `window.__HOST_API_PORT__`
  * until it appears or the timeout elapses. Rejects on timeout or abort.
@@ -127,13 +128,19 @@ function createIframeCompatibilityProvider(onEstablished) {
     let unsubscribeInner = null;
     let unsubscribeInnerClose = null;
     let closedError = null;
+    let cancelReadyRetry = null;
     const queued = [];
     const listeners = new Set();
     const closeListeners = new Set();
+    const stopReadyRetry = () => {
+        cancelReadyRetry?.();
+        cancelReadyRetry = null;
+    };
     const close = (error) => {
         if (closedError)
             return;
         closedError = error;
+        stopReadyRetry();
         win.removeEventListener("message", onMessage);
         unsubscribeInner?.();
         unsubscribeInnerClose?.();
@@ -151,6 +158,7 @@ function createIframeCompatibilityProvider(onEstablished) {
     };
     const adopt = (provider) => {
         inner = provider;
+        stopReadyRetry();
         win.removeEventListener("message", onMessage);
         unsubscribeInner = provider.subscribe(deliver);
         unsubscribeInnerClose = provider.subscribeClose?.(close) ?? null;
@@ -193,10 +201,14 @@ function createIframeCompatibilityProvider(onEstablished) {
     }
     else {
         win.addEventListener("message", onMessage);
-        // This carries no MessagePort or account data. When the browser hides the
-        // parent origin, `*` lets the parent answer; every response is source-checked
-        // above and the first valid response pins the transport and origin.
-        target.postMessage({ type: "truapi-ready" }, hostOrigin ?? "*");
+        // The host and product load independently. Repeat the data-free ready
+        // signal until a valid parent response establishes either transport.
+        const postReady = () => {
+            target.postMessage({ type: "truapi-ready" }, hostOrigin ?? "*");
+        };
+        const interval = win.setInterval(postReady, IFRAME_READY_INTERVAL_MS);
+        cancelReadyRetry = () => win.clearInterval(interval);
+        postReady();
     }
     return {
         postMessage(message) {
