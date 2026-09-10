@@ -79,7 +79,7 @@ if (!/^[a-z0-9.-]+$/.test(root)) {
 }
 
 const runtimeFailure =
-  /Failed to load content|App version isn't supported|external App manifest is required|unsupported import|runtime requires ABI version|No connected peers|execution trapped|exceeded hostcall budget/i;
+  /Failed to load content|App version isn't supported|external App manifest is required|unsupported import|runtime requires ABI version|No connected peers|chainHead follow stopped|execution trapped|exceeded hostcall budget/i;
 
 async function counter(canvas: Locator, name: string): Promise<number> {
   return Number((await canvas.getAttribute(name)) ?? 0);

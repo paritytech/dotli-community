@@ -565,8 +565,9 @@ type ResolverRequestMethod =
 function isStoppedResolverResponse(error: unknown): error is Error {
   return (
     error instanceof Error &&
-    error.name === "ProtocolResponseError" &&
-    error.message.startsWith("chainHead follow stopped")
+    (error.name === "ApiStoppedError" ||
+      (error.name === "ProtocolResponseError" &&
+        error.message.startsWith("chainHead follow stopped")))
   );
 }
 

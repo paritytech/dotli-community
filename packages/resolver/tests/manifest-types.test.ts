@@ -107,7 +107,7 @@ describe("validateExecutableManifest", () => {
           ...VALID_APP_V2.capabilities,
           deviceInput: {
             abiVersion: 1,
-            requiredFeatures: ["pointer", "motion"],
+            requiredFeatures: ["pointer", "motion", "camera-ur"],
           },
         },
       }).ok,

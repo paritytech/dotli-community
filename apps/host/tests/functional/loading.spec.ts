@@ -122,6 +122,7 @@ const stoppedThenSuccessfulResolve = (cid: string): string => `
         id: e.data.id,
         ok: false,
         error: "chainHead follow stopped (cause: ChainHead stopped)",
+        errorName: "ApiStoppedError",
       }, "*");
       return;
     }
