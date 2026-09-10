@@ -112,4 +112,30 @@ describe("withSyncBudget", () => {
     await assertion;
     vi.useRealTimers();
   });
+
+  // This is what lets `ensureClient` hand the same in-flight client promise to
+  // every caller. A short manifest read giving up must not take a concurrent
+  // name resolution with it.
+  it("As two callers sharing one sync, the tighter budget failing leaves the looser one alive", async () => {
+    // Given
+    vi.useFakeTimers();
+    let settleShared: (value: string) => void = () => undefined;
+    const shared = new Promise<string>((resolve) => {
+      settleShared = resolve;
+    });
+
+    // When
+    const impatient = withSyncBudget(shared, "Asset Hub Paseo", 20, CAP_MS);
+    const patient = withSyncBudget(shared, "Asset Hub Paseo", 5_000, CAP_MS);
+    const rejection = expect(impatient).rejects.toMatchObject({
+      name: "NetworkSyncTimeoutError",
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    await rejection;
+    settleShared("synced");
+
+    // Then
+    await expect(patient).resolves.toBe("synced");
+    vi.useRealTimers();
+  });
 });

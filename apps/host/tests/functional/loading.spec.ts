@@ -11,8 +11,8 @@ import {
 import { test } from "./helpers/shared-mode-reset";
 import { findAppFrame } from "../product-frame";
 import { seedBackend, type Backend } from "./fixtures/settings";
-import { TIMEOUTS } from "@dotli/config/config";
-import { METHOD_TIMEOUTS } from "@dotli/protocol/client";
+import { TIMEOUTS } from "@dotli/config/timeouts";
+import { METHOD_TIMEOUTS } from "@dotli/protocol/method-timeouts";
 
 import { TLD_SUFFIX } from "../env";
 
@@ -292,9 +292,12 @@ test("As a user using smoldot directly, when every peer WebSocket is unavailable
 }) => {
   // Given
   await setBackend(page, "smoldot-direct");
-  // Accelerate exactly the resolver's derived budget and nothing else. The
-  // unchanged 90s client timer has to lose this race, which is the whole
-  // property under test, so match on the computed value instead of a range.
+  // Accelerate the resolver's derived budget and nothing else, so the
+  // unchanged 90s client timer loses this race. The budget is the deadline
+  // minus however long dispatch took, so it lands just under
+  // `RESOLVER_SYNC_BUDGET_MS` rather than on it. Match a window below that
+  // bound, which still excludes the 90s client timer and the 30s manifest
+  // budgets.
   await page.addInitScript((budgetMs: number) => {
     const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
     globalThis.setTimeout = ((
@@ -302,9 +305,13 @@ test("As a user using smoldot directly, when every peer WebSocket is unavailable
       timeout?: number,
       ...args: unknown[]
     ) => {
+      const isResolverBudget =
+        timeout !== undefined &&
+        timeout <= budgetMs &&
+        timeout > budgetMs - 5_000;
       return nativeSetTimeout(
         handler,
-        timeout === budgetMs ? 1_000 : timeout,
+        isResolverBudget ? 1_000 : timeout,
         ...args,
       );
     }) as typeof globalThis.setTimeout;

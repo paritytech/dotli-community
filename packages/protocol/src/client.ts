@@ -34,6 +34,11 @@ import {
   isSharedModeRequestMethod,
 } from "./auth-storage";
 import { serializeError } from "@dotli/shared/errors";
+import {
+  DEFAULT_TIMEOUT_MS,
+  METHOD_TIMEOUTS,
+  UNTIMED_METHODS,
+} from "./method-timeouts";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -483,26 +488,6 @@ export async function ensureProtocolFrame(): Promise<void> {
 
   return protocolReadyPromise;
 }
-
-const DEFAULT_TIMEOUT_MS = 30_000;
-// Methods whose completion time depends on chain sync or user patience.
-// No per-request timeout. A smoldot panic emits a `fatal` envelope that
-// rejects pending requests, and the user can abandon via the "Change
-// settings" affordance. Waiting longer than 5 min is fine. Silently
-// killing the request is not.
-const UNTIMED_METHODS: ReadonlySet<ProtocolRequestMethod> =
-  new Set<ProtocolRequestMethod>(["warmup"]);
-/**
- * Per-method request budgets. Exported so tests can derive the deadline a
- * handler will see rather than restating the arithmetic.
- */
-export const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
-  chainConnect: 30_000,
-  resolveDotName: 90_000,
-  resolveOwner: 90_000,
-  resolveExecutableManifest: 30_000,
-  resolveRootManifest: 30_000,
-};
 
 async function postRequest<M extends ProtocolRequestMethod>(
   method: M,

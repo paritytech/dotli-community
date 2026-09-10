@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { TIMEOUTS } from "@dotli/config/config";
+// Leaf import on purpose. `@dotli/config/config` reads `self.location` at
+// module load, which would make this module unimportable outside a browser.
+import { TIMEOUTS } from "@dotli/config/timeouts";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
