@@ -9,6 +9,8 @@
   const STATUS_ECALL = -2;
   const STATUS_TRAP = -3;
   const STATUS_OUT_OF_GAS = -4;
+  const CORE_STATUS_INVALID = -3;
+  const CORE_STATUS_LIMIT = -6;
   const INPUT_EVENT_BYTES = 8;
   const MOTION_SAMPLE_BYTES = 48;
   const MOTION_STATUS_UNAVAILABLE = 0;
@@ -46,6 +48,7 @@
   const MAX_HOSTCALLS_PER_INIT = 1024 * 1024;
   const MAX_HOSTCALLS_PER_UPDATE = 65536;
   const MAX_HOSTCALL_BYTES = 32 * 1024 * 1024;
+  const MAX_CORE_RANDOM_BYTES = 4 * 1024;
   const MAX_LOG_BYTES = 4 * 1024;
   const MAX_SAVE_BYTES = 1024 * 1024;
   const MAX_AUDIO_SAMPLES = 48000 * 2;
@@ -528,8 +531,38 @@
   }
 
   class TranslatedPolkaVmRuntime {
+    static async compile(bytes) {
+      const module = await WebAssembly.compile(bytes);
+      const parts = [];
+      for (const bytes of WebAssembly.Module.customSections(
+        module,
+        "epoca.pvm.code-part",
+      )) {
+        // Keep native compilation bounded to one code part at a time.
+        parts.push(await WebAssembly.compile(bytes));
+      }
+      return { module, parts };
+    }
+
+    static isCompiledProgram(value) {
+      if (
+        value === null ||
+        typeof value !== "object" ||
+        !(value.module instanceof WebAssembly.Module) ||
+        !Array.isArray(value.parts)
+      ) {
+        return false;
+      }
+      for (const part of value.parts) {
+        if (!(part instanceof WebAssembly.Module)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     constructor(
-      module,
+      program,
       assets,
       emit,
       maxGas,
@@ -539,13 +572,20 @@
       motionAvailability = MOTION_STATUS_UNAVAILABLE,
       mediatedInputKinds = [],
     ) {
-      this.metadata = readMetadata(module);
-      this.instance = new WebAssembly.Instance(module, {});
+      if (!TranslatedPolkaVmRuntime.isCompiledProgram(program)) {
+        throw new TypeError("invalid translated PolkaVM compiled program");
+      }
+      this.metadata = readMetadata(program.module);
+      this.instance = new WebAssembly.Instance(program.module, {});
       this.pvm = this.instance.exports;
       this.memory = this.pvm.memory;
       if (!(this.memory instanceof WebAssembly.Memory)) {
         throw new Error("translated PolkaVM module is missing guest memory");
       }
+      const imports = { pvm: this.pvm };
+      this.partInstances = program.parts.map(
+        (part) => new WebAssembly.Instance(part, imports),
+      );
       this.assets = new Map(
         assets.map((asset) => [
           normalizedPath(asset.path),
@@ -1483,6 +1523,26 @@
           this.#setReg(7, BigInt(status));
           return false;
         }
+        case "polkadot_host_0_1_core_clock_wall":
+          this.#chargeBytes(8);
+          this.#writeU64(this.#u32(a0), BigInt(Date.now()) * 1_000_000n);
+          this.#setReg(7, 0n);
+          return false;
+        case "polkadot_host_0_1_core_random": {
+          const length = this.#u32(a1);
+          if (length === 0) {
+            this.#setReg(7, BigInt(CORE_STATUS_INVALID));
+            return false;
+          }
+          if (length > MAX_CORE_RANDOM_BYTES) {
+            this.#setReg(7, BigInt(CORE_STATUS_LIMIT));
+            return false;
+          }
+          this.#chargeBytes(length);
+          crypto.getRandomValues(this.#range(this.#u32(a0), length, true));
+          this.#setReg(7, 0n);
+          return false;
+        }
         case "host_input_register": {
           const kindLength = this.#u32(a1);
           const mediaTypeLength = this.#u32(a3);
@@ -1836,6 +1896,8 @@
         case "host_frame_poll":
         case "host_motion_read":
         case POINTER_CAPTURE_IMPORT:
+        case "polkadot_host_0_1_core_clock_wall":
+        case "polkadot_host_0_1_core_random":
         case UPDATE_AFTER_IMPORT:
           return this.#handleCooperativeCall(name);
         case "pvm_set_palette": {
@@ -2527,10 +2589,15 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       postMessage({ type: "startup", stage: "first-update-started" });
     }
     const before = performance.now();
+    const wallTimeMs = Date.now();
     try {
       if (translated) {
         translated.update(before - startedAt);
       } else {
+        check(
+          pvm.polkavm_browser_set_wall_time_ms(wallTimeMs),
+          "set PolkaVM browser wall clock",
+        );
         check(
           pvm.polkavm_browser_update(before - startedAt),
           "update PolkaVM browser guest",
@@ -2724,9 +2791,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     let compilationMs = 0;
     let translatedWasmBytes = 0;
     let cacheHit = false;
+    let compilerStage = "compiler-staging-program";
+    let compilerFallbackReason;
+    let compilerFallbackStage;
     postMessage({ type: "startup", stage: "runtime-instantiating" });
-    const instantiated = await WebAssembly.instantiate(message.runtime, {});
-    pvm = instantiated.instance.exports;
+    pvm = (await WebAssembly.instantiate(message.runtime, {})).instance.exports;
     if (pvm.polkavm_browser_abi_version() !== 2) {
       throw new Error("PolkaVM browser runtime has an incompatible ABI");
     }
@@ -2737,14 +2806,18 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         throw FORCE_INTERPRETER;
       }
       stage(program);
-      let module = message.compiledModule;
+      let compiledProgram = message.compiledProgram;
       let bytes =
         message.compiledBytes instanceof ArrayBuffer
           ? new Uint8Array(message.compiledBytes)
           : null;
-      cacheHit = module instanceof WebAssembly.Module || bytes !== null;
-      if (!(module instanceof WebAssembly.Module)) {
+      const hasCompiledProgram =
+        globalThis.TranslatedPolkaVmRuntime.isCompiledProgram(compiledProgram);
+      cacheHit = hasCompiledProgram || bytes !== null;
+      if (!hasCompiledProgram) {
+        let generatedTranslation = bytes === null;
         if (bytes === null) {
+          compilerStage = "compiler-translating";
           const translationStarted = performance.now();
           check(
             pvm.polkavm_browser_translate_staged(),
@@ -2754,26 +2827,72 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
           const pointer = pvm.polkavm_browser_translation_pointer();
           const length = pvm.polkavm_browser_translation_length();
           bytes = new Uint8Array(pvm.memory.buffer, pointer, length).slice();
+        }
+        translatedWasmBytes = bytes.byteLength;
+        // Translation can grow its linear memory far beyond the guest heap.
+        // The compiled backend does not use that instance; release it before
+        // the browser allocates native code for the root and its code parts.
+        pvm = null;
+        compilerStage = "compiler-compiling";
+        const compilationStarted = performance.now();
+        try {
+          compiledProgram =
+            await globalThis.TranslatedPolkaVmRuntime.compile(bytes);
+          compilationMs = performance.now() - compilationStarted;
+        } catch (error) {
+          compilationMs = performance.now() - compilationStarted;
+          // Invalid Wasm cannot be repaired by changing compilation-unit sizes.
+          if (error instanceof WebAssembly.CompileError) {
+            throw error;
+          }
+          console.warn(
+            `PolkaVM single-module compilation failed; compiling bounded code parts: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          compilerStage = "compiler-translating-parts";
+          pvm = (await WebAssembly.instantiate(message.runtime, {})).instance.exports;
+          stage(program);
+          const translationStarted = performance.now();
+          check(
+            pvm.polkavm_browser_translate_partitioned_staged(),
+            "translate bounded PolkaVM browser code parts",
+          );
+          translationMs += performance.now() - translationStarted;
+          bytes = new Uint8Array(
+            pvm.memory.buffer,
+            pvm.polkavm_browser_translation_pointer(),
+            pvm.polkavm_browser_translation_length(),
+          ).slice();
+          generatedTranslation = true;
+          translatedWasmBytes = bytes.byteLength;
+          pvm = null;
+          compilerStage = "compiler-compiling-parts";
+          const partsStarted = performance.now();
+          try {
+            compiledProgram =
+              await globalThis.TranslatedPolkaVmRuntime.compile(bytes);
+          } finally {
+            compilationMs += performance.now() - partsStarted;
+          }
+        }
+        if (generatedTranslation) {
           const persistent = bytes.slice();
           postMessage(
-            {
-              type: "translated",
-              cacheKey: message.cacheKey,
-              bytes: persistent,
-            },
+            { type: "translated", cacheKey: message.cacheKey, bytes: persistent },
             [persistent.buffer],
           );
         }
-        translatedWasmBytes = bytes.byteLength;
-        const compilationStarted = performance.now();
-        module = await WebAssembly.compile(bytes);
-        compilationMs = performance.now() - compilationStarted;
         try {
-          postMessage({ type: "compiled", cacheKey: message.cacheKey, module });
+          postMessage({
+            type: "compiled",
+            cacheKey: message.cacheKey,
+            program: compiledProgram,
+          });
         } catch {}
       }
+      pvm = null;
+      compilerStage = "compiler-instantiating";
       translated = new globalThis.TranslatedPolkaVmRuntime(
-        module,
+        compiledProgram,
         message.assets,
         (output, transfers = []) => {
           if (running) {
@@ -2789,6 +2908,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         motionAvailability,
         message.mediatedInputKinds ?? [],
       );
+      compilerStage = "compiler-initializing";
       if (pendingMotionSample !== null) {
         translated.sendMotionSample(pendingMotionSample);
       }
@@ -2801,7 +2921,15 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       translated = null;
       pendingOutputs.length = 0;
       if (error !== FORCE_INTERPRETER) {
-        console.warn(`PolkaVM translation failed; using interpreter: ${error}`);
+        compilerFallbackReason =
+          error instanceof Error ? error.message : String(error);
+        compilerFallbackStage = compilerStage;
+        console.warn(
+          `PolkaVM ${compilerFallbackStage} failed; using interpreter: ${compilerFallbackReason}`,
+        );
+      }
+      if (pvm === null) {
+        pvm = (await WebAssembly.instantiate(message.runtime, {})).instance.exports;
       }
       let presentation = 0;
       if (message.graphicsProfile === "tri2d") {
@@ -2826,6 +2954,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         "begin PolkaVM browser launch",
       );
       postMessage({ type: "startup", stage: "interpreter-launch-begun" });
+      stage(crypto.getRandomValues(new Uint8Array(32)));
+      check(
+        pvm.polkavm_browser_launch_set_random_seed(),
+        "seed PolkaVM browser CSPRNG",
+      );
       postMessage({ type: "startup", stage: "interpreter-mounting-assets" });
       for (const asset of message.assets) {
         addAsset(asset);
@@ -2872,6 +3005,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         );
         pendingGpuCapabilities = null;
       }
+      check(
+        pvm.polkavm_browser_set_wall_time_ms(Date.now()),
+        "set PolkaVM browser wall clock",
+      );
       postMessage({ type: "startup", stage: "interpreter-initializing" });
       try {
         check(pvm.polkavm_browser_init(), "initialize PolkaVM browser guest");
@@ -2902,6 +3039,8 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     postMessage({
       type: "ready",
       backend,
+      compilerFallbackReason,
+      compilerFallbackStage,
       usesMotion,
       usesPointerCapture,
       usesUpdateScheduling: demandDriven,
@@ -3000,7 +3139,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     if (availability !== 1) {
       pendingMotionSample = null;
     }
-    if (!running || !pvm) {
+    if (!running) {
       return;
     }
     if (translated) {
@@ -3015,7 +3154,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
 
   function setPointerCaptureSupported(supported) {
     pointerCaptureSupported = supported === true;
-    if (!running || !pvm) {
+    if (!running) {
       return;
     }
     if (translated) {
@@ -3031,7 +3170,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function setPointerCaptureActive(active) {
-    if (!running || !pvm) {
+    if (!running) {
       return;
     }
     if (translated) {
@@ -3048,7 +3187,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     if (bytes.byteLength !== MOTION_SAMPLE_BYTES) {
       throw new Error("invalid PolkaVM browser motion sample");
     }
-    if (!running || !pvm) {
+    if (!running) {
       pendingMotionSample = bytes.slice();
       motionAvailability = 1;
       return;
@@ -3068,7 +3207,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     if (bytes.byteLength < 56 || bytes.byteLength > 4096) {
       throw new Error("invalid PolkaVM browser GPU capabilities");
     }
-    if (!running || !pvm) {
+    if (!running) {
       pendingGpuCapabilities = bytes.slice();
       return;
     }
@@ -3084,7 +3223,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function sendGpuEvent(bytes) {
-    if (!running || !pvm || !bytes.byteLength) {
+    if (!running || !bytes.byteLength) {
       return;
     }
     if (translated) {
@@ -3099,7 +3238,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function sendHostFrameResponse(bytes) {
-    if (!running || !pvm || !bytes.byteLength) {
+    if (!running || !bytes.byteLength) {
       return true;
     }
     if (translated) {
@@ -3117,7 +3256,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   function sendMediatedInputResult(handle, status, bytes) {
     if (
       !running ||
-      !pvm ||
+      (!translated && !pvm) ||
       !Number.isInteger(handle) ||
       handle <= 0 ||
       !Number.isInteger(status) ||
@@ -3265,6 +3404,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
           message.status,
           new Uint8Array(message.bytes),
         );
+        wake();
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });

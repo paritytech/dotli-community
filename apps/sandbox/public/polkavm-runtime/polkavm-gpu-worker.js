@@ -1385,10 +1385,7 @@ class GpuEngine {
             );
           }
           if (command.colorView !== 0) {
-            throw new ProtocolError(
-              "render pass uses a non-surface color view",
-              index
-            );
+            resource(shadow, command.colorView, "textureView", index);
           }
           renderPasses++;
           if (renderPasses > MAX_RENDER_PASSES_PER_BATCH) {
@@ -1770,8 +1767,15 @@ class GpuEngine {
           case 12: {
             encoder ||= this.device.createCommandEncoder();
             const colorAttachment = {
-              view: (surfaceView ??= (surfaceTexture ??=
-                this.context.getCurrentTexture()).createView()),
+              view: command.colorView
+                ? resource(
+                    next,
+                    command.colorView,
+                    "textureView",
+                    command.index
+                  ).value
+                : (surfaceView ??= (surfaceTexture ??=
+                    this.context.getCurrentTexture()).createView()),
               loadOp: command.flags & 1 ? "load" : "clear",
               storeOp: command.flags & 2 ? "store" : "discard",
               clearValue: command.clearColor,
