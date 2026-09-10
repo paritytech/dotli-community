@@ -7,7 +7,12 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
-import { ProtocolFatalError, ProtocolInitFailedError } from "./errors";
+import {
+  ProtocolFatalError,
+  ProtocolInitFailedError,
+  ProtocolRequestTimeoutError,
+  type ProtocolRequestTimeoutPhase,
+} from "./errors";
 import type {
   ExecutableManifest,
   ManifestResult,
@@ -137,10 +142,10 @@ function resolveProtocolReady(): void {
  * was wrong and need a clean restart before chain operations run.
  *
  * Side effects callers should be aware of:
- *   - Any in-flight `postRequest()` whose response hasn't arrived will be
- *     orphaned: it will time out via the per-method timer instead of
- *     completing. Callers that have outstanding work should expect those
- *     rejections.
+ *   - Any in-flight timed `postRequest()` whose response hasn't arrived will
+ *     be orphaned: it rejects once whatever is left of its call-time budget
+ *     runs out, not after a fresh per-method window. Callers that have
+ *     outstanding work should expect those rejections.
  *   - Any `waitForProtocolReady()` waiter is rejected immediately rather
  *     than waiting for `IFRAME_READY_TIMEOUT_MS`.
  *   - In `shared-worker` mode, removing the iframe drops its
@@ -159,6 +164,14 @@ function resetProtocolFrameState(reason?: Error): void {
   hostFramePromise = null;
   protocolReadyPromise = null;
   protocolReady = false;
+
+  const rejection =
+    reason ?? new Error("Protocol frame state reset before reply");
+  for (const [id, pending] of pendingRequests) {
+    pendingRequests.delete(id);
+    pending.reject(rejection);
+  }
+
   // Reject any callers blocked on `waitForProtocolReady()` before we drop the
   // resolvers. Otherwise their promises would hang until the 120s timeout.
   const orphaned = pendingReadyResolvers;
@@ -188,11 +201,7 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (
-      frameWindow !== null &&
-      frameWindow !== undefined &&
-      event.source !== frameWindow
-    ) {
+    if (!frameWindow || event.source !== frameWindow) {
       return;
     }
 
@@ -232,11 +241,6 @@ function bindMessageListener(): void {
         // Reject each pending request with the underlying cause so the
         // loading UI fails fast instead of spinning until per-request
         // timeouts.
-        for (const [id, pending] of pendingRequests) {
-          pendingRequests.delete(id);
-          pending.reject(err);
-        }
-
         // Route through the same reset path used by iframe load failures
         // so callers blocked on `waitForProtocolReady()`
         // (`pendingReadyResolvers`) are rejected immediately rather than
@@ -346,21 +350,32 @@ function createHostIframe(): Promise<void> {
     iframe.style.cssText =
       "position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;";
 
+    const trustAsMessageSourceAndAttach = (): void => {
+      protocolIframe = iframe;
+      document.body.appendChild(iframe);
+    };
+
+    const revokeMessageSourceTrustAndRemove = (): void => {
+      if (protocolIframe === iframe) {
+        protocolIframe = null;
+      }
+      iframe.remove();
+    };
+
     const timer = setTimeout(() => {
       cleanup();
-      iframe.remove();
+      revokeMessageSourceTrustAndRemove();
       reject(new Error("Shared host iframe timed out while loading"));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
       cleanup();
-      protocolIframe = iframe;
       resolve();
     };
 
     const onError = (): void => {
       cleanup();
-      iframe.remove();
+      revokeMessageSourceTrustAndRemove();
       reject(new Error("Shared host iframe failed to load"));
     };
 
@@ -372,7 +387,7 @@ function createHostIframe(): Promise<void> {
 
     iframe.addEventListener("load", onLoad, { once: true });
     iframe.addEventListener("error", onError, { once: true });
-    document.body.appendChild(iframe);
+    trustAsMessageSourceAndAttach();
   });
 }
 
@@ -494,19 +509,63 @@ const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   resolveRootManifest: 30_000,
 };
 
-async function postRequest<M extends ProtocolRequestMethod>(
+interface RequestBudget {
+  guard: <T>(
+    phase: ProtocolRequestTimeoutPhase,
+    work: Promise<T>,
+  ) => Promise<T>;
+  release: () => void;
+}
+
+/**
+ * Bound a request from the moment it was made.
+ *
+ * A tie between this budget and a frame budget resolves in this budget's
+ * favour, because equal-expiry timers fire in creation order and this one is
+ * created first.
+ */
+function startRequestBudget(
+  method: ProtocolRequestMethod,
+  timeoutMs: number,
+): RequestBudget {
+  let spentOn: ProtocolRequestTimeoutPhase = "load";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      m.count(S.PROTOCOL_REQUEST, {
+        outcome: "timeout",
+        method,
+        phase: spentOn,
+      });
+      reject(new ProtocolRequestTimeoutError(method, timeoutMs, spentOn));
+    }, timeoutMs);
+  });
+  return {
+    guard: <T>(
+      phase: ProtocolRequestTimeoutPhase,
+      work: Promise<T>,
+    ): Promise<T> => {
+      spentOn = phase;
+      return Promise.race([work, expiry]);
+    },
+    release: (): void => {
+      clearTimeout(timer);
+    },
+  };
+}
+
+interface SentRequest {
+  id: string;
+  reply: Promise<unknown>;
+}
+
+/** Register a pending request and post it to the protocol frame. */
+function sendRequest<M extends ProtocolRequestMethod>(
+  frameWindow: Window,
   method: M,
   payload: ProtocolRequestMap[M],
   onProgress?: (message: string) => void,
-  needsProtocolReady = !isSharedAuthRequestMethod(method) &&
-    !isSharedModeRequestMethod(method),
-): Promise<unknown> {
-  await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
-  const frameWindow = protocolIframe?.contentWindow;
-  if (!frameWindow) {
-    throw new Error("Shared protocol iframe is unavailable");
-  }
-
+): SentRequest {
   const id = createRequestId();
   const envelope: ProtocolRequestEnvelope<M> = {
     namespace: "dotli:protocol",
@@ -515,46 +574,93 @@ async function postRequest<M extends ProtocolRequestMethod>(
     method,
     payload,
   };
-
-  const timeoutMs = UNTIMED_METHODS.has(method)
-    ? null
-    : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
-  const stopReq = m.timer(S.PROTOCOL_REQUEST);
-
-  return new Promise((resolve, reject) => {
-    const timer =
-      timeoutMs === null
-        ? null
-        : setTimeout(() => {
-            pendingRequests.delete(id);
-            m.count(S.PROTOCOL_REQUEST, { outcome: "timeout", method });
-            stopReq();
-            reject(
-              new Error(
-                `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
-              ),
-            );
-          }, timeoutMs);
-
+  const reply = new Promise<unknown>((resolve, reject) => {
     pendingRequests.set(id, {
-      resolve: (value) => {
-        if (timer !== null) {
-          clearTimeout(timer);
-        }
-        stopReq();
-        resolve(value);
-      },
+      resolve,
       reject: (reason?: unknown) => {
-        if (timer !== null) {
-          clearTimeout(timer);
-        }
         reject(reason instanceof Error ? reason : new Error(String(reason)));
       },
       onProgress,
     });
-
     frameWindow.postMessage(envelope, getProtocolOrigin());
   });
+  return { id, reply };
+}
+
+function requireFrameWindow(): Window {
+  const frameWindow = protocolIframe?.contentWindow;
+  if (!frameWindow) {
+    throw new Error("Shared protocol iframe is unavailable");
+  }
+  return frameWindow;
+}
+
+async function postUnbudgetedRequest<M extends ProtocolRequestMethod>(
+  method: M,
+  payload: ProtocolRequestMap[M],
+  onProgress: ((message: string) => void) | undefined,
+  needsProtocolReady: boolean,
+): Promise<unknown> {
+  await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
+  const recordRoundtrip = m.timer(S.PROTOCOL_REQUEST);
+  const value = await sendRequest(
+    requireFrameWindow(),
+    method,
+    payload,
+    onProgress,
+  ).reply;
+  recordRoundtrip();
+  return value;
+}
+
+async function postBudgetedRequest<M extends ProtocolRequestMethod>(
+  method: M,
+  payload: ProtocolRequestMap[M],
+  onProgress: ((message: string) => void) | undefined,
+  needsProtocolReady: boolean,
+  timeoutMs: number,
+): Promise<unknown> {
+  const budget = startRequestBudget(method, timeoutMs);
+  try {
+    await budget.guard("load", ensureHostFrame());
+    if (needsProtocolReady) {
+      await budget.guard("ready", ensureProtocolFrame());
+    }
+    const frameWindow = requireFrameWindow();
+    const recordRoundtrip = m.timer(S.PROTOCOL_REQUEST);
+    const sent = sendRequest(frameWindow, method, payload, onProgress);
+    try {
+      const value = await budget.guard("reply", sent.reply);
+      recordRoundtrip();
+      return value;
+    } catch (error: unknown) {
+      pendingRequests.delete(sent.id);
+      throw error;
+    }
+  } finally {
+    budget.release();
+  }
+}
+
+function postRequest<M extends ProtocolRequestMethod>(
+  method: M,
+  payload: ProtocolRequestMap[M],
+  onProgress?: (message: string) => void,
+  needsProtocolReady = !isSharedAuthRequestMethod(method) &&
+    !isSharedModeRequestMethod(method),
+): Promise<unknown> {
+  const timeoutMs = UNTIMED_METHODS.has(method)
+    ? null
+    : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
+  return timeoutMs === null
+    ? postUnbudgetedRequest(method, payload, onProgress, needsProtocolReady)
+    : postBudgetedRequest(
+        method,
+        payload,
+        onProgress,
+        needsProtocolReady,
+        timeoutMs,
+      );
 }
 
 export async function warmupProtocol(): Promise<void> {
@@ -729,9 +835,8 @@ export function createRemoteChainProvider(
 
     chainConnections.set(connectionId, remote);
 
-    void ensureProtocolFrame()
-      .then(async () => {
-        await postRequest("chainConnect", { genesisHash, connectionId });
+    void postRequest("chainConnect", { genesisHash, connectionId })
+      .then(() => {
         remote.connected = true;
         for (const message of remote.pendingMessages) {
           void postRequest("chainSend", {

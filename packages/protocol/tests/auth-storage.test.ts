@@ -6,70 +6,112 @@ import { SITE_ID } from "@dotli/config/config";
 import {
   buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
+  buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
   isSharedAuthRequestMethod,
   isSharedAuthSiteId,
+  isSharedModeRequestMethod,
   isValidSharedAuthKey,
+  isValidSharedModeKey,
   SHARED_CORE_SESSION_KEY,
 } from "@dotli/protocol/auth-storage";
 
-describe("shared auth storage helpers", () => {
-  it("accepts host shell origins and rejects app origins", () => {
-    expect(isSharedAuthOriginAllowed("https://dot.li")).toBe(true);
-    expect(isSharedAuthOriginAllowed("https://browse.dot.li")).toBe(true);
-    expect(isSharedAuthOriginAllowed("https://host-playground.dot.li")).toBe(
-      true,
-    );
-    expect(isSharedAuthOriginAllowed("https://host.dot.li")).toBe(true);
+describe("shared auth and mode storage helpers", () => {
+  interface OriginCase {
+    origin: string;
+    allowed: boolean;
+    reason: string;
+  }
 
-    expect(isSharedAuthOriginAllowed("https://bafy.app.dot.li")).toBe(false);
-    expect(isSharedAuthOriginAllowed("https://app.dot.li")).toBe(false);
-    expect(isSharedAuthOriginAllowed("https://evil.example.com")).toBe(false);
-  });
+  const originCases: OriginCase[] = [
+    { origin: "https://dot.li", allowed: true, reason: "root host shell" },
+    {
+      origin: "https://browse.dot.li",
+      allowed: true,
+      reason: "browse subdomain",
+    },
+    {
+      origin: "https://host-playground.dot.li",
+      allowed: true,
+      reason: "playground subdomain",
+    },
+    { origin: "https://host.dot.li", allowed: true, reason: "host subdomain" },
+    {
+      origin: "https://bafy.app.dot.li",
+      allowed: false,
+      reason: "app subdomain",
+    },
+    { origin: "https://app.dot.li", allowed: false, reason: "app root" },
+    {
+      origin: "https://evil.example.com",
+      allowed: false,
+      reason: "foreign domain",
+    },
+    {
+      origin: "http://localhost:5173",
+      allowed: true,
+      reason: "localhost port",
+    },
+    {
+      origin: "http://browse.localhost:5173",
+      allowed: true,
+      reason: "browse localhost",
+    },
+    {
+      origin: "http://host.localhost:5173",
+      allowed: true,
+      reason: "host localhost",
+    },
+    {
+      origin: "http://bafy.app.localhost:5173",
+      allowed: false,
+      reason: "app localhost",
+    },
+    { origin: "http://dot.li", allowed: false, reason: "insecure http remote" },
+    { origin: "not a url", allowed: false, reason: "malformed url string" },
+  ];
 
-  it("accepts localhost host shells and rejects localhost app origins", () => {
-    expect(isSharedAuthOriginAllowed("http://localhost:5173")).toBe(true);
-    expect(isSharedAuthOriginAllowed("http://browse.localhost:5173")).toBe(
-      true,
-    );
-    expect(isSharedAuthOriginAllowed("http://host.localhost:5173")).toBe(true);
-
-    expect(isSharedAuthOriginAllowed("http://bafy.app.localhost:5173")).toBe(
-      false,
-    );
-  });
+  it.each(originCases)(
+    "evaluates origin $origin as $allowed because it is $reason",
+    ({ origin, allowed }) => {
+      expect(isSharedAuthOriginAllowed(origin)).toBe(allowed);
+    },
+  );
 
   it("accepts only the current shell's SITE_ID", () => {
-    // In the vitest happy-dom environment, `self.location.hostname` is
-    // "localhost", so `SITE_ID` is "local.li". The allowlist is runtime-
-    // driven, not a hard-coded list. This guarantees a host running on
-    // `host.paseoli.dev` would accept `"paseoli.dev"` and reject `"dot.li"`,
-    // and vice versa.
     expect(SITE_ID).toBe("local.li");
     expect(isSharedAuthSiteId(SITE_ID)).toBe(true);
   });
 
-  it("rejects siteIds belonging to unrelated root domains", () => {
-    // A hard-coded allowlist would treat these as `true`. They must all be
-    // `false` because cross-root-domain session sharing is explicitly
-    // disallowed across dot.li, paseo.li, and paseoli.dev.
-    expect(isSharedAuthSiteId("dot.li")).toBe(false);
-    expect(isSharedAuthSiteId("paseo.li")).toBe(false);
-    expect(isSharedAuthSiteId("paseoli.dev")).toBe(false);
-    expect(isSharedAuthSiteId("staging.dot.li")).toBe(false);
-    expect(isSharedAuthSiteId("")).toBe(false);
+  it.each(["dot.li", "paseo.li", "paseoli.dev", "staging.dot.li", ""])(
+    "rejects foreign or empty siteId %s",
+    (siteId) => {
+      expect(isSharedAuthSiteId(siteId)).toBe(false);
+    },
+  );
+
+  it.each([
+    { key: "SsoSessions", valid: true },
+    { key: "UserSecrets_abc-123", valid: true },
+    { key: "identity_0x1234", valid: true },
+    { key: "../secrets", valid: false },
+    { key: "key with spaces", valid: false },
+    { key: "", valid: false },
+  ])("validates auth key $key as $valid", ({ key, valid }) => {
+    expect(isValidSharedAuthKey(key)).toBe(valid);
   });
 
-  it("validates storage keys", () => {
-    expect(isValidSharedAuthKey("SsoSessions")).toBe(true);
-    expect(isValidSharedAuthKey("UserSecrets_abc-123")).toBe(true);
-    expect(isValidSharedAuthKey("identity_0x1234")).toBe(true);
-    expect(isValidSharedAuthKey("../secrets")).toBe(false);
-    expect(isValidSharedAuthKey("key with spaces")).toBe(false);
-    expect(isValidSharedAuthKey("")).toBe(false);
+  it.each([
+    { key: "backend", valid: true },
+    { key: "dotli:chain-backend", valid: true },
+    { key: "cache_policy-v2", valid: true },
+    { key: "invalid key!", valid: false },
+    { key: "", valid: false },
+  ])("validates mode key $key as $valid", ({ key, valid }) => {
+    expect(isValidSharedModeKey(key)).toBe(valid);
   });
 
-  it("As a returning user, my shared authentication uses stable storage keys", () => {
+  it("builds consistent shared storage keys for auth and mode namespaces", () => {
     expect(buildSharedAuthStorageKey("dot.li", SHARED_CORE_SESSION_KEY)).toBe(
       "TRUAPI_dot.li_session",
     );
@@ -82,12 +124,20 @@ describe("shared auth storage helpers", () => {
     expect(buildLegacySharedAuthSessionStorageKey("dot.li")).toBe(
       "PAPP_dot.li_SsoSessionsV3",
     );
+    expect(buildSharedModeStorageKey("local.li", "backend")).toBe(
+      "DOTLI_MODE_local.li_backend",
+    );
   });
 
-  it("identifies shared-auth RPC methods", () => {
+  it("identifies shared-auth and shared-mode RPC methods", () => {
     expect(isSharedAuthRequestMethod("authStorageRead")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageWrite")).toBe(true);
     expect(isSharedAuthRequestMethod("authStorageClear")).toBe(true);
     expect(isSharedAuthRequestMethod("warmup")).toBe(false);
+
+    expect(isSharedModeRequestMethod("modeStorageRead")).toBe(true);
+    expect(isSharedModeRequestMethod("modeStorageWrite")).toBe(true);
+    expect(isSharedModeRequestMethod("modeStorageClear")).toBe(true);
+    expect(isSharedModeRequestMethod("resolveDotName")).toBe(false);
   });
 });

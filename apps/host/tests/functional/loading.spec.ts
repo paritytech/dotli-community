@@ -25,6 +25,29 @@ async function setBackend(page: Page, backend: Backend): Promise<void> {
   await seedBackend(page, backend, { onlyIfUnset: true });
 }
 
+async function shrinkTimeout(
+  page: Page,
+  fromMs: number,
+  toMs: number,
+): Promise<void> {
+  await page.addInitScript(
+    ({ fromMs, toMs }) => {
+      const setTimeoutOriginal = window.setTimeout.bind(window);
+      window.setTimeout = ((
+        handler: TimerHandler,
+        delay?: number,
+        ...args: unknown[]
+      ) =>
+        setTimeoutOriginal(
+          handler,
+          delay === fromMs ? toMs : delay,
+          ...args,
+        )) as typeof window.setTimeout;
+    },
+    { fromMs, toMs },
+  );
+}
+
 /**
  * Replace the protocol iframe document with a mock that runs a provided script.
  * Lets each test simulate ready / init-failed / fatal / response envelopes
@@ -234,6 +257,36 @@ test("As a user using smoldot in shared worker, when the worker dies silently, I
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.SW_TIMED_OUT,
+  );
+  await expect(page.locator("#error-retry-btn")).toContainText(
+    REFRESH_BTN_LABEL,
+  );
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    RETRY_LABEL_FROM_SMOLDOT,
+  );
+});
+
+test("As a user, a protocol startup timeout is not misreported as lost peers", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-direct");
+  await shrinkTimeout(page, 90_000, 500);
+  await mockProtocolIframe(page, "");
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    "Domain can't be reached",
+    { timeout: 10_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toHaveText(
+    HOST_ERRORS.SW_TIMED_OUT,
+  );
+  await expect(page.locator(".error-page-detail")).not.toContainText(
+    HOST_ERRORS.LIGHT_CLIENT_TIMEOUT,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
     REFRESH_BTN_LABEL,
