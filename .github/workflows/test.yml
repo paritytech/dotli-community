@@ -82,9 +82,14 @@ jobs:
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          # A skipped spec is `.ok == true` and still counts toward TOTAL, so the
+          # failure gate below cannot see one. network-transport.spec.ts skips
+          # itself without VITE_METRICS, which is exactly how it would silently
+          # stop running.
+          TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
-          echo "network-transport.spec.ts failures: $TRANSPORT_FAILED"
+          echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
           if [ "$LOADING_FAILED" -gt 0 ]; then
             echo "::error::loading.spec.ts must have 0 failures"
             exit 1
@@ -95,6 +100,10 @@ jobs:
           fi
           if [ "$TRANSPORT_FAILED" -gt 0 ]; then
             echo "::error::network-transport.spec.ts must have 0 failures"
+            exit 1
+          fi
+          if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
+            echo "::error::network-transport.spec.ts skipped $TRANSPORT_SKIPPED test(s); VITE_METRICS is not reaching the run step"
             exit 1
           fi
 
