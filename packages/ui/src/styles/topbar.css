@@ -37,7 +37,7 @@
   z-index: 1001;
 }
 .topbar-reveal:focus {
-  top: 64px;
+  top: calc(var(--topbar-height) + 8px);
   outline: 2px solid rgba(255, 255, 255, 0.75);
   outline-offset: 2px;
 }
@@ -1324,10 +1324,13 @@
   background: rgb(24, 24, 24);
   border-left: 1px solid rgba(255, 255, 255, 0.08);
   z-index: 900;
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
   transition: top 0.3s ease;
 }
 .chat-panel.topbar-hidden {
   top: 0;
+  padding-top: var(--safe-top);
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-panel {
@@ -1682,6 +1685,7 @@
   .chat-panel {
     left: 0;
     width: 100% !important;
+    padding-left: var(--safe-left);
   }
   .chat-panel-resize {
     display: none;

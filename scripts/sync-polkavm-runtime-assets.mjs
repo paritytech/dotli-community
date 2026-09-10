@@ -16,8 +16,8 @@ const lock = JSON.parse(
 const destination = resolve(root, "apps/sandbox/public/polkavm-runtime");
 const require = createRequire(import.meta.url);
 
-// The UserAgentKit distribution ships artifacts under the exact `polkavm-`
-// paths this Host serves. Every file is verified against the package checksum
+// The @parity/polkavm-browser-runtime package ships artifacts under the exact
+// `polkavm-` paths this Host serves. Every file is verified against the package checksum
 // manifest before it is copied; the checksum manifest itself is preserved
 // byte-for-byte.
 // Package export subpath every servable artifact is resolved through. Which of

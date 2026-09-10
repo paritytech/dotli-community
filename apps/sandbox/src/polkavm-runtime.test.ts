@@ -19,6 +19,7 @@ import {
   validateFiles,
   expectedPolkaVmParentOrigin,
   validatedUiPlatformOutput,
+  validatedPolkaVmViewInsets,
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
   type HostFrameResponseQueueOptions,
@@ -124,6 +125,42 @@ describe("PolkaVM pointer input", () => {
     expect(accumulateRelativePointerDelta(x, y, -20, 20)).toEqual([107, -107]);
   });
 });
+describe("PolkaVM viewport inset messages", () => {
+  it("accepts bounded integer keyboard insets from the authenticated host", () => {
+    expect(
+      validatedPolkaVmViewInsets({
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 2, top: 4, right: 6, bottom: 800 },
+      }),
+    ).toEqual({ left: 2, top: 4, right: 6, bottom: 800 });
+  });
+
+  it("rejects malformed or out-of-range host insets", () => {
+    const messages = [
+      null,
+      { type: "dotli:polkavm-view-insets" },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: -1, top: 0, right: 0, bottom: 0 },
+      },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0.5, right: 0, bottom: 0 },
+      },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0, right: 65_536, bottom: 0 },
+      },
+      {
+        type: "dotli:polkavm-view-insets",
+        keyboard: { left: 0, top: 0, right: 0, bottom: "20" },
+      },
+    ];
+    for (const message of messages) {
+      expect(validatedPolkaVmViewInsets(message)).toBeNull();
+    }
+  });
+});
 
 describe("PolkaVM advanced input encoding", () => {
   it("chunks UTF-8 text without splitting code points", () => {
@@ -207,6 +244,29 @@ describe("PolkaVM UI platform output", () => {
       validatedUiPlatformOutput({
         ...value,
         commands: [{ type: "open-url", url: "https://example.test/path" }],
+      }),
+    ).toBeNull();
+  });
+
+  it("validates bounded image clipboard commands", () => {
+    const rgba = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128]);
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: [{ type: "copy-image", width: 2, height: 1, rgba }],
+      })?.commands,
+    ).toEqual([{ type: "copy-image", width: 2, height: 1, rgba }]);
+    expect(
+      validatedUiPlatformOutput({
+        ...value,
+        commands: [
+          {
+            type: "copy-image",
+            width: 2,
+            height: 2,
+            rgba,
+          },
+        ],
       }),
     ).toBeNull();
   });
