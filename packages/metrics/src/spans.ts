@@ -31,9 +31,11 @@ export const SMOLDOT_PRESYNC = "smoldot.presync";
 /**
  * Liveness heartbeat for one light client, emitted as the constant `1`.
  *
- * Read it by SUMMING over a time bucket, never by taking the last value. Each
- * live instance contributes exactly one point per interval, so the sum over a
- * bucket is the number of instances that were running during it.
+ * Read it with `count_unique(trace)`, which is the number of clients: one
+ * client keeps one trace id across all its heartbeats. Do NOT sum or count the
+ * points. Each client emits one per 60s, so those count heartbeats instead and
+ * scale with the dashboard's bucket size — a 10-minute bucket reports ten times
+ * the client count.
  *
  * It has to be a heartbeat rather than a create/destroy pair because there is
  * no destroy: the instance dies with its tab or worker and emits nothing on the
