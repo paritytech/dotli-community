@@ -42,14 +42,14 @@ const SAVE_DB_VERSION = 2;
 const SAVE_STORE = "saves";
 const TRANSLATION_STORE = "translations";
 const RUNTIME_SOURCE =
-  "parity-polkavm-browser-runtime-0.3.0-be1f15793e127cb5702d331fa8035bafc070c99a";
+  "parity-polkavm-browser-runtime-0.3.0-b34b078c86f92ffcc75cf41474a81fb8fdbfda8d";
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
-type CompiledProgram = {
+interface CompiledProgram {
   module: WebAssembly.Module;
   parts: WebAssembly.Module[];
-};
+}
 const compiledPrograms = new Map<string, CompiledProgram>();
 let runtimeBytesPromise: Promise<ArrayBuffer> | null = null;
 
@@ -2802,7 +2802,9 @@ export async function runPolkaVmApplication(
           message.cacheKey === cacheKey &&
           program?.module instanceof WebAssembly.Module &&
           Array.isArray(program.parts) &&
-          program.parts.every((part: unknown) => part instanceof WebAssembly.Module)
+          program.parts.every(
+            (part: unknown) => part instanceof WebAssembly.Module,
+          )
         ) {
           compiledPrograms.delete(cacheKey);
           compiledPrograms.set(cacheKey, {
@@ -2840,7 +2842,7 @@ export async function runPolkaVmApplication(
             : forceInterpreter
               ? "PolkaVM interpreter ready (forced)"
               : polkavmMetrics.compilerFallbackReason !== undefined
-                ? `PolkaVM interpreter ready (${polkavmMetrics.compilerFallbackStage}: ${polkavmMetrics.compilerFallbackReason})`
+                ? `PolkaVM interpreter ready (${polkavmMetrics.compilerFallbackStage === undefined ? "" : `${polkavmMetrics.compilerFallbackStage}: `}${polkavmMetrics.compilerFallbackReason})`
                 : "PolkaVM interpreter ready";
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
