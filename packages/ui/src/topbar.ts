@@ -1400,7 +1400,14 @@ function renderModePopover(): void {
     rerenderNetwork();
   }
 
-  appendSectionHeader(leftCol, "Network Transport");
+  // Only separate from the Network section when there is one. With a single
+  // enabled network this header leads the column and must line up with
+  // Diagnostics opposite.
+  appendSectionHeader(
+    leftCol,
+    "Network Transport",
+    enabledNetworks.length > 1 ? "mode-popover-section--spaced" : undefined,
+  );
   const chainChoices: [Backend, string, string][] = [
     [
       "smoldot-direct",
@@ -1451,7 +1458,7 @@ function renderModePopover(): void {
   };
   rerenderChain();
 
-  appendSectionHeader(leftCol, "Cache");
+  appendSectionHeader(leftCol, "Cache", "mode-popover-section--bottom");
   renderCacheToggle(
     leftCol,
     "dotNS cache",
@@ -1743,9 +1750,16 @@ async function unregisterAllServiceWorkers(): Promise<void> {
   }
 }
 
-function appendSectionHeader(parent: HTMLElement, text: string): void {
+function appendSectionHeader(
+  parent: HTMLElement,
+  text: string,
+  modifier?: string,
+): void {
   const header = document.createElement("div");
-  header.className = "mode-popover-section";
+  header.className =
+    modifier === undefined
+      ? "mode-popover-section"
+      : `mode-popover-section ${modifier}`;
   header.textContent = text;
   parent.appendChild(header);
 }
