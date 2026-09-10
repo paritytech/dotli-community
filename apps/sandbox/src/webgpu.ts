@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { polkaVmRuntimeAssetUrl } from "./polkavm-runtime-assets";
+
 const GPU_READY_TIMEOUT_MS = 30_000;
 
 export interface WebGpuRequirements {
@@ -78,7 +80,7 @@ export class WebGpuBridge {
     if (typeof canvas.transferControlToOffscreen !== "function") {
       throw new Error("WebGPU OffscreenCanvas is unavailable");
     }
-    const worker = new Worker("/polkavm-runtime/polkavm-gpu-worker.js");
+    const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-gpu-worker.js"));
     const offscreen = canvas.transferControlToOffscreen();
     const { promise, resolve, reject } = Promise.withResolvers<Uint8Array>();
     this.#capabilityTimer = window.setTimeout(() => {
