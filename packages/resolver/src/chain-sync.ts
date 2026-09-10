@@ -70,10 +70,6 @@ export const CHAIN_SYNC_KINDS = [
 ] as const;
 export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
 
-function isSyncKind(kind: string): kind is ChainSyncKind {
-  return (CHAIN_SYNC_KINDS as readonly string[]).includes(kind);
-}
-
 export interface ChainSyncEvent {
   chain: ChainKey;
   kind: ChainSyncKind;
@@ -183,9 +179,10 @@ const HEALTH_ID_PREFIX = "__dotli_health__:";
 const HEALTH_POLL_INTERVAL_MS = 1_000;
 const HEALTH_POLL_SETTLED_INTERVAL_MS = 15_000;
 const HEALTH_POLL_TIMEOUT_MS = 2_000;
-// Caps the bootstrap burst only. After `bootstrapComplete` the slow poll runs
-// for as long as the chain does, and ends with the connection.
-const HEALTH_POLL_MAX = 120;
+// How many fast polls a chain gets before the poller drops to the slow rate.
+// Only reached when the light client has no `lifecycle_unstable_follow`, since
+// a working follow pushes peer counts and stands the poller down.
+const HEALTH_POLL_BURST = 120;
 
 /** The fields of a JSON-RPC frame the tap itself looks at. */
 export interface ParsedRpcMessage {
@@ -262,9 +259,14 @@ export function attachChainSync(
 
   let polls = 0;
   let healthTimer: ReturnType<typeof setTimeout> | null = null;
-  // Flips on `bootstrapComplete`. The bootstrap cap stops applying from then
-  // on, because the slow poll is meant to run for the life of the chain.
-  let settled = false;
+  // Last snapshot, so the next one can be diffed into transitions.
+  let lastPhase: string | null = null;
+  let lastHealth: string | null = null;
+  let lastPeers: number | null = null;
+  // Object-held so control-flow analysis does not narrow it to `false` inside
+  // the response handler: only the follow callback ever sets it, and TS cannot
+  // see that ordering across closures.
+  const follow = { works: false };
 
   const stopHealth = (): void => {
     if (healthTimer !== null) {
@@ -284,7 +286,7 @@ export function attachChainSync(
   // and a 2s timeout resends when a response never surfaces. Stops on chain
   // teardown, a dead chain, or the bootstrap cap before the chain settles.
   function sendHealth(): void {
-    if (stopped || (!settled && polls >= HEALTH_POLL_MAX)) {
+    if (stopped) {
       stopHealth();
       return;
     }
@@ -308,51 +310,101 @@ export function attachChainSync(
     scheduleHealth(HEALTH_POLL_TIMEOUT_MS);
   }
 
-  const emitMilestone = (result: unknown): void => {
-    const milestone = result as
+  /** Fast while the chain is bootstrapping, slow once the burst is spent. */
+  function healthInterval(): number {
+    return polls >= HEALTH_POLL_BURST
+      ? HEALTH_POLL_SETTLED_INTERVAL_MS
+      : HEALTH_POLL_INTERVAL_MS;
+  }
+
+  /**
+   * Apply one `lifecycle_unstable_follow` state snapshot.
+   *
+   * The subscription reports the chain's whole state on every change rather
+   * than a milestone, so the transitions the loading screen cares about are
+   * derived by diffing against the last snapshot. `numPeers` rides along on
+   * every event, which is why a chain with a working follow needs no
+   * `system_health` polling at all.
+   */
+  const applyLifecycleState = (result: unknown): void => {
+    const state = result as
       | {
-          kind?: string;
-          reason?: string;
-          previously?: string;
-          at?: number;
-          target?: number;
-          finalized?: number;
+          phase?: { kind?: string; target?: number; at?: number };
+          numPeers?: number;
+          health?: { kind?: string };
         }
       | undefined;
-    const kind = milestone?.kind;
-    if (kind === undefined || kind === "peers" || !isSyncKind(kind)) {
+    if (state === undefined) {
       return;
     }
-    if (kind === "bootstrapComplete") {
-      // The loading screen is done with this chain, but the network panel
-      // still shows its peers, so the poll slows rather than stopping.
-      settled = true;
-      if (healthTimer !== null) {
-        scheduleHealth(HEALTH_POLL_SETTLED_INTERVAL_MS);
+    follow.works = true;
+    // The follow supersedes the poller: its peer counts are pushed rather
+    // than sampled, so they are both fresher and cheaper.
+    stopHealth();
+
+    const peers = state.numPeers;
+    if (typeof peers === "number" && Number.isInteger(peers) && peers >= 0) {
+      if (peers > 0 && (lastPeers === null || lastPeers === 0)) {
+        emitChainSync({ chain, kind: "firstPeer" });
       }
+      if (peers !== lastPeers) {
+        emitChainSync({
+          chain,
+          kind: "peers",
+          peers,
+          isSyncing: state.phase?.kind !== "ready",
+        });
+      }
+      lastPeers = peers;
     }
-    const reason =
-      kind === "stalled" ? milestone?.reason : milestone?.previously;
-    emitChainSync({
-      chain,
-      kind,
-      ...(typeof reason === "string" ? { reason } : {}),
-      ...(typeof milestone?.at === "number" ? { at: milestone.at } : {}),
-      ...(typeof milestone?.target === "number"
-        ? { target: milestone.target }
-        : {}),
-      ...(typeof milestone?.finalized === "number"
-        ? { finalized: milestone.finalized }
-        : {}),
-    });
+
+    const phase = state.phase?.kind;
+    if (phase !== undefined && phase !== lastPhase) {
+      if (phase === "connecting") {
+        emitChainSync({ chain, kind: "connecting" });
+      } else if (phase === "ready") {
+        emitChainSync({ chain, kind: "bootstrapComplete" });
+      }
+      lastPhase = phase;
+    }
+    // Warp progress repeats while the target moves, so it is emitted on every
+    // syncing snapshot rather than only on a phase change.
+    if (phase === "syncing") {
+      const target = state.phase?.target;
+      const at = state.phase?.at;
+      emitChainSync({
+        chain,
+        kind: "warpSyncProgress",
+        ...(typeof at === "number" ? { at } : {}),
+        ...(typeof target === "number" ? { target } : {}),
+      });
+    }
+
+    const health = state.health?.kind;
+    if (health !== undefined && health !== lastHealth) {
+      if (health === "ok") {
+        // Only a chain that was previously unwell can recover, so the first
+        // `ok` of a session is not an event.
+        if (lastHealth !== null) {
+          emitChainSync({ chain, kind: "recovered", reason: lastHealth });
+        }
+      } else {
+        emitChainSync({ chain, kind: "stalled", reason: health });
+      }
+      lastHealth = health;
+    }
   };
 
   const handleHealthResponse = (result: unknown): void => {
     healthResponseSeen = true;
+    if (follow.works) {
+      // The follow started reporting while this poll was in flight. Let it
+      // own the peer count from here.
+      stopHealth();
+      return;
+    }
     if (!stopped && healthTimer !== null) {
-      scheduleHealth(
-        settled ? HEALTH_POLL_SETTLED_INTERVAL_MS : HEALTH_POLL_INTERVAL_MS,
-      );
+      scheduleHealth(healthInterval());
     }
     const health = result as { peers?: unknown; isSyncing?: unknown } | null;
     if (
@@ -409,7 +461,7 @@ export function attachChainSync(
       ) {
         return false;
       }
-      emitMilestone(params.result);
+      applyLifecycleState(params.result);
       return true;
     }
     return false;

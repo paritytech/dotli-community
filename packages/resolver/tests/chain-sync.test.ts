@@ -75,15 +75,32 @@ const FOLLOW_REPLY = JSON.stringify({
   result: "sub-1",
 });
 
-function milestone(
+/** The light client answers the follow with a method-not-found. */
+const FOLLOW_UNSUPPORTED = JSON.stringify({
+  jsonrpc: "2.0",
+  id: "__dotli_lifecycle_follow__:relay",
+  error: { code: -32601, message: "The method does not exist" },
+});
+
+/**
+ * One `lifecycle_unstable_follow` notification.
+ *
+ * The subscription reports the chain's whole state every time, so a test
+ * describes where the chain now stands rather than which milestone fired.
+ */
+function state(
   subscription: string,
-  kind: string,
-  extra: Record<string, unknown> = {},
+  phase: { kind: string; at?: number; target?: number },
+  numPeers: number,
+  health = "ok",
 ): string {
   return JSON.stringify({
     jsonrpc: "2.0",
     method: "lifecycle_unstable_followEvent",
-    params: { subscription, result: { kind, ...extra } },
+    params: {
+      subscription,
+      result: { phase, numPeers, health: { kind: health } },
+    },
   });
 }
 
@@ -100,17 +117,21 @@ describe("Light client sync reporting works", () => {
     // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
 
     // When
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(milestone("sub-1", "firstPeer"));
-    pipe.deliver(milestone("sub-1", "bootstrapComplete"));
+    pipe.deliver(state("sub-1", { kind: "connecting" }, 0));
+    pipe.deliver(state("sub-1", { kind: "ready" }, 2));
 
-    // Then
-    expect(milestones).toEqual([
+    // Then. A zero count is reported too: "no peers yet" and "not sampled
+    // yet" are different things to a panel that shows the number.
+    expect(seen).toEqual([
+      { chain: "relay", kind: "peers", peers: 0, isSyncing: true },
+      { chain: "relay", kind: "connecting" },
       { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "peers", peers: 2, isSyncing: false },
       { chain: "relay", kind: "bootstrapComplete" },
     ]);
   });
@@ -119,26 +140,20 @@ describe("Light client sync reporting works", () => {
     // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
 
     // When
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(milestone("sub-1", "connecting"));
-    pipe.deliver(
-      milestone("sub-1", "warpSyncProgress", { at: 20, target: 100 }),
-    );
-    pipe.deliver(
-      milestone("sub-1", "warpSyncProgress", { at: 75, target: 100 }),
-    );
-    pipe.deliver(milestone("sub-1", "warpSyncFinished", { finalized: 100 }));
+    pipe.deliver(state("sub-1", { kind: "syncing", at: 20, target: 100 }, 3));
+    pipe.deliver(state("sub-1", { kind: "syncing", at: 75, target: 100 }, 3));
 
     // Then
-    expect(milestones).toEqual([
-      { chain: "relay", kind: "connecting" },
+    expect(seen).toEqual([
+      { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "peers", peers: 3, isSyncing: true },
       { chain: "relay", kind: "warpSyncProgress", at: 20, target: 100 },
       { chain: "relay", kind: "warpSyncProgress", at: 75, target: 100 },
-      { chain: "relay", kind: "warpSyncFinished", finalized: 100 },
     ]);
   });
 
@@ -146,17 +161,26 @@ describe("Light client sync reporting works", () => {
     // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
 
     // When
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(milestone("sub-1", "stalled", { reason: "noPeers" }));
-    pipe.deliver(milestone("sub-1", "recovered", { previously: "noPeers" }));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 1, "ok"));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, "noPeers"));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 2, "ok"));
 
     // Then
-    expect(milestones).toEqual([
+    expect(seen).toEqual([
+      { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "peers", peers: 1, isSyncing: true },
+      { chain: "relay", kind: "warpSyncProgress" },
+      { chain: "relay", kind: "peers", peers: 0, isSyncing: true },
+      { chain: "relay", kind: "warpSyncProgress" },
       { chain: "relay", kind: "stalled", reason: "noPeers" },
+      { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "peers", peers: 2, isSyncing: true },
+      { chain: "relay", kind: "warpSyncProgress" },
       { chain: "relay", kind: "recovered", reason: "noPeers" },
     ]);
   });
@@ -166,18 +190,22 @@ describe("Light client sync reporting works", () => {
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(milestone("sub-1", "stalled", { reason: "noPeers" }));
-    pipe.deliver(milestone("sub-1", "stalled", { reason: "syncNoProgress" }));
-    pipe.deliver(milestone("sub-1", "firstPeer"));
+    pipe.deliver(state("sub-1", { kind: "connecting" }, 0));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 1));
+    pipe.deliver(state("sub-1", { kind: "ready" }, 4));
 
     // When
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
 
-    // Then
-    expect(milestones).toEqual([
-      { chain: "relay", kind: "stalled", reason: "syncNoProgress" },
+    // Then the replay carries one event per kind, newest value only, in the
+    // order each kind was first seen.
+    expect(seen).toEqual([
+      { chain: "relay", kind: "peers", peers: 4, isSyncing: false },
+      { chain: "relay", kind: "connecting" },
       { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "warpSyncProgress" },
+      { chain: "relay", kind: "bootstrapComplete" },
     ]);
   });
 
@@ -186,130 +214,40 @@ describe("Light client sync reporting works", () => {
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(milestone("sub-1", "stalled", { reason: "noPeers" }));
-    pipe.deliver(milestone("sub-1", "recovered", { previously: "noPeers" }));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, "noProgress"));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 2, "ok"));
 
     // When
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
 
     // Then
-    expect(milestones).toEqual([
-      { chain: "relay", kind: "recovered", reason: "noPeers" },
-    ]);
+    expect(seen).toContainEqual({
+      chain: "relay",
+      kind: "recovered",
+      reason: "noProgress",
+    });
+    expect(seen).not.toContainEqual(
+      expect.objectContaining({ kind: "stalled" }),
+    );
   });
 
-  it("As a user waiting for a domain, I am told how many peers the light client found", async () => {
-    // Given
-    vi.useFakeTimers();
-    try {
-      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
-      const pipe = requirePipe("relay");
-      const counts: unknown[] = [];
-      onChainSync((event) => counts.push(event));
-
-      // When
-      await vi.advanceTimersByTimeAsync(0);
-      pipe.deliver(peerReport(1, 3));
-
-      // Then
-      expect(pipe.healthRequests()[0]).toContain(
-        '"id":"__dotli_health__:relay:1"',
-      );
-      expect(counts).toEqual([
-        { chain: "relay", kind: "peers", peers: 3, isSyncing: true },
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("As a user with a steady connection, the peer count only changes when the number really changes", async () => {
-    // Given
-    vi.useFakeTimers();
-    try {
-      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
-      const pipe = requirePipe("relay");
-      const counts: unknown[] = [];
-      onChainSync((event) => counts.push(event));
-
-      // When
-      await vi.advanceTimersByTimeAsync(0);
-      pipe.deliver(peerReport(1, 2));
-      pipe.deliver(peerReport(2, 2));
-      pipe.deliver(peerReport(3, 5));
-
-      // Then
-      expect(counts).toEqual([
-        { chain: "relay", kind: "peers", peers: 2, isSyncing: true },
-        { chain: "relay", kind: "peers", peers: 5, isSyncing: true },
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("As a user opening the loading screen late, I still see the peer count already found", async () => {
+  it("As a user on a chain that reports its own peers, the shell stops polling for them", async () => {
     // Given
     vi.useFakeTimers();
     try {
       enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
       const pipe = requirePipe("relay");
       await vi.advanceTimersByTimeAsync(0);
-      pipe.deliver(peerReport(1, 4));
+      const before = pipe.healthRequests().length;
 
-      // When
-      const counts: unknown[] = [];
-      onChainSync((event) => counts.push(event));
-
-      // Then
-      expect(counts).toEqual([
-        { chain: "relay", kind: "peers", peers: 4, isSyncing: true },
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("As a user whose chain finished syncing, it stops being asked for peers every second", async () => {
-    // Given
-    vi.useFakeTimers();
-    try {
-      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
-      const pipe = requirePipe("relay");
-      await vi.advanceTimersByTimeAsync(0);
+      // When the follow starts reporting, its pushed counts supersede polling.
       pipe.deliver(FOLLOW_REPLY);
-      pipe.deliver(peerReport(1, 3));
-
-      // When
-      pipe.deliver(milestone("sub-1", "bootstrapComplete"));
-      const asked = pipe.healthRequests().length;
-      await vi.advanceTimersByTimeAsync(10_000);
+      pipe.deliver(state("sub-1", { kind: "ready" }, 3));
+      await vi.advanceTimersByTimeAsync(30_000);
 
       // Then
-      expect(pipe.healthRequests().length).toBe(asked);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("As a user with the network panel open, the peer count keeps refreshing long after the chain is up", async () => {
-    // Given
-    vi.useFakeTimers();
-    try {
-      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
-      const pipe = requirePipe("relay");
-      await vi.advanceTimersByTimeAsync(0);
-      pipe.deliver(FOLLOW_REPLY);
-      pipe.deliver(peerReport(1, 3));
-      pipe.deliver(milestone("sub-1", "bootstrapComplete"));
-      const asked = pipe.healthRequests().length;
-
-      // When
-      await vi.advanceTimersByTimeAsync(15_000);
-
-      // Then
-      expect(pipe.healthRequests().length).toBe(asked + 1);
+      expect(pipe.healthRequests().length).toBe(before);
     } finally {
       vi.useRealTimers();
     }
@@ -327,7 +265,7 @@ describe("Light client sync reporting works", () => {
 
     // When
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(milestone("sub-1", "firstPeer"));
+    pipe.deliver(state("sub-1", { kind: "ready" }, 1));
     pipe.deliver(appResponse);
 
     // Then
@@ -335,41 +273,75 @@ describe("Light client sync reporting works", () => {
   });
 });
 
-describe("Light client sync reporting fails", () => {
-  it("As a user, a sync message meant for something else never moves my loading screen", () => {
+describe("Light client sync reporting falls back", () => {
+  it("As a user on a light client without the lifecycle follow, the peer count still reaches my loading screen", async () => {
     // Given
-    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
-    const pipe = requirePipe("relay");
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
-    const foreign = milestone("someone-elses-sub", "firstPeer");
+    vi.useFakeTimers();
+    try {
+      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+      const pipe = requirePipe("relay");
+      const seen: unknown[] = [];
+      onChainSync((event) => seen.push(event));
 
-    // When
-    pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(foreign);
+      // When
+      await vi.advanceTimersByTimeAsync(0);
+      pipe.deliver(FOLLOW_UNSUPPORTED);
+      pipe.deliver(peerReport(1, 6));
 
-    // Then
-    expect(milestones).toEqual([]);
-    expect(pipe.forwarded).toEqual([foreign]);
+      // Then
+      expect(seen).toEqual([
+        { chain: "relay", kind: "peers", peers: 6, isSyncing: true },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("As a user, sync milestones the shell has no wording for are ignored", () => {
+  it("As a user with the network panel open, a polled peer count keeps refreshing", async () => {
     // Given
-    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
-    const pipe = requirePipe("relay");
-    const milestones: unknown[] = [];
-    onChainSync((event) => milestones.push(event));
-    const appResponse = JSON.stringify({ jsonrpc: "2.0", id: "1-1" });
+    vi.useFakeTimers();
+    try {
+      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+      const pipe = requirePipe("relay");
+      await vi.advanceTimersByTimeAsync(0);
+      pipe.deliver(FOLLOW_UNSUPPORTED);
+      pipe.deliver(peerReport(1, 2));
+      const asked = pipe.healthRequests().length;
 
-    // When
-    pipe.deliver(FOLLOW_REPLY);
-    // `modeDecision` is real and we deliberately have nothing to say about it.
-    pipe.deliver(milestone("sub-1", "modeDecision", { mode: "warpSync" }));
-    pipe.deliver(appResponse);
+      // When
+      await vi.advanceTimersByTimeAsync(1_000);
 
-    // Then
-    expect(milestones).toEqual([]);
-    expect(pipe.forwarded).toEqual([appResponse]);
+      // Then
+      expect(pipe.healthRequests().length).toBe(asked + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("As a user with a steady connection, the peer count only changes when the number really changes", async () => {
+    // Given
+    vi.useFakeTimers();
+    try {
+      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
+      const pipe = requirePipe("relay");
+      const seen: unknown[] = [];
+      onChainSync((event) => seen.push(event));
+
+      // When
+      await vi.advanceTimersByTimeAsync(0);
+      pipe.deliver(FOLLOW_UNSUPPORTED);
+      pipe.deliver(peerReport(1, 2));
+      pipe.deliver(peerReport(2, 2));
+      pipe.deliver(peerReport(3, 5));
+
+      // Then
+      expect(seen).toEqual([
+        { chain: "relay", kind: "peers", peers: 2, isSyncing: true },
+        { chain: "relay", kind: "peers", peers: 5, isSyncing: true },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("As a user, a peer count that arrives malformed never reaches my loading screen", async () => {
@@ -378,11 +350,12 @@ describe("Light client sync reporting fails", () => {
     try {
       enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
       const pipe = requirePipe("relay");
-      const counts: unknown[] = [];
-      onChainSync((event) => counts.push(event));
+      const seen: unknown[] = [];
+      onChainSync((event) => seen.push(event));
 
       // When
       await vi.advanceTimersByTimeAsync(0);
+      pipe.deliver(FOLLOW_UNSUPPORTED);
       pipe.deliver(
         JSON.stringify({
           jsonrpc: "2.0",
@@ -399,39 +372,29 @@ describe("Light client sync reporting fails", () => {
       );
 
       // Then
-      expect(counts).toEqual([]);
+      expect(seen).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
   });
+});
 
-  it("As a user on a light client without the lifecycle follow, the peer count still reaches my loading screen", async () => {
+describe("Light client sync reporting is opt-in", () => {
+  it("As a user, a sync message meant for something else never moves my loading screen", () => {
     // Given
-    vi.useFakeTimers();
-    try {
-      enableSyncReporting({ milestones: ["relay"], peerCounts: ["relay"] });
-      const pipe = requirePipe("relay");
-      const events: unknown[] = [];
-      onChainSync((event) => events.push(event));
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const pipe = requirePipe("relay");
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
+    const foreign = state("someone-elses-sub", { kind: "ready" }, 9);
 
-      // When
-      await vi.advanceTimersByTimeAsync(0);
-      pipe.deliver(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: "__dotli_lifecycle_follow__:relay",
-          error: { code: -32601, message: "Method not found" },
-        }),
-      );
-      pipe.deliver(peerReport(1, 6));
+    // When
+    pipe.deliver(FOLLOW_REPLY);
+    pipe.deliver(foreign);
 
-      // Then
-      expect(events).toEqual([
-        { chain: "relay", kind: "peers", peers: 6, isSyncing: true },
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
+    // Then
+    expect(seen).toEqual([]);
+    expect(pipe.forwarded).toEqual([foreign]);
   });
 
   it("As a user, chains my loading screen never shows are not asked for peers", () => {
