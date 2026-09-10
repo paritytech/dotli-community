@@ -31,6 +31,34 @@ export interface ProtocolRequestEnvelope<
   id: string;
   method: M;
   payload: ProtocolRequestMap[M];
+  /**
+   * Absolute wall-clock deadline for this request. Protocol handlers use the
+   * same deadline as the caller so an operation-specific error can cross the
+   * iframe boundary before the generic request timer wins.
+   */
+  deadlineMs?: number;
+}
+
+const RESPONSE_DELIVERY_GRACE_MS = 1_000;
+
+/**
+ * Convert an untrusted request deadline into the resolver's remaining sync
+ * budget. The grace period lets the typed resolver error cross postMessage
+ * before the caller's generic request timeout fires.
+ */
+export function getRequestSyncTimeoutMs(
+  request: ProtocolRequestEnvelope,
+): number | undefined {
+  if (
+    typeof request.deadlineMs !== "number" ||
+    !Number.isFinite(request.deadlineMs)
+  ) {
+    return undefined;
+  }
+  return Math.max(
+    1,
+    Math.floor(request.deadlineMs - Date.now() - RESPONSE_DELIVERY_GRACE_MS),
+  );
 }
 
 export interface ProtocolProgressEnvelope {
@@ -54,6 +82,8 @@ export interface ProtocolErrorEnvelope {
   id: string;
   ok: false;
   error: string;
+  /** Original error discriminator, preserved across postMessage. */
+  errorName?: string;
 }
 
 export interface ProtocolChainMessageEnvelope {

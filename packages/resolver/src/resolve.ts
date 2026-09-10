@@ -44,6 +44,30 @@ let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
 
+function waitForClient(
+  pending: Promise<Api>,
+  requestedTimeoutMs?: number,
+): Promise<Api> {
+  if (
+    requestedTimeoutMs === undefined ||
+    !Number.isFinite(requestedTimeoutMs) ||
+    requestedTimeoutMs >= TIMEOUTS.ASSET_HUB_FINALIZED_SYNC
+  ) {
+    return pending;
+  }
+
+  const timeoutMs = Math.max(1, Math.floor(requestedTimeoutMs));
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new NetworkSyncTimeoutError("Asset Hub Paseo", timeoutMs));
+    }, timeoutMs);
+  });
+  return Promise.race([pending, timeout]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
 // Asset Hub provider used to read dotNS. The host injects a broker-backed
 // provider during bootstrap so the resolver shares the broker's single Asset
 // Hub follow instead of opening its own (see protocol-shared-worker).
@@ -97,6 +121,7 @@ export function destroyResolverClient(): void {
 function ensureClient(
   onStatus?: StatusCallback,
   onPhase?: PhaseCallback,
+  syncTimeoutMs?: number,
 ): Promise<Api> {
   if (apiInstance !== null) {
     // Already synced. Emit the terminal phase so a late subscriber
@@ -105,16 +130,18 @@ function ensureClient(
     onPhase?.("asset-hub-ready");
     return Promise.resolve(apiInstance);
   }
-  if (clientPromise !== null) {
-    return clientPromise;
+  // The underlying client keeps the full sync budget so a short manifest
+  // request cannot poison a concurrent name resolution with a longer
+  // deadline. Each caller races this shared initialization below.
+  if (clientPromise === null) {
+    const creating = doCreateClient(onStatus, onPhase).finally(() => {
+      if (clientPromise === creating) {
+        clientPromise = null;
+      }
+    });
+    clientPromise = creating;
   }
-  const creating = doCreateClient(onStatus, onPhase).finally(() => {
-    if (clientPromise === creating) {
-      clientPromise = null;
-    }
-  });
-  clientPromise = creating;
-  return clientPromise;
+  return waitForClient(clientPromise, syncTimeoutMs);
 }
 
 async function doCreateClient(
@@ -333,8 +360,9 @@ export async function resolveDotName(
   label: string,
   onStatus?: StatusCallback,
   onPhase?: PhaseCallback,
+  syncTimeoutMs?: number,
 ): Promise<string | null> {
-  const api = await ensureClient(onStatus, onPhase);
+  const api = await ensureClient(onStatus, onPhase, syncTimeoutMs);
 
   const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
   const node = namehash(domain);
@@ -387,8 +415,9 @@ export async function resolveDotName(
 export async function resolveExecutableManifest(
   label: string,
   kind: ExecutableKind,
+  syncTimeoutMs?: number,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  const api = await ensureClient();
+  const api = await ensureClient(undefined, undefined, syncTimeoutMs);
   const dotns = getActiveServicesConfig().dotns;
   return readExecutableManifest(api, dotns, label, kind);
 }
@@ -396,14 +425,18 @@ export async function resolveExecutableManifest(
 /** Smoldot-backed reader for the root manifest at `<label>.<tld>`. */
 export async function resolveRootManifest(
   label: string,
+  syncTimeoutMs?: number,
 ): Promise<ManifestResult<RootManifest>> {
-  const api = await ensureClient();
+  const api = await ensureClient(undefined, undefined, syncTimeoutMs);
   const dotns = getActiveServicesConfig().dotns;
   return readRootManifest(api, dotns, label);
 }
 
-export async function resolveOwner(label: string): Promise<string | null> {
-  const api = await ensureClient();
+export async function resolveOwner(
+  label: string,
+  syncTimeoutMs?: number,
+): Promise<string | null> {
+  const api = await ensureClient(undefined, undefined, syncTimeoutMs);
 
   const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
   const node = namehash(domain);
