@@ -652,6 +652,14 @@ function isPolkaVmDebugSnapshot(value: unknown): value is PolkaVmDebugSnapshot {
   ) {
     return false;
   }
+  if (
+    (snapshot.compilerFallbackReason !== undefined &&
+      typeof snapshot.compilerFallbackReason !== "string") ||
+    (snapshot.compilerFallbackStage !== undefined &&
+      typeof snapshot.compilerFallbackStage !== "string")
+  ) {
+    return false;
+  }
   for (const field of POLKAVM_DEBUG_NUMBER_FIELDS) {
     const metric = snapshot[field];
     if (typeof metric !== "number" || !Number.isFinite(metric) || metric < 0) {

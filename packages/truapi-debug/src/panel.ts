@@ -901,6 +901,13 @@ function renderRuntime(ui: PanelUI, state: PanelState): void {
       <span class="td-runtime-stage">${escapeHtml(snapshot.startupStage.replaceAll("-", " "))}</span>
     </div>
     <dl class="td-runtime-grid">
+      ${
+        snapshot.backend === "interpreter" &&
+        snapshot.compilerFallbackReason !== undefined
+          ? `<div><dt>Compiler fallback stage</dt><dd>${escapeHtml(snapshot.compilerFallbackStage ?? "unknown")}</dd></div>
+      <div><dt>Compiler fallback reason</dt><dd>${escapeHtml(snapshot.compilerFallbackReason)}</dd></div>`
+          : ""
+      }
       <div><dt>First frame</dt><dd data-runtime-metric="first-frame">${firstFrame}</dd></div>
       <div><dt>Startup</dt><dd>${snapshot.startupMs.toFixed(1)} ms</dd></div>
       <div><dt>Translation cache</dt><dd>${snapshot.cacheHit ? "Hit" : "Miss"}</dd></div>

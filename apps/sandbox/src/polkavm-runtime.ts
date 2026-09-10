@@ -39,7 +39,11 @@ const RUNTIME_SOURCE =
 type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const encoder = new TextEncoder();
-const compiledModules = new Map<string, WebAssembly.Module>();
+type CompiledProgram = {
+  module: WebAssembly.Module;
+  parts: WebAssembly.Module[];
+};
+const compiledPrograms = new Map<string, CompiledProgram>();
 let runtimeBytesPromise: Promise<ArrayBuffer> | null = null;
 
 export function polkaVmCompatibilityError(message: string): {
@@ -97,6 +101,8 @@ interface PolkaVmDescriptor {
 interface WorkerReady {
   type: "ready";
   backend: "compiler" | "interpreter";
+  compilerFallbackReason?: string;
+  compilerFallbackStage?: string;
   cacheHit?: boolean;
   translationMs?: number;
   compilationMs?: number;
@@ -2108,11 +2114,11 @@ export async function runPolkaVmApplication(
   const runtime = await runtimeBytes();
   const program = ownedBytes(files[descriptor.programPath]);
   const cacheKey = `${RUNTIME_SOURCE}:${await programDigest(program)}`;
-  const compiledModule = forceInterpreter
+  const compiledProgram = forceInterpreter
     ? undefined
-    : compiledModules.get(cacheKey);
+    : compiledPrograms.get(cacheKey);
   const compiledBytes =
-    !forceInterpreter && compiledModule === undefined
+    !forceInterpreter && compiledProgram === undefined
       ? await loadTranslation(cacheKey)
       : null;
   let saveIdentity = cid;
@@ -2564,16 +2570,22 @@ export async function runPolkaVmApplication(
       }
       case "compiled": {
         setStartupStage("compiled");
+        const program = object(message.program);
         if (
           message.cacheKey === cacheKey &&
-          message.module instanceof WebAssembly.Module
+          program?.module instanceof WebAssembly.Module &&
+          Array.isArray(program.parts) &&
+          program.parts.every((part: unknown) => part instanceof WebAssembly.Module)
         ) {
-          compiledModules.delete(cacheKey);
-          compiledModules.set(cacheKey, message.module);
-          if (compiledModules.size > 8) {
-            const oldest = compiledModules.keys().next().value;
+          compiledPrograms.delete(cacheKey);
+          compiledPrograms.set(cacheKey, {
+            module: program.module,
+            parts: program.parts,
+          });
+          if (compiledPrograms.size > 8) {
+            const oldest = compiledPrograms.keys().next().value;
             if (oldest !== undefined) {
-              compiledModules.delete(oldest);
+              compiledPrograms.delete(oldest);
             }
           }
         }
@@ -2582,13 +2594,27 @@ export async function runPolkaVmApplication(
       case "ready": {
         const ready = message as unknown as WorkerReady;
         polkavmMetrics.backend = ready.backend;
+        if (ready.backend === "interpreter" && !forceInterpreter) {
+          polkavmMetrics.compilerFallbackReason = ready.compilerFallbackReason;
+          polkavmMetrics.compilerFallbackStage = ready.compilerFallbackStage;
+        } else {
+          delete polkavmMetrics.compilerFallbackReason;
+          delete polkavmMetrics.compilerFallbackStage;
+        }
         polkavmMetrics.cacheHit = ready.cacheHit === true;
         polkavmMetrics.translationMs = ready.translationMs ?? 0;
         polkavmMetrics.compilationMs = ready.compilationMs ?? 0;
         polkavmMetrics.startupMs = ready.startupMs ?? 0;
         polkavmMetrics.translatedWasmBytes = ready.translatedWasmBytes ?? 0;
         polkavmMetrics.startupStage = "ready";
-        status.textContent = `${ready.backend === "compiler" ? "PolkaVM→Wasm JIT" : "PolkaVM interpreter"} ready`;
+        status.textContent =
+          ready.backend === "compiler"
+            ? "PolkaVM→Wasm JIT ready"
+            : forceInterpreter
+              ? "PolkaVM interpreter ready (forced)"
+              : polkavmMetrics.compilerFallbackReason !== undefined
+                ? `PolkaVM interpreter ready (${polkavmMetrics.compilerFallbackStage}: ${polkavmMetrics.compilerFallbackReason})`
+                : "PolkaVM interpreter ready";
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
         usesMotion = ready.usesMotion === true;
@@ -2838,7 +2864,7 @@ export async function runPolkaVmApplication(
       assets,
       audioEnabled: descriptor.audioEnabled,
       cacheKey,
-      compiledModule,
+      compiledProgram,
       compiledBytes: compiledBytes?.buffer,
       graphicsProfile: descriptor.graphicsProfile,
       gpuCapabilities: gpuCapabilitiesBuffer,

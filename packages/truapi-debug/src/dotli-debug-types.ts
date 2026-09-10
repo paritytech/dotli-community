@@ -27,6 +27,9 @@ export type DotliDebugEvent =
  * ring buffer. */
 export interface PolkaVmDebugSnapshot {
   backend: "compiler" | "interpreter" | "starting";
+  /** Present only when compiler startup failed, not for a forced interpreter. */
+  compilerFallbackReason?: string;
+  compilerFallbackStage?: string;
   cacheHit: boolean;
   translationMs: number;
   compilationMs: number;
