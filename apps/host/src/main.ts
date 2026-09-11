@@ -45,6 +45,7 @@ import {
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
+  getSmoldotDbOutcome,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -1172,6 +1173,34 @@ async function main(): Promise<void> {
   advancePhase(0);
   trackStatus(`Resolving ${withActiveTld(label)}`);
 
+  // Read in the catch below, which covers both the warm and the cold path.
+  // Without it a warm-path failure would be counted against the cold attempt
+  // total and the cold failure rate would read high.
+  let cidCache: "hit" | "miss" | "unknown" = "unknown";
+
+  // A CID cache hit does no chain work, so whether the light client resumed
+  // says nothing about that load. Report the dimension as inapplicable rather
+  // than as missing, which would read as data still to come.
+  const smoldotDbCacheTag = (): string =>
+    cidCache === "hit" ? "n/a" : getSmoldotDbOutcome();
+
+  // The non-throwing half of the failure rate whose error half is the tagged
+  // exception in the catch below. `no_content` is its own outcome rather than
+  // an error: the name resolved, it just has nothing published on this
+  // network, so folding it into either half would misstate the rate.
+  const captureResolveResult = (outcome: "ok" | "no_content"): void => {
+    Sentry.captureMessage("dotli.resolve_result", {
+      level: "info",
+      tags: {
+        surface: "host_main_resolve",
+        outcome,
+        cid_cache: cidCache,
+        smoldot_db_cache: smoldotDbCacheTag(),
+        chain_backend: chainBackend,
+      },
+    });
+  };
+
   try {
     const cachedCid = cacheSettings.skipCidCache
       ? null
@@ -1184,6 +1213,7 @@ async function main(): Promise<void> {
       payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
     });
     if (cachedCid !== null) {
+      cidCache = "hit";
       m.count(S.CACHE_HIT);
       log.warn(
         `[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`,
@@ -1215,12 +1245,14 @@ async function main(): Promise<void> {
           path: "fast",
         },
       });
+      captureResolveResult("ok");
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cachedCid, chainBackend);
       });
       return;
     }
+    cidCache = "miss";
     m.count(S.CACHE_MISS);
     log.warn(`[dot.li perf] CID cache MISS (${elapsed(T0)})`);
 
@@ -1347,6 +1379,7 @@ async function main(): Promise<void> {
       // still resolves on another, so dropping its pill would lose good
       // entries on a network switch. The pill's remove button is the cleanup.
       showNoContentError(label);
+      captureResolveResult("no_content");
       performance.mark("dotli:main:end");
       return;
     }
@@ -1373,6 +1406,7 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
+    captureResolveResult("ok");
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
@@ -1400,6 +1434,8 @@ async function main(): Promise<void> {
       surface: "host_main_resolve",
       outcome: "error",
       dependency,
+      cid_cache: cidCache,
+      smoldot_db_cache: smoldotDbCacheTag(),
       chain_backend: chainBackend,
     });
     // Full cause chain to console for devs.

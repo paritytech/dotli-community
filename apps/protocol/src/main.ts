@@ -669,11 +669,16 @@ async function initDirectMode(): Promise<void> {
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
-  const [{ createChainProvider, isChainSupported, onProviderFatal }, resolve] =
-    await Promise.all([
-      import("@dotli/resolver/provider"),
-      import("@dotli/resolver/resolve"),
-    ]);
+  const [provider, resolve] = await Promise.all([
+    import("@dotli/resolver/provider"),
+    import("@dotli/resolver/resolve"),
+  ]);
+  const {
+    createChainProvider,
+    isChainSupported,
+    onProviderFatal,
+    onSmoldotDbOutcome,
+  } = provider;
   const {
     resolveDotName,
     resolveExecutableManifest,
@@ -694,6 +699,21 @@ async function initDirectMode(): Promise<void> {
           namespace: "dotli:protocol",
           kind: "fatal",
           message,
+        },
+        "*",
+      );
+    }
+  });
+
+  // Direct mode owns its light client, so its warm-start outcome goes straight
+  // up to the host shell that tags resolution telemetry with it.
+  onSmoldotDbOutcome((outcome) => {
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          namespace: "dotli:protocol",
+          kind: "smoldot-db",
+          outcome,
         },
         "*",
       );
