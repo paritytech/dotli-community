@@ -45,6 +45,7 @@ import {
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
+  getSmoldotDbOutcome,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -1181,6 +1182,28 @@ async function main(): Promise<void> {
   advancePhase(0);
   trackStatus(`Resolving ${withActiveTld(label)}`);
 
+  // Read in the catch below, which covers both the warm and the cold path.
+  // Without it a warm-path failure would be counted against the cold attempt
+  // total and the cold failure rate would read high.
+  let cidCache: "hit" | "miss" | "unknown" = "unknown";
+
+  // One terminal event per resolution, carrying every dimension the dashboards
+  // slice by. The `pending` attempt event cannot carry `smoldot_db_cache`, because
+  // the light client only reports whether it resumed once resolution is
+  // already under way.
+  const captureResolveResult = (outcome: "ok" | "error"): void => {
+    Sentry.captureMessage("dotli.resolve_result", {
+      level: "info",
+      tags: {
+        surface: "host_main_resolve",
+        outcome,
+        cid_cache: cidCache,
+        smoldot_db_cache: getSmoldotDbOutcome(),
+        chain_backend: chainBackend,
+      },
+    });
+  };
+
   try {
     const cachedCid = cacheSettings.skipCidCache
       ? null
@@ -1193,6 +1216,7 @@ async function main(): Promise<void> {
       payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
     });
     if (cachedCid !== null) {
+      cidCache = "hit";
       m.count(S.CACHE_HIT);
       log.warn(
         `[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`,
@@ -1224,12 +1248,14 @@ async function main(): Promise<void> {
           path: "fast",
         },
       });
+      captureResolveResult("ok");
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cachedCid, chainBackend);
       });
       return;
     }
+    cidCache = "miss";
     m.count(S.CACHE_MISS);
     log.warn(`[dot.li perf] CID cache MISS (${elapsed(T0)})`);
 
@@ -1382,6 +1408,7 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
+    captureResolveResult("ok");
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
@@ -1409,8 +1436,11 @@ async function main(): Promise<void> {
       surface: "host_main_resolve",
       outcome: "error",
       dependency,
+      cid_cache: cidCache,
+      smoldot_db_cache: getSmoldotDbOutcome(),
       chain_backend: chainBackend,
     });
+    captureResolveResult("error");
     // Full cause chain to console for devs.
     log.error(
       `[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`,

@@ -118,6 +118,20 @@ export function getProtocolOrigin(): string {
   return `https://host.${BASE_DOMAIN}`;
 }
 
+// Set from the protocol iframe's unsolicited `smoldot-db` broadcast. Stays
+// "unknown" on the gateway path, which runs no light client, and until the
+// first chain connects.
+let smoldotDbOutcome: "hit" | "miss" | "unknown" = "unknown";
+
+/**
+ * Whether smoldot resumed from stored state this page load. The host tags its
+ * resolution telemetry with this so a cold sync and a warm resume are separate
+ * populations rather than one blended average.
+ */
+export function getSmoldotDbOutcome(): "hit" | "miss" | "unknown" {
+  return smoldotDbOutcome;
+}
+
 function resolveProtocolReady(): void {
   if (protocolReady) {
     return;
@@ -287,6 +301,9 @@ function bindMessageListener(): void {
         return;
       case "ready":
         resolveProtocolReady();
+        return;
+      case "smoldot-db":
+        smoldotDbOutcome = msg.outcome;
         return;
       case "auth-storage-changed": {
         const change: SharedAuthStorageChange = {

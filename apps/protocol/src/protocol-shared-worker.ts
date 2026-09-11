@@ -23,6 +23,7 @@ import {
   createChainProvider,
   isChainSupported,
   onProviderFatal,
+  onSmoldotDbOutcome,
 } from "@dotli/resolver/provider";
 import {
   resolveDotName,
@@ -132,6 +133,20 @@ onProviderFatal((message) => {
   };
   for (const port of ports) {
     sendToPort(port, fatal);
+  }
+});
+
+// Tell every connected tab whether this worker's light client resumed from
+// stored state. Registered once at module load; the provider replays to late
+// subscribers, so the ordering against pre-sync does not matter.
+onSmoldotDbOutcome((outcome) => {
+  const envelope: ProtocolEnvelope = {
+    namespace: "dotli:protocol",
+    kind: "smoldot-db",
+    outcome,
+  };
+  for (const port of ports) {
+    sendToPort(port, envelope);
   }
 });
 
@@ -585,6 +600,14 @@ self.addEventListener("connect", (event) => {
     // Engine already synced, signal ready immediately.
     const readyMsg: SWReady = { type: "ready" };
     port.postMessage(readyMsg);
+    // This tab joins a worker that already holds a live chain, so it pays no
+    // sync cost regardless of what the worker's own first load did. Report the
+    // state this tab got rather than replaying the worker's first outcome.
+    sendToPort(port, {
+      namespace: "dotli:protocol",
+      kind: "smoldot-db",
+      outcome: "hit",
+    });
   } else if (presyncFailureMessage !== null) {
     // Pre-sync already failed. Surface the original cause immediately
     // instead of queuing this port forever.

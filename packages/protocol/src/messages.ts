@@ -75,6 +75,18 @@ export interface ProtocolReadyEnvelope {
 }
 
 /**
+ * Unsolicited broadcast naming whether the first chain to connect resumed
+ * from stored smoldot state or synced from its chain-spec checkpoint. The
+ * blob lives in the protocol origin's IndexedDB, which the host origin cannot
+ * read, so this message is the host's only view of it.
+ */
+export interface ProtocolSmoldotDbEnvelope {
+  namespace: "dotli:protocol";
+  kind: "smoldot-db";
+  outcome: "hit" | "miss";
+}
+
+/**
  * Unsolicited broadcast from the protocol iframe (or its SharedWorker) when
  * smoldot has crashed/panicked. A panic leaves every chain dead. Any
  * in-flight request would hang indefinitely, so the client rejects all
@@ -120,6 +132,7 @@ export type ProtocolEnvelope =
   | ProtocolChainMessageEnvelope
   | ProtocolChainHaltEnvelope
   | ProtocolReadyEnvelope
+  | ProtocolSmoldotDbEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
   | ProtocolAuthStorageChangedEnvelope;
@@ -131,6 +144,7 @@ const VALID_KINDS = new Set([
   "chain-message",
   "chain-halt",
   "ready",
+  "smoldot-db",
   "fatal",
   "init-failed",
   "auth-storage-changed",
