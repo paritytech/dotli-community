@@ -698,7 +698,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
     .toBeGreaterThan(framesBeforeInput);
 });
 
-test("a touch gesture scrolls the guest instead of the host page", async ({
+test("touch and wheel gestures reach the guest without scrolling the host page", async ({
   page,
 }) => {
   const fixture = await polkavmCar();
@@ -743,7 +743,7 @@ test("a touch gesture scrolls the guest instead of the host page", async ({
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-product";
       iframe.style.cssText = "width:100%;height:100%;border:0";
-      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1&polkavmMode=interpreter`;
       (document.getElementById("app") ?? document.body).replaceChildren(iframe);
     },
     { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
@@ -797,11 +797,28 @@ test("a touch gesture scrolls the guest instead of the host page", async ({
     // The browser claims the gesture and never sends `pointerup`.
     touch("pointercancel", 1, true, -40);
     touch("pointerup", 2, false, 120);
+    const wheelDefaultPrevented = !target.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        deltaX: 7,
+        deltaY: 23,
+      }),
+    );
     const records = (scope.__polkavmInput ?? []).slice(before);
     return {
       touches: records
         .filter((record) => (record[0] ?? 0) >= 18 && (record[0] ?? 0) <= 21)
         .map((record) => record.slice(0, 2)),
+      wheels: records
+        .filter((record) => record[0] === 14)
+        .map((record) => {
+          const bytes = Uint8Array.from(record);
+          const view = new DataView(bytes.buffer);
+          return [view.getInt16(2, true), view.getInt16(4, true)];
+        }),
+      wheelDefaultPrevented,
       captured: target.hasPointerCapture(1) || target.hasPointerCapture(2),
       scrollTop: document.scrollingElement?.scrollTop ?? 0,
     };
@@ -815,6 +832,8 @@ test("a touch gesture scrolls the guest instead of the host page", async ({
     [21, 0],
     [20, 1],
   ]);
+  expect(gesture.wheels).toEqual([[-7, -23]]);
+  expect(gesture.wheelDefaultPrevented).toBe(true);
   expect(gesture.captured).toBe(false);
   expect(gesture.scrollTop).toBe(0);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);

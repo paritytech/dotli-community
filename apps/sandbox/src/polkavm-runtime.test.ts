@@ -7,6 +7,7 @@ import {
   HostFrameResponseQueue,
   describePolkaVmPackage,
   encodedInput,
+  encodedWheelInput,
   encodedTextInput,
   encodedMotionSample,
   encodedPointerMotionSample,
@@ -178,11 +179,11 @@ describe("PolkaVM advanced input encoding", () => {
     expect(encodedTextInput(10, "a".repeat(4097))).toEqual([]);
   });
 
-  it("encodes signed wheel deltas and focus state", () => {
-    const wheel = encodedInput(14, 0, -12, 32000);
+  it("normalizes DOM wheel direction before encoding signed deltas", () => {
+    const wheel = encodedWheelInput(12, -3, 16);
     const view = new DataView(wheel.buffer);
-    expect(view.getInt16(2, true)).toBe(-12);
-    expect(view.getInt16(4, true)).toBe(32000);
+    expect(view.getInt16(2, true)).toBe(-192);
+    expect(view.getInt16(4, true)).toBe(48);
     expect(encodedInput(13, 1)).toEqual(
       new Uint8Array([13, 1, 0, 0, 0, 0, 0, 0]),
     );

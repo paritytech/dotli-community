@@ -1301,6 +1301,16 @@ export function encodedInput(
   return bytes;
 }
 
+export function encodedWheelInput(
+  deltaX: number,
+  deltaY: number,
+  scale: number,
+): Uint8Array {
+  // DOM deltas describe viewport movement; the App ABI follows egui's
+  // content-movement convention, so both axes have the opposite sign.
+  return encodedInput(14, 0, -deltaX * scale, -deltaY * scale);
+}
+
 const MAX_TEXT_INPUT_BYTES = 4 * 1024;
 const TEXT_CHUNK_BYTES = 6;
 const TEXT_CHUNK_START = 0x40;
@@ -1939,7 +1949,7 @@ function installInput(
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
           ? Math.max(1, canvas.clientHeight)
           : 1;
-    send(encodedInput(14, 0, event.deltaX * scale, event.deltaY * scale));
+    send(encodedWheelInput(event.deltaX, event.deltaY, scale));
   };
   const keydown = (event: KeyboardEvent): void => {
     // Candidate navigation and confirmation belong to the active IME, not the
