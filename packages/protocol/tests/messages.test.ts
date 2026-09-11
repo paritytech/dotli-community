@@ -195,7 +195,7 @@ describe("getActiveSupportedGenesisHashes", () => {
   });
 
   it("does not contain arbitrary hashes", () => {
-    setNetwork(NetworkName.PASEO_NEXT_V1);
+    setNetwork(NetworkName.PASEO);
     expect(getActiveSupportedGenesisHashes().has("0xdeadbeef")).toBe(false);
   });
 });
