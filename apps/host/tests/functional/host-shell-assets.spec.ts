@@ -29,11 +29,14 @@ const HOST_SHELL_ORIGIN = `http://${DOMAIN}.localhost:${PORT}`;
 // filename, so the origin is what separates the legitimate fetch from the waste.
 const LIGHT_CLIENT_WASM = /truapi_provider_bg.*\.wasm$/;
 
+// Long enough for the eager fetch to happen if it is going to. Deliberately not
+// derived from TIMEOUT_MS: a fail-fast run sets that low, and a budget scaled
+// from it would expire inside this wait rather than reaching the assertion.
+const SETTLE_MS = 20_000;
+
 test("As a dotli visitor, the host shell must not download the light client wasm it never runs", async ({
   page,
 }) => {
-  test.setTimeout(TIMEOUT_MS * 4);
-
   // Given
   // Default transport, which is what a first visit gets (`defaultBackend()` in
   // packages/config/src/mode.ts returns "smoldot-direct").
@@ -51,7 +54,7 @@ test("As a dotli visitor, the host shell must not download the light client wasm
   expect(await findAppFrame(page, TIMEOUT_MS)).not.toBeNull();
   // The download is eager, but give a slow boot room to make it before
   // concluding it never happens.
-  await page.waitForTimeout(20_000);
+  await page.waitForTimeout(SETTLE_MS);
 
   // Then
   expect(
