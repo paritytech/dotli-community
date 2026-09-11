@@ -152,6 +152,10 @@ export type SandboxEvent =
       payload: {
         cid: string;
         totalMs: number;
+        /** Decoded size of everything the dApp shipped, across both the
+         * cache-hit and fetch paths. */
+        bytes?: number;
+        fileCount?: number;
       };
     }
   | {

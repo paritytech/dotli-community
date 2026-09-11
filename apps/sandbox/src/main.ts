@@ -74,6 +74,40 @@ function notifyLoadingDone(): void {
   window.parent.postMessage({ type: "dotli:loading-status", done: true }, "*");
 }
 
+/** Total bytes of a decoded archive, which is what the dApp actually weighs. */
+function archiveBytes(files: ArchiveFiles): number {
+  return Object.values(files).reduce((sum, file) => sum + file.byteLength, 0);
+}
+
+/**
+ * Report a sandbox-origin debug event to the host's debug bus.
+ *
+ * The sandbox runs on its own origin and cannot reach `emitDotliDebugEvent`,
+ * so the host relays anything shaped like this whose layer is `sandbox`. See
+ * `listenForSandboxDebugEvents` in `apps/host/src/main.ts`. Sent
+ * unconditionally: the sandbox cannot see whether the panel is open, and the
+ * host drops the message when it is not.
+ */
+function reportSandboxDebug(
+  event: string,
+  flowId: string,
+  payload: Record<string, unknown>,
+): void {
+  window.parent.postMessage(
+    {
+      type: "dotli:debug-event",
+      event: {
+        layer: "sandbox",
+        event,
+        flowId,
+        timestamp: Date.now(),
+        payload,
+      },
+    },
+    "*",
+  );
+}
+
 /**
  * Remove host-to-sandbox contract keys from `window.location` so the dApp
  * has only the user's own query params.
@@ -675,6 +709,15 @@ async function main(): Promise<void> {
   const cachedFiles = skipArchiveCache
     ? null
     : await getCachedArchive(cid, cid, chainBackend);
+  // Only when the cache was actually consulted. A skipped lookup is not a
+  // miss, and the panel reads the absence of this event as "not checked".
+  if (!skipArchiveCache) {
+    reportSandboxDebug("cache_checked", resolutionId ?? cid, {
+      cid,
+      hit: cachedFiles !== null,
+      ...(cachedFiles ? { fileCount: Object.keys(cachedFiles).length } : {}),
+    });
+  }
   if (cachedFiles) {
     m.count(S.CACHE_HIT, { surface: "sw_archive" });
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
@@ -699,6 +742,12 @@ async function main(): Promise<void> {
     log.warn(
       `[dot.li app] writing cached content into window (${elapsed(T0)})`,
     );
+    reportSandboxDebug("document_written", resolutionId ?? cid, {
+      cid,
+      totalMs: Math.round(performance.now() - T0),
+      bytes: archiveBytes(cachedFiles),
+      fileCount: Object.keys(cachedFiles).length,
+    });
     notifyLoadingDone();
     performance.mark("dotli:app:end");
     stopApp();
@@ -774,6 +823,15 @@ async function main(): Promise<void> {
 
   html = await maybeInjectSandboxChecker(html);
   log.warn(`[dot.li app] writing content into window (${elapsed(T0)})`);
+  reportSandboxDebug("document_written", resolutionId ?? cid, {
+    cid,
+    totalMs: Math.round(performance.now() - T0),
+    bytes:
+      result.type === "single"
+        ? result.content.byteLength
+        : archiveBytes(result.files),
+    fileCount: result.type === "single" ? 1 : Object.keys(result.files).length,
+  });
   notifyLoadingDone();
   performance.mark("dotli:app:end");
   stopApp();

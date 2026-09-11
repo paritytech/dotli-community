@@ -46,7 +46,7 @@ export interface ResolutionRow {
   warpTarget: number | null;
 }
 
-export type CacheResult = "hit" | "miss" | null;
+export type CacheResult = "hit" | "miss" | "skipped" | null;
 
 export interface ResolutionSummary {
   backend: "smoldot" | "rpc-gateway" | null;
@@ -57,6 +57,8 @@ export interface ResolutionSummary {
   resolveMs: number | null;
   renderedMs: number | null;
   totalBytes: number | null;
+  appBytes: number | null;
+  appFileCount: number | null;
   avgBytesPerSecond: number | null;
   peakBytesPerSecond: number | null;
   firstByteMs: number | null;
@@ -246,6 +248,7 @@ function isFinished(mine: readonly DotliDebugEvent[]): boolean {
 function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   let last = 0;
   let lastChainPhase = 0;
+  let lastSandbox = 0;
   for (const ev of load) {
     if (
       (ev.layer === "render" && ev.event === "iframe_ready") ||
@@ -259,6 +262,9 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
     if (ev.layer === "chain" && ev.event === "phase") {
       lastChainPhase = Math.max(lastChainPhase, ev.timestamp);
     }
+    if (ev.layer === "sandbox") {
+      lastSandbox = Math.max(lastSandbox, ev.timestamp);
+    }
   }
   if (last === 0) {
     return now;
@@ -269,7 +275,13 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   // empty rows. Phases stop once each chain is ready, so following them does
   // not make the chart grow for as long as the tab is open, which is what this
   // bound exists to prevent.
-  return Math.max(last, lastChainPhase);
+  //
+  // The sandbox starts working only once the iframe exists, so every event it
+  // reports lands after `render:iframe_ready`. Without following it the archive
+  // cache result fell outside the window and the summary read "not reported"
+  // for a lookup that had plainly happened. Bounded for the same reason as the
+  // phases: the sandbox reports during its boot and then hands over to the dApp.
+  return Math.max(last, lastChainPhase, lastSandbox);
 }
 
 function buildRows(
@@ -388,6 +400,8 @@ function emptySummary(): ResolutionSummary {
     resolveMs: null,
     renderedMs: null,
     totalBytes: null,
+    appBytes: null,
+    appFileCount: null,
     avgBytesPerSecond: null,
     peakBytesPerSecond: null,
     firstByteMs: null,
@@ -403,6 +417,10 @@ function buildSummary(
   const summary = emptySummary();
 
   let previousBytes: { at: number; total: number } | null = null;
+  // The sandbox writing its document is the app actually on screen.
+  // `render:iframe_ready` is only the frame attach, which on a cold load
+  // lands seconds earlier, so the more honest mark wins at the end.
+  let paintedMs: number | null = null;
 
   for (const ev of mine) {
     const p = payloadOf(ev);
@@ -455,6 +473,15 @@ function buildSummary(
         } else if (backend?.startsWith("smoldot") === true) {
           summary.backend = "smoldot";
         }
+        // A cache the user turned off never reports a result. Seed the fields
+        // here so the panel says so instead of "not reported", which reads as
+        // a missing instrumentation hook.
+        if (p.skipCidCache === true) {
+          summary.cidCache = "skipped";
+        }
+        if (p.skipArchiveCache === true) {
+          summary.archiveCache = "skipped";
+        }
         break;
       }
       case "boot:cid_cache_checked":
@@ -464,7 +491,15 @@ function buildSummary(
         if (p.hit === true) {
           summary.cid ??= str(p.cid);
           summary.label ??= str(p.label);
+          // The moment the CID was known, which is what "resolved in" means on
+          // this path. Without it the field read "—" beside outcome "resolved".
+          summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
         }
+        break;
+      case "sandbox:document_written":
+        summary.appBytes = num(p.bytes);
+        summary.appFileCount = num(p.fileCount);
+        paintedMs = Math.max(0, ev.timestamp - startedAt);
         break;
       case "sandbox:cache_checked":
         summary.archiveCache = p.hit === true ? "hit" : "miss";
@@ -503,6 +538,7 @@ function buildSummary(
     }
   }
 
+  summary.renderedMs = paintedMs ?? summary.renderedMs;
   if (summary.totalBytes !== null && previousBytes !== null) {
     const seconds = (previousBytes.at - startedAt) / 1000;
     if (seconds > 0) {
@@ -537,11 +573,15 @@ function renderSummary(model: ResolutionModel): string {
   const facts: [string, string][] = [
     ["name", s.label === null ? "—" : escapeHtml(s.label)],
     ["outcome", outcomeText(s)],
-    ["backend", s.backend === null ? "—" : escapeHtml(s.backend)],
+    ["network transport", transportText(s)],
     ["elapsed", formatMs(model.elapsedMs)],
     ["resolved in", s.resolveMs === null ? "—" : formatMs(s.resolveMs)],
-    ["rendered at", s.renderedMs === null ? "—" : formatMs(s.renderedMs)],
-    ["chain bytes", s.totalBytes === null ? "—" : formatBytes(s.totalBytes)],
+    ["app on screen", s.renderedMs === null ? "—" : formatMs(s.renderedMs)],
+    [
+      "downloaded during connection",
+      s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
+    ],
+    ["app size", appSizeText(s)],
     ["average speed", formatRate(s.avgBytesPerSecond)],
     ["peak speed", formatRate(s.peakBytesPerSecond)],
     ["first byte", s.firstByteMs === null ? "—" : formatMs(s.firstByteMs)],
@@ -577,13 +617,39 @@ function outcomeText(s: ResolutionSummary): string {
   }
 }
 
+function transportText(s: ResolutionSummary): string {
+  switch (s.backend) {
+    case "smoldot":
+      return "smoldot light client";
+    case "rpc-gateway":
+      return "RPC gateway";
+    case null:
+      return `<span class="td-res-dim">not reported</span>`;
+  }
+}
+
+function appSizeText(s: ResolutionSummary): string {
+  if (s.appBytes === null) {
+    return "—";
+  }
+  const files = s.appFileCount;
+  if (files === null) {
+    return formatBytes(s.appBytes);
+  }
+  return `${formatBytes(s.appBytes)} in ${String(files)} file${files === 1 ? "" : "s"}`;
+}
+
 function cacheText(result: CacheResult): string {
   if (result === null) {
     return `<span class="td-res-dim">not reported</span>`;
   }
-  return result === "hit"
-    ? `<span class="td-res-outcome is-ok">hit</span>`
-    : `<span class="td-res-dim">miss</span>`;
+  if (result === "hit") {
+    return `<span class="td-res-outcome is-ok">hit</span>`;
+  }
+  if (result === "skipped") {
+    return `<span class="td-res-dim">skipped (turned off)</span>`;
+  }
+  return `<span class="td-res-dim">miss</span>`;
 }
 
 function renderChart(model: ResolutionModel): string {
