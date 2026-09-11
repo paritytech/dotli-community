@@ -36,6 +36,7 @@ import {
   CACHE_ENABLED,
   SKIP_ARCHIVE_ONLY,
   SKIP_CID_ONLY,
+  TRANSPORT_LABELS,
   updateCacheSettings,
 } from "./fixtures/settings";
 import { test } from "./helpers/shared-mode-reset";
@@ -101,7 +102,7 @@ test.describe("Settings works", () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user opening a link that selects ${backend}, my session runs in that mode and stays there`, async ({
+    test(`As a user opening a link that selects ${TRANSPORT_LABELS[backend]}, my session runs in that mode and stays there`, async ({
       page,
     }) => {
       // When
@@ -130,7 +131,10 @@ test.describe("Settings works", () => {
     // Then
     const state = await readChainBackendState(page, "smoldot-direct");
     expect(state.chainBackend).toBe("smoldot-direct");
-    expect(state.url).toContain("chainBackend=smoldot-direct");
+    // The link asked for the default mode, and a default axis is stripped from
+    // the address bar, so landing in it leaves a clean URL rather than one
+    // that still names it. See the contract in `packages/config/url-settings`.
+    expect(state.url).not.toContain("chainBackend=");
   });
 
   test("As a user who arrived through such a link, reloading without it keeps me in the mode I landed in", async ({
@@ -234,11 +238,13 @@ test.describe("Settings works", () => {
     expect(cache.skipWorkerCache).toBe(false);
     expect(state.url).toContain("skipCidCache=1");
     expect(state.url).toContain("skipArchiveCache=1");
-    expect(state.url).toContain("skipWorkerCache=0");
+    // The worker cache was left at its default, so it is stripped rather than
+    // written back as `=0`. Only the axes I actually changed travel in the link.
+    expect(state.url).not.toContain("skipWorkerCache=");
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
       // Given
@@ -263,7 +269,7 @@ test.describe("Settings works", () => {
       }
     });
 
-    test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
       // Given
@@ -283,7 +289,10 @@ test.describe("Settings works", () => {
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
         expect(await hostResolveStarted(page)).toBe(true);
-        expect(await hasCachedCid(page, DOMAIN)).toBe(true);
+        // Changing a cache setting wipes this origin, so the entry saved on the
+        // first visit is gone rather than merely ignored, and with the cache off
+        // nothing writes a new one. See the wipe in `applyUrlSettings`.
+        expect(await hasCachedCid(page, DOMAIN)).toBe(false);
       } finally {
         await context.close();
       }
@@ -291,7 +300,7 @@ test.describe("Settings works", () => {
   }
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the archive cache on, revisiting a site checks my local copy first`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} with the archive cache on, revisiting a site checks my local copy first`, async ({
       browser,
     }) => {
       // Given
@@ -315,7 +324,7 @@ test.describe("Settings works", () => {
       }
     });
 
-    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
       browser,
     }) => {
       // Given
