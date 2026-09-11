@@ -18,7 +18,7 @@ import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
-// transient and retryable. INVALID_PARAMS and FAIL are terminal.
+// transient and retryable. INVALID_PARAMS is terminal.
 const ERR_INVALID_PARAMS = -32602;
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
@@ -28,6 +28,25 @@ const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
+
+// -32810 reads like a terminal "not found", but smoldot means something much
+// narrower by it. `light-base/src/bitswap_service.rs` freezes the set of peers
+// connected at the instant of the call, broadcasts a "have" request to exactly
+// those, and fails the request the moment every one of them has answered
+// DONT_HAVE. Peers that connect afterwards are never added to that set, and
+// there is no DHT provider lookup to fall back on.
+//
+// So on a fresh page the snapshot is whatever handful of Bulletin peers
+// happened to be up, and whether one of them holds the CID is luck. Retrying
+// takes a new, larger snapshot. Observed live: reloads that gave up on the
+// first -32810 died at ~1.2s, while reloads that kept asking got the same CID
+// 3 to 15 seconds later.
+//
+// Discovery gets its own wall-clock window rather than the full budget: a CID
+// that genuinely is not on the network should fail in seconds, not in three
+// minutes. The window is a wall-clock bound rather than a retry count so that
+// it stays meaningful if the backoff schedule is ever retuned.
+const DISCOVERY_BUDGET_MS = 30_000;
 
 interface PendingResolver {
   resolve: (bytes: Uint8Array) => void;
@@ -101,6 +120,8 @@ function errorCode(err: unknown): number | null {
 /** Fetch one CID block via the protocol iframe's smoldot. */
 export async function bitswapGet(cid: string): Promise<Uint8Array> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
+  let discoveryDeadline: number | null = null;
+  let discoveryFailures = 0;
   let attempt = 0;
   for (;;) {
     attempt += 1;
@@ -115,21 +136,43 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
       return await sendOnce(cid, callTimeout);
     } catch (err) {
       const code = errorCode(err);
-      if (code === ERR_INVALID_PARAMS || code === ERR_FAIL) {
+      if (code === ERR_INVALID_PARAMS) {
         throw err;
       }
-      if (code === ERR_FAIL_RETRY || code === ERR_FAIL_BACKOFF) {
-        const delay = Math.min(
-          BACKOFF_CAP_MS,
-          BACKOFF_BASE_MS * 2 ** Math.min(attempt - 1, 4),
-        );
-        log.warn(
-          `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
-        );
-        await new Promise<void>((r) => setTimeout(r, delay));
-        continue;
+      if (code === ERR_FAIL) {
+        discoveryFailures += 1;
+        discoveryDeadline ??= Date.now() + DISCOVERY_BUDGET_MS;
+        if (Date.now() >= discoveryDeadline) {
+          throw Object.assign(
+            new Error(
+              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryFailures)} failures over ${String(DISCOVERY_BUDGET_MS)}ms (${String(attempt)} total attempts): ${serializeError(err)}`,
+            ),
+            { code },
+          );
+        }
+      } else if (code !== ERR_FAIL_RETRY && code !== ERR_FAIL_BACKOFF) {
+        throw err;
       }
-      throw err;
+      // Discovery retries ramp on their own counter. Inheriting `attempt`
+      // would start them pinned at the cap whenever a -32812 came first,
+      // spending the window on two or three attempts instead of seven.
+      const backoffAttempt =
+        code === ERR_FAIL ? discoveryFailures : attempt - discoveryFailures;
+      const delay = Math.min(
+        BACKOFF_CAP_MS,
+        BACKOFF_BASE_MS * 2 ** Math.min(Math.max(backoffAttempt, 1) - 1, 4),
+        // Never sleep past a deadline we are about to be judged against:
+        // overshooting either one burns the tail of the window on a wait
+        // whose result is already decided.
+        Math.max(0, deadline - Date.now()),
+        ...(discoveryDeadline === null
+          ? []
+          : [Math.max(0, discoveryDeadline - Date.now())]),
+      );
+      log.warn(
+        `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
+      );
+      await new Promise<void>((r) => setTimeout(r, delay));
     }
   }
 }
