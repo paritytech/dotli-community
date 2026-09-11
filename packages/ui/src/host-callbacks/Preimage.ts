@@ -54,11 +54,7 @@ function createPreimageLookupSubscribe(
             initialTimeoutId = null;
           }
         };
-        const poll = async (): Promise<void> => {
-          if (stopped) {
-            return;
-          }
-
+        const attempt = async (): Promise<void> => {
           const cached = preimageCache.get(key);
           if (cached) {
             push(cached);
@@ -96,6 +92,22 @@ function createPreimageLookupSubscribe(
           preimageCache.set(key, data);
           push(data);
           stopPolling();
+        };
+        // A lookup can now outlive the poll interval, because bitswapGet
+        // retries a CID whose providers have not attached yet. Without this
+        // guard every tick during that wait starts another lookup for the same
+        // key, each opening its own retry budget.
+        let inFlight = false;
+        const poll = async (): Promise<void> => {
+          if (stopped || inFlight) {
+            return;
+          }
+          inFlight = true;
+          try {
+            await attempt();
+          } finally {
+            inFlight = false;
+          }
         };
 
         intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);

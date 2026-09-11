@@ -178,4 +178,35 @@ describe("preimage host callbacks", () => {
       }
     },
   );
+
+  it("As a dot.li user, a slow preimage lookup does not stack another on every poll tick", async () => {
+    // Given a lookup that outlives several 10s poll intervals, which bitswapGet
+    // can now do while it retries a CID whose providers have not attached
+    vi.useFakeTimers();
+    try {
+      mocks.getBackend.mockReturnValue("smoldot-direct");
+      let release: (v: Uint8Array) => void = () => undefined;
+      mocks.bitswapGet.mockImplementation(
+        () =>
+          new Promise<Uint8Array>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const key = new Uint8Array(32).fill(7);
+
+      // When four poll ticks pass while the first lookup is still in flight
+      const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
+      await iterator.next();
+      await vi.advanceTimersByTimeAsync(45_000);
+
+      // Then only the first tick issued a request
+      expect(mocks.bitswapGet).toHaveBeenCalledTimes(1);
+
+      release(new Uint8Array());
+      await iterator.return?.();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

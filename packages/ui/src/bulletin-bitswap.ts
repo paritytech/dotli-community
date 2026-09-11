@@ -30,22 +30,22 @@ const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
 
 // -32810 reads like a terminal "not found", but smoldot means something much
-// narrower by it. `light-base/src/bitswap_service.rs` freezes the set of peers
-// connected at the instant of the call, broadcasts a "have" request to exactly
-// those, and fails the request the moment every one of them has answered
-// DONT_HAVE. Peers that connect afterwards are never added to that set, and
-// there is no DHT provider lookup to fall back on.
+// narrower by it. It freezes the set of peers connected at the instant of the
+// call, broadcasts a "have" request to exactly those, and fails the request the
+// moment every one of them has answered DONT_HAVE. Peers that connect
+// afterwards are never added to that set, and there is no provider lookup to
+// fall back on.
 //
 // So on a fresh page the snapshot is whatever handful of Bulletin peers
 // happened to be up, and whether one of them holds the CID is luck. Retrying
-// takes a new, larger snapshot. Observed live: reloads that gave up on the
+// takes a new, larger snapshot. Observed live, reloads that gave up on the
 // first -32810 died at ~1.2s, while reloads that kept asking got the same CID
 // 3 to 15 seconds later.
 //
-// Discovery gets its own wall-clock window rather than the full budget: a CID
+// Discovery gets its own wall-clock window rather than the full budget. A CID
 // that genuinely is not on the network should fail in seconds, not in three
-// minutes. The window is a wall-clock bound rather than a retry count so that
-// it stays meaningful if the backoff schedule is ever retuned.
+// minutes. The bound is wall-clock rather than a retry count so that it stays
+// meaningful if the backoff schedule is ever retuned.
 const DISCOVERY_BUDGET_MS = 30_000;
 
 interface PendingResolver {
@@ -158,16 +158,19 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
       // spending the window on two or three attempts instead of seven.
       const backoffAttempt =
         code === ERR_FAIL ? discoveryFailures : attempt - discoveryFailures;
+      // Only a discovery retry is judged against the discovery window, so
+      // only a discovery retry may be shortened by it. Letting it shorten the
+      // other codes collapses their delay to zero once the window has passed,
+      // since nothing throws on them, and the loop then spins flat out for
+      // whatever is left of the three-minute budget. Both floors stay at 1ms
+      // for the same reason.
       const delay = Math.min(
         BACKOFF_CAP_MS,
         BACKOFF_BASE_MS * 2 ** Math.min(Math.max(backoffAttempt, 1) - 1, 4),
-        // Never sleep past a deadline we are about to be judged against:
-        // overshooting either one burns the tail of the window on a wait
-        // whose result is already decided.
-        Math.max(0, deadline - Date.now()),
-        ...(discoveryDeadline === null
-          ? []
-          : [Math.max(0, discoveryDeadline - Date.now())]),
+        Math.max(1, deadline - Date.now()),
+        ...(code === ERR_FAIL && discoveryDeadline !== null
+          ? [Math.max(1, discoveryDeadline - Date.now())]
+          : []),
       );
       log.warn(
         `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
