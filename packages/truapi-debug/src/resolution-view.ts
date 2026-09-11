@@ -594,7 +594,7 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "outcome",
       value: outcomeText(s),
-      hint: "Whether the load finished. \u201cResolved\u201d means a content id was found and the app was handed a document to render.",
+      hint: "How far the load got. \u201cResolved\u201d means a content id was found for the name. On its own that does not mean the app rendered \u2014 read \u201capp on screen\u201d for that.",
     },
     {
       key: "network transport",
@@ -620,39 +620,39 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "first byte",
       value: s.firstByteMs === null ? "—" : formatMs(s.firstByteMs),
-      hint: "When the light client's first byte arrived. Shows how long finding peers and opening connections took before any data moved.",
+      hint: "Roughly when data first moved. The byte counter is only sampled about once a second, so treat this as an upper bound. Everything before it is finding peers and opening connections.",
     },
     GROUP_BREAK,
     {
       key: "sync download",
       value: s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
-      hint: "Bytes the light client pulled off the network while syncing the chains for this load. Warp syncing the relay dominates a cold start. The app's own files are not counted here.",
+      hint: "Every byte the light client pulled off the network, counted from boot until the app's frame was attached. Warp syncing the relay dominates a cold start. The app's own download rides the same connections but mostly arrives after this stops counting, so it is largely absent here.",
     },
     {
       key: "app size",
       value: appSizeText(s),
-      hint: "Decoded size of everything the dApp shipped, and how many files it came in. Fetched over bitswap, or read straight from the archive cache.",
+      hint: "How big the app is once unpacked, and how many files it came in. Fetched over the light client's own connections, or read straight from the archive cache.",
     },
     {
       key: "average speed",
       value: formatRate(s.avgBytesPerSecond),
-      hint: "Sync download divided by the time spent pulling it. Chain traffic only.",
+      hint: "Sync download over the time it took to arrive. It includes the wait before any data moved, so it reads lower than your actual link speed.",
     },
     {
       key: "peak speed",
       value: formatRate(s.peakBytesPerSecond),
-      hint: "The fastest chain download rate seen between two byte samples.",
+      hint: "The best rate seen between two byte samples, which are about a second apart. That makes it a one-second average, not a true instantaneous peak.",
     },
     GROUP_BREAK,
     {
       key: "CID cache",
       value: cacheText(s.cidCache),
-      hint: "Whether this name's content id was already stored from an earlier visit, so the load needed no chain lookup at all.",
+      hint: "Whether this name's content id was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
     {
       key: "archive cache",
       value: cacheText(s.archiveCache),
-      hint: "Whether the app's files were already in the service worker's cache, so nothing had to be fetched over the network.",
+      hint: "Whether the app's files were already in the service worker's cache, so nothing had to be fetched. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
   ];
 }
@@ -683,7 +683,7 @@ function outcomeText(s: ResolutionSummary): string {
     case "empty":
       return `<span class="td-res-outcome is-warn">no content set</span>`;
     case "failed":
-      return `<span class="td-res-outcome is-bad" title="${escapeHtml(s.failureReason ?? "")}">failed</span>`;
+      return `<span class="td-res-outcome is-bad" data-tooltip="${escapeHtml(s.failureReason ?? "no reason reported")}" data-tooltip-prose>failed</span>`;
   }
 }
 

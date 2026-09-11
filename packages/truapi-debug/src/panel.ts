@@ -835,6 +835,9 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
         return;
       }
       state.view = view;
+      // `display: none` on the pane under the cursor is not guaranteed to fire
+      // a boundary event, which would strand the tooltip over the page.
+      ui.tooltip.classList.remove("visible");
       for (const [name, tab] of Object.entries(ui.tabs) as [
         PanelView,
         HTMLButtonElement,
@@ -887,6 +890,12 @@ function wireHoverTooltips(ui: PanelUI, root: HTMLElement): void {
       const adjusted = left - (ttRect.right - panelRight) - 6;
       ui.tooltip.style.left = `${String(Math.max(4, adjusted))}px`;
     }
+    // Flip above the cursor rather than run off the bottom. A one-line
+    // timeline tooltip almost never needs this; a wrapped prose one near the
+    // foot of a bottom-docked panel always would.
+    if (ttRect.bottom > window.innerHeight - 4) {
+      ui.tooltip.style.top = `${String(top - ttRect.height - 28)}px`;
+    }
   };
   const hide = (): void => {
     ui.tooltip.classList.remove("visible");
@@ -921,6 +930,7 @@ function wireHoverTooltips(ui: PanelUI, root: HTMLElement): void {
     showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
   });
   root.addEventListener("pointerleave", hide);
+  root.addEventListener("scroll", hide, { passive: true });
 }
 
 function wireTimelineSelection(
