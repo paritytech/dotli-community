@@ -222,3 +222,17 @@
   color: rgba(255, 255, 255, 0.55);
   margin-bottom: 16px;
 }
+.auth-modal-get-app {
+  display: block;
+  margin-top: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+.auth-modal-get-app:hover {
+  color: #fff;
+}
+.auth-modal-get-app[hidden] {
+  display: none;
+}
