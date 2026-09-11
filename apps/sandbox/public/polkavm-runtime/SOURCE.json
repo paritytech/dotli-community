@@ -3,7 +3,7 @@
   "upstreamPackage": "@parity/polkavm-browser-runtime",
   "upstreamVersion": "0.3.0",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-  "upstreamRevision": "df0bb31f150a4883ecf000dfe202ca7e867a3cb6",
+  "upstreamRevision": "fc7d95da28ab7707654340a1a552373748eaddd4",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
   "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {
