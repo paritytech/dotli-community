@@ -133,21 +133,43 @@ describe("isProtocolEnvelope", () => {
 });
 
 describe("getRequestSyncTimeoutMs", () => {
-  it("reserves response-delivery time inside the caller's deadline", () => {
-    vi.spyOn(Date, "now").mockReturnValue(10_000);
-    const request: ProtocolRequestEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "request",
-      id: "test-deadline",
-      method: "resolveDotName",
-      payload: { label: "chinpokomon" },
-      deadlineMs: 100_000,
-    };
-
-    expect(getRequestSyncTimeoutMs(request)).toBe(89_000);
+  // Not inside a test body: a failing assertion would leak the mock onward.
+  afterEach(() => {
     vi.restoreAllMocks();
   });
 
+  const requestWithDeadline = (
+    deadlineMs?: number,
+  ): ProtocolRequestEnvelope => ({
+    namespace: "dotli:protocol",
+    kind: "request",
+    id: "test-deadline",
+    method: "resolveDotName",
+    payload: { label: "chinpokomon" },
+    deadlineMs,
+  });
+
+  it("reserves response-delivery time inside the caller's deadline", () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+
+    // When
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(100_000));
+
+    // Then
+    expect(budget).toBe(89_000);
+  });
+
+  it("As a handler reading an already-expired deadline, my budget stays positive", () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(100_000);
+
+    // When
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(10_000));
+
+    // Then
+    expect(budget).toBe(1);
+  });
   it("ignores missing or non-finite deadlines", () => {
     const request: ProtocolRequestEnvelope = {
       namespace: "dotli:protocol",
@@ -172,7 +194,7 @@ describe("getActiveSupportedGenesisHashes", () => {
   });
 
   it("does not contain arbitrary hashes", () => {
-    setNetwork(NetworkName.PASEO_NEXT_V1);
+    setNetwork(NetworkName.PASEO);
     expect(getActiveSupportedGenesisHashes().has("0xdeadbeef")).toBe(false);
   });
 });

@@ -4,8 +4,9 @@
 // Product manifest types and handwritten validators.
 //
 // Hosts read these shapes from dotNS text records. Two records exist per
-// product: a root manifest on `<id>.dot` (display metadata) and one
-// executable manifest per modality on `app|widget|worker.<id>.dot`
+// product: a root manifest on `<id>.<tld>` (display metadata) and one
+// executable manifest per modality on `app|widget|worker.<id>.<tld>`, where
+// `<tld>` is the active network's dotNS TLD
 // (version and kind-specific fields). Bulletin CIDs live in the subname's
 // contenthash slot, not in the JSON.
 //

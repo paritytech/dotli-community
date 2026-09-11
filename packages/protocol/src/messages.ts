@@ -1,6 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+// Leaf import: the `config` barrel reads `self.location` at module load.
+import { TIMEOUTS } from "@dotli/config/timeouts";
+
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
@@ -39,12 +42,14 @@ export interface ProtocolRequestEnvelope<
   deadlineMs?: number;
 }
 
-const RESPONSE_DELIVERY_GRACE_MS = 1_000;
-
 /**
  * Convert an untrusted request deadline into the resolver's remaining sync
  * budget. The grace period lets the typed resolver error cross postMessage
  * before the caller's generic request timeout fires.
+ *
+ * This is the only place the deadline is validated and normalized. Consumers
+ * receive a finite, positive number or `undefined`, so they branch on presence
+ * alone.
  */
 export function getRequestSyncTimeoutMs(
   request: ProtocolRequestEnvelope,
@@ -57,7 +62,9 @@ export function getRequestSyncTimeoutMs(
   }
   return Math.max(
     1,
-    Math.floor(request.deadlineMs - Date.now() - RESPONSE_DELIVERY_GRACE_MS),
+    Math.floor(
+      request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+    ),
   );
 }
 
@@ -81,8 +88,14 @@ export interface ProtocolErrorEnvelope {
   kind: "response";
   id: string;
   ok: false;
+  /** Human-readable description of the failure, from `serializeError`. */
   error: string;
-  /** Original error discriminator, preserved across postMessage. */
+  /**
+   * Class name of what the sender threw, such as `NetworkSyncTimeoutError`.
+   *
+   * Lets the receiver branch on the failure kind instead of matching
+   * substrings in `error`. Absent when the sender threw a non-`Error` value.
+   */
   errorName?: string;
 }
 

@@ -7,6 +7,7 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
 } from "@dotli/config/host-sandbox-contract";
+import { NetworkName } from "@dotli/config/network";
 
 const VALID_CID = "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
 
@@ -18,7 +19,7 @@ function search(
     [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: "smoldot-direct",
-    [SANDBOX_CONTRACT_PARAMS.network]: "paseo-next-v2",
+    [SANDBOX_CONTRACT_PARAMS.network]: NetworkName.PASEO,
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
@@ -41,7 +42,7 @@ describe("validateSandboxParams: v4 cid contract", () => {
     if (result.ok) {
       expect(result.params.cid).toBe(VALID_CID);
       expect(result.params.chainBackend).toBe("smoldot-direct");
-      expect(result.params.network).toBe("paseo-next-v2");
+      expect(result.params.network).toBe(NetworkName.PASEO);
     }
   });
 

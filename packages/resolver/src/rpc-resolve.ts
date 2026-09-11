@@ -27,9 +27,9 @@ import { dur } from "@dotli/shared/perf";
 import { namehash, toHex, decodeIpfsContenthashResult } from "./abi";
 import {
   ContenthashDecodeError,
-  NetworkSyncTimeoutError,
   UnsupportedContenthashCodecError,
 } from "./errors";
+import { raceSyncTimeout } from "./sync-deadline";
 import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
 import type { StatusCallback } from "./access-raw-storage";
 import { ApiStoppedError, createRawApi, type Api } from "./api";
@@ -102,25 +102,19 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   const client = createClient(provider);
   const api = createRawApi(client);
 
-  // Bound the wait: without the race, an unreachable peer set leaves
+  // Bound the wait: without it, an unreachable peer set leaves
   // `whenReady()` pending forever and the UI sits on "Connecting…"
   // indefinitely. The timeout throws so the outer catch can surface a
-  // visible error via `showError`. Mirrors the smoldot path at
-  // `resolve.ts:170-185`.
+  // visible error via `showError`. Mirrors the smoldot path in `resolve.ts`.
+  //
+  // Unlike the smoldot path this gets no caller deadline, so the 90s protocol
+  // request timer still wins and the host reports the generic message.
   try {
-    await Promise.race([
+    await raceSyncTimeout(
       api.whenReady(),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(
-            new NetworkSyncTimeoutError(
-              "Asset Hub RPC",
-              TIMEOUTS.ASSET_HUB_FINALIZED_SYNC,
-            ),
-          );
-        }, TIMEOUTS.ASSET_HUB_FINALIZED_SYNC);
-      }),
-    ]);
+      "Asset Hub RPC",
+      TIMEOUTS.HUB_FINALIZED_SYNC,
+    );
     log.warn(`[dot.li rpc-resolve] RPC chain head ready (${dur(t0)})`);
   } catch (err) {
     try {
