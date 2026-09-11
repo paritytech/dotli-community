@@ -122,45 +122,23 @@ function markFatal(message: string): void {
   }
 }
 
-// Whether smoldot resumed from a stored finalized-database blob or synced
-// from its chain-spec checkpoint. Only the first chain to connect is recorded:
-// that is the one page load waits on, and later chains would overwrite it with
-// a value no resolution timing depends on.
-export type SmoldotDbOutcome = "hit" | "miss";
-type SmoldotDbCallback = (outcome: SmoldotDbOutcome) => void;
-const smoldotDbListeners = new Set<SmoldotDbCallback>();
-let smoldotDbOutcome: SmoldotDbOutcome | null = null;
+// Whether smoldot resumed from a stored finalized-database blob or synced from
+// its chain-spec checkpoint. A promise rather than a listener set, because it
+// settles once and gives late subscribers the replay for free. Only the first
+// chain to connect is recorded: that is the one page load waits on, and later
+// chains would overwrite it with a value no resolution timing depends on.
+type SmoldotDbOutcome = "hit" | "miss";
+let markSmoldotDb!: (outcome: SmoldotDbOutcome) => void;
+const smoldotDbOutcome = new Promise<SmoldotDbOutcome>((resolve) => {
+  markSmoldotDb = resolve;
+});
 
-export function onSmoldotDbOutcome(cb: SmoldotDbCallback): () => void {
-  smoldotDbListeners.add(cb);
-  // Resume runs on the first connection, which can precede any subscriber, so
-  // replay for late listeners the way `onProviderFatal` does.
-  if (smoldotDbOutcome !== null) {
-    try {
-      cb(smoldotDbOutcome);
-      // eslint-disable-next-line no-restricted-syntax -- defensive multicast replay: one buggy late subscriber must not prevent the caller from registering.
-    } catch {
-      /* listener threw, safe to ignore on replay */
-    }
-  }
-  return () => {
-    smoldotDbListeners.delete(cb);
-  };
-}
-
-function markSmoldotDb(outcome: SmoldotDbOutcome): void {
-  if (smoldotDbOutcome !== null) {
-    return;
-  }
-  smoldotDbOutcome = outcome;
-  for (const cb of smoldotDbListeners) {
-    try {
-      cb(outcome);
-      // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast to all others.
-    } catch {
-      /* listener threw, do not let one listener break the broadcast */
-    }
-  }
+export function onSmoldotDbOutcome(
+  cb: (outcome: SmoldotDbOutcome) => void,
+): void {
+  smoldotDbOutcome.then(cb).catch(() => {
+    /* one buggy subscriber must not surface as an unhandled rejection */
+  });
 }
 
 export function isChainSupported(genesisHash: string): boolean {

@@ -76,9 +76,10 @@ export interface ProtocolReadyEnvelope {
 
 /**
  * Unsolicited broadcast naming whether the first chain to connect resumed
- * from stored smoldot state or synced from its chain-spec checkpoint. The
- * blob lives in the protocol origin's IndexedDB, which the host origin cannot
- * read, so this message is the host's only view of it.
+ * from stored smoldot state or synced from its chain-spec checkpoint.
+ *
+ * The blob lives in the protocol origin's IndexedDB, which the host origin
+ * cannot read, so this message is the host's only view of it.
  */
 export interface ProtocolSmoldotDbEnvelope {
   namespace: "dotli:protocol";

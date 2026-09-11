@@ -1187,16 +1187,16 @@ async function main(): Promise<void> {
   // total and the cold failure rate would read high.
   let cidCache: "hit" | "miss" | "unknown" = "unknown";
 
-  // One terminal event per resolution, carrying every dimension the dashboards
-  // slice by. The `pending` attempt event cannot carry `smoldot_db_cache`, because
-  // the light client only reports whether it resumed once resolution is
-  // already under way.
-  const captureResolveResult = (outcome: "ok" | "error"): void => {
+  // The success half of the failure rate whose error half is the tagged
+  // exception in the catch below. The `pending` attempt event cannot stand in
+  // for it, because the light client only reports whether it resumed once
+  // resolution is already under way.
+  const captureResolveOk = (): void => {
     Sentry.captureMessage("dotli.resolve_result", {
       level: "info",
       tags: {
         surface: "host_main_resolve",
-        outcome,
+        outcome: "ok",
         cid_cache: cidCache,
         smoldot_db_cache: getSmoldotDbOutcome(),
         chain_backend: chainBackend,
@@ -1248,7 +1248,7 @@ async function main(): Promise<void> {
           path: "fast",
         },
       });
-      captureResolveResult("ok");
+      captureResolveOk();
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cachedCid, chainBackend);
@@ -1408,7 +1408,7 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
-    captureResolveResult("ok");
+    captureResolveOk();
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
@@ -1440,7 +1440,6 @@ async function main(): Promise<void> {
       smoldot_db_cache: getSmoldotDbOutcome(),
       chain_backend: chainBackend,
     });
-    captureResolveResult("error");
     // Full cause chain to console for devs.
     log.error(
       `[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`,

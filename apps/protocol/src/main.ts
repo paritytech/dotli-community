@@ -666,18 +666,16 @@ async function initDirectMode(): Promise<void> {
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
-  const [
-    {
-      createChainProvider,
-      isChainSupported,
-      onProviderFatal,
-      onSmoldotDbOutcome,
-    },
-    resolve,
-  ] = await Promise.all([
+  const [provider, resolve] = await Promise.all([
     import("@dotli/resolver/provider"),
     import("@dotli/resolver/resolve"),
   ]);
+  const {
+    createChainProvider,
+    isChainSupported,
+    onProviderFatal,
+    onSmoldotDbOutcome,
+  } = provider;
   const {
     resolveDotName,
     resolveExecutableManifest,

@@ -124,9 +124,10 @@ export function getProtocolOrigin(): string {
 let smoldotDbOutcome: "hit" | "miss" | "unknown" = "unknown";
 
 /**
- * Whether smoldot resumed from stored state this page load. The host tags its
- * resolution telemetry with this so a cold sync and a warm resume are separate
- * populations rather than one blended average.
+ * Whether smoldot resumed from stored state this page load.
+ *
+ * The host tags its resolution telemetry with this so a cold sync and a warm
+ * resume are separate populations rather than one blended average.
  */
 export function getSmoldotDbOutcome(): "hit" | "miss" | "unknown" {
   return smoldotDbOutcome;

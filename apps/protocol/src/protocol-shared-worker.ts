@@ -126,28 +126,18 @@ onProviderFatal((message) => {
   swError(
     `Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`,
   );
-  const fatal: ProtocolEnvelope = {
-    namespace: "dotli:protocol",
-    kind: "fatal",
-    message,
-  };
-  for (const port of ports) {
-    sendToPort(port, fatal);
-  }
+  broadcastToPorts({ namespace: "dotli:protocol", kind: "fatal", message });
 });
 
 // Tell every connected tab whether this worker's light client resumed from
-// stored state. Registered once at module load; the provider replays to late
+// stored state. Registered once at module load. The provider replays to late
 // subscribers, so the ordering against pre-sync does not matter.
 onSmoldotDbOutcome((outcome) => {
-  const envelope: ProtocolEnvelope = {
+  broadcastToPorts({
     namespace: "dotli:protocol",
     kind: "smoldot-db",
     outcome,
-  };
-  for (const port of ports) {
-    sendToPort(port, envelope);
-  }
+  });
 });
 
 // Placeholder broker manager until pre-sync creates the real one.
@@ -260,6 +250,12 @@ async function presync(): Promise<void> {
 function assertString(value: unknown, name: string): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Invalid ${name}: expected non-empty string`);
+  }
+}
+
+function broadcastToPorts(envelope: ProtocolEnvelope): void {
+  for (const port of ports) {
+    sendToPort(port, envelope);
   }
 }
 
