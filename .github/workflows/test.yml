@@ -56,30 +56,54 @@ jobs:
           # protocol/app iframes, so every test times out. deploy.yml supplies
           # this from repo vars; the test build needs its own value.
           VITE_NETWORKS: paseo-next-v2,previewnet
+          # deploy.yml builds with metrics on, so this is the shape that ships.
+          # network-transport.spec.ts also needs it: `m.gauge` compiles to a
+          # no-op without it and the spec skips itself.
+          VITE_METRICS: "true"
+          # Sentry no-ops on an unset DSN and would tunnel nothing. Never
+          # dialled: `tunnel: "/t"` keeps every envelope same-origin.
+          VITE_SENTRY_DSN: http://publickey@127.0.0.1:5173/1
         run: bunx --bun turbo run build
 
       - name: Run functional tests
         working-directory: apps/host
-        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts || true
+        env:
+          VITE_METRICS: "true"
+        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts || true
 
       - name: Apply functional threshold
         working-directory: apps/host
         run: |
           TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
-          if [ "$TOTAL" -lt 9 ]; then
-            echo "::error::expected at least 9 tests, got $TOTAL."
+          if [ "$TOTAL" -lt 11 ]; then
+            echo "::error::expected at least 11 tests, got $TOTAL."
             exit 1
           fi
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          # A skipped spec is `.ok == true` and still counts toward TOTAL, so the
+          # failure gate below cannot see one. network-transport.spec.ts skips
+          # itself without VITE_METRICS, which is exactly how it would silently
+          # stop running.
+          TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
+          echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
           if [ "$LOADING_FAILED" -gt 0 ]; then
             echo "::error::loading.spec.ts must have 0 failures"
             exit 1
           fi
           if [ "$RESOLUTION_FAILED" -gt 2 ]; then
             echo "::error::resolution.spec.ts: $RESOLUTION_FAILED failures (max 2 tolerated)"
+            exit 1
+          fi
+          if [ "$TRANSPORT_FAILED" -gt 0 ]; then
+            echo "::error::network-transport.spec.ts must have 0 failures"
+            exit 1
+          fi
+          if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
+            echo "::error::network-transport.spec.ts skipped $TRANSPORT_SKIPPED test(s); VITE_METRICS is not reaching the run step"
             exit 1
           fi
 
