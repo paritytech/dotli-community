@@ -12,6 +12,13 @@
 
 import { escapeHtml } from "@dotli/shared/html";
 import {
+  buildResolution,
+  buildResolutionContainer,
+  createResolutionRecorder,
+  renderResolution,
+  type ResolutionRecorder,
+} from "./resolution-view.ts";
+import {
   decodeChainAnnotations,
   formatChainLabel,
   type ChainAnnotations,
@@ -46,6 +53,8 @@ import {
 } from "./timeline.ts";
 
 const DEFAULT_CAPACITY = 2000;
+/** How often the Resolution view redraws an in-flight load's open block. */
+const RESOLUTION_TICK_MS = 500;
 const STYLE_ID = "truapi-debug-styles";
 const PANEL_ID = "truapi-debug-panel";
 const DOCK_STORAGE_KEY = "truapi-debug:dock";
@@ -126,6 +135,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     filters: initialFilterState(),
     view: "list",
     dock: readStoredDock(),
+    resolution: createResolutionRecorder(),
   };
 
   const ui = buildPanel(state, store);
@@ -173,15 +183,31 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
     } else {
+      if (!store.isPaused()) {
+        state.resolution.record(ev);
+      }
       store.insertDotli(ev);
     }
   });
+
+  // The block a chain is still sitting in has to keep growing toward now, and
+  // a chain that has gone quiet emits nothing to re-render on. The tick only
+  // does work while the Resolution view is the one on screen.
+  const resolutionTick = window.setInterval(() => {
+    if (state.view === "resolution") {
+      renderResolution(
+        ui.resolution,
+        buildResolution(state.resolution.events(), Date.now()),
+      );
+    }
+  }, RESOLUTION_TICK_MS);
 
   // Initial render + iframe adjustment.
   render(ui, state, store, { fullList: true });
   adjustIframeForPanel(ui.panel, state);
 
   return () => {
+    window.clearInterval(resolutionTick);
     unsubscribeDotli();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
@@ -226,7 +252,7 @@ function restoreIframeLayout(): void {
   iframe.style.width = "100%";
 }
 
-type PanelView = "list" | "timeline";
+type PanelView = "list" | "timeline" | "resolution";
 
 interface PanelState {
   collapsed: boolean;
@@ -236,6 +262,9 @@ interface PanelState {
   filters: FilterState;
   view: PanelView;
   dock: DockPosition;
+  /** Kept apart from the ring buffer so a busy session cannot evict the head
+   *  of the load the Resolution view is drawing. */
+  resolution: ResolutionRecorder;
 }
 
 interface PanelUI {
@@ -256,6 +285,7 @@ interface PanelUI {
   tabs: Record<PanelView, HTMLButtonElement>;
   list: HTMLDivElement;
   timeline: HTMLDivElement;
+  resolution: HTMLDivElement;
   detail: HTMLDivElement;
   bodySplitter: HTMLDivElement;
   tooltip: HTMLDivElement;
@@ -309,6 +339,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
         <div class="td-tabs" role="tablist">
           <button class="td-tab active" role="tab" data-view="list" type="button">List</button>
           <button class="td-tab" role="tab" data-view="timeline" type="button">Timeline</button>
+          <button class="td-tab" role="tab" data-view="resolution" type="button">Resolution</button>
         </div>
         <div class="td-list" role="list" tabindex="0"></div>
         <!-- timeline mount point — populated at setup time -->
@@ -324,6 +355,9 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   const { container: timeline } = buildTimelineContainer();
   timeline.classList.add("hidden");
   views.appendChild(timeline);
+  const { container: resolution } = buildResolutionContainer();
+  resolution.classList.add("hidden");
+  views.appendChild(resolution);
 
   const ui: PanelUI = {
     panel,
@@ -359,9 +393,13 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       timeline: panel.querySelector(
         '.td-tab[data-view="timeline"]',
       ) as HTMLButtonElement,
+      resolution: panel.querySelector(
+        '.td-tab[data-view="resolution"]',
+      ) as HTMLButtonElement,
     },
     list: panel.querySelector(".td-list") as HTMLDivElement,
     timeline,
+    resolution,
     detail: panel.querySelector(".td-detail") as HTMLDivElement,
     bodySplitter: panel.querySelector(".td-body-splitter") as HTMLDivElement,
     tooltip: panel.querySelector(".td-tooltip") as HTMLDivElement,
@@ -437,6 +475,7 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
   });
   ui.clearBtn.addEventListener("click", () => {
     store.clear();
+    state.resolution.clear();
     state.selectedSeq = null;
     // Explicitly rebuild detail: the selection is now gone and the
     // incremental-render path intentionally doesn't touch the detail
@@ -795,10 +834,16 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
         return;
       }
       state.view = view;
-      ui.tabs.list.classList.toggle("active", view === "list");
-      ui.tabs.timeline.classList.toggle("active", view === "timeline");
+      for (const [name, tab] of Object.entries(ui.tabs) as [
+        PanelView,
+        HTMLButtonElement,
+      ][]) {
+        tab.classList.toggle("active", name === view);
+      }
       ui.list.classList.toggle("hidden", view !== "list");
       ui.timeline.classList.toggle("hidden", view !== "timeline");
+      ui.resolution.classList.toggle("hidden", view !== "resolution");
+      ui.panel.classList.toggle("res-view", view === "resolution");
       render(ui, state, store, { fullList: true });
     });
   }
@@ -990,6 +1035,11 @@ function render(
   renderProductChips(ui, state, store);
   if (state.view === "list") {
     renderList(ui, state, store, visible, opts.fullList ?? false);
+  } else if (state.view === "resolution") {
+    renderResolution(
+      ui.resolution,
+      buildResolution(state.resolution.events(), Date.now()),
+    );
   } else {
     // The timeline is cheap enough to always full-rebuild for now;
     // a future phase can switch to incremental geometry updates if

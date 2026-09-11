@@ -42,6 +42,7 @@ import {
 import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
 import { chainRoleForKey } from "@dotli/ui/chain-roles";
+import type { ChainRole } from "@dotli/config/network";
 import { startResolutionTrace } from "./resolution-trace";
 import {
   recordChainPhase,
@@ -210,6 +211,16 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 }
 
 const T0 = performance.now();
+// Warp progress holds one phase while the distance closes, so it is sampled
+// on this tick rather than emitted per step: a long warp would otherwise
+// crowd the debug panel's ring buffer with hundreds of near-identical rows.
+const CHAIN_WARP_DEBUG_MS = 1000;
+// The light client's byte total is posted every 500ms. Sampling every other
+// one keeps a minute-long load's byte series well under a hundred rows while
+// still resolving the peak.
+const CHAIN_BYTES_DEBUG_MS = 1000;
+/** Ceiling for a load that never renders, so the series cannot run forever. */
+const CHAIN_BYTES_DEBUG_MAX = 300;
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
 const blockingModalCoordinator = createBlockingModalCoordinator();
 
@@ -1377,15 +1388,74 @@ async function main(): Promise<void> {
       stalled: "stalled",
     };
 
+    // The debug panel's Resolution view draws one block per phase per chain,
+    // so a transition is only worth an event when the phase actually changes.
+    // Bulletin attaches two taps, one from the warm-up connection and one from
+    // the broker's, and would otherwise contribute every block twice. Warp
+    // progress is the exception: it stays in `syncing` while the distance
+    // closes, so it is let through on a slow tick to keep the figures live.
+    const emittedPhase = new Map<ChainRole, ChainPhase>();
+    const emittedWarpAt = new Map<ChainRole, number>();
+    const lastWarpEmit = new Map<ChainRole, number>();
+    const peersByRole = new Map<ChainRole, number>();
+
     onProtocolChainSync((event) => {
-      const phase = PHASE_BY_MILESTONE[event.syncKind];
+      const role = chainRoleForKey(event.chain);
+      // The watchdog clearing names no phase of its own, and claiming `ready`
+      // would be a guess, so a recovered chain goes back to syncing until the
+      // next milestone says otherwise.
+      const phase: ChainPhase | undefined =
+        PHASE_BY_MILESTONE[event.syncKind] ??
+        (event.syncKind === "recovered" ? "syncing" : undefined);
+      if (event.syncKind === "peers" && event.peers !== undefined) {
+        // A chain's peer count moves independently of its phase, and the relay
+        // typically finds its peers only after the last phase transition. Riding
+        // along on `phase` alone leaves the panel reporting the count frozen at
+        // that transition, which for the relay is zero.
+        const changed = peersByRole.get(role) !== event.peers;
+        peersByRole.set(role, event.peers);
+        if (changed) {
+          emitDotliDebugEvent({
+            layer: "chain",
+            event: "peers",
+            flowId: bootFlowId,
+            timestamp: Date.now(),
+            payload: { chain: role, peers: event.peers },
+          });
+        }
+      }
       if (phase !== undefined) {
-        recordChainPhase(chainRoleForKey(event.chain), phase);
-      } else if (event.syncKind === "recovered") {
-        // The watchdog cleared. Nothing in the event says which phase the
-        // chain returned to, and claiming `ready` would be a guess, so it goes
-        // back to syncing until the next milestone says otherwise.
-        recordChainPhase(chainRoleForKey(event.chain), "syncing");
+        recordChainPhase(role, phase);
+        const now = Date.now();
+        const warpMoved =
+          phase === "syncing" &&
+          event.at !== undefined &&
+          emittedWarpAt.get(role) !== event.at &&
+          now - (lastWarpEmit.get(role) ?? 0) >= CHAIN_WARP_DEBUG_MS;
+        if (emittedPhase.get(role) !== phase || warpMoved) {
+          emittedPhase.set(role, phase);
+          if (event.at !== undefined) {
+            emittedWarpAt.set(role, event.at);
+            lastWarpEmit.set(role, now);
+          }
+          const peers = peersByRole.get(role);
+          emitDotliDebugEvent({
+            layer: "chain",
+            event: "phase",
+            flowId: bootFlowId,
+            timestamp: now,
+            payload: {
+              chain: role,
+              phase,
+              ...(peers === undefined ? {} : { peers }),
+              ...(event.at === undefined ? {} : { warpAt: event.at }),
+              ...(event.target === undefined
+                ? {}
+                : { warpTarget: event.target }),
+              ...(event.reason === undefined ? {} : { reason: event.reason }),
+            },
+          });
+        }
       }
       log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
       // Health samples are excluded: they arrive every second and would keep
@@ -1485,9 +1555,49 @@ async function main(): Promise<void> {
         recordTransfer({ bytesPerSecond: liveBytesPerSecond });
       }
     };
+    // The byte series exists to describe the resolution, so it closes once the
+    // product is on screen. Left running it posts a row a second for as long as
+    // the tab stays open, which pushes the load's own events out of the debug
+    // panel's ring buffer. A load that never renders is bounded by the sample
+    // cap instead.
+    let lastBytesDebugAt = 0;
+    let lastBytesDebugTotal = -1;
+    let bytesDebugSamples = 0;
+    let bytesDebugOpen = true;
+    const emitBytesDebug = (received: number, at: number): void => {
+      lastBytesDebugAt = at;
+      lastBytesDebugTotal = received;
+      bytesDebugSamples++;
+      emitDotliDebugEvent({
+        layer: "chain",
+        event: "bytes",
+        flowId: bootFlowId,
+        timestamp: at,
+        payload: { received },
+      });
+    };
+    window.addEventListener(
+      "dotli:product-loaded",
+      () => {
+        if (bytesDebugOpen && chainBytes !== lastBytesDebugTotal) {
+          emitBytesDebug(chainBytes, Date.now());
+        }
+        bytesDebugOpen = false;
+      },
+      { once: true },
+    );
     onProtocolNetBytes(({ received }) => {
       chainBytes = received;
       reportSpeed();
+      const now = Date.now();
+      if (
+        bytesDebugOpen &&
+        bytesDebugSamples < CHAIN_BYTES_DEBUG_MAX &&
+        received !== lastBytesDebugTotal &&
+        now - lastBytesDebugAt >= CHAIN_BYTES_DEBUG_MS
+      ) {
+        emitBytesDebug(received, now);
+      }
     });
 
     // Every block the sandbox needs is fetched through this window, so the

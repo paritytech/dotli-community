@@ -61,6 +61,11 @@
   color: #fb923c;
   border-color: #9a3412;
 }
+.td-layer-chain {
+  background: #0b1418;
+  color: #38bdf8;
+  border-color: #075985;
+}
 .td-layer-sso {
   background: #041e1e;
   color: #2dd4bf;
@@ -346,6 +351,18 @@
   display: none;
 }
 
+/* The Resolution view has nothing to select, so the detail pane would only
+   ever say "select an event". The chart takes the whole width instead. */
+#truapi-debug-panel.res-view .td-body,
+#truapi-debug-panel.docked-right.res-view .td-body {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+#truapi-debug-panel.res-view .td-body-splitter,
+#truapi-debug-panel.res-view .td-detail {
+  display: none;
+}
+
 /* Draggable divider between the views pane and the detail pane. */
 .td-body-splitter {
   cursor: col-resize;
@@ -407,6 +424,7 @@
   display: none !important;
 }
 .td-views > .td-list,
+.td-views > .td-res,
 .td-views > .td-timeline {
   min-height: 0;
   overflow: auto;
@@ -805,4 +823,175 @@
   stroke-dasharray: 2 2;
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* ── Resolution view ───────────────────────────────────────── */
+/* One page load as four rows of phase blocks on a shared time axis. The
+   phase colours are the network panel's block-health palette, so a chain
+   that reads green there reads green here. */
+.td-res {
+  background: #0a0a0a;
+  padding: 10px 12px 14px;
+  overflow: auto;
+  scrollbar-width: thin;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  color: #e0e0e0;
+}
+.td-res-empty,
+.td-res-note {
+  color: #a3a3a3;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 10px 2px;
+  max-width: 60ch;
+}
+.td-res-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px 14px;
+  margin-bottom: 12px;
+}
+.td-res-fact dt {
+  color: #6b7280;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 2px;
+}
+.td-res-fact dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: #e0e0e0;
+}
+.td-res-outcome.is-ok {
+  color: #22c55e;
+}
+.td-res-outcome.is-warn {
+  color: #eab308;
+}
+.td-res-outcome.is-bad {
+  color: #f87171;
+}
+.td-res-outcome.is-running {
+  color: #38bdf8;
+}
+.td-res-dim {
+  color: #6b7280;
+}
+.td-res-cid {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  color: #94a3b8;
+  margin-bottom: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-res-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+.td-res-name {
+  flex: 0 0 58px;
+  color: #a3a3a3;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A fixed basis, not `auto`: every track has to start and end at the same x
+   or the shared time axis above them lines up with nothing. */
+.td-res-meta {
+  flex: 0 0 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #6b7280;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.td-res-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 18px;
+  background: #131313;
+  border-radius: 2px;
+}
+.td-res-axis-row {
+  height: 18px;
+}
+.td-res-axis {
+  background: none;
+}
+.td-res-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: #6b7280;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+/* First and last labels would otherwise hang off both ends of the track. */
+.td-res-tick:first-child {
+  transform: none;
+}
+.td-res-tick:last-child {
+  transform: translateX(-100%);
+}
+.td-res-idle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  color: #6b7280;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.td-res-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+.td-res-block-label {
+  font-size: 9px;
+  color: #0a0a0a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.td-res-block.is-connecting {
+  background: #8f8f8f;
+}
+.td-res-block.is-syncing {
+  background: #eab308;
+}
+.td-res-block.is-ready {
+  background: #22c55e;
+}
+.td-res-block.is-stalled {
+  background: #f87171;
+}
+.td-res-block.is-unknown {
+  background: #3a3a3a;
+}
+.td-res-block.is-unknown .td-res-block-label {
+  color: #e0e0e0;
+}
+/* The block a chain is still sitting in has no end yet, so it fades out
+   rather than drawing an edge the data does not have. */
+.td-res-block.is-open {
+  mask-image: linear-gradient(to right, #000 70%, transparent 100%);
 }

@@ -19,7 +19,8 @@ export type DotliDebugEvent =
   | BridgeEvent
   | FailoverEvent
   | MainEvent
-  | SandboxEvent;
+  | SandboxEvent
+  | ChainEvent;
 
 /** Sandbox (<label>.app.dot.li) lifecycle. These events originate in the
  *  sandbox iframe and are forwarded to the host's debug bus via
@@ -429,3 +430,50 @@ export interface FailoverEvent {
     reason: string;
   };
 }
+
+/** Light-client lifecycle, per chain.
+ *
+ *  Only smoldot emits these: the RPC gateway runs no light client, so a
+ *  gateway load produces none at all and the Resolution view says so rather
+ *  than drawing four empty rows.
+ *
+ *  `phase` is the derived milestone the loading screen also uses, not
+ *  smoldot's raw `LifecycleState`. A phase is emitted when it changes, so
+ *  consecutive events bound the interval the chain spent in the previous
+ *  one. A chain's peer count moves on its own schedule rather than with its
+ *  phase, so `peers` carries each change; `bytes` is the light client's
+ *  cumulative received total, sampled on a tick. */
+export type ChainEvent =
+  | {
+      layer: "chain";
+      event: "phase";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        chain: string;
+        phase: string;
+        peers?: number;
+        warpAt?: number;
+        warpTarget?: number;
+        reason?: string;
+      };
+    }
+  | {
+      layer: "chain";
+      event: "peers";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        chain: string;
+        peers: number;
+      };
+    }
+  | {
+      layer: "chain";
+      event: "bytes";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        received: number;
+      };
+    };
