@@ -21,7 +21,7 @@
 //   Required:
 //     ?cid=<IPFS content id the host resolved from the dotns label>
 //     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
-//     ?network=<"paseo-next-v1" | "paseo-next-v2">
+//     ?network=<"paseo-next-v2" | "previewnet">
 //
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">
@@ -33,7 +33,7 @@
 // have the validator reject unmatched versions so stale host builds
 // don't feed malformed params to fresh sandbox deploys.
 
-import { isValidNetwork, type Network } from "./network";
+import { NetworkName, isValidNetwork, type Network } from "./network";
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 
@@ -166,7 +166,11 @@ export function validateSandboxParams(
   if (!isValidNetwork(network)) {
     return {
       ok: false,
-      reason: `Unknown network "${network}". Expected "paseo-next-v1", "paseo-next-v2", or "previewnet".`,
+      reason: `Unknown network "${network}". Expected one of: ${Object.values(
+        NetworkName,
+      )
+        .map((n) => `"${n}"`)
+        .join(", ")}.`,
     };
   }
 

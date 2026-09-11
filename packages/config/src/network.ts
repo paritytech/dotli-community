@@ -4,9 +4,8 @@
 // Network Configuration
 
 export const NetworkName = {
-  PASEO_NEXT_V1: "paseo-next-v1",
-  PASEO_NEXT_V2: "paseo-next-v2",
-  PREVIEW_NET: "previewnet",
+  PASEO: "paseo-next-v2",
+  PREVIEWNET: "previewnet",
 } as const;
 
 export type NetworkName = (typeof NetworkName)[keyof typeof NetworkName];
@@ -58,54 +57,9 @@ export interface ServicesConfig {
 }
 
 const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
-  [NetworkName.PASEO_NEXT_V1]: {
-    label: "Paseo Next V1",
-    description: "Legacy Paseo Next system chains",
-    relay: {
-      genesis:
-        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
-      rpcs: [
-        "wss://paseo-rpc.n.dwellir.com",
-        "wss://paseo.dotters.network",
-        "wss://paseo.ibp.network",
-        "wss://paseo.rpc.amforc.com",
-      ],
-      blockTimeMs: 6000,
-    },
-    assethub: {
-      genesis:
-        "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-      rpcs: [
-        "wss://asset-hub-paseo-rpc.n.dwellir.com",
-        "wss://asset-hub-paseo.dotters.network",
-        "wss://asset-hub-paseo.ibp.network",
-        "wss://sys.turboflakes.io/asset-hub-paseo",
-      ],
-      blockTimeMs: 2000,
-    },
-    bulletin: {
-      genesis:
-        "0x744960c32e3a3df5440e1ecd4d34096f1ce2230d7016a5ada8a765d5a622b4ea",
-      rpcs: [],
-      blockTimeMs: 6000,
-      ipfsGateways: ["https://paseo-ipfs.polkadot.io"],
-    },
-    people: {
-      genesis:
-        "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
-      rpcs: [],
-      blockTimeMs: 2000,
-    },
-    dotns: {
-      DOTNS_REGISTRY: "0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f",
-      DOTNS_CONTENT_RESOLVER: "0x7756DF72CBc7f062e7403cD59e45fBc78bed1cD7",
-      STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 1 },
-      TLD: "dot",
-    },
-  },
-  [NetworkName.PASEO_NEXT_V2]: {
-    label: "Paseo Next V2",
-    description: "Upgraded Paseo Next system chains",
+  [NetworkName.PASEO]: {
+    label: "Paseo",
+    description: "Paseo Next Network",
     relay: {
       genesis:
         "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
@@ -143,7 +97,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       TLD: "paseo",
     },
   },
-  [NetworkName.PREVIEW_NET]: {
+  [NetworkName.PREVIEWNET]: {
     label: "Previewnet",
     description: "Product Preview Network",
     relay: {
@@ -200,7 +154,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  *   * **Endpoints only** — `label`, `rpcs` and `ipfsGateways`. Never `genesis` or
  *     `dotns`, which are the trust root for name resolution: an override that
  *     could repoint the DotNS registry would let anything running in the page
- *     redirect every `.dot` lookup while `isVerifiedSession()` still reported
+ *     redirect every dotNS lookup while `isVerifiedSession()` still reported
  *     "verified". Limiting it to endpoints means the worst an override can do is
  *     move you to a different node for the *same* chain identity, which the light
  *     client verifies against the compiled-in genesis anyway. It is also why only
@@ -420,9 +374,8 @@ export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
 export const NETWORK_KEY = "dotli:network";
 
 const VALID_NETWORKS: ReadonlySet<string> = new Set<Network>([
-  NetworkName.PASEO_NEXT_V1,
-  NetworkName.PASEO_NEXT_V2,
-  NetworkName.PREVIEW_NET,
+  NetworkName.PASEO,
+  NetworkName.PREVIEWNET,
 ]);
 
 /**

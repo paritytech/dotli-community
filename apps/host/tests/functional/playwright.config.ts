@@ -9,6 +9,12 @@ export default defineConfig({
   testDir: ".",
   timeout: 900_000,
   retries: 0,
+  // One worker, because `network-transport.spec.ts` counts `smoldot.active`
+  // points out of a single buffer on the preview server, and nothing on a
+  // point identifies the test that produced it. Run in parallel, the shared
+  // smoldot case in `loading.spec.ts` emits an identical `shared-worker`
+  // point and gets counted as a second light client.
+  workers: 1,
   use: {
     ...baseConfig.use,
     baseURL: "http://browse.localhost:5173",

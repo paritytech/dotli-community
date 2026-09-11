@@ -882,6 +882,18 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+/* Separation from the section above, which carries the grouping now that the
+   dividers are gone. */
+.mode-popover-section--spaced {
+  padding-top: 18px;
+}
+/* Anchors the Cache block to the bottom of the column so its toggles and
+   `Clear all caches` stay together, aligned with `.mode-diag-links-row` in
+   the sibling column. */
+.mode-popover-section--bottom {
+  margin-top: auto;
+  padding-top: 18px;
+}
 /* Radio rows */
 .mode-radio-row {
   display: flex;
@@ -970,7 +982,6 @@
    row at the bottom of the right column. */
 .mode-clear-all-row {
   padding-top: 10px;
-  margin-top: auto;
 }
 /* Bottom-anchored action row in the Diagnostics column: hosts the
    Share-diagnostic and Open-in-debug-mode buttons side by side. `margin-top:
