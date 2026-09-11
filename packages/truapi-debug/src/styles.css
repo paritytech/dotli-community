@@ -806,3 +806,24 @@
   opacity: 0.5;
   pointer-events: none;
 }
+
+/* ── Pending call badge ────────────────────────────────────── */
+
+/* Sits beside the tag on a request row until its reply arrives, counting up
+   on its own timer. Without it an unanswered call is indistinguishable from
+   an instant one, because the `+Xs` latency needs both halves of the pair. */
+.td-pending {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: #1f2937;
+  color: #93c5fd;
+  border: 1px solid #334155;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.td-pending.slow {
+  background: #2a0a1c;
+  color: #f9a8d4;
+  border-color: #9d174d;
+}
