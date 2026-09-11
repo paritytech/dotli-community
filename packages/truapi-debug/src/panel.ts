@@ -199,7 +199,7 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
   const hasTopbar = document.getElementById("topbar") !== null;
   const topOffset = hasTopbar ? 56 : 0;
   if (state.dock === "right") {
-    iframe.style.height = `calc(100vh - ${String(topOffset)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topOffset)}px)`;
     // When collapsed, the 32px header bar overlays the top-right corner
     // of the iframe rather than reserving a full-height column. Mirrors
     // how bottom-dock collapse overlays only the bottom 32px.
@@ -212,7 +212,7 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     // default of 300px and breaks the layout.
     iframe.style.width = "100%";
     const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
-    iframe.style.height = `calc(100vh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
   }
 }
 
@@ -222,7 +222,7 @@ function restoreIframeLayout(): void {
     return;
   }
   const hasTopbar = document.getElementById("topbar") !== null;
-  iframe.style.height = hasTopbar ? "calc(100vh - 40px)" : "100vh";
+  iframe.style.height = hasTopbar ? "calc(100dvh - 56px)" : "100dvh";
   iframe.style.width = "100%";
 }
 

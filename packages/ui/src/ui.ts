@@ -786,7 +786,8 @@ export function showLanding(): void {
 
   input.addEventListener("input", clearNavError);
 
-  input.focus();
+  // Not focused on load: that hijacks screen reader order and pops the mobile
+  // keyboard over the recents before anything has been read.
 
   // Move the auth and theme buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");

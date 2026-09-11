@@ -116,7 +116,7 @@
   display: grid;
   grid-template-rows: 5px 32px auto 1fr;
   height: 360px;
-  max-height: 80vh;
+  max-height: 80dvh;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
 }
 #truapi-debug-panel.hidden {
@@ -614,6 +614,11 @@
 }
 .td-detail-explanation[open] > summary::before {
   transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-detail-explanation > summary::before {
+    transition: none;
+  }
 }
 .td-detail-explanation > summary:hover {
   color: #99f6e4;

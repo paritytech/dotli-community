@@ -360,6 +360,7 @@
             (function(){
                 var petals = document.querySelectorAll('.loading-petal');
                 if (!petals.length) return;
+                if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
                 var count = petals.length;
                 var cycle = 1400;
                 var start = null;

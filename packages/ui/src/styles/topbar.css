@@ -463,6 +463,12 @@
   transform: translateY(0);
   transition-delay: 0.2s;
 }
+@media (prefers-reduced-motion: reduce) {
+  .verification-tooltip {
+    transform: none;
+    transition: none;
+  }
+}
 .verification-tooltip-title {
   font-size: 0.68rem;
   display: block;
@@ -1023,6 +1029,11 @@
 .permissions-popover-toggle.on .permissions-toggle-knob {
   transform: translateX(12px);
   background: #0a0a0a;
+}
+@media (prefers-reduced-motion: reduce) {
+  .permissions-toggle-knob {
+    transition: none;
+  }
 }
 .mode-clear-btn {
   width: 100%;
@@ -1614,6 +1625,12 @@
 @keyframes chat-btn-pulse {
   50% {
     opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-custom-btn-loading {
+    animation: none;
+    opacity: 0.6;
   }
 }
 .chat-custom-btn-primary {

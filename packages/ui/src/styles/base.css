@@ -136,6 +136,11 @@ body {
     transform: translateX(100%);
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .loading-progress-fill {
+    transition: none;
+  }
+}
 .loading-progress-pct {
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
   font-size: 11px;
@@ -266,6 +271,11 @@ body {
 }
 .error-page-retry:active {
   transform: translateY(1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .error-page-retry {
+    transition: none;
+  }
 }
 .error-page-retry-icon {
   display: inline-flex;
