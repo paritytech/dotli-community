@@ -41,7 +41,7 @@ import {
   createChainBrokerManager,
   requireBrokerLocalProvider,
 } from "@dotli/protocol/broker";
-import { serializeError } from "@dotli/shared/errors";
+import { errorName, serializeError } from "@dotli/shared/errors";
 import { isExecutableKind } from "@dotli/shared/executables";
 import { PROTOCOL_APP_ERRORS } from "./errors";
 
@@ -54,10 +54,11 @@ import {
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
 } from "@dotli/protocol/auth-storage";
-import type {
-  ProtocolRequestEnvelope,
-  ProtocolRequestMap,
-  ProtocolEnvelope,
+import {
+  getRequestSyncTimeoutMs,
+  type ProtocolRequestEnvelope,
+  type ProtocolRequestMap,
+  type ProtocolEnvelope,
 } from "@dotli/protocol/messages";
 
 export interface SWRelayRequest {
@@ -260,8 +261,7 @@ function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
     // cause (a structured-clone failure on an un-transferable payload,
     // for example) is a real bug and we want it visible instead of
     // silently removing an otherwise-healthy port.
-    const name =
-      err instanceof Error && typeof err.name === "string" ? err.name : "";
+    const name = errorName(err) ?? "";
     if (name === "InvalidStateError") {
       swLog("Port closed, cleaning up");
       removePort(port);
@@ -317,6 +317,8 @@ async function handleRequest(
     );
   }
 
+  const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+
   switch (request.method) {
     case "warmup": {
       // Pre-sync already started smoldot, the relay chain, and periodic
@@ -337,13 +339,16 @@ async function handleRequest(
     case "resolveDotName": {
       const payload = request.payload as ProtocolRequestMap["resolveDotName"];
       assertString(payload.label, "label");
-      const result = await resolveDotName(payload.label, (message) => {
-        sendToPort(port, {
-          namespace: "dotli:protocol",
-          kind: "progress",
-          id: request.id,
-          message,
-        });
+      const result = await resolveDotName(payload.label, {
+        onStatus: (message) => {
+          sendToPort(port, {
+            namespace: "dotli:protocol",
+            kind: "progress",
+            id: request.id,
+            message,
+          });
+        },
+        syncTimeoutMs,
       });
       swLog(
         `Resolved "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
@@ -361,7 +366,7 @@ async function handleRequest(
     case "resolveOwner": {
       const payload = request.payload as ProtocolRequestMap["resolveOwner"];
       assertString(payload.label, "label");
-      const result = await resolveOwner(payload.label);
+      const result = await resolveOwner(payload.label, { syncTimeoutMs });
       swLog(
         `Owner "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
       );
@@ -389,6 +394,7 @@ async function handleRequest(
       const result = await resolveExecutableManifest(
         payload.label,
         payload.kind,
+        { syncTimeoutMs },
       );
       sendToPort(port, {
         namespace: "dotli:protocol",
@@ -404,7 +410,9 @@ async function handleRequest(
       const payload =
         request.payload as ProtocolRequestMap["resolveRootManifest"];
       assertString(payload.label, "label");
-      const result = await resolveRootManifest(payload.label);
+      const result = await resolveRootManifest(payload.label, {
+        syncTimeoutMs,
+      });
       sendToPort(port, {
         namespace: "dotli:protocol",
         kind: "response",
@@ -576,6 +584,7 @@ self.addEventListener("connect", (event) => {
         id: envelope.id,
         ok: false,
         error: msg,
+        errorName: errorName(error),
       });
     });
   });

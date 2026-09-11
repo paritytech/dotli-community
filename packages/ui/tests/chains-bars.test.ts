@@ -23,6 +23,7 @@ function installDom(): void {
       <div id="auth-modal-qr"></div>
       <div id="auth-modal-reason"></div>
       <div id="auth-modal-hint"></div>
+      <a id="auth-modal-get-app" hidden></a>
       <button id="auth-modal-close"></button>
     </div>
     <div id="user-popover">

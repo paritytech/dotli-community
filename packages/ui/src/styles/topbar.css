@@ -365,6 +365,9 @@
   border-color: transparent;
   color: rgba(255, 255, 255, 0.65);
 }
+.topbar-btn[aria-busy="true"] {
+  cursor: progress;
+}
 .topbar-btn:active {
   background: rgba(255, 255, 255, 0.11);
 }

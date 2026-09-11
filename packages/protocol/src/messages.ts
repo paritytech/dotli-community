@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ChainKey, ChainSyncKind } from "@dotli/resolver/chain-sync";
+// Leaf import: the `config` barrel reads `self.location` at module load.
+import { TIMEOUTS } from "@dotli/config/timeouts";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -33,6 +35,38 @@ export interface ProtocolRequestEnvelope<
   id: string;
   method: M;
   payload: ProtocolRequestMap[M];
+  /**
+   * Absolute wall-clock deadline for this request. Protocol handlers use the
+   * same deadline as the caller so an operation-specific error can cross the
+   * iframe boundary before the generic request timer wins.
+   */
+  deadlineMs?: number;
+}
+
+/**
+ * Convert an untrusted request deadline into the resolver's remaining sync
+ * budget. The grace period lets the typed resolver error cross postMessage
+ * before the caller's generic request timeout fires.
+ *
+ * This is the only place the deadline is validated and normalized. Consumers
+ * receive a finite, positive number or `undefined`, so they branch on presence
+ * alone.
+ */
+export function getRequestSyncTimeoutMs(
+  request: ProtocolRequestEnvelope,
+): number | undefined {
+  if (
+    typeof request.deadlineMs !== "number" ||
+    !Number.isFinite(request.deadlineMs)
+  ) {
+    return undefined;
+  }
+  return Math.max(
+    1,
+    Math.floor(
+      request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
+    ),
+  );
 }
 
 export interface ProtocolProgressEnvelope {
@@ -55,7 +89,15 @@ export interface ProtocolErrorEnvelope {
   kind: "response";
   id: string;
   ok: false;
+  /** Human-readable description of the failure, from `serializeError`. */
   error: string;
+  /**
+   * Class name of what the sender threw, such as `NetworkSyncTimeoutError`.
+   *
+   * Lets the receiver branch on the failure kind instead of matching
+   * substrings in `error`. Absent when the sender threw a non-`Error` value.
+   */
+  errorName?: string;
 }
 
 export interface ProtocolChainMessageEnvelope {

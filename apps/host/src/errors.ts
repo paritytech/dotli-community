@@ -5,6 +5,12 @@ import {
   ProtocolFatalError,
   ProtocolInitFailedError,
 } from "@dotli/protocol/errors";
+import type { ResolverErrorName } from "@dotli/resolver/errors";
+
+// Annotated, not inferred: renaming the resolver's error class has to fail
+// here at compile time. `instanceof` is unavailable because the error arrived
+// over postMessage, so only the name survives.
+const NETWORK_SYNC_TIMEOUT: ResolverErrorName = "NetworkSyncTimeoutError";
 
 export const HOST_ERRORS = {
   FATAL_PANIC: "The light client (smoldot) crashed unexpectedly.",
@@ -12,7 +18,7 @@ export const HOST_ERRORS = {
   SW_SYNC_TIMEOUT:
     "The light client couldn't sync in time on the shared worker.",
   SW_TIMED_OUT: "The light client timed out during startup.",
-  AH_SYNC_TIMEOUT:
+  HUB_SYNC_TIMEOUT:
     "Light client timed out syncing to Asset Hub - no connection with peers.",
   LIGHT_CLIENT_TIMEOUT: "Light client timed out - no connection with peers.",
   RPC_TIMEOUT: "The RPC endpoint didn't respond in time.",
@@ -88,8 +94,16 @@ export function describeError(err: unknown, isP2p: boolean): ErrorDescription {
       recovery: "switch-backend",
     };
   }
-  if (msg.includes("Asset Hub") && msg.includes("timed out")) {
-    return { message: HOST_ERRORS.AH_SYNC_TIMEOUT, recovery: "switch-backend" };
+  if (
+    err instanceof Error &&
+    err.name === NETWORK_SYNC_TIMEOUT &&
+    isP2p &&
+    msg.includes("Asset Hub")
+  ) {
+    return {
+      message: HOST_ERRORS.HUB_SYNC_TIMEOUT,
+      recovery: "switch-backend",
+    };
   }
   if (err instanceof ProtocolInitFailedError) {
     return {

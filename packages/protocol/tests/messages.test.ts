@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
@@ -12,6 +12,7 @@ import {
   ENVELOPE_CHAIN_KEYS,
   ENVELOPE_SYNC_KINDS,
   isChainSyncPayloadValid,
+  getRequestSyncTimeoutMs,
   isProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolResponseEnvelope,
@@ -132,6 +133,60 @@ describe("isProtocolEnvelope", () => {
 
   it("returns false for missing namespace", () => {
     expect(isProtocolEnvelope({ kind: "request" })).toBe(false);
+  });
+});
+
+describe("getRequestSyncTimeoutMs", () => {
+  // Not inside a test body: a failing assertion would leak the mock onward.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const requestWithDeadline = (
+    deadlineMs?: number,
+  ): ProtocolRequestEnvelope => ({
+    namespace: "dotli:protocol",
+    kind: "request",
+    id: "test-deadline",
+    method: "resolveDotName",
+    payload: { label: "chinpokomon" },
+    deadlineMs,
+  });
+
+  it("reserves response-delivery time inside the caller's deadline", () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+
+    // When
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(100_000));
+
+    // Then
+    expect(budget).toBe(89_000);
+  });
+
+  it("As a handler reading an already-expired deadline, my budget stays positive", () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(100_000);
+
+    // When
+    const budget = getRequestSyncTimeoutMs(requestWithDeadline(10_000));
+
+    // Then
+    expect(budget).toBe(1);
+  });
+
+  it("ignores missing or non-finite deadlines", () => {
+    const request: ProtocolRequestEnvelope = {
+      namespace: "dotli:protocol",
+      kind: "request",
+      id: "test-no-deadline",
+      method: "warmup",
+      payload: {},
+    };
+
+    expect(getRequestSyncTimeoutMs(request)).toBeUndefined();
+    request.deadlineMs = Number.POSITIVE_INFINITY;
+    expect(getRequestSyncTimeoutMs(request)).toBeUndefined();
   });
 });
 
