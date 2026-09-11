@@ -682,11 +682,10 @@ async function initDirectMode(): Promise<void> {
   const [
     { createChainProvider, isChainSupported, onProviderFatal, observeChain },
     resolve,
-  ] =
-    await Promise.all([
-      import("@dotli/resolver/provider"),
-      import("@dotli/resolver/resolve"),
-    ]);
+  ] = await Promise.all([
+    import("@dotli/resolver/provider"),
+    import("@dotli/resolver/resolve"),
+  ]);
   const {
     resolveDotName,
     resolveExecutableManifest,
