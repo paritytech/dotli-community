@@ -154,3 +154,80 @@ describe("validateSandboxParams: v3 cid contract", () => {
     if (!result.ok) expect(result.recoverable).toBe(true);
   });
 });
+
+describe("validateSandboxParams: resolution id", () => {
+  it("As the sandbox, I read the resolution id the host threaded through", () => {
+    // Given a contract carrying the host's correlation id.
+    const params = search({
+      [SANDBOX_CONTRACT_PARAMS.resolutionId]:
+        "f1e2d3c4-b5a6-4778-8899-aabbccddeeff",
+    });
+
+    // When the sandbox validates it.
+    const result = validateSandboxParams(params);
+
+    // Then the id reaches the caller so it can tag its own telemetry.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.resolutionId).toBe(
+        "f1e2d3c4-b5a6-4778-8899-aabbccddeeff",
+      );
+    }
+  });
+
+  it("As the sandbox, I boot normally for a host build that sends no resolution id", () => {
+    // Given a contract from a host that predates the correlation id.
+    const params = search();
+
+    // When the sandbox validates it.
+    const result = validateSandboxParams(params);
+
+    // Then the boot succeeds and the id is simply absent. A trace id must
+    // never be the reason a product fails to load.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.resolutionId).toBeNull();
+    }
+  });
+
+  it("As the sandbox, I drop a malformed resolution id rather than refuse to boot", () => {
+    // Given an id carrying characters the contract does not accept.
+    const params = search({
+      [SANDBOX_CONTRACT_PARAMS.resolutionId]: "../../etc/passwd",
+    });
+
+    // When the sandbox validates it.
+    const result = validateSandboxParams(params);
+
+    // Then the contract still validates, untagged.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.resolutionId).toBeNull();
+    }
+  });
+
+  it("As the sandbox, I drop an over-long resolution id", () => {
+    // Given an id past the length the contract bounds it to.
+    const params = search({
+      [SANDBOX_CONTRACT_PARAMS.resolutionId]: "a".repeat(65),
+    });
+
+    // When the sandbox validates it.
+    const result = validateSandboxParams(params);
+
+    // Then it is ignored rather than carried into telemetry.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.resolutionId).toBeNull();
+    }
+  });
+
+  it("As a dApp, the resolution id is stripped from my URL with the rest of the contract", () => {
+    // Given the strip iterates the contract param map.
+    const keys = Object.values(SANDBOX_CONTRACT_PARAMS);
+
+    // Then the id is in that map, so `stripContractParamsFromUrl` removes it
+    // and it never leaks into the product's own `location.search`.
+    expect(keys).toContain(SANDBOX_CONTRACT_PARAMS.resolutionId);
+  });
+});

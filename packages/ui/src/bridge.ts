@@ -28,7 +28,7 @@ import {
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork, withActiveTld } from "@dotli/config/network";
-import { m } from "@dotli/metrics/metrics";
+import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
@@ -1145,6 +1145,13 @@ export async function renderAppSubdomain(
   }
   if (fullReset) {
     parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
+  }
+  const resolutionId = getResolutionId();
+  if (resolutionId !== null) {
+    parsedUrl.searchParams.set(
+      SANDBOX_CONTRACT_PARAMS.resolutionId,
+      resolutionId,
+    );
   }
   const url = parsedUrl.toString();
 

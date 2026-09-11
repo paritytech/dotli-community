@@ -54,7 +54,7 @@ import { SANDBOX_ERRORS } from "./errors";
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
 
-import { m } from "@dotli/metrics/metrics";
+import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 
 const T0 = performance.now();
@@ -619,7 +619,13 @@ async function main(): Promise<void> {
     stopApp();
     return;
   }
-  const { cid, chainBackend, network, skipArchiveCache } = parsed.params;
+  const { cid, chainBackend, network, skipArchiveCache, resolutionId } =
+    parsed.params;
+  // Before the setDefaults below, so a failure between here and there is still
+  // attributable to the page load that caused it.
+  if (resolutionId !== null) {
+    setResolutionId(resolutionId);
+  }
   const isGateway = chainBackend === "rpc-gateway";
 
   setNetworkOverride(network);
@@ -670,6 +676,7 @@ async function main(): Promise<void> {
     ? null
     : await getCachedArchive(cid, cid, chainBackend);
   if (cachedFiles) {
+    m.count(S.CACHE_HIT, { surface: "sw_archive" });
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
 
     // Extract index.html and write it directly into this window so it
@@ -705,6 +712,7 @@ async function main(): Promise<void> {
 
   let result: FetchResult;
 
+  m.count(S.CACHE_MISS, { surface: "sw_archive" });
   if (isGateway) {
     // rpc-gateway mode: HTTPS fetch from a trusted IPFS gateway.
     log.warn(

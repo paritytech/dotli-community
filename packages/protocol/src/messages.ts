@@ -1,7 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainKey, ChainSyncKind } from "@dotli/resolver/chain-sync";
+import type {
+  ChainKey,
+  ChainPeer,
+  ChainSyncKind,
+} from "@dotli/resolver/chain-sync";
 // Leaf import: the `config` barrel reads `self.location` at module load.
 import { TIMEOUTS } from "@dotli/config/timeouts";
 
@@ -165,6 +169,20 @@ export interface ProtocolChainSyncEnvelope {
 }
 
 /**
+ * Per-chain facts recorded once, for telemetry rather than for the screen.
+ *
+ * Kept apart from `chain-sync` because nothing in the loading UI reacts to
+ * these; folding them in would make every UI subscriber filter them out.
+ */
+export interface ProtocolChainDetailEnvelope {
+  namespace: "dotli:protocol";
+  kind: "chain-detail";
+  chain: ChainKey;
+  dbCache?: "hit" | "miss";
+  peers?: ChainPeer[];
+}
+
+/**
  * Running total of bytes the light client has pulled off the network.
  *
  * Cumulative rather than a rate, so a dropped message costs nothing and the
@@ -200,6 +218,7 @@ export type ProtocolEnvelope =
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
   | ProtocolChainSyncEnvelope
+  | ProtocolChainDetailEnvelope
   | ProtocolNetBytesEnvelope
   | ProtocolAuthStorageChangedEnvelope;
 
@@ -213,6 +232,7 @@ const VALID_KINDS = new Set([
   "fatal",
   "init-failed",
   "chain-sync",
+  "chain-detail",
   "net-bytes",
   "auth-storage-changed",
 ]);
@@ -250,6 +270,11 @@ export const ENVELOPE_SYNC_KINDS = Object.keys({
 } satisfies Record<ChainSyncKind, true>) as ChainSyncKind[];
 
 const CHAIN_KEY_VALUES = new Set<string>(ENVELOPE_CHAIN_KEYS);
+
+// Typed wider than the union on purpose. This validates a postMessage payload,
+// where the declared type is a claim the sender makes rather than a fact, so a
+// narrowing comparison would be compiled away as dead.
+const CACHE_RESULT_VALUES = new Set<string>(["hit", "miss"]);
 const SYNC_KIND_VALUES = new Set<string>(ENVELOPE_SYNC_KINDS);
 
 /**
@@ -279,6 +304,39 @@ export function isChainSyncPayloadValid(
     }
   }
   return true;
+}
+
+// Peer ids and roles land in telemetry attributes, so a spoofed frame could
+// otherwise write unbounded junk into every span this page emits.
+const MAX_PEER_ID_LENGTH = 128;
+const MAX_PEERS = 50;
+
+/** Whether a `chain-detail` envelope carries values worth recording. */
+export function isChainDetailPayloadValid(
+  msg: ProtocolChainDetailEnvelope,
+): boolean {
+  if (!CHAIN_KEY_VALUES.has(msg.chain)) {
+    return false;
+  }
+  if (msg.dbCache !== undefined && !CACHE_RESULT_VALUES.has(msg.dbCache)) {
+    return false;
+  }
+  if (msg.peers === undefined) {
+    return true;
+  }
+  if (!Array.isArray(msg.peers) || msg.peers.length > MAX_PEERS) {
+    return false;
+  }
+  return msg.peers.every(
+    (peer) =>
+      typeof peer.peerId === "string" &&
+      peer.peerId.length > 0 &&
+      peer.peerId.length <= MAX_PEER_ID_LENGTH &&
+      typeof peer.roles === "string" &&
+      peer.roles.length <= MAX_PEER_ID_LENGTH &&
+      Number.isFinite(peer.bestNumber) &&
+      peer.bestNumber >= 0,
+  );
 }
 
 export function isProtocolEnvelope(value: unknown): value is ProtocolEnvelope {

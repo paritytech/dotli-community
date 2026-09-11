@@ -87,6 +87,85 @@ export interface ChainSyncEvent {
   finalized?: number;
 }
 
+/**
+ * One peer of one chain, as `system_peers` reports it.
+ *
+ * `peerId` is shipped as-is. These are the public libp2p identities of
+ * infrastructure nodes, published in chain specs and visible to anyone on the
+ * network: they identify a remote server, never the person browsing.
+ */
+export interface ChainPeer {
+  peerId: string;
+  roles: string;
+  bestNumber: number;
+}
+
+/**
+ * Facts about a chain that are worth recording once rather than watching.
+ *
+ * Separate from `ChainSyncEvent` because nothing on the loading screen reacts
+ * to these: they exist for telemetry, and a UI subscriber should not have to
+ * filter them out of the stream it does react to.
+ */
+export interface ChainDetail {
+  chain: ChainKey;
+  /** Whether the light client resumed this chain from its stored database. */
+  dbCache?: "hit" | "miss";
+  /** Peers held at the moment the chain reported ready. */
+  peers?: ChainPeer[];
+}
+
+type DetailCallback = (detail: ChainDetail) => void;
+const detailListeners = new Set<DetailCallback>();
+const detailHistory: ChainDetail[] = [];
+
+/**
+ * Subscribe to per-chain telemetry facts.
+ *
+ * Replays what has already been reported, because the database result is known
+ * during `connect` and a subscriber that attaches after the first chain is up
+ * would otherwise never learn it.
+ */
+export function onChainDetail(cb: DetailCallback): () => void {
+  detailListeners.add(cb);
+  for (const detail of detailHistory) {
+    try {
+      cb(detail);
+      // eslint-disable-next-line no-restricted-syntax -- defensive replay: one buggy late subscriber must not block registration.
+    } catch {
+      /* listener threw during replay */
+    }
+  }
+  return () => {
+    detailListeners.delete(cb);
+  };
+}
+
+function emitChainDetail(detail: ChainDetail): void {
+  detailHistory.push(detail);
+  for (const cb of detailListeners) {
+    try {
+      cb(detail);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast.
+    } catch {
+      /* listener threw */
+    }
+  }
+}
+
+/**
+ * Record whether a chain started from its stored database or from the
+ * chain-spec checkpoint. Called by `./provider` during connect, which is the
+ * only place the answer exists.
+ */
+export function reportDbCache(genesisHash: string, warm: boolean): void {
+  const chain = chainKeyForGenesis(genesisHash);
+  if (chain === null) {
+    return;
+  }
+  emitChainDetail({ chain, dbCache: warm ? "hit" : "miss" });
+}
+
 type SyncCallback = (event: ChainSyncEvent) => void;
 const syncListeners = new Set<SyncCallback>();
 // Latest event per chain and kind, insertion-ordered. Bounded, so late
@@ -171,6 +250,13 @@ export function enableSyncReporting(config: SyncReportingConfig): void {
 // recognize and consume the responses before they reach polkadot-api.
 const FOLLOW_ID_PREFIX = "__dotli_lifecycle_follow__:";
 const HEALTH_ID_PREFIX = "__dotli_health__:";
+const PEERS_ID_PREFIX = "__dotli_peers__:";
+
+// A peer list is a forensic snapshot, not a readout: it answers "who was this
+// chain talking to, and were they themselves caught up" after the fact. Asked
+// once, when the chain reports ready, because that is the moment the answer
+// explains the time the bootstrap took.
+const MAX_PEERS_RECORDED = 25;
 
 // Bootstrap is the impatient phase: the loading screen is on screen and a
 // second-old peer count is already stale. Once the chain is up the count only
@@ -365,6 +451,7 @@ export function attachChainSync(
         emitChainSync({ chain, kind: "connecting" });
       } else if (phase === "ready") {
         emitChainSync({ chain, kind: "bootstrapComplete" });
+        requestPeers();
       }
       lastPhase = phase;
     }
@@ -410,6 +497,60 @@ export function attachChainSync(
       }
       lastHealth = healthKey ?? null;
     }
+  };
+
+  // Guarded rather than relying on the ready transition firing once: `ready` is
+  // not terminal, so a chain that warps again returns to it later.
+  let peersRequested = false;
+  const requestPeers = (): void => {
+    if (peersRequested || stopped) {
+      return;
+    }
+    peersRequested = true;
+    try {
+      send(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: `${PEERS_ID_PREFIX}${chain}`,
+          method: "system_peers",
+          params: [],
+        }),
+      );
+    } catch (err: unknown) {
+      // The peer list is telemetry, not a step the load depends on, and the
+      // only way this throws is a connection that has already gone. Louder
+      // handling would report a failure the visitor never experienced.
+      log.debug(
+        `[dot.li chain-sync] peer list unavailable for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  const handlePeersResponse = (result: unknown): void => {
+    if (!Array.isArray(result)) {
+      return;
+    }
+    const peers: ChainPeer[] = [];
+    for (const entry of result.slice(0, MAX_PEERS_RECORDED)) {
+      const peer = entry as {
+        peerId?: unknown;
+        roles?: unknown;
+        bestNumber?: unknown;
+      };
+      if (typeof peer.peerId !== "string") {
+        continue;
+      }
+      peers.push({
+        peerId: peer.peerId,
+        roles: typeof peer.roles === "string" ? peer.roles : "UNKNOWN",
+        bestNumber:
+          typeof peer.bestNumber === "number" &&
+          Number.isFinite(peer.bestNumber)
+            ? peer.bestNumber
+            : 0,
+      });
+    }
+    emitChainDetail({ chain, peers });
   };
 
   const handleHealthResponse = (result: unknown): void => {
@@ -461,6 +602,10 @@ export function attachChainSync(
       }
       if (parsed.id.startsWith(HEALTH_ID_PREFIX)) {
         handleHealthResponse(parsed.result);
+        return true;
+      }
+      if (parsed.id.startsWith(PEERS_ID_PREFIX)) {
+        handlePeersResponse(parsed.result);
         return true;
       }
       return false;

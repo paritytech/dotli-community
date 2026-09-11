@@ -30,6 +30,7 @@ import { createSmoldotDb } from "./smoldot-db";
 import {
   attachChainSync,
   chainKeyForGenesis,
+  reportDbCache,
   type ChainSyncTap,
 } from "./chain-sync";
 
@@ -190,10 +191,15 @@ async function resumeFromStore(
   key: string,
 ): Promise<void> {
   try {
-    if (await handle.loadDatabase(key)) {
+    const warm = await handle.loadDatabase(key);
+    reportDbCache(key, warm);
+    if (warm) {
       log.debug(`[dot.li provider] resuming ${key} from stored state`);
     }
   } catch (error) {
+    // A store that threw left the chain on the chain-spec checkpoint, which is
+    // the same starting position as a miss and is what the timings will show.
+    reportDbCache(key, false);
     // Never block the connection on the store. Syncing from the chain-spec
     // checkpoint is slower but correct.
     log.warn(`[dot.li provider] warm start unavailable for ${key}:`, error);

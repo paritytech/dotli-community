@@ -25,11 +25,13 @@ import {
 } from "@dotli/config/network";
 import { getBackend, type Backend } from "@dotli/config/mode";
 import { log } from "@dotli/shared/log";
-import { m } from "@dotli/metrics/metrics";
+import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import {
+  isChainDetailPayloadValid,
   isChainSyncPayloadValid,
   isProtocolEnvelope,
+  type ProtocolChainDetailEnvelope,
   type ProtocolChainSyncEnvelope,
   type ProtocolNetBytesEnvelope,
   type ProtocolRequestEnvelope,
@@ -79,6 +81,9 @@ const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
+const chainDetailListeners = new Set<
+  (event: ProtocolChainDetailEnvelope) => void
+>();
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -261,6 +266,13 @@ function bindMessageListener(): void {
         broadcast(chainSyncListeners, msg, "Chain sync");
         return;
       }
+      case "chain-detail": {
+        if (!isChainDetailPayloadValid(msg)) {
+          return;
+        }
+        broadcast(chainDetailListeners, msg, "Chain detail");
+        return;
+      }
       case "net-bytes": {
         // Cumulative and monotonic by construction, so anything else is
         // spoofed traffic rather than a stale message.
@@ -380,6 +392,13 @@ function createHostIframe(): Promise<void> {
     params.set("network", getNetwork());
     if (protocolSkipWorkerCache) {
       params.set("skipWorkerCache", "1");
+    }
+    // Carried on the URL rather than posted after load: the iframe boots its
+    // own Sentry client and starts emitting before any handshake completes, so
+    // an id that arrived by message would miss that first window.
+    const resolutionId = getResolutionId();
+    if (resolutionId !== null) {
+      params.set("resolutionId", resolutionId);
     }
     const query = params.toString();
     iframe.src =
@@ -728,6 +747,17 @@ export function onProtocolChainSync(
   chainSyncListeners.add(listener);
   return () => {
     chainSyncListeners.delete(listener);
+  };
+}
+
+/** Subscribe to per-chain telemetry facts from the light client. */
+export function onProtocolChainDetail(
+  listener: (event: ProtocolChainDetailEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  chainDetailListeners.add(listener);
+  return () => {
+    chainDetailListeners.delete(listener);
   };
 }
 

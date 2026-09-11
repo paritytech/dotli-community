@@ -110,8 +110,26 @@ import { PROTOCOL_APP_ERRORS } from "./errors";
 initSentry("host");
 installGlobalErrorHandlers("host");
 
-import { m } from "@dotli/metrics/metrics";
+import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+
+// Adopted at module scope, not inside init(): an auth-only iframe and every
+// invalid-mode path return before init() gets far, and those boots still
+// belong to the resolution that opened them.
+adoptResolutionId();
+
+/** Take the correlation id the host shell put on this iframe's URL. */
+function adoptResolutionId(): void {
+  try {
+    const id = new URLSearchParams(window.location.search).get("resolutionId");
+    if (id !== null && id !== "") {
+      setResolutionId(id);
+    }
+    // eslint-disable-next-line no-restricted-syntax -- telemetry correlation is never a reason to fail a boot; an untagged iframe is the acceptable outcome.
+  } catch {
+    /* URL unparseable, carry on untagged */
+  }
+}
 
 function clearLegacySharedAuthSession(): void {
   try {
@@ -770,6 +788,18 @@ async function initDirectMode(): Promise<void> {
         syncKind: kind,
         ...rest,
       },
+      "*",
+    );
+  });
+
+  // Telemetry-only facts, forwarded on the same window as the sync stream so
+  // the host can hang them off the resolution it is already tracing.
+  resolve.onChainDetail((detail) => {
+    if (window.parent === window) {
+      return;
+    }
+    window.parent.postMessage(
+      { namespace: "dotli:protocol", kind: "chain-detail", ...detail },
       "*",
     );
   });

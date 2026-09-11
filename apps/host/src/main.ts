@@ -42,6 +42,7 @@ import {
 import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
 import { chainRoleForKey } from "@dotli/ui/chain-roles";
+import { startResolutionTrace } from "./resolution-trace";
 import {
   recordChainPhase,
   recordPeerCount,
@@ -70,6 +71,7 @@ import {
 } from "@dotli/ui/bulletin-bitswap";
 import {
   ensureProtocolFrame,
+  onProtocolChainDetail,
   onProtocolChainSync,
   onProtocolNetBytes,
   resetProtocolFrame,
@@ -189,7 +191,7 @@ if (!isMobileDevice()) {
 initSentry("host");
 installGlobalErrorHandlers("host");
 
-import { m } from "@dotli/metrics/metrics";
+import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 
 // Track WASM module load times via resource timing
@@ -853,6 +855,12 @@ async function main(): Promise<void> {
       ? crypto.randomUUID()
       : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 
+  // The same id Sentry groups a resolution by, so the debug panel's swimlane
+  // and the trace of the same page load can be lined up against each other.
+  // Minting a second uuid for the identical concept would only invite the two
+  // to drift and force every query to join on both.
+  setResolutionId(bootFlowId);
+
   // Main-thread monitor. Polls at 50ms, and any delta > 200ms means the
   // event loop was blocked for `durationMs - 50ms`. Heartbeats land
   // every 2 seconds so the system swimlane shows "host still alive"
@@ -1223,6 +1231,36 @@ async function main(): Promise<void> {
   setLoadingDomain(label);
   advancePhase(0);
 
+  // Opened before any resolution work so the trace covers the whole load, and
+  // subscribed outside the backend gate: the gateway path produces no chain
+  // events at all, and a trace showing that is the point rather than a gap.
+  const trace = startResolutionTrace({
+    domain: withActiveTld(label),
+    network: getNetwork(),
+    backend: chainBackend,
+  });
+  // A load the visitor walks away from is the interesting one: today a slow
+  // link can sit on the loading screen indefinitely without ever reaching an
+  // error page, so without this the trace is simply never sent and the failure
+  // is invisible. `pagehide` fires on navigation away and on tab close, where
+  // `unload` does not fire reliably on mobile Safari.
+  window.addEventListener("pagehide", () => {
+    trace.finish("abandoned");
+  });
+
+  onProtocolChainSync((event) => {
+    trace.chainSync(event);
+  });
+  onProtocolChainDetail((event) => {
+    trace.chainDetail(event);
+  });
+  onProtocolNetBytes(({ received }) => {
+    trace.bytes(received);
+  });
+  onContentProgress(({ bytesFetched, totalBytes }) => {
+    trace.content(bytesFetched, totalBytes);
+  });
+
   // Advance the loading bar from smoldot's typed lifecycle stream instead of
   // scraping log prose. `firstPeer` on the Asset Hub means a peer was
   // discovered, so the sync band can start crawling. `bootstrapComplete`
@@ -1490,6 +1528,7 @@ async function main(): Promise<void> {
       timestamp: Date.now(),
       payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
     });
+    trace.cidCache(cachedCid !== null ? "hit" : "miss");
     if (cachedCid !== null) {
       m.count(S.CACHE_HIT);
       log.warn(
@@ -1523,6 +1562,8 @@ async function main(): Promise<void> {
           path: "fast",
         },
       });
+      trace.nameResolved(cachedCid);
+      trace.finish("rendered");
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cachedCid, chainBackend);
@@ -1642,11 +1683,14 @@ async function main(): Promise<void> {
       `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${chainBackend} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? "null"}`,
     );
 
+    trace.nameResolved(cid);
+
     if (cid === null) {
       // No pruning here: a name with no contenthash on the *selected* network
       // still resolves on another, so dropping its pill would lose good
       // entries on a network switch. The pill's remove button is the cleanup.
       showNoContentError(label);
+      trace.finish("error", "no contenthash");
       performance.mark("dotli:main:end");
       return;
     }
@@ -1674,6 +1718,7 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
+    trace.finish("rendered");
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
@@ -1688,6 +1733,7 @@ async function main(): Promise<void> {
       },
     });
   } catch (err) {
+    trace.finish("error", err instanceof Error ? err.message : String(err));
     performance.mark("dotli:main:end");
     // Report before rendering so monitoring always sees the root cause, even
     // if `showError()` itself throws (e.g. a DOM node is missing). The global

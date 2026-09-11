@@ -45,10 +45,13 @@ export {
   CHAIN_KEYS,
   CHAIN_SYNC_KINDS,
 } from "./chain-sync";
+export { onChainDetail } from "./chain-sync";
 export type {
   ChainSyncEvent,
   ChainSyncKind,
   ChainKey,
+  ChainDetail,
+  ChainPeer,
   SyncReportingConfig,
 } from "./chain-sync";
 
