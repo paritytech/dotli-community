@@ -1193,16 +1193,16 @@ async function main(): Promise<void> {
   const smoldotDbCacheTag = (): string =>
     cidCache === "hit" ? "n/a" : getSmoldotDbOutcome();
 
-  // The success half of the failure rate whose error half is the tagged
-  // exception in the catch below. The `pending` attempt event cannot stand in
-  // for it, because the light client only reports whether it resumed once
-  // resolution is already under way.
-  const captureResolveOk = (): void => {
+  // The non-throwing half of the failure rate whose error half is the tagged
+  // exception in the catch below. `no_content` is its own outcome rather than
+  // an error: the name resolved, it just has nothing published on this
+  // network, so folding it into either half would misstate the rate.
+  const captureResolveResult = (outcome: "ok" | "no_content"): void => {
     Sentry.captureMessage("dotli.resolve_result", {
       level: "info",
       tags: {
         surface: "host_main_resolve",
-        outcome: "ok",
+        outcome,
         cid_cache: cidCache,
         smoldot_db_cache: smoldotDbCacheTag(),
         chain_backend: chainBackend,
@@ -1254,7 +1254,7 @@ async function main(): Promise<void> {
           path: "fast",
         },
       });
-      captureResolveOk();
+      captureResolveResult("ok");
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cachedCid, chainBackend);
@@ -1388,6 +1388,7 @@ async function main(): Promise<void> {
       // still resolves on another, so dropping its pill would lose good
       // entries on a network switch. The pill's remove button is the cleanup.
       showNoContentError(label);
+      captureResolveResult("no_content");
       performance.mark("dotli:main:end");
       return;
     }
@@ -1414,7 +1415,7 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
-    captureResolveOk();
+    captureResolveResult("ok");
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
