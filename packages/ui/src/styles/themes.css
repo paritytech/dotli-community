@@ -261,31 +261,36 @@
   background: #f5f5f5;
 }
 [data-theme="light"] .error-page-title {
-  color: #111;
+  color: #202124;
 }
-[data-theme="light"] .error-page-detail {
+[data-theme="light"] .error-page-detail,
+[data-theme="light"] .error-page-tips,
+[data-theme="light"] .error-page-footnote {
   color: #666;
 }
 [data-theme="light"] .error-page-retry {
+  color: #1a1a1a;
+  background: transparent;
+  border-color: rgba(0, 0, 0, 0.24);
+}
+[data-theme="light"] .error-page-retry:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.4);
+}
+[data-theme="light"] .error-page-retry--primary {
   color: #fafafa;
   background: #1a1a1a;
   border-color: #1a1a1a;
 }
-[data-theme="light"] .error-page-retry:hover {
+[data-theme="light"] .error-page-retry--primary:hover {
   background: #000;
   border-color: #000;
 }
-[data-theme="light"] .error-page-retry + .error-page-retry {
-  color: #1a1a1a;
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.18);
-}
-[data-theme="light"] .error-page-retry + .error-page-retry:hover {
-  background: rgba(0, 0, 0, 0.07);
-  border-color: rgba(0, 0, 0, 0.32);
-}
 [data-theme="light"] .error-page-glyph {
   color: rgba(0, 0, 0, 0.22);
+}
+[data-theme="light"] .error-page-glyph--warning {
+  color: #d93025;
 }
 [data-theme="light"] .error-page-inner--unreached .error-page-detail {
   color: #555;

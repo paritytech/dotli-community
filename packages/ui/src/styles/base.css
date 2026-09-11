@@ -215,45 +215,87 @@ body {
   margin-top: 8px;
 }
 
-/* Error Page */
+/* Error Page
+   Laid out like the browser's own network-error page: a left-aligned block of
+   fixed width rather than a centred card, so the failure reads as the page
+   itself failing and not as a dialog the page is showing. Centred in the area
+   the topbar leaves behind. */
 .error-page {
+  /* `#app` is a centring flex container, so claim the full row and stretch
+     instead of collapsing to the width of the longest line. */
+  flex: 1;
+  width: 100%;
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: var(--content-height);
+  /* Uneven padding lifts the block above the exact centre, so it lands where
+     the loading screen's logo and progress bar were rather than below them. */
+  padding: 48px 24px 152px;
   font-family: system-ui, sans-serif;
 }
 .error-page-inner {
-  max-width: 480px;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
+  /* One measure for prose and buttons alike, so every right edge lines up. */
+  max-width: 520px;
+  text-align: left;
 }
 .error-page-title {
   font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   color: #fff;
-  margin-bottom: 0.75rem;
+  margin: 0 0 0.75rem;
 }
 .error-page-detail {
   color: #888;
   line-height: 1.6;
+  margin: 0;
+}
+/* Same voice as the message itself, so the suggestions read as a continuation
+   of the sentence above rather than as fine print. */
+.error-page-tips {
+  margin-top: 1.25rem;
+  font-size: 1rem;
+  color: #888;
+  line-height: 1.6;
+}
+.error-page-tips-label {
+  margin: 0;
+}
+.error-page-tips-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.4em;
+}
+.error-page-footnote {
+  margin: 1.75rem 0 0;
+  font-size: 0.9rem;
+  color: #888;
+  line-height: 1.6;
+}
+.error-page-actions {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2rem;
 }
 .error-page-retry {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: fit-content;
-  min-width: 220px;
-  margin: 1.25rem auto 0;
-  padding: 11px 20px;
+  padding: 11px 24px;
   font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   font-family: system-ui, sans-serif;
-  color: #0a0a0a;
-  background: #fafafa;
-  border: 1px solid #fafafa;
-  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.92);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
   cursor: pointer;
   transition:
     background 0.2s ease,
@@ -261,8 +303,8 @@ body {
     transform 0.15s ease;
 }
 .error-page-retry:hover {
-  background: #fff;
-  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 .error-page-retry:active {
   transform: translateY(1px);
@@ -276,33 +318,33 @@ body {
 .error-page-retry-icon svg {
   display: block;
 }
-.error-page-retry + .error-page-retry {
-  margin-top: 0.65rem;
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.18);
+/* Ordered, not placed by DOM position: the array order is the id contract
+   (`#error-retry-btn` is always the first action), so which button is the
+   recommended one is expressed here instead. */
+.error-page-retry--primary {
+  order: 1;
+  color: #0a0a0a;
+  background: #fafafa;
+  border-color: #fafafa;
 }
-.error-page-retry + .error-page-retry:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.32);
+.error-page-retry--primary:hover {
+  background: #fff;
+  border-color: #fff;
 }
 
-/* Chrome-style "site can't be reached" variant.
-   Wider canvas, leading glyph, domain rendered inline so the user
-   can scan for a typo without parsing prose. */
-.error-page-inner--unreached {
-  max-width: 560px;
-}
+/* "Site can't be reached" variant: the domain is rendered inline so the
+   user can scan for a typo without parsing prose. */
 .error-page-glyph {
   color: rgba(255, 255, 255, 0.22);
   margin-bottom: 1.5rem;
   display: flex;
-  justify-content: center;
+}
+.error-page-glyph--warning {
+  color: #d93b30;
+  margin-bottom: 1.25rem;
 }
 .error-page-inner--unreached .error-page-title {
   font-size: 1.75rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
   margin-bottom: 0.875rem;
 }
 .error-page-inner--unreached .error-page-detail {

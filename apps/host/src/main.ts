@@ -27,7 +27,9 @@ import {
 import {
   trackStatus,
   setLoadingDomain,
+  SETTINGS_GLYPH,
   showError,
+  showErrorPage,
   showNoContentError,
   showLanding,
   initPhases,
@@ -105,8 +107,14 @@ import {
 import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
 import {
   describeError,
+  forcedError,
   FAILOVER_BTN_LABELS,
-  REFRESH_BTN_LABEL,
+  GO_BACK_BTN_LABEL,
+  OPEN_SETTINGS_BTN_LABEL,
+  RELOAD_BTN_LABEL,
+  trustedProviderHost,
+  trustedProviderWarning,
+  TRY_ANYWAY_BTN_LABEL,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
 
@@ -762,6 +770,47 @@ async function applyUrlSettings(): Promise<void> {
   window.location.reload();
 }
 
+/**
+ * The last error kind the visitor was shown a recovery screen for.
+ *
+ * Unlike the `dotli:pending-reset:*` signals this one is not consumed on read:
+ * it has to outlive the reload it describes, so the second sighting of the same
+ * failure can offer a stronger remedy than the first. Per tab by design — a
+ * fresh tab is a fresh visitor as far as this is concerned.
+ */
+const ERROR_SEEN_KEY = "dotli:error-seen";
+
+function errorAlreadySeen(kind: string): boolean {
+  try {
+    return sessionStorage.getItem(ERROR_SEEN_KEY) === kind;
+  } catch {
+    // sessionStorage unavailable (Safari private mode): treat every failure as
+    // a first sighting, which keeps the gentler screen rather than escalating.
+    return false;
+  }
+}
+
+function rememberError(kind: string): void {
+  try {
+    sessionStorage.setItem(ERROR_SEEN_KEY, kind);
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode; without it every failure stays a first sighting, which is the safe default.
+  } catch {
+    /* sessionStorage unavailable: the escalation simply never triggers */
+  }
+}
+
+/**
+ * Open the topbar's Settings panel, the way the mobile "more" menu does.
+ *
+ * `stopPropagation` for the same reason that menu needs it: the document-level
+ * close-outside listener would see this button as outside the popover that just
+ * opened and close it again within the same click.
+ */
+function openSettings(event: MouseEvent): void {
+  event.stopPropagation();
+  document.getElementById("mode-button")?.click();
+}
+
 function switchBackendAndReload(nextBackend: Backend): void {
   setBackend(nextBackend);
   const search = new URLSearchParams(window.location.search);
@@ -1173,6 +1222,10 @@ async function main(): Promise<void> {
   trackStatus(`Resolving ${withActiveTld(label)}`);
 
   try {
+    const forced = forcedError(window.location.search, DEBUG);
+    if (forced !== null) {
+      throw forced;
+    }
     const cachedCid = cacheSettings.skipCidCache
       ? null
       : await getCachedCid(label);
@@ -1419,11 +1472,11 @@ async function main(): Promise<void> {
     });
     const error = describeError(err, chainBackend !== "rpc-gateway");
     if (error.recovery === "none") {
-      showError("Domain can't be reached", error.message);
+      showError(error.title, error.message, undefined, error.tips);
       return;
     }
     if (error.recovery === "reload") {
-      showError("Domain can't be reached", error.message, {
+      showError(error.title, error.message, {
         label: "Reload",
         onClick: () => {
           window.location.reload();
@@ -1435,45 +1488,101 @@ async function main(): Promise<void> {
     const nextBackend =
       chainBackend === "rpc-gateway" ? "smoldot-shared-worker" : "rpc-gateway";
     const btnLabel = FAILOVER_BTN_LABELS[nextBackend];
-    const svg = (paths: string): string =>
-      `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-    const refreshIcon = svg(
-      '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
-    );
-    const switchIcon =
-      nextBackend === "rpc-gateway"
-        ? svg('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>')
-        : svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
-    showError("Domain can't be reached", error.message, [
-      {
-        label: REFRESH_BTN_LABEL,
-        icon: refreshIcon,
-        onClick: () => {
-          window.location.reload();
+    // A provider that timed out will time out again, so switching to the light
+    // client becomes the recommendation. A light client that failed is usually
+    // a transient peer problem, so reloading stays the recommendation there.
+    const failoverIsPrimary = chainBackend === "rpc-gateway";
+    // The protocol iframe reads this on its next boot and purges its worker
+    // caches, so the reload comes up on a fresh light client instead of the
+    // one that just lost its subscription.
+    const reloadForRecovery = (): void => {
+      if (error.resetProtocol === true) {
+        try {
+          sessionStorage.setItem("dotli:pending-reset:protocol", "1");
+          // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode; the purge is best-effort while the reload below is unconditional.
+        } catch {
+          /* sessionStorage unavailable: reload without the purge */
+        }
+      }
+      window.location.reload();
+    };
+    const commitFailover = (): void => {
+      emitDotliDebugEvent({
+        layer: "failover",
+        event: "chain_backend",
+        flowId:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `fail-${String(Date.now())}`,
+        timestamp: Date.now(),
+        payload: {
+          from: chainBackend,
+          to: nextBackend,
+          reason: err instanceof Error ? err.message : "resolution failed",
         },
-      },
-      {
-        label: btnLabel,
-        icon: switchIcon,
-        onClick: () => {
-          emitDotliDebugEvent({
-            layer: "failover",
-            event: "chain_backend",
-            flowId:
-              typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? crypto.randomUUID()
-                : `fail-${String(Date.now())}`,
-            timestamp: Date.now(),
-            payload: {
-              from: chainBackend,
-              to: nextBackend,
-              reason: err instanceof Error ? err.message : "resolution failed",
-            },
-          });
-          switchBackendAndReload(nextBackend);
-        },
-      },
-    ]);
+      });
+      switchBackendAndReload(nextBackend);
+    };
+    // Dropping to a trusted provider trades away the guarantee the light
+    // client exists for, so it is the one failover the user confirms first.
+    // Going the other way (provider to light client) only adds verification.
+    // Staying put is the safe answer, so it is the one offered as primary.
+    const showFailoverWarning = (): void => {
+      showErrorPage({
+        glyph: "warning",
+        title: "Your connection won't be verified",
+        detail: trustedProviderWarning(
+          withActiveTld(label),
+          trustedProviderHost(),
+        ),
+        actions: [
+          { label: TRY_ANYWAY_BTN_LABEL, onClick: commitFailover },
+          {
+            label: GO_BACK_BTN_LABEL,
+            primary: true,
+            onClick: showResolutionError,
+          },
+        ],
+      });
+    };
+    // Offering a one-click drop to a trusted provider before the visitor has
+    // even reloaded sells the light client's guarantee too cheaply, so the
+    // first sighting points at the Settings panel that owns the choice instead.
+    // A second sighting of the same failure has earned the shortcut. Only this
+    // direction is gated: moving back toward the light client adds
+    // verification rather than removing it, so it needs no ceremony.
+    const gateFailover =
+      nextBackend === "rpc-gateway" && !errorAlreadySeen(error.kind);
+    function showResolutionError(): void {
+      rememberError(error.kind);
+      showErrorPage({
+        title: error.title,
+        detail: error.message,
+        tips: error.tips,
+        actions: [
+          {
+            label: RELOAD_BTN_LABEL,
+            primary: !failoverIsPrimary,
+            onClick: reloadForRecovery,
+          },
+          gateFailover
+            ? {
+                label: OPEN_SETTINGS_BTN_LABEL,
+                icon: SETTINGS_GLYPH,
+                onClick: openSettings,
+              }
+            : {
+                label: btnLabel,
+                primary: failoverIsPrimary,
+                onClick:
+                  nextBackend === "rpc-gateway"
+                    ? showFailoverWarning
+                    : commitFailover,
+              },
+        ],
+      });
+    }
+    showResolutionError();
   }
 }
 

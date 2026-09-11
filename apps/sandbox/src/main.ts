@@ -46,6 +46,7 @@ import {
   validateSandboxParams,
 } from "@dotli/config/host-sandbox-contract";
 import { setNetworkOverride } from "@dotli/config/network";
+import { gatewayUnreachable } from "@dotli/shared/error-copy";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
@@ -823,23 +824,27 @@ function run(): void {
         chain_backend: b ?? "unknown",
         attempt: String(runAttempts),
       });
-      const message = err instanceof Error ? err.message : String(err);
-      failLoading(
-        "Failed to load content",
-        `${message} (via ${dependency})`,
-        () => {
-          // Restore the loading UI and re-run main
-          const app = document.getElementById("app") ?? document.body;
-          app.innerHTML = `
+      const raw = err instanceof Error ? err.message : String(err);
+      // `TypeError: Failed to fetch` is all the browser says when it could not
+      // open the connection, and it is the single most common way the gateway
+      // path fails. Passed through verbatim it reads as a bug in the app, so
+      // the one case that has a plain-language equivalent gets it.
+      const message =
+        dependency === "ipfs-gateway" && raw.includes("Failed to fetch")
+          ? gatewayUnreachable()
+          : `${raw} (via ${dependency})`;
+      failLoading("Failed to load content", message, () => {
+        // Restore the loading UI and re-run main
+        const app = document.getElementById("app") ?? document.body;
+        app.innerHTML = `
         <div class="loading">
           <h1>dot.li</h1>
           <div class="spinner"></div>
           <p id="status">Retrying...</p>
         </div>
       `;
-          run();
-        },
-      );
+        run();
+      });
     })
     .finally(() => {
       runInFlight = false;
