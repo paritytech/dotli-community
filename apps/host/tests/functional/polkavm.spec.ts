@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
 import {
   archiveCar,
+  installRepeatedTruapiPortResponder,
   installTruapiPortResponder,
   type TestCar,
 } from "./helpers/polkavm";
@@ -24,6 +25,47 @@ async function polkavmCar(): Promise<TestCar> {
     ["manifest.json", manifest],
     ["app.polkavm", program],
   ]);
+}
+
+async function fileInputCar(): Promise<TestCar & { manifest: string }> {
+  const fixture = join(import.meta.dirname, "fixtures/polkavm");
+  const manifest = JSON.stringify({
+    $v: 2,
+    kind: "app",
+    appVersion: [1, 0, 0],
+    runtime: {
+      kind: "polkavm",
+      abiVersion: 1,
+      entrypoint: "app.polkavm",
+    },
+    capabilities: {
+      graphics: {
+        abiVersion: 1,
+        profile: "framebuffer",
+        requiredFeatures: [],
+      },
+      fileInput: {
+        abiVersion: 1,
+        handlers: [
+          {
+            id: "snes-rom",
+            label: "SNES cartridge image",
+            extensions: [".sfc"],
+            maxBytes: 1024,
+            mountPath: "game/cartridge.sfc",
+          },
+        ],
+      },
+    },
+  });
+  const car = await archiveCar([
+    ["manifest.json", new TextEncoder().encode(manifest)],
+    [
+      "app.polkavm",
+      new Uint8Array(await readFile(join(fixture, "framebuffer-test.polkavm"))),
+    ],
+  ]);
+  return { ...car, manifest };
 }
 
 async function webGpuFallbackCar(): Promise<TestCar & { manifest: string }> {
@@ -848,4 +890,88 @@ test("touch and wheel gestures reach the guest without scrolling the host page",
       return { overflow: body.overflow, overscroll: body.overscrollBehaviorY };
     }),
   ).toEqual({ overflow: "hidden", overscroll: "none" });
+});
+
+test("a consented file restarts the same PolkaVM iframe", async ({ page }) => {
+  test.setTimeout(120_000);
+  const fixture = await fileInputCar();
+  const port = process.env.DOTLI_TEST_PORT ?? "5173";
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+  await page.goto(`http://polkavm-file.localhost:${port}/dotli-network.js`, {
+    waitUntil: "domcontentloaded",
+  });
+  await installRepeatedTruapiPortResponder(
+    page,
+    `http://polkavm-file.app.localhost:${port}`,
+  );
+  await page.evaluate(
+    ({ cid, manifest, schemaVersion, port }) => {
+      const url = new URL(`http://polkavm-file.app.localhost:${port}/`);
+      url.searchParams.set("cid", cid);
+      url.searchParams.set("v", String(schemaVersion));
+      url.searchParams.set("chainBackend", "rpc-gateway");
+      url.searchParams.set("network", "paseo-next-v2");
+      url.searchParams.set("executableManifest", manifest);
+      const iframe = document.createElement("iframe");
+      iframe.id = "polkavm-file-product";
+      iframe.style.cssText = "width:100vw;height:100vh;border:0";
+      document.body.replaceChildren(iframe);
+      iframe.src = url.toString();
+    },
+    {
+      cid: fixture.cid,
+      manifest: fixture.manifest,
+      schemaVersion: SANDBOX_SCHEMA_VERSION,
+      port,
+    },
+  );
+
+  const product = page.frameLocator("#polkavm-file-product");
+  const canvas = product.locator("#dotli-polkavm-canvas");
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
+    .toBeGreaterThan(2);
+
+  await product.locator('input[type="file"]').setInputFiles({
+    name: "game.sfc",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.alloc(64, 0xa5),
+  });
+  const consent = product.locator(".dotli-file-consent");
+  await expect(consent).toContainText("Give this file to the app?");
+  await expect(consent).toContainText("game.sfc · 0.1 KiB");
+  await expect(consent).toContainText("SNES cartridge image");
+  await expect(product.locator("#dotli-polkavm-file-open")).toBeEnabled();
+  await consent.locator(".dotli-file-consent-approve").click();
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __dotliTestPortsIssued?: number;
+              }
+            ).__dotliTestPortsIssued,
+        ),
+      { timeout: 30_000 },
+    )
+    .toBe(2);
+  await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
+    .toBeGreaterThan(2);
+  await expect(product.locator("#dotli-polkavm-file-open")).toBeVisible();
 });

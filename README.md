@@ -123,6 +123,14 @@ grant the app iframe clipboard permission. As an interim compatibility policy, f
 WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
 free.
 
+An App may declare `capabilities.fileInput` ABI 1 with bounded handlers for
+file extensions or media types. The sandbox exposes **Open file** and drag/drop
+only after the runtime is ready, asks for explicit consent before reading the
+selected file, mounts the bytes at the handler's declared relative path, and
+restarts the guest in the same iframe. The file remains local to that product
+origin; it is not uploaded. Save storage is keyed by the mounted file digest so
+two cartridges do not share save data.
+
 While a guest text field is active, native paste shortcuts (`Cmd+V`, `Ctrl+V`,
 `Ctrl+Shift+V`, or `Shift+Insert`, where supported by the browser) deliver
 plain text through bounded text-input records. They do not also invoke the

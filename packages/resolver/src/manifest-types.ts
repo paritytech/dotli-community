@@ -19,6 +19,20 @@ export type AppVersion =
   | readonly [number, number, number]
   | readonly [number, number, number, string];
 
+export interface FileInputHandler {
+  id: string;
+  label: string;
+  extensions?: readonly string[];
+  mediaTypes?: readonly string[];
+  maxBytes: number;
+  mountPath: string;
+}
+
+export interface FileInputRequirement {
+  abiVersion: 1;
+  handlers: readonly FileInputHandler[];
+}
+
 export interface Icon {
   cid: string;
   format: IconFormat;
@@ -88,6 +102,7 @@ export interface PolkaVmAppManifestV2 {
       abiVersion: 1;
       requiredFeatures: readonly string[];
     };
+    fileInput?: FileInputRequirement;
   };
 }
 
@@ -156,16 +171,19 @@ function isAppVersion(value: unknown): value is AppVersion {
   return value.length !== 4 || isNonEmptyString(value[3]);
 }
 
-function relativeEntrypoint(value: unknown, suffix: string): boolean {
+function relativePath(value: unknown): value is string {
   return (
     isNonEmptyString(value) &&
     !value.startsWith("/") &&
     !value.includes("\\") &&
     !value
       .split("/")
-      .some((part) => part === "" || part === "." || part === "..") &&
-    value.toLowerCase().endsWith(suffix)
+      .some((part) => part === "" || part === "." || part === "..")
   );
+}
+
+function relativeEntrypoint(value: unknown, suffix: string): boolean {
+  return relativePath(value) && value.toLowerCase().endsWith(suffix);
 }
 
 function requiredFeatures(value: unknown, allowed: readonly string[]): boolean {
@@ -176,6 +194,78 @@ function requiredFeatures(value: unknown, allowed: readonly string[]): boolean {
       (feature) => typeof feature === "string" && allowed.includes(feature),
     )
   );
+}
+
+function validFileInput(
+  value: unknown,
+  programPath: string,
+): value is FileInputRequirement {
+  if (
+    !isPlainObject(value) ||
+    value.abiVersion !== 1 ||
+    !Array.isArray(value.handlers) ||
+    value.handlers.length === 0 ||
+    value.handlers.length > 16 ||
+    Object.keys(value).some((key) => !["abiVersion", "handlers"].includes(key))
+  ) {
+    return false;
+  }
+  const ids = new Set<string>();
+  const mountPaths = new Set<string>();
+  const encoder = new TextEncoder();
+  for (const rawHandler of value.handlers) {
+    const handler = isPlainObject(rawHandler) ? rawHandler : null;
+    const extensions = handler?.extensions ?? [];
+    const mediaTypes = handler?.mediaTypes ?? [];
+    if (
+      handler === null ||
+      Object.keys(handler).some(
+        (key) =>
+          ![
+            "id",
+            "label",
+            "extensions",
+            "mediaTypes",
+            "maxBytes",
+            "mountPath",
+          ].includes(key),
+      ) ||
+      typeof handler.id !== "string" ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(handler.id) ||
+      ids.has(handler.id) ||
+      typeof handler.label !== "string" ||
+      handler.label.trim() === "" ||
+      encoder.encode(handler.label).byteLength > 80 ||
+      !Array.isArray(extensions) ||
+      !Array.isArray(mediaTypes) ||
+      (extensions.length === 0 && mediaTypes.length === 0) ||
+      new Set(extensions).size !== extensions.length ||
+      extensions.some(
+        (extension) =>
+          typeof extension !== "string" ||
+          !/^\.[a-z0-9]{1,16}$/.test(extension),
+      ) ||
+      new Set(mediaTypes).size !== mediaTypes.length ||
+      mediaTypes.some(
+        (mediaType) =>
+          typeof mediaType !== "string" ||
+          mediaType.length > 127 ||
+          !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType),
+      ) ||
+      !Number.isSafeInteger(handler.maxBytes) ||
+      Number(handler.maxBytes) < 1 ||
+      Number(handler.maxBytes) > 128 * 1024 * 1024 ||
+      !relativePath(handler.mountPath) ||
+      encoder.encode(handler.mountPath).byteLength > 1_024 ||
+      handler.mountPath === programPath ||
+      mountPaths.has(handler.mountPath)
+    ) {
+      return false;
+    }
+    ids.add(handler.id);
+    mountPaths.add(handler.mountPath);
+  }
+  return true;
 }
 
 function validateAppV2(input: Record<string, unknown>, p: string): string[] {
@@ -271,6 +361,12 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     ) {
       errors.push(`${p}audio capability is unsupported`);
     }
+  }
+  if (
+    capabilities?.fileInput !== undefined &&
+    !validFileInput(capabilities.fileInput, runtime.entrypoint as string)
+  ) {
+    errors.push(`${p}fileInput capability is unsupported`);
   }
   return errors;
 }

@@ -19,6 +19,7 @@ import {
 
 const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
+const MAX_ASSET_NAME_BYTES = 1_024;
 const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_ASSET_BYTES = 256 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
@@ -95,6 +96,15 @@ declare global {
   }
 }
 
+export interface PolkaVmFileInputHandler {
+  id: string;
+  label: string;
+  extensions: string[];
+  mediaTypes: string[];
+  maxBytes: number;
+  mountPath: string;
+}
+
 interface PolkaVmDescriptor {
   programPath: string;
   graphicsProfile: GraphicsProfile;
@@ -104,6 +114,7 @@ interface PolkaVmDescriptor {
   inputFeatures: string[];
   audioEnabled: boolean;
   requiredAssets: string[];
+  fileInputHandlers: PolkaVmFileInputHandler[];
   manifestVersion: number | null;
 }
 
@@ -384,12 +395,18 @@ interface PageCacheTarget {
   ): void;
 }
 
+const pageCacheRestoreTargets = new WeakSet<PageCacheTarget>();
+
 export function installPageCacheRestoreReload(
   target: PageCacheTarget = window,
   reload: () => void = () => {
     location.reload();
   },
 ): void {
+  if (pageCacheRestoreTargets.has(target)) {
+    return;
+  }
+  pageCacheRestoreTargets.add(target);
   let reloadRequested = false;
   target.addEventListener("pageshow", (event) => {
     if (!event.persisted || reloadRequested) {
@@ -529,6 +546,113 @@ function cleanPath(value: unknown): string | null {
     : path;
 }
 
+export function validatedFileInputHandlers(
+  value: unknown,
+  programPath: string,
+): PolkaVmFileInputHandler[] {
+  if (value === undefined) {
+    return [];
+  }
+  const capability = object(value);
+  if (
+    capability?.abiVersion !== 1 ||
+    !Array.isArray(capability.handlers) ||
+    capability.handlers.length === 0 ||
+    capability.handlers.length > 16 ||
+    Object.keys(capability).some(
+      (key) => !["abiVersion", "handlers"].includes(key),
+    )
+  ) {
+    throw new Error("PolkaVM App v2 has an invalid fileInput capability");
+  }
+  const ids = new Set<string>();
+  const mountPaths = new Set<string>();
+  return capability.handlers.map((handlerValue) => {
+    const handler = object(handlerValue);
+    const extensions = handler?.extensions ?? [];
+    const mediaTypes = handler?.mediaTypes ?? [];
+    const mountPath =
+      typeof handler?.mountPath === "string" &&
+      !handler.mountPath.startsWith("/")
+        ? cleanPath(handler.mountPath)
+        : null;
+    if (
+      handler === null ||
+      Object.keys(handler).some(
+        (key) =>
+          ![
+            "id",
+            "label",
+            "extensions",
+            "mediaTypes",
+            "maxBytes",
+            "mountPath",
+          ].includes(key),
+      ) ||
+      typeof handler.id !== "string" ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(handler.id) ||
+      ids.has(handler.id) ||
+      typeof handler.label !== "string" ||
+      handler.label.trim() === "" ||
+      encoder.encode(handler.label).byteLength > 80 ||
+      !Array.isArray(extensions) ||
+      !Array.isArray(mediaTypes) ||
+      (extensions.length === 0 && mediaTypes.length === 0) ||
+      new Set(extensions).size !== extensions.length ||
+      extensions.some(
+        (extension) =>
+          typeof extension !== "string" ||
+          !/^\.[a-z0-9]{1,16}$/.test(extension),
+      ) ||
+      new Set(mediaTypes).size !== mediaTypes.length ||
+      mediaTypes.some(
+        (mediaType) =>
+          typeof mediaType !== "string" ||
+          mediaType.length > 127 ||
+          !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType),
+      ) ||
+      !Number.isSafeInteger(handler.maxBytes) ||
+      (handler.maxBytes as number) < 1 ||
+      (handler.maxBytes as number) > MAX_ASSET_FILE_BYTES ||
+      mountPath === null ||
+      encoder.encode(mountPath).byteLength > MAX_ASSET_NAME_BYTES ||
+      mountPath === programPath ||
+      mountPaths.has(mountPath)
+    ) {
+      throw new Error("PolkaVM App v2 has an invalid fileInput handler");
+    }
+    ids.add(handler.id);
+    mountPaths.add(mountPath);
+    return {
+      id: handler.id,
+      label: handler.label,
+      extensions: [...(extensions as string[])],
+      mediaTypes: [...(mediaTypes as string[])],
+      maxBytes: handler.maxBytes as number,
+      mountPath,
+    };
+  });
+}
+
+export function matchingFileInputHandlers(
+  handlers: readonly PolkaVmFileInputHandler[],
+  file: Readonly<Pick<File, "name" | "size" | "type">>,
+): PolkaVmFileInputHandler[] {
+  if (!Number.isSafeInteger(file.size) || file.size < 0) {
+    return [];
+  }
+  const name = file.name.split(/[\\/]/).at(-1) ?? "";
+  const dot = name.lastIndexOf(".");
+  const extension = dot < 0 ? "" : name.slice(dot).toLowerCase();
+  const mediaType = file.type.toLowerCase();
+  return handlers.filter(
+    (handler) =>
+      file.size <= handler.maxBytes &&
+      (handler.extensions.includes(extension) ||
+        (mediaType !== "" && handler.mediaTypes.includes(mediaType))),
+  );
+}
+
 function assertExternalManifest(
   embedded: Uint8Array,
   externalManifest: string | null,
@@ -580,6 +704,7 @@ function parseManifest(
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
   let webFallbackPath: string | null = null;
+  let fileInputHandlers: PolkaVmFileInputHandler[] = [];
   if (manifest?.$v === 2 && manifest.kind === "app") {
     // `$v: 2` versions the manifest, not the guest boundary. Every published
     // App selects PolkaVM application runtime ABI v1, the only version the
@@ -714,6 +839,10 @@ function parseManifest(
       inputFeatures.push("camera-ur");
     }
     audioEnabled = audio !== null;
+    fileInputHandlers = validatedFileInputHandlers(
+      capabilities?.fileInput,
+      programPath,
+    );
     manifestVersion = 2;
     if (enforceExternal) {
       assertExternalManifest(bytes, externalManifest);
@@ -778,6 +907,7 @@ function parseManifest(
     inputFeatures,
     audioEnabled,
     requiredAssets,
+    fileInputHandlers,
     manifestVersion,
   };
 }
@@ -1488,20 +1618,35 @@ export function accumulateRelativePointerDelta(
 }
 
 function createShell(controls: string[]): {
+  surface: HTMLElement;
   canvas: HTMLCanvasElement;
   status: HTMLElement;
 } {
   const style = document.createElement("style");
+  style.id = "dotli-polkavm-style";
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden;overscroll-behavior:none}
     #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) minmax(29px,auto);position:relative;overflow:hidden;background:#050505}
     #dotli-polkavm-surface{position:relative;min-width:0;min-height:0;overflow:hidden;container-type:size}
+    #dotli-polkavm-surface.dotli-file-drag{outline:2px solid #e6007a;outline-offset:-2px}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
     #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100cqw,calc(100cqh * var(--dotli-polkavm-frame-aspect,1)));height:min(100cqh,calc(100cqw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
-
+    #dotli-polkavm-file-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
+    #dotli-polkavm-file-open:hover{border-color:#e6007a}
+    #dotli-polkavm-file-open:disabled{cursor:wait;opacity:.55}
+    .dotli-file-consent-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:#000a;font:14px/1.45 system-ui,sans-serif}
+    .dotli-file-consent{width:min(440px,100%);border:1px solid #ffffff26;border-radius:14px;padding:22px;background:#17181c;color:#fff;box-shadow:0 24px 80px #000b}
+    .dotli-file-consent h2{margin:0 0 8px;font-size:20px}
+    .dotli-file-consent p{margin:0;color:#b8bbc3}
+    .dotli-file-consent-detail{margin:16px 0;padding:12px;border-radius:8px;background:#0b0c0f;font:12px/1.45 ui-monospace,monospace;overflow-wrap:anywhere;white-space:pre-wrap}
+    .dotli-file-consent select{width:100%;margin:0 0 16px;padding:8px;border:1px solid #ffffff30;border-radius:7px;background:#0b0c0f;color:#fff}
+    .dotli-file-consent-actions{display:flex;justify-content:flex-end;gap:8px}
+    .dotli-file-consent button{border:0;border-radius:7px;padding:8px 12px;font:600 13px system-ui,sans-serif;cursor:pointer}
+    .dotli-file-consent-cancel{background:#303238;color:#fff}
+    .dotli-file-consent-approve{background:#e6007a;color:#fff}
     #dotli-polkavm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
   `;
   const shell = document.createElement("main");
@@ -1520,9 +1665,235 @@ function createShell(controls: string[]): {
   controlText.textContent = controls.join(" · ");
   surface.append(canvas, status, controlText);
   shell.append(surface);
+  document.getElementById("dotli-polkavm-style")?.remove();
   document.head.append(style);
   document.body.replaceChildren(shell);
-  return { canvas, status };
+  return { surface, canvas, status };
+}
+
+function filePickerAccept(
+  handlers: readonly PolkaVmFileInputHandler[],
+): string {
+  const values = new Set<string>();
+  for (const handler of handlers) {
+    for (const extension of handler.extensions) {
+      values.add(extension);
+    }
+    for (const mediaType of handler.mediaTypes) {
+      values.add(mediaType);
+    }
+  }
+  return [...values].join(",");
+}
+
+function formatFileBytes(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+    : `${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+function askFileInputConsent(
+  file: File,
+  handlers: readonly PolkaVmFileInputHandler[],
+): Promise<PolkaVmFileInputHandler | null> {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "dotli-file-consent-backdrop";
+    const modal = document.createElement("div");
+    modal.className = "dotli-file-consent";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    const heading = document.createElement("h2");
+    heading.textContent = "Give this file to the app?";
+    const explanation = document.createElement("p");
+    explanation.textContent =
+      "The app will receive the file and restart to load it.";
+    const detail = document.createElement("div");
+    detail.className = "dotli-file-consent-detail";
+    detail.textContent = `${file.name} · ${formatFileBytes(file.size)}\n${handlers[0].label}`;
+    let selected = handlers[0];
+    const select =
+      handlers.length > 1 ? document.createElement("select") : null;
+    if (select !== null) {
+      for (const handler of handlers) {
+        const option = document.createElement("option");
+        option.value = handler.id;
+        option.textContent = handler.label;
+        select.append(option);
+      }
+      select.addEventListener("change", () => {
+        selected =
+          handlers.find((handler) => handler.id === select.value) ??
+          handlers[0];
+        detail.textContent = `${file.name} · ${formatFileBytes(file.size)}\n${selected.label}`;
+      });
+    }
+    const actions = document.createElement("div");
+    actions.className = "dotli-file-consent-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "dotli-file-consent-cancel";
+    cancel.textContent = "Cancel";
+    const approve = document.createElement("button");
+    approve.type = "button";
+    approve.className = "dotli-file-consent-approve";
+    approve.textContent = "Give to app";
+    actions.append(cancel, approve);
+    modal.append(heading, explanation, detail);
+    if (select !== null) {
+      modal.append(select);
+    }
+    modal.append(actions);
+    backdrop.append(modal);
+    document.body.append(backdrop);
+    let settled = false;
+    const finish = (handler: PolkaVmFileInputHandler | null): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.removeEventListener("keydown", keydown);
+      backdrop.remove();
+      resolve(handler);
+    };
+    const keydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        finish(null);
+      }
+    };
+    cancel.addEventListener("click", () => {
+      finish(null);
+    });
+    approve.addEventListener("click", () => {
+      finish(selected);
+    });
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) {
+        finish(null);
+      }
+    });
+    window.addEventListener("keydown", keydown);
+    cancel.focus();
+  });
+}
+
+function installFileInputControls(
+  surface: HTMLElement,
+  status: HTMLElement,
+  handlers: readonly PolkaVmFileInputHandler[],
+  deliver: (
+    handler: PolkaVmFileInputHandler,
+    bytes: Uint8Array,
+    file: File,
+  ) => Promise<void>,
+): () => void {
+  if (handlers.length === 0) {
+    return () => undefined;
+  }
+  const open = document.createElement("button");
+  open.id = "dotli-polkavm-file-open";
+  open.type = "button";
+  open.textContent = "Open file";
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = filePickerAccept(handlers);
+  picker.hidden = true;
+  surface.append(open, picker);
+  let busy = false;
+  const process = async (file: File): Promise<void> => {
+    if (busy) {
+      return;
+    }
+    const candidates = matchingFileInputHandlers(handlers, file);
+    if (candidates.length === 0) {
+      status.textContent = "This app does not accept that file.";
+      return;
+    }
+    const handler = await askFileInputConsent(file, candidates);
+    if (handler === null) {
+      status.textContent = "";
+      return;
+    }
+    busy = true;
+    open.disabled = true;
+    status.textContent = `Reading ${file.name}…`;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (
+        bytes.byteLength !== file.size ||
+        bytes.byteLength > handler.maxBytes
+      ) {
+        throw new Error("File size changed while it was being read.");
+      }
+      status.textContent = `Loading ${file.name}…`;
+      await deliver(handler, bytes, file);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "File delivery failed.";
+      (document.getElementById("dotli-polkavm-status") ?? status).textContent =
+        message;
+      busy = false;
+      if (open.isConnected) {
+        open.disabled = false;
+      }
+    }
+  };
+  const click = (): void => {
+    picker.click();
+  };
+  const change = (): void => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (file !== undefined) {
+      void process(file);
+    }
+  };
+  const dragover = (event: DragEvent): void => {
+    if (
+      !busy &&
+      [...(event.dataTransfer?.items ?? [])].some(
+        (item) => item.kind === "file",
+      )
+    ) {
+      event.preventDefault();
+      if (event.dataTransfer !== null) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+      surface.classList.add("dotli-file-drag");
+    }
+  };
+  const dragleave = (event: DragEvent): void => {
+    if (
+      !(event.relatedTarget instanceof Node) ||
+      !surface.contains(event.relatedTarget)
+    ) {
+      surface.classList.remove("dotli-file-drag");
+    }
+  };
+  const drop = (event: DragEvent): void => {
+    const file = event.dataTransfer?.files[0];
+    if (file === undefined) {
+      return;
+    }
+    event.preventDefault();
+    surface.classList.remove("dotli-file-drag");
+    void process(file);
+  };
+  open.addEventListener("click", click);
+  picker.addEventListener("change", change);
+  surface.addEventListener("dragover", dragover);
+  surface.addEventListener("dragleave", dragleave);
+  surface.addEventListener("drop", drop);
+  return () => {
+    open.removeEventListener("click", click);
+    picker.removeEventListener("change", change);
+    surface.removeEventListener("dragover", dragover);
+    surface.removeEventListener("dragleave", dragleave);
+    surface.removeEventListener("drop", drop);
+    open.remove();
+    picker.remove();
+    document.querySelector(".dotli-file-consent-backdrop")?.remove();
+  };
 }
 
 function installInput(
@@ -2348,7 +2719,7 @@ export async function runPolkaVmApplication(
   ) {
     throw new Error("required motion input is unavailable");
   }
-  const { canvas, status } = createShell(descriptor.controls);
+  const { surface, canvas, status } = createShell(descriptor.controls);
   if (forceInterpreter) {
     status.textContent = "Starting PolkaVM interpreter…";
   }
@@ -2374,9 +2745,15 @@ export async function runPolkaVmApplication(
       ? await loadTranslation(cacheKey)
       : null;
   let saveIdentity = cid;
-  if (descriptor.requiredAssets.length > 0) {
+  const saveIdentityPaths = new Set(descriptor.requiredAssets);
+  for (const handler of descriptor.fileInputHandlers) {
+    if (Object.hasOwn(files, handler.mountPath)) {
+      saveIdentityPaths.add(handler.mountPath);
+    }
+  }
+  if (saveIdentityPaths.size > 0) {
     const fingerprints: string[] = [];
-    for (const path of [...descriptor.requiredAssets].sort()) {
+    for (const path of [...saveIdentityPaths].sort()) {
       fingerprints.push(path, await programDigest(files[path]));
     }
     saveIdentity = await programDigest(
@@ -2834,6 +3211,7 @@ export async function runPolkaVmApplication(
     parentOrigin,
     resumeAudio,
   );
+  let cleanupFileInputControls = (): void => undefined;
   let stopped = false;
   function onTri2dContextLost(event: Event): void {
     event.preventDefault();
@@ -2844,6 +3222,8 @@ export async function runPolkaVmApplication(
       return;
     }
     stopped = true;
+    cleanupFileInputControls();
+    window.removeEventListener("pagehide", stop);
     window.clearTimeout(timer);
     if (activeMediatedInput !== undefined) {
       window.parent.postMessage(
@@ -3305,4 +3685,17 @@ export async function runPolkaVmApplication(
     stop();
     throw error;
   });
+  cleanupFileInputControls = installFileInputControls(
+    surface,
+    status,
+    descriptor.fileInputHandlers,
+    async (handler, bytes) => {
+      const relaunchedFiles: ArchiveFiles = {
+        ...files,
+        [handler.mountPath]: bytes,
+      };
+      stop();
+      await runPolkaVmApplication(relaunchedFiles, cid, externalManifest);
+    },
+  );
 }

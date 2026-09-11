@@ -42,6 +42,18 @@ const VALID_APP_V2 = {
       requiredFeatures: ["pointer", "keyboard"],
     },
     audio: { abiVersion: 1, requiredFeatures: [] },
+    fileInput: {
+      abiVersion: 1,
+      handlers: [
+        {
+          id: "snes-rom",
+          label: "SNES cartridge image",
+          extensions: [".sfc"],
+          maxBytes: 16 * 1024 * 1024,
+          mountPath: "game/cartridge.sfc",
+        },
+      ],
+    },
   },
 };
 
@@ -182,6 +194,23 @@ describe("validateExecutableManifest", () => {
         capabilities: {
           ...VALID_APP_V2.capabilities,
           audio: { abiVersion: 1, requiredFeatures: ["spatial"] },
+        },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          fileInput: {
+            ...VALID_APP_V2.capabilities.fileInput,
+            handlers: [
+              {
+                ...VALID_APP_V2.capabilities.fileInput.handlers[0],
+                mountPath: "../cartridge.sfc",
+              },
+            ],
+          },
         },
       }).ok,
     ).toBe(false);

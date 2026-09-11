@@ -94,3 +94,58 @@ export async function installTruapiPortResponder(page: Page): Promise<void> {
     scope.__HOST_API_PORT__ = channel.port1;
   });
 }
+
+/** Issue a fresh TrUAPI port whenever a product restarts in the same iframe. */
+export async function installRepeatedTruapiPortResponder(
+  page: Page,
+  allowedOrigin: string,
+): Promise<void> {
+  await page.evaluate((allowedOrigin) => {
+    const scope = window as typeof window & {
+      __dotliTestPortsIssued?: number;
+    };
+    scope.__dotliTestPortsIssued = 0;
+    window.addEventListener("message", (event) => {
+      if (
+        event.data?.type !== "truapi-ready" ||
+        event.source === null ||
+        event.origin !== allowedOrigin
+      ) {
+        return;
+      }
+      const channel = new MessageChannel();
+      channel.port2.onmessage = (portEvent) => {
+        if (!(portEvent.data instanceof Uint8Array)) {
+          return;
+        }
+        const request = portEvent.data;
+        const first = request[0];
+        if (first === undefined || (first & 3) !== 0) {
+          return;
+        }
+        const kindOffset = 1 + (first >> 2);
+        if (
+          request.length !== kindOffset + 3 ||
+          request[kindOffset] !== 0 ||
+          request[kindOffset + 1] !== 0 ||
+          request[kindOffset + 2] !== 1
+        ) {
+          return;
+        }
+        const response = new Uint8Array(kindOffset + 3);
+        response.set(request.subarray(0, kindOffset));
+        response[kindOffset] = 1;
+        channel.port2.postMessage(response, [response.buffer]);
+      };
+      channel.port2.start();
+      scope.__dotliTestPortsIssued = (scope.__dotliTestPortsIssued ?? 0) + 1;
+      event.source.postMessage(
+        { type: "truapi-init" },
+        {
+          targetOrigin: event.origin,
+          transfer: [channel.port1],
+        },
+      );
+    });
+  }, allowedOrigin);
+}
