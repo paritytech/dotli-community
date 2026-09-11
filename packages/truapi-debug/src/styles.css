@@ -871,8 +871,34 @@
   grid-column: 1 / -1;
   height: 0;
 }
-.td-res-fact[data-tooltip] {
+/* The only hover target in the summary. Hovering a card itself does nothing,
+   so the pointer can cross the grid without tooltips firing. */
+.td-res-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  margin-left: 4px;
+  border: 1px solid #3f3f46;
+  border-radius: 50%;
+  color: #6b7280;
+  font-size: 7.5px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: middle;
   cursor: help;
+}
+.td-res-info:hover {
+  border-color: #2dd4bf;
+  color: #2dd4bf;
+}
+.td-res-fact dt {
+  display: flex;
+  align-items: center;
 }
 .td-res-fact dt {
   color: #6b7280;
@@ -900,15 +926,6 @@
 }
 .td-res-dim {
   color: #6b7280;
-}
-.td-res-cid {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10px;
-  color: #94a3b8;
-  margin-bottom: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .td-res-row {
   display: flex;

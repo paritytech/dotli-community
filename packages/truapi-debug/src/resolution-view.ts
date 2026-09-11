@@ -658,20 +658,16 @@ function summaryFacts(model: ResolutionModel): Fact[] {
 }
 
 function renderSummary(model: ResolutionModel): string {
-  const s = model.summary;
   const cards = summaryFacts(model)
     .map((fact) =>
       fact === GROUP_BREAK
         ? `<div class="td-res-group-break"></div>`
-        : `<div class="td-res-fact" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose>` +
-          `<dt>${escapeHtml(fact.key)}</dt><dd>${fact.value}</dd></div>`,
+        : `<div class="td-res-fact"><dt>${escapeHtml(fact.key)}` +
+          `<span class="td-res-info" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose aria-hidden="true">i</span>` +
+          `</dt><dd>${fact.value}</dd></div>`,
     )
     .join("");
-  const cid =
-    s.cid === null
-      ? ""
-      : `<div class="td-res-cid" title="${escapeHtml(s.cid)}">${escapeHtml(s.cid)}</div>`;
-  return `<dl class="td-res-summary">${cards}</dl>${cid}`;
+  return `<dl class="td-res-summary">${cards}</dl>`;
 }
 
 function outcomeText(s: ResolutionSummary): string {
@@ -724,7 +720,7 @@ function cacheText(result: CacheResult): string {
 
 function renderChart(model: ResolutionModel): string {
   if (model.summary.backend === "rpc-gateway") {
-    return `<div class="td-res-note">This load used the RPC gateway, so no light client ran and there are no chain phases to draw. Switch the chain backend to smoldot to see the rows.</div>`;
+    return "";
   }
   const span = Math.max(1, model.elapsedMs);
   const axis = Array.from({ length: AXIS_TICKS + 1 }, (_, i) => {
