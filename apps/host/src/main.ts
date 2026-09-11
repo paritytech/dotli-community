@@ -42,7 +42,12 @@ import {
 import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
 import { chainRoleForKey } from "@dotli/ui/chain-roles";
-import { recordPeerCount } from "@dotli/ui/network-monitor";
+import {
+  recordChainPhase,
+  recordPeerCount,
+  recordTransfer,
+  type ChainPhase,
+} from "@dotli/ui/network-monitor";
 import {
   describeProgressStall,
   describeStall,
@@ -1322,7 +1327,28 @@ async function main(): Promise<void> {
       );
     };
 
+    // `lifecycle_unstable_follow` reports a phase, a peer count and a health
+    // verdict; these are the milestones the protocol layer derives from it.
+    // Only the ones that name a phase are mapped, so a peer count arriving on
+    // its own never rewrites where the chain says it is.
+    const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
+      connecting: "connecting",
+      warpSyncProgress: "syncing",
+      warpSyncFinished: "syncing",
+      bootstrapComplete: "ready",
+      stalled: "stalled",
+    };
+
     onProtocolChainSync((event) => {
+      const phase = PHASE_BY_MILESTONE[event.syncKind];
+      if (phase !== undefined) {
+        recordChainPhase(chainRoleForKey(event.chain), phase);
+      } else if (event.syncKind === "recovered") {
+        // The watchdog cleared. Nothing in the event says which phase the
+        // chain returned to, and claiming `ready` would be a guess, so it goes
+        // back to syncing until the next milestone says otherwise.
+        recordChainPhase(chainRoleForKey(event.chain), "syncing");
+      }
       log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
       // Health samples are excluded: they arrive every second and would keep
       // re-arming the watchdog, so a stalled chain would never warn.
@@ -1396,8 +1422,12 @@ async function main(): Promise<void> {
     // second, so both are added up and the rate is taken over a short
     // trailing window. Reporting only the archive left the readout at zero
     // for the seconds the light client was working hardest.
+    // One counter, not two. The byte meter wraps the protocol frame's own
+    // WebSockets, and bitswap rides those same sockets, so the archive is
+    // already inside this number. Adding the content total on top counted
+    // every downloaded byte twice and reported speeds above the physical
+    // link rate.
     let chainBytes = 0;
-    let contentBytes = 0;
     // Seeded at the page's own start with nothing downloaded, which is true
     // and means the first report from the protocol frame already has a second
     // reading to be measured against. Without it the readout stayed blank
@@ -1406,15 +1436,15 @@ async function main(): Promise<void> {
     const SPEED_WINDOW_MS = 3_000;
     const reportSpeed = (): void => {
       const now = performance.now();
-      samples.push({ at: now, total: chainBytes + contentBytes });
+      samples.push({ at: now, total: chainBytes });
       while (samples.length > 1 && now - samples[0].at > SPEED_WINDOW_MS) {
         samples.shift();
       }
       const oldest = samples[0];
       const span = now - oldest.at;
       if (span > 0) {
-        liveBytesPerSecond =
-          ((chainBytes + contentBytes - oldest.total) / span) * 1000;
+        liveBytesPerSecond = ((chainBytes - oldest.total) / span) * 1000;
+        recordTransfer({ bytesPerSecond: liveBytesPerSecond });
       }
     };
     onProtocolNetBytes(({ received }) => {
@@ -1426,8 +1456,7 @@ async function main(): Promise<void> {
     // download reports itself: bytes so far against the total the DAG root
     // declares.
     onContentProgress(({ bytesFetched, totalBytes }) => {
-      contentBytes = bytesFetched;
-      reportSpeed();
+      recordTransfer({ fetched: bytesFetched, total: totalBytes });
       // The download's true fraction drives the bar itself, which is where
       // a percentage belongs. Printing the same number as text alongside it
       // said the same thing twice.

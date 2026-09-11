@@ -379,37 +379,23 @@ body {
 /* Fixed, not `min-width`. The bar strips grow as blocks arrive, and a
    shrink-to-fit popover widened with them, so the panel changed size while the
    visitor was reading it. */
-.chains-popover {
+.more-popover.chains-popover {
   width: 320px;
   max-width: calc(100vw - 24px);
-  padding-bottom: 8px;
+  /* No horizontal padding of its own. Every row inside already insets itself
+     by 14px, and the popover's default 6px stacked on top of that, putting
+     this panel's content 20px in while the other popovers sit at 14px. */
+  padding: 6px 0 8px;
+  /* Opaque, unlike the smaller popovers. This one is anchored over the product
+     iframe, and `backdrop-filter` does not sample across that boundary: the
+     blur silently did nothing and the app's own controls read straight through
+     the translucent surface as sharp text. */
+  background: rgb(34, 34, 34);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* Network panel */
-.chains-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  /* 13.36:1 */
-  color: #d4d4d4;
-  padding: 2px 14px 10px;
-}
-.chains-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.chains-status-dot.is-ok {
-  background: #22c55e;
-}
-.chains-status-dot.is-warn {
-  background: #eab308;
-}
-.chains-status-dot.is-idle {
-  background: #8f8f8f;
-}
 .chains-table {
   width: calc(100% - 28px);
   margin: 2px 14px 0;
@@ -459,6 +445,71 @@ body {
 /* Secondary to the chain's name: the count is context for the bars below, not
    a heading of its own. Tabular figures so a changing count cannot reflow the
    row it sits on. */
+/* Connection footer, under the per-chain bars. Its two rows read as a pair of
+   readouts rather than prose, so the label is recessive and the value carries. */
+.chains-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* No rule of its own: the last chain row already draws one under its bars,
+     and a second line here read as a double divider. */
+  margin: 10px 14px 0;
+}
+.chains-transfer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  /* One line: the label sits at the left edge of the bars, the value at the
+     right, and neither wraps when the figure grows a digit. */
+  white-space: nowrap;
+}
+.chains-transfer-row:empty {
+  display: none;
+}
+.chains-transfer-label {
+  font-weight: 500;
+  /* 7.85:1 */
+  color: #a3a3a3;
+}
+.chains-transfer-value {
+  /* Tabular so a changing figure cannot shuffle the row it sits on. */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #e5e5e5;
+}
+/* Advice, not telemetry: set apart from the readouts above it so it reads as
+   a suggestion rather than another measurement. */
+.chains-tips {
+  /* Inset, padded and rounded exactly like the connection box at the top of
+     the panel, so the two read as a matching pair bracketing the chain rows. */
+  margin: 12px 14px 2px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.chains-tips-title {
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  /* 10.9:1 */
+  color: #d4d4d4;
+}
+.chains-tips-list {
+  margin: 0;
+  padding-left: 15px;
+  font-size: 11px;
+  line-height: 1.5;
+  /* 7.85:1 */
+  color: #a3a3a3;
+}
+.chains-tips-list li::marker {
+  color: #737373;
+}
 .chains-group-peers {
   font-size: 10px;
   font-weight: 400;
@@ -473,14 +524,18 @@ body {
   overflow: hidden;
 }
 .chains-bars {
+  /* Read back by the panel to work out how many marks fit, so the width lives
+     in one place instead of being duplicated in JS. */
+  --chains-bar-w: 4px;
   display: flex;
   /* A flex item defaults to `min-width: auto`, which lets its content set the
      floor and defeats the clipping below. */
   min-width: 0;
-  /* Newest on the right, and the oldest are the ones clipped when the panel
-     runs out of room. */
-  flex-direction: row-reverse;
-  justify-content: flex-start;
+  /* Packed to the right so the newest block lands at the right edge and the
+     oldest run off the left, where `overflow` clips them. `row-reverse` did
+     the opposite of what this comment used to claim. */
+  flex-direction: row;
+  justify-content: flex-end;
   align-items: flex-end;
   gap: 4px;
   height: 22px;
@@ -488,11 +543,39 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   padding-bottom: 2px;
 }
+/* Applied for one frame after a block lands: the strip starts shifted right by
+   the width the new bar just took, then settles to zero, so the whole row
+   glides left together instead of the bars jumping a step. */
+.chains-bars.is-sliding {
+  transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
 .chains-bar {
-  width: 4px;
+  width: var(--chains-bar-w);
   height: 100%;
   border-radius: 1px;
   flex-shrink: 0;
+  transform-origin: bottom center;
+}
+.chains-bar.is-new {
+  animation: chains-bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes chains-bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chains-bars.is-sliding {
+    transition: none;
+  }
+  .chains-bar.is-new {
+    animation: none;
+  }
 }
 .chains-bar.is-onTime {
   /* 6.98:1 */

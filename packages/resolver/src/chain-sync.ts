@@ -262,6 +262,7 @@ export function attachChainSync(
   // Last snapshot, so the next one can be diffed into transitions.
   let lastPhase: string | null = null;
   let lastHealth: string | null = null;
+  let lastStallReason: string | null = null;
   let lastPeers: number | null = null;
   // Object-held so control-flow analysis does not narrow it to `false` inside
   // the response handler: only the follow callback ever sets it, and TS cannot
@@ -331,7 +332,7 @@ export function attachChainSync(
       | {
           phase?: { kind?: string; target?: number; at?: number };
           numPeers?: number;
-          health?: { kind?: string };
+          health?: { kind?: string; reason?: string };
         }
       | undefined;
     if (state === undefined) {
@@ -380,18 +381,34 @@ export function attachChainSync(
       });
     }
 
-    const health = state.health?.kind;
-    if (health !== undefined && health !== lastHealth) {
-      if (health === "ok") {
+    // `health` is `{kind:"ok"}` or `{kind:"stalled", reason:"noPeers"|
+    // "noProgress"}`. The reason is the half worth showing, and it can change
+    // while the chain stays stalled, so the pair is what gets compared.
+    const healthKind = state.health?.kind;
+    const reason = state.health?.reason;
+    const healthKey =
+      healthKind === "stalled" ? `stalled:${reason ?? ""}` : healthKind;
+    if (healthKind !== undefined && healthKey !== lastHealth) {
+      if (healthKind === "ok") {
         // Only a chain that was previously unwell can recover, so the first
         // `ok` of a session is not an event.
-        if (lastHealth !== null) {
-          emitChainSync({ chain, kind: "recovered", reason: lastHealth });
+        if (lastStallReason !== null) {
+          emitChainSync({
+            chain,
+            kind: "recovered",
+            reason: lastStallReason,
+          });
         }
-      } else {
-        emitChainSync({ chain, kind: "stalled", reason: health });
+        lastStallReason = null;
+      } else if (healthKind === "stalled") {
+        emitChainSync({
+          chain,
+          kind: "stalled",
+          ...(typeof reason === "string" ? { reason } : {}),
+        });
+        lastStallReason = reason ?? null;
       }
-      lastHealth = health;
+      lastHealth = healthKey ?? null;
     }
   };
 

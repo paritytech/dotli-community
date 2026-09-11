@@ -9,6 +9,7 @@
 import { getActiveChainRoles, type ChainRole } from "@dotli/config/network";
 import {
   getNetworkStatus,
+  getTransfer,
   setBlockSource,
   startNetworkWatch,
   stopNetworkWatch,
@@ -1255,6 +1256,82 @@ function createBlockSource(): BlockSource {
   };
 }
 
+/** Bytes as the panel says them: kB up to a megabyte, then MB. */
+function formatSize(bytes: number): string {
+  return bytes < 1_048_576
+    ? `${String(Math.round(bytes / 1024))} kB`
+    : `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
+
+function formatRate(bytesPerSecond: number): string {
+  return bytesPerSecond < 1_048_576
+    ? `${String(Math.round(bytesPerSecond / 1024))} kB/s`
+    : `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
+}
+
+/**
+ * Glide the strip left by the room the newly landed bars just took.
+ *
+ * The bars are packed to the right, so appending one shifts every older bar
+ * left instantly. Starting the strip offset by that same distance and
+ * transitioning it back to zero replays the shift as motion, which is what
+ * makes a block arriving read as an arrival.
+ */
+function slideStrip(strip: HTMLElement, landed: number): void {
+  const style = getComputedStyle(strip);
+  const gap = Number.parseFloat(style.columnGap) || 0;
+  const first = strip.firstElementChild;
+  const width = first === null ? 0 : first.getBoundingClientRect().width;
+  const shift = landed * (width + gap);
+  if (shift <= 0) {
+    return;
+  }
+  for (const node of Array.from(strip.children).slice(-landed)) {
+    const mark = node as HTMLElement;
+    mark.classList.add("is-new");
+    mark.addEventListener(
+      "animationend",
+      () => {
+        mark.classList.remove("is-new");
+      },
+      { once: true },
+    );
+  }
+  strip.classList.remove("is-sliding");
+  strip.style.transform = `translateX(${String(shift)}px)`;
+  // Read back so the untransitioned offset is committed before the class that
+  // animates it is added; without this the browser coalesces both into the
+  // final position and nothing moves.
+  strip.getBoundingClientRect();
+  strip.classList.add("is-sliding");
+  strip.style.transform = "translateX(0)";
+}
+
+/**
+ * How many marks this strip can actually show.
+ *
+ * Measured rather than assumed, so the history a visitor sees is exactly the
+ * history that fits: widen the panel and it lengthens, narrow it and it
+ * shortens. Falls back to the full set before first layout, when the strip has
+ * no width to measure and every number would be a guess.
+ */
+function stripCapacity(strip: HTMLElement, fallback: number): number {
+  const width = strip.getBoundingClientRect().width;
+  if (width <= 0) {
+    return fallback;
+  }
+  const style = getComputedStyle(strip);
+  const barWidth = Number.parseFloat(style.getPropertyValue("--chains-bar-w"));
+  const gap = Number.parseFloat(style.gap);
+  const step =
+    (Number.isFinite(barWidth) ? barWidth : 4) +
+    (Number.isFinite(gap) ? gap : 4);
+  return Math.max(
+    1,
+    Math.floor((width + (Number.isFinite(gap) ? gap : 4)) / step),
+  );
+}
+
 function renderChainsPopover(parent: HTMLElement): void {
   parent.replaceChildren();
   const backend = getBackend();
@@ -1286,6 +1363,20 @@ function renderChainsPopover(parent: HTMLElement): void {
   // blocks are arriving; the peer count beside the name answers who they are
   // arriving from, which is the question a stalled strip raises next.
   const barCells = new Map<ChainRole, HTMLElement>();
+  // Kept across renders so the marks inside can be animated rather than
+  // rebuilt. A cell that lost its strip to the unavailable copy gets a new one.
+  const stripCells = new Map<ChainRole, HTMLElement>();
+  const stripFor = (role: ChainRole, cell: HTMLElement): HTMLElement => {
+    const found = stripCells.get(role);
+    if (found?.parentElement === cell) {
+      return found;
+    }
+    const fresh = document.createElement("div");
+    fresh.className = "chains-bars";
+    cell.replaceChildren(fresh);
+    stripCells.set(role, fresh);
+    return fresh;
+  };
   const peerCells = new Map<ChainRole, HTMLElement>();
   const pendingCells = new Map<
     ChainRole,
@@ -1345,20 +1436,8 @@ function renderChainsPopover(parent: HTMLElement): void {
         continue;
       }
       cell.classList.remove("is-unavailable");
-      const strip = document.createElement("div");
-      strip.className = "chains-bars";
-      for (const bar of chain.bars) {
-        const mark = document.createElement("span");
-        mark.className = `chains-bar is-${bar.health}`;
-        // Hovering a bar answers the only question it raises: how late was it.
-        const label = describeBlockDelay(bar.gapMs, chain.blockTimeMs);
-        mark.title = label;
-        mark.setAttribute(
-          "aria-label",
-          `Block ${String(bar.number)}, ${label}`,
-        );
-        strip.appendChild(mark);
-      }
+      const strip = stripFor(chain.role, cell);
+
       if (chain.bars.length === 0) {
         // A ghost bar and a live estimate instead of static waiting words.
         // Before the first head nothing is predictable, so no number is shown.
@@ -1368,12 +1447,62 @@ function renderChainsPopover(parent: HTMLElement): void {
         ghost.className = "chains-bar chains-bar-pending";
         const waiting = document.createElement("span");
         waiting.className = "chains-bars-waiting";
-        strip.append(ghost, waiting);
+        strip.replaceChildren(ghost, waiting);
         pendingCells.set(chain.role, { ghost, text: waiting });
-      } else {
-        pendingCells.delete(chain.role);
+        continue;
       }
-      cell.replaceChildren(strip);
+      pendingCells.delete(chain.role);
+
+      // Bars are reconciled by block number rather than rebuilt, so a mark
+      // that is already on screen keeps its element and can be animated. A
+      // wholesale `replaceChildren` made every block look like a new one.
+      const existing = new Map<string, HTMLElement>();
+      for (const node of Array.from(strip.children)) {
+        const key = (node as HTMLElement).dataset.block;
+        if (key === undefined) {
+          node.remove();
+          continue;
+        }
+        existing.set(key, node as HTMLElement);
+      }
+      // Only the newest marks the strip can fit are rendered. The rest stay in
+      // state, so widening the panel reveals more history rather than starting
+      // it over.
+      const visible = chain.bars.slice(
+        -stripCapacity(strip, chain.bars.length),
+      );
+      const wanted = new Set(visible.map((bar) => String(bar.number)));
+      for (const [key, node] of existing) {
+        if (!wanted.has(key)) {
+          node.remove();
+          existing.delete(key);
+        }
+      }
+
+      const hadBars = existing.size > 0;
+      let landed = 0;
+      visible.forEach((bar, index) => {
+        const key = String(bar.number);
+        let mark = existing.get(key);
+        if (mark === undefined) {
+          mark = document.createElement("span");
+          mark.dataset.block = key;
+          mark.className = `chains-bar is-${bar.health}`;
+          // Hovering a bar answers the only question it raises: how late was it.
+          const label = describeBlockDelay(bar.gapMs, chain.blockTimeMs);
+          mark.title = label;
+          mark.setAttribute("aria-label", `Block ${key}, ${label}`);
+          landed += 1;
+        }
+        const atIndex = strip.children.item(index);
+        if (atIndex !== mark) {
+          strip.insertBefore(mark, atIndex);
+        }
+      });
+
+      if (landed > 0 && hadBars) {
+        slideStrip(strip, landed);
+      }
     }
     updatePending();
     if (!trusted) {
@@ -1395,7 +1524,11 @@ function renderChainsPopover(parent: HTMLElement): void {
       }
       if (chain.sinceLast === null) {
         pending.ghost.classList.add("is-searching");
-        pending.text.textContent = "connecting";
+        // Before the first block there is nothing to count down to, so the
+        // slot says where the chain actually is instead. "connecting" was
+        // hardcoded here and stayed wrong for a chain that had already warped
+        // or gone ready without yet producing a block we saw.
+        pending.text.textContent = chain.phase ?? "connecting";
         continue;
       }
       pending.ghost.classList.remove("is-searching");
@@ -1415,7 +1548,68 @@ function renderChainsPopover(parent: HTMLElement): void {
   startNetworkWatch();
   renderBars();
   unsubscribeNetwork?.();
-  unsubscribeNetwork = subscribeNetwork(renderBars);
+  // Footer: what the connection is doing, under the per-chain bars. While the
+  // product is arriving this is the download; once it has landed the size is
+  // the only part still worth stating, so the progress line becomes it rather
+  // than sitting at 100% forever.
+  const footer = document.createElement("div");
+  footer.className = "chains-transfer";
+  const speedRow = document.createElement("p");
+  speedRow.className = "chains-transfer-row";
+  const sizeRow = document.createElement("p");
+  sizeRow.className = "chains-transfer-row";
+  footer.append(speedRow, sizeRow);
+  parent.appendChild(footer);
+
+  const renderTransfer = (): void => {
+    const { bytesPerSecond, fetched, total } = getTransfer();
+    if (trusted || bytesPerSecond === null) {
+      speedRow.textContent = "";
+    } else {
+      speedRow.innerHTML =
+        `<span class="chains-transfer-label">Speed</span>` +
+        `<span class="chains-transfer-value">${escapeHtml(formatRate(bytesPerSecond))}</span>`;
+    }
+    if (fetched === null || total === null || total <= 0) {
+      sizeRow.textContent = "";
+      return;
+    }
+    const done = fetched >= total;
+    sizeRow.innerHTML =
+      `<span class="chains-transfer-label">${done ? "Size" : "Downloading"}</span>` +
+      `<span class="chains-transfer-value">${
+        done
+          ? escapeHtml(formatSize(total))
+          : `${escapeHtml(formatSize(fetched))} / ${escapeHtml(formatSize(total))}`
+      }</span>`;
+  };
+  renderTransfer();
+
+  // The panel explains what the connection is doing; these are the two things
+  // a visitor can actually do about it. Static, so it is built once rather
+  // than on every repaint.
+  const tips = document.createElement("div");
+  tips.className = "chains-tips";
+  const tipsTitle = document.createElement("p");
+  tipsTitle.className = "chains-tips-title";
+  tipsTitle.textContent = "Tips for better performance";
+  const tipsList = document.createElement("ul");
+  tipsList.className = "chains-tips-list";
+  for (const tip of [
+    "Close apps and tabs you are not using",
+    "Move closer to your router",
+  ]) {
+    const item = document.createElement("li");
+    item.textContent = tip;
+    tipsList.appendChild(item);
+  }
+  tips.append(tipsTitle, tipsList);
+  parent.appendChild(tips);
+
+  unsubscribeNetwork = subscribeNetwork(() => {
+    renderBars();
+    renderTransfer();
+  });
   stopPendingTicker();
   pendingTicker = setInterval(updatePending, 250);
 }

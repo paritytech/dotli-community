@@ -44,6 +44,12 @@ export interface ChainStatus {
   /** False when the active network offers no endpoint for this chain. */
   readonly reachable: boolean;
   /**
+   * What the light client says this chain is doing, or null before it has
+   * said anything. Distinct from `bars`, which only shows up once blocks
+   * start arriving: a chain can be `ready` with no block yet observed.
+   */
+  readonly phase: ChainPhase | null;
+  /**
    * Peers the light client currently holds for this chain, or null where the
    * backend never reports one (a trusted provider, or a chain the shell did
    * not opt into sampling).
@@ -51,8 +57,15 @@ export interface ChainStatus {
   readonly peers: number | null;
 }
 
-/** Bars kept per chain, about four minutes of relay at 6s. */
-const MAX_BARS = 40;
+/**
+ * Bars kept per chain.
+ *
+ * Deliberately larger than any strip can show. The panel measures how many
+ * marks its own width fits and renders that many, so this is only a ceiling on
+ * memory: it must never be the thing that decides what a visitor sees, or the
+ * history silently ends at a number nobody chose.
+ */
+const MAX_BARS = 120;
 
 /**
  * How long follows outlive a closed panel.
@@ -79,6 +92,30 @@ interface ChainState {
   unsubscribe: (() => void) | null;
 }
 
+/**
+ * What the light client is moving right now, for the panel's footer.
+ *
+ * `total` is what the DAG root declares for the product archive, so it is
+ * known only once the content phase starts, and null on a load served from
+ * cache that never fetched anything.
+ */
+/**
+ * Where a chain is in its own bootstrap, as the light client reports it.
+ *
+ * Mirrors `LifecyclePhase` from `lifecycle_unstable_follow`, plus `stalled`,
+ * which the watchdog reports alongside the phase rather than instead of it.
+ */
+export type ChainPhase = "connecting" | "syncing" | "ready" | "stalled";
+
+export interface TransferState {
+  /** Bytes per second across every chain socket, over a short window. */
+  readonly bytesPerSecond: number | null;
+  /** Bytes of the product archive fetched so far. */
+  readonly fetched: number | null;
+  /** Size the archive declares, or null when it declared none. */
+  readonly total: number | null;
+}
+
 /** Everything needed to watch one chain, injected so tests can drive it. */
 export interface BlockSource {
   /**
@@ -99,6 +136,12 @@ let chains = new Map<ChainRole, ChainState>();
 // stream whether or not the panel is open, and outlive a watch that was torn
 // down after the idle grace.
 let peerCounts = new Map<ChainRole, number>();
+let phases = new Map<ChainRole, ChainPhase>();
+let transfer: TransferState = {
+  bytesPerSecond: null,
+  fetched: null,
+  total: null,
+};
 let listeners = new Set<() => void>();
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let watching = false;
@@ -115,6 +158,16 @@ function notify(): void {
 }
 
 function recordBlock(state: ChainState, blockNumber: number): void {
+  // `bestBlocks$` re-emits whenever the best-block chain changes shape, not
+  // only when the head advances: a new descendant, a finalization or a reorg
+  // all republish a list whose first entry is the block already recorded.
+  // Without this guard the same block was pushed over and over, so the history
+  // filled with copies of a handful of blocks while the strip, which keys marks
+  // by block number, could only ever draw one of each. That is why the bars
+  // stalled around 18 and dropped whenever an old copy fell off the end.
+  if (state.latest !== null && blockNumber <= state.latest) {
+    return;
+  }
   const now = Date.now();
   // The first block of a session has no gap to judge, so it is not coloured
   // against a guess. It still anchors the next one.
@@ -171,6 +224,46 @@ export function recordPeerCount(role: ChainRole, peers: number): void {
     return;
   }
   peerCounts.set(role, peers);
+  notify();
+}
+
+/**
+ * Record what the network is moving. Fed from the host's own byte meter and
+ * the content download, so the panel neither samples nor counts anything of
+ * its own.
+ *
+ * Merges rather than replaces: the speed and the download report on different
+ * schedules, and an update from one must not blank the other.
+ */
+export function recordTransfer(next: Partial<TransferState>): void {
+  const merged = { ...transfer, ...next };
+  if (
+    merged.bytesPerSecond === transfer.bytesPerSecond &&
+    merged.fetched === transfer.fetched &&
+    merged.total === transfer.total
+  ) {
+    return;
+  }
+  transfer = merged;
+  notify();
+}
+
+/** What the network is moving right now. */
+export function getTransfer(): TransferState {
+  return transfer;
+}
+
+/**
+ * Record a chain's bootstrap phase, as reported by the light client.
+ *
+ * Held apart from `chains` for the same reason peer counts are: it arrives on
+ * the protocol's sync stream whether or not anyone has opened the panel.
+ */
+export function recordChainPhase(role: ChainRole, phase: ChainPhase): void {
+  if (phases.get(role) === phase) {
+    return;
+  }
+  phases.set(role, phase);
   notify();
 }
 
@@ -263,6 +356,7 @@ export function getNetworkStatus(): ChainStatus[] {
       state.role.hasEndpoint &&
       (source?.isReachable(state.role.genesis) ?? false),
     peers: peerCounts.get(state.role.role) ?? null,
+    phase: phases.get(state.role.role) ?? null,
   }));
 }
 
@@ -271,6 +365,8 @@ export function resetNetworkMonitor(): void {
   endNetworkWatch();
   chains = new Map();
   peerCounts = new Map();
+  phases = new Map();
+  transfer = { bytesPerSecond: null, fetched: null, total: null };
   listeners = new Set();
   source = null;
 }

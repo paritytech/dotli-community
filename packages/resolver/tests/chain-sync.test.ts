@@ -92,17 +92,18 @@ function state(
   subscription: string,
   phase: { kind: string; at?: number; target?: number },
   numPeers: number,
-  health = "ok",
+  health: { kind: string; reason?: string } = { kind: "ok" },
 ): string {
   return JSON.stringify({
     jsonrpc: "2.0",
     method: "lifecycle_unstable_followEvent",
-    params: {
-      subscription,
-      result: { phase, numPeers, health: { kind: health } },
-    },
+    params: { subscription, result: { phase, numPeers, health } },
   });
 }
+
+/** The watchdog's verdict, in the shape `LifecycleHealth` serialises to. */
+const OK = { kind: "ok" };
+const stalled = (reason: string) => ({ kind: "stalled", reason });
 
 function peerReport(seq: number, peers: number, isSyncing = true): string {
   return JSON.stringify({
@@ -166,9 +167,9 @@ describe("Light client sync reporting works", () => {
 
     // When
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(state("sub-1", { kind: "syncing" }, 1, "ok"));
-    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, "noPeers"));
-    pipe.deliver(state("sub-1", { kind: "syncing" }, 2, "ok"));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 1, OK));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, stalled("noPeers")));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 2, OK));
 
     // Then
     expect(seen).toEqual([
@@ -182,6 +183,27 @@ describe("Light client sync reporting works", () => {
       { chain: "relay", kind: "peers", peers: 2, isSyncing: true },
       { chain: "relay", kind: "warpSyncProgress" },
       { chain: "relay", kind: "recovered", reason: "noPeers" },
+    ]);
+  });
+
+  it("As a user whose stall changes cause, I am told the new reason rather than the old one", () => {
+    // Given
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const pipe = requirePipe("relay");
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
+
+    // When the watchdog stays stalled but changes its mind about why.
+    pipe.deliver(FOLLOW_REPLY);
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, stalled("noPeers")));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 1, stalled("noProgress")));
+
+    // Then
+    expect(
+      seen.filter((e) => (e as { kind: string }).kind === "stalled"),
+    ).toEqual([
+      { chain: "relay", kind: "stalled", reason: "noPeers" },
+      { chain: "relay", kind: "stalled", reason: "noProgress" },
     ]);
   });
 
@@ -214,8 +236,8 @@ describe("Light client sync reporting works", () => {
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
     pipe.deliver(FOLLOW_REPLY);
-    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, "noProgress"));
-    pipe.deliver(state("sub-1", { kind: "syncing" }, 2, "ok"));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 0, stalled("noProgress")));
+    pipe.deliver(state("sub-1", { kind: "syncing" }, 2, OK));
 
     // When
     const seen: unknown[] = [];

@@ -7,7 +7,10 @@ import {
   setBlockSource,
   startNetworkWatch,
   stopNetworkWatch,
+  getTransfer,
+  recordChainPhase,
   recordPeerCount,
+  recordTransfer,
   subscribeNetwork,
   type BlockSource,
 } from "@dotli/ui/network-monitor";
@@ -15,7 +18,9 @@ import { getActiveChainRoles } from "@dotli/config/network";
 
 // Mirror of IDLE_GRACE_MS and MAX_BARS in network-monitor.ts.
 const GRACE_MS = 60_000;
-const MAX_BARS = 40;
+// Mirror of MAX_BARS in network-monitor.ts. A memory ceiling only: the
+// panel decides what a visitor sees by measuring its own strip.
+const MAX_BARS = 120;
 
 /** A source the test drives by hand, one emitter per chain. */
 function fakeSource(unreachable: string[] = []): {
@@ -137,7 +142,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0].bars[0].health).toBe("veryLate");
   });
 
-  it("As a user with the panel open a long time, history stays bounded", () => {
+  it("As a user with the panel open all day, memory stays bounded", () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -150,8 +155,69 @@ describe("The network monitor tracks blocks", () => {
       emit(genesis, i);
     }
 
-    // Then
+    // Then the oldest are dropped rather than growing without limit.
     expect(getNetworkStatus()[0].bars.length).toBe(MAX_BARS);
+  });
+
+  it("As a user who kept the panel open, more history is retained than a strip can show", () => {
+    // Given a strip fits roughly 36 marks at its current width.
+    const { source, emit } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    const genesis = relayGenesis();
+
+    // When a chain runs well past that
+    for (let i = 0; i < 60; i += 1) {
+      vi.advanceTimersByTime(6000);
+      emit(genesis, i);
+    }
+
+    // Then the surplus is still there for a wider panel to reveal, rather than
+    // having been thrown away at the width the panel happened to have.
+    expect(getNetworkStatus()[0].bars.length).toBeGreaterThan(36);
+  });
+
+  it("As a user on a chain that republishes its head, one block makes one bar", () => {
+    // Given
+    const { source, emit } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    const genesis = relayGenesis();
+
+    // When the same head is announced repeatedly, as `bestBlocks$` does on a
+    // finalization or a new descendant, between two real blocks.
+    vi.advanceTimersByTime(6000);
+    emit(genesis, 100);
+    vi.advanceTimersByTime(6000);
+    emit(genesis, 101);
+    emit(genesis, 101);
+    emit(genesis, 101);
+    vi.advanceTimersByTime(6000);
+    emit(genesis, 102);
+
+    // Then the history holds the two blocks that actually arrived after the
+    // anchor, not five copies.
+    const bars = getNetworkStatus()[0].bars;
+    expect(bars.map((b) => b.number)).toEqual([101, 102]);
+  });
+
+  it("As a user whose chain reorgs to an earlier block, the strip does not go backwards", () => {
+    // Given
+    const { source, emit } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    const genesis = relayGenesis();
+
+    // When
+    vi.advanceTimersByTime(6000);
+    emit(genesis, 200);
+    vi.advanceTimersByTime(6000);
+    emit(genesis, 201);
+    vi.advanceTimersByTime(6000);
+    emit(genesis, 199);
+
+    // Then
+    expect(getNetworkStatus()[0].bars.map((b) => b.number)).toEqual([201]);
   });
 
   it("As a user reopening the panel quickly, watching never stopped", () => {
@@ -329,6 +395,128 @@ describe("The network monitor tracks peers", () => {
     // Then
     const relay = getNetworkStatus().find((c) => c.role === "relay");
     expect(relay?.peers).toBe(6);
+  });
+});
+
+describe("The network monitor tracks the connection", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetNetworkMonitor();
+  });
+
+  afterEach(() => {
+    resetNetworkMonitor();
+    vi.useRealTimers();
+  });
+
+  it("As a user opening the panel before anything moves, nothing is claimed about the connection", () => {
+    // Given / When / Then
+    expect(getTransfer()).toEqual({
+      bytesPerSecond: null,
+      fetched: null,
+      total: null,
+    });
+  });
+
+  it("As a user watching a download, the speed and the progress each survive the other's update", () => {
+    // Given the speed and the download report on different schedules.
+    recordTransfer({ bytesPerSecond: 962_560 });
+    recordTransfer({ fetched: 6_400_000, total: 14_600_000 });
+
+    // When a fresh speed sample lands
+    recordTransfer({ bytesPerSecond: 1_010_000 });
+
+    // Then the download it knows nothing about is still there
+    expect(getTransfer()).toEqual({
+      bytesPerSecond: 1_010_000,
+      fetched: 6_400_000,
+      total: 14_600_000,
+    });
+  });
+
+  it("As a renderer, I am woken when the transfer changes but not when it repeats", () => {
+    // Given
+    let woken = 0;
+    subscribeNetwork(() => {
+      woken += 1;
+    });
+
+    // When
+    recordTransfer({ fetched: 1_000, total: 9_000 });
+    recordTransfer({ fetched: 1_000, total: 9_000 });
+    recordTransfer({ fetched: 2_000, total: 9_000 });
+
+    // Then
+    expect(woken).toBe(2);
+  });
+
+  it("As a user on a load that declared no size, no progress is invented", () => {
+    // Given a DAG root that carried no total
+    recordTransfer({ fetched: 900_000, total: null });
+
+    // Then the panel has nothing to divide by
+    expect(getTransfer().total).toBeNull();
+  });
+});
+
+describe("The network monitor tracks each chain's phase", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resetNetworkMonitor();
+  });
+
+  afterEach(() => {
+    resetNetworkMonitor();
+    vi.useRealTimers();
+  });
+
+  it("As a user opening the panel before the light client speaks, no phase is claimed", () => {
+    // Given
+    const { source } = fakeSource();
+    setBlockSource(source);
+
+    // When
+    startNetworkWatch();
+
+    // Then
+    expect(getNetworkStatus().map((c) => c.phase)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("As a user watching a chain come up, the panel follows it through to ready", () => {
+    // Given
+    const { source } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    const relay = () => getNetworkStatus().find((c) => c.role === "relay");
+
+    // When / Then
+    recordChainPhase("relay", "connecting");
+    expect(relay()?.phase).toBe("connecting");
+    recordChainPhase("relay", "syncing");
+    expect(relay()?.phase).toBe("syncing");
+    recordChainPhase("relay", "ready");
+    expect(relay()?.phase).toBe("ready");
+  });
+
+  it("As a renderer, I am woken when a phase changes but not when it repeats", () => {
+    // Given
+    let woken = 0;
+    subscribeNetwork(() => {
+      woken += 1;
+    });
+
+    // When
+    recordChainPhase("assethub", "connecting");
+    recordChainPhase("assethub", "connecting");
+    recordChainPhase("assethub", "ready");
+
+    // Then
+    expect(woken).toBe(2);
   });
 });
 
