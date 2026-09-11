@@ -1187,6 +1187,12 @@ async function main(): Promise<void> {
   // total and the cold failure rate would read high.
   let cidCache: "hit" | "miss" | "unknown" = "unknown";
 
+  // A CID cache hit does no chain work, so whether the light client resumed
+  // says nothing about that load. Report the dimension as inapplicable rather
+  // than as missing, which would read as data still to come.
+  const smoldotDbCacheTag = (): string =>
+    cidCache === "hit" ? "n/a" : getSmoldotDbOutcome();
+
   // The success half of the failure rate whose error half is the tagged
   // exception in the catch below. The `pending` attempt event cannot stand in
   // for it, because the light client only reports whether it resumed once
@@ -1198,7 +1204,7 @@ async function main(): Promise<void> {
         surface: "host_main_resolve",
         outcome: "ok",
         cid_cache: cidCache,
-        smoldot_db_cache: getSmoldotDbOutcome(),
+        smoldot_db_cache: smoldotDbCacheTag(),
         chain_backend: chainBackend,
       },
     });
@@ -1437,7 +1443,7 @@ async function main(): Promise<void> {
       outcome: "error",
       dependency,
       cid_cache: cidCache,
-      smoldot_db_cache: getSmoldotDbOutcome(),
+      smoldot_db_cache: smoldotDbCacheTag(),
       chain_backend: chainBackend,
     });
     // Full cause chain to console for devs.
