@@ -39,6 +39,12 @@ import {
 } from "./filters.ts";
 import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
 import {
+  formatPending,
+  openCalls,
+  pendingKeyOf,
+  SLOW_AFTER_MS,
+} from "./pending.ts";
+import {
   applyTimelineSelection,
   buildTimelineContainer,
   renderSwimlanes,
@@ -50,6 +56,7 @@ const STYLE_ID = "truapi-debug-styles";
 const PANEL_ID = "truapi-debug-panel";
 const DOCK_STORAGE_KEY = "truapi-debug:dock";
 const DEBUG_SESSION_KEY = "dotli:truapi-debug";
+const PENDING_TICK_MS = 1000;
 
 type DockPosition = "bottom" | "right";
 
@@ -168,6 +175,15 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     });
   };
 
+  // A pending badge counts up with the clock rather than with traffic, and a
+  // host that has stalled is precisely one that has stopped emitting events,
+  // so the store cannot be what wakes it.
+  const pendingTick = setInterval(() => {
+    if (state.view === "list") {
+      syncPending(ui, store);
+    }
+  }, PENDING_TICK_MS);
+
   const unsubscribeStore = store.subscribe(scheduleRender);
   const unsubscribeDotli = onDotliDebugEvent((ev) => {
     if (isTruapiDebugEvent(ev)) {
@@ -182,6 +198,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   adjustIframeForPanel(ui.panel, state);
 
   return () => {
+    clearInterval(pendingTick);
     unsubscribeDotli();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
@@ -990,6 +1007,7 @@ function render(
   renderProductChips(ui, state, store);
   if (state.view === "list") {
     renderList(ui, state, store, visible, opts.fullList ?? false);
+    syncPending(ui, store);
   } else {
     // The timeline is cheap enough to always full-rebuild for now;
     // a future phase can switch to incremental geometry updates if
@@ -1220,6 +1238,32 @@ function appendNewRowsAndPrune(
   ui.list.scrollTop = wasAtBottom ? ui.list.scrollHeight : prevScrollTop;
 }
 
+/**
+ * Update every pending badge in place, and drop the ones whose reply has
+ * arrived.
+ *
+ * Touches only the badge nodes, never the rows around them, so it composes
+ * with the list's append-only fast path and leaves selection and scroll
+ * position alone.
+ */
+function syncPending(ui: PanelUI, store: EventStore): void {
+  const open = openCalls(store.list());
+  const now = Date.now();
+
+  for (const badge of ui.list.querySelectorAll<HTMLElement>(".td-pending")) {
+    const key = badge.dataset.pendingKey;
+    const startedAt = key === undefined ? undefined : open.get(key);
+    if (startedAt === undefined) {
+      badge.remove();
+      continue;
+    }
+    const waiting = now - startedAt;
+    badge.hidden = false;
+    badge.textContent = `⟳ ${formatPending(waiting)} pending`;
+    badge.classList.toggle("slow", waiting >= SLOW_AFTER_MS);
+  }
+}
+
 function renderRow(
   ev: StoredEvent,
   state: PanelState,
@@ -1251,7 +1295,7 @@ function renderRow(
       : "";
 
   if (ev.kind === "truapi") {
-    return renderTruapiRow(ev, classes, time, delta);
+    return renderTruapiRow(ev, classes, time, delta, pendingKeyOf(ev));
   }
   return renderSystemRow(ev, classes, time, delta);
 }
@@ -1261,6 +1305,7 @@ function renderTruapiRow(
   classes: string,
   time: string,
   delta: string,
+  pendingKey: string | null,
 ): string {
   const arrow =
     ev.direction === "outgoing"
@@ -1279,6 +1324,14 @@ function renderTruapiRow(
   const summary =
     chain === null ? formatPayloadSummary(ev.payload) : chainSummary(chain);
 
+  // Rendered empty and filled in by `syncPending`, which also removes it once
+  // the reply lands. Emitting it here keeps the badge inside the row the
+  // append-only list path already built, so the tick never re-renders a row.
+  const pending =
+    pendingKey === null
+      ? ""
+      : `<span class="td-pending" data-pending-key="${escapeHtml(pendingKey)}" hidden></span>`;
+
   return (
     `<div class="${classes}" data-seq="${String(ev.seq)}" data-rid="${escapeHtml(ev.requestId)}" role="listitem">` +
     `<span class="td-time">${time}</span>` +
@@ -1286,7 +1339,7 @@ function renderTruapiRow(
     product +
     ridBadge +
     `<span class="td-tag-and-summary">` +
-    `<span class="${tagClass(ev.tag)}">${escapeHtml(displayTag)}</span>${delta}` +
+    `<span class="${tagClass(ev.tag)}">${escapeHtml(displayTag)}</span>${delta}${pending}` +
     (summary !== ""
       ? `<span class="td-summary">${escapeHtml(summary)}</span>`
       : "") +
