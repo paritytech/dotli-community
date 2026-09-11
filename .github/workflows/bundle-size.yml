@@ -7,17 +7,25 @@ on:
   pull_request:
     paths-ignore:
       - "**.md"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write
-  actions: read
+
+concurrency:
+  group: bundle-size-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  bundle-size:
+  # A protocol entry over budget means smoldot or chain specs crept back into
+  # the iframe's cold-start chunk, costing RPC-mode users ~3 MB. Warns only:
+  # the signal belongs in review, not the required-checks gate.
+  budget:
     name: Continuous Integration
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.sender.type != 'Bot'
 
     steps:
       - name: Checkout
@@ -34,324 +42,89 @@ jobs:
       - name: Build
         run: bunx --bun turbo run build:prod
 
-      - name: Remove source maps
-        run: find apps/*/dist -name '*.map' -delete
-
-      # Flag mode-specific bundles that exceed budget. If
-      # `apps/protocol/dist/assets/index-*.js` exceeds 600 KB raw, it
-      # almost certainly means a static smoldot or chain-specs import
-      # crept back into the protocol iframe's cold-start chunk — which
-      # silently inflates RPC-mode users by ~3 MB. Overages emit a
-      # workflow warning and surface in the PR comment, but do NOT fail
-      # the job — the signal belongs in review, not the required-checks
-      # gate. The thresholds below have headroom above the current
-      # sizes; tighten once they've soaked.
       - name: Check mode-specific bundle budgets
-        run: |
-          : > /tmp/budget-warnings.md
-          check() {
-            local label=$1 glob=$2 max=$3
-            local file
-            file=$(ls $glob 2>/dev/null | head -1)
-            if [[ -z "$file" ]]; then
-              echo "::warning::${label}: no file matched $glob"
-              echo "- \`${label}\`: no file matched \`${glob}\`" >> /tmp/budget-warnings.md
-              return
-            fi
-            local size
-            size=$(stat --format=%s "$file")
-            if (( size > max )); then
-              echo "::warning::${label} exceeded budget: ${size} B > ${max} B (${file})"
-              local fmt_size fmt_max fmt_over
-              fmt_size=$(awk "BEGIN {printf \"%.1f KB\", $size/1024}")
-              fmt_max=$(awk "BEGIN {printf \"%.1f KB\", $max/1024}")
-              fmt_over=$(awk "BEGIN {printf \"%.1f KB\", ($size-$max)/1024}")
-              echo "- \`${label}\` exceeded budget: **${fmt_size}** > ${fmt_max} (+${fmt_over}) — \`${file#apps/}\`" >> /tmp/budget-warnings.md
-            else
-              echo "${label}: ${size} B (budget ${max} B) — ok"
-            fi
-          }
-          # Protocol iframe main entry (RPC mode cold start) — must NOT
-          # bundle smoldot / chain specs.
-          check "protocol-iframe-entry" \
-                "apps/protocol/dist/assets/index-*.js" \
-                $((600 * 1024))
-          # Host shell main entry — must not regress more than ~20% above
-          # its current ~460 KB raw size.
-          check "host-entry" \
-                "apps/host/dist/assets/index-*.js" \
-                $((600 * 1024))
+        run: bun scripts/bundle-size-report.ts --budget-only
 
-      # ── PR: download baseline from main ────────────────────────
-      - name: Download baseline from main
-        if: github.event_name == 'pull_request'
-        id: baseline
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
+  record:
+    name: Weekly Report
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: bundle-size-baseline
-          workflow: bundle-size.yml
-          branch: main
-          path: /tmp/baseline
-          if_no_artifact_found: warn
+          fetch-depth: 0
 
-      # ── PR: build comparison report and comment ────────────────
-      - name: Generate bundle size report
-        if: github.event_name == 'pull_request'
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.13"
+
+      # Resolved by the script, not by shell date arithmetic: `date -d 'last
+      # monday'` on a Monday means seven days back, which is the week before
+      # the one this run is meant to record.
+      - name: Resolve the week to record
+        id: week
         run: |
-          SIZE_THRESHOLD=512000  # 500 KB
+          sha=$(bun scripts/bundle-size-report.ts --print-sha)
+          if [ -z "$sha" ]; then
+            echo "No commit on main for that week, nothing to record."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
-          BASELINE_FILE="/tmp/baseline/bundle-baseline.json"
-          if [[ -f "$BASELINE_FILE" ]]; then
-            HAS_BASELINE=true
-          else
-            HAS_BASELINE=false
-            echo "::warning::No baseline found — sizes shown without comparison"
+      # The report branch is the source of truth, not main: a weekly PR waits
+      # on review, so each run appends to it rather than overwriting the weeks
+      # that have not landed yet.
+      - name: Restore history from the open report branch
+        if: steps.week.outputs.skip != 'true'
+        run: |
+          if git ls-remote --exit-code --heads origin chore/bundle-size-report; then
+            git fetch origin chore/bundle-size-report
+            git checkout FETCH_HEAD -- docs/assets/bundle-size-history.json docs/bundle-size.md
           fi
 
-          # Strip content hashes: "fetch-CMRV9u5T.js" → "fetch.js"
-          strip_hash() {
-            echo "$1" | sed -E 's/-[A-Za-z0-9_-]{8}\./\./'
-          }
+      - name: Check out the measured commit
+        if: steps.week.outputs.skip != 'true'
+        run: git worktree add /tmp/measure ${{ steps.week.outputs.sha }}
 
-          fmt() {
-            local bytes=$1
-            if (( bytes >= 1048576 )); then
-              awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"
-            elif (( bytes >= 1024 )); then
-              awk "BEGIN {printf \"%.1f KB\", $bytes/1024}"
-            else
-              echo "${bytes} B"
-            fi
-          }
-
-          # Format a diff: returns "" if no baseline or unchanged, else " (+1.2 KB)" / " (-3.4 KB)"
-          fmt_diff() {
-            local current=$1 base=$2
-            if [[ -z "$base" ]] || (( base == 0 )); then
-              echo ""
-              return
-            fi
-            local diff=$((current - base))
-            if (( diff == 0 )); then
-              echo ""
-              return
-            fi
-
-            local abs_diff=$diff
-            (( abs_diff < 0 )) && abs_diff=$((-diff))
-            local formatted
-            formatted=$(fmt $abs_diff)
-
-            if (( diff > 0 )); then
-              echo " (+${formatted})"
-            else
-              echo " (-${formatted})"
-            fi
-          }
-
-          # Read a value from the baseline JSON
-          baseline_val() {
-            local name=$1 field=$2
-            if $HAS_BASELINE; then
-              python3 -c "
-          import json, sys
-          d = json.load(open('$BASELINE_FILE'))
-          e = d.get('$name', {})
-          print(e.get('$field', ''))" 2>/dev/null
-            fi
-          }
-
-          rows=""
-          large_rows=""
-          total_raw=0
-          total_br=0
-          total_gz=0
-          base_total_raw=0
-          base_total_br=0
-          base_total_gz=0
-
-          for app_dist in apps/host/dist apps/sandbox/dist; do
-            [ -d "$app_dist" ] || continue
-            app_name=$(basename "$(dirname "$app_dist")")
-            while IFS= read -r file; do
-              rel="${app_name}/${file#${app_dist}/}"
-              name=$(strip_hash "$rel")
-              raw=$(stat --format=%s "$file")
-              total_raw=$((total_raw + raw))
-
-              if [[ -f "${file}.br" ]]; then
-                br=$(stat --format=%s "${file}.br")
-              else
-                br=$raw
-              fi
-              total_br=$((total_br + br))
-
-              if [[ -f "${file}.gz" ]]; then
-                gz=$(stat --format=%s "${file}.gz")
-              else
-                gz=$raw
-              fi
-              total_gz=$((total_gz + gz))
-
-              # Look up baseline
-              base_raw=$(baseline_val "$name" "raw")
-              base_br=$(baseline_val "$name" "br")
-              base_gz=$(baseline_val "$name" "gz")
-
-              if [[ -n "$base_raw" ]]; then
-                base_total_raw=$((base_total_raw + base_raw))
-                base_total_br=$((base_total_br + base_br))
-                base_total_gz=$((base_total_gz + base_gz))
-              fi
-
-              raw_diff=$(fmt_diff $raw "$base_raw")
-              br_diff=$(fmt_diff $br "$base_br")
-              gz_diff=$(fmt_diff $gz "$base_gz")
-
-              raw_fmt="$(fmt $raw)${raw_diff}"
-              br_fmt="$(fmt $br)${br_diff}"
-              gz_fmt="$(fmt $gz)${gz_diff}"
-
-              row="| \`${name}\` | ${raw_fmt} | ${br_fmt} | ${gz_fmt} |"
-              rows="${rows}${row}"$'\n'
-
-              if (( raw >= SIZE_THRESHOLD )); then
-                large_rows="${large_rows}${row}"$'\n'
-              fi
-            done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
-          done
-
-          # Format totals with diffs
-          total_raw_diff=""
-          total_br_diff=""
-          total_gz_diff=""
-          if $HAS_BASELINE && (( base_total_raw > 0 )); then
-            total_raw_diff=$(fmt_diff $total_raw $base_total_raw)
-            total_br_diff=$(fmt_diff $total_br $base_total_br)
-            total_gz_diff=$(fmt_diff $total_gz $base_total_gz)
-          fi
-
-          total_raw_fmt="$(fmt $total_raw)${total_raw_diff}"
-          total_br_fmt="$(fmt $total_br)${total_br_diff}"
-          total_gz_fmt="$(fmt $total_gz)${total_gz_diff}"
-          br_pct=$(awk "BEGIN {printf \"%.0f\", (1 - $total_br/$total_raw) * 100}")
-
-          {
-            echo "## Bundle Size Report"
-            echo ""
-            if [[ -s /tmp/budget-warnings.md ]]; then
-              echo "> [!WARNING]"
-              echo "> **Bundle budget exceeded** — not a blocker, but please confirm the regression is intentional."
-              echo ">"
-              while IFS= read -r line; do echo "> ${line}"; done < /tmp/budget-warnings.md
-              echo ""
-            fi
-            if ! $HAS_BASELINE; then
-              echo "> No baseline found on \`main\`. Merge to \`main\` to establish a baseline."
-              echo ""
-            fi
-
-            # Show only chunks over 500 KB + total by default
-            if [[ -n "$large_rows" ]]; then
-              echo "**Chunks over 500 KB:**"
-              echo ""
-              echo "| File | Raw | Brotli | Gzip |"
-              echo "|------|----:|-------:|-----:|"
-              echo -n "$large_rows"
-              echo "| **Total** | **${total_raw_fmt}** | **${total_br_fmt}** (-${br_pct}%) | **${total_gz_fmt}** |"
-            else
-              echo "No chunks over 500 KB."
-              echo ""
-              echo "**Total:** ${total_raw_fmt} raw / ${total_br_fmt} brotli (-${br_pct}%) / ${total_gz_fmt} gzip"
-            fi
-
-            # Full file list in expandable section
-            echo ""
-            echo "<details>"
-            echo "<summary>All files</summary>"
-            echo ""
-            echo "| File | Raw | Brotli | Gzip |"
-            echo "|------|----:|-------:|-----:|"
-            echo -n "$rows"
-            echo "| **Total** | **${total_raw_fmt}** | **${total_br_fmt}** (-${br_pct}%) | **${total_gz_fmt}** |"
-            echo ""
-            echo "</details>"
-            echo ""
-            SHORT_SHA="${GITHUB_SHA:0:7}"
-            echo "<sub>Commit: [${SHORT_SHA}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})</sub>"
-          } > /tmp/comment-body.md
-
-      - name: Post or update PR comment
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const fs = require('fs');
-            const body = fs.readFileSync('/tmp/comment-body.md', 'utf8');
-            const marker = '## Bundle Size Report';
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const existing = comments.find(c => c.body?.startsWith(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-
-      # ── main: generate and upload baseline sizes ───────────────
-      - name: Generate baseline sizes
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Build the measured commit
+        if: steps.week.outputs.skip != 'true'
+        working-directory: /tmp/measure
         run: |
-          # Strip content hashes from filenames: "fetch-CMRV9u5T.js" → "fetch.js"
-          strip_hash() {
-            echo "$1" | sed -E 's/-[A-Za-z0-9_-]{8}\./\./'
-          }
+          bun install --frozen-lockfile
+          bunx --bun turbo run build:prod
+          find apps/*/dist -name '*.map' -delete
 
-          echo "{" > /tmp/bundle-baseline.json
-          first=true
-          for app_dist in apps/host/dist apps/sandbox/dist; do
-            [ -d "$app_dist" ] || continue
-            app_name=$(basename "$(dirname "$app_dist")")
-            while IFS= read -r file; do
-              rel="${app_name}/${file#${app_dist}/}"
-              name=$(strip_hash "$rel")
-              raw=$(stat --format=%s "$file")
+      # The script comes from HEAD so commits predating it can still be measured.
+      - name: Record the week
+        if: steps.week.outputs.skip != 'true'
+        working-directory: /tmp/measure
+        run: |
+          bun "${GITHUB_WORKSPACE}/scripts/bundle-size-report.ts" --record \
+            --sha ${{ steps.week.outputs.sha }} \
+            --history "${GITHUB_WORKSPACE}/docs/assets/bundle-size-history.json" \
+            --out "${GITHUB_WORKSPACE}/docs/bundle-size.md"
 
-              br=$raw
-              [[ -f "${file}.br" ]] && br=$(stat --format=%s "${file}.br")
-
-              gz=$raw
-              [[ -f "${file}.gz" ]] && gz=$(stat --format=%s "${file}.gz")
-
-              $first || echo "," >> /tmp/bundle-baseline.json
-              first=false
-              printf '  "%s": {"raw": %d, "br": %d, "gz": %d}' "$name" "$raw" "$br" "$gz" >> /tmp/bundle-baseline.json
-            done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
-          done
-          echo "" >> /tmp/bundle-baseline.json
-          echo "}" >> /tmp/bundle-baseline.json
-
-      - name: Upload baseline artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Open or update the report PR
+        if: steps.week.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
         with:
-          name: bundle-size-baseline
-          path: /tmp/bundle-baseline.json
-          retention-days: 90
-          overwrite: true
+          branch: chore/bundle-size-report
+          delete-branch: true
+          title: "chore(bundle-size): weekly report"
+          commit-message: "chore(bundle-size): record the weekly bundle size"
+          body: |
+            ## Summary
+
+            - Records the bundle size of `main` at the last merge of the week.
+            - Regenerates the chart and tables in `docs/bundle-size.md`.
+            - Rows accumulate here until this lands, so a late merge loses nothing.
+          add-paths: |
+            docs/bundle-size.md
+            docs/assets/bundle-size-history.json
