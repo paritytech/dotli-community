@@ -251,10 +251,10 @@ function writeStatus(message: string): void {
     return;
   }
   // Falls back to "the name" when no domain has been set, which is the
-  // preview and local-target paths where there is no `.dot` to name.
+  // preview and local-target paths where there is no dotNS name to show.
   const next = message.replace(
     DOMAIN_TOKEN,
-    loadingDomain === "" ? "the name" : `${loadingDomain}.dot`,
+    loadingDomain === "" ? "the name" : withActiveTld(loadingDomain),
   );
   // Screen readers get the whole sentence once, from an element the typing
   // never touches.
@@ -803,7 +803,7 @@ export function showLanding(): void {
     }
   }
 
-  // Show recently visited .dot sites. The list is written on the subdomain
+  // Show recently visited dotNS sites. The list is written on the subdomain
   // that resolved, so it comes from the cross-subdomain store, not this
   // origin's localStorage.
   void loadRecentLabels().then((labels) => {

@@ -1484,10 +1484,16 @@ function renderModePopover(): void {
       }
     };
     rerenderNetwork();
-    appendDivider(leftCol);
   }
 
-  appendSectionHeader(leftCol, "Backend");
+  // Only separate from the Network section when there is one. With a single
+  // enabled network this header leads the column and must line up with
+  // Diagnostics opposite.
+  appendSectionHeader(
+    leftCol,
+    "Network Transport",
+    enabledNetworks.length > 1 ? "mode-popover-section--spaced" : undefined,
+  );
   const chainChoices: [Backend, string, string][] = [
     [
       "smoldot-direct",
@@ -1507,7 +1513,7 @@ function renderModePopover(): void {
   ];
   const chainGroup = document.createElement("div");
   chainGroup.setAttribute("role", "radiogroup");
-  chainGroup.setAttribute("aria-label", "Backend");
+  chainGroup.setAttribute("aria-label", "Network Transport");
   leftCol.appendChild(chainGroup);
   const sharedWorkerSupported = isSharedWorkerAvailable();
   const rerenderChain = (): void => {
@@ -1538,8 +1544,7 @@ function renderModePopover(): void {
   };
   rerenderChain();
 
-  appendDivider(leftCol);
-  appendSectionHeader(leftCol, "Cache");
+  appendSectionHeader(leftCol, "Cache", "mode-popover-section--bottom");
   renderCacheToggle(
     leftCol,
     "dotNS cache",
@@ -1844,9 +1849,16 @@ async function unregisterAllServiceWorkers(): Promise<void> {
   }
 }
 
-function appendSectionHeader(parent: HTMLElement, text: string): void {
+function appendSectionHeader(
+  parent: HTMLElement,
+  text: string,
+  modifier?: string,
+): void {
   const header = document.createElement("div");
-  header.className = "mode-popover-section";
+  header.className =
+    modifier === undefined
+      ? "mode-popover-section"
+      : `mode-popover-section ${modifier}`;
   header.textContent = text;
   parent.appendChild(header);
 }
@@ -1929,7 +1941,7 @@ function renderDiagnostics(parent: HTMLElement): void {
   };
   const smoldotActive = getBackend() !== "rpc-gateway";
   appendSectionHeader(parent, "Light client");
-  renderInfoRow(parent, "truapi-provider", smoldotInfo.version);
+  renderInfoRow(parent, "@parity/truapi-provider", smoldotInfo.version);
   if (smoldotActive) {
     const relayRow = renderInfoRow(parent, "Relay Chain", "…");
     const assetHubRow = renderInfoRow(parent, "Asset Hub", "…");
@@ -2129,10 +2141,10 @@ function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     ["Site", window.location.host],
     ["Build", `${version} (${shortSha(sha)})`],
     ["Network", NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
-    ["Backend", backendLabel(backend)],
+    ["Network Transport", backendLabel(backend)],
   ];
 
-  // Sub-row attached to the Backend row:
+  // Sub-row attached to the Network Transport row:
   //   - smoldot-shared-worker: "Worker" label and build SHA. The SharedWorker
   //     is a cached script. If it's running an older bundle than the current
   //     page, this SHA diverges from Build, which is the tell-tale for a stale

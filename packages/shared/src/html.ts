@@ -21,7 +21,7 @@ export function escapeHtml(str: string): string {
 }
 
 /**
- * `.dot` label validator.
+ * dotNS label validator.
  *
  * Contract (closed set, no silent acceptance):
  *   - Lowercase ASCII `a-z 0-9` and interior `-` only.
