@@ -75,8 +75,8 @@ jobs:
         working-directory: apps/host
         run: |
           TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
-          if [ "$TOTAL" -lt 11 ]; then
-            echo "::error::expected at least 11 tests, got $TOTAL."
+          if [ "$TOTAL" -lt 12 ]; then
+            echo "::error::expected at least 12 tests, got $TOTAL."
             exit 1
           fi
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
