@@ -468,7 +468,7 @@ describe("PolkaVM package recognition", () => {
       webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["WASD Move", "Space Fire"],
-      inputFeatures: ["pointer", "keyboard", "motion"],
+      inputFeatures: ["pointer", "keyboard", "wheel", "motion"],
       audioEnabled: true,
       requiredAssets: ["game/doom.wad"],
       manifestVersion: null,

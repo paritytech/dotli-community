@@ -732,7 +732,7 @@ function parseManifest(
           (control): control is string => typeof control === "string",
         )
       : [];
-    inputFeatures = ["pointer", "keyboard", "motion"];
+    inputFeatures = ["pointer", "keyboard", "wheel", "motion"];
     audioEnabled = true;
     graphicsProfile = "framebuffer";
   } else if (
@@ -752,7 +752,7 @@ function parseManifest(
           (control): control is string => typeof control === "string",
         )
       : [];
-    inputFeatures = ["pointer", "keyboard", "motion"];
+    inputFeatures = ["pointer", "keyboard", "wheel", "motion"];
     audioEnabled = modalities?.audio !== undefined;
     graphicsProfile = "framebuffer";
   } else {
