@@ -7,6 +7,7 @@ interface ProductSmoke {
   label: string;
   profile: "framebuffer" | "tri2d" | "webgpu-raster";
   keys: readonly string[];
+  scheduling?: "continuous" | "demand-driven";
   clickPosition?: { readonly x: number; readonly y: number };
   audio: boolean;
   nonzeroAudio: boolean;
@@ -51,6 +52,7 @@ const products: readonly ProductSmoke[] = [
     label: "egui-app-lab",
     profile: "tri2d",
     keys: ["Tab", "Enter", "Tab"],
+    scheduling: "demand-driven",
     audio: false,
     nonzeroAudio: false,
   },
@@ -250,12 +252,18 @@ async function smokeProduct(
       .toBeGreaterThan(hostFrameResponsesBefore);
   }
 
-  await expect
-    .poll(() => counter(canvas, "data-polkavm-frames"), { timeout: 30_000 })
-    .toBeGreaterThan(framesBefore + 30);
-  await expect
-    .poll(() => counter(canvas, "data-polkavm-updates"), { timeout: 30_000 })
-    .toBeGreaterThan(updatesBefore + 30);
+  if (product.scheduling === "demand-driven") {
+    await expect
+      .poll(() => counter(canvas, "data-polkavm-frames"), { timeout: 30_000 })
+      .toBeGreaterThan(framesBefore);
+  } else {
+    await expect
+      .poll(() => counter(canvas, "data-polkavm-frames"), { timeout: 30_000 })
+      .toBeGreaterThan(framesBefore + 30);
+    await expect
+      .poll(() => counter(canvas, "data-polkavm-updates"), { timeout: 30_000 })
+      .toBeGreaterThan(updatesBefore + 30);
+  }
 
   if (product.audio) {
     await expect
