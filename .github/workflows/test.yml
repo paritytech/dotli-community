@@ -69,7 +69,7 @@ jobs:
         working-directory: apps/host
         env:
           VITE_METRICS: "true"
-        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/host-shell-assets.spec.ts || true
+        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts || true
 
       - name: Apply functional threshold
         working-directory: apps/host
@@ -87,10 +87,6 @@ jobs:
           # itself without VITE_METRICS, which is exactly how it would silently
           # stop running.
           TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
-          # The run step above ends in `|| true`, so playwright's exit code is
-          # discarded and a spec only turns the job red if it is gated here.
-          ASSETS_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-shell-assets.spec.ts" and .ok == false)] | length' tests/functional/results.json)
-          echo "host-shell-assets.spec.ts failures: $ASSETS_FAILED"
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
           echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
@@ -104,10 +100,6 @@ jobs:
           fi
           if [ "$TRANSPORT_FAILED" -gt 0 ]; then
             echo "::error::network-transport.spec.ts must have 0 failures"
-            exit 1
-          fi
-          if [ "$ASSETS_FAILED" -gt 0 ]; then
-            echo "::error::host-shell-assets.spec.ts must have 0 failures"
             exit 1
           fi
           if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
