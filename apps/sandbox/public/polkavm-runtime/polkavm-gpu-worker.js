@@ -16,10 +16,9 @@ const HANDLE_SLOT_MASK = (1 << 20) - 1;
 const HANDLE_LIVE_BIT = 1 << 12;
 const MAX_COMPILATIONS_PER_BATCH = 32;
 const MAX_PENDING_BATCHES = 4;
-// Adapter discovery can be briefly unavailable while a browser rebuilds its
-// graphics process after resize, backgrounding, or memory pressure.
-const MAX_DEVICE_RESTORE_ATTEMPTS = 3;
-const DEVICE_RESTORE_RETRY_DELAY_MS = 250;
+// A device that dies again straight after every rebuild is not coming back;
+// bound the attempts so a broken adapter cannot spin the worker forever.
+const MAX_DEVICE_RESTORES = 3;
 const BATCH_ERROR_STALE_SURFACE = 4;
 const MAX_RENDER_PASSES_PER_BATCH = 16;
 const MAX_DRAWS_PER_BATCH = 8_192;
@@ -859,6 +858,7 @@ class GpuEngine {
     this.lastSequence = 0;
     this.stopped = false;
     this.disposed = false;
+    this.restoreAttempts = 0;
     this.queue = Promise.resolve();
     this.pendingBatches = 0;
     this.testReadbacksRemaining = testReadback ? 8 : 0;
@@ -895,36 +895,19 @@ class GpuEngine {
   }
 
   async restore() {
-    if (this.disposed) {
+    if (this.disposed || this.restoreAttempts >= MAX_DEVICE_RESTORES) {
       return;
     }
+    this.restoreAttempts++;
     let replacement;
-    let failure;
-    for (let attempt = 1; attempt <= MAX_DEVICE_RESTORE_ATTEMPTS; attempt++) {
-      if (this.disposed) {
-        return;
-      }
-      try {
-        replacement = await GpuEngine.acquireDevice(
-          this.canvas,
-          this.requirements
-        );
-        break;
-      } catch (error) {
-        failure = error;
-        if (attempt < MAX_DEVICE_RESTORE_ATTEMPTS) {
-          await new Promise(resolve => {
-            setTimeout(resolve, DEVICE_RESTORE_RETRY_DELAY_MS * attempt);
-          });
-        }
-      }
-    }
-    if (!replacement) {
+    try {
+      replacement = await GpuEngine.acquireDevice(this.canvas, this.requirements);
+    } catch (error) {
       // The guest already has the loss event; a Host that cannot rebuild the
       // device leaves it there rather than pretending the surface came back.
       postMessage({
         type: "error",
-        message: `WebGPU device could not be restored: ${failure?.message || String(failure)}`,
+        message: `WebGPU device could not be restored: ${error.message || String(error)}`,
       });
       return;
     }
@@ -1385,7 +1368,10 @@ class GpuEngine {
             );
           }
           if (command.colorView !== 0) {
-            resource(shadow, command.colorView, "textureView", index);
+            throw new ProtocolError(
+              "render pass uses a non-surface color view",
+              index
+            );
           }
           renderPasses++;
           if (renderPasses > MAX_RENDER_PASSES_PER_BATCH) {
@@ -1767,15 +1753,8 @@ class GpuEngine {
           case 12: {
             encoder ||= this.device.createCommandEncoder();
             const colorAttachment = {
-              view: command.colorView
-                ? resource(
-                    next,
-                    command.colorView,
-                    "textureView",
-                    command.index
-                  ).value
-                : (surfaceView ??= (surfaceTexture ??=
-                    this.context.getCurrentTexture()).createView()),
+              view: (surfaceView ??= (surfaceTexture ??=
+                this.context.getCurrentTexture()).createView()),
               loadOp: command.flags & 1 ? "load" : "clear",
               storeOp: command.flags & 2 ? "store" : "discard",
               clearValue: command.clearColor,
