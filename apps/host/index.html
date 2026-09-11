@@ -91,7 +91,9 @@
                 <button
                     id="auth-button"
                     class="topbar-btn"
-                    title="Login with Polkadot Mobile"
+                    title="Connecting..."
+                    aria-label="Connecting..."
+                    aria-busy="true"
                     disabled
                 >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -240,6 +242,7 @@
                 <div class="auth-modal-qr" id="auth-modal-qr">
                     <div class="spinner"></div>
                 </div>
+                <a class="auth-modal-get-app" id="auth-modal-get-app" target="_blank" rel="noopener noreferrer" hidden>Don't have the app? Get Polkadot Mobile</a>
                 <button class="auth-modal-close" id="auth-modal-close">
                     Cancel
                 </button>
