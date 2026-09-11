@@ -174,6 +174,7 @@ function resetProtocolFrameState(reason?: Error): void {
   hostFramePromise = null;
   protocolReadyPromise = null;
   protocolReady = false;
+  smoldotDbOutcome = "unknown";
   // Reject any callers blocked on `waitForProtocolReady()` before we drop the
   // resolvers. Otherwise their promises would hang until the 120s timeout.
   const orphaned = pendingReadyResolvers;
