@@ -11,6 +11,8 @@ import {
 import { test } from "./helpers/shared-mode-reset";
 import { findAppFrame } from "../product-frame";
 import { seedBackend, type Backend } from "./fixtures/settings";
+import { TIMEOUTS } from "@dotli/config/timeouts";
+import { METHOD_TIMEOUTS } from "@dotli/protocol/method-timeouts";
 
 import { TLD_SUFFIX } from "../env";
 
@@ -19,6 +21,10 @@ const PORT = process.env.COMBO_PORT ?? "5173";
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
 const RETRY_LABEL_FROM_SMOLDOT = FAILOVER_BTN_LABELS["rpc-gateway"];
+
+// The budget a `resolveDotName` handler derives from its request deadline.
+const RESOLVER_SYNC_BUDGET_MS =
+  (METHOD_TIMEOUTS.resolveDotName ?? 0) - TIMEOUTS.RESPONSE_DELIVERY_GRACE;
 
 // Preserve the post-retry backend that the in-page button just flipped.
 async function setBackend(page: Page, backend: Backend): Promise<void> {
@@ -85,7 +91,11 @@ const fatalOnResolve = (message: string): string => `
   });
 `;
 
-const errorResolveResponse = (error: string, delayMs = 0): string => `
+const errorResolveResponse = (
+  error: string,
+  delayMs = 0,
+  errorName?: string,
+): string => `
   ${READY}
   window.addEventListener("message", function(e) {
     if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
@@ -97,6 +107,7 @@ const errorResolveResponse = (error: string, delayMs = 0): string => `
           id: id,
           ok: false,
           error: ${JSON.stringify(error)},
+          errorName: ${errorName === undefined ? "undefined" : JSON.stringify(errorName)},
         }, "*");
       }, ${String(delayMs)});
     }
@@ -253,6 +264,7 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
     errorResolveResponse(
       "Sync to Asset Hub Paseo timed out after 45s — unable to reach peers",
       1_500,
+      "NetworkSyncTimeoutError",
     ),
   );
 
@@ -265,7 +277,7 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
     { timeout: 10_000 },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
-    HOST_ERRORS.AH_SYNC_TIMEOUT,
+    HOST_ERRORS.HUB_SYNC_TIMEOUT,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
     REFRESH_BTN_LABEL,
@@ -273,6 +285,54 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
   await expect(page.locator("#error-retry-btn-1")).toContainText(
     RETRY_LABEL_FROM_SMOLDOT,
   );
+});
+
+test("As a user using smoldot directly, when every peer WebSocket is unavailable, I see a typed Hub failure before the generic request timeout", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-direct");
+  // A window, not equality: the budget is the deadline minus however long
+  // dispatch took, so it lands just under the constant.
+  await page.addInitScript((budgetMs: number) => {
+    const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
+    globalThis.setTimeout = ((
+      handler: TimerHandler,
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
+      const isResolverBudget =
+        timeout !== undefined &&
+        timeout <= budgetMs &&
+        timeout > budgetMs - 5_000;
+      return nativeSetTimeout(
+        handler,
+        isResolverBudget ? 1_000 : timeout,
+        ...args,
+      );
+    }) as typeof globalThis.setTimeout;
+  }, RESOLVER_SYNC_BUDGET_MS);
+  let blockedSockets = 0;
+  await page.context().routeWebSocket(/^wss?:\/\//, (socket) => {
+    blockedSockets += 1;
+    void socket.close();
+  });
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    "Domain can't be reached",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toHaveText(
+    HOST_ERRORS.HUB_SYNC_TIMEOUT,
+  );
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    RETRY_LABEL_FROM_SMOLDOT,
+  );
+  expect(blockedSockets).toBeGreaterThan(0);
 });
 
 test("As a user using smoldot in shared worker, when the sync times out (>45s) I see the appropriate error and can switch backend", async ({
@@ -285,6 +345,7 @@ test("As a user using smoldot in shared worker, when the sync times out (>45s) I
     errorResolveResponse(
       "Sync to Asset Hub Paseo timed out after 45s — unable to reach peers",
       1_500,
+      "NetworkSyncTimeoutError",
     ),
   );
 
@@ -297,7 +358,7 @@ test("As a user using smoldot in shared worker, when the sync times out (>45s) I
     { timeout: 10_000 },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
-    HOST_ERRORS.AH_SYNC_TIMEOUT,
+    HOST_ERRORS.HUB_SYNC_TIMEOUT,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
     REFRESH_BTN_LABEL,
