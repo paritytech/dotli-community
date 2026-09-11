@@ -568,40 +568,110 @@ export function renderResolution(
   container.innerHTML = `${renderSummary(model)}${renderChart(model)}`;
 }
 
+/**
+ * One KPI card. `hint` is the plain-English explanation shown on hover, which is
+ * the only place several of these are disambiguated: `sync download` counts
+ * chain traffic and `app size` counts the dApp's files, and nothing else on
+ * screen says so.
+ */
+interface Fact {
+  key: string;
+  value: string;
+  hint: string;
+}
+
+/** Starts the next group on its own row. */
+const GROUP_BREAK: Fact = { key: "", value: "", hint: "" };
+
+function summaryFacts(model: ResolutionModel): Fact[] {
+  const s = model.summary;
+  return [
+    {
+      key: "name",
+      value: s.label === null ? "—" : escapeHtml(s.label),
+      hint: "The .dot name this page load resolved.",
+    },
+    {
+      key: "outcome",
+      value: outcomeText(s),
+      hint: "Whether the load finished. \u201cResolved\u201d means a content id was found and the app was handed a document to render.",
+    },
+    {
+      key: "network transport",
+      value: transportText(s),
+      hint: "How this load reached the chain. The smoldot light client verifies blocks itself; the RPC gateway trusts a remote node to answer honestly.",
+    },
+    GROUP_BREAK,
+    {
+      key: "elapsed",
+      value: formatMs(model.elapsedMs),
+      hint: "Wall clock for the whole load, from the host starting up to the app being on screen.",
+    },
+    {
+      key: "resolved in",
+      value: s.resolveMs === null ? "—" : formatMs(s.resolveMs),
+      hint: "How long it took to turn the name into a content id. On a cache hit this is the moment the stored id was read, not a chain lookup.",
+    },
+    {
+      key: "app on screen",
+      value: s.renderedMs === null ? "—" : formatMs(s.renderedMs),
+      hint: "When the sandbox wrote the app's document. This is the app actually visible, not the iframe being created, which happens seconds earlier on a cold load.",
+    },
+    {
+      key: "first byte",
+      value: s.firstByteMs === null ? "—" : formatMs(s.firstByteMs),
+      hint: "When the light client's first byte arrived. Shows how long finding peers and opening connections took before any data moved.",
+    },
+    GROUP_BREAK,
+    {
+      key: "sync download",
+      value: s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
+      hint: "Bytes the light client pulled off the network while syncing the chains for this load. Warp syncing the relay dominates a cold start. The app's own files are not counted here.",
+    },
+    {
+      key: "app size",
+      value: appSizeText(s),
+      hint: "Decoded size of everything the dApp shipped, and how many files it came in. Fetched over bitswap, or read straight from the archive cache.",
+    },
+    {
+      key: "average speed",
+      value: formatRate(s.avgBytesPerSecond),
+      hint: "Sync download divided by the time spent pulling it. Chain traffic only.",
+    },
+    {
+      key: "peak speed",
+      value: formatRate(s.peakBytesPerSecond),
+      hint: "The fastest chain download rate seen between two byte samples.",
+    },
+    GROUP_BREAK,
+    {
+      key: "CID cache",
+      value: cacheText(s.cidCache),
+      hint: "Whether this name's content id was already stored from an earlier visit, so the load needed no chain lookup at all.",
+    },
+    {
+      key: "archive cache",
+      value: cacheText(s.archiveCache),
+      hint: "Whether the app's files were already in the service worker's cache, so nothing had to be fetched over the network.",
+    },
+  ];
+}
+
 function renderSummary(model: ResolutionModel): string {
   const s = model.summary;
-  const facts: [string, string][] = [
-    ["name", s.label === null ? "—" : escapeHtml(s.label)],
-    ["outcome", outcomeText(s)],
-    ["network transport", transportText(s)],
-    ["elapsed", formatMs(model.elapsedMs)],
-    ["resolved in", s.resolveMs === null ? "—" : formatMs(s.resolveMs)],
-    ["app on screen", s.renderedMs === null ? "—" : formatMs(s.renderedMs)],
-    [
-      "downloaded during connection",
-      s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
-    ],
-    ["app size", appSizeText(s)],
-    ["average speed", formatRate(s.avgBytesPerSecond)],
-    ["peak speed", formatRate(s.peakBytesPerSecond)],
-    ["first byte", s.firstByteMs === null ? "—" : formatMs(s.firstByteMs)],
-    ["CID cache", cacheText(s.cidCache)],
-    ["archive cache", cacheText(s.archiveCache)],
-  ];
+  const cards = summaryFacts(model)
+    .map((fact) =>
+      fact === GROUP_BREAK
+        ? `<div class="td-res-group-break"></div>`
+        : `<div class="td-res-fact" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose>` +
+          `<dt>${escapeHtml(fact.key)}</dt><dd>${fact.value}</dd></div>`,
+    )
+    .join("");
   const cid =
     s.cid === null
       ? ""
       : `<div class="td-res-cid" title="${escapeHtml(s.cid)}">${escapeHtml(s.cid)}</div>`;
-  return (
-    `<div class="td-res-summary">` +
-    facts
-      .map(
-        ([k, v]) =>
-          `<div class="td-res-fact"><dt>${escapeHtml(k)}</dt><dd>${v}</dd></div>`,
-      )
-      .join("") +
-    `</div>${cid}`
-  );
+  return `<dl class="td-res-summary">${cards}</dl>${cid}`;
 }
 
 function outcomeText(s: ResolutionSummary): string {

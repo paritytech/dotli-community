@@ -412,7 +412,8 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   wireListSelection(ui, state, store);
   wireTabs(ui, state, store);
   wireTimelineSelection(ui, state, store);
-  wireTimelineTooltip(ui);
+  wireHoverTooltips(ui, ui.timeline);
+  wireHoverTooltips(ui, ui.resolution);
   wireBodySplitter(ui, state);
 
   return ui;
@@ -850,15 +851,27 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
 }
 
 /**
- * Zero-delay hover tooltip for timeline elements. Any SVG element
- * carrying a `data-tooltip` attribute triggers the tooltip on
- * pointerover; `pointermove` updates the position, `pointerleave`
- * hides it. Bypasses the browser's native `<title>` delay so the
- * information appears the instant the cursor lands on a box.
+ * Zero-delay hover tooltip for any element under `root` carrying a
+ * `data-tooltip` attribute. `pointerover` shows it, `pointermove` updates the
+ * position, `pointerleave` hides it. Bypasses the browser's native `<title>`
+ * delay so the information appears the instant the cursor lands.
+ *
+ * Delegated from `root` rather than bound per element, so a pane that rebuilds
+ * its `innerHTML` on a timer keeps working without re-wiring.
+ *
+ * An element that also sets `data-tooltip-prose` gets a wrapped, width-capped
+ * tooltip. The default stays on one line, which is what the timeline's short
+ * strings want.
  */
-function wireTimelineTooltip(ui: PanelUI): void {
-  const showAt = (text: string, clientX: number, clientY: number): void => {
+function wireHoverTooltips(ui: PanelUI, root: HTMLElement): void {
+  const showAt = (
+    text: string,
+    prose: boolean,
+    clientX: number,
+    clientY: number,
+  ): void => {
     ui.tooltip.textContent = text;
+    ui.tooltip.classList.toggle("is-prose", prose);
     ui.tooltip.classList.add("visible");
     // Position (viewport-fixed): offset 12px below-right of the cursor,
     // then clamp to the viewport so the tooltip never gets cropped.
@@ -878,7 +891,7 @@ function wireTimelineTooltip(ui: PanelUI): void {
   const hide = (): void => {
     ui.tooltip.classList.remove("visible");
   };
-  ui.timeline.addEventListener("pointerover", (e) => {
+  root.addEventListener("pointerover", (e) => {
     const target = e.target as Element | null;
     const el = target?.closest("[data-tooltip]");
     if (el === null || el === undefined) {
@@ -888,9 +901,9 @@ function wireTimelineTooltip(ui: PanelUI): void {
     if (text === null) {
       return;
     }
-    showAt(text, e.clientX, e.clientY);
+    showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
   });
-  ui.timeline.addEventListener("pointermove", (e) => {
+  root.addEventListener("pointermove", (e) => {
     if (!ui.tooltip.classList.contains("visible")) {
       return;
     }
@@ -905,9 +918,9 @@ function wireTimelineTooltip(ui: PanelUI): void {
       hide();
       return;
     }
-    showAt(text, e.clientX, e.clientY);
+    showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
   });
-  ui.timeline.addEventListener("pointerleave", hide);
+  root.addEventListener("pointerleave", hide);
 }
 
 function wireTimelineSelection(
