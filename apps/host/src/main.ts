@@ -139,6 +139,7 @@ import {
   ERROR_TITLES,
   FAILOVER_BTN_LABELS,
   HOST_ERRORS,
+  HOST_UNAVAILABLE_DETAIL,
   REFRESH_BTN_LABEL,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
@@ -162,6 +163,13 @@ window.addEventListener("vite:preloadError", (event) => {
     },
   });
 });
+
+const errorIcon = (paths: string): string =>
+  `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+
+const REFRESH_ICON = errorIcon(
+  '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+);
 
 // Respect the user's dismissal unconditionally. Once dismissed, never
 // resurface unless the dismissal flag is cleared from localStorage.
@@ -1114,7 +1122,13 @@ async function main(): Promise<void> {
   if (urlBar === null) {
     const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
     captureException(err, { surface: "host_main_dom_invariant" });
-    showError(ERROR_TITLES.UI_INIT_FAILED, err.message);
+    showError(ERROR_TITLES.HOST_UNAVAILABLE, HOST_UNAVAILABLE_DETAIL, {
+      label: REFRESH_BTN_LABEL,
+      icon: REFRESH_ICON,
+      onClick: () => {
+        window.location.reload();
+      },
+    });
     return;
   }
   urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
@@ -1281,9 +1295,7 @@ async function main(): Promise<void> {
   // Events are emitted from the protocol iframe, which owns smoldot in
   // direct mode, and arrive through the protocol client's origin- and
   // source-gated listener. The `statusToPhase` log-text path remains as a
-  // fallback. Only direct mode subscribes: in shared-worker mode smoldot
-  // lives in the SharedWorker, which does not forward lifecycle or health
-  // yet, and the gateway has no smoldot at all.
+  // fallback for the other backends, which forward neither.
   if (chainBackend === "smoldot-direct") {
     // Peers are reported per chain rather than as one figure for whichever
     // chain is currently being waited on. A single figure had to be blanked
@@ -1377,13 +1389,13 @@ async function main(): Promise<void> {
     };
 
     // `lifecycle_unstable_follow` reports a phase, a peer count and a health
-    // verdict; these are the milestones the protocol layer derives from it.
+    // verdict. These are the milestones the protocol layer derives from it.
     // Only the ones that name a phase are mapped, so a peer count arriving on
     // its own never rewrites where the chain says it is.
     const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
       connecting: "connecting",
       warpSyncProgress: "syncing",
-      warpSyncFinished: "syncing",
+      warpSyncFinished: "ready",
       bootstrapComplete: "ready",
       stalled: "stalled",
     };
@@ -1495,7 +1507,7 @@ async function main(): Promise<void> {
           // only when they have real distance to cover.
           const { at, target } = event;
           if (
-            (event.chain === "relay" || event.chain === "custom-relay") &&
+            event.chain === "relay" &&
             at !== undefined &&
             target !== undefined &&
             target > 0 &&
@@ -1515,10 +1527,16 @@ async function main(): Promise<void> {
             advancePhase(3);
           }
           return;
+        case "warpSyncFinished":
+          // The last progress sample lands a little short of the target, so
+          // the band would otherwise stop just below full and stay there.
+          if (event.chain === "relay") {
+            nudgePhaseProgress(1, "relay");
+          }
+          return;
         case "connecting":
         case "stalled":
         case "recovered":
-        case "warpSyncFinished":
           // The per-chain peer counts already carry these: a stall is a
           // chain sitting at zero, and recovery is the number climbing.
           return;
@@ -1616,7 +1634,7 @@ async function main(): Promise<void> {
       if (totalBytes !== null && totalBytes > 0) {
         nudgePhaseProgress(bytesFetched / totalBytes, "content");
         // The tail of the load is the sandbox unpacking the archive and
-        // painting, which used to hide behind download copy while the bar
+        // painting, which download copy would otherwise hide while the bar
         // crept. Only blocks relayed for the sandbox are counted here, and
         // the sandbox is mounted after the content phase begins, so this
         // cannot fire while an earlier step is still on screen.
@@ -1892,19 +1910,16 @@ async function main(): Promise<void> {
     const nextBackend =
       chainBackend === "rpc-gateway" ? "smoldot-shared-worker" : "rpc-gateway";
     const btnLabel = FAILOVER_BTN_LABELS[nextBackend];
-    const svg = (paths: string): string =>
-      `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-    const refreshIcon = svg(
-      '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
-    );
     const switchIcon =
       nextBackend === "rpc-gateway"
-        ? svg('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>')
-        : svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
+        ? errorIcon(
+            '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+          )
+        : errorIcon('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
     showError(ERROR_TITLES.DOMAIN_UNREACHABLE, error.message, [
       {
         label: REFRESH_BTN_LABEL,
-        icon: refreshIcon,
+        icon: REFRESH_ICON,
         onClick: () => {
           window.location.reload();
         },
