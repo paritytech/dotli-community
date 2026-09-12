@@ -405,7 +405,7 @@ export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
   } finally {
     db.close();
   }
-  if (stored === undefined || !stored.startsWith(ENCRYPTED_VALUE_PREFIX)) {
+  if (stored?.startsWith(ENCRYPTED_VALUE_PREFIX) !== true) {
     if (stored !== undefined) {
       await deleteLocalWalletSecret();
     }
@@ -619,11 +619,11 @@ function idbAddString(
   key: string,
   value: string,
 ): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
   const tx = db.transaction(KEY_DB_STORE, "readwrite");
   tx.objectStore(KEY_DB_STORE).add(value, key);
   tx.oncomplete = () => {
-    resolve();
+    resolve(undefined);
   };
   tx.onerror = () => {
     reject(tx.error ?? new Error("indexedDB string add failed"));
@@ -635,11 +635,11 @@ function idbAddString(
 }
 
 function idbDelete(db: IDBDatabase, key: string): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
   const tx = db.transaction(KEY_DB_STORE, "readwrite");
   tx.objectStore(KEY_DB_STORE).delete(key);
   tx.oncomplete = () => {
-    resolve();
+    resolve(undefined);
   };
   tx.onerror = () => {
     reject(tx.error ?? new Error("indexedDB delete failed"));
