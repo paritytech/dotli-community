@@ -107,6 +107,4 @@ gh workflow run deploy.yml --ref feat/chat-v2-host-runtime
 
 Manual dispatch deploys the selected branch commit only to `westendli.dev`.
 It runs the same quality gate, protected-environment approval, production build,
-and published-product smoke checks as a labeled PR deployment. Obtain user
-approval for the deployment before dispatching it; deployment approval does not
-authorize creating or merging a PR.
+and published-product smoke checks as a labeled PR deployment.

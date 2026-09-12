@@ -28,7 +28,8 @@ type MockProvider = {
 
 type MockRuntime = {
   createProvider: ReturnType<typeof vi.fn>;
-  activateLocalSession: ReturnType<typeof vi.fn>;
+  cancelPairing: ReturnType<typeof vi.fn>;
+  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
 
@@ -56,7 +57,7 @@ const mocks = vi.hoisted(() => ({
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
-  createWebWorkerSigningHostRuntime: vi.fn(),
+  createWebWorkerPairingHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
@@ -68,7 +69,7 @@ vi.mock("@parity/truapi-host", () => ({
 }));
 
 vi.mock("@parity/truapi-host/web", () => ({
-  createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
+  createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));
 
@@ -144,7 +145,8 @@ function makeRuntime(): MockRuntime {
       mocks.coreProviderDefers.push(item);
       return item.promise;
     }),
-    activateLocalSession: vi.fn(async () => {}),
+    cancelPairing: vi.fn(),
+    notifySessionStoreChanged: vi.fn(),
     dispose: vi.fn(),
   };
   mocks.coreRuntimes.push(runtime);
@@ -239,7 +241,7 @@ describe("bridge render lifecycle", () => {
     mocks.iframeHosts.length = 0;
     document.body.innerHTML = `<div id="app"></div>`;
     window.history.replaceState(null, "", "/");
-    mocks.createWebWorkerSigningHostRuntime.mockImplementation(() =>
+    mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
       Promise.resolve(makeRuntime()),
     );
     mocks.createIframeHost.mockImplementation(

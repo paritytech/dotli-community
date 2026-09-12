@@ -45,7 +45,8 @@ function readPersistedDebuggerUrl() {
     // (tsc output run under Node, unit tests), where the access throws.
     let dev = false;
     try {
-        dev = import.meta.env.DEV === true;
+        dev =
+            import.meta.env.DEV === true;
     }
     catch {
         dev = false;

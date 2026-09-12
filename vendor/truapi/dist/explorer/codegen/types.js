@@ -2761,7 +2761,7 @@ export const types = [
         id: "host-product-device-chat-request",
         name: "HostProductDeviceChatRequest",
         category: "account",
-        definition: 'export type HostProductDeviceChatRequest =\n  | { tag: "Bind"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString } }\n  | { tag: "Seal"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; plaintext: HexString } }\n  | { tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }\n;',
+        definition: 'export type HostProductDeviceChatRequest =\n  | { tag: "Bind"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString } }\n  | { tag: "Seal"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; plaintext: HexString } }\n  | { tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }\n  | { tag: "SignRequestProof"; value: { productAccountId: ProductAccountId; payload: HexString } }\n;',
         description: "Product-device Chat v2 identity operation.\n\nThe wallet Chat identity secret and derived shared key remain host-private.",
         variants: [
             {
@@ -2779,13 +2779,18 @@ export const types = [
                 type: '{ tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }',
                 description: "Open an identity-route combined nonce/ciphertext/tag value.",
             },
+            {
+                name: "SignRequestProof",
+                type: '{ tag: "SignRequestProof"; value: { productAccountId: ProductAccountId; payload: HexString } }',
+                description: "Sign the canonical Chat first-contact proof payload without wallet-message framing.",
+            },
         ],
     },
     {
         id: "host-product-device-chat-response",
         name: "HostProductDeviceChatResponse",
         category: "account",
-        definition: 'export type HostProductDeviceChatResponse =\n  | { tag: "IdentityBinding"; value: { identityAccountId: HexString; proof: HexString; walletOwnSessionId: HexString; peerOwnSessionId: HexString; walletOutgoingChannelId: HexString; walletIncomingChannelId: HexString } }\n  | { tag: "Sealed"; value: { combinedCiphertext: HexString } }\n  | { tag: "Opened"; value: { plaintext: HexString } }\n;',
+        definition: 'export type HostProductDeviceChatResponse =\n  | { tag: "IdentityBinding"; value: { identityAccountId: HexString; proof: HexString; walletOwnSessionId: HexString; peerOwnSessionId: HexString; walletOutgoingChannelId: HexString; walletIncomingChannelId: HexString } }\n  | { tag: "Sealed"; value: { combinedCiphertext: HexString } }\n  | { tag: "Opened"; value: { plaintext: HexString } }\n  | { tag: "RequestProofSigned"; value: { signature: HexString } }\n;',
         description: "Result of a product-device Chat v2 identity operation.",
         variants: [
             {
@@ -2802,6 +2807,11 @@ export const types = [
                 name: "Opened",
                 type: '{ tag: "Opened"; value: { plaintext: HexString } }',
                 description: "Opened identity-route payload.",
+            },
+            {
+                name: "RequestProofSigned",
+                type: '{ tag: "RequestProofSigned"; value: { signature: HexString } }',
+                description: "Raw sr25519 signature over a canonical Chat request proof payload.",
             },
         ],
     },

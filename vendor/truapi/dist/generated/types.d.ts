@@ -3801,6 +3801,14 @@ export type HostProductDeviceChatRequest =
         cipherSuite: HostProductDeviceChatCipherSuite;
         combinedCiphertext: HexString;
     };
+}
+/** Sign the canonical Chat first-contact proof payload without wallet-message framing. */
+ | {
+    tag: "SignRequestProof";
+    value: {
+        productAccountId: ProductAccountId;
+        payload: HexString;
+    };
 };
 export declare const HostProductDeviceChatRequest: S.Codec<HostProductDeviceChatRequest>;
 /** Result of a product-device Chat v2 identity operation. */
@@ -3829,6 +3837,13 @@ export type HostProductDeviceChatResponse =
     tag: "Opened";
     value: {
         plaintext: HexString;
+    };
+}
+/** Raw sr25519 signature over a canonical Chat request proof payload. */
+ | {
+    tag: "RequestProofSigned";
+    value: {
+        signature: HexString;
     };
 };
 export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;

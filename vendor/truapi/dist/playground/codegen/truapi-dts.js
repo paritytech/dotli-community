@@ -4325,6 +4325,14 @@ export type HostProductDeviceChatRequest =
         cipherSuite: HostProductDeviceChatCipherSuite;
         combinedCiphertext: HexString;
     };
+}
+/** Sign the canonical Chat first-contact proof payload without wallet-message framing. */
+ | {
+    tag: "SignRequestProof";
+    value: {
+        productAccountId: ProductAccountId;
+        payload: HexString;
+    };
 };
 export const HostProductDeviceChatRequest: Codec<HostProductDeviceChatRequest>;
 /** Result of a product-device Chat v2 identity operation. */
@@ -4353,6 +4361,13 @@ export type HostProductDeviceChatResponse =
     tag: "Opened";
     value: {
         plaintext: HexString;
+    };
+}
+/** Raw sr25519 signature over a canonical Chat request proof payload. */
+ | {
+    tag: "RequestProofSigned";
+    value: {
+        signature: HexString;
     };
 };
 export const HostProductDeviceChatResponse: Codec<HostProductDeviceChatResponse>;
@@ -5589,7 +5604,7 @@ export { ResultAsync, SubscriptionError };
 export type { ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 1;
 export declare const TRUAPI_CODEC_VERSION: 1;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "0e49a2f7d93138a3";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "bc027235799b1185";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
