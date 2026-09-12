@@ -199,9 +199,9 @@ export function scanCameraUr(
       if (!navigator.mediaDevices.enumerateDevices) {
         return;
       }
-      availableCameras = (await navigator.mediaDevices.enumerateDevices()).filter(
-        (device) => device.kind === "videoinput",
-      );
+      availableCameras = (
+        await navigator.mediaDevices.enumerateDevices()
+      ).filter((device) => device.kind === "videoinput");
       if (settled || availableCameras.length <= 1) {
         cameraPicker.hidden = true;
         return;
@@ -212,7 +212,10 @@ export function scanCameraUr(
       cameraSelect.replaceChildren(new Option("System default camera", ""));
       availableCameras.forEach((camera, index) => {
         cameraSelect.add(
-          new Option(camera.label || `Camera ${String(index + 1)}`, camera.deviceId),
+          new Option(
+            camera.label || `Camera ${String(index + 1)}`,
+            camera.deviceId,
+          ),
         );
       });
       cameraSelect.value =
@@ -284,7 +287,8 @@ export function scanCameraUr(
       const activeIndex = availableCameras.findIndex(
         (camera) => camera.deviceId === activeCameraDeviceId,
       );
-      const nextCamera = availableCameras[(activeIndex + 1) % availableCameras.length];
+      const nextCamera =
+        availableCameras[(activeIndex + 1) % availableCameras.length];
       if (!nextCamera) {
         return;
       }
