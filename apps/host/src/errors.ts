@@ -6,7 +6,7 @@ import {
   ProtocolInitFailedError,
 } from "@dotli/protocol/errors";
 import { getActiveServicesConfig } from "@dotli/config/network";
-import { gatewayUnreachable } from "@dotli/shared/error-copy";
+import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
 import type { ResolverErrorName } from "@dotli/resolver/errors";
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
@@ -87,8 +87,6 @@ const FORCED_ERRORS = new Map<string, () => Error>([
   ["contenthash-unsupported", () => new Error("Failed to decode contenthash")],
 ]);
 
-export const FORCED_ERROR_KEYS = [...FORCED_ERRORS.keys()];
-
 /**
  * The error named by `?__error=` on the current URL, or `null` when the
  * parameter is absent, unknown, or the build is not a debug build.
@@ -138,15 +136,10 @@ export function trustedProviderWarning(
  * be trusting.
  */
 export function trustedProviderHost(): string {
-  const first = getActiveServicesConfig().assethub.rpcs.at(0);
-  if (first === undefined) {
-    return "a trusted provider";
-  }
-  try {
-    return new URL(first).hostname;
-  } catch {
-    return first;
-  }
+  return (
+    endpointHost(getActiveServicesConfig().assethub.rpcs.at(0)) ??
+    "a trusted provider"
+  );
 }
 
 export type Recovery = "switch-backend" | "reload" | "none";
@@ -164,10 +157,9 @@ export const UNUSABLE_TITLE = "This app can't be opened";
  * Stable identity for a classified failure, independent of its copy.
  *
  * Shares its vocabulary with `FORCED_ERRORS` above so the debug harness and the
- * classifier name the same failures the same way. The kinds with no harness
- * entry are the ones that need a real protocol error to reproduce. Both archive
- * variants collapse to `archive-missing-index`: they already share one message
- * because they are one fault.
+ * classifier name the same failures the same way. Both archive variants
+ * collapse to `archive-missing-index`: they already share one message because
+ * they are one fault.
  */
 export type ErrorKind =
   | "protocol-fatal"
@@ -315,6 +307,15 @@ function classifyError(
       resetProtocol: true,
     };
   }
+  // The four content-failure branches below do not fire in production yet.
+  // `renderAppSubdomain` mounts the sandbox iframe and returns without awaiting
+  // the fetch, so the archive failures are raised and rendered inside
+  // apps/sandbox, which still shows its own "Failed to load content" screen.
+  // They are reachable through the `?__error=` harness, and they are written
+  // here rather than there because this is where the classifier belongs once
+  // the sandbox reuses it. Until then, changing this copy changes the harness
+  // only. See `failLoading` in apps/sandbox/src/main.ts for the live screen.
+  //
   // The name resolved and the CID is known; no peer smoldot is connected to
   // is serving those blocks. Nothing about the visitor's machine is wrong, so
   // the only suggestion is the one thing that changes the outcome on its own:
@@ -340,7 +341,7 @@ function classifyError(
     return {
       kind: "failed-to-fetch",
       title: CONTENT_TITLE,
-      message: gatewayUnreachable(),
+      message: gatewayUnreachable(trustedProviderHost()),
       recovery: "switch-backend",
       tips: GATEWAY_TIPS,
     };

@@ -1477,7 +1477,7 @@ async function main(): Promise<void> {
     }
     if (error.recovery === "reload") {
       showError(error.title, error.message, {
-        label: "Reload",
+        label: RELOAD_BTN_LABEL,
         onClick: () => {
           window.location.reload();
         },
@@ -1554,7 +1554,12 @@ async function main(): Promise<void> {
     const gateFailover =
       nextBackend === "rpc-gateway" && !errorAlreadySeen(error.kind);
     function showResolutionError(): void {
-      rememberError(error.kind);
+      // Only the gated direction records a sighting. Remembering a failure seen
+      // on the gateway would skip the Settings step for a visitor who later hits
+      // the same kind on the light client, where it really is their first.
+      if (nextBackend === "rpc-gateway") {
+        rememberError(error.kind);
+      }
       showErrorPage({
         title: error.title,
         detail: error.message,

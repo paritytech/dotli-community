@@ -45,8 +45,11 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
 } from "@dotli/config/host-sandbox-contract";
-import { setNetworkOverride } from "@dotli/config/network";
-import { gatewayUnreachable } from "@dotli/shared/error-copy";
+import {
+  getActiveServicesConfig,
+  setNetworkOverride,
+} from "@dotli/config/network";
+import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
@@ -831,7 +834,11 @@ function run(): void {
       // the one case that has a plain-language equivalent gets it.
       const message =
         dependency === "ipfs-gateway" && raw.includes("Failed to fetch")
-          ? gatewayUnreachable()
+          ? gatewayUnreachable(
+              endpointHost(
+                getActiveServicesConfig().bulletin.ipfsGateways.at(0),
+              ),
+            )
           : `${raw} (via ${dependency})`;
       failLoading("Failed to load content", message, () => {
         // Restore the loading UI and re-run main
