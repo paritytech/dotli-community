@@ -42,7 +42,7 @@ import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
   listenForSandboxBitswap,
-} from "@dotli/ui/bulletin-bitswap";
+} from "@dotli/content/bulletin-bitswap";
 import {
   ensureProtocolFrame,
   resetProtocolFrame,

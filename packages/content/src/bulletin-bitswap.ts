@@ -23,30 +23,42 @@ const ERR_INVALID_PARAMS = -32602;
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
 const ERR_FAIL_BACKOFF = -32812;
+/** Marks a local abort. A numeric code could collide: JSON-RPC reserves only
+ *  -32768..-32000, so the rest of the space belongs to the chain. */
+const ABORT_ERROR_NAME = "AbortError";
 
 const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
 
-// -32810 reads like a terminal "not found", but smoldot means something much
-// narrower by it. It freezes the set of peers connected at the instant of the
-// call, broadcasts a "have" request to exactly those, and fails the request the
-// moment every one of them has answered DONT_HAVE. Peers that connect
-// afterwards are never added to that set, and there is no provider lookup to
-// fall back on.
+// Retrying -32810 is a deliberate divergence from upstream. smoldot documents
+// it as a permanent failure meaning the data is not in the network, and its own
+// reference retry client retries only -32811 and -32812. The implementation
+// does something narrower than the documentation claims, which is why we treat
+// it as transient anyway, and why this should be raised upstream rather than
+// carried here forever.
 //
-// So on a fresh page the snapshot is whatever handful of Bulletin peers
-// happened to be up, and whether one of them holds the CID is luck. Retrying
-// takes a new, larger snapshot. Observed live, reloads that gave up on the
-// first -32810 died at ~1.2s, while reloads that kept asking got the same CID
-// 3 to 15 seconds later.
+// It freezes the set of peers connected at the instant of the call, broadcasts
+// a "have" request to exactly those, and fails the request the moment every one
+// of them has answered DONT_HAVE. Peers that connect afterwards are never added
+// to that set, and there is no provider lookup to fall back on. So it cannot
+// distinguish "absent from the network" from "absent from the handful of peers
+// this call happened to ask", and on a fresh page that handful is whatever was
+// up at the time. Retrying takes a new, larger snapshot. Observed live, reloads
+// that gave up on the first -32810 died at ~1.2s, while reloads that kept
+// asking got the same CID 3 to 15 seconds later.
 //
-// Discovery gets its own wall-clock window rather than the full budget. A CID
-// that genuinely is not on the network should fail in seconds, not in three
-// minutes. The bound is wall-clock rather than a retry count so that it stays
-// meaningful if the backoff schedule is ever retuned.
-const DISCOVERY_BUDGET_MS = 30_000;
+// Discovery is bounded so a CID that genuinely is not on the network fails in
+// seconds rather than in three minutes.
+//
+// The bound counts attempts rather than elapsed time. A clock sounds more
+// meaningful but is spent by anything that happens to take a while, including
+// the -32812 runs this retry exists to survive, so a slow start could leave
+// discovery two tries instead of ten. Counting attempts cannot be drained by
+// something unrelated. Eight covers the 3 to 15 seconds observed live with
+// room over it: 0.5 + 1 + 2 + 4 + 5 + 5 + 5 + 5 = 27.5s of grace.
+const DISCOVERY_RETRIES = 8;
 
 interface PendingResolver {
   resolve: (bytes: Uint8Array) => void;
@@ -117,13 +129,56 @@ function errorCode(err: unknown): number | null {
   return null;
 }
 
-/** Fetch one CID block via the protocol iframe's smoldot. */
-export async function bitswapGet(cid: string): Promise<Uint8Array> {
+function abortError(cid: string): Error {
+  const err = new Error(`bitswap_v1_get(${cid}): aborted`);
+  err.name = ABORT_ERROR_NAME;
+  return err;
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === ABORT_ERROR_NAME;
+}
+
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    // `addEventListener` never fires on a signal that is already aborted, so
+    // an abort landing between the caller's check and this line would be
+    // missed and the full delay served.
+    if (signal?.aborted === true) {
+      reject(new Error("aborted"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort(): void {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Fetch one CID block via the protocol iframe's smoldot.
+ *
+ * Pass `signal` from anything that can be torn down while a fetch is open. A
+ * retrying call can now run for the full budget, so without one an abandoned
+ * caller leaves it firing into a light client nobody is listening to.
+ */
+export async function bitswapGet(
+  cid: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
-  let discoveryDeadline: number | null = null;
-  let discoveryFailures = 0;
+  let discoveryAttempts = 0;
+  let transientAttempts = 0;
   let attempt = 0;
   for (;;) {
+    if (signal?.aborted === true) {
+      throw abortError(cid);
+    }
     attempt += 1;
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
@@ -133,72 +188,103 @@ export async function bitswapGet(cid: string): Promise<Uint8Array> {
     }
     const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining);
     try {
-      return await sendOnce(cid, callTimeout);
+      return await sendOnce(cid, callTimeout, signal);
     } catch (err) {
+      if (isAbortError(err)) {
+        throw err;
+      }
       const code = errorCode(err);
       if (code === ERR_INVALID_PARAMS) {
         throw err;
       }
+
+      // Each kind of failure ramps on its own counter. Sharing one means a
+      // couple of -32812s arrive first and pin the discovery retries at the
+      // 5s cap, spending the allowance on two or three tries instead of eight.
+      let backoffAttempt: number;
       if (code === ERR_FAIL) {
-        discoveryFailures += 1;
-        discoveryDeadline ??= Date.now() + DISCOVERY_BUDGET_MS;
-        if (Date.now() >= discoveryDeadline) {
+        discoveryAttempts += 1;
+        if (discoveryAttempts > DISCOVERY_RETRIES) {
           throw Object.assign(
             new Error(
-              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryFailures)} failures over ${String(DISCOVERY_BUDGET_MS)}ms (${String(attempt)} total attempts): ${serializeError(err)}`,
+              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryAttempts)} failures (${String(attempt)} total attempts): ${serializeError(err)}`,
             ),
             { code },
           );
         }
-      } else if (code !== ERR_FAIL_RETRY && code !== ERR_FAIL_BACKOFF) {
+        backoffAttempt = discoveryAttempts;
+      } else if (code === ERR_FAIL_RETRY || code === ERR_FAIL_BACKOFF) {
+        transientAttempts += 1;
+        backoffAttempt = transientAttempts;
+      } else {
         throw err;
       }
-      // Discovery retries ramp on their own counter. Inheriting `attempt`
-      // would start them pinned at the cap whenever a -32812 came first,
-      // spending the window on two or three attempts instead of seven.
-      const backoffAttempt =
-        code === ERR_FAIL ? discoveryFailures : attempt - discoveryFailures;
-      // Only a discovery retry is judged against the discovery window, so
-      // only a discovery retry may be shortened by it. Letting it shorten the
-      // other codes collapses their delay to zero once the window has passed,
-      // since nothing throws on them, and the loop then spins flat out for
-      // whatever is left of the three-minute budget. Both floors stay at 1ms
-      // for the same reason.
+
+      // Each counter is incremented before it is read, so both are >= 1 here.
+      // The floor of 1ms keeps the loop off a zero delay once the budget is
+      // nearly spent; the next iteration's deadline check ends the call.
       const delay = Math.min(
         BACKOFF_CAP_MS,
-        BACKOFF_BASE_MS * 2 ** Math.min(Math.max(backoffAttempt, 1) - 1, 4),
+        BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
         Math.max(1, deadline - Date.now()),
-        ...(code === ERR_FAIL && discoveryDeadline !== null
-          ? [Math.max(1, discoveryDeadline - Date.now())]
-          : []),
       );
       log.warn(
         `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
       );
-      await new Promise<void>((r) => setTimeout(r, delay));
+      try {
+        await sleep(delay, signal);
+      } catch {
+        throw abortError(cid);
+      }
     }
   }
 }
 
-function sendOnce(cid: string, timeoutMs: number): Promise<Uint8Array> {
+function sendOnce(
+  cid: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const id = nextId++;
   const conn = ensureConnection();
   return new Promise<Uint8Array>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    // Same reason as in `sleep`, and the cost of missing it is larger here:
+    // the fallback is the 60s per-call timeout rather than one backoff.
+    if (signal?.aborted === true) {
+      reject(abortError(cid));
+      return;
+    }
+    // Every exit runs the same teardown. Doing it per-path leaked an abort
+    // listener on the timeout path, and the caller's signal outlives the call
+    // (one per subscription), so they accumulated for as long as it lived.
+    const cleanup = (): void => {
+      clearTimeout(timer);
       pending.delete(id);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const timer = setTimeout(() => {
       const err = new Error(
         `bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`,
       );
       (err as { code?: number }).code = ERR_FAIL_RETRY;
+      cleanup();
       reject(err);
     }, timeoutMs);
+    // Abort has to reach the in-flight call, not just the gap between
+    // retries. smoldot has no cancel for a request already issued, so the
+    // entry is dropped and its late reply lands on an empty slot.
+    function onAbort(): void {
+      cleanup();
+      reject(abortError(cid));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
     pending.set(id, {
       resolve: (bytes) => {
-        clearTimeout(timer);
+        cleanup();
         resolve(bytes);
       },
       reject: (err) => {
-        clearTimeout(timer);
+        cleanup();
         reject(err);
       },
     });

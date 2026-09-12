@@ -13,7 +13,7 @@ vi.mock("@dotli/content/ipfs", () => ({
   fetchFromIpfs: mocks.fetchFromIpfs,
 }));
 
-vi.mock("@dotli/ui/bulletin-bitswap", () => ({
+vi.mock("@dotli/content/bulletin-bitswap", () => ({
   bitswapGet: mocks.bitswapGet,
 }));
 
