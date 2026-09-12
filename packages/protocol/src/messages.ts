@@ -172,7 +172,7 @@ export interface ProtocolChainSyncEnvelope {
  * Per-chain facts recorded once, for telemetry rather than for the screen.
  *
  * Kept apart from `chain-sync` because nothing in the loading UI reacts to
- * these; folding them in would make every UI subscriber filter them out.
+ * these. Folding them in would make every UI subscriber filter them out.
  */
 export interface ProtocolChainDetailEnvelope {
   namespace: "dotli:protocol";
@@ -251,7 +251,6 @@ const VALID_KINDS = new Set([
 /** Every chain the envelope accepts. Exhaustive against `ChainKey`. */
 export const ENVELOPE_CHAIN_KEYS = Object.keys({
   relay: true,
-  "custom-relay": true,
   "asset-hub": true,
   bulletin: true,
   people: true,

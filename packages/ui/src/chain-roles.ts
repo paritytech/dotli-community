@@ -20,7 +20,6 @@ import type { ChainKey } from "@dotli/resolver/chain-sync";
  */
 const ROLE_BY_CHAIN_KEY: Record<ChainKey, ChainRole> = {
   relay: "relay",
-  "custom-relay": "relay",
   "asset-hub": "assethub",
   bulletin: "bulletin",
   people: "people",
