@@ -26,6 +26,28 @@ export const HOST_ERRORS = {
   CHAIN_SPEC_REJECTED:
     "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
+  TOPBAR_URL_NODE_MISSING: "Required DOM node missing: #topbar-url",
+} as const;
+
+/**
+ * Detail line for a host shell that shipped broken.
+ *
+ * The visitor cannot act on the missing node itself, and the site they asked
+ * for is fine, so the copy points at us. Sentry gets the real reason from the
+ * thrown error.
+ */
+export const HOST_UNAVAILABLE_DETAIL =
+  "This page didn't load properly. Reloading usually fixes it.";
+
+/**
+ * Headlines for the full-page error surface.
+ *
+ * The title says which layer gave up, the detail below it says why, so these
+ * stay separate from the `HOST_ERRORS` copy that fills the detail line.
+ */
+export const ERROR_TITLES = {
+  HOST_UNAVAILABLE: "Something went wrong on our side",
+  DOMAIN_UNREACHABLE: "Domain can't be reached",
 } as const;
 
 export const FAILOVER_BTN_LABELS = {

@@ -24,6 +24,108 @@ const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
 const ERR_FAIL_BACKOFF = -32812;
 
+/**
+ * Byte accounting for the content download.
+ *
+ * Every block the sandbox needs is fetched here, so this is the one place
+ * that sees the whole transfer. The first dag-pb block is the DAG root, and
+ * its links carry `Tsize`, the cumulative size of each subtree. Summing them
+ * gives the total up front, which turns the download into a real percentage
+ * instead of a timer.
+ */
+export interface ContentProgress {
+  bytesFetched: number;
+  totalBytes: number | null;
+  bytesPerSecond: number;
+}
+
+type ProgressCallback = (progress: ContentProgress) => void;
+let progressCallback: ProgressCallback | null = null;
+let bytesFetched = 0;
+let totalBytes: number | null = null;
+let firstBlockAt = 0;
+
+export function onContentProgress(cb: ProgressCallback): void {
+  progressCallback = cb;
+}
+
+function readDagTotal(bytes: Uint8Array): number | null {
+  try {
+    // dag-pb links are field 2, each an embedded message carrying Hash (1),
+    // Name (2), and Tsize (3) as a varint. Reading Tsize directly keeps the
+    // 40kB `@ipld/dag-pb` decoder out of the eager host bundle.
+    let i = 0;
+    let total = 0;
+    let sawLink = false;
+    const readVarint = (): number => {
+      let result = 0;
+      let shift = 0;
+      while (i < bytes.length) {
+        const b = bytes[i];
+        i += 1;
+        result += (b & 0x7f) * 2 ** shift;
+        if ((b & 0x80) === 0) {
+          break;
+        }
+        shift += 7;
+      }
+      return result;
+    };
+    while (i < bytes.length) {
+      const key = readVarint();
+      const field = key >> 3;
+      const wire = key & 0x7;
+      if (wire !== 2) {
+        return null;
+      }
+      const len = readVarint();
+      if (field === 2) {
+        // A PBLink submessage. Walk it for Tsize (field 3, varint).
+        const end = i + len;
+        while (i < end) {
+          const lk = readVarint();
+          const lf = lk >> 3;
+          const lw = lk & 0x7;
+          if (lw === 0) {
+            const v = readVarint();
+            if (lf === 3) {
+              total += v;
+              sawLink = true;
+            }
+          } else if (lw === 2) {
+            // Read the length first: `i += readVarint()` would capture the
+            // old `i` before the call advanced it past the varint itself.
+            const skip = readVarint();
+            i += skip;
+          } else {
+            return null;
+          }
+        }
+        i = end;
+      } else {
+        i += len;
+      }
+    }
+    return sawLink ? total : null;
+  } catch {
+    return null;
+  }
+}
+
+function noteBlock(bytes: Uint8Array): void {
+  if (firstBlockAt === 0) {
+    firstBlockAt = performance.now();
+    totalBytes = readDagTotal(bytes);
+  }
+  bytesFetched += bytes.length;
+  const elapsed = performance.now() - firstBlockAt;
+  progressCallback?.({
+    bytesFetched,
+    totalBytes,
+    bytesPerSecond: elapsed > 0 ? (bytesFetched / elapsed) * 1000 : 0,
+  });
+}
+
 const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
@@ -229,6 +331,7 @@ export function listenForSandboxBitswap(): void {
     }
     void bitswapGet(data.cid)
       .then((bytes) => {
+        noteBlock(bytes);
         const reply: BitswapResultOk = {
           type: "dotli:bitswap-result",
           id: data.id,

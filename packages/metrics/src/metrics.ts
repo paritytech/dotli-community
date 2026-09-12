@@ -57,6 +57,14 @@ interface MetricOptions {
   attributes?: Record<string, string>;
 }
 
+/** The slice of a Sentry span the tracing helpers below drive. */
+interface SentrySpan {
+  setAttributes: (attrs: Record<string, SpanValue>) => void;
+  end: (endTime?: number) => void;
+}
+
+export type SpanValue = string | number | boolean;
+
 interface SentryLike {
   startSpan: <T>(
     opts: { op: string; name: string },
@@ -64,6 +72,14 @@ interface SentryLike {
       span: { setAttribute: (key: string, value: string) => void } | undefined,
     ) => T,
   ) => T;
+  startInactiveSpan: (opts: {
+    name: string;
+    op?: string;
+    startTime?: number;
+    parentSpan?: unknown;
+    forceTransaction?: boolean;
+    attributes?: Record<string, SpanValue>;
+  }) => SentrySpan;
   setMeasurement: (name: string, value: number, unit: string) => void;
   metrics: {
     count: (name: string, value?: number, opts?: MetricOptions) => void;
@@ -340,6 +356,116 @@ function clearDefaults(keys?: readonly string[]): void {
   }
 }
 
+let resolutionId: string | null = null;
+
+/**
+ * Correlate one page load across every realm it runs in.
+ *
+ * A resolution spans three origins: the host shell, the protocol iframe and
+ * the sandbox. Each boots its own Sentry client and so its own trace. The
+ * host mints the id and threads it to the other two over the URL contracts
+ * they already have. Each realm calls this on boot, so one
+ * `dotli.resolution_id` search returns all three.
+ *
+ * The id is stored even when metrics are stripped, because the realms that
+ * pass it on read it back from here. Only the Sentry tagging is conditional.
+ */
+export function setResolutionId(id: string): void {
+  resolutionId = id;
+  setDefaults({ resolution_id: id });
+}
+
+/** The current page load's correlation id, or null before the host mints it. */
+export function getResolutionId(): string | null {
+  return resolutionId;
+}
+
+/**
+ * A span that outlives the call that opened it.
+ *
+ * `span()` covers work that fits inside one function. A resolution does not:
+ * its shape is decided by events arriving over postMessage from another realm,
+ * so the span for "the relay is connecting" opens on one message and closes on
+ * a later one, with nothing on the stack in between.
+ */
+export interface SpanHandle {
+  /** Attach attributes. Safe to call after `end`, where it is ignored. */
+  setAttributes: (attrs: Record<string, SpanValue>) => void;
+  /** Open a span parented to this one. */
+  child: (name: string, opts?: OpenSpanOptions) => SpanHandle;
+  /** Close the span. Repeat calls are ignored, so a failure path can end a span the success path already ended. */
+  end: (endTime?: number) => void;
+}
+
+export interface OpenSpanOptions {
+  /** Epoch milliseconds. Omit for "now". */
+  startTime?: number;
+  attributes?: Record<string, SpanValue>;
+  /** Present the span as its own transaction in Sentry rather than a nested row. */
+  root?: boolean;
+}
+
+const NOOP_HANDLE: SpanHandle = {
+  setAttributes: () => {
+    /* no span to attribute */
+  },
+  child: () => NOOP_HANDLE,
+  end: () => {
+    /* no span to end */
+  },
+};
+
+function wrap(sentrySpan: SentrySpan): SpanHandle {
+  let ended = false;
+  return {
+    setAttributes: (attrs) => {
+      if (ended) {
+        return;
+      }
+      sentrySpan.setAttributes(attrs);
+    },
+    child: (name, opts) => open(name, { ...opts, parent: sentrySpan }),
+    end: (endTime) => {
+      if (ended) {
+        return;
+      }
+      ended = true;
+      sentrySpan.end(endTime);
+    },
+  };
+}
+
+/**
+ * Open a span and hand back a handle that closes it later.
+ *
+ * Returns an inert handle whenever metrics are off or Sentry is unbound, so
+ * callers never branch on whether telemetry is live.
+ */
+function open(
+  name: string,
+  opts?: OpenSpanOptions & { parent?: unknown },
+): SpanHandle {
+  if (!ENABLED) {
+    return NOOP_HANDLE;
+  }
+  const s = sentry();
+  if (s === null) {
+    return NOOP_HANDLE;
+  }
+  return wrap(
+    s.startInactiveSpan({
+      name: `dotli.${name}`,
+      op: "dotli",
+      startTime: opts?.startTime,
+      // `null` means "no parent", which is what makes a root a root. Leaving it
+      // undefined would silently adopt whatever span happens to be active.
+      parentSpan: opts?.root === true ? null : opts?.parent,
+      forceTransaction: opts?.root,
+      attributes: { ...defaultAttrs, ...opts?.attributes },
+    }),
+  );
+}
+
 /**
  * Add a breadcrumb for debugging context. Breadcrumbs appear in error reports.
  */
@@ -379,6 +505,8 @@ export const m = {
   bind,
   /** Wrap a function in a performance span */
   span,
+  /** Open a span that is closed later, by a different call */
+  open,
   /** Record a numeric measurement */
   measure,
   /** Increment a counter */

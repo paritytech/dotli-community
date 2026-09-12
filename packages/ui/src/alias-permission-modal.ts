@@ -9,6 +9,8 @@
 //
 // DOM structure follows the signing modal pattern (signing.css).
 
+import { UI_ERRORS } from "./errors";
+
 export function showAliasPermissionModal(
   requestingIdentifier: string,
   requestedIdentifier: string,
@@ -81,7 +83,7 @@ export function showAliasPermissionModal(
 
     denyBtn.addEventListener("click", () => {
       cleanup();
-      reject(new Error("User denied alias permission"));
+      reject(new Error(UI_ERRORS.ALIAS_PERMISSION_DENIED));
     });
 
     allowBtn.addEventListener("click", () => {
@@ -92,7 +94,7 @@ export function showAliasPermissionModal(
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
         cleanup();
-        reject(new Error("User dismissed alias permission dialog"));
+        reject(new Error(UI_ERRORS.ALIAS_PERMISSION_DISMISSED));
       }
     });
   });

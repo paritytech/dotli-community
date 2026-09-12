@@ -34,6 +34,7 @@
         "@playwright/test": "^1.59.1",
         "@types/node": "^25.9.3",
         "eslint": "^10.5.0",
+        "happy-dom": "^20.10.3",
         "jsqr": "^1.4.0",
         "playwright": "^1.59.1",
         "prettier": "^3.8.3",
@@ -42,6 +43,7 @@
         "vite": "^8.0.16",
         "vite-plugin-pwa": "^1.2.0",
         "vite-plugin-wasm": "^3.5.0",
+        "vitest": "^4.1.8",
         "workbox-window": "^7.4.0",
       },
     },
@@ -194,7 +196,7 @@
         "@dotli/storage": "workspace:*",
         "@ensdomains/content-hash": "^3.0.0",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi-provider": "0.1.0",
+        "@parity/truapi-provider": "0.1.1-dev-20260911.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@polkadot-api/json-rpc-provider-proxy": "^0.4.0",
         "@polkadot-api/substrate-bindings": "0.20.3",
@@ -665,7 +667,7 @@
 
     "@parity/truapi-host": ["@parity/truapi-host@0.10.1", "", { "dependencies": { "@parity/truapi": "^0.13.1" } }, "sha512-XcS8CeOVGBH/RBZb5KmFw5EnwHAsoqXnG2NyP3g7gMA5S575FEOzQxQf4FzIr7Jvz38JBYGZWIq079TOAtVRlw=="],
 
-    "@parity/truapi-provider": ["@parity/truapi-provider@0.1.0", "", {}, "sha512-7OY/XYHETWMOGnHePp46GEADkYj+CjiQiXi+JMqO+30x0uD/2vGVf8dyzYrDnrmxVZ0I9HbgId0579fQi/dhqA=="],
+    "@parity/truapi-provider": ["@parity/truapi-provider@0.1.1-dev-20260911.0", "", {}, "sha512-VzBjZMQrgGa07cEDDGWV1Ocz8VMGMrbUL9+kcrz4Q9xvHdUzGdg1+QdVY8JLPVhmqaagG8hTQ9aoWjVaTFlLIQ=="],
 
     "@playwright/test": ["@playwright/test@1.62.1", "", { "dependencies": { "playwright": "1.62.1" }, "bin": { "playwright": "cli.js" } }, "sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ=="],
 

@@ -27,6 +27,12 @@ import init, {
 } from "@parity/truapi-provider";
 import wasmUrl from "@parity/truapi-provider/truapi_provider_bg.wasm?url";
 import { createSmoldotDb } from "./smoldot-db";
+import {
+  attachChainSync,
+  chainKeyForGenesis,
+  reportDbCache,
+  type ChainSyncTap,
+} from "./chain-sync";
 
 // One provider per host process: every connection shares the single embedded
 // light client.
@@ -185,10 +191,15 @@ async function resumeFromStore(
   key: string,
 ): Promise<void> {
   try {
-    if (await handle.loadDatabase(key)) {
+    const warm = await handle.loadDatabase(key);
+    reportDbCache(key, warm);
+    if (warm) {
       log.debug(`[dot.li provider] resuming ${key} from stored state`);
     }
   } catch (error) {
+    // A store that threw left the chain on the chain-spec checkpoint, which is
+    // the same starting position as a miss and is what the timings will show.
+    reportDbCache(key, false);
     // Never block the connection on the store. Syncing from the chain-spec
     // checkpoint is slower but correct.
     log.warn(`[dot.li provider] warm start unavailable for ${key}:`, error);
@@ -215,9 +226,14 @@ export function createChainProvider(
   return (onMessage) => {
     // Object-held so control-flow analysis doesn't narrow the flag across the
     // connect await (`disconnect` can flip it at any time).
-    const state: { connection: Connection | null; closed: boolean } = {
+    const state: {
+      connection: Connection | null;
+      closed: boolean;
+      sync: ChainSyncTap | null;
+    } = {
       connection: null,
       closed: false,
+      sync: null,
     };
     // Read through a call so the early `state.closed` guard below does not
     // narrow later reads to `false`. `disconnect` mutates it between awaits,
@@ -240,6 +256,16 @@ export function createChainProvider(
           candidate.send(message);
         }
         queued.length = 0;
+        // Sync reporting rides this connection under reserved ids. Attached
+        // after the queue flush so our first request cannot jump ahead of a
+        // caller's, and only for a chain the loading screen observes.
+        const chain = chainKeyForGenesis(key);
+        state.sync =
+          chain === null
+            ? null
+            : attachChainSync(chain, (raw) => {
+                candidate.send(raw);
+              });
         for (;;) {
           const response = await candidate.nextResponse();
           if (response === undefined) {
@@ -251,7 +277,13 @@ export function createChainProvider(
             }
             break;
           }
-          onMessage(JSON.parse(response) as JsonRpcMessage);
+          const parsed = JSON.parse(response) as JsonRpcMessage;
+          // Our side-channel traffic is consumed here. polkadot-api would
+          // reject a string id it never issued.
+          if (state.sync?.intercept(parsed) === true) {
+            continue;
+          }
+          onMessage(parsed);
         }
       } catch (error) {
         markFatal(
@@ -274,9 +306,39 @@ export function createChainProvider(
       },
       disconnect() {
         state.closed = true;
+        state.sync?.stop();
+        state.sync = null;
         state.connection?.close();
         state.connection = null;
       },
     };
+  };
+}
+
+/**
+ * Open a connection to a chain for no reason but to watch it.
+ *
+ * Every other connection exists because something reads that chain. The relay
+ * is the exception: smoldot runs it as the parent of the parachains, so papi
+ * never dials it and no sync tap would ever attach. Its warp sync is both the
+ * slowest part of a cold start and the only one that reports a true
+ * percentage, which is worth one otherwise idle connection to observe.
+ *
+ * Returns a stop function. No-op for a genesis this network does not define.
+ */
+export function observeChain(genesisHash: string): () => void {
+  const factory = createChainProvider(genesisHash);
+  if (factory === null) {
+    return () => {
+      /* nothing was opened */
+    };
+  }
+  const connection = factory(() => {
+    // Nothing reads this chain. Responses to the tap's own requests are
+    // consumed before they reach here. Anything else is chain chatter we
+    // opened the connection to provoke, not to handle.
+  });
+  return () => {
+    connection.disconnect();
   };
 }

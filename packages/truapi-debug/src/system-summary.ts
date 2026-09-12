@@ -79,6 +79,20 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
     case "failover:chain_backend":
       return `Chain backend failover: ${str(p.from)} → ${str(p.to)} (reason: ${str(p.reason)}).`;
 
+    // chain lifecycle
+    case "chain:phase": {
+      const reason = typeof p.reason === "string" ? ` (${p.reason})` : "";
+      const peers =
+        typeof p.peers === "number" ? `, ${String(p.peers)} peers` : "";
+      const warp =
+        typeof p.warpAt === "number" && typeof p.warpTarget === "number"
+          ? `, warped to block ${String(p.warpAt)} of ${String(p.warpTarget)}`
+          : "";
+      return `${str(p.chain)} is now ${str(p.phase)}${reason}${peers}${warp}.`;
+    }
+    case "chain:bytes":
+      return `Light client has received ${str(p.received)} bytes so far.`;
+
     // main-thread monitor
     case "main:stall_detected":
       return `Main thread blocked for ${numMs(p.durationMs)}.`;

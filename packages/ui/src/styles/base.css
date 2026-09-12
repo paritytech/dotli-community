@@ -64,20 +64,29 @@ body {
    used as a modifier on in-popover value spans (e.g. the domain info popover's
    "Resolving..." row). Before scoping, the full-viewport `min-height` on the
    span stretched popover rows to viewport height. */
+/* Positioned the way a browser positions its own status pages: a bounded
+   column starting in the upper part of the viewport rather than floating in the
+   dead centre. Chrome's uses `margin: 14vh auto 0` with a 600px cap, and
+   sitting above the midline means the text does not move when a second line
+   wraps in. */
 #app > .loading {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 0 24px;
+  justify-content: flex-start;
+  padding: 14vh 16px 16px;
   position: relative;
   z-index: 10;
   min-height: var(--content-height);
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
 }
 
 /* Loading logo spinner. rAF-driven via JS, CSS just sets transform-origin. */
 .loading-logo {
-  margin-bottom: 32px;
+  /* Desktop's `gap-10` between the spinner and the copy below it. */
+  margin-bottom: 40px;
   transition: opacity 0.8s ease;
 }
 .loading-logo svg {
@@ -136,11 +145,16 @@ body {
     transform: translateX(100%);
   }
 }
+/* The loading text ranks by size, weight, and family, never by contrast:
+   every string here has to clear 4.5:1 against the page. Dimming with
+   `opacity` is what used to sink the whole block to 1.8-3.2:1, so these
+   are solid colours measured against #0a0a0a (dark) and #f5f5f5 (light,
+   see themes.css). */
 .loading-progress-pct {
   font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
   font-size: 11px;
-  color: #fff;
-  opacity: 0.3;
+  /* 6.12:1 */
+  color: #8f8f8f;
   min-width: 3ch;
   text-align: right;
 }
@@ -150,25 +164,11 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   width: 100%;
-  max-width: 420px;
+  /* Wide enough that the longer explanatory lines take two rows at most. */
+  max-width: 460px;
   flex-shrink: 0;
-}
-#status {
-  font-size: 13px;
-  font-weight: 500;
-  color: #fff;
-  opacity: 0.35;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
-  text-align: center;
-  width: 100%;
-  /* The explanatory lines run past one line at this width, and clipping them
-     to an ellipsis would defeat the point of showing them. Two lines are
-     reserved so the bar above does not shift as a sentence wraps. */
-  text-wrap: balance;
-  min-height: 2.6em;
 }
 /* Off-screen but still announced. `display: none` and `visibility: hidden`
    would take it out of the accessibility tree too. */
@@ -183,21 +183,59 @@ body {
   white-space: nowrap;
   border: 0;
 }
-/* Slow-step hint (shown below status when a step exceeds its threshold) */
-.loading-hint {
-  font-size: 11px;
-  color: #eab308;
-  opacity: 0;
-  font-style: italic;
+#status {
+  font-size: 13px;
+  font-weight: 500;
+  /* 13.36:1 */
+  color: #d4d4d4;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
   text-align: center;
-  transition: opacity 0.3s ease;
-  min-height: 1.3em;
+  width: 100%;
+  /* The explanatory lines run past one line at this width, and clipping them
+     to an ellipsis would defeat the point of showing them. Two lines are
+     reserved so the bar above does not shift as a sentence wraps. */
+  text-wrap: balance;
+  min-height: 2.6em;
 }
-.loading-hint.visible {
-  opacity: 0.5;
+/* Status block: held back until the load is slow enough to explain itself.
+   Nothing sits below it, so no height needs reserving against a shift. */
+.loading-status {
+  width: 100%;
 }
-.loading-hint-text {
-  display: block;
+/* Shown only while a chain has stopped making progress, so it must read as
+   information rather than failure. Amber is already AA on both themes. */
+.loading-warning {
+  /* Always laid out, shown by visibility. The slot's height is reserved so
+     the warning appearing or its text rewrapping cannot shift the logo, bar
+     and sentence above it, which is exactly when the screen must look calm. */
+  visibility: hidden;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 18px;
+  min-height: 34px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  /* 10.32:1 */
+  color: #eab308;
+}
+.loading-warning.visible {
+  visibility: visible;
+}
+#loading-warning-text {
+  /* Wraps before it reaches the window edges on a narrow viewport. */
+  max-width: 46ch;
+  text-align: left;
+}
+.loading-warning-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  /* Nudged onto the first line's baseline rather than its box top. */
+  margin-top: 1px;
 }
 
 .accent {
@@ -322,4 +360,308 @@ body {
 }
 .error-page-domain-tld {
   color: rgba(250, 250, 250, 0.55);
+}
+
+/* Network button: appears once a product is on screen, so the loading view
+   stays as bare as the bar it shows. */
+.topbar-chains-btn {
+  display: none;
+}
+.topbar-chains-btn.visible {
+  display: inline-flex;
+}
+/* Settings owns the popover recipe: 6px on the shell from `.more-popover`,
+   and each child carries its own inset. This panel keeps that rather than
+   padding the shell, so the two popovers have identical edges. The children
+   below therefore repeat `.mode-popover-section`'s 14px. It has to be margin
+   on the table: padding on a `border-collapse` table does not move its
+   cells, so a padded table would sit left of the heading. */
+/* Fixed, not `min-width`. The bar strips grow as blocks arrive, and a
+   shrink-to-fit popover widened with them, so the panel changed size while the
+   visitor was reading it. */
+.more-popover.chains-popover {
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  /* No horizontal padding of its own. Every row inside already insets itself
+     by 14px, and the popover's default 6px stacked on top of that, putting
+     this panel's content 20px in while the other popovers sit at 14px. */
+  padding: 6px 0 8px;
+  /* Opaque, unlike the smaller popovers. This one is anchored over the product
+     iframe, and `backdrop-filter` does not sample across that boundary: the
+     blur silently did nothing and the app's own controls read straight through
+     the translucent surface as sharp text. */
+  background: rgb(34, 34, 34);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Network panel */
+.chains-table {
+  width: calc(100% - 28px);
+  margin: 2px 14px 0;
+  border-collapse: collapse;
+  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 11px;
+}
+.chains-table th,
+.chains-table td {
+  text-align: right;
+  padding: 4px 0 4px 12px;
+  white-space: nowrap;
+}
+.chains-table tr th:first-child {
+  text-align: left;
+  padding-left: 0;
+  font-weight: 500;
+}
+.chains-table tr:first-child th {
+  /* 6.12:1 */
+  color: #8f8f8f;
+  font-weight: 400;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.chains-table td,
+.chains-table tr th:first-child {
+  /* 7.85:1 */
+  color: #a3a3a3;
+}
+
+/* A labelled strip per chain, bars sitting on a baseline. Generously spaced,
+   because the gaps are what make a missing block read as missing. */
+.chains-group {
+  padding: 8px 14px 2px;
+}
+.chains-group-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  /* 7.85:1 */
+  color: #a3a3a3;
+  margin-bottom: 5px;
+}
+/* Secondary to the chain's name: the count is context for the bars below, not
+   a heading of its own. Tabular figures so a changing count cannot reflow the
+   row it sits on. */
+/* Connection footer, under the per-chain bars. Its two rows read as a pair of
+   readouts rather than prose, so the label is recessive and the value carries. */
+.chains-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* No rule of its own: the last chain row already draws one under its bars,
+     and a second line here read as a double divider. */
+  margin: 10px 14px 0;
+}
+.chains-transfer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  /* One line: the label sits at the left edge of the bars, the value at the
+     right, and neither wraps when the figure grows a digit. */
+  white-space: nowrap;
+}
+.chains-transfer-row:empty {
+  display: none;
+}
+.chains-transfer-label {
+  font-weight: 500;
+  /* 7.85:1 */
+  color: #a3a3a3;
+}
+.chains-transfer-value {
+  /* Tabular so a changing figure cannot shuffle the row it sits on. */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #e5e5e5;
+}
+/* Advice, not telemetry: set apart from the readouts above it so it reads as
+   a suggestion rather than another measurement. */
+.chains-tips {
+  /* Inset, padded and rounded exactly like the connection box at the top of
+     the panel, so the two read as a matching pair bracketing the chain rows. */
+  margin: 12px 14px 2px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.chains-tips-title {
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  /* 10.9:1 */
+  color: #d4d4d4;
+}
+.chains-tips-list {
+  margin: 0;
+  padding-left: 15px;
+  font-size: 11px;
+  line-height: 1.5;
+  /* 7.85:1 */
+  color: #a3a3a3;
+}
+.chains-tips-list li::marker {
+  color: #737373;
+}
+.chains-group-peers {
+  font-size: 10px;
+  font-weight: 400;
+  /* 5.74:1 */
+  color: #8a8a8a;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chains-bars-cell {
+  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+}
+.chains-bars {
+  /* Read back by the panel to work out how many marks fit, so the width lives
+     in one place instead of being duplicated in JS. */
+  --chains-bar-w: 4px;
+  display: flex;
+  /* A flex item defaults to `min-width: auto`, which lets its content set the
+     floor and defeats the clipping below. */
+  min-width: 0;
+  /* Packed to the right so the newest block lands at the right edge and the
+     oldest run off the left, where `overflow` clips them. `row-reverse` did
+     the opposite of what this comment used to claim. */
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 4px;
+  height: 22px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding-bottom: 2px;
+}
+/* Applied for one frame after a block lands: the strip starts shifted right by
+   the width the new bar just took, then settles to zero, so the whole row
+   glides left together instead of the bars jumping a step. */
+.chains-bars.is-sliding {
+  transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.chains-bar {
+  width: var(--chains-bar-w);
+  height: 100%;
+  border-radius: 1px;
+  flex-shrink: 0;
+  transform-origin: bottom center;
+}
+.chains-bar.is-new {
+  animation: chains-bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes chains-bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chains-bars.is-sliding {
+    transition: none;
+  }
+  .chains-bar.is-new {
+    animation: none;
+  }
+}
+.chains-bar.is-onTime {
+  /* 6.98:1 */
+  background: #22c55e;
+}
+.chains-bar.is-late {
+  /* 8.30:1, and shorter, so height carries the meaning too */
+  background: #eab308;
+  height: 60%;
+}
+.chains-bar.is-veryLate {
+  /* 5.02:1 */
+  background: #f87171;
+  height: 32%;
+}
+/* The ghost bar stands where the next block will: dim, filling with the
+   elapsed fraction of the chain's block time once a first head has anchored
+   the estimate. It never renders a number at zero, the text swaps to words
+   instead, matching how block explorers and transit signs survive overshoot. */
+.chains-bar-pending {
+  /* 4.92:1 on the dark panel */
+  background: #8f8f8f;
+  height: 20%;
+  opacity: 0.75;
+}
+.chains-bar-pending.is-searching {
+  height: 45%;
+}
+.chains-bar-pending.is-due {
+  height: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chains-bar-pending {
+    transition: height 0.25s linear;
+  }
+  .chains-bar-pending.is-searching,
+  .chains-bar-pending.is-due {
+    animation: chains-pending-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes chains-pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.chains-bars-waiting {
+  align-self: center;
+  margin-left: 2px;
+}
+
+.chains-bars-waiting,
+.chains-bars-cell.is-unavailable {
+  /* 6.12:1 */
+  color: #8f8f8f;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* The verdict reads as a banner rather than a line of text, so it is legible
+   at a glance before the strips below are studied. */
+.chains-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 14px 8px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 500;
+  /* 13.36:1 */
+  color: #d4d4d4;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.chains-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.chains-status-dot.is-ok {
+  background: #22c55e;
+}
+.chains-status-dot.is-warn {
+  background: #eab308;
+}
+.chains-status-dot.is-idle {
+  background: #8f8f8f;
 }

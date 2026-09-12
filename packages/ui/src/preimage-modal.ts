@@ -10,6 +10,7 @@
 // DOM structure follows the signing modal pattern (signing.ts).
 
 import { blockingModalAbortError } from "./blocking-modal-queue";
+import { UI_ERRORS } from "./errors";
 
 function formatSize(bytes: number): string {
   return bytes >= 1024
@@ -98,7 +99,7 @@ export function showPreimageSubmitModal(
     signal?.addEventListener("abort", onAbort, { once: true });
 
     cancelBtn.addEventListener("click", () => {
-      finish(new Error("User denied preimage submit"));
+      finish(new Error(UI_ERRORS.PREIMAGE_SUBMIT_DENIED));
     });
 
     allowBtn.addEventListener("click", () => {

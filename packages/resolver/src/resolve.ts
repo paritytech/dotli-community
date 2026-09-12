@@ -39,6 +39,21 @@ export type {
   ResolvePhase,
 } from "./access-raw-storage";
 export { statusToPhase } from "./access-raw-storage";
+export {
+  onChainSync,
+  enableSyncReporting,
+  CHAIN_KEYS,
+  CHAIN_SYNC_KINDS,
+} from "./chain-sync";
+export { onChainDetail } from "./chain-sync";
+export type {
+  ChainSyncEvent,
+  ChainSyncKind,
+  ChainKey,
+  ChainDetail,
+  ChainPeer,
+  SyncReportingConfig,
+} from "./chain-sync";
 
 const HUB_CHAIN = "Asset Hub Paseo";
 
