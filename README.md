@@ -119,9 +119,23 @@ cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S)
 navigation cross an origin-checked parent channel; the Host consumes at most
 one command per trusted input while browser transient activation remains live,
 with a five-second upper bound to accommodate cold guest execution. It does not
-grant the app iframe clipboard permission. As an interim compatibility policy, framebuffer and
-WebGPU profiles capture the pointer after a primary click while Tri2D leaves it
-free.
+grant the app iframe clipboard permission. Guests request relative-pointer capture
+through the runtime; desktop Pointer Lock begins on the next primary click.
+
+On coarse-pointer (touch) devices, a guest that declares keyboard and pointer
+input and requests capture gets host-owned FPS controls instead of requiring
+Pointer Lock. The left stick sends WASD movement/strafe keys; the right stick
+continuously sends relative look input. Buttons provide Fire (left mouse),
+Grapple (Q), Jump (Space), Reload (R), Start/Continue (Enter), and Run (Shift).
+These are standard key/button mappings, not new guest actions or a new ABI;
+their meaning remains guest-defined. Skyhook also uses R to restart.
+
+Contacts are independent, so movement, aiming, and firing can overlap. Cancelling
+one contact releases only its input; focus loss, backgrounding, resizing, and
+disabling controls release all held virtual input and stop aiming. Physical
+keyboard/mouse input remains independent of virtual holds. The overlay respects
+safe-area insets and is absent on desktop-only devices and apps that do not
+request capture; ordinary apps continue receiving raw multi-touch records.
 
 An App may declare `capabilities.fileInput` ABI 1 with bounded handlers for
 file extensions or media types. The sandbox exposes **Open file** and drag/drop
