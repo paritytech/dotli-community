@@ -34,11 +34,11 @@ export const wasmproductruntime_receiveFrame: (a: number, b: number, c: number) 
 export const wasmproductruntime_renderCustomMessage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
 export const wasmproductruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
 export const wireSchemaHash: (a: number) => void;
-export const __wasm_bindgen_func_elem_15802: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_15804: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_15793: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_15795: (a: number, b: number, c: number, d: number) => void;
 export const __wasm_bindgen_func_elem_4563: (a: number, b: number, c: number) => void;
 export const __wasm_bindgen_func_elem_4564: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_9832: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_9830: (a: number, b: number) => void;
 export const __wasm_bindgen_func_elem_4565: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
