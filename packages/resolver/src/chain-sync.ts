@@ -20,13 +20,7 @@ import { log } from "@dotli/shared/log";
 import { chainRoleForGenesis, type ChainRole } from "@dotli/config/network";
 
 /** The chains the resolver runs, named by role rather than by chain spec. */
-export const CHAIN_KEYS = [
-  "relay",
-  "custom-relay",
-  "asset-hub",
-  "bulletin",
-  "people",
-] as const;
+export const CHAIN_KEYS = ["relay", "asset-hub", "bulletin", "people"] as const;
 export type ChainKey = (typeof CHAIN_KEYS)[number];
 
 const CHAIN_KEY_BY_ROLE: Record<ChainRole, ChainKey> = {
@@ -54,9 +48,9 @@ export function chainKeyForGenesis(genesisHash: string): ChainKey | null {
  * loading UI has nothing to say about. `peers` is our own addition, sampled
  * while the chain bootstraps rather than reported by smoldot.
  *
- * `warpSyncProgress` is the only true percentage in here, and it only
- * arrives when a relay has a real warp distance to cover. Short-lived test
- * networks jump straight to `warpSyncFinished`.
+ * `warpSyncProgress` is the only true percentage in here, and it only arrives
+ * when a relay has a real warp distance to cover. `warpSyncFinished` closes
+ * that run. A chain that never warped emits neither.
  */
 export const CHAIN_SYNC_KINDS = [
   "firstPeer",
@@ -117,7 +111,9 @@ export interface ChainDetail {
 
 type DetailCallback = (detail: ChainDetail) => void;
 const detailListeners = new Set<DetailCallback>();
-const detailHistory: ChainDetail[] = [];
+// Latest fact per chain and kind. Keyed rather than appended so a chain that
+// reconnects replaces its entry instead of growing the replay without limit.
+const detailHistory = new Map<string, ChainDetail>();
 
 /**
  * Subscribe to per-chain telemetry facts.
@@ -128,7 +124,7 @@ const detailHistory: ChainDetail[] = [];
  */
 export function onChainDetail(cb: DetailCallback): () => void {
   detailListeners.add(cb);
-  for (const detail of detailHistory) {
+  for (const detail of detailHistory.values()) {
     try {
       cb(detail);
       // eslint-disable-next-line no-restricted-syntax -- defensive replay: one buggy late subscriber must not block registration.
@@ -142,7 +138,8 @@ export function onChainDetail(cb: DetailCallback): () => void {
 }
 
 function emitChainDetail(detail: ChainDetail): void {
-  detailHistory.push(detail);
+  const kind = detail.dbCache === undefined ? "peers" : "dbCache";
+  detailHistory.set(`${detail.chain}:${kind}`, detail);
   for (const cb of detailListeners) {
     try {
       cb(detail);
@@ -350,6 +347,12 @@ export function attachChainSync(
   let lastHealth: string | null = null;
   let lastStallReason: string | null = null;
   let lastPeers: number | null = null;
+  // Highest block the warp proved, so the milestone that ends it can say where
+  // it landed. Null for a chain that never warped.
+  let lastWarpAt: number | null = null;
+  // Latched: a chain that drops to zero peers and finds them again has not
+  // found its first peer twice.
+  let firstPeerEmitted = false;
   // Object-held so control-flow analysis does not narrow it to `false` inside
   // the response handler: only the follow callback ever sets it, and TS cannot
   // see that ordering across closures.
@@ -431,7 +434,8 @@ export function attachChainSync(
 
     const peers = state.numPeers;
     if (typeof peers === "number" && Number.isInteger(peers) && peers >= 0) {
-      if (peers > 0 && (lastPeers === null || lastPeers === 0)) {
+      if (peers > 0 && !firstPeerEmitted) {
+        firstPeerEmitted = true;
         emitChainSync({ chain, kind: "firstPeer" });
       }
       if (peers !== lastPeers) {
@@ -450,6 +454,15 @@ export function attachChainSync(
       if (phase === "connecting") {
         emitChainSync({ chain, kind: "connecting" });
       } else if (phase === "ready") {
+        // Ordered before `bootstrapComplete` so a listener reading milestones
+        // in sequence never sees the warp finish after the chain is already up.
+        if (lastWarpAt !== null) {
+          emitChainSync({
+            chain,
+            kind: "warpSyncFinished",
+            finalized: lastWarpAt,
+          });
+        }
         emitChainSync({ chain, kind: "bootstrapComplete" });
         requestPeers();
       }
@@ -460,6 +473,9 @@ export function attachChainSync(
     if (phase === "syncing") {
       const target = state.phase?.target;
       const at = state.phase?.at;
+      if (typeof at === "number") {
+        lastWarpAt = at;
+      }
       emitChainSync({
         chain,
         kind: "warpSyncProgress",
@@ -561,7 +577,7 @@ export function attachChainSync(
       stopHealth();
       return;
     }
-    if (!stopped && healthTimer !== null) {
+    if (!stopped) {
       scheduleHealth(healthInterval());
     }
     const health = result as { peers?: unknown; isSyncing?: unknown } | null;

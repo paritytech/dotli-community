@@ -28,7 +28,7 @@ type Phase = "connecting" | "syncing" | "ready";
 const PHASE_BY_MILESTONE: Partial<Record<string, Phase>> = {
   connecting: "connecting",
   warpSyncProgress: "syncing",
-  warpSyncFinished: "syncing",
+  warpSyncFinished: "ready",
   bootstrapComplete: "ready",
 };
 
@@ -39,7 +39,7 @@ const PHASE_BY_MILESTONE: Partial<Record<string, Phase>> = {
  * nothing is lost at any rate: sampling decides whether the ~16 child spans
  * come with it. Successes are near-identical to one another and cheap to
  * characterise from the root alone, so a fifth of them is plenty to watch a
- * distribution move. Failures ignore this entirely — see `sampleFor`.
+ * distribution move. Failures ignore this entirely. See `sampleFor`.
  */
 const DEFAULT_SAMPLE_RATE = 0.2;
 

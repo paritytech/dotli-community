@@ -69,11 +69,14 @@ function requirePipe(chain: "relay" | "asset-hub"): Pipe {
   return pipe;
 }
 
-const FOLLOW_REPLY = JSON.stringify({
-  jsonrpc: "2.0",
-  id: "__dotli_lifecycle_follow__:relay",
-  result: "sub-1",
-});
+const followReplyFor = (chain: string): string =>
+  JSON.stringify({
+    jsonrpc: "2.0",
+    id: `__dotli_lifecycle_follow__:${chain}`,
+    result: "sub-1",
+  });
+
+const FOLLOW_REPLY = followReplyFor("relay");
 
 /** The light client answers the follow with a method-not-found. */
 const FOLLOW_UNSUPPORTED = JSON.stringify({
@@ -158,6 +161,52 @@ describe("Light client sync reporting works", () => {
     ]);
   });
 
+  it("As a user whose relay finishes warping, the shell learns where the warp landed before the chain reports ready", () => {
+    // Given a listener reading milestones in order must never see the warp
+    // finish after the chain is already up.
+    enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
+    const pipe = requirePipe("relay");
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
+
+    // When
+    pipe.deliver(FOLLOW_REPLY);
+    pipe.deliver(state("sub-1", { kind: "syncing", at: 980, target: 1000 }, 3));
+    pipe.deliver(state("sub-1", { kind: "ready" }, 3));
+
+    // Then
+    expect(seen).toEqual([
+      { chain: "relay", kind: "firstPeer" },
+      { chain: "relay", kind: "peers", peers: 3, isSyncing: true },
+      { chain: "relay", kind: "warpSyncProgress", at: 980, target: 1000 },
+      { chain: "relay", kind: "warpSyncFinished", finalized: 980 },
+      { chain: "relay", kind: "bootstrapComplete" },
+    ]);
+  });
+
+  it("As a user on a chain that never warped, the shell reports no warp milestones at all", () => {
+    // Given a parachain reaches ready without a warp to cover, so claiming it
+    // finished one would be an invention.
+    enableSyncReporting({ milestones: ["asset-hub"], peerCounts: [] });
+    const pipe = requirePipe("asset-hub");
+    const seen: unknown[] = [];
+    onChainSync((event) => seen.push(event));
+
+    // When
+    pipe.deliver(followReplyFor("asset-hub"));
+    pipe.deliver(state("sub-1", { kind: "connecting" }, 0));
+    pipe.deliver(state("sub-1", { kind: "ready" }, 1));
+
+    // Then
+    expect(seen).toEqual([
+      { chain: "asset-hub", kind: "peers", peers: 0, isSyncing: true },
+      { chain: "asset-hub", kind: "connecting" },
+      { chain: "asset-hub", kind: "firstPeer" },
+      { chain: "asset-hub", kind: "peers", peers: 1, isSyncing: false },
+      { chain: "asset-hub", kind: "bootstrapComplete" },
+    ]);
+  });
+
   it("As a user whose connection drops mid-sync, the shell learns why it stalled and when it recovered", () => {
     // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
@@ -179,7 +228,6 @@ describe("Light client sync reporting works", () => {
       { chain: "relay", kind: "peers", peers: 0, isSyncing: true },
       { chain: "relay", kind: "warpSyncProgress" },
       { chain: "relay", kind: "stalled", reason: "noPeers" },
-      { chain: "relay", kind: "firstPeer" },
       { chain: "relay", kind: "peers", peers: 2, isSyncing: true },
       { chain: "relay", kind: "warpSyncProgress" },
       { chain: "relay", kind: "recovered", reason: "noPeers" },
