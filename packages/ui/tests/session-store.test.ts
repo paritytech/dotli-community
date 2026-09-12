@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import { SITE_ID } from "@dotli/config/config";
 import {
+  createLocalWalletSecret,
   createSessionStoreAdapters,
+  deleteLocalWalletSecret,
   emitPersistedSessionUiState,
+  LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
+  readLocalWalletSecret,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
 import type { CoreStorageKey } from "@parity/truapi-host";
@@ -347,6 +351,56 @@ describe("session-store host callbacks", () => {
     expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
   });
 
+  it("As a local wallet user, my signing identity is encrypted, stable, and deletable", async () => {
+    // Given
+    await deleteLocalWalletSecret();
+
+    // When
+    const first = await createLocalWalletSecret();
+    const firstBytes = Array.from(first.secret);
+
+    // Then
+    expect(first.created).toBe(true);
+    expect(first.secret).toHaveLength(32);
+    const opened = Promise.withResolvers<IDBDatabase>();
+    const openRequest = indexedDB.open("dotli-core");
+    openRequest.onsuccess = () => {
+      opened.resolve(openRequest.result);
+    };
+    openRequest.onerror = () => {
+      opened.reject(openRequest.error);
+    };
+    const db = await opened.promise;
+    const storedValue = Promise.withResolvers<unknown>();
+    const readRequest = db
+      .transaction("keys")
+      .objectStore("keys")
+      .get("local-wallet-entropy-v1");
+    readRequest.onsuccess = () => {
+      storedValue.resolve(readRequest.result);
+    };
+    readRequest.onerror = () => {
+      storedValue.reject(readRequest.error);
+    };
+    expect(await storedValue.promise).toMatch(/^enc1:0x/);
+    db.close();
+
+    // When
+    first.secret.fill(0);
+    const second = await createLocalWalletSecret();
+
+    // Then
+    expect(second.created).toBe(false);
+    expect(Array.from(second.secret)).toEqual(firstBytes);
+
+    // When
+    second.secret.fill(0);
+    await deleteLocalWalletSecret();
+
+    // Then
+    await expect(readLocalWalletSecret()).resolves.toBeUndefined();
+  });
+
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
@@ -618,6 +672,29 @@ describe("session-store host callbacks", () => {
 
     // Then
     expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+  });
+
+  it("As a local wallet user, my account badge survives reload without a paired session blob", async () => {
+    // Given
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    sharedAuth.storage.set(
+      UI_STATE_CACHE_KEY,
+      JSON.stringify(CONNECTED_DETAIL),
+    );
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    // When
+    await emitPersistedSessionUiState();
+
+    // Then
+    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+    await deleteLocalWalletSecret();
   });
 
   it("As a dotli integrator, the host rehydrates a bare connected state when no cache exists", async () => {
