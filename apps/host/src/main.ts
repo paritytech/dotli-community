@@ -1187,11 +1187,24 @@ async function main(): Promise<void> {
   // total and the cold failure rate would read high.
   let cidCache: "hit" | "miss" | "unknown" = "unknown";
 
-  // A CID cache hit does no chain work, so whether the light client resumed
-  // says nothing about that load. Report the dimension as inapplicable rather
-  // than as missing, which would read as data still to come.
-  const smoldotDbCacheTag = (): string =>
-    cidCache === "hit" ? "n/a" : getSmoldotDbOutcome();
+  // On a CID cache hit the render never waits on the light client, and the
+  // gateway backend runs none at all, so the dimension is inapplicable on
+  // both. "n/a" keeps them out of "unknown", which is reserved for a signal
+  // that should have arrived and did not. One tag per chain: the relay and
+  // Asset Hub gate the resolve, Bulletin gates the content fetch, and their
+  // warm states vary independently.
+  const smoldotDbCacheTags = (): Record<string, string> => {
+    const inapplicable = cidCache === "hit" || chainBackend === "rpc-gateway";
+    return {
+      smoldotdb_relay_cache: inapplicable
+        ? "n/a"
+        : getSmoldotDbOutcome("relay"),
+      smoldotdb_hub_cache: inapplicable ? "n/a" : getSmoldotDbOutcome("hub"),
+      smoldotdb_bulletin_cache: inapplicable
+        ? "n/a"
+        : getSmoldotDbOutcome("bulletin"),
+    };
+  };
 
   // The non-throwing half of the failure rate whose error half is the tagged
   // exception in the catch below. `no_content` is its own outcome rather than
@@ -1204,7 +1217,7 @@ async function main(): Promise<void> {
         surface: "host_main_resolve",
         outcome,
         cid_cache: cidCache,
-        smoldot_db_cache: smoldotDbCacheTag(),
+        ...smoldotDbCacheTags(),
         chain_backend: chainBackend,
       },
     });
@@ -1444,7 +1457,7 @@ async function main(): Promise<void> {
       outcome: "error",
       dependency,
       cid_cache: cidCache,
-      smoldot_db_cache: smoldotDbCacheTag(),
+      ...smoldotDbCacheTags(),
       chain_backend: chainBackend,
     });
     // Full cause chain to console for devs.

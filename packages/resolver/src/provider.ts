@@ -12,7 +12,10 @@
 
 import type { JsonRpcMessage } from "@polkadot-api/json-rpc-provider";
 import type { JsonRpcProvider } from "polkadot-api";
-import { getActiveSupportedGenesisHashes } from "@dotli/config/network";
+import {
+  getActiveServicesConfig,
+  getActiveSupportedGenesisHashes,
+} from "@dotli/config/network";
 import { log } from "@dotli/shared/log";
 import init, {
   ChainProviderBuilder,
@@ -66,7 +69,24 @@ function getHandle(): Promise<ChainProviderHandle> {
     const builder = new ChainProviderBuilder();
     const store = createSmoldotDb();
     if (store !== null) {
-      builder.setStorage(store);
+      // Observe every read the crate makes, not just explicit `loadDatabase`
+      // calls: the relay's blob is only ever read through here. Rethrow on
+      // failure, because the store contract says "cannot answer" must reject
+      // rather than read as "nothing stored".
+      const observed: typeof store = {
+        load: async (genesisHash) => {
+          try {
+            const blob = await store.load(genesisHash);
+            markSmoldotDb(genesisHash, blob !== null ? "hit" : "miss");
+            return blob;
+          } catch (error) {
+            markSmoldotDb(genesisHash, "unavailable");
+            throw error;
+          }
+        },
+        save: (genesisHash, blob) => store.save(genesisHash, blob),
+      };
+      builder.setStorage(observed);
     }
     const handle = builder.build();
     log.warn("[dot.li provider] truapi-provider ready (embedded smoldot wasm)");
@@ -122,23 +142,67 @@ function markFatal(message: string): void {
   }
 }
 
-// Whether smoldot resumed from a stored finalized-database blob or synced from
-// its chain-spec checkpoint. A promise rather than a listener set, because it
-// settles once and gives late subscribers the replay for free. Only the first
-// chain to connect is recorded: that is the one page load waits on, and later
-// chains would overwrite it with a value no resolution timing depends on.
-type SmoldotDbOutcome = "hit" | "miss";
-let markSmoldotDb!: (outcome: SmoldotDbOutcome) => void;
-const smoldotDbOutcome = new Promise<SmoldotDbOutcome>((resolve) => {
-  markSmoldotDb = resolve;
-});
+// Per-chain warm-start record, observed at the storage layer rather than at
+// `loadDatabase`: the crate reads the store itself for every chain it adds,
+// including the relay it dials internally through the catalog, which no
+// dot.li code ever connects explicitly. "unavailable" is a store that could
+// not answer, kept distinct from "miss" so a storage outage does not read as
+// ordinary cold starts. People is deliberately not reported: nothing the
+// page waits on depends on its warm state.
+export type SmoldotDbChain = "relay" | "hub" | "bulletin";
+export type SmoldotDbOutcome = "hit" | "miss" | "unavailable";
+type SmoldotDbListener = (
+  chain: SmoldotDbChain,
+  outcome: SmoldotDbOutcome,
+) => void;
+const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+const smoldotDbListeners = new Set<SmoldotDbListener>();
 
-export function onSmoldotDbOutcome(
-  cb: (outcome: SmoldotDbOutcome) => void,
-): void {
-  smoldotDbOutcome.then(cb).catch(() => {
-    /* one buggy subscriber must not surface as an unhandled rejection */
-  });
+function chainRole(genesisHash: string): SmoldotDbChain | null {
+  const services = getActiveServicesConfig();
+  const key = genesisHash.toLowerCase();
+  if (key === services.relay.genesis.toLowerCase()) {
+    return "relay";
+  }
+  if (key === services.assethub.genesis.toLowerCase()) {
+    return "hub";
+  }
+  if (key === services.bulletin.genesis.toLowerCase()) {
+    return "bulletin";
+  }
+  return null;
+}
+
+function markSmoldotDb(genesisHash: string, outcome: SmoldotDbOutcome): void {
+  const chain = chainRole(genesisHash);
+  // First read wins: the store is consumed on the chain's first add, so a
+  // later read for the same chain observed nothing the light client used.
+  if (chain === null || smoldotDbOutcomes.has(chain)) {
+    return;
+  }
+  smoldotDbOutcomes.set(chain, outcome);
+  for (const cb of smoldotDbListeners) {
+    try {
+      cb(chain, outcome);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the broadcast to all others.
+    } catch {
+      /* listener threw, do not let one listener break the broadcast */
+    }
+  }
+}
+
+export function onSmoldotDbOutcome(cb: SmoldotDbListener): void {
+  smoldotDbListeners.add(cb);
+  // Chains can load before any subscriber registers, so replay what is
+  // already recorded the way `onProviderFatal` replays its failure.
+  for (const [chain, outcome] of smoldotDbOutcomes) {
+    try {
+      cb(chain, outcome);
+      // eslint-disable-next-line no-restricted-syntax -- defensive multicast replay: one buggy late subscriber must not prevent the caller from registering.
+    } catch {
+      /* listener threw, safe to ignore on replay */
+    }
+  }
 }
 
 export function isChainSupported(genesisHash: string): boolean {
@@ -151,16 +215,11 @@ async function resumeFromStore(
 ): Promise<void> {
   try {
     if (await handle.loadDatabase(key)) {
-      markSmoldotDb("hit");
       log.debug(`[dot.li provider] resuming ${key} from stored state`);
-      return;
     }
-    markSmoldotDb("miss");
   } catch (error) {
     // Never block the connection on the store. Syncing from the chain-spec
-    // checkpoint is slower but correct. A store that cannot answer leaves the
-    // chain in the same state as one with nothing stored, so it reports "miss".
-    markSmoldotDb("miss");
+    // checkpoint is slower but correct.
     log.warn(`[dot.li provider] warm start unavailable for ${key}:`, error);
   }
 }

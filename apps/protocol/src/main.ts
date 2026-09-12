@@ -566,6 +566,17 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     m.count(S.BOOTNODE_ERROR, { source: "shared-worker" });
   });
 
+  // Relay SharedWorker responses up to the parent from the first moment the
+  // port exists. The worker broadcasts `smoldot-db` during pre-sync, long
+  // before `ready`, and MessagePort events are not replayed: registering this
+  // after the ready wait would silently drop everything sent in between.
+  port.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as SWOutbound | null;
+    if (data?.type === "relay-response" && window.parent !== window) {
+      window.parent.postMessage(data.envelope, "*");
+    }
+  });
+
   // Wait for SharedWorker to signal ready (or error)
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -634,14 +645,6 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     port.postMessage(msg);
   });
 
-  // Relay SharedWorker responses back up to the parent.
-  port.addEventListener("message", (event: MessageEvent) => {
-    const data = event.data as SWOutbound | null;
-    if (data?.type === "relay-response" && window.parent !== window) {
-      window.parent.postMessage(data.envelope, "*");
-    }
-  });
-
   signalReady();
 
   window.addEventListener("beforeunload", () => {
@@ -704,12 +707,13 @@ async function initDirectMode(): Promise<void> {
 
   // Direct mode owns its light client, so its warm-start outcome goes straight
   // up to the host shell that tags resolution telemetry with it.
-  onSmoldotDbOutcome((outcome) => {
+  onSmoldotDbOutcome((chain, outcome) => {
     if (window.parent !== window) {
       window.parent.postMessage(
         {
           namespace: "dotli:protocol",
           kind: "smoldot-db",
+          chain,
           outcome,
         },
         "*",

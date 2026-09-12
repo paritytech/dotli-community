@@ -75,16 +75,25 @@ export interface ProtocolReadyEnvelope {
 }
 
 /**
- * Unsolicited broadcast naming whether the first chain to connect resumed
- * from stored smoldot state or synced from its chain-spec checkpoint.
+ * Unsolicited broadcast naming whether one chain's access began from
+ * pre-existing smoldot state, sent once per chain as its store answers.
  *
- * The blob lives in the protocol origin's IndexedDB, which the host origin
- * cannot read, so this message is the host's only view of it.
+ * "hit" covers two sources of pre-existing state that cost the tab the same
+ * nothing: a stored finalized-database blob was loaded, or the tab joined a
+ * SharedWorker whose chain was already synced. "miss" means the chain synced
+ * from its chain-spec checkpoint. "unavailable" means the store could not
+ * answer at all, which is a different population from a healthy first visit.
+ * The blobs live in the protocol origin's IndexedDB, which the host origin
+ * cannot read, so these messages are the host's only view of them.
  */
+export type SmoldotDbChain = "relay" | "hub" | "bulletin";
+export type SmoldotDbOutcome = "hit" | "miss" | "unavailable";
+
 export interface ProtocolSmoldotDbEnvelope {
   namespace: "dotli:protocol";
   kind: "smoldot-db";
-  outcome: "hit" | "miss";
+  chain: SmoldotDbChain;
+  outcome: SmoldotDbOutcome;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   type ProtocolChainMessageEnvelope,
   type ProtocolChainHaltEnvelope,
   type ProtocolReadyEnvelope,
+  type ProtocolSmoldotDbEnvelope,
 } from "@dotli/protocol/messages";
 
 describe("isProtocolEnvelope", () => {
@@ -86,6 +87,16 @@ describe("isProtocolEnvelope", () => {
     const envelope: ProtocolReadyEnvelope = {
       namespace: "dotli:protocol",
       kind: "ready",
+    };
+    expect(isProtocolEnvelope(envelope)).toBe(true);
+  });
+
+  it("returns true for a valid smoldot-db envelope", () => {
+    const envelope: ProtocolSmoldotDbEnvelope = {
+      namespace: "dotli:protocol",
+      kind: "smoldot-db",
+      chain: "hub",
+      outcome: "hit",
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
