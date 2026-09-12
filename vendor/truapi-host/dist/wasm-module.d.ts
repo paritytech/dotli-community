@@ -18,34 +18,24 @@ export interface WorkerProductRuntime {
      */
     renderCustomMessage(messageId: string, messageType: string, payload: Uint8Array, onUpdate: (node: Uint8Array) => void, onComplete: () => void, onError: (reason: string) => void): WorkerCustomRendererSubscription;
 }
-/** Runtime operations shared by paired and browser-local signing hosts. */
-export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
+/** The long-lived pairing-host runtime product cores are created from. */
+export interface WorkerPairingHostRuntime extends PermissionAuthorizationRuntime {
     productRuntime(product: unknown, coreCallbacks: unknown): WorkerProductRuntime;
     disconnectSession(): Promise<void>;
+    cancelPairing(): void;
+    notifySessionStoreChanged(): void;
     sessionChatIdentityKey(): Uint8Array | undefined;
     deviceEncryptionKey(): Promise<Uint8Array>;
     productSubtreePublicKey(productId: string, timeoutMs?: number): Promise<Uint8Array | undefined>;
-    clearProductState(productId: string): Promise<void>;
-    free(): void;
-}
-/** The long-lived pairing-host runtime product cores are created from. */
-export interface WorkerPairingHostRuntime extends WorkerHostRuntime {
-    cancelPairing(): void;
-    notifySessionStoreChanged(): void;
     activateStoredSession(): Promise<void>;
     activateExternalSession(blob: Uint8Array): Promise<void>;
     resetSessionState(): Promise<void>;
-}
-/** A browser-local signing host activated from caller-owned entropy. */
-export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
-    activateLocalSession(secret: Uint8Array): Promise<void>;
-    activateLocalSessionWithIdentity(secret: Uint8Array, liteUsername?: string): Promise<void>;
+    free(): void;
 }
 /** Module surface the wasm-pack glue exports. */
 export interface WasmModuleShape {
     default: (input?: unknown) => Promise<unknown>;
     WasmPairingHostRuntime: new (callbacks: unknown, hostConfig: unknown) => WorkerPairingHostRuntime;
-    WasmSigningHostRuntime: new (callbacks: unknown, hostConfig: unknown) => WorkerSigningHostRuntime;
     WasmProductRuntime: new (callbacks: unknown, runtimeConfig: unknown) => WorkerProductRuntime;
     setLogLevel?: (level: string) => void;
     /**

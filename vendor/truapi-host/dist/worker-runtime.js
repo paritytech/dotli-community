@@ -506,12 +506,6 @@ const inFlightFrames = new Map();
 /** Live custom-message render subscriptions, keyed by main-thread render id. */
 const renders = new Map();
 let wasm = null;
-function isPairingRuntime(candidate) {
-    return "cancelPairing" in candidate;
-}
-function isSigningRuntime(candidate) {
-    return "activateLocalSession" in candidate;
-}
 (async () => {
     try {
         wasm = await wasmModulePromise;
@@ -550,11 +544,7 @@ ctx.addEventListener("message", (ev) => {
                 });
             }
             try {
-                const callbacks = buildRawCallbacks(msg.capabilities);
-                runtime =
-                    msg.runtimeKind === "signing"
-                        ? new wasm.WasmSigningHostRuntime(callbacks, msg.hostConfig)
-                        : new wasm.WasmPairingHostRuntime(callbacks, msg.hostConfig);
+                runtime = new wasm.WasmPairingHostRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig);
                 postToMain({ kind: "ready", schema: coreWireSchemaHash(wasm) });
             }
             catch (err) {
@@ -593,9 +583,7 @@ ctx.addEventListener("message", (ev) => {
             void handleDisconnectSession(msg.requestId);
             break;
         case "cancelPairing":
-            if (runtime && isPairingRuntime(runtime)) {
-                runtime.cancelPairing();
-            }
+            runtime?.cancelPairing();
             break;
         case "getSessionChatIdentityKey":
             handleGetSessionChatIdentityKey(msg.requestId);
@@ -607,41 +595,19 @@ ctx.addEventListener("message", (ev) => {
             void handleGetProductSubtreePublicKey(msg.requestId, msg.productId, msg.timeoutMs);
             break;
         case "notifySessionStoreChanged":
-            if (runtime && isPairingRuntime(runtime)) {
-                runtime.notifySessionStoreChanged();
-            }
+            runtime?.notifySessionStoreChanged();
             break;
         case "activateStoredSession":
-            void handleSessionActivation(msg.requestId, "activateStoredSession", (rt) => isPairingRuntime(rt)
-                ? rt.activateStoredSession()
-                : Promise.reject(new Error("pairing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "activateStoredSession", (rt) => rt.activateStoredSession());
             break;
         case "activateExternalSession": {
             const { blob } = msg;
-            void handleSessionActivation(msg.requestId, "activateExternalSession", (rt) => isPairingRuntime(rt)
-                ? rt.activateExternalSession(blob)
-                : Promise.reject(new Error("pairing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "activateExternalSession", (rt) => rt.activateExternalSession(blob));
             break;
         }
         case "resetSessionState":
-            void handleSessionActivation(msg.requestId, "resetSessionState", (rt) => isPairingRuntime(rt)
-                ? rt.resetSessionState()
-                : Promise.reject(new Error("pairing runtime is not active")));
+            void handleSessionActivation(msg.requestId, "resetSessionState", (rt) => rt.resetSessionState());
             break;
-        case "activateLocalSession": {
-            const { secret } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => isSigningRuntime(rt)
-                ? rt.activateLocalSession(secret)
-                : Promise.reject(new Error("signing runtime is not active")));
-            break;
-        }
-        case "activateLocalSessionWithIdentity": {
-            const { secret, liteUsername } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (rt) => isSigningRuntime(rt)
-                ? rt.activateLocalSessionWithIdentity(secret, liteUsername)
-                : Promise.reject(new Error("signing runtime is not active")));
-            break;
-        }
         case "getPermissionAuthorizationStatus":
             void handleGetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request);
             break;

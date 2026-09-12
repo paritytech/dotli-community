@@ -447,7 +447,7 @@ export function initTopBar(
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
   scheduleIdle(() => {
-    void emitPersistedSessionUiState();
+    emitPersistedSessionUiState();
   });
 }
 
@@ -498,8 +498,8 @@ function renderAuthState(state: DotliAuthState): void {
 
 function renderLoggedOut(): void {
   authButton.innerHTML = USER_SVG;
-  authButton.title = "Use browser-local wallet";
-  authButton.setAttribute("aria-label", "Use browser-local wallet");
+  authButton.title = "Login with Polkadot Mobile";
+  authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
   setUserPopoverNoUsernameHint(false);
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
@@ -517,7 +517,7 @@ function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
   userPopoverUsername.textContent =
     username ??
     shortenAccount(state.identityAccountId ?? state.publicKey) ??
-    "Browser-local account";
+    "Connected with Polkadot Mobile";
   setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
   window.dispatchEvent(new Event("dotli:authenticated"));
 }
@@ -2515,9 +2515,13 @@ function openModal(
   options: { dotSuffix?: boolean } = {},
 ): void {
   modalQr.innerHTML = `<div class="spinner"></div>`;
-  modalGetApp.hidden = true;
-  modalHint.textContent =
-    "Unlocking an encrypted account stored only in this browser";
+  // Desktop users scan with a phone that already has the app, so the install
+  // link only helps on the phone itself.
+  modalGetApp.hidden = !isMobileDevice();
+  // Mobile leads with the deeplink button. The QR toggle swaps this copy later.
+  modalHint.textContent = isMobileDevice()
+    ? "Sign in with the Polkadot app on this device"
+    : "Scan with Polkadot Mobile to connect";
   // A bare "localhost:<port>" label means dotli is in localhost-proxy
   // mode rendering a local dev server directly (apps/host/src/main.ts
   // localhost-proxy branch). Show it as-is. Deployed dotNs products
@@ -2533,7 +2537,7 @@ function openModal(
   modalTitle.innerHTML =
     productLabel.length > 0
       ? `${escapeHtml(productLabel)} is asking you <span class="auth-modal-title-nowrap">to sign in</span>`
-      : "Use browser-local wallet";
+      : "Login with Polkadot Mobile";
   if (reason !== undefined && reason.length > 0) {
     modalReason.textContent = reason;
     modalReason.hidden = false;

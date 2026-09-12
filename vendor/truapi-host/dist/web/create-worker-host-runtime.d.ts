@@ -1,9 +1,5 @@
 import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider } from "../index.js";
 export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "executionKind">;
-export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
-    /** Bare dotNS network suffix (`dot`, `paseo`, or `testnet`). */
-    networkSuffix: string;
-};
 export interface WorkerPairingHostRuntime {
     /**
      * The encoding core's wire-schema hash, when the core reports one.
@@ -50,25 +46,10 @@ export interface WorkerPairingHostRuntime {
     setLogLevel(level: LogLevel): void;
     dispose(): void;
 }
-export interface WorkerSigningHostRuntime extends Omit<WorkerPairingHostRuntime, "cancelPairing" | "notifySessionStoreChanged" | "activateStoredSession" | "activateExternalSession" | "resetSessionState"> {
-    activateLocalSession(secret: Uint8Array): Promise<void>;
-    activateLocalSessionWithIdentity(secret: Uint8Array, liteUsername?: string): Promise<void>;
-}
-interface CreateWebWorkerHostRuntimeOptions {
+export interface CreateWebWorkerPairingHostRuntimeOptions {
     logLevel?: LogLevel;
-    hostConfig: WebWorkerHostConfig | WebWorkerSigningHostConfig;
-    initTimeoutMs?: number;
-    runtimeKind?: "pairing" | "signing";
-}
-export interface CreateWebWorkerPairingHostRuntimeOptions extends CreateWebWorkerHostRuntimeOptions {
     hostConfig: WebWorkerHostConfig;
-    runtimeKind?: "pairing";
-}
-export interface CreateWebWorkerSigningHostRuntimeOptions extends CreateWebWorkerHostRuntimeOptions {
-    hostConfig: WebWorkerSigningHostConfig;
-    runtimeKind?: "signing";
+    initTimeoutMs?: number;
 }
 export type WebWorkerHostCallbacks = RequiredHostCallbacks;
 export declare function createWebWorkerPairingHostRuntime(worker: Worker, host: WebWorkerHostCallbacks, options: CreateWebWorkerPairingHostRuntimeOptions): Promise<WorkerPairingHostRuntime>;
-export declare function createWebWorkerSigningHostRuntime(worker: Worker, host: WebWorkerHostCallbacks, options: CreateWebWorkerSigningHostRuntimeOptions): Promise<WorkerSigningHostRuntime>;
-export {};
