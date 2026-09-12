@@ -3,9 +3,9 @@
 
 // Resolution view
 //
-// One page load drawn as four rows — Relay, Hub, Identity, Storage — each a
-// run of blocks, one block per lifecycle phase the chain passed through, block
-// width proportional to the time spent in it. Above them, the figures that
+// One page load drawn as four rows, one per chain: Relay, Hub, Identity and
+// Storage. Each row is a run of blocks, one block per lifecycle phase the
+// chain passed through, block width proportional to the time spent in it. Above them, the figures that
 // describe the load as a whole: what it resolved, how fast the link was, and
 // which caches answered.
 //
@@ -88,8 +88,8 @@ const KEPT_LAYERS = new Set([
  * Retained copy of the events the view needs.
  *
  * The event store is a ring buffer, so on a busy session the early phase
- * transitions of the load being looked at are the first thing evicted — and
- * silently losing the head of every row is worse than not drawing it. The
+ * transitions of the load being looked at are the first thing evicted.
+ * Silently losing the head of every row is worse than not drawing it. The
  * kept layers are a small fraction of the traffic (TrUAPI wire frames are the
  * bulk of it), so retaining them separately costs little.
  */
@@ -178,8 +178,8 @@ export function buildResolution(
   const summary = buildSummary(mine, startedAt);
   // The product being on screen ends the load, whatever the resolve events
   // said. A resolution served from cache emits no `resolve:completed`, and a
-  // recorder that started mid-load may not hold one, and in both cases the
-  // view used to sit on "still running" for ever with its bars animating.
+  // recorder that started mid-load may not hold one. Without this the view
+  // sits on "still running" for ever with its bars animating.
   if (summary.outcome === "running" && isFinished(mine)) {
     summary.outcome = summary.cid === null ? "empty" : "resolved";
   }
@@ -200,7 +200,7 @@ export function buildResolution(
  * A chain reports its phases in the first moments and finds its peers a beat
  * later, often after the last phase change that bounds the chart. Reading the
  * count off the window alone showed "0 peers" for a chain that plainly had
- * some. Only the number is taken from outside the window; the blocks, and so
+ * some. Only the number is taken from outside the window. The blocks, and so
  * everything that moves, stay bounded by it.
  */
 function withLatestPeers(
@@ -273,13 +273,12 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   // product on screen in ~50ms while every chain is still `connecting`, so
   // ending the window at the paint dropped every chain event and left four
   // empty rows. Phases stop once each chain is ready, so following them does
-  // not make the chart grow for as long as the tab is open, which is what this
-  // bound exists to prevent.
+  // not make the chart grow for as long as the tab is open.
   //
   // The sandbox starts working only once the iframe exists, so every event it
   // reports lands after `render:iframe_ready`. Without following it the archive
-  // cache result fell outside the window and the summary read "not reported"
-  // for a lookup that had plainly happened. Bounded for the same reason as the
+  // cache result falls outside the window and the summary reads "not reported"
+  // for a lookup that plainly happened. Bounded for the same reason as the
   // phases: the sandbox reports during its boot and then hands over to the dApp.
   return Math.max(last, lastChainPhase, lastSandbox);
 }
@@ -385,7 +384,7 @@ function notePeers(
   if (phase === "ready") {
     // Best seen while usable, not the newest. A chain reports `ready` with no
     // peers and gains them a moment later, and it also drops peers long after
-    // the load finished; neither should make the row read "0 peers".
+    // the load finished. Neither should make the row read "0 peers".
     row.peersAtReady = Math.max(row.peersAtReady ?? 0, peers);
   }
 }
@@ -576,7 +575,10 @@ export function renderResolution(
  */
 interface Fact {
   key: string;
+  /** Plain text. Escaped at render, so a producer never has to remember. */
   value: string;
+  /** Markup, for the few facts that carry a styled span. Wins over `value`. */
+  valueHtml?: string;
   hint: string;
 }
 
@@ -588,17 +590,19 @@ function summaryFacts(model: ResolutionModel): Fact[] {
   return [
     {
       key: "name",
-      value: s.label === null ? "—" : escapeHtml(s.label),
+      value: s.label ?? "—",
       hint: "The .dot name this page load resolved.",
     },
     {
       key: "outcome",
-      value: outcomeText(s),
+      value: "",
+      valueHtml: outcomeText(s),
       hint: "How far the load got. \u201cResolved\u201d means a content id was found for the name. On its own that does not mean the app rendered \u2014 read \u201capp on screen\u201d for that.",
     },
     {
       key: "network transport",
-      value: transportText(s),
+      value: "",
+      valueHtml: transportText(s),
       hint: "How this load reached the chain. The smoldot light client verifies blocks itself; the RPC gateway trusts a remote node to answer honestly.",
     },
     GROUP_BREAK,
@@ -646,12 +650,14 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     GROUP_BREAK,
     {
       key: "CID cache",
-      value: cacheText(s.cidCache),
+      value: "",
+      valueHtml: cacheText(s.cidCache),
       hint: "Whether this name's content id was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
     {
       key: "archive cache",
-      value: cacheText(s.archiveCache),
+      value: "",
+      valueHtml: cacheText(s.archiveCache),
       hint: "Whether the app's files were already in the service worker's cache, so nothing had to be fetched. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
   ];
@@ -664,7 +670,7 @@ function renderSummary(model: ResolutionModel): string {
         ? `<div class="td-res-group-break"></div>`
         : `<div class="td-res-fact"><dt>${escapeHtml(fact.key)}` +
           `<span class="td-res-info" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose aria-hidden="true">i</span>` +
-          `</dt><dd>${fact.value}</dd></div>`,
+          `</dt><dd>${fact.valueHtml ?? escapeHtml(fact.value)}</dd></div>`,
     )
     .join("");
   return `<dl class="td-res-summary">${cards}</dl>`;
@@ -746,7 +752,7 @@ function renderRow(row: ResolutionRow, span: number, running: boolean): string {
   if (row.blocks.length === 0) {
     return (
       `<div class="td-res-row">${name}` +
-      `<div class="td-res-track"><span class="td-res-idle">never started — this chain was not needed, or the load ended first</span></div>` +
+      `<div class="td-res-track"><span class="td-res-idle">never started. This chain was not needed, or the load ended first</span></div>` +
       `<span class="td-res-meta"></span></div>`
     );
   }

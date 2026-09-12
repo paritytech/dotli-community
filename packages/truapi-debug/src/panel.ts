@@ -191,10 +191,10 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   });
 
   // The block a chain is still sitting in has to keep growing toward now, and
-  // a chain that has gone quiet emits nothing to re-render on. The tick only
-  // does work while the Resolution view is the one on screen.
+  // a chain that has gone quiet emits nothing to re-render on. A collapsed
+  // panel is not on screen, so it rebuilds nothing.
   const resolutionTick = window.setInterval(() => {
-    if (state.view === "resolution") {
+    if (state.view === "resolution" && !state.collapsed) {
       renderResolution(
         ui.resolution,
         buildResolution(state.resolution.events(), Date.now()),
@@ -891,7 +891,7 @@ function wireHoverTooltips(ui: PanelUI, root: HTMLElement): void {
       ui.tooltip.style.left = `${String(Math.max(4, adjusted))}px`;
     }
     // Flip above the cursor rather than run off the bottom. A one-line
-    // timeline tooltip almost never needs this; a wrapped prose one near the
+    // timeline tooltip almost never needs this. A wrapped prose one near the
     // foot of a bottom-docked panel always would.
     if (ttRect.bottom > window.innerHeight - 4) {
       ui.tooltip.style.top = `${String(top - ttRect.height - 28)}px`;
