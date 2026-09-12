@@ -125,6 +125,15 @@ export function installPolkaVmTouchControls(
       left: 50%; transform: translateX(-50%);
       bottom: calc(var(--edge-bottom) + 66px);
     }
+    @media (orientation: landscape) and (min-width: 480px) {
+      [data-polkavm-touch-controls] {
+        --stick-size: clamp(88px, 16vw, 128px);
+      }
+      [data-polkavm-touch-controls] [data-touch-control="start"] {
+        left: calc(50% - 62px);
+        bottom: calc(var(--edge-bottom) + 6px);
+      }
+    }
   `;
   root.append(style);
   const byElement = new Map<Element, TouchControl>();
