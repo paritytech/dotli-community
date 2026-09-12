@@ -883,8 +883,8 @@ function renderRuntime(ui: PanelUI, state: PanelState): void {
     snapshot.firstFrameMs > 0
       ? `${snapshot.firstFrameMs.toFixed(1)} ms`
       : "pending";
-  ui.runtimeBadge.textContent = `PVM ${backend} · FF ${firstFrame}`;
-  ui.runtimeBadge.title = `PolkaVM / ${backend} · first frame ${firstFrame} · ${snapshot.fps.toFixed(1)} FPS`;
+  ui.runtimeBadge.textContent = `PVM ${backend} · ${snapshot.fps.toFixed(1)} FPS`;
+  ui.runtimeBadge.title = `PolkaVM / ${backend} · first frame ${firstFrame}`;
 
   if (state.view !== "runtime") {
     return;

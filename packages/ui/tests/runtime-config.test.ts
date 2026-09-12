@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  NetworkName,
   getActiveServicesConfig,
   setNetworkOverride,
 } from "@dotli/config/network";
@@ -10,7 +11,7 @@ import {
 
 describe("labelToProductId", () => {
   afterEach(() => {
-    setNetworkOverride("paseo-next-v2");
+    setNetworkOverride(NetworkName.PASEO);
   });
 
   it("As a dotli integrator, the host maps dotli labels to the active network's TLD", () => {
@@ -20,7 +21,7 @@ describe("labelToProductId", () => {
   // A product id built with the wrong TLD hashes to a different dotNS node, so
   // the host would read an empty record instead of failing loudly.
   it("As a dotli integrator, the host maps the same label to .testnet on previewnet", () => {
-    setNetworkOverride("previewnet");
+    setNetworkOverride(NetworkName.PREVIEWNET);
     expect(labelToProductId("acme")).toBe("acme.testnet");
   });
 

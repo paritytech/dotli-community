@@ -7,6 +7,7 @@ import {
   HostFrameResponseQueue,
   describePolkaVmPackage,
   encodedInput,
+  encodedWheelInput,
   encodedTextInput,
   encodedMotionSample,
   encodedPointerMotionSample,
@@ -14,6 +15,7 @@ import {
   normalizedPointerDelta,
   installPageCacheRestoreReload,
   postFirstUiPlatformCommand,
+  matchingFileInputHandlers,
   polkavmWebFallbackEntrypoint,
   polkaVmCompatibilityError,
   validateFiles,
@@ -23,6 +25,7 @@ import {
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
   type HostFrameResponseQueueOptions,
+  validatedFileInputHandlers,
   type TruapiPortScope,
   type TruapiPortTarget,
 } from "./polkavm-runtime";
@@ -178,11 +181,11 @@ describe("PolkaVM advanced input encoding", () => {
     expect(encodedTextInput(10, "a".repeat(4097))).toEqual([]);
   });
 
-  it("encodes signed wheel deltas and focus state", () => {
-    const wheel = encodedInput(14, 0, -12, 32000);
+  it("normalizes DOM wheel direction before encoding signed deltas", () => {
+    const wheel = encodedWheelInput(12, -3, 16);
     const view = new DataView(wheel.buffer);
-    expect(view.getInt16(2, true)).toBe(-12);
-    expect(view.getInt16(4, true)).toBe(32000);
+    expect(view.getInt16(2, true)).toBe(-192);
+    expect(view.getInt16(4, true)).toBe(48);
     expect(encodedInput(13, 1)).toEqual(
       new Uint8Array([13, 1, 0, 0, 0, 0, 0, 0]),
     );
@@ -467,9 +470,10 @@ describe("PolkaVM package recognition", () => {
       webFallbackPath: null,
       programPath: "app.polkavm",
       controls: ["WASD Move", "Space Fire"],
-      inputFeatures: ["pointer", "keyboard", "motion"],
+      inputFeatures: ["pointer", "keyboard", "wheel", "motion"],
       audioEnabled: true,
       requiredAssets: ["game/doom.wad"],
+      fileInputHandlers: [],
       manifestVersion: null,
     });
   });
@@ -491,6 +495,7 @@ describe("PolkaVM package recognition", () => {
       inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
       audioEnabled: true,
       requiredAssets: [],
+      fileInputHandlers: [],
       manifestVersion: 2,
     });
     expect(() => describePolkaVmPackage(files)).toThrow(
@@ -499,6 +504,74 @@ describe("PolkaVM package recognition", () => {
     expect(() => describePolkaVmPackage(files, `${manifest}\n`)).toThrow(
       /does not match/,
     );
+  });
+
+  it("routes registered files without inspecting their contents", () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      runtime: { entrypoint: string };
+      capabilities: Record<string, unknown>;
+    };
+    value.capabilities.fileInput = {
+      abiVersion: 1,
+      handlers: [
+        {
+          id: "snes-rom",
+          label: "SNES cartridge image",
+          extensions: [".sfc", ".smc"],
+          maxBytes: 16 * 1024 * 1024,
+          mountPath: "game/cartridge.sfc",
+        },
+      ],
+    };
+    const manifest = JSON.stringify(value);
+    const files = {
+      "manifest.json": encoder.encode(manifest),
+      "app.polkavm": new Uint8Array([1, 2, 3]),
+      "game/cartridge.sfc": new Uint8Array(32 * 1024),
+    };
+    const handlers =
+      describePolkaVmPackage(files, manifest)?.fileInputHandlers ?? [];
+    expect(handlers).toEqual([
+      {
+        id: "snes-rom",
+        label: "SNES cartridge image",
+        extensions: [".sfc", ".smc"],
+        mediaTypes: [],
+        maxBytes: 16 * 1024 * 1024,
+        mountPath: "game/cartridge.sfc",
+      },
+    ]);
+    expect(
+      matchingFileInputHandlers(handlers, {
+        name: "Chrono.SFC",
+        size: 2 * 1024 * 1024,
+        type: "",
+      }),
+    ).toHaveLength(1);
+    expect(
+      matchingFileInputHandlers(handlers, {
+        name: "game.nes",
+        size: 2 * 1024 * 1024,
+        type: "",
+      }),
+    ).toEqual([]);
+    expect(() =>
+      validatedFileInputHandlers(
+        {
+          abiVersion: 1,
+          handlers: [
+            {
+              id: "escape",
+              label: "Unsafe",
+              extensions: [".sfc"],
+              maxBytes: 1024,
+              mountPath: "../cartridge.sfc",
+            },
+          ],
+        },
+        value.runtime.entrypoint,
+      ),
+    ).toThrow(/invalid fileInput handler/);
   });
 
   it.each([false, true])(
@@ -618,6 +691,7 @@ describe("PolkaVM package recognition", () => {
       inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
       audioEnabled: false,
       requiredAssets: [],
+      fileInputHandlers: [],
       manifestVersion: 2,
     });
   });
@@ -644,6 +718,7 @@ describe("PolkaVM package recognition", () => {
       inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
       audioEnabled: false,
       requiredAssets: [],
+      fileInputHandlers: [],
       manifestVersion: 2,
     });
   });

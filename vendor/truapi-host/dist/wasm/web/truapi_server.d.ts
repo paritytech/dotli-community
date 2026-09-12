@@ -249,11 +249,11 @@ export interface InitOutput {
     readonly wasmproductruntime_renderCustomMessage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly wasmproductruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_15802: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_15804: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_15793: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_15795: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_4563: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_4564: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_9832: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9830: (a: number, b: number) => void;
     readonly __wasm_bindgen_func_elem_4565: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
