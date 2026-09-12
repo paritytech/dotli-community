@@ -5,12 +5,9 @@
 // Uses Node's built-in zlib, so no extra dependencies are needed.
 // Run with: bun scripts/compress-dist.ts
 
-import { readdir, readFile, stat } from "node:fs/promises";
-import { createBrotliCompress, createGzip, constants } from "node:zlib";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
-import { createWriteStream } from "node:fs";
 
 const DIST = process.env.DIST ?? "dist";
 const COMPRESS_EXTENSIONS = new Set([
@@ -52,22 +49,20 @@ function extOf(name: string): string {
 
 async function compressBrotli(filePath: string, data: Buffer): Promise<number> {
   const out = filePath + ".br";
-  const brotli = createBrotliCompress({
+  const compressed = brotliCompressSync(data, {
     params: {
       [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY,
     },
   });
-  await pipeline(Readable.from(data), brotli, createWriteStream(out));
-  const info = await stat(out);
-  return info.size;
+  await writeFile(out, compressed);
+  return compressed.byteLength;
 }
 
 async function compressGzip(filePath: string, data: Buffer): Promise<number> {
   const out = filePath + ".gz";
-  const gz = createGzip({ level: 9 });
-  await pipeline(Readable.from(data), gz, createWriteStream(out));
-  const info = await stat(out);
-  return info.size;
+  const compressed = gzipSync(data, { level: 9 });
+  await writeFile(out, compressed);
+  return compressed.byteLength;
 }
 
 function fmt(bytes: number): string {

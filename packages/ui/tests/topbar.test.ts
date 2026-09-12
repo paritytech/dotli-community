@@ -287,7 +287,7 @@ describe("topbar login cancellation", () => {
 
     // Then
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
-      "Login with Polkadot Mobile",
+      "Use browser-local wallet",
     );
     expect(loginRequests).toEqual([{ reason: undefined }]);
   });
@@ -378,7 +378,7 @@ describe("topbar login cancellation", () => {
 
     // Then
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
-      "Login with Polkadot Mobile",
+      "Use browser-local wallet",
     );
   });
 
@@ -543,7 +543,7 @@ describe("topbar login cancellation", () => {
 
     // Then
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
-      "Login with Polkadot Mobile",
+      "Use browser-local wallet",
     );
     expect(
       document
@@ -760,48 +760,10 @@ describe("topbar first login guidance", () => {
     initTopBar();
 
     // Then
-    expect(button?.title).toBe("Login with Polkadot Mobile");
-    expect(button?.getAttribute("aria-label")).toBe(
-      "Login with Polkadot Mobile",
-    );
+    expect(button?.title).toBe("Use browser-local wallet");
+    expect(button?.getAttribute("aria-label")).toBe("Use browser-local wallet");
     expect(button?.hasAttribute("aria-busy")).toBe(false);
     expect(button?.hasAttribute("disabled")).toBe(false);
-  });
-
-  it("As a new user on a phone without the app, the login modal shows me where to get Polkadot Mobile", async () => {
-    // Given
-    device.mobile = true;
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-    const getApp = document.getElementById("auth-modal-get-app");
-
-    // When
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: {
-          tag: "Pairing",
-          deeplink: "polkadotapp://pair?handshake=test",
-          label: "localhost:3000",
-        },
-      }),
-    );
-
-    // Then
-    expect(getApp?.hidden).toBe(false);
-    expect(getApp?.getAttribute("href")).toBe(
-      "https://docs.polkadot.com/apps/",
-    );
-
-    // When the wallet has approved, installing the app is no longer the ask.
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: { tag: "Authenticating" },
-      }),
-    );
-
-    // Then
-    expect(getApp?.hidden).toBe(true);
   });
 
   it("As a desktop user scanning with my phone, the modal does not offer an app install link", async () => {

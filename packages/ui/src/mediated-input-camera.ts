@@ -196,6 +196,9 @@ export function scanCameraUr(
     const populateCameraPicker = async (
       activeDeviceId: string | undefined,
     ): Promise<void> => {
+      if (!navigator.mediaDevices.enumerateDevices) {
+        return;
+      }
       availableCameras = (
         await navigator.mediaDevices.enumerateDevices()
       ).filter((device) => device.kind === "videoinput");
