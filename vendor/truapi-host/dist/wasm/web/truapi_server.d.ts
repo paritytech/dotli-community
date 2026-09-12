@@ -172,6 +172,64 @@ export class WasmProductRuntime {
 }
 
 /**
+ * JS-callable handle to a wallet-local signing-host runtime.
+ */
+export class WasmSigningHostRuntime {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Activate a wallet-local session from raw BIP-39 entropy.
+     */
+    activateLocalSession(secret: Uint8Array): Promise<void>;
+    /**
+     * Activate a wallet-local session and attach known identity metadata.
+     */
+    activateLocalSessionWithIdentity(secret: Uint8Array, lite_username?: string | null): Promise<void>;
+    /**
+     * Revoke one product's grants from the current local activation.
+     */
+    clearProductState(product_id: string): Promise<void>;
+    /**
+     * Read this browser's X25519 encryption secret, generating and persisting
+     * it on first read.
+     */
+    deviceEncryptionKey(): Promise<Uint8Array>;
+    /**
+     * Disconnect the active wallet-local session.
+     */
+    disconnectSession(): Promise<void>;
+    /**
+     * Build a shared signing runtime from host callbacks and host config.
+     */
+    constructor(callbacks: any, host_config: any);
+    /**
+     * Read one permission authorization status for a product.
+     */
+    permissionAuthorizationStatus(product_id: string, payload: Uint8Array): Promise<any>;
+    /**
+     * Read permission authorization statuses for a product.
+     */
+    permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
+    /**
+     * Build one product-scoped runtime from this signing host.
+     */
+    productRuntime(product: any, core_callbacks: any): WasmProductRuntime;
+    /**
+     * Resolve a product's hard-subtree public key from the active local
+     * signing session.
+     */
+    productSubtreePublicKey(product_id: string, timeout_ms?: number | null): Promise<Uint8Array | undefined>;
+    /**
+     * Read the active local session's X25519 chat identity private key.
+     */
+    sessionChatIdentityKey(): Uint8Array | undefined;
+    /**
+     * Update one stored permission authorization status for a product.
+     */
+    setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
+}
+
+/**
  * Soft-derive a product account public key from a product's hard-subtree key
  * and a SCALE-encoded `DerivationIndex`.
  *
@@ -219,6 +277,7 @@ export interface InitOutput {
     readonly __wbg_wasmcustomrenderersubscription_free: (a: number, b: number) => void;
     readonly __wbg_wasmpairinghostruntime_free: (a: number, b: number) => void;
     readonly __wbg_wasmproductruntime_free: (a: number, b: number) => void;
+    readonly __wbg_wasmsigninghostruntime_free: (a: number, b: number) => void;
     readonly deriveProductAccountPublicKey: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly describeCoreStorageKey: (a: number, b: number, c: number) => void;
     readonly productAccountAddress: (a: number, b: number, c: number) => void;
@@ -248,13 +307,25 @@ export interface InitOutput {
     readonly wasmproductruntime_receiveFrame: (a: number, b: number, c: number) => number;
     readonly wasmproductruntime_renderCustomMessage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly wasmproductruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly wasmsigninghostruntime_activateLocalSession: (a: number, b: number, c: number) => number;
+    readonly wasmsigninghostruntime_activateLocalSessionWithIdentity: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly wasmsigninghostruntime_clearProductState: (a: number, b: number, c: number) => number;
+    readonly wasmsigninghostruntime_deviceEncryptionKey: (a: number) => number;
+    readonly wasmsigninghostruntime_disconnectSession: (a: number) => number;
+    readonly wasmsigninghostruntime_new: (a: number, b: number, c: number) => void;
+    readonly wasmsigninghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number) => void;
+    readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
+    readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_15793: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_15795: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4563: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4564: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_9830: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4565: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_16041: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_16043: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4663: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4664: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_10057: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4665: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

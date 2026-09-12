@@ -28,8 +28,7 @@ type MockProvider = {
 
 type MockRuntime = {
   createProvider: ReturnType<typeof vi.fn>;
-  cancelPairing: ReturnType<typeof vi.fn>;
-  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
+  activateLocalSession: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
 
@@ -57,7 +56,7 @@ const mocks = vi.hoisted(() => ({
     iframe: HTMLIFrameElement;
     dispose: ReturnType<typeof vi.fn>;
   }[],
-  createWebWorkerPairingHostRuntime: vi.fn(),
+  createWebWorkerSigningHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
@@ -69,7 +68,7 @@ vi.mock("@parity/truapi-host", () => ({
 }));
 
 vi.mock("@parity/truapi-host/web", () => ({
-  createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
+  createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));
 
@@ -145,8 +144,7 @@ function makeRuntime(): MockRuntime {
       mocks.coreProviderDefers.push(item);
       return item.promise;
     }),
-    cancelPairing: vi.fn(),
-    notifySessionStoreChanged: vi.fn(),
+    activateLocalSession: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
   mocks.coreRuntimes.push(runtime);
@@ -241,7 +239,7 @@ describe("bridge render lifecycle", () => {
     mocks.iframeHosts.length = 0;
     document.body.innerHTML = `<div id="app"></div>`;
     window.history.replaceState(null, "", "/");
-    mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
+    mocks.createWebWorkerSigningHostRuntime.mockImplementation(() =>
       Promise.resolve(makeRuntime()),
     );
     mocks.createIframeHost.mockImplementation(
@@ -777,22 +775,6 @@ describe("bridge render lifecycle", () => {
       expect(created.allowedOrigin).toBe(iframeUrl.origin);
     },
   );
-
-  it("As a dotli integrator, the host cancels pairing on the active product host", async () => {
-    // Given
-    const { renderIframe } = await import("@dotli/ui/bridge");
-
-    const render = renderIframe("https://product.example/app", "product");
-    await waitForProviderRequests(1);
-    mocks.coreProviderDefers[0].resolve(makeProvider());
-    await render;
-
-    // When
-    window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
-
-    // Then
-    expect(mocks.coreRuntimes[0].cancelPairing).toHaveBeenCalledTimes(1);
-  });
 
   it("As a dotli integrator, the host boots the landing auth core to disconnect a stored session without a product", async () => {
     // Given

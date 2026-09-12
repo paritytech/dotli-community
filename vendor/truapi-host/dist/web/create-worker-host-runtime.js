@@ -405,6 +405,18 @@ function teardown(state, error, fault) {
     }
 }
 export function createWebWorkerPairingHostRuntime(worker, host, options) {
+    return createWebWorkerHostRuntime(worker, host, {
+        ...options,
+        runtimeKind: "pairing",
+    });
+}
+export function createWebWorkerSigningHostRuntime(worker, host, options) {
+    return createWebWorkerHostRuntime(worker, host, {
+        ...options,
+        runtimeKind: "signing",
+    });
+}
+function createWebWorkerHostRuntime(worker, host, options) {
     const callbacks = createWasmRawCallbacks(host);
     return new Promise((resolve, reject) => {
         const state = {
@@ -588,6 +600,7 @@ export function createWebWorkerPairingHostRuntime(worker, host, options) {
                     kind: "init",
                     logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
                     hostConfig: options.hostConfig,
+                    runtimeKind: options.runtimeKind,
                     capabilities: {
                         chat: host.chat !== undefined,
                         permissionStatus: host.permissionStatus !== undefined,
@@ -749,6 +762,21 @@ function buildRuntime(state) {
             return sendSessionActivationRequest(state, (requestId) => ({
                 kind: "resetSessionState",
                 requestId,
+            }));
+        },
+        activateLocalSession(secret) {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "activateLocalSession",
+                requestId,
+                secret,
+            }));
+        },
+        activateLocalSessionWithIdentity(secret, liteUsername) {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "activateLocalSessionWithIdentity",
+                requestId,
+                secret,
+                liteUsername,
             }));
         },
         getPermissionAuthorizationStatus(productId, request) {

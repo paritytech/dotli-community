@@ -27,7 +27,11 @@ import {
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
-import { getNetwork, withActiveTld } from "@dotli/config/network";
+import {
+  getActiveServicesConfig,
+  getNetwork,
+  withActiveTld,
+} from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
@@ -37,14 +41,18 @@ import {
   hasDotliDebugListeners,
 } from "@dotli/truapi-debug/dotli-debug-bus";
 import type { TrUApiProductProvider } from "@parity/truapi-host";
-import type { PairingHostAdmin } from "@parity/truapi-host";
+import type { WorkerSigningHostRuntime } from "@parity/truapi-host/web";
 import {
   buildAllowAttribute,
   registerPermissionAuthorizationProvider,
 } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
-import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
+import {
+  createLocalWalletSecret,
+  LOCAL_WALLET_ENABLED_KEY,
+  readLocalWalletSecret,
+} from "./host-callbacks/SessionStore";
 import {
   CameraInputCancelledError,
   CameraInputPermissionError,
@@ -83,7 +91,7 @@ const runtimeChunkPromise = Promise.all([
 ]).then(([web, workerMod]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {
-    createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
+    createWebWorkerSigningHostRuntime: web.createWebWorkerSigningHostRuntime,
     createIframeHost: web.createIframeHost,
     HostWorker: workerMod.default,
   };
@@ -117,8 +125,10 @@ type CoreProviderBase = Provider &
     | "getPermissionAuthorizationStatuses"
     | "setPermissionAuthorizationStatus"
   >;
-type CoreProvider = CoreProviderBase & PairingHostAdmin;
-type PairingRuntimeControls = PairingHostAdmin & {
+type CoreProvider = CoreProviderBase & {
+  cancelPairing(): void;
+};
+type SigningRuntimeControls = WorkerSigningHostRuntime & {
   dispose(): void;
 };
 type CurrentProduct =
@@ -144,8 +154,7 @@ let landingAuthGeneration = 0;
 let currentPanelDispose: (() => void) | null = null;
 let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
-const liveCoreProviders = new Set<CoreProvider>();
-let unsubscribeSessionStoreChanges: (() => void) | null = null;
+const liveSigningRuntimes = new Set<SigningRuntimeControls>();
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 const mediatedInputPermissionLimiter = createSubmitRateLimiter();
 const mediatedInputHost = new MediatedInputHost({
@@ -216,20 +225,52 @@ const mediatedInputHost = new MediatedInputHost({
   isPermissionDenied: (error) => error instanceof CameraInputPermissionError,
 });
 
-function ensureStoredSessionForwarder(): void {
-  if (unsubscribeSessionStoreChanges !== null) {
+async function activateLocalWallet(): Promise<void> {
+  const { secret, created } = await createLocalWalletSecret();
+  try {
+    await Promise.all(
+      [...liveSigningRuntimes].map((runtime) =>
+        runtime.activateLocalSession(secret),
+      ),
+    );
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+  } finally {
+    secret.fill(0);
+  }
+  if (created) {
+    showNotification({
+      label: "Local wallet",
+      text: "Created an encrypted browser-local account. Clearing this site's data permanently removes it.",
+      browserNotification: false,
+      dismissMs: 8_000,
+    });
+  }
+}
+
+async function activatePersistedLocalWallet(
+  runtime: SigningRuntimeControls,
+): Promise<void> {
+  if (localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) !== "1") {
     return;
   }
-  unsubscribeSessionStoreChanges = onStoredSessionChanged(() => {
-    notifyLiveCoreProvidersSessionStoreChanged();
-  });
+  const secret = await readLocalWalletSecret();
+  if (secret === undefined) {
+    localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+    return;
+  }
+  try {
+    await runtime.activateLocalSession(secret);
+  } finally {
+    secret.fill(0);
+  }
 }
 
 function trackCoreProvider(
   provider: CoreProviderBase,
-  pairing: PairingRuntimeControls,
+  signing: SigningRuntimeControls,
   disposeModalScope: () => void,
 ): CoreProvider {
+  let disposed = false;
   const tracked: CoreProvider = {
     postMessage(message: Uint8Array): void {
       provider.postMessage(message);
@@ -244,10 +285,7 @@ function trackCoreProvider(
       await provider.disconnectSession();
     },
     cancelPairing() {
-      pairing.cancelPairing();
-    },
-    notifySessionStoreChanged() {
-      pairing.notifySessionStoreChanged();
+      // Local activation has no cancellable remote pairing flow.
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
@@ -259,69 +297,18 @@ function trackCoreProvider(
       return provider.setPermissionAuthorizationStatus(request, status);
     },
     dispose() {
-      disposeModalScope();
-      provider.dispose();
-      pairing.dispose();
-    },
-  };
-  liveCoreProviders.add(tracked);
-  ensureStoredSessionForwarder();
-  let disposed = false;
-  queueMicrotask(() => {
-    if (!disposed) {
-      tracked.notifySessionStoreChanged();
-    }
-  });
-  return {
-    postMessage(message: Uint8Array): void {
-      tracked.postMessage(message);
-    },
-    subscribe(callback) {
-      return tracked.subscribe(callback);
-    },
-    subscribeClose(callback) {
-      return tracked.subscribeClose?.(callback) ?? noop;
-    },
-    async disconnectSession() {
-      await tracked.disconnectSession();
-    },
-    cancelPairing() {
-      tracked.cancelPairing();
-    },
-    notifySessionStoreChanged() {
-      tracked.notifySessionStoreChanged();
-    },
-    getPermissionAuthorizationStatus(request) {
-      return tracked.getPermissionAuthorizationStatus(request);
-    },
-    getPermissionAuthorizationStatuses(requests) {
-      return tracked.getPermissionAuthorizationStatuses(requests);
-    },
-    setPermissionAuthorizationStatus(request, status) {
-      return tracked.setPermissionAuthorizationStatus(request, status);
-    },
-    dispose() {
       if (disposed) {
         return;
       }
       disposed = true;
-      liveCoreProviders.delete(tracked);
-      if (
-        liveCoreProviders.size === 0 &&
-        unsubscribeSessionStoreChanges !== null
-      ) {
-        unsubscribeSessionStoreChanges();
-        unsubscribeSessionStoreChanges = null;
-      }
-      tracked.dispose();
+      liveSigningRuntimes.delete(signing);
+      disposeModalScope();
+      provider.dispose();
+      signing.dispose();
     },
   };
-}
-
-function notifyLiveCoreProvidersSessionStoreChanged(): void {
-  for (const provider of [...liveCoreProviders]) {
-    provider.notifySessionStoreChanged();
-  }
+  liveSigningRuntimes.add(signing);
+  return tracked;
 }
 
 function rerenderProduct(product: CurrentProduct): void {
@@ -787,12 +774,12 @@ export function initBridgeEventListeners(
     window as typeof window & { __dotliTruapiBridgeReady?: boolean }
   ).__dotliTruapiBridgeReady = true;
   window.addEventListener("dotli:truapi-disconnect-request", () => {
+    localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
     void disconnectTruapiHosts();
   });
 
-  // User closed the pairing modal: cancel whichever core initiated it. A
-  // product can request login directly, while the topbar uses the landing
-  // auth host.
+  // Closing the login modal cancels the requesting product. Local activation
+  // itself is synchronous from the user's perspective and has no remote flow.
   window.addEventListener("dotli:truapi-cancel-login", () => {
     currentHost?.cancelLogin();
     void landingAuthHostPromise?.then(
@@ -808,11 +795,9 @@ export function initBridgeEventListeners(
   window.addEventListener("dotli:truapi-login-request", (event: Event) => {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
     void (async () => {
+      await activateLocalWallet();
       const host = await getLandingAuthHost();
-      const result = await host.requestLogin(detail.reason);
-      if (result === "Success" || result === "AlreadyConnected") {
-        notifyLiveCoreProvidersSessionStoreChanged();
-      }
+      await host.requestLogin(detail.reason);
     })().catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       // A `LoginRequestError` came back over the wire, so the core already
@@ -1321,8 +1306,9 @@ async function createCoreProvider(
     );
   }
   const blockingModalScope = blockingModalCoordinator.createScope();
+  let runtime: SigningRuntimeControls | undefined;
   try {
-    const { createWebWorkerPairingHostRuntime, HostWorker } =
+    const { createWebWorkerSigningHostRuntime, HostWorker } =
       await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
@@ -1331,7 +1317,7 @@ async function createCoreProvider(
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
     const chatCapable = await chatCapabilityFor(label);
-    const runtime = await createWebWorkerPairingHostRuntime(
+    runtime = await createWebWorkerSigningHostRuntime(
       new HostWorker(),
       createHostCallbacks({
         label,
@@ -1341,9 +1327,13 @@ async function createCoreProvider(
         blockingModalScope,
       }),
       {
-        hostConfig,
+        hostConfig: {
+          ...hostConfig,
+          networkSuffix: getActiveServicesConfig().dotns.TLD,
+        },
       },
     );
+    await activatePersistedLocalWallet(runtime);
     const provider = await runtime.createProvider({
       productId,
       executionKind: chatCapable ? "Worker" : "App",
@@ -1363,7 +1353,7 @@ async function createCoreProvider(
           },
         })
       : noop;
-    return trackCoreProvider(
+    const tracked = trackCoreProvider(
       wrapCoreProviderForDebug(provider, options.productId ?? label),
       runtime,
       () => {
@@ -1371,7 +1361,10 @@ async function createCoreProvider(
         blockingModalScope.dispose();
       },
     );
+    runtime = undefined;
+    return tracked;
   } catch (error) {
+    runtime?.dispose();
     blockingModalScope.dispose();
     throw error;
   }
