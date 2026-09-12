@@ -303,9 +303,9 @@ This **must** complete before \`document.write\` for multi-file archives — oth
 • \`connecting\` — the chain is dialling bootnodes and has not yet found a peer to sync from.
 • \`syncing\` — peers are found and the chain is warping or catching up. \`warpAt\` and \`warpTarget\` bound the distance when a relay has real ground to cover.
 • \`ready\` — the first finalized block landed, so storage can be read.
-• \`stalled\` — the watchdog fired; \`reason\` is smoldot's own wording.
+• \`stalled\` — the watchdog fired. \`reason\` is smoldot's own wording.
 
-Only smoldot emits these. An \`rpc-gateway\` load runs no light client and so produces none. A phase is emitted only when it changes, so two consecutive events bound the interval the chain spent in the earlier one — which is exactly what the Resolution view draws.`,
+Only smoldot emits these. An \`rpc-gateway\` load runs no light client and so produces none. A phase is emitted only when it changes, so two consecutive events bound the interval the chain spent in the earlier one. That is exactly what the Resolution view draws.`,
   },
 
   "chain:bytes": {

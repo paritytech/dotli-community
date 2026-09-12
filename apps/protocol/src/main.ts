@@ -125,7 +125,7 @@ function adoptResolutionId(): void {
     if (id !== null && id !== "") {
       setResolutionId(id);
     }
-    // eslint-disable-next-line no-restricted-syntax -- telemetry correlation is never a reason to fail a boot; an untagged iframe is the acceptable outcome.
+    // eslint-disable-next-line no-restricted-syntax -- telemetry correlation is never a reason to fail a boot. An untagged iframe is the acceptable outcome.
   } catch {
     /* URL unparseable, carry on untagged */
   }
@@ -725,7 +725,7 @@ async function initDirectMode(): Promise<void> {
     // The relay warps, the Asset Hub bootstraps on top of it, and Bulletin
     // serves the content over bitswap. Bulletin is not even created until
     // after the content phase begins, and takes roughly another second and
-    // a half to find a peer, which used to be silent.
+    // a half to find a peer, which is a gap the loading screen has to cover.
     milestones: ["relay", "asset-hub", "bulletin"],
     // People is not on the loading path, but the network panel lists it, so
     // it is sampled for peers without asking for milestones.

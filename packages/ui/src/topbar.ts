@@ -1263,10 +1263,8 @@ function watchChainSync(): void {
 /**
  * Watch each chain's best block over a client held for the session.
  *
- * The panel used to stand up and tear down a client per chain on every tick,
- * paying metadata each time. One client per chain that stays open pays it once,
- * and `bestBlocks$` reports every head change rather than whatever a poll
- * happens to catch.
+ * One client per chain, held open, pays for metadata once. `bestBlocks$` then
+ * reports every head change rather than whatever a poll happens to catch.
  */
 /**
  * How a single block's arrival reads on hover.
@@ -1384,7 +1382,7 @@ function slideStrip(strip: HTMLElement, landed: number): void {
   strip.classList.remove("is-sliding");
   strip.style.transform = `translateX(${String(shift)}px)`;
   // Read back so the untransitioned offset is committed before the class that
-  // animates it is added; without this the browser coalesces both into the
+  // animates it is added. Without this the browser coalesces both into the
   // final position and nothing moves.
   strip.getBoundingClientRect();
   strip.classList.add("is-sliding");
@@ -1444,7 +1442,7 @@ function renderChainsPopover(parent: HTMLElement): void {
   }
 
   // A labelled strip per chain rather than a table. The bars answer whether
-  // blocks are arriving; the peer count beside the name answers who they are
+  // blocks are arriving. The peer count beside the name answers who they are
   // arriving from, which is the question a stalled strip raises next.
   const barCells = new Map<ChainRole, HTMLElement>();
   // Kept across renders so the marks inside can be animated rather than
@@ -1633,7 +1631,7 @@ function renderChainsPopover(parent: HTMLElement): void {
   renderBars();
   unsubscribeNetwork?.();
   // Footer: what the connection is doing, under the per-chain bars. While the
-  // product is arriving this is the download; once it has landed the size is
+  // product is arriving this is the download. Once it has landed the size is
   // the only part still worth stating, so the progress line becomes it rather
   // than sitting at 100% forever.
   const footer = document.createElement("div");
@@ -1669,7 +1667,7 @@ function renderChainsPopover(parent: HTMLElement): void {
   };
   renderTransfer();
 
-  // The panel explains what the connection is doing; these are the two things
+  // The panel explains what the connection is doing. These are the two things
   // a visitor can actually do about it. Static, so it is built once rather
   // than on every repaint.
   const tips = document.createElement("div");
@@ -1701,9 +1699,9 @@ function renderChainsPopover(parent: HTMLElement): void {
 /**
  * The overall verdict, from the blocks actually arriving.
  *
- * The old line came from lifecycle milestones, which are terminal, so it
- * latched at whatever it computed when the last chain bootstrapped and kept
- * saying it after the connection died.
+ * Read from arrivals rather than lifecycle milestones, which are terminal: a
+ * verdict built from those latches at whatever the last chain to bootstrap
+ * reported and keeps saying it after the connection dies.
  */
 function describeLiveNetwork(): { text: string; tone: string } {
   const chains = getNetworkStatus().filter((c) => c.reachable);
@@ -2333,10 +2331,9 @@ async function applyAndReset(
 /**
  * Keys that describe the browser rather than the state a reset clears.
  *
- * The theme is what the visitor chose to look at, not something they asked the
- * reset to touch, so losing it turns a settings reset into a visible change
- * nobody requested. Every caller used to snapshot it around the wipe itself,
- * which meant a new caller that forgot silently changed the colour scheme.
+ * The theme is what the visitor chose to look at, not state they asked the
+ * reset to clear. Losing it turns a settings reset into a visible change
+ * nobody requested.
  */
 const PRESERVED_KEYS: readonly string[] = [THEME_KEY];
 
@@ -2514,8 +2511,8 @@ function renderDiagnostics(parent: HTMLElement): void {
     );
   }
 
-  // Version only. The per-chain block heights this section used to carry
-  // now live in the network popover, where they can be read live.
+  // Version only. The per-chain block heights live in the network popover,
+  // where they can be read live.
   appendSectionHeader(parent, "Light client");
   renderInfoRow(
     parent,

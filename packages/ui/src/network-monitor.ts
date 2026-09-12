@@ -3,12 +3,9 @@
 
 // Live per-chain block arrivals for the network panel.
 //
-// The panel used to poll every 6 seconds, standing up and tearing down a client
-// per chain per tick. A 6 second poll cannot say whether a 2 second block
-// arrived on time, so this holds one subscription per chain instead and stamps
-// each new best block as it lands. That is both finer grained and cheaper: the
-// metadata each client fetches is paid once for the session rather than every
-// tick.
+// A poll cannot say whether a 2 second block arrived on time, so this holds
+// one subscription per chain and stamps each new best block as it lands. The
+// metadata each client fetches is then paid once for the session.
 //
 // Arrival time is deliberately what gets measured, not the block's own
 // timestamp. Under a light client a parachain head is learned through relay
@@ -161,10 +158,6 @@ function recordBlock(state: ChainState, blockNumber: number): void {
   // `bestBlocks$` re-emits whenever the best-block chain changes shape, not
   // only when the head advances: a new descendant, a finalization or a reorg
   // all republish a list whose first entry is the block already recorded.
-  // Without this guard the same block was pushed over and over, so the history
-  // filled with copies of a handful of blocks while the strip, which keys marks
-  // by block number, could only ever draw one of each. That is why the bars
-  // stalled around 18 and dropped whenever an old copy fell off the end.
   if (state.latest !== null && blockNumber <= state.latest) {
     return;
   }

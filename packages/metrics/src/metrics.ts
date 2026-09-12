@@ -361,10 +361,10 @@ let resolutionId: string | null = null;
 /**
  * Correlate one page load across every realm it runs in.
  *
- * A resolution spans three origins — the host shell, the protocol iframe and
- * the sandbox — each booting its own Sentry client and so its own trace. The
+ * A resolution spans three origins: the host shell, the protocol iframe and
+ * the sandbox. Each boots its own Sentry client and so its own trace. The
  * host mints the id and threads it to the other two over the URL contracts
- * they already have; each realm calls this on boot, so one
+ * they already have. Each realm calls this on boot, so one
  * `dotli.resolution_id` search returns all three.
  *
  * The id is stored even when metrics are stripped, because the realms that

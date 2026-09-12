@@ -20,7 +20,7 @@ export function chainBytesReceived(): number {
 
 function sizeOf(data: unknown): number {
   if (typeof data === "string") {
-    // Frames are binary in practice; a text frame is counted as UTF-8 rather
+    // Frames are binary in practice. A text frame is counted as UTF-8 rather
     // than as UTF-16 code units, which is what actually crossed the wire.
     return new TextEncoder().encode(data).length;
   }

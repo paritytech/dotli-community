@@ -70,12 +70,9 @@ const CRAWL_TICK_MS = 200;
 /**
  * The displayed whole number must change at least this often.
  *
- * Measured over ten cold loads, the bar sat at 62% for up to 41 seconds: that
- * is the content band's base, where a step that promised a real percentage was
- * holding the indicator until bytes arrived and none did. Refusing to overstate
- * is right, but standing perfectly still reads as a hang. So the number always
- * creeps, and the creep is capped by the band the step owns, which is what
- * keeps it from claiming a phase it has not reached.
+ * Measured over ten cold loads, the bar sat at 62% for up to 41 seconds while a
+ * step waited on bytes that never came. A still number reads as a hang, so it
+ * always creeps, capped by the band the step owns.
  */
 const PROGRESS_FLOOR_MS = 2_500;
 let lastShownAt = 0;
@@ -166,8 +163,8 @@ function startProgressCrawl(): void {
   stopProgressCrawl();
   progressInterval = setInterval(() => {
     // A step that reports a real percentage owns the indicator, so neither the
-    // crawl nor the creep may run past what it says. Both are guesses, and on a
-    // download slower than the estimate they used to walk the bar to nearly
+    // crawl nor the creep may run past what it says. Both are guesses, and a
+    // download slower than the estimate would otherwise walk the bar to nearly
     // full while the readout underneath still said 58%.
     if (!phaseReportsProgress) {
       if (currentProgress < targetProgress) {
@@ -518,8 +515,8 @@ export function advancePhase(index: number): void {
  * signal can never rewind it.
  *
  * The `stage` is checked against the running one, so a signal cannot drive a
- * band it does not own. The relay's warp fraction arriving mid-sync used to
- * both move the Asset Hub band and freeze its crawl.
+ * band it does not own. Without it the relay's warp fraction arriving mid-sync
+ * would both move the Asset Hub band and freeze its crawl.
  */
 export function nudgePhaseProgress(
   fraction: number,
@@ -885,8 +882,8 @@ export function showLanding(): void {
       input.focus();
       return;
     }
-    // Recents are written after the name resolves, not here: a typo used to be
-    // persisted as a pill that reproduced the failure on every future click.
+    // Recents are written after the name resolves, not here, so a typo is not
+    // persisted as a pill that reproduces the failure on every future click.
     window.location.href = dotUrl(name);
   });
 
