@@ -12,6 +12,10 @@ import {
 } from "./polkavm-runtime-assets";
 import { Tri2dRenderer } from "./tri2d-renderer";
 import {
+  installPolkaVmTouchControls,
+  type PolkaVmTouchControls,
+} from "./polkavm-touch-controls";
+import {
   WebGpuBridge,
   observeSurfaceDimensions,
   type WebGpuRequirements,
@@ -1914,9 +1918,12 @@ function installInput(
   cleanup: () => void;
   sendSurfaceMetrics: () => void;
   setPointerCaptureRequest: (capture: boolean) => void;
+  supportsPointerCapture: () => boolean;
 } {
   const pressed = new Set<number>();
   const heldPointerButtons = new Set<number>();
+  const touchKeys = new Set<number>();
+  const touchButtons = new Set<number>();
   const inputFeatureSet = new Set(inputFeatures);
   const textInput =
     inputFeatureSet.has("text") || inputFeatureSet.has("ime")
@@ -1943,6 +1950,14 @@ function installInput(
   let relativeY = 0;
   let relativeFrame: number | null = null;
   let pointerCaptureArmed = false;
+  let captureRequested = false;
+  let touchCaptureActive = false;
+  let touchControls: PolkaVmTouchControls | null = null;
+  const coarsePointer = window.matchMedia("(any-pointer: coarse)");
+  const touchControlsEligible = (): boolean =>
+    coarsePointer.matches &&
+    inputFeatureSet.has("keyboard") &&
+    inputFeatureSet.has("pointer");
   const pointerCaptureSupported =
     typeof canvas.requestPointerLock === "function" &&
     typeof document.exitPointerLock === "function";
@@ -2103,8 +2118,9 @@ function installInput(
   };
   const pointerLockChanged = (): void => {
     clearPointerMotion();
-    const active = document.pointerLockElement === canvas;
-    firstMoveAfterPointerLock = active;
+    const locked = document.pointerLockElement === canvas;
+    const active = locked || touchCaptureActive;
+    firstMoveAfterPointerLock = locked;
     if (active) {
       pointerCaptureArmed = false;
     }
@@ -2193,6 +2209,7 @@ function installInput(
   };
   const syncFocus = (): void => {
     const focused =
+      document.visibilityState !== "hidden" &&
       document.hasFocus() &&
       (document.activeElement === canvas ||
         (textInput !== null && document.activeElement === textInput));
@@ -2201,10 +2218,21 @@ function installInput(
     }
     reportedFocused = focused;
     if (!focused) {
+      touchControls?.reset();
+      touchCaptureActive = false;
+      pointerLockChanged();
       for (const code of pressed) {
         send(encodedInput(2, code));
       }
       pressed.clear();
+      for (const button of heldPointerButtons) {
+        send(encodedInput(4, button));
+      }
+      heldPointerButtons.clear();
+      if (activePointer !== null) {
+        releaseCapturedPointer(activePointer);
+        activePointer = null;
+      }
       if (composing && inputFeatureSet.has("ime")) {
         send(encodedInput(12, 0));
       }
@@ -2385,7 +2413,9 @@ function installInput(
     }
     pressed.add(code);
     resumeAudio();
-    send(encodedInput(1, code));
+    if (!touchKeys.has(code) || event.repeat) {
+      send(encodedInput(1, code));
+    }
   };
   const keyup = (event: KeyboardEvent): void => {
     if (!(event.code in keyCodes)) {
@@ -2396,7 +2426,9 @@ function installInput(
       return;
     }
     event.preventDefault();
-    send(encodedInput(2, code));
+    if (!touchKeys.has(code)) {
+      send(encodedInput(2, code));
+    }
     if (
       !event.metaKey &&
       (code === keyCodes.MetaLeft || code === keyCodes.MetaRight)
@@ -2405,7 +2437,9 @@ function installInput(
       for (const held of pressed) {
         if (held < 0xe0) {
           pressed.delete(held);
-          send(encodedInput(2, held));
+          if (!touchKeys.has(held)) {
+            send(encodedInput(2, held));
+          }
         }
       }
     }
@@ -2420,6 +2454,9 @@ function installInput(
     if (type === 3) {
       heldPointerButtons.add(button);
     } else if (!heldPointerButtons.delete(button)) {
+      return;
+    }
+    if (touchButtons.has(button)) {
       return;
     }
     const [x, y] = canvasPosition(event);
@@ -2550,7 +2587,9 @@ function installInput(
     previousPointer = null;
     const [x, y] = canvasPosition(event);
     for (const button of heldPointerButtons) {
-      send(encodedInput(4, button, x, y));
+      if (!touchButtons.has(button)) {
+        send(encodedInput(4, button, x, y));
+      }
     }
     heldPointerButtons.clear();
     releaseCapturedPointer(event.pointerId);
@@ -2607,6 +2646,79 @@ function installInput(
       textInput.focus({ preventScroll: true });
     }
   };
+  // Relative-pointer games already request capture through the App ABI. On
+  // touch hardware the host supplies that input through an FPS overlay, without
+  // changing raw touch delivery for ordinary apps or requiring Pointer Lock.
+  const createTouchControls = (): PolkaVmTouchControls =>
+    installPolkaVmTouchControls(canvas.parentElement ?? canvas, {
+      activate: (event) => {
+        canvas.focus({ preventScroll: true });
+        syncFocus();
+        resumeAudio();
+        requestDeviceMotionPermission();
+        if (!touchCaptureActive) {
+          touchCaptureActive = true;
+          pointerLockChanged();
+        }
+        if (event.isTrusted && parentOrigin !== null) {
+          window.parent.postMessage(
+            { type: "dotli:polkavm-user-activation" },
+            parentOrigin,
+          );
+        }
+      },
+      key: (key, down) => {
+        const code = keyCodes[key];
+        if (!Object.hasOwn(keyCodes, key) || touchKeys.has(code) === down) {
+          return;
+        }
+        if (down) {
+          touchKeys.add(code);
+        } else {
+          touchKeys.delete(code);
+        }
+        if (!pressed.has(code)) {
+          send(encodedInput(down ? 1 : 2, code));
+        }
+      },
+      button: (button, down) => {
+        if (touchButtons.has(button) === down) {
+          return;
+        }
+        if (down) {
+          touchButtons.add(button);
+        } else {
+          touchButtons.delete(button);
+        }
+        if (!heldPointerButtons.has(button)) {
+          send(
+            encodedInput(
+              down ? 3 : 4,
+              button,
+              canvas.width / 2,
+              canvas.height / 2,
+            ),
+          );
+        }
+      },
+      look: (x, y) => {
+        send(encodedInput(6, 0, x, y));
+        queuePointerMotion(x, y);
+      },
+    });
+  const updateTouchControls = (): void => {
+    const enabled = captureRequested && touchControlsEligible();
+    if (enabled) {
+      touchControls ??= createTouchControls();
+    }
+    touchControls?.setEnabled(enabled);
+    if (!enabled && touchCaptureActive) {
+      touchCaptureActive = false;
+      pointerLockChanged();
+    }
+  };
+  coarsePointer.addEventListener("change", updateTouchControls);
+  document.addEventListener("visibilitychange", focusChanged);
   const stopObservingDimensions =
     graphicsProfile !== "framebuffer"
       ? observeSurfaceDimensions(canvas, sendSurfaceMetrics)
@@ -2641,11 +2753,16 @@ function installInput(
   return {
     applyUiOutput,
     sendSurfaceMetrics,
+    supportsPointerCapture: () =>
+      pointerCaptureSupported || touchControlsEligible(),
     setPointerCaptureRequest: (capture) => {
+      captureRequested = capture;
+      updateTouchControls();
       pointerCaptureArmed =
         capture &&
         pointerCaptureSupported &&
-        document.pointerLockElement !== canvas;
+        document.pointerLockElement !== canvas &&
+        !touchCaptureActive;
       canvas.dataset.polkavmPointerCaptureArmed = pointerCaptureArmed
         ? "true"
         : "false";
@@ -2654,6 +2771,10 @@ function installInput(
       }
     },
     cleanup: () => {
+      coarsePointer.removeEventListener("change", updateTouchControls);
+      document.removeEventListener("visibilitychange", focusChanged);
+      touchControls?.cleanup();
+      touchCaptureActive = false;
       stopObservingDimensions?.();
       if (
         document.activeElement === canvas ||
@@ -3191,6 +3312,7 @@ export async function runPolkaVmApplication(
     cleanup: cleanupInput,
     sendSurfaceMetrics,
     setPointerCaptureRequest,
+    supportsPointerCapture,
   } = installInput(
     canvas,
     webGpu,
@@ -3364,9 +3486,7 @@ export async function runPolkaVmApplication(
         if (usesPointerCapture) {
           worker.postMessage({
             type: "pointer-capture-support",
-            supported:
-              typeof canvas.requestPointerLock === "function" &&
-              typeof document.exitPointerLock === "function",
+            supported: supportsPointerCapture(),
           });
         }
         if (usesMotion) {
