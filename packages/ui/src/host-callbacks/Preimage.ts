@@ -9,7 +9,7 @@ import { assertBlockMatchesCid } from "@dotli/content/verify";
 import { getBackend } from "@dotli/config/mode";
 import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
-import { bitswapGet } from "../bulletin-bitswap";
+import { bitswapGet } from "@dotli/content/bulletin-bitswap";
 import { toHex } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 
@@ -43,8 +43,14 @@ function createPreimageLookupSubscribe(
       (push, pushError) => {
         let intervalId: ReturnType<typeof setInterval> | null = null;
         let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
+        // Clearing the timers does not reach a lookup already running, and a
+        // retrying bitswapGet can now run for minutes. Without this the
+        // product drops the subscription and the loop keeps fetching for a
+        // consumer that has gone.
+        const aborter = new AbortController();
         const stopPolling = (): void => {
           stopped = true;
+          aborter.abort();
           if (intervalId !== null) {
             clearInterval(intervalId);
             intervalId = null;
@@ -54,11 +60,7 @@ function createPreimageLookupSubscribe(
             initialTimeoutId = null;
           }
         };
-        const poll = async (): Promise<void> => {
-          if (stopped) {
-            return;
-          }
-
+        const attempt = async (): Promise<void> => {
           const cached = preimageCache.get(key);
           if (cached) {
             push(cached);
@@ -72,12 +74,17 @@ function createPreimageLookupSubscribe(
           let data: Uint8Array;
           try {
             if (backend !== "rpc-gateway") {
-              data = await bitswapGet(cidString);
+              data = await bitswapGet(cidString, aborter.signal);
             } else {
               const result = await fetchFromIpfs(cidString);
               data = result.data;
             }
           } catch (err) {
+            // Teardown aborts the in-flight lookup, so this is the expected
+            // end of a dropped subscription rather than a failure to report.
+            if (aborter.signal.aborted) {
+              return;
+            }
             log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
             return;
           }
@@ -96,6 +103,22 @@ function createPreimageLookupSubscribe(
           preimageCache.set(key, data);
           push(data);
           stopPolling();
+        };
+        // A lookup can now outlive the poll interval, because bitswapGet
+        // retries a CID whose providers have not attached yet. Without this
+        // guard every tick during that wait starts another lookup for the same
+        // key, each opening its own retry budget.
+        let inFlight = false;
+        const poll = async (): Promise<void> => {
+          if (stopped || inFlight) {
+            return;
+          }
+          inFlight = true;
+          try {
+            await attempt();
+          } finally {
+            inFlight = false;
+          }
         };
 
         intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
