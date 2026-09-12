@@ -1,4 +1,4 @@
-import { SITE_ID } from "@dotli/config/config";
+import { DEBUG, SITE_ID } from "@dotli/config/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
 import { encodeCoreStorageKey } from "@parity/truapi-host";
 import type {
@@ -24,6 +24,12 @@ const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
 // root-domain session blob so boot-time rehydration never has to decode the
 // blob itself.
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
+export const LOCAL_WALLET_ENABLED_KEY = "dotli:local-wallet-enabled";
+const EXPERIMENTAL_CORE_STORAGE_PREFIX = "dotli:experimental-core:";
+
+export function isExperimentalWalletActive(): boolean {
+  return DEBUG && localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) === "1";
+}
 
 function emitLocalChange(): void {
   window.dispatchEvent(new Event(LOCAL_CHANGE_EVENT));
@@ -63,6 +69,10 @@ export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
 export async function writeUiStateCache(
   detail: TruapiSessionUiState,
 ): Promise<void> {
+  // Never replace a mobile session's shared UI cache with a test identity.
+  if (isExperimentalWalletActive()) {
+    return;
+  }
   try {
     if (detail.connected) {
       await writeSharedAuthStorage(
@@ -137,42 +147,60 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
  * instance runs. Only emits when a persisted session blob actually exists;
  * without a cached state it degrades to a bare `connected: true`.
  */
-export function emitPersistedSessionUiState(): void {
-  void (async () => {
-    let raw: string | null;
-    try {
-      raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    } catch {
-      return;
+export async function emitPersistedSessionUiState(): Promise<void> {
+  let hasLocalWallet = false;
+  if (isExperimentalWalletActive()) {
+    const secret = await readLocalWalletSecret();
+    if (secret === undefined) {
+      localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+    } else {
+      secret.fill(0);
+      hasLocalWallet = true;
     }
-    if (raw === null || raw === "") {
-      return;
-    }
-    dispatchAuthState({
-      tag: "Connected",
-      session: (await readUiStateCache()) ?? { connected: true },
-    });
-  })();
+  }
+  if (hasLocalWallet) {
+    dispatchAuthState({ tag: "Connected", session: { connected: true } });
+    return;
+  }
+
+  let hasCoreSession: boolean;
+  try {
+    const raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+    hasCoreSession = raw !== null && raw !== "";
+  } catch {
+    return;
+  }
+  if (!hasCoreSession) {
+    return;
+  }
+  dispatchAuthState({
+    tag: "Connected",
+    session: (await readUiStateCache()) ?? { connected: true },
+  });
 }
 
 export function createSessionStoreAdapters(): CoreStorage {
+  // Capture the mode for the lifetime of these callbacks. Switching modes
+  // reloads the page; pending writes must not cross into the other identity.
+  const experimental = isExperimentalWalletActive();
   return {
     async readCoreStorage(key) {
-      return readCoreStorageValue(key);
+      return readCoreStorageValue(key, experimental);
     },
     async writeCoreStorage(key, value) {
-      await writeCoreStorageValue(key, value);
+      await writeCoreStorageValue(key, value, experimental);
     },
     async clearCoreStorage(key) {
-      await clearCoreStorageValue(key);
+      await clearCoreStorageValue(key, experimental);
     },
   };
 }
 
 async function readCoreStorageValue(
   key: CoreStorageKey,
+  experimental = false,
 ): Promise<Uint8Array | undefined> {
-  if (key.tag === "AuthSession") {
+  if (key.tag === "AuthSession" && !experimental) {
     let raw: string | null;
     try {
       raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
@@ -185,8 +213,10 @@ async function readCoreStorageValue(
     }
     return decodeStoredBytes(raw, "shared auth session");
   }
-  const raw = localStorage.getItem(coreLocalStorageKey(key));
-  return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
+  const raw = localStorage.getItem(coreLocalStorageKey(key, experimental));
+  return raw === null
+    ? undefined
+    : await decodeCoreStorageValue(key, raw, experimental);
 }
 
 function decodeStoredBytes(
@@ -204,8 +234,9 @@ function decodeStoredBytes(
 async function writeCoreStorageValue(
   key: CoreStorageKey,
   value: Uint8Array,
+  experimental = false,
 ): Promise<void> {
-  if (key.tag === "AuthSession") {
+  if (key.tag === "AuthSession" && !experimental) {
     await writeSharedAuthStorage(
       SITE_ID,
       SHARED_CORE_SESSION_KEY,
@@ -215,22 +246,33 @@ async function writeCoreStorageValue(
     return;
   }
   localStorage.setItem(
-    coreLocalStorageKey(key),
+    coreLocalStorageKey(key, experimental),
     await encodeCoreStorageValue(key, value),
   );
 }
 
-async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
-  if (key.tag === "AuthSession") {
+async function clearCoreStorageValue(
+  key: CoreStorageKey,
+  experimental = false,
+): Promise<void> {
+  if (key.tag === "AuthSession" && !experimental) {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
     emitLocalChange();
     return;
   }
-  localStorage.removeItem(coreLocalStorageKey(key));
+  localStorage.removeItem(coreLocalStorageKey(key, experimental));
 }
 
-function coreLocalStorageKey(key: CoreStorageKey): string {
+function coreLocalStorageKey(
+  key: CoreStorageKey,
+  experimental = false,
+): string {
+  if (experimental) {
+    return (
+      EXPERIMENTAL_CORE_STORAGE_PREFIX + hexNoPrefix(encodeCoreStorageKey(key))
+    );
+  }
   switch (key.tag) {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
@@ -315,6 +357,7 @@ async function encodeCoreStorageValue(
 async function decodeCoreStorageValue(
   key: CoreStorageKey,
   raw: string,
+  experimental = false,
 ): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
@@ -329,7 +372,7 @@ async function decodeCoreStorageValue(
     }
     log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
     localStorage.setItem(
-      coreLocalStorageKey(key),
+      coreLocalStorageKey(key, experimental),
       await encodeCoreStorageValue(key, bytes),
     );
     return bytes;
@@ -355,7 +398,7 @@ async function decodeCoreStorageValue(
     // key) or the bytes are corrupt. Drop it: returning the raw bytes
     // would hand ciphertext to the core as key material.
     log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
-    localStorage.removeItem(coreLocalStorageKey(key));
+    localStorage.removeItem(coreLocalStorageKey(key, experimental));
     return undefined;
   }
 }
@@ -373,6 +416,126 @@ const CORE_SECRET_NONCE_LENGTH = 12;
 const KEY_DB_NAME = "dotli-core";
 const KEY_DB_STORE = "keys";
 const CORE_SECRET_KEY_ID = "allowance-keys";
+const LOCAL_WALLET_SECRET_ID = "local-wallet-entropy-v1";
+
+export interface LocalWalletSecret {
+  secret: Uint8Array;
+  created: boolean;
+}
+
+/**
+ * Read the browser-local wallet entropy. The persisted value is AES-GCM
+ * ciphertext; its non-extractable key lives in IndexedDB beside it.
+ */
+export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
+  if (!DEBUG) {
+    return undefined;
+  }
+  const db = await openKeyDb();
+  let stored: string | undefined;
+  try {
+    stored = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
+  } finally {
+    db.close();
+  }
+  if (stored?.startsWith(ENCRYPTED_VALUE_PREFIX) !== true) {
+    if (stored !== undefined) {
+      await deleteLocalWalletSecret();
+    }
+    return undefined;
+  }
+  const bytes = decodeStoredBytes(
+    stored.slice(ENCRYPTED_VALUE_PREFIX.length),
+    "local wallet entropy",
+  );
+  if (bytes === undefined || bytes.length <= CORE_SECRET_NONCE_LENGTH) {
+    await deleteLocalWalletSecret();
+    return undefined;
+  }
+  try {
+    return new Uint8Array(
+      await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
+        await coreSecretStorageKey(),
+        bytes.slice(CORE_SECRET_NONCE_LENGTH),
+      ),
+    );
+  } catch (err) {
+    log.warn("[dot.li] dropping undecryptable local wallet entropy:", err);
+    await deleteLocalWalletSecret();
+    return undefined;
+  }
+}
+
+/**
+ * Return the existing local wallet entropy or create one atomically across
+ * tabs. The caller must zero the returned page-memory copy after handing it to
+ * the signing worker.
+ */
+export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
+  if (!DEBUG) {
+    throw new Error("Experimental wallets require a debug build");
+  }
+  const existing = await readLocalWalletSecret();
+  if (existing !== undefined) {
+    return { secret: existing, created: false };
+  }
+
+  const secret = crypto.getRandomValues(new Uint8Array(32));
+  const nonce = crypto.getRandomValues(
+    new Uint8Array(CORE_SECRET_NONCE_LENGTH),
+  );
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce },
+      await coreSecretStorageKey(),
+      secret,
+    ),
+  );
+  const stored = new Uint8Array(nonce.length + ciphertext.length);
+  stored.set(nonce);
+  stored.set(ciphertext, nonce.length);
+  const encoded = ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+
+  const db = await openKeyDb();
+  try {
+    await idbAddString(db, LOCAL_WALLET_SECRET_ID, encoded);
+    return { secret, created: true };
+  } catch (err) {
+    const winner = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
+    secret.fill(0);
+    if (winner === undefined) {
+      throw err;
+    }
+  } finally {
+    db.close();
+  }
+
+  const winner = await readLocalWalletSecret();
+  if (winner === undefined) {
+    throw new Error("local wallet creation winner could not be decrypted");
+  }
+  return { secret: winner, created: false };
+}
+
+/** Permanently remove the browser-local wallet identity from this origin. */
+export async function deleteLocalWalletSecret(): Promise<void> {
+  if (!DEBUG) {
+    throw new Error("Experimental wallets require a debug build");
+  }
+  const db = await openKeyDb();
+  try {
+    await idbDelete(db, LOCAL_WALLET_SECRET_ID);
+  } finally {
+    db.close();
+  }
+  for (let index = localStorage.length - 1; index >= 0; index--) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(EXPERIMENTAL_CORE_STORAGE_PREFIX) === true) {
+      localStorage.removeItem(key);
+    }
+  }
+}
 
 let coreSecretKeyPromise: Promise<CryptoKey> | undefined;
 
@@ -475,6 +638,61 @@ function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
       reject(tx.error ?? new Error("indexedDB add aborted"));
     };
   });
+}
+function idbGetString(
+  db: IDBDatabase,
+  key: string,
+): Promise<string | undefined> {
+  const { promise, resolve, reject } = Promise.withResolvers<
+    string | undefined
+  >();
+  const request = db
+    .transaction(KEY_DB_STORE)
+    .objectStore(KEY_DB_STORE)
+    .get(key);
+  request.onsuccess = () => {
+    resolve(typeof request.result === "string" ? request.result : undefined);
+  };
+  request.onerror = () => {
+    reject(request.error ?? new Error("indexedDB string read failed"));
+  };
+  return promise;
+}
+
+function idbAddString(
+  db: IDBDatabase,
+  key: string,
+  value: string,
+): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
+  const tx = db.transaction(KEY_DB_STORE, "readwrite");
+  tx.objectStore(KEY_DB_STORE).add(value, key);
+  tx.oncomplete = () => {
+    resolve(undefined);
+  };
+  tx.onerror = () => {
+    reject(tx.error ?? new Error("indexedDB string add failed"));
+  };
+  tx.onabort = () => {
+    reject(tx.error ?? new Error("indexedDB string add aborted"));
+  };
+  return promise;
+}
+
+function idbDelete(db: IDBDatabase, key: string): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
+  const tx = db.transaction(KEY_DB_STORE, "readwrite");
+  tx.objectStore(KEY_DB_STORE).delete(key);
+  tx.oncomplete = () => {
+    resolve(undefined);
+  };
+  tx.onerror = () => {
+    reject(tx.error ?? new Error("indexedDB delete failed"));
+  };
+  tx.onabort = () => {
+    reject(tx.error ?? new Error("indexedDB delete aborted"));
+  };
+  return promise;
 }
 
 /** `instanceof CryptoKey` is unreliable across realms (and the global is

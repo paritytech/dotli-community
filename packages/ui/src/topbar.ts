@@ -9,6 +9,7 @@
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
+import { DEBUG } from "@dotli/config/config";
 import {
   formatAppVersion,
   getActiveAppManifest,
@@ -52,6 +53,7 @@ import { initChatPanel } from "./chat/panel";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
+  LOCAL_WALLET_ENABLED_KEY,
   type TruapiSessionUiState,
 } from "./host-callbacks/SessionStore";
 import {
@@ -288,6 +290,14 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
+  if (DEBUG && localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) === "1") {
+    const indicator = document.createElement("span");
+    indicator.id = "experimental-wallet-indicator";
+    indicator.textContent = "Experimental wallet active";
+    getElement("topbar").appendChild(indicator);
+    document.documentElement.classList.add("experimental-wallet-active");
+  }
+
   modalBackdrop.setAttribute("role", "dialog");
   modalBackdrop.setAttribute("aria-modal", "true");
   modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
@@ -447,7 +457,7 @@ export function initTopBar(
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
   scheduleIdle(() => {
-    emitPersistedSessionUiState();
+    void emitPersistedSessionUiState();
   });
 }
 
