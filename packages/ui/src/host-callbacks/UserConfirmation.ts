@@ -1,7 +1,6 @@
 import type {
   AccountAccessReview,
   AccountAliasReview,
-  ChatAuthorityReview,
   CreateProofReview,
   CreateTransactionReview,
   IdentityDisclosureReview,
@@ -181,8 +180,6 @@ function confirmationDisplay(
     case "IdentityDisclosure":
     case "ProductSubtree":
       return { fields: createRequestingProductFields(review.value) };
-    case "ChatAuthority":
-      return { fields: createChatAuthorityFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -354,19 +351,6 @@ function createRequestingProductFields(
   return [{ label: "Requesting product", value: review.productId }];
 }
 
-function createChatAuthorityFields(
-  review: ChatAuthorityReview,
-): ConfirmationField[] {
-  return [
-    { label: "Requesting product", value: review.productId },
-    {
-      label: "Permission",
-      value:
-        "Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
-    },
-  ];
-}
-
 function formatResource(resource: AllocatableResource): string {
   return resource.tag === "SmartContractAllowance"
     ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
@@ -417,12 +401,6 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
     case "IdentityDisclosure":
       return {
         title: "Identity Disclosure",
-        action: "Allow",
-        cancelAction: "Deny",
-      };
-    case "ChatAuthority":
-      return {
-        title: "Chat Identity Authority",
         action: "Allow",
         cancelAction: "Deny",
       };

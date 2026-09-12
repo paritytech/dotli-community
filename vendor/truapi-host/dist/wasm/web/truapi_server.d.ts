@@ -320,12 +320,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_16041: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_16043: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4663: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_16042: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_16044: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_4664: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_10057: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4665: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4665: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_10058: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4666: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

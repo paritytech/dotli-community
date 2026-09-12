@@ -82,15 +82,6 @@ export type AuthState =
     value?: undefined;
 };
 /**
- * Review shown before a product binds or uses wallet-held Chat identity authority.
- */
-export interface ChatAuthorityReview {
-    /**
-     * Product requesting the Chat identity operation.
-     */
-    productId: string;
-}
-/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
@@ -338,13 +329,6 @@ export type PermissionAuthorizationRequest =
     value: {
         targetProductId: string;
     };
-}
-/**
- * Product-scoped permission to bind and use wallet-held Chat identity authority.
- */
- | {
-    tag: "ChatAuthority";
-    value?: undefined;
 };
 /**
  * Authorization status for a permission request.
@@ -608,13 +592,6 @@ export type UserConfirmationReview =
  | {
     tag: "ProductSubtree";
     value: ProductSubtreeReview;
-}
-/**
- * Allow a product to bind and use wallet-held Chat identity authority.
- */
- | {
-    tag: "ChatAuthority";
-    value: ChatAuthorityReview;
 };
 /**
  * Review shown before a product asks to access another product account.
@@ -630,10 +607,6 @@ export declare const AccountAliasReview: S.Codec<AccountAliasReview>;
  * and never derive auth UI from any other signal.
  */
 export declare const AuthState: S.Codec<AuthState>;
-/**
- * Review shown before a product binds or uses wallet-held Chat identity authority.
- */
-export declare const ChatAuthorityReview: S.Codec<ChatAuthorityReview>;
 /**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.

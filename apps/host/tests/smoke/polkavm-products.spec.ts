@@ -42,13 +42,6 @@ const products: readonly ProductSmoke[] = [
     interaction: "gameplay-pointer-capture",
   },
   {
-    label: "egui-chat",
-    profile: "tri2d",
-    keys: [],
-    audio: false,
-    nonzeroAudio: false,
-  },
-  {
     label: "egui-app-lab",
     profile: "tri2d",
     keys: ["Tab", "Enter", "Tab"],
