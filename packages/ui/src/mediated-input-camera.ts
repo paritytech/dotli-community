@@ -196,9 +196,6 @@ export function scanCameraUr(
     const populateCameraPicker = async (
       activeDeviceId: string | undefined,
     ): Promise<void> => {
-      if (!navigator.mediaDevices.enumerateDevices) {
-        return;
-      }
       availableCameras = (
         await navigator.mediaDevices.enumerateDevices()
       ).filter((device) => device.kind === "videoinput");
@@ -213,13 +210,16 @@ export function scanCameraUr(
       availableCameras.forEach((camera, index) => {
         cameraSelect.add(
           new Option(
-            camera.label || `Camera ${String(index + 1)}`,
+            camera.label.length > 0
+              ? camera.label
+              : `Camera ${String(index + 1)}`,
             camera.deviceId,
           ),
         );
       });
       cameraSelect.value =
-        activeDeviceId &&
+        activeDeviceId !== undefined &&
+        activeDeviceId.length > 0 &&
         availableCameras.some((camera) => camera.deviceId === activeDeviceId)
           ? activeDeviceId
           : "";
@@ -233,7 +233,7 @@ export function scanCameraUr(
         width: { ideal: 1920 },
         height: { ideal: 1080 },
         frameRate: { ideal: 30 },
-        ...(deviceId
+        ...(deviceId !== undefined && deviceId.length > 0
           ? { deviceId: { exact: deviceId } }
           : { facingMode: { ideal: "environment" } }),
       };
@@ -250,14 +250,24 @@ export function scanCameraUr(
         controls = nextControls;
         const stream = video.srcObject;
         if (stream instanceof MediaStream) {
-          const [track] = stream.getVideoTracks();
-          activeCameraDeviceId = track?.getSettings().deviceId || deviceId;
-          const focusModes = (
-            track?.getCapabilities() as
-              | (MediaTrackCapabilities & { focusMode?: string[] })
-              | undefined
-          )?.focusMode;
-          if (track && focusModes?.includes("continuous")) {
+          const track = stream.getVideoTracks().at(0);
+          const settingsDeviceId = track?.getSettings().deviceId;
+          activeCameraDeviceId =
+            settingsDeviceId !== undefined && settingsDeviceId.length > 0
+              ? settingsDeviceId
+              : deviceId;
+          const focusModes =
+            track === undefined
+              ? undefined
+              : (
+                  track.getCapabilities() as MediaTrackCapabilities & {
+                    focusMode?: string[];
+                  }
+                ).focusMode;
+          if (
+            track !== undefined &&
+            focusModes?.includes("continuous") === true
+          ) {
             await track
               .applyConstraints({
                 advanced: [
@@ -279,7 +289,9 @@ export function scanCameraUr(
     };
     const onCameraChange = (): void => {
       progress.textContent = "Switching camera…";
-      void startCamera(cameraSelect.value || undefined).catch((error) => {
+      void startCamera(
+        cameraSelect.value.length > 0 ? cameraSelect.value : undefined,
+      ).catch((error: unknown) => {
         finish({ error: cameraError(error) });
       });
     };
@@ -287,13 +299,14 @@ export function scanCameraUr(
       const activeIndex = availableCameras.findIndex(
         (camera) => camera.deviceId === activeCameraDeviceId,
       );
-      const nextCamera =
-        availableCameras[(activeIndex + 1) % availableCameras.length];
-      if (!nextCamera) {
+      const nextCamera = availableCameras.at(
+        (activeIndex + 1) % availableCameras.length,
+      );
+      if (nextCamera === undefined) {
         return;
       }
       progress.textContent = "Switching camera…";
-      void startCamera(nextCamera.deviceId).catch((error) => {
+      void startCamera(nextCamera.deviceId).catch((error: unknown) => {
         finish({ error: cameraError(error) });
       });
     };
