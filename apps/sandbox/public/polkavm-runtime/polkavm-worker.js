@@ -701,15 +701,16 @@
       }
     }
 
-    initialize() {
-      this.#resetBudget(MAX_HOSTCALLS_PER_INIT);
+    initialize(maxGas = this.maxGas) {
+      const gas = BigInt(maxGas);
+      this.#resetBudget(MAX_HOSTCALLS_PER_INIT, gas);
       if (this.coreVm) {
         this.#setupCoreVm();
         return;
       }
       const init = this.exports.get("init");
       if (init !== undefined) {
-        this.#run(init, false);
+        this.#run(init, false, gas);
       }
     }
 
@@ -1153,14 +1154,14 @@
       this.activeMediatedInputHandle = null;
     }
 
-    #resetBudget(hostcalls) {
+    #resetBudget(hostcalls, gas = this.maxGas) {
       this.hostcalls = hostcalls;
       this.hostcallBytes = MAX_HOSTCALL_BYTES;
       this.tri2dSubmitted = false;
-      this.pvm.pvm_set_gas(this.maxGas);
+      this.pvm.pvm_set_gas(gas);
     }
 
-    #run(entry, yieldOnFrame) {
+    #run(entry, yieldOnFrame, gas = this.maxGas) {
       let status;
       if (this.resumePending) {
         this.resumePending = false;
@@ -1169,7 +1170,7 @@
         if (entry === undefined) {
           throw new Error("translated PolkaVM entrypoint is missing");
         }
-        status = this.pvm.pvm_begin(entry, this.maxGas);
+        status = this.pvm.pvm_begin(entry, gas);
       }
       for (;;) {
         if (status === STATUS_FINISHED) {
@@ -3032,7 +3033,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         translated.sendMotionSample(pendingMotionSample);
       }
       translated.setPointerCaptureSupported(pointerCaptureSupported);
-      translated.initialize();
+      translated.initialize(MAX_GAS_PER_UPDATE);
       pendingGpuCapabilities = null;
       pendingMotionSample = null;
       backend = "compiler";
