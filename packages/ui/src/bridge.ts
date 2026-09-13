@@ -21,13 +21,17 @@ import {
   createMessagePortProvider,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import { sandboxOriginForLabel } from "@dotli/config/config";
+import { DEBUG, sandboxOriginForLabel } from "@dotli/config/config";
 import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
-import { getNetwork, withActiveTld } from "@dotli/config/network";
+import {
+  getActiveServicesConfig,
+  getNetwork,
+  withActiveTld,
+} from "@dotli/config/network";
 import { m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
@@ -38,14 +42,16 @@ import {
 } from "@dotli/truapi-debug/dotli-debug-bus";
 import type { TrUApiProductProvider } from "@parity/truapi-host";
 import type { PairingHostAdmin } from "@parity/truapi-host";
-import type { WorkerPairingHostRuntime } from "@parity/truapi-host/web";
+import type {
+  WorkerPairingHostRuntime,
+  WorkerSigningHostRuntime,
+} from "@parity/truapi-host/web";
 import {
   buildAllowAttribute,
   registerPermissionAuthorizationProvider,
 } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
-import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import {
   CameraInputCancelledError,
   CameraInputPermissionError,
@@ -57,6 +63,14 @@ import {
 } from "./mediated-input-host";
 import { decidePromptPermission } from "./host-callbacks/PromptPermission";
 import { createSubmitRateLimiter } from "./host-callbacks/rate-limit";
+import {
+  onStoredSessionChanged,
+  createLocalWalletSecret,
+  readLocalWalletSecret,
+  deleteLocalWalletSecret,
+  isExperimentalWalletActive,
+  LOCAL_WALLET_ENABLED_KEY,
+} from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
 import { installPolkaVmViewInsetsRelay } from "./polkavm-view-insets";
@@ -85,6 +99,7 @@ const runtimeChunkPromise = Promise.all([
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {
     createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
+    createWebWorkerSigningHostRuntime: web.createWebWorkerSigningHostRuntime,
     createIframeHost: web.createIframeHost,
     HostWorker: workerMod.default,
   };
@@ -119,7 +134,7 @@ type CoreProviderBase = Provider &
     | "setPermissionAuthorizationStatus"
   >;
 type CoreProvider = CoreProviderBase & PairingHostAdmin;
-type PairingRuntimeControls = PairingHostAdmin & {
+type PairingRuntimeControls = Partial<PairingHostAdmin> & {
   dispose(): void;
 };
 type CurrentProduct =
@@ -217,6 +232,49 @@ const mediatedInputHost = new MediatedInputHost({
   isPermissionDenied: (error) => error instanceof CameraInputPermissionError,
 });
 
+// Mode switches reload deliberately: no signing worker from the previous
+// identity may survive switching back to mobile pairing.
+export const experimentalWalletControls = {
+  isActive: isExperimentalWalletActive,
+  async activate(): Promise<void> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    window.location.reload();
+  },
+  disconnect(): Promise<void> {
+    if (!DEBUG) {
+      return Promise.reject(
+        new Error("Experimental wallets require a debug build"),
+      );
+    }
+    if (isExperimentalWalletActive()) {
+      for (const provider of [...liveCoreProviders]) {
+        provider.dispose();
+      }
+    }
+    localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+    window.location.reload();
+    return Promise.resolve();
+  },
+  async deleteWallet(): Promise<void> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    if (isExperimentalWalletActive()) {
+      for (const provider of [...liveCoreProviders]) {
+        provider.dispose();
+      }
+    }
+    await deleteLocalWalletSecret();
+    localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+    window.location.reload();
+  },
+};
+
 function ensureStoredSessionForwarder(): void {
   if (unsubscribeSessionStoreChanges !== null) {
     return;
@@ -246,10 +304,10 @@ function trackCoreProvider(
       await provider.disconnectSession();
     },
     cancelPairing() {
-      pairing.cancelPairing();
+      pairing.cancelPairing?.();
     },
     notifySessionStoreChanged() {
-      pairing.notifySessionStoreChanged();
+      pairing.notifySessionStoreChanged?.();
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
@@ -756,7 +814,18 @@ export function initBridgeEventListeners(
   (
     window as typeof window & { __dotliTruapiBridgeReady?: boolean }
   ).__dotliTruapiBridgeReady = true;
+  if (DEBUG) {
+    window.addEventListener("storage", (event) => {
+      if (event.key === LOCAL_WALLET_ENABLED_KEY || event.key === null) {
+        window.location.reload();
+      }
+    });
+  }
   window.addEventListener("dotli:truapi-disconnect-request", () => {
+    if (isExperimentalWalletActive()) {
+      void experimentalWalletControls.disconnect();
+      return;
+    }
     void disconnectTruapiHosts();
   });
 
@@ -1291,7 +1360,7 @@ async function createCoreProvider(
     );
   }
   const blockingModalScope = blockingModalCoordinator.createScope();
-  let runtime: WorkerPairingHostRuntime | undefined;
+  let runtime: WorkerPairingHostRuntime | WorkerSigningHostRuntime | undefined;
   try {
     const { createWebWorkerPairingHostRuntime, HostWorker } =
       await runtimeChunkPromise;
@@ -1302,19 +1371,44 @@ async function createCoreProvider(
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
     const chatCapable = await chatCapabilityFor(label);
-    runtime = await createWebWorkerPairingHostRuntime(
-      new HostWorker(),
-      createHostCallbacks({
-        label,
-        pairingLabel: options.pairingLabel,
-        pairingDotSuffix: options.pairingDotSuffix,
-        pairingHostGlobal: options.pairingHostGlobal,
-        blockingModalScope,
-      }),
-      {
-        hostConfig,
-      },
-    );
+    const callbacks = createHostCallbacks({
+      label,
+      pairingLabel: options.pairingLabel,
+      pairingDotSuffix: options.pairingDotSuffix,
+      pairingHostGlobal: options.pairingHostGlobal,
+      blockingModalScope,
+    });
+    if (DEBUG && isExperimentalWalletActive()) {
+      const secret = await readLocalWalletSecret();
+      if (secret === undefined) {
+        throw new Error(
+          "Experimental wallet is unavailable. Disconnect it in the debug bar.",
+        );
+      }
+      try {
+        const { createWebWorkerSigningHostRuntime } = await runtimeChunkPromise;
+        const signing = await createWebWorkerSigningHostRuntime(
+          new HostWorker(),
+          callbacks,
+          {
+            hostConfig: {
+              ...hostConfig,
+              networkSuffix: getActiveServicesConfig().dotns.TLD,
+            },
+          },
+        );
+        runtime = signing;
+        await signing.activateLocalSession(secret);
+      } finally {
+        secret.fill(0);
+      }
+    } else {
+      runtime = await createWebWorkerPairingHostRuntime(
+        new HostWorker(),
+        callbacks,
+        { hostConfig },
+      );
+    }
     const provider = await runtime.createProvider({
       productId,
       executionKind: chatCapable ? "Worker" : "App",

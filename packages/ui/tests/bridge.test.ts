@@ -58,10 +58,16 @@ const mocks = vi.hoisted(() => ({
     dispose: ReturnType<typeof vi.fn>;
   }[],
   createWebWorkerPairingHostRuntime: vi.fn(),
+  createWebWorkerSigningHostRuntime: vi.fn(),
   createIframeHost: vi.fn(),
   createWasmRawCallbacks: vi.fn((callbacks: unknown) => callbacks),
   timerStop: vi.fn(),
   HostWorker: vi.fn(),
+}));
+
+vi.mock("@dotli/config/config", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  DEBUG: false,
 }));
 
 vi.mock("@parity/truapi-host", () => ({
@@ -70,6 +76,7 @@ vi.mock("@parity/truapi-host", () => ({
 
 vi.mock("@parity/truapi-host/web", () => ({
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
+  createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,
 }));
 
@@ -239,6 +246,7 @@ describe("bridge render lifecycle", () => {
     mocks.coreProviderDefers.length = 0;
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
+    localStorage.clear();
     document.body.innerHTML = `<div id="app"></div>`;
     window.history.replaceState(null, "", "/");
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
@@ -275,6 +283,17 @@ describe("bridge render lifecycle", () => {
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
   }, 30_000);
+
+  it("does not enable experimental custody through stored state or a debug URL in production", async () => {
+    localStorage.setItem("dotli:local-wallet-enabled", "1");
+    window.history.replaceState(null, "", "/?debug=true");
+    const { experimentalWalletControls } = await import("@dotli/ui/bridge");
+    expect(experimentalWalletControls.isActive()).toBe(false);
+    await expect(experimentalWalletControls.activate()).rejects.toThrow();
+    await expect(experimentalWalletControls.disconnect()).rejects.toThrow();
+    await expect(experimentalWalletControls.deleteWallet()).rejects.toThrow();
+    expect(localStorage.getItem("dotli:local-wallet-enabled")).toBe("1");
+  });
 
   it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {
     // Given

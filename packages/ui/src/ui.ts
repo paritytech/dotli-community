@@ -788,13 +788,19 @@ export function showLanding(): void {
 
   input.focus();
 
-  // Move the auth and theme buttons to the landing page top-right.
+  // Keep auth controls and the active-wallet warning visible without the topbar.
   const landingAuth = document.getElementById("landing-auth");
   const authButton = document.getElementById("auth-button");
   const themeToggle = document.getElementById("theme-toggle");
   const themePopover = document.getElementById("theme-popover");
   if (landingAuth && authButton) {
     landingAuth.appendChild(authButton);
+    const walletIndicator = document.getElementById(
+      "experimental-wallet-indicator",
+    );
+    if (walletIndicator) {
+      landingAuth.appendChild(walletIndicator);
+    }
     if (themeToggle) {
       landingAuth.appendChild(themeToggle);
       if (themePopover) {
