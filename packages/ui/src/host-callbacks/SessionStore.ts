@@ -1,5 +1,7 @@
 import { DEBUG, SITE_ID } from "@dotli/config/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
+import { entropyToMnemonic, mnemonicToEntropy } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { encodeCoreStorageKey } from "@parity/truapi-host";
 import type {
   CoreStorage,
@@ -26,6 +28,7 @@ const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
 const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 export const LOCAL_WALLET_ENABLED_KEY = "dotli:local-wallet-enabled";
 const EXPERIMENTAL_CORE_STORAGE_PREFIX = "dotli:experimental-core:";
+export const LOCAL_WALLET_REVISION_KEY = "dotli:local-wallet-revision";
 
 export function isExperimentalWalletActive(): boolean {
   return DEBUG && localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) === "1";
@@ -183,15 +186,23 @@ export function createSessionStoreAdapters(): CoreStorage {
   // Capture the mode for the lifetime of these callbacks. Switching modes
   // reloads the page; pending writes must not cross into the other identity.
   const experimental = isExperimentalWalletActive();
+  const generation = experimental
+    ? localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+    : null;
   return {
     async readCoreStorage(key) {
-      return readCoreStorageValue(key, experimental);
+      return readCoreStorageValue(key, experimental, generation);
     },
     async writeCoreStorage(key, value) {
-      await writeCoreStorageValue(key, value, experimental);
+      await writeCoreStorageValue(key, value, experimental, generation);
     },
     async clearCoreStorage(key) {
-      await clearCoreStorageValue(key, experimental);
+      if (
+        !experimental ||
+        generation === localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+      ) {
+        await clearCoreStorageValue(key, experimental, generation);
+      }
     },
   };
 }
@@ -199,7 +210,14 @@ export function createSessionStoreAdapters(): CoreStorage {
 async function readCoreStorageValue(
   key: CoreStorageKey,
   experimental = false,
+  generation: string | null = null,
 ): Promise<Uint8Array | undefined> {
+  if (
+    experimental &&
+    generation !== localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+  ) {
+    return undefined;
+  }
   if (key.tag === "AuthSession" && !experimental) {
     let raw: string | null;
     try {
@@ -213,10 +231,12 @@ async function readCoreStorageValue(
     }
     return decodeStoredBytes(raw, "shared auth session");
   }
-  const raw = localStorage.getItem(coreLocalStorageKey(key, experimental));
+  const raw = localStorage.getItem(
+    coreLocalStorageKey(key, experimental, generation),
+  );
   return raw === null
     ? undefined
-    : await decodeCoreStorageValue(key, raw, experimental);
+    : await decodeCoreStorageValue(key, raw, experimental, generation);
 }
 
 function decodeStoredBytes(
@@ -235,6 +255,7 @@ async function writeCoreStorageValue(
   key: CoreStorageKey,
   value: Uint8Array,
   experimental = false,
+  generation: string | null = null,
 ): Promise<void> {
   if (key.tag === "AuthSession" && !experimental) {
     await writeSharedAuthStorage(
@@ -245,15 +266,22 @@ async function writeCoreStorageValue(
     emitLocalChange();
     return;
   }
-  localStorage.setItem(
-    coreLocalStorageKey(key, experimental),
-    await encodeCoreStorageValue(key, value),
-  );
+  const encoded = await encodeCoreStorageValue(key, value);
+  if (
+    !experimental ||
+    generation === localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+  ) {
+    localStorage.setItem(
+      coreLocalStorageKey(key, experimental, generation),
+      encoded,
+    );
+  }
 }
 
 async function clearCoreStorageValue(
   key: CoreStorageKey,
   experimental = false,
+  generation: string | null = null,
 ): Promise<void> {
   if (key.tag === "AuthSession" && !experimental) {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
@@ -261,16 +289,19 @@ async function clearCoreStorageValue(
     emitLocalChange();
     return;
   }
-  localStorage.removeItem(coreLocalStorageKey(key, experimental));
+  localStorage.removeItem(coreLocalStorageKey(key, experimental, generation));
 }
 
 function coreLocalStorageKey(
   key: CoreStorageKey,
   experimental = false,
+  generation: string | null = null,
 ): string {
   if (experimental) {
     return (
-      EXPERIMENTAL_CORE_STORAGE_PREFIX + hexNoPrefix(encodeCoreStorageKey(key))
+      EXPERIMENTAL_CORE_STORAGE_PREFIX +
+      (generation === null ? "" : `${generation}:`) +
+      hexNoPrefix(encodeCoreStorageKey(key))
     );
   }
   switch (key.tag) {
@@ -358,6 +389,7 @@ async function decodeCoreStorageValue(
   key: CoreStorageKey,
   raw: string,
   experimental = false,
+  generation: string | null = null,
 ): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
@@ -371,10 +403,7 @@ async function decodeCoreStorageValue(
       return undefined;
     }
     log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
-    localStorage.setItem(
-      coreLocalStorageKey(key, experimental),
-      await encodeCoreStorageValue(key, bytes),
-    );
+    await writeCoreStorageValue(key, bytes, experimental, generation);
     return bytes;
   }
   const bytes = decodeStoredBytes(
@@ -398,7 +427,7 @@ async function decodeCoreStorageValue(
     // key) or the bytes are corrupt. Drop it: returning the raw bytes
     // would hand ciphertext to the core as key material.
     log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
-    localStorage.removeItem(coreLocalStorageKey(key, experimental));
+    localStorage.removeItem(coreLocalStorageKey(key, experimental, generation));
     return undefined;
   }
 }
@@ -453,13 +482,19 @@ export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
     return undefined;
   }
   try {
-    return new Uint8Array(
+    const secret = new Uint8Array(
       await crypto.subtle.decrypt(
         { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
         await coreSecretStorageKey(),
         bytes.slice(CORE_SECRET_NONCE_LENGTH),
       ),
     );
+    if (!isValidEntropyLength(secret.length)) {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+      return undefined;
+    }
+    return secret;
   } catch (err) {
     log.warn("[dot.li] dropping undecryptable local wallet entropy:", err);
     await deleteLocalWalletSecret();
@@ -482,24 +517,17 @@ export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
   }
 
   const secret = crypto.getRandomValues(new Uint8Array(32));
-  const nonce = crypto.getRandomValues(
-    new Uint8Array(CORE_SECRET_NONCE_LENGTH),
-  );
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce },
-      await coreSecretStorageKey(),
-      secret,
-    ),
-  );
-  const stored = new Uint8Array(nonce.length + ciphertext.length);
-  stored.set(nonce);
-  stored.set(ciphertext, nonce.length);
-  const encoded = ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+  let encoded: string;
+  try {
+    encoded = await encryptLocalWalletSecret(secret);
+  } catch (error) {
+    secret.fill(0);
+    throw error;
+  }
 
   const db = await openKeyDb();
   try {
-    await idbAddString(db, LOCAL_WALLET_SECRET_ID, encoded);
+    await idbWriteString(db, LOCAL_WALLET_SECRET_ID, encoded);
     return { secret, created: true };
   } catch (err) {
     const winner = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
@@ -518,6 +546,88 @@ export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
   return { secret: winner, created: false };
 }
 
+function isValidEntropyLength(length: number): boolean {
+  return length >= 16 && length <= 32 && length % 4 === 0;
+}
+
+async function encryptLocalWalletSecret(
+  secret: Uint8Array<ArrayBuffer>,
+): Promise<string> {
+  const nonce = crypto.getRandomValues(
+    new Uint8Array(CORE_SECRET_NONCE_LENGTH),
+  );
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce },
+      await coreSecretStorageKey(),
+      secret,
+    ),
+  );
+  const stored = new Uint8Array(nonce.length + ciphertext.length);
+  stored.set(nonce);
+  stored.set(ciphertext, nonce.length);
+  return ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+}
+
+/**
+ * Encode the existing entropy, not a BIP-39 seed. Native activation uses
+ * substrate-bip39::mini_secret_from_entropy(entropy, "") and sr25519
+ * Ed25519 expansion; mnemonicToSeed would silently change this identity.
+ * The caller must clear the displayed phrase when it is no longer needed.
+ */
+export async function exportLocalWalletMnemonic(): Promise<string> {
+  if (!DEBUG) {
+    throw new Error("Experimental wallets require a debug build");
+  }
+  const secret = await readLocalWalletSecret();
+  if (secret === undefined) {
+    throw new Error(
+      "No test wallet is stored. Enable one or import a phrase first.",
+    );
+  }
+  try {
+    return entropyToMnemonic(secret, wordlist);
+  } finally {
+    secret.fill(0);
+  }
+}
+
+/**
+ * Import checksum-validated English BIP-39 entropy (12/15/18/21/24 words).
+ * No passphrase or custom derivation path is supported. Stop old signing
+ * workers only after validation/encryption, immediately before replacement.
+ */
+export async function importLocalWalletMnemonic(
+  mnemonic: string,
+  beforeReplace?: () => void,
+): Promise<void> {
+  if (!DEBUG) {
+    throw new Error("Experimental wallets require a debug build");
+  }
+  let secret: Uint8Array<ArrayBuffer>;
+  try {
+    secret = mnemonicToEntropy(mnemonic.trim().replace(/\s+/g, " "), wordlist);
+  } catch {
+    // Library errors may contain input words. Never propagate them to UI/logs.
+    throw new Error(
+      "Invalid recovery phrase. Use 12, 15, 18, 21 or 24 English BIP-39 words with a valid checksum; no passphrase or derivation path.",
+    );
+  }
+  try {
+    const encoded = await encryptLocalWalletSecret(secret);
+    const db = await openKeyDb();
+    try {
+      beforeReplace?.();
+      await idbWriteString(db, LOCAL_WALLET_SECRET_ID, encoded, true);
+      clearExperimentalCoreStorage();
+    } finally {
+      db.close();
+    }
+  } finally {
+    secret.fill(0);
+  }
+}
+
 /** Permanently remove the browser-local wallet identity from this origin. */
 export async function deleteLocalWalletSecret(): Promise<void> {
   if (!DEBUG) {
@@ -529,6 +639,13 @@ export async function deleteLocalWalletSecret(): Promise<void> {
   } finally {
     db.close();
   }
+  clearExperimentalCoreStorage();
+}
+
+function clearExperimentalCoreStorage(): void {
+  // A replacement has its own grant namespace, including across tabs. Retired
+  // workers cannot publish old grants into the imported identity's namespace.
+  localStorage.setItem(LOCAL_WALLET_REVISION_KEY, crypto.randomUUID());
   for (let index = localStorage.length - 1; index >= 0; index--) {
     const key = localStorage.key(index);
     if (key?.startsWith(EXPERIMENTAL_CORE_STORAGE_PREFIX) === true) {
@@ -659,22 +776,28 @@ function idbGetString(
   return promise;
 }
 
-function idbAddString(
+function idbWriteString(
   db: IDBDatabase,
   key: string,
   value: string,
+  replace = false,
 ): Promise<void> {
   const { promise, resolve, reject } = Promise.withResolvers<undefined>();
   const tx = db.transaction(KEY_DB_STORE, "readwrite");
-  tx.objectStore(KEY_DB_STORE).add(value, key);
+  const store = tx.objectStore(KEY_DB_STORE);
+  if (replace) {
+    store.put(value, key);
+  } else {
+    store.add(value, key);
+  }
   tx.oncomplete = () => {
     resolve(undefined);
   };
   tx.onerror = () => {
-    reject(tx.error ?? new Error("indexedDB string add failed"));
+    reject(tx.error ?? new Error("indexedDB string write failed"));
   };
   tx.onabort = () => {
-    reject(tx.error ?? new Error("indexedDB string add aborted"));
+    reject(tx.error ?? new Error("indexedDB string write aborted"));
   };
   return promise;
 }

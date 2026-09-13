@@ -268,9 +268,15 @@ See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md)
 
 Only builds compiled with `VITE_APP_DEBUG=true` offer **Test wallet** in the debug bar. Normal login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does **not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
 
-Use **Enable / use test wallet** and accept the warning to create or reuse a browser-local test identity. **Disconnect** stops using it without deleting it. **Delete test wallet** requires confirmation and permanently removes its entropy and experimental session/signing-grant storage. Mode changes reload the page to terminate the previous signing workers. The **Experimental wallet active** topbar indicator remains visible even when diagnostics are collapsed or closed.
+Use **Enable / use test wallet** and accept the warning to create or reuse a browser-local test identity. While active, an amber flask replaces the normal account badge; there is no extra header strip. Open that account menu and choose **Disconnect test wallet**, or choose **Switch back to Mobile** under **Debug → Test wallet**, to stop using it without deleting it. The normal login button then signs in with Polkadot Mobile. Mode changes reload the page to terminate the previous signing workers.
 
-This is experimental custody, not a secure vault: same-origin malicious scripts can recover the stored keys, and there is no backup or recovery flow. Never use valuable funds. Debug builds can still access real networks and sign real transactions. Experimental core storage is separate from mobile session and signing-grant storage.
+Under **Debug → Test wallet**, **Reveal recovery phrase** requires confirmation before displaying a selectable phrase for manual backup. Existing 32-byte wallets export as 24 English BIP-39 words without changing their identity. Nothing is automatically copied or downloaded; hiding the phrase or closing the menu clears it from the controls.
+
+**Import / replace test wallet** accepts checksum-valid English BIP-39 phrases of 12, 15, 18, 21 or 24 words, without a passphrase or custom derivation path. It uses native Polkadot host/Substrate derivation, not Bitcoin/Ethereum seed derivation. Importing an exported phrase restores the same account keys on the same network, but not local permissions or username metadata. Back up the previous test wallet before replacing it. Successful import clears experimental session/signing grants, activates the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
+
+**Delete test wallet** requires confirmation and removes its stored entropy and experimental session/signing grants. Without a recovery phrase backup, deleting the wallet or clearing site data permanently loses access.
+
+This is experimental custody, not a secure vault: same-origin malicious scripts can recover the stored keys despite encryption. Never use valuable funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
 
 Keep `VITE_APP_DEBUG` unset or false in production builds.
 

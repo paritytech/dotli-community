@@ -61,35 +61,6 @@
     calc(14px + var(--safe-left));
   z-index: 1000;
 }
-/* Keep the warning on its own row so even narrow screens retain every
-   existing topbar control and the full warning text. */
-:root.experimental-wallet-active {
-  --topbar-height: calc(80px + var(--safe-top));
-}
-.experimental-wallet-active #topbar {
-  grid-template-rows: 56px 24px;
-}
-.experimental-wallet-active #topbar > .topbar-left,
-.experimental-wallet-active #topbar > .topbar-url,
-.experimental-wallet-active #topbar > .topbar-right {
-  grid-row: 1;
-}
-#experimental-wallet-indicator {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  align-self: stretch;
-  text-align: center;
-  color: #713f12;
-  background: #fef3c7;
-  font-size: 12px;
-  line-height: 24px;
-}
-.landing-auth #experimental-wallet-indicator {
-  position: fixed;
-  top: calc(56px + var(--safe-top));
-  left: calc(16px + var(--safe-left));
-  right: calc(16px + var(--safe-right));
-}
 .topbar-left {
   grid-column: 1;
   display: flex;
@@ -555,6 +526,10 @@
 .user-badge-anon svg {
   width: 12px;
   height: 12px;
+}
+#auth-button .user-badge-experimental {
+  background: #fef3c7;
+  color: #713f12;
 }
 
 /* User Popover */

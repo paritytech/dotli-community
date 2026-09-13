@@ -289,6 +289,12 @@ describe("bridge render lifecycle", () => {
     await expect(experimentalWalletControls.activate()).rejects.toThrow();
     await expect(experimentalWalletControls.disconnect()).rejects.toThrow();
     await expect(experimentalWalletControls.deleteWallet()).rejects.toThrow();
+    await expect(experimentalWalletControls.exportMnemonic()).rejects.toThrow();
+    await expect(
+      experimentalWalletControls.importMnemonic(
+        "abandon ".repeat(11) + "about",
+      ),
+    ).rejects.toThrow();
     expect(localStorage.getItem("dotli:local-wallet-enabled")).toBe("1");
   });
 

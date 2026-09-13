@@ -97,6 +97,8 @@ export interface SetupOptions {
     activate(): Promise<void>;
     disconnect(): Promise<void>;
     deleteWallet(): Promise<void>;
+    exportMnemonic(): Promise<string>;
+    importMnemonic(mnemonic: string): Promise<void>;
   };
 }
 
@@ -136,9 +138,10 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   };
 
   const ui = buildPanel(state, store);
-  if (options.experimentalWallet !== undefined) {
-    installExperimentalWalletControls(ui, options.experimentalWallet);
-  }
+  const disposeWalletControls =
+    options.experimentalWallet === undefined
+      ? undefined
+      : installExperimentalWalletControls(ui, options.experimentalWallet);
   document.body.appendChild(ui.panel);
   applyDockPosition(ui, state, { persist: false });
   if (state.collapsed) {
@@ -195,6 +198,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     unsubscribeDotli();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
+    disposeWalletControls?.();
     ui.panel.remove();
     restoreIframeLayout();
   };
@@ -393,7 +397,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
 function installExperimentalWalletControls(
   ui: PanelUI,
   wallet: NonNullable<SetupOptions["experimentalWallet"]>,
-): void {
+): () => void {
   const menu = document.createElement("details");
   menu.className = "td-wallet-menu";
   const summary = document.createElement("summary");
@@ -406,7 +410,12 @@ function installExperimentalWalletControls(
   status.textContent = wallet.isActive()
     ? "Experimental wallet active"
     : "Experimental wallet disconnected";
-  content.appendChild(status);
+  const warning = document.createElement("p");
+  warning.textContent =
+    "Testing only — never use valuable funds or import your real wallet. " +
+    "Without a recovery phrase backup, deleting this wallet or clearing site data permanently loses access. " +
+    "Scripts on this origin can access your keys despite storage encryption. Real transactions remain possible.";
+  content.append(status, warning);
   const activate = document.createElement("button");
   activate.type = "button";
   activate.className = "td-btn";
@@ -414,7 +423,43 @@ function installExperimentalWalletControls(
   const disconnect = document.createElement("button");
   disconnect.type = "button";
   disconnect.className = "td-btn";
-  disconnect.textContent = "Disconnect";
+  disconnect.textContent = "Switch back to Mobile";
+  const reveal = document.createElement("button");
+  reveal.type = "button";
+  reveal.className = "td-btn";
+  reveal.textContent = "Reveal recovery phrase";
+  const phrase = document.createElement("textarea");
+  phrase.className = "td-wallet-phrase";
+  phrase.readOnly = true;
+  phrase.rows = 5;
+  phrase.hidden = true;
+  phrase.setAttribute("aria-label", "Test wallet recovery phrase");
+  phrase.autocomplete = "off";
+  phrase.spellcheck = false;
+  const hide = document.createElement("button");
+  hide.type = "button";
+  hide.className = "td-btn";
+  hide.textContent = "Hide recovery phrase";
+  hide.hidden = true;
+  const importLabel = document.createElement("label");
+  importLabel.textContent = "Import test recovery phrase";
+  const input = document.createElement("textarea");
+  input.className = "td-wallet-phrase";
+  input.rows = 4;
+  input.autocomplete = "off";
+  input.autocapitalize = "off";
+  input.spellcheck = false;
+  input.setAttribute("aria-label", "Recovery phrase to import");
+  importLabel.appendChild(input);
+  const scope = document.createElement("p");
+  scope.textContent =
+    "English BIP-39: 12, 15, 18, 21 or 24 words. No passphrase or custom derivation path. " +
+    "Uses native Polkadot host/Substrate account derivation, not Bitcoin/Ethereum seed derivation. " +
+    "A phrase restores keys, not local permissions or username metadata. Keep it private; anyone with it controls the wallet.";
+  const importButton = document.createElement("button");
+  importButton.type = "button";
+  importButton.className = "td-btn";
+  importButton.textContent = "Import / replace test wallet";
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "td-btn td-wallet-delete";
@@ -423,30 +468,98 @@ function installExperimentalWalletControls(
   message.className = "td-wallet-message";
   message.setAttribute("role", "alert");
   message.hidden = true;
-  content.append(activate, disconnect, remove, message);
+  content.append(
+    activate,
+    disconnect,
+    reveal,
+    phrase,
+    hide,
+    importLabel,
+    scope,
+    importButton,
+    remove,
+    message,
+  );
   menu.appendChild(content);
   ui.counts.after(menu);
 
-  const buttons = [activate, disconnect, remove];
   let pending = false;
+  let disposed = false;
+  let sensitiveGeneration = 0;
+  const isVisible = (): boolean => !disposed && menu.open;
+  const clearSensitive = (): void => {
+    sensitiveGeneration++;
+    phrase.value = "";
+    phrase.hidden = true;
+    hide.hidden = true;
+    input.value = "";
+  };
+  const positionMenu = (): void => {
+    if (!isVisible()) {
+      return;
+    }
+    const rect = summary.getBoundingClientRect();
+    const margin = 12;
+    const gap = 6;
+    const above = Math.max(
+      0,
+      Math.min(window.innerHeight, rect.top) - margin - gap,
+    );
+    const below = Math.max(
+      0,
+      window.innerHeight - Math.max(0, rect.bottom) - margin - gap,
+    );
+    const openAbove = above >= below;
+    content.style.top = openAbove
+      ? "auto"
+      : `${String(Math.max(margin, rect.bottom + gap))}px`;
+    content.style.bottom = openAbove
+      ? `${String(Math.max(margin, window.innerHeight - rect.top + gap))}px`
+      : "auto";
+    content.style.maxHeight = `${String(Math.max(above, below))}px`;
+  };
+  const resizeObserver = new ResizeObserver(positionMenu);
+  resizeObserver.observe(ui.panel);
+  window.addEventListener("resize", positionMenu);
+  const onToggle = (): void => {
+    if (!menu.open) {
+      clearSensitive();
+      message.hidden = true;
+    } else {
+      positionMenu();
+    }
+  };
+  menu.addEventListener("toggle", onToggle);
+  hide.addEventListener("click", () => {
+    clearSensitive();
+    message.hidden = true;
+  });
   const syncButtons = (): void => {
     activate.disabled = pending || wallet.isActive();
     disconnect.disabled = pending || !wallet.isActive();
+    reveal.disabled = pending;
+    importButton.disabled = pending;
     remove.disabled = pending;
+    input.disabled = pending;
   };
   syncButtons();
 
   const run = async (
-    operation: "activate" | "disconnect" | "deleteWallet",
+    operation:
+      | "activate"
+      | "disconnect"
+      | "deleteWallet"
+      | "exportMnemonic"
+      | "importMnemonic",
   ): Promise<void> => {
-    if (pending) {
+    if (pending || disposed) {
       return;
     }
     if (
       operation === "activate" &&
       !window.confirm(
         "Experimental browser wallet — testing only.\n\n" +
-          "Do not use valuable funds. There is no recovery: deleting the wallet or clearing this site's data permanently loses access.\n\n" +
+          "Do not use valuable funds. Without a recovery phrase backup, deleting the wallet or clearing this site's data permanently loses access.\n\n" +
           "Malicious scripts running on this origin can recover your keys. Encryption in browser storage does not protect against them.\n\n" +
           "Real networks and real transactions remain possible; this is not a test-network sandbox.\n\n" +
           "Enable / use this test wallet?",
@@ -457,28 +570,71 @@ function installExperimentalWalletControls(
     if (
       operation === "deleteWallet" &&
       !window.confirm(
-        "Permanently delete this test wallet?\n\n" +
-          "This deletes the browser's wallet keys. Access to this account and any funds will be permanently lost. There is no recovery or undo.",
+        "Permanently delete this test wallet from this browser?\n\n" +
+          "Without a recovery phrase backup, access to this account and any funds will be permanently lost. This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    if (
+      operation === "exportMnemonic" &&
+      !window.confirm(
+        "Reveal this test wallet's recovery phrase on screen?\n\n" +
+          "Anyone who sees it can control the wallet. Check for screen sharing and people nearby. " +
+          "Store a backup privately and offline. Nothing will be copied or downloaded automatically.",
+      )
+    ) {
+      return;
+    }
+    if (
+      operation === "importMnemonic" &&
+      !window.confirm(
+        "Import this phrase and replace the browser's test wallet?\n\n" +
+          "Testing only: never import a real wallet or one holding valuable funds. Scripts on this origin can access its keys.\n\n" +
+          "Back up the current test wallet's phrase first or lose access to it. " +
+          "Successful import clears test-wallet permissions, activates the imported wallet and reloads the page. Mobile pairing is preserved.",
       )
     ) {
       return;
     }
     pending = true;
-    for (const button of buttons) {
-      button.disabled = true;
-    }
+    syncButtons();
     content.setAttribute("aria-busy", "true");
     message.hidden = false;
-    message.textContent = "Updating test wallet; the page will reload…";
+    message.textContent =
+      operation === "exportMnemonic"
+        ? "Reading recovery phrase…"
+        : "Updating test wallet; the page will reload…";
+    const generation = sensitiveGeneration;
     try {
-      await wallet[operation]();
-    } catch (error: unknown) {
-      const detail = error instanceof Error ? error.message : String(error);
-      message.textContent =
-        `Could not ${operation === "deleteWallet" ? "delete" : operation} the test wallet. ` +
-        "Check that browser storage is available, then retry. " +
-        detail;
-      menu.open = true;
+      if (operation === "exportMnemonic") {
+        const mnemonic = await wallet.exportMnemonic();
+        if (isVisible() && generation === sensitiveGeneration) {
+          phrase.value = mnemonic;
+          phrase.hidden = false;
+          hide.hidden = false;
+          message.textContent =
+            "Select the phrase to back it up privately. Hide it when finished.";
+        }
+      } else if (operation === "importMnemonic") {
+        const importing = input.value;
+        clearSensitive();
+        await wallet.importMnemonic(importing);
+      } else {
+        clearSensitive();
+        await wallet[operation]();
+      }
+    } catch {
+      if (isVisible()) {
+        // Import/export errors can originate in crypto libraries: never echo
+        // arbitrary error details containing a phrase into diagnostics or DOM.
+        message.textContent =
+          operation === "importMnemonic"
+            ? "Import failed. Use 12, 15, 18, 21 or 24 English BIP-39 words with a valid checksum, no passphrase/path, and ensure browser storage is available."
+            : operation === "exportMnemonic"
+              ? "Could not reveal a phrase. Enable or import a test wallet first and ensure browser storage is available."
+              : `Could not ${operation === "deleteWallet" ? "delete" : operation} the test wallet. Check browser storage and retry.`;
+      }
     } finally {
       pending = false;
       content.removeAttribute("aria-busy");
@@ -491,9 +647,22 @@ function installExperimentalWalletControls(
   disconnect.addEventListener("click", () => {
     void run("disconnect");
   });
+  reveal.addEventListener("click", () => {
+    void run("exportMnemonic");
+  });
+  importButton.addEventListener("click", () => {
+    void run("importMnemonic");
+  });
   remove.addEventListener("click", () => {
     void run("deleteWallet");
   });
+  return () => {
+    disposed = true;
+    clearSensitive();
+    menu.removeEventListener("toggle", onToggle);
+    resizeObserver.disconnect();
+    window.removeEventListener("resize", positionMenu);
+  };
 }
 
 const COPY_FLASH_MS = 1200;
