@@ -11,9 +11,7 @@ export function createLocalStorageRead(): ProductStorage["read"] {
       }
       return Promise.resolve(base64.decode(raw));
     } catch (cause) {
-      return Promise.reject(
-        new Error(ERRORS.STORAGE_READ_FAILED, { cause }),
-      );
+      return Promise.reject(new Error(ERRORS.STORAGE_READ_FAILED, { cause }));
     }
   };
 }
@@ -24,9 +22,7 @@ export function createLocalStorageWrite(): ProductStorage["write"] {
       localStorage.setItem(storageKey(key), base64.encode(value));
       return Promise.resolve();
     } catch (cause) {
-      return Promise.reject(
-        new Error(ERRORS.STORAGE_WRITE_FAILED, { cause }),
-      );
+      return Promise.reject(new Error(ERRORS.STORAGE_WRITE_FAILED, { cause }));
     }
   };
 }
@@ -37,9 +33,7 @@ export function createLocalStorageClear(): ProductStorage["clear"] {
       localStorage.removeItem(storageKey(key));
       return Promise.resolve();
     } catch (cause) {
-      return Promise.reject(
-        new Error(ERRORS.STORAGE_CLEAR_FAILED, { cause }),
-      );
+      return Promise.reject(new Error(ERRORS.STORAGE_CLEAR_FAILED, { cause }));
     }
   };
 }
