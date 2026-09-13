@@ -95,3 +95,16 @@ site is live at `https://<base-domain>`.
 - `make provision` is idempotent; re-run it to pick up nginx config or build changes.
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
 - For nginx-only updates, `make deploy-nginx ENV=<env>`.
+
+## Deploy a retained feature branch
+
+The deployment workflow can deploy a branch to `westendli.dev` without opening
+or merging a pull request:
+
+```sh
+gh workflow run deploy.yml --ref feat/chat-v2-host-runtime
+```
+
+Manual dispatch deploys the selected branch commit only to `westendli.dev`.
+It runs the same quality gate, protected-environment approval, production build,
+and published-product smoke checks as a labeled PR deployment.

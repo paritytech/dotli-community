@@ -1,6 +1,7 @@
 name: Deploy
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [labeled, synchronize]
   push:
@@ -34,6 +35,11 @@ jobs:
           # Environments a PR label is allowed to target (development only).
           ALLOWED='["westend.li","dotli.dev","paseoli.dev","westendli.dev"]'
           case "$EVENT_NAME" in
+            workflow_dispatch)
+              echo 'environments=["westendli.dev"]' >> "$GITHUB_OUTPUT"
+              echo 'smoke_environments=["westendli.dev"]' >> "$GITHUB_OUTPUT"
+              echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+              ;;
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo 'smoke_environments=["paseo.li"]' >> "$GITHUB_OUTPUT"
