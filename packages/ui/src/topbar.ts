@@ -52,6 +52,7 @@ import { initChatPanel } from "./chat/panel";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
+  isExperimentalWalletActive,
   type TruapiSessionUiState,
 } from "./host-callbacks/SessionStore";
 import {
@@ -103,6 +104,7 @@ let productErrored = false;
 
 // User icon for the logged-out state
 const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+const EXPERIMENTAL_WALLET_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v7l-5.4 8.6A2 2 0 0 0 6.3 22h11.4a2 2 0 0 0 1.7-3.4L14 10V3M8 16h8"/></svg>`;
 
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
@@ -288,6 +290,23 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
+  if (isExperimentalWalletActive()) {
+    document.documentElement.classList.add("experimental-wallet-active");
+    const label = userPopover.querySelector(".label");
+    if (label) {
+      label.textContent = "Experimental test wallet";
+    }
+    const disconnectLabel = userPopoverDisconnect.querySelector("span");
+    if (disconnectLabel) {
+      disconnectLabel.textContent = "Disconnect test wallet";
+    }
+    const hint = document.createElement("div");
+    hint.className = "user-popover-hint";
+    hint.textContent =
+      "Testing only. Disconnect to sign in with Polkadot Mobile. Recovery phrase: Debug → Test wallet.";
+    userPopoverUsername.insertAdjacentElement("afterend", hint);
+  }
+
   modalBackdrop.setAttribute("role", "dialog");
   modalBackdrop.setAttribute("aria-modal", "true");
   modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
@@ -447,7 +466,7 @@ export function initTopBar(
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
   scheduleIdle(() => {
-    emitPersistedSessionUiState();
+    void emitPersistedSessionUiState();
   });
 }
 
@@ -497,28 +516,47 @@ function renderAuthState(state: DotliAuthState): void {
 }
 
 function renderLoggedOut(): void {
-  authButton.innerHTML = USER_SVG;
-  authButton.title = "Login with Polkadot Mobile";
-  authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
+  if (isExperimentalWalletActive()) {
+    renderExperimentalWalletBadge();
+  } else {
+    authButton.innerHTML = USER_SVG;
+    authButton.title = "Login with Polkadot Mobile";
+    authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
+  }
   setUserPopoverNoUsernameHint(false);
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
 
+function renderExperimentalWalletBadge(): void {
+  authButton.innerHTML = `<div class="user-badge user-badge-experimental">${EXPERIMENTAL_WALLET_SVG}</div>`;
+  authButton.title = "Experimental test wallet — testing only";
+  authButton.setAttribute("aria-label", "Experimental test wallet");
+}
+
 function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
-  const initials = truapiSessionInitials(state);
-  authButton.innerHTML =
-    initials !== undefined
-      ? `<div class="user-badge">${escapeHtml(initials)}</div>`
-      : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
-  authButton.title = "Account";
-  authButton.setAttribute("aria-label", "Account");
+  const experimental = isExperimentalWalletActive();
+  if (experimental) {
+    renderExperimentalWalletBadge();
+  } else {
+    const initials = truapiSessionInitials(state);
+    authButton.innerHTML =
+      initials !== undefined
+        ? `<div class="user-badge">${escapeHtml(initials)}</div>`
+        : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
+    authButton.title = "Account";
+    authButton.setAttribute("aria-label", "Account");
+  }
   const username =
     state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
   userPopoverUsername.textContent =
     username ??
     shortenAccount(state.identityAccountId ?? state.publicKey) ??
-    "Connected with Polkadot Mobile";
-  setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
+    (experimental
+      ? "Browser-local test identity"
+      : "Connected with Polkadot Mobile");
+  setUserPopoverNoUsernameHint(
+    !experimental && (username === undefined || username.length === 0),
+  );
   window.dispatchEvent(new Event("dotli:authenticated"));
 }
 
@@ -824,7 +862,7 @@ function renderError(message: string, kind: LoginFailureKind): void {
 }
 
 function handleAuthButtonClick(): void {
-  if (truapiSessionConnected) {
+  if (truapiSessionConnected || isExperimentalWalletActive()) {
     userPopover.classList.toggle("open");
   } else {
     openModal();

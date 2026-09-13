@@ -36,7 +36,8 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.13.1"
+    "@parity/truapi": "file:vendor/truapi",
+    "@parity/truapi-host": "file:vendor/truapi-host"
   },
   "overrides": {
     "fast-uri": "3.1.7",

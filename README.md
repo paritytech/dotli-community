@@ -75,7 +75,7 @@ Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetc
 
 ### What it doesn't do
 
-- It is **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is delegated to the connected Polkadot App session.
+- Production builds are **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is delegated to the connected Polkadot App session. Debug builds also offer an explicitly experimental [test wallet](#experimental-test-wallet).
 - It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and dotNS records are read directly from the contract storage.
 - It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally per session.
 - It is **not** a production-hardened product. Treat it as a reference blueprint (see [Security](#security)).
@@ -263,6 +263,22 @@ dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resol
 In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploys at `paseoli.dev` / `dotli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
 
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
+
+### Experimental test wallet
+
+Only builds compiled with `VITE_APP_DEBUG=true` offer **Test wallet** in the debug bar. Normal login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does **not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
+
+Use **Enable / use test wallet** and accept the warning to create or reuse a browser-local test identity. While active, an amber flask replaces the normal account badge; there is no extra header strip. Open that account menu and choose **Disconnect test wallet**, or choose **Switch back to Mobile** under **Debug → Test wallet**, to stop using it without deleting it. The normal login button then signs in with Polkadot Mobile. Mode changes reload the page to terminate the previous signing workers.
+
+Under **Debug → Test wallet**, **Reveal recovery phrase** requires confirmation before displaying a selectable phrase for manual backup. Existing 32-byte wallets export as 24 English BIP-39 words without changing their identity. Nothing is automatically copied or downloaded; hiding the phrase or closing the menu clears it from the controls.
+
+**Import / replace test wallet** accepts checksum-valid English BIP-39 phrases of 12, 15, 18, 21 or 24 words, without a passphrase or custom derivation path. It uses native Polkadot host/Substrate derivation, not Bitcoin/Ethereum seed derivation. Importing an exported phrase restores the same account keys on the same network, but not local permissions or username metadata. Back up the previous test wallet before replacing it. Successful import clears experimental session/signing grants, activates the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
+
+**Delete test wallet** requires confirmation and removes its stored entropy and experimental session/signing grants. Without a recovery phrase backup, deleting the wallet or clearing site data permanently loses access.
+
+This is experimental custody, not a secure vault: same-origin malicious scripts can recover the stored keys despite encryption. Never use valuable funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
+
+Keep `VITE_APP_DEBUG` unset or false in production builds.
 
 ## Sandbox API Checker
 

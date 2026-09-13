@@ -2,13 +2,28 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import { SITE_ID } from "@dotli/config/config";
+import type * as Config from "@dotli/config/config";
 import {
+  createLocalWalletSecret,
   createSessionStoreAdapters,
+  deleteLocalWalletSecret,
   emitPersistedSessionUiState,
+  exportLocalWalletMnemonic,
+  importLocalWalletMnemonic,
+  LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
+  readLocalWalletSecret,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
 import type { CoreStorageKey } from "@parity/truapi-host";
+
+const buildFlags = vi.hoisted(() => ({ debug: false }));
+vi.mock("@dotli/config/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof Config>()),
+  get DEBUG() {
+    return buildFlags.debug;
+  },
+}));
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -79,6 +94,7 @@ const CONNECTED_DETAIL = {
 
 describe("session-store host callbacks", () => {
   beforeEach(() => {
+    buildFlags.debug = false;
     localStorage.clear();
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
@@ -345,6 +361,207 @@ describe("session-store host callbacks", () => {
     // Then
     expect(await readCoreStorage(key)).toBeUndefined();
     expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+  });
+
+  it("As a local wallet user, my signing identity is encrypted, stable, and deletable", async () => {
+    // Given
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+
+    // When
+    const first = await createLocalWalletSecret();
+    const firstBytes = Array.from(first.secret);
+
+    // Then
+    expect(first.created).toBe(true);
+    expect(first.secret).toHaveLength(32);
+    const opened = Promise.withResolvers<IDBDatabase>();
+    const openRequest = indexedDB.open("dotli-core");
+    openRequest.onsuccess = () => {
+      opened.resolve(openRequest.result);
+    };
+    openRequest.onerror = () => {
+      opened.reject(openRequest.error);
+    };
+    const db = await opened.promise;
+    const storedValue = Promise.withResolvers<unknown>();
+    const readRequest = db
+      .transaction("keys")
+      .objectStore("keys")
+      .get("local-wallet-entropy-v1");
+    readRequest.onsuccess = () => {
+      storedValue.resolve(readRequest.result);
+    };
+    readRequest.onerror = () => {
+      storedValue.reject(readRequest.error);
+    };
+    expect(await storedValue.promise).toMatch(/^enc1:0x/);
+    db.close();
+
+    // When
+    first.secret.fill(0);
+    const second = await createLocalWalletSecret();
+
+    // Then
+    expect(second.created).toBe(false);
+    expect(Array.from(second.secret)).toEqual(firstBytes);
+
+    // When
+    second.secret.fill(0);
+    await deleteLocalWalletSecret();
+
+    // Then
+    await expect(readLocalWalletSecret()).resolves.toBeUndefined();
+  });
+
+  it("exports an existing 32-byte identity as a phrase and restores exactly the native activation entropy", async () => {
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    try {
+      const mnemonic = await exportLocalWalletMnemonic();
+      expect(mnemonic.split(" ")).toHaveLength(24);
+      await deleteLocalWalletSecret();
+      await importLocalWalletMnemonic(mnemonic);
+      const restored = await readLocalWalletSecret();
+      try {
+        // Native root and product/identity keys are deterministic from these
+        // bytes; converting to a BIP-39 seed instead would fail this contract.
+        expect(restored).toEqual(secret);
+      } finally {
+        restored?.fill(0);
+      }
+    } finally {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("rejects an invalid import without replacing custody and resets only experimental grants on valid import", async () => {
+    const mobile = createSessionStoreAdapters();
+    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
+    await mobile.writeCoreStorage(grant, new Uint8Array([2]));
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    const experimental = createSessionStoreAdapters();
+    await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
+    await experimental.writeCoreStorage(grant, new Uint8Array([4]));
+    const stopWorkers = vi.fn();
+    try {
+      // Twelve known English words with an invalid checksum must not pass.
+      await expect(
+        importLocalWalletMnemonic("abandon ".repeat(12), stopWorkers),
+      ).rejects.toThrow();
+      expect(stopWorkers).not.toHaveBeenCalled();
+      const unchanged = await readLocalWalletSecret();
+      expect(unchanged).toEqual(secret);
+      unchanged?.fill(0);
+      expect(await experimental.readCoreStorage(grant)).toEqual(
+        new Uint8Array([4]),
+      );
+      expect(await experimental.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+        new Uint8Array([3]),
+      );
+
+      // A second tab has its own module state but shares origin storage.
+      vi.resetModules();
+      const otherTab = await import("@dotli/ui/host-callbacks/SessionStore");
+      // Public BIP-39 test vector, not a real user's phrase.
+      await otherTab.importLocalWalletMnemonic(
+        "abandon ".repeat(11) + "about",
+        stopWorkers,
+      );
+      const imported = await readLocalWalletSecret();
+      expect(imported).toEqual(new Uint8Array(16));
+      imported?.fill(0);
+      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+      expect(
+        await experimental.readCoreStorage(AUTH_SESSION_KEY),
+      ).toBeUndefined();
+      const replacement = otherTab.createSessionStoreAdapters();
+      await replacement.writeCoreStorage(grant, new Uint8Array([6]));
+      // A retired worker cannot write its old grant back after replacement.
+      await experimental.writeCoreStorage(grant, new Uint8Array([5]));
+      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+      await experimental.clearCoreStorage(grant);
+      expect(await replacement.readCoreStorage(grant)).toEqual(
+        new Uint8Array([6]),
+      );
+      expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
+      expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+        new Uint8Array([1]),
+      );
+    } finally {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("ignores but preserves an existing experimental wallet in production", async () => {
+    buildFlags.debug = true;
+    const { secret } = await createLocalWalletSecret();
+    const expected = Array.from(secret);
+    secret.fill(0);
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    buildFlags.debug = false;
+    const events: unknown[] = [];
+    const onState = (event: Event) =>
+      events.push((event as CustomEvent).detail);
+    window.addEventListener("dotli:truapi-auth-state", onState);
+    try {
+      await expect(readLocalWalletSecret()).resolves.toBeUndefined();
+      await expect(createLocalWalletSecret()).rejects.toThrow();
+      await expect(deleteLocalWalletSecret()).rejects.toThrow();
+      await expect(exportLocalWalletMnemonic()).rejects.toThrow();
+      await expect(
+        importLocalWalletMnemonic("abandon ".repeat(11) + "about"),
+      ).rejects.toThrow();
+      await emitPersistedSessionUiState();
+      expect(events).toEqual([]);
+      buildFlags.debug = true;
+      const restored = await readLocalWalletSecret();
+      expect(Array.from(restored ?? [])).toEqual(expected);
+      restored?.fill(0);
+      await deleteLocalWalletSecret();
+    } finally {
+      window.removeEventListener("dotli:truapi-auth-state", onState);
+    }
+  });
+
+  it("isolates experimental sessions and signing grants from mobile custody, including deletion", async () => {
+    const mobile = createSessionStoreAdapters();
+    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
+    await mobile.writeCoreStorage(grant, new Uint8Array([2]));
+    buildFlags.debug = true;
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    const experimental = createSessionStoreAdapters();
+    expect(
+      await experimental.readCoreStorage(AUTH_SESSION_KEY),
+    ).toBeUndefined();
+    expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+    await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
+    await experimental.writeCoreStorage(grant, new Uint8Array([4]));
+    // Even callbacks finishing after the mode switch retain their namespace.
+    buildFlags.debug = false;
+    await experimental.writeCoreStorage(grant, new Uint8Array([5]));
+    const production = createSessionStoreAdapters();
+    expect(await production.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+      new Uint8Array([1]),
+    );
+    expect(await production.readCoreStorage(grant)).toEqual(
+      new Uint8Array([2]),
+    );
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+    expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
+    expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+      new Uint8Array([1]),
+    );
   });
 
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
@@ -618,6 +835,32 @@ describe("session-store host callbacks", () => {
 
     // Then
     expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+  });
+
+  it("As a local wallet user, my account badge survives reload without a paired session blob", async () => {
+    // Given
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    sharedAuth.storage.set(
+      UI_STATE_CACHE_KEY,
+      JSON.stringify(CONNECTED_DETAIL),
+    );
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    // When
+    await emitPersistedSessionUiState();
+
+    // Then
+    expect(events).toEqual([
+      { tag: "Connected", session: { connected: true } },
+    ]);
+    await deleteLocalWalletSecret();
   });
 
   it("As a dotli integrator, the host rehydrates a bare connected state when no cache exists", async () => {
