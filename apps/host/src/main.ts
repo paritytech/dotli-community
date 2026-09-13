@@ -34,6 +34,7 @@ import {
   advancePhase,
   stopStatusTick,
   listenForSandboxStatus,
+  onSandboxDone,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
@@ -1197,6 +1198,23 @@ async function main(): Promise<void> {
     };
   };
 
+  // The bulletin chain is only dialed during the sandbox's content fetch,
+  // which outlives the render handoff `await`. Capturing at handoff would
+  // freeze the bulletin tag at "unknown" on every cold load, so the cold
+  // success event waits for the sandbox's done signal. The timeout keeps a
+  // stalled fetch from losing the event; its tags then read as-is.
+  const captureResolveOkAfterContent = (): void => {
+    let captured = false;
+    const capture = (): void => {
+      if (!captured) {
+        captured = true;
+        captureResolveResult("ok");
+      }
+    };
+    onSandboxDone(capture);
+    setTimeout(capture, 120_000);
+  };
+
   // The non-throwing half of the failure rate whose error half is the tagged
   // exception in the catch below. `no_content` is its own outcome rather than
   // an error: the name resolved, it just has nothing published on this
@@ -1419,7 +1437,7 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
-    captureResolveResult("ok");
+    captureResolveOkAfterContent();
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({

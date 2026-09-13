@@ -505,6 +505,15 @@ export function dismissLoading(): void {
  * nested cross-origin frame or browser extension) could spoof the status
  * text or prematurely dismiss the overlay while content is still loading.
  */
+// One-shot subscribers for the sandbox's terminal `done` signal. The host
+// uses it to time telemetry that must not be captured before the content
+// fetch has run (the bulletin chain is only dialed during that fetch).
+const sandboxDoneCallbacks: (() => void)[] = [];
+
+export function onSandboxDone(cb: () => void): void {
+  sandboxDoneCallbacks.push(cb);
+}
+
 export function listenForSandboxStatus(): void {
   window.addEventListener("message", (event: MessageEvent) => {
     // Cheap shape check first — `message` fires for all postMessage traffic
@@ -535,6 +544,9 @@ export function listenForSandboxStatus(): void {
     }
     if (data.done === true) {
       dismissLoading();
+      for (const cb of sandboxDoneCallbacks.splice(0)) {
+        cb();
+      }
     }
   });
 }
