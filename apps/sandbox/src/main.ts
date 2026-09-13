@@ -783,6 +783,17 @@ async function main(): Promise<void> {
 // automatic retry, only a click path. We still guard against runaway
 // recursion if the user mashes the button and against overlapping
 // `main()` calls (two invocations would race on each other).
+/**
+ * A rejection that means "this frame is going away", not "this load failed".
+ *
+ * The sandbox bridge rejects its pending block fetches on `pagehide` so the
+ * awaiting archive walk unwinds instead of hanging. Matched on the message
+ * because the rejection crosses two module boundaries as a plain Error.
+ */
+function isTeardownAbort(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("bitswap-relay: aborted");
+}
+
 let runInFlight = false;
 let runAttempts = 0;
 const MAX_RUN_ATTEMPTS = 5;
@@ -804,6 +815,14 @@ function run(): void {
 
   void main()
     .catch((err: unknown) => {
+      // A frame torn down mid-load aborts its own fetches, so this rejection
+      // is the teardown working rather than a load that failed. Reporting it
+      // would file a Sentry error and paint an error screen every time a user
+      // switches product while content is still arriving, which buries the
+      // real failures this telemetry exists to surface.
+      if (isTeardownAbort(err)) {
+        return;
+      }
       // Surface before rendering so Sentry sees every failure. Attribute
       // strictly from the explicit `chainBackend` URL param. Tag `unknown`
       // when missing rather than guessing (the missing-param path is

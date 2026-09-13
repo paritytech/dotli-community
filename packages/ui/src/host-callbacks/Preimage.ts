@@ -9,7 +9,7 @@ import { assertBlockMatchesCid } from "@dotli/content/verify";
 import { getBackend } from "@dotli/config/mode";
 import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
-import { bitswapGet } from "@dotli/content/bulletin-bitswap";
+import { bitswapGet } from "@dotli/content/bitswap";
 import { toHex } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 

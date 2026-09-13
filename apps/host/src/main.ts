@@ -39,10 +39,7 @@ import type { LoadingPhase } from "@dotli/ui/ui";
 import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
-import {
-  bitswapGet,
-  listenForSandboxBitswap,
-} from "@dotli/content/bulletin-bitswap";
+import { bitswapGet, listenForSandboxBitswap } from "@dotli/content/bitswap";
 import {
   ensureProtocolFrame,
   resetProtocolFrame,
@@ -179,6 +176,7 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 
 const T0 = performance.now();
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
+const ICON_FETCH_BUDGET_MS = 10_000;
 const blockingModalCoordinator = createBlockingModalCoordinator();
 
 function parseLocalProductIdOverride(): string | undefined {
@@ -354,8 +352,16 @@ async function applyProductBranding(
       description: root.description,
       icon: root.icon,
     });
+    // The icon is cosmetic, so it gets a fraction of the default budget. At
+    // full budget a CID no connected peer holds would keep a retry loop open
+    // for minutes, competing for smoldot request slots against the content
+    // the user is actually waiting on.
+    const iconAborter = new AbortController();
+    const iconDeadline = setTimeout(() => {
+      iconAborter.abort();
+    }, ICON_FETCH_BUDGET_MS);
     try {
-      const bytes = await bitswapGet(root.icon.cid);
+      const bytes = await bitswapGet(root.icon.cid, iconAborter.signal);
       const blob = new Blob([new Uint8Array(bytes)], {
         type: `image/${root.icon.format}`,
       });
@@ -366,6 +372,8 @@ async function applyProductBranding(
       log.warn(
         `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    } finally {
+      clearTimeout(iconDeadline);
     }
   }
   if (appResult.kind === "ok" && appResult.value.kind === "app") {

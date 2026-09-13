@@ -18,8 +18,8 @@ import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
-// transient and retryable. INVALID_PARAMS is terminal.
-const ERR_INVALID_PARAMS = -32602;
+// the retryable pair. Anything else, including an invalid CID, falls to the
+// terminal branch below.
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
 const ERR_FAIL_BACKOFF = -32812;
@@ -32,32 +32,11 @@ const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
 
-// Retrying -32810 is a deliberate divergence from upstream. smoldot documents
-// it as a permanent failure meaning the data is not in the network, and its own
-// reference retry client retries only -32811 and -32812. The implementation
-// does something narrower than the documentation claims, which is why we treat
-// it as transient anyway, and why this should be raised upstream rather than
-// carried here forever.
-//
-// It freezes the set of peers connected at the instant of the call, broadcasts
-// a "have" request to exactly those, and fails the request the moment every one
-// of them has answered DONT_HAVE. Peers that connect afterwards are never added
-// to that set, and there is no provider lookup to fall back on. So it cannot
-// distinguish "absent from the network" from "absent from the handful of peers
-// this call happened to ask", and on a fresh page that handful is whatever was
-// up at the time. Retrying takes a new, larger snapshot. Observed live, reloads
-// that gave up on the first -32810 died at ~1.2s, while reloads that kept
-// asking got the same CID 3 to 15 seconds later.
-//
-// Discovery is bounded so a CID that genuinely is not on the network fails in
-// seconds rather than in three minutes.
-//
-// The bound counts attempts rather than elapsed time. A clock sounds more
-// meaningful but is spent by anything that happens to take a while, including
-// the -32812 runs this retry exists to survive, so a slow start could leave
-// discovery two tries instead of ten. Counting attempts cannot be drained by
-// something unrelated. Eight covers the 3 to 15 seconds observed live with
-// room over it: 0.5 + 1 + 2 + 4 + 5 + 5 + 5 + 5 = 27.5s of grace.
+// smoldot calls -32810 permanent, but it only means every peer connected at
+// that instant answered DONT_HAVE: it never adds later peers and never looks up
+// providers, so a retry gets a fresh, larger set. Bounded by attempts and not a
+// clock, which anything slow in between drains, including the -32812 runs this
+// exists to survive. Eight buys 27.5s against the 3 to 15 observed live.
 const DISCOVERY_RETRIES = 8;
 
 interface PendingResolver {
@@ -135,15 +114,9 @@ function abortError(cid: string): Error {
   return err;
 }
 
-function isAbortError(err: unknown): boolean {
-  return err instanceof Error && err.name === ABORT_ERROR_NAME;
-}
-
 function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    // `addEventListener` never fires on a signal that is already aborted, so
-    // an abort landing between the caller's check and this line would be
-    // missed and the full delay served.
+    // `addEventListener` never fires on a signal that is already aborted.
     if (signal?.aborted === true) {
       reject(new Error("aborted"));
       return;
@@ -176,27 +149,18 @@ export async function bitswapGet(
   let transientAttempts = 0;
   let attempt = 0;
   for (;;) {
-    if (signal?.aborted === true) {
-      throw abortError(cid);
-    }
     attempt += 1;
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       throw new Error(
-        `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempt - 1)} attempts)`,
+        `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempt - 1)} attempts made)`,
       );
     }
     const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining);
     try {
       return await sendOnce(cid, callTimeout, signal);
     } catch (err) {
-      if (isAbortError(err)) {
-        throw err;
-      }
       const code = errorCode(err);
-      if (code === ERR_INVALID_PARAMS) {
-        throw err;
-      }
 
       // Each kind of failure ramps on its own counter. Sharing one means a
       // couple of -32812s arrive first and pin the discovery retries at the
@@ -207,7 +171,7 @@ export async function bitswapGet(
         if (discoveryAttempts > DISCOVERY_RETRIES) {
           throw Object.assign(
             new Error(
-              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryAttempts)} failures (${String(attempt)} total attempts): ${serializeError(err)}`,
+              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryAttempts)} failures (${String(attempt)} attempts made): ${serializeError(err)}`,
             ),
             { code },
           );
@@ -222,7 +186,7 @@ export async function bitswapGet(
 
       // Each counter is incremented before it is read, so both are >= 1 here.
       // The floor of 1ms keeps the loop off a zero delay once the budget is
-      // nearly spent; the next iteration's deadline check ends the call.
+      // nearly spent. The next iteration's deadline check ends the call.
       const delay = Math.min(
         BACKOFF_CAP_MS,
         BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
@@ -303,6 +267,11 @@ interface BitswapGetMessage {
   cid: string;
 }
 
+interface BitswapAbortMessage {
+  type: "dotli:bitswap-abort";
+  ids: string[];
+}
+
 interface BitswapResultOk {
   type: "dotli:bitswap-result";
   id: string;
@@ -331,8 +300,43 @@ function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
   );
 }
 
+function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  return (
+    obj.type === "dotli:bitswap-abort" &&
+    Array.isArray(obj.ids) &&
+    obj.ids.every((id) => typeof id === "string")
+  );
+}
+
+/**
+ * Live relayed fetches, per requesting frame and then per request id.
+ *
+ * The relay outlives the sandbox it serves, so a fetch started for a page the
+ * user has navigated away from keeps retrying and posts its result into a dead
+ * frame. Nothing in the DOM tells us the frame went: the sandbox has to say so,
+ * which it does on `pagehide`.
+ *
+ * The frame is the outer key for two reasons. Origin alone does not identify
+ * one, and every product runs at a sandbox origin, so origin-only gating would
+ * let any product cancel another's fetches with ids that are sequential and so
+ * guessable in bulk. And ids restart at 1 in every frame, so a flat map lets a
+ * second frame's entry overwrite a first frame's and strand it unabortable —
+ * `renderIframe` keeps the outgoing product alive while its replacement boots,
+ * so two frames really do coexist.
+ */
+const inFlight = new Map<MessageEventSource, Map<string, AbortController>>();
+let relayInstalled = false;
+
 /** Idempotent. Call once at host startup. */
 export function listenForSandboxBitswap(): void {
+  if (relayInstalled) {
+    return;
+  }
+  relayInstalled = true;
   if (getBackend() === "rpc-gateway") {
     log.warn(
       "[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.",
@@ -346,6 +350,25 @@ export function listenForSandboxBitswap(): void {
   }
   window.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
+    if (isBitswapAbortMessage(data)) {
+      if (!isSandboxOrigin(event.origin) || event.source === null) {
+        return;
+      }
+      // Reaching only this frame's own fetches is what stops one product
+      // cancelling another's.
+      const own = inFlight.get(event.source);
+      if (own === undefined) {
+        return;
+      }
+      for (const id of data.ids) {
+        own.get(id)?.abort();
+        own.delete(id);
+      }
+      if (own.size === 0) {
+        inFlight.delete(event.source);
+      }
+      return;
+    }
     if (!isBitswapGetMessage(data)) {
       return;
     }
@@ -359,7 +382,24 @@ export function listenForSandboxBitswap(): void {
     if (source === null) {
       return;
     }
-    void bitswapGet(data.cid)
+    const aborter = new AbortController();
+    let own = inFlight.get(source);
+    if (own === undefined) {
+      own = new Map<string, AbortController>();
+      inFlight.set(source, own);
+    }
+    own.set(data.id, aborter);
+    void bitswapGet(data.cid, aborter.signal)
+      .finally(() => {
+        // A frame reusing an id while its earlier fetch is still open would
+        // otherwise have that earlier fetch's cleanup drop the newer entry.
+        if (own.get(data.id) === aborter) {
+          own.delete(data.id);
+        }
+        if (own.size === 0) {
+          inFlight.delete(source);
+        }
+      })
       .then((bytes) => {
         const reply: BitswapResultOk = {
           type: "dotli:bitswap-result",
