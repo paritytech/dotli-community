@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Canonical executable-manifest kinds. A product publishes one manifest per
-// kind under an `<kind>.<base>.dot` subname. The host passes the base product
+// kind under an `<kind>.<base>.<tld>` subname. The host passes the base product
 // name to the Rust core, so every executable kind shares one derived account.
 
 export const EXECUTABLE_KINDS = ["app", "widget", "worker"] as const;

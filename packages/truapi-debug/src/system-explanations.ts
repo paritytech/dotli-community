@@ -49,7 +49,7 @@ Warmup happens in the background and is non-blocking. If a product calls chain s
     body: `The current browser URL has been classified into one of three outcomes:
 
 • \`label\` set — a product subdomain (e.g. \`hackme3.localhost\` or \`hackme3.dot.li\`) that will be resolved next.
-• \`localhostHost\` set — a \`/localhost:PORT\` path; the host will proxy directly to that dev server without resolving any \`.dot\` name.
+• \`localhostHost\` set — a \`/localhost:PORT\` path; the host will proxy directly to that dev server without resolving any dotNS name.
 • Both null — the host URL itself (no subdomain), so the landing page is shown.
 
 \`deepPath\` captures any path / search / hash fragment that will be forwarded into the product iframe after resolution.`,
@@ -89,7 +89,7 @@ After this event, the TrUAPI bus starts producing traffic and the product is dri
 
   "resolve:started": {
     title: "Name resolution started",
-    body: `Beginning to resolve \`<label>.dot\` to its content CID. Two code paths exist:
+    body: `Beginning to resolve \`<label>.<tld>\` to its content CID. Two code paths exist:
 
 • \`smoldot\` — runs a local WASM light client in the protocol iframe, syncs Asset Hub Paseo trustlessly, reads the \`dotns\` Solidity contract's ContentHash storage slot directly, and returns the decoded CID. Takes seconds to a minute on cold start.
 • \`rpc-gateway\` — opens a WebSocket to a trusted RPC endpoint and issues a \`state_getStorage\` call against the same slot. Sub-second but relies on the gateway's honesty.`,

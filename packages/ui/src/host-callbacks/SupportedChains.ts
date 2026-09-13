@@ -31,9 +31,6 @@ export function createSupportedChains(): Features["supportedChains"] {
       getBackend() === "rpc-gateway"
         ? isRpcChainSupported
         : isSmoldotChainSupported;
-    // The environment id ("paseo-next-v2"), not a bare ecosystem ("paseo"):
-    // the field is informational and two environments of one ecosystem must
-    // stay distinguishable in product logs.
     return Promise.resolve({
       network: getNetwork(),
       chains: slots

@@ -47,6 +47,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
+import type { ResolveOptions } from "@dotli/resolver/resolve";
 import { isExecutableKind } from "@dotli/shared/executables";
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
@@ -70,7 +71,7 @@ import {
   isRpcChainSupported,
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
-import { serializeError } from "@dotli/shared/errors";
+import { errorName, serializeError } from "@dotli/shared/errors";
 import {
   createChainBrokerManager,
   requireBrokerLocalProvider,
@@ -88,6 +89,7 @@ import {
   isValidSharedModeKey,
 } from "@dotli/protocol/auth-storage";
 import {
+  getRequestSyncTimeoutMs,
   isProtocolEnvelope,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
@@ -304,6 +306,7 @@ function bindSharedAuthListener(): void {
         id: data.id,
         ok: false,
         error: serializeError(error),
+        errorName: errorName(error),
       });
     }
   });
@@ -801,6 +804,7 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
           id: data.id,
           ok: false,
           error: serializeError(error),
+          errorName: errorName(error),
         });
       });
   });
@@ -936,6 +940,7 @@ function bindSharedModeListener(): void {
         id: data.id,
         ok: false,
         error: serializeError(error),
+        errorName: errorName(error),
       });
     }
   });
@@ -1033,12 +1038,16 @@ interface EngineOptions {
   /** Called on `warmup` requests. If omitted, `warmup` resolves immediately. */
   onWarmup?: () => Promise<void>;
   /** Resolver implementations. If omitted, resolution methods reject with a
-   *  clear error so hanging callers surface fast. */
+   *  clear error so hanging callers surface fast. Signatures mirror the
+   *  `@dotli/resolver` entry points so they can be wired by reference. */
   resolveDotName?: (
     label: string,
-    onStatus: (message: string) => void,
+    opts?: ResolveOptions,
   ) => Promise<string | null>;
-  resolveOwner?: (label: string) => Promise<string | null>;
+  resolveOwner?: (
+    label: string,
+    opts?: ResolveOptions,
+  ) => Promise<string | null>;
   /**
    * Product-manifest readers.
    *
@@ -1048,9 +1057,11 @@ interface EngineOptions {
   resolveExecutableManifest?: (
     label: string,
     kind: "app" | "widget" | "worker",
+    opts?: ResolveOptions,
   ) => Promise<ManifestResult<ExecutableManifest>>;
   resolveRootManifest?: (
     label: string,
+    opts?: ResolveOptions,
   ) => Promise<ManifestResult<RootManifest>>;
 }
 
@@ -1083,6 +1094,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
       );
     }
 
+    const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+
     switch (request.method) {
       case "warmup": {
         if (options.onWarmup) {
@@ -1104,9 +1117,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         }
         const payload = request.payload as ProtocolRequestMap["resolveDotName"];
         assertStr(payload.label, "label");
-        const result = await options.resolveDotName(
-          payload.label,
-          (message) => {
+        const result = await options.resolveDotName(payload.label, {
+          onStatus: (message) => {
             respond({
               namespace: "dotli:protocol",
               kind: "progress",
@@ -1114,7 +1126,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
               message,
             });
           },
-        );
+          syncTimeoutMs,
+        });
         respond({
           namespace: "dotli:protocol",
           kind: "response",
@@ -1131,7 +1144,9 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         }
         const payload = request.payload as ProtocolRequestMap["resolveOwner"];
         assertStr(payload.label, "label");
-        const result = await options.resolveOwner(payload.label);
+        const result = await options.resolveOwner(payload.label, {
+          syncTimeoutMs,
+        });
         respond({
           namespace: "dotli:protocol",
           kind: "response",
@@ -1158,6 +1173,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         const result = await options.resolveExecutableManifest(
           payload.label,
           payload.kind,
+          { syncTimeoutMs },
         );
         respond({
           namespace: "dotli:protocol",
@@ -1178,7 +1194,9 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         const payload =
           request.payload as ProtocolRequestMap["resolveRootManifest"];
         assertStr(payload.label, "label");
-        const result = await options.resolveRootManifest(payload.label);
+        const result = await options.resolveRootManifest(payload.label, {
+          syncTimeoutMs,
+        });
         respond({
           namespace: "dotli:protocol",
           kind: "response",

@@ -138,7 +138,10 @@ async function withWarmSession<T>(
 }
 
 test.describe("Warm start across a browser restart", () => {
-  test.setTimeout(SNAPSHOT_WINDOW_MS + TIMEOUT_MS * 3);
+  // No `test.setTimeout` here. Every wait inside is bounded on its own, so a
+  // real hang surfaces from `waitForResolutionOutcome` with the failing
+  // session named. A tighter ceiling than the config's only turns a slow CI
+  // runner into "Test timeout exceeded", which says nothing about the cause.
 
   test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resumes the light client from stored state`, async () => {
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));

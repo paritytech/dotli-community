@@ -175,6 +175,16 @@ export function serializeError(value: unknown): string {
   return serialize(value, new WeakSet());
 }
 
+/**
+ * Class name of a thrown value, or `undefined` if it was not an `Error`.
+ *
+ * Pair with `serializeError` when writing an error into a wire format, so the
+ * receiver can branch on the class instead of matching on the message.
+ */
+export function errorName(value: unknown): string | undefined {
+  return value instanceof Error ? value.name : undefined;
+}
+
 const CYCLE_MARKER = "[cycle]";
 const UNKNOWN_OBJECT = "[object Object]";
 const AGG_CAP = 3;

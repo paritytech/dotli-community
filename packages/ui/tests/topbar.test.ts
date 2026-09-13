@@ -35,6 +35,12 @@ vi.mock("@dotli/protocol/client", () => ({
   },
 }));
 
+const device = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock("@dotli/shared/device", () => ({
+  isMobileDevice: () => device.mobile,
+}));
+
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -43,12 +49,13 @@ async function flushMicrotasks(): Promise<void> {
 function installTopbarDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
-    <button id="auth-button" disabled></button>
+    <button id="auth-button" title="Connecting..." aria-label="Connecting..." aria-busy="true" disabled></button>
     <div id="auth-modal-backdrop">
       <div id="auth-modal-title"></div>
       <div id="auth-modal-qr"></div>
       <div id="auth-modal-reason"></div>
       <div id="auth-modal-hint"></div>
+      <a id="auth-modal-get-app" hidden></a>
       <button id="auth-modal-close"></button>
     </div>
     <div id="user-popover">
@@ -74,6 +81,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  device.mobile = false;
   localStorage.clear();
   sharedAuth.storage.clear();
   sharedAuth.listeners.clear();
@@ -612,6 +620,210 @@ describe("topbar login cancellation", () => {
     expect(modalText).toContain("submit RPC error: Invalid Transaction");
     expect(modalText).toContain("Retry");
   });
+
+  it("As a new user, I am told when I declined the login on my phone", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "Login request denied",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("Login was declined");
+    expect(modalText).toContain("Retry");
+  });
+
+  it("As a new user, I am told when Polkadot Mobile did not answer in time", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "runtime call timed out",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("Login timed out");
+    expect(modalText).toContain("Retry");
+  });
+
+  it("As a new user, I am not offered a retry when this page cannot log in at all", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "Login is not supported by this host",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("Login is not available here");
+    expect(modalText).not.toContain("Retry");
+  });
+
+  it("As a new user, a login runtime that fails to load reads as a page problem rather than a phone problem", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    // Observed with the asset server down: the auth worker never booted.
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "worker init failed: undefined",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("The login service did not start");
+    expect(modalText).toContain("Retry");
+  });
+
+  it("As a new user, a chunk that fails to fetch is a runtime problem, not a lost phone connection", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason:
+            "TypeError: Failed to fetch dynamically imported module: http://localhost:5173/assets/web-1228KImM.js",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("The login service did not start");
+    expect(modalText).not.toContain("Connection to Polkadot Mobile was lost");
+  });
+
+  it("As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports", async () => {
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "LoginFailed",
+          kind: "Other",
+          reason: "Host failure",
+        },
+      }),
+    );
+
+    const modalText = document.getElementById("auth-modal-qr")?.textContent;
+    expect(modalText).toContain("Login did not complete");
+    expect(
+      document.querySelector("#auth-modal-qr .auth-modal-error")?.textContent,
+    ).toBe("Host failure");
+    expect(modalText).toContain("Retry");
+  });
+});
+
+describe("topbar first login guidance", () => {
+  it("As a user, the login button says it is connecting until the top bar is ready", async () => {
+    // Given
+    installTopbarDom();
+    const button = document.getElementById("auth-button");
+    expect(button?.title).toBe("Connecting...");
+    expect(button?.getAttribute("aria-busy")).toBe("true");
+
+    // When
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    // Then
+    expect(button?.title).toBe("Login with Polkadot Mobile");
+    expect(button?.getAttribute("aria-label")).toBe(
+      "Login with Polkadot Mobile",
+    );
+    expect(button?.hasAttribute("aria-busy")).toBe(false);
+    expect(button?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("As a new user on a phone without the app, the login modal shows me where to get Polkadot Mobile", async () => {
+    // Given
+    device.mobile = true;
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const getApp = document.getElementById("auth-modal-get-app");
+
+    // When
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+        },
+      }),
+    );
+
+    // Then
+    expect(getApp?.hidden).toBe(false);
+    expect(getApp?.getAttribute("href")).toBe(
+      "https://docs.polkadot.com/apps/",
+    );
+
+    // When the wallet has approved, installing the app is no longer the ask.
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: { tag: "Authenticating" },
+      }),
+    );
+
+    // Then
+    expect(getApp?.hidden).toBe(true);
+  });
+
+  it("As a desktop user scanning with my phone, the modal does not offer an app install link", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+
+    // When
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: {
+          tag: "Pairing",
+          deeplink: "polkadotapp://pair?handshake=test",
+          label: "localhost:3000",
+        },
+      }),
+    );
+
+    // Then
+    expect(document.getElementById("auth-modal-get-app")?.hidden).toBe(true);
+  });
 });
 
 describe("topbar boot rehydration", () => {
@@ -933,7 +1145,7 @@ describe("topbar popover keyboard access", () => {
     initTopBar();
     document.getElementById("mode-button")?.click();
     const group = document.querySelector<HTMLElement>(
-      '[role="radiogroup"][aria-label="Backend"]',
+      '[role="radiogroup"][aria-label="Network Transport"]',
     );
     expect(group).not.toBeNull();
     const toggle = document.querySelector('[role="switch"]');
