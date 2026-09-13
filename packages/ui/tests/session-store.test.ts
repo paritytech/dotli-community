@@ -8,6 +8,8 @@ import {
   createSessionStoreAdapters,
   deleteLocalWalletSecret,
   emitPersistedSessionUiState,
+  exportLocalWalletMnemonic,
+  importLocalWalletMnemonic,
   LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
   readLocalWalletSecret,
@@ -412,6 +414,92 @@ describe("session-store host callbacks", () => {
     await expect(readLocalWalletSecret()).resolves.toBeUndefined();
   });
 
+  it("exports an existing 32-byte identity as a phrase and restores exactly the native activation entropy", async () => {
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    try {
+      const mnemonic = await exportLocalWalletMnemonic();
+      expect(mnemonic.split(" ")).toHaveLength(24);
+      await deleteLocalWalletSecret();
+      await importLocalWalletMnemonic(mnemonic);
+      const restored = await readLocalWalletSecret();
+      try {
+        // Native root and product/identity keys are deterministic from these
+        // bytes; converting to a BIP-39 seed instead would fail this contract.
+        expect(restored).toEqual(secret);
+      } finally {
+        restored?.fill(0);
+      }
+    } finally {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("rejects an invalid import without replacing custody and resets only experimental grants on valid import", async () => {
+    const mobile = createSessionStoreAdapters();
+    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
+    await mobile.writeCoreStorage(grant, new Uint8Array([2]));
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    const experimental = createSessionStoreAdapters();
+    await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
+    await experimental.writeCoreStorage(grant, new Uint8Array([4]));
+    const stopWorkers = vi.fn();
+    try {
+      // Twelve known English words with an invalid checksum must not pass.
+      await expect(
+        importLocalWalletMnemonic("abandon ".repeat(12), stopWorkers),
+      ).rejects.toThrow();
+      expect(stopWorkers).not.toHaveBeenCalled();
+      const unchanged = await readLocalWalletSecret();
+      expect(unchanged).toEqual(secret);
+      unchanged?.fill(0);
+      expect(await experimental.readCoreStorage(grant)).toEqual(
+        new Uint8Array([4]),
+      );
+      expect(await experimental.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+        new Uint8Array([3]),
+      );
+
+      // A second tab has its own module state but shares origin storage.
+      vi.resetModules();
+      const otherTab = await import("@dotli/ui/host-callbacks/SessionStore");
+      // Public BIP-39 test vector, not a real user's phrase.
+      await otherTab.importLocalWalletMnemonic(
+        "abandon ".repeat(11) + "about",
+        stopWorkers,
+      );
+      const imported = await readLocalWalletSecret();
+      expect(imported).toEqual(new Uint8Array(16));
+      imported?.fill(0);
+      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+      expect(
+        await experimental.readCoreStorage(AUTH_SESSION_KEY),
+      ).toBeUndefined();
+      const replacement = otherTab.createSessionStoreAdapters();
+      await replacement.writeCoreStorage(grant, new Uint8Array([6]));
+      // A retired worker cannot write its old grant back after replacement.
+      await experimental.writeCoreStorage(grant, new Uint8Array([5]));
+      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+      await experimental.clearCoreStorage(grant);
+      expect(await replacement.readCoreStorage(grant)).toEqual(
+        new Uint8Array([6]),
+      );
+      expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
+      expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+        new Uint8Array([1]),
+      );
+    } finally {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+    }
+  });
+
   it("ignores but preserves an existing experimental wallet in production", async () => {
     buildFlags.debug = true;
     const { secret } = await createLocalWalletSecret();
@@ -427,6 +515,10 @@ describe("session-store host callbacks", () => {
       await expect(readLocalWalletSecret()).resolves.toBeUndefined();
       await expect(createLocalWalletSecret()).rejects.toThrow();
       await expect(deleteLocalWalletSecret()).rejects.toThrow();
+      await expect(exportLocalWalletMnemonic()).rejects.toThrow();
+      await expect(
+        importLocalWalletMnemonic("abandon ".repeat(11) + "about"),
+      ).rejects.toThrow();
       await emitPersistedSessionUiState();
       expect(events).toEqual([]);
       buildFlags.debug = true;

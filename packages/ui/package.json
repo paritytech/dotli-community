@@ -38,6 +38,7 @@
     "@parity/truapi-host": "file:../../vendor/truapi-host",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@scure/base": "^2.2.0",
+    "@scure/bip39": "^2.4.0",
     "@zxing/browser": "^0.1.5",
     "buffer": "^6.0.3",
     "neverthrow": "^8.2.0",
