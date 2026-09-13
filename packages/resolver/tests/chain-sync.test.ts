@@ -491,7 +491,7 @@ describe("Light client sync reporting is opt-in", () => {
 });
 
 describe("Chain detail reporting works", () => {
-  it("As an engineer, a chain's second connection cannot downgrade a database hit to a miss", async () => {
+  it("As a user returning to a site, the chain's second connection cannot misreport my warm start as cold", async () => {
     // Given Bulletin opens two connections and the store is read at most once
     // per chain, so the second load always reports cold.
     const mod = await import("@dotli/resolver/chain-sync");
@@ -508,7 +508,7 @@ describe("Chain detail reporting works", () => {
     expect(seen).toEqual([{ chain: "bulletin", dbCache: "hit" }]);
   });
 
-  it("As an engineer, a late subscriber replays the first answer, not the last", async () => {
+  it("As a user, a panel opened late still shows my warm start rather than the second connection's miss", async () => {
     // Given
     const mod = await import("@dotli/resolver/chain-sync");
     const { getActiveServicesConfig } = await import("@dotli/config/network");

@@ -23,7 +23,7 @@ import type {
   RingLocationJunction,
 } from "@parity/truapi";
 import { showPreimageSubmitModal } from "../preimage-modal";
-import { UI_ERRORS } from "../errors";
+import { ERRORS } from "../errors";
 import {
   blockingModalAbortError,
   createBlockingModalScope,
@@ -444,7 +444,7 @@ async function handleConfirmationReview(
     return true;
   }
   if (decision === "dismissed" && review.tag === "IdentityDisclosure") {
-    throw new Error(UI_ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
+    throw new Error(ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
   }
   return false;
 }

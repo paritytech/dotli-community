@@ -1,6 +1,6 @@
 import type { ProductStorage } from "@parity/truapi-host";
 import { base64 } from "@scure/base";
-import { UI_ERRORS } from "../errors";
+import { ERRORS } from "../errors";
 
 export function createLocalStorageRead(): ProductStorage["read"] {
   return (key) => {
@@ -12,7 +12,7 @@ export function createLocalStorageRead(): ProductStorage["read"] {
       return Promise.resolve(base64.decode(raw));
     } catch (cause) {
       return Promise.reject(
-        new Error(UI_ERRORS.STORAGE_READ_FAILED, { cause }),
+        new Error(ERRORS.STORAGE_READ_FAILED, { cause }),
       );
     }
   };
@@ -25,7 +25,7 @@ export function createLocalStorageWrite(): ProductStorage["write"] {
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(
-        new Error(UI_ERRORS.STORAGE_WRITE_FAILED, { cause }),
+        new Error(ERRORS.STORAGE_WRITE_FAILED, { cause }),
       );
     }
   };
@@ -38,7 +38,7 @@ export function createLocalStorageClear(): ProductStorage["clear"] {
       return Promise.resolve();
     } catch (cause) {
       return Promise.reject(
-        new Error(UI_ERRORS.STORAGE_CLEAR_FAILED, { cause }),
+        new Error(ERRORS.STORAGE_CLEAR_FAILED, { cause }),
       );
     }
   };

@@ -8,7 +8,7 @@
 // place: a product may branch on the text, so a reworded message is a breaking
 // change rather than a copy edit.
 
-export const UI_ERRORS = {
+export const ERRORS = {
   PREIMAGE_SUBMIT_DENIED: "User denied preimage submit",
   DECRYPTION_CANCELLED: "User cancelled decryption",
   ALIAS_PERMISSION_DENIED: "User denied alias permission",

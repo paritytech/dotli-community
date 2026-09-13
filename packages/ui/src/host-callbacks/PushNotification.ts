@@ -14,7 +14,7 @@ import {
   type BlockingModalScope,
 } from "../blocking-modal-queue";
 import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
-import { UI_ERRORS } from "../errors";
+import { ERRORS } from "../errors";
 
 export function createNotificationAdapters(
   label: string,
@@ -45,7 +45,7 @@ export function createNotificationAdapters(
       modalScope,
     );
     if (!granted) {
-      throw new Error(UI_ERRORS.NOTIFICATIONS_PERMISSION_DENIED);
+      throw new Error(ERRORS.NOTIFICATIONS_PERMISSION_DENIED);
     }
 
     const result = await scheduleNotification({
@@ -56,7 +56,7 @@ export function createNotificationAdapters(
       scheduledAt: scheduledAt === undefined ? null : Number(scheduledAt),
     });
     if (!result.ok) {
-      throw new Error(UI_ERRORS.SCHEDULE_LIMIT_REACHED);
+      throw new Error(ERRORS.SCHEDULE_LIMIT_REACHED);
     }
 
     if (result.immediate) {

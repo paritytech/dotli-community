@@ -21,7 +21,7 @@ import {
   type BlockingModalScope,
 } from "../blocking-modal-queue";
 import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
-import { UI_ERRORS } from "../errors";
+import { ERRORS } from "../errors";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -134,12 +134,12 @@ async function decidePromptPermissionWhenActive(
   }
   // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
-    throw new Error(UI_ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
+    throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
   const decision = await showPermissionRequestModal(label, name, signal);
   throwIfAborted(signal);
   if (decision === "dismissed") {
-    throw new Error(UI_ERRORS.PERMISSION_DIALOG_DISMISSED);
+    throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
   if (decision === "denied") {
     throwIfAborted(signal);

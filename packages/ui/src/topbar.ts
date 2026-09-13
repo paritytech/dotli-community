@@ -70,7 +70,7 @@ import {
   type BlockingModalCoordinator,
   type BlockingModalScope,
 } from "./blocking-modal-queue";
-import { UI_ERRORS } from "./errors";
+import { ERRORS } from "./errors";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -3125,7 +3125,7 @@ function ensureAuthModalLease(): void {
   }
 
   if (blockingModalCoordinator === null) {
-    throw new Error(UI_ERRORS.MISSING_MODAL_COORDINATOR);
+    throw new Error(ERRORS.MISSING_MODAL_COORDINATOR);
   }
   const scope = blockingModalCoordinator.createScope();
   authModalScope = scope;

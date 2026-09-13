@@ -88,7 +88,7 @@ const OPTS = {
 };
 
 describe("A resolution is traced as one unit", () => {
-  it("As an engineer, the load opens one root span carrying what was asked for", () => {
+  it("As a user, my page load is recorded as one trace carrying what I asked for", () => {
     // Given / When
     startResolutionTrace(OPTS);
 
@@ -103,7 +103,7 @@ describe("A resolution is traced as one unit", () => {
     });
   });
 
-  it("As an engineer, a chain gets its span only once it is first heard from", () => {
+  it("As a user, a chain appears in my load's trace only once it has actually started", () => {
     // Given Bulletin is created late, once the content phase starts, so a span
     // opened at boot would claim it was idle rather than absent.
     const trace = startResolutionTrace(OPTS);
@@ -118,7 +118,7 @@ describe("A resolution is traced as one unit", () => {
     expect(span("chain.bulletin")?.parent).toBe(span("resolution"));
   });
 
-  it("As an engineer, each chain phase becomes its own span under that chain", () => {
+  it("As a user, my trace shows how long each chain spent in every phase", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -139,7 +139,7 @@ describe("A resolution is traced as one unit", () => {
     }
   });
 
-  it("As an engineer, a phase span closes when the next phase opens", () => {
+  it("As a user, the time a chain spent connecting is recorded as a closed interval", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -151,7 +151,7 @@ describe("A resolution is traced as one unit", () => {
     expect(span("chain.relay.connecting")?.ended).toBe(true);
   });
 
-  it("As an engineer, the warp distance is reported against the chain", () => {
+  it("As a user, my trace records how far the relay had to catch up", () => {
     // Given a chain can enter `syncing` more than once, so these belong on the
     // chain rather than split across however many syncing spans it opened.
     const trace = startResolutionTrace(OPTS);
@@ -180,7 +180,7 @@ describe("A resolution is traced as one unit", () => {
     });
   });
 
-  it("As an engineer, a chain's cache result and peers reach its span", () => {
+  it("As a user, my trace records whether a chain started warm and who it was talking to", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
     trace.chainSync({ chain: "relay", syncKind: "connecting" });
@@ -205,7 +205,7 @@ describe("A resolution is traced as one unit", () => {
 });
 
 describe("A resolution reports how it ended", () => {
-  it("As an engineer, a rendered load records the outcome and its duration", () => {
+  it("As a user, my successful load is recorded with how long it took", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -222,7 +222,7 @@ describe("A resolution reports how it ended", () => {
     expect(root?.ended).toBe(true);
   });
 
-  it("As an engineer, a load nobody waited for is still reported", () => {
+  it("As a user who gave up waiting, my abandoned load is still reported", () => {
     // Given a slow link can sit on the loading screen forever without ever
     // reaching an error page, so the failure is invisible unless it is flushed.
     const trace = startResolutionTrace(OPTS);
@@ -237,7 +237,7 @@ describe("A resolution reports how it ended", () => {
     expect(span("resolution")?.ended).toBe(true);
   });
 
-  it("As an engineer, a failure keeps its reason", () => {
+  it("As a user whose load failed, the reason it failed is kept", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -251,7 +251,7 @@ describe("A resolution reports how it ended", () => {
     });
   });
 
-  it("As an engineer, the first outcome wins so a later one cannot rewrite history", () => {
+  it("As a user, navigating away after a successful load cannot rewrite its outcome", () => {
     // Given a page that renders and is then navigated away from fires both.
     const trace = startResolutionTrace(OPTS);
 
@@ -265,7 +265,7 @@ describe("A resolution reports how it ended", () => {
     });
   });
 
-  it("As an engineer, every open chain span is closed when the trace ends", () => {
+  it("As a user, a chain that never finished cannot hold my load's trace open", () => {
     // Given a chain that never reached ready.
     const trace = startResolutionTrace(OPTS);
     trace.chainSync({ chain: "asset-hub", syncKind: "connecting" });
@@ -277,7 +277,7 @@ describe("A resolution reports how it ended", () => {
     expect(spans.every((s) => s.ended)).toBe(true);
   });
 
-  it("As an engineer, the bar is reported as it stood during the load", () => {
+  it("As a user, the progress I actually saw is reported, not a forced 100%", () => {
     // Given the loading screen forces the bar to 100% and removes it before
     // `finish` runs, so reading the DOM at the end reports 100% every time and
     // the drift this measurement exists to catch would be invisible.
@@ -294,7 +294,7 @@ describe("A resolution reports how it ended", () => {
     expect(span("resolution")?.attributes.bar_at_render).toBe(62);
   });
 
-  it("As an engineer, the bytes it moved are on the root", () => {
+  it("As a user, my trace records how much the load downloaded", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 

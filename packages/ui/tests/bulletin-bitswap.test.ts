@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { onContentProgress, __testing } from "@dotli/ui/bulletin-bitswap";
 
 describe("Content progress reporting works", () => {
-  it("As an engineer, every registered listener receives each progress report", () => {
+  it("As a user, my download progress reaches the loading bar and the trace alike", () => {
     // Given the resolution trace and the loading bar both subscribe, and a
     // single callback slot would hand the stream to whichever came last.
     const first: number[] = [];
