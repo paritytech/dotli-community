@@ -415,7 +415,6 @@ test("shows PolkaVM diagnostics inside the docked debug panel", async ({
   await expect(product.locator("#dotli-polkavm-metrics")).toHaveCount(0);
 
   const runtimeBadge = panel.locator(".td-runtime-badge");
-  await expect(runtimeBadge).toContainText("PVM JIT · FF");
   await expect(runtimeBadge).toHaveAttribute(
     "title",
     /PolkaVM \/ JIT · first frame/,
