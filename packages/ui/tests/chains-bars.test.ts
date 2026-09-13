@@ -8,7 +8,6 @@ vi.mock("@dotli/protocol/client", () => ({
   writeSharedAuthStorage: async () => undefined,
   clearSharedAuthStorage: async () => undefined,
   subscribeSharedAuthStorage: () => () => undefined,
-  onProtocolChainSync: () => () => undefined,
 }));
 
 const BAR = ".chains-bar[data-block]";

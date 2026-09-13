@@ -70,12 +70,10 @@ function sampleRate(): number {
  *
  * Decided at the start, because Sentry fixes a trace's sampling when its root
  * opens and a failure discovered 30 seconds later cannot retroactively add
- * children. A load that has already failed once this session is always
- * sampled, which is the closest thing to "keep the interesting ones" that the
- * up-front decision allows.
+ * children.
  */
-function sampleFor(retryAfterFailure: boolean): boolean {
-  return retryAfterFailure || Math.random() < sampleRate();
+function sampleFor(): boolean {
+  return Math.random() < sampleRate();
 }
 
 interface ChainState {
@@ -145,9 +143,6 @@ export interface ResolutionTraceOptions {
   domain: string;
   network: string;
   backend: string;
-  providerVersion?: string;
-  /** Forces sampling: a retry means the previous attempt already failed. */
-  retryAfterFailure?: boolean;
 }
 
 /**
@@ -168,7 +163,7 @@ export function startResolutionTrace(
   const at = (): number => epochStart + (performance.now() - perfStart);
   const sinceStart = (): number => performance.now() - perfStart;
 
-  const sampled = sampleFor(opts.retryAfterFailure === true);
+  const sampled = sampleFor();
 
   const root = m.open("resolution", {
     root: true,
@@ -178,9 +173,6 @@ export function startResolutionTrace(
       network: opts.network,
       backend: opts.backend,
       sampled_children: sampled,
-      ...(opts.providerVersion !== undefined
-        ? { provider_version: opts.providerVersion }
-        : {}),
     },
   });
 
@@ -292,7 +284,8 @@ export function startResolutionTrace(
       }
       const state = chainOf(event.chain);
       if (event.dbCache !== undefined) {
-        state.dbCache = event.dbCache;
+        // First answer wins: Bulletin's second connection always misses.
+        state.dbCache ??= event.dbCache;
       }
       if (event.peers !== undefined) {
         state.peers = event.peers;

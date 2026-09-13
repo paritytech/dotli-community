@@ -489,3 +489,38 @@ describe("Light client sync reporting is opt-in", () => {
     expect(pipe).toBeNull();
   });
 });
+
+describe("Chain detail reporting works", () => {
+  it("As an engineer, a chain's second connection cannot downgrade a database hit to a miss", async () => {
+    // Given Bulletin opens two connections and the store is read at most once
+    // per chain, so the second load always reports cold.
+    const mod = await import("@dotli/resolver/chain-sync");
+    const { getActiveServicesConfig } = await import("@dotli/config/network");
+    const genesis = getActiveServicesConfig().bulletin.genesis;
+    const seen: unknown[] = [];
+    mod.onChainDetail((detail) => seen.push(detail));
+
+    // When
+    mod.reportDbCache(genesis, true);
+    mod.reportDbCache(genesis, false);
+
+    // Then
+    expect(seen).toEqual([{ chain: "bulletin", dbCache: "hit" }]);
+  });
+
+  it("As an engineer, a late subscriber replays the first answer, not the last", async () => {
+    // Given
+    const mod = await import("@dotli/resolver/chain-sync");
+    const { getActiveServicesConfig } = await import("@dotli/config/network");
+    const genesis = getActiveServicesConfig().bulletin.genesis;
+    mod.reportDbCache(genesis, true);
+    mod.reportDbCache(genesis, false);
+
+    // When
+    const seen: unknown[] = [];
+    mod.onChainDetail((detail) => seen.push(detail));
+
+    // Then
+    expect(seen).toEqual([{ chain: "bulletin", dbCache: "hit" }]);
+  });
+});

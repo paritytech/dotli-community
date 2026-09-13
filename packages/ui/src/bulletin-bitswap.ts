@@ -40,13 +40,18 @@ export interface ContentProgress {
 }
 
 type ProgressCallback = (progress: ContentProgress) => void;
-let progressCallback: ProgressCallback | null = null;
+// A set, not a slot: the resolution trace and the loading bar both listen,
+// and a slot would hand the stream to whichever registered last.
+const progressCallbacks = new Set<ProgressCallback>();
 let bytesFetched = 0;
 let totalBytes: number | null = null;
 let firstBlockAt = 0;
 
-export function onContentProgress(cb: ProgressCallback): void {
-  progressCallback = cb;
+export function onContentProgress(cb: ProgressCallback): () => void {
+  progressCallbacks.add(cb);
+  return () => {
+    progressCallbacks.delete(cb);
+  };
 }
 
 function readDagTotal(bytes: Uint8Array): number | null {
@@ -119,11 +124,14 @@ function noteBlock(bytes: Uint8Array): void {
   }
   bytesFetched += bytes.length;
   const elapsed = performance.now() - firstBlockAt;
-  progressCallback?.({
+  const progress = {
     bytesFetched,
     totalBytes,
     bytesPerSecond: elapsed > 0 ? (bytesFetched / elapsed) * 1000 : 0,
-  });
+  };
+  for (const cb of progressCallbacks) {
+    cb(progress);
+  }
 }
 
 const PER_CALL_TIMEOUT_MS = 60_000;
@@ -357,3 +365,6 @@ export function listenForSandboxBitswap(): void {
       });
   });
 }
+
+/** Internal seams for unit tests. Not part of the module's API. */
+export const __testing = { noteBlock };

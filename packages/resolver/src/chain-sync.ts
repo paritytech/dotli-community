@@ -160,6 +160,12 @@ export function reportDbCache(genesisHash: string, warm: boolean): void {
   if (chain === null) {
     return;
   }
+  // First answer wins. Bulletin opens two connections and the store is read
+  // at most once per chain, so the second load always misses and would
+  // otherwise overwrite a genuine hit.
+  if (detailHistory.has(`${chain}:dbCache`)) {
+    return;
+  }
   emitChainDetail({ chain, dbCache: warm ? "hit" : "miss" });
 }
 
@@ -193,10 +199,15 @@ export function onChainSync(cb: SyncCallback): () => void {
 
 function emitChainSync(event: ChainSyncEvent): void {
   if (event.kind === "peers") {
-    // Repeating an unchanged count would wake every listener once a second
-    // for nothing.
+    // Repeating an unchanged report would wake every listener once a second
+    // for nothing. `isSyncing` is part of the report, so a flip with a stable
+    // count still goes out.
     const prev = syncHistory.get(`${event.chain}:peers`);
-    if (prev !== undefined && prev.peers === event.peers) {
+    if (
+      prev !== undefined &&
+      prev.peers === event.peers &&
+      prev.isSyncing === event.isSyncing
+    ) {
       return;
     }
   } else if (event.kind === "stalled") {

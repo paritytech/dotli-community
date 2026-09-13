@@ -96,15 +96,7 @@ test.describe("Resolution across chain backends", () => {
         () => {
           const seen = (window as unknown as { __dotliPeerCounts?: unknown[] })
             .__dotliPeerCounts;
-          if (seen !== undefined && seen.length > 0) {
-            return true;
-          }
-          return ["relay", "assethub", "bulletin"].some((chain) =>
-            /[1-9]/.test(
-              document.getElementById(`metric-peers-${chain}`)?.textContent ??
-                "",
-            ),
-          );
+          return seen !== undefined && seen.length > 0;
         },
         undefined,
         { timeout: TIMEOUT_MS },

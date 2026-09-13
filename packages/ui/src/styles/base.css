@@ -395,37 +395,6 @@ body {
   backdrop-filter: none;
 }
 
-/* Network panel */
-.chains-table {
-  width: calc(100% - 28px);
-  margin: 2px 14px 0;
-  border-collapse: collapse;
-  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
-  font-size: 11px;
-}
-.chains-table th,
-.chains-table td {
-  text-align: right;
-  padding: 4px 0 4px 12px;
-  white-space: nowrap;
-}
-.chains-table tr th:first-child {
-  text-align: left;
-  padding-left: 0;
-  font-weight: 500;
-}
-.chains-table tr:first-child th {
-  /* 6.12:1 */
-  color: #8f8f8f;
-  font-weight: 400;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.chains-table td,
-.chains-table tr th:first-child {
-  /* 7.85:1 */
-  color: #a3a3a3;
-}
-
 /* A labelled strip per chain, bars sitting on a baseline. Generously spaced,
    because the gaps are what make a missing block read as missing. */
 .chains-group {

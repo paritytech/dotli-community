@@ -514,17 +514,6 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
 }
 
 /**
- * Chains advertised to sandboxed dApps in **RPC-gateway** mode: the curated
- * system chains that have configured WSS RPC endpoints. The Bulletin chain is
- * intentionally excluded because its content is served through IPFS gateways.
- * This list controls feature advertisement, not access control: the shared
- * Rust-core connection callback also serves core-owned Bulletin operations.
- *
- * Single source of truth shared by the host's chain-support advertisement
- * (`isRemoteChainSupported`) and the gateway provider factory
- * (`createRpcChainProvider`).
- */
-/**
  * The four chains this app runs, named by what they do for the visitor.
  *
  * `ServicesConfig` already implies exactly this set by having exactly these
@@ -577,6 +566,17 @@ export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
   );
 }
 
+/**
+ * Chains advertised to sandboxed dApps in **RPC-gateway** mode: the curated
+ * system chains that have configured WSS RPC endpoints. The Bulletin chain is
+ * intentionally excluded because its content is served through IPFS gateways.
+ * This list controls feature advertisement, not access control: the shared
+ * Rust-core connection callback also serves core-owned Bulletin operations.
+ *
+ * Single source of truth shared by the host's chain-support advertisement
+ * (`isRemoteChainSupported`) and the gateway provider factory
+ * (`createRpcChainProvider`).
+ */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
   return [cfg.relay, cfg.assethub, cfg.people].filter((c) => c.rpcs.length > 0);

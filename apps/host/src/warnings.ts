@@ -7,7 +7,7 @@
 // so every line here says what is happening and, where it can, why. The copy
 // lives beside `errors.ts` because both are the host's user-facing words.
 
-import type { ChainKey, ChainSyncKind } from "@dotli/resolver/chain-sync";
+import type { ChainKey } from "@dotli/resolver/chain-sync";
 
 /**
  * How long a chain may sit in one lifecycle state before it owes an
@@ -31,8 +31,6 @@ export function isCriticalChain(chain: ChainKey): chain is CriticalChain {
 /** Everything known about a chain that has stopped moving. */
 export interface StallFacts {
   chain: CriticalChain;
-  /** The lifecycle state it is stuck in. */
-  state: ChainSyncKind;
   /** Live peer count, or null when no sample has come back yet. */
   peers: number | null;
   /** Bytes per second across every network the shell can see, or null. */

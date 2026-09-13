@@ -80,6 +80,7 @@ const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
+let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
 const chainDetailListeners = new Set<
   (event: ProtocolChainDetailEnvelope) => void
@@ -177,6 +178,9 @@ export function resetProtocolFrame(): void {
 function resetProtocolFrameState(reason?: Error): void {
   protocolIframe?.remove();
   protocolIframe = null;
+  // The rebuilt frame's byte meter restarts at zero, and the monotonic gate
+  // would otherwise drop every report until it passed the old total.
+  lastNetBytesTotal = 0;
   hostFramePromise = null;
   protocolReadyPromise = null;
   protocolReady = false;
@@ -274,11 +278,15 @@ function bindMessageListener(): void {
         return;
       }
       case "net-bytes": {
-        // Cumulative and monotonic by construction, so anything else is
-        // spoofed traffic rather than a stale message.
-        if (!Number.isFinite(msg.received) || msg.received < 0) {
+        // Cumulative, so a total below the last one is spoofed or corrupt
+        // traffic and would feed a negative rate into the network panel.
+        if (
+          !Number.isFinite(msg.received) ||
+          msg.received < lastNetBytesTotal
+        ) {
           return;
         }
+        lastNetBytesTotal = msg.received;
         broadcast(netBytesListeners, msg, "Net bytes");
         return;
       }

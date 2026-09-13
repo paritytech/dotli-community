@@ -28,7 +28,6 @@ import {
 import {
   createRemoteChainProvider,
   isRemoteChainSupported,
-  onProtocolChainSync,
 } from "@dotli/protocol/client";
 import {
   getCacheSettings,
@@ -436,7 +435,6 @@ export function initTopBar(
   initModeToggle();
   setBlockSource(createBlockSource());
   initChainsPopover();
-  watchChainSync();
 
   // Permissions
   initPermissions();
@@ -1223,16 +1221,6 @@ function createPermissionDropdown(
   return wrap;
 }
 
-/**
- * Live connection state, fed by the chain-sync subscription.
- *
- * `lifecycle_unstable_follow` is never unfollowed, so `stalled` and
- * `recovered` keep arriving long after the load finished. That makes the
- * status line genuinely live, unlike the peer counts, whose polling stops
- * once a chain is up and so have to be queried when the panel opens.
- */
-const chainSyncState = new Map<string, string>();
-let onStatusChange: (() => void) | null = null;
 let unsubscribeNetwork: (() => void) | null = null;
 let pendingTicker: ReturnType<typeof setInterval> | null = null;
 
@@ -1241,16 +1229,6 @@ function stopPendingTicker(): void {
     clearInterval(pendingTicker);
     pendingTicker = null;
   }
-}
-
-function watchChainSync(): void {
-  onProtocolChainSync((event) => {
-    if (event.syncKind === "peers") {
-      return;
-    }
-    chainSyncState.set(event.chain, event.syncKind);
-    onStatusChange?.();
-  });
 }
 
 /**
@@ -1757,7 +1735,6 @@ function initChainsPopover(): void {
     unsubscribeNetwork = null;
     stopPendingTicker();
     stopNetworkWatch();
-    onStatusChange = null;
   };
   // No `stopPropagation`. The shared outside-click closer has to see this
   // click to shut Settings, which sits at the same fixed position and would

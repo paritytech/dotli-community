@@ -1264,15 +1264,6 @@ async function main(): Promise<void> {
     network: getNetwork(),
     backend: chainBackend,
   });
-  // A load the visitor walks away from is the interesting one: today a slow
-  // link can sit on the loading screen indefinitely without ever reaching an
-  // error page, so without this the trace is simply never sent and the failure
-  // is invisible. `pagehide` fires on navigation away and on tab close, where
-  // `unload` does not fire reliably on mobile Safari.
-  window.addEventListener("pagehide", () => {
-    trace.finish("abandoned");
-  });
-
   onProtocolChainSync((event) => {
     trace.chainSync(event);
   });
@@ -1374,7 +1365,6 @@ async function main(): Promise<void> {
         setTimeout(() => {
           const message = describeStall({
             chain,
-            state,
             peers: livePeers.get(chain) ?? null,
             bytesPerSecond: liveBytesPerSecond,
             reason: stallReason.get(chain),
