@@ -1,0 +1,16 @@
+{
+  "$schema": "epoca:experimental-product/v1",
+  "$v": 1,
+  "kind": "framebuffer",
+  "appVersion": [0, 1, 0],
+  "runtime": {
+    "kind": "polkavm",
+    "entrypoint": "app.polkavm"
+  },
+  "modalities": {
+    "framebuffer": {
+      "abiVersion": 1,
+      "controls": ["Pointer", "Keyboard"]
+    }
+  }
+}

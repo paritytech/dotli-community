@@ -1,41 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Raw chainHead-backed contract-storage API.
-//
-// Reads a Revive contract slot via direct `chainHead_v1_storage` queries,
-// no runtime call or metadata exchange involved.
-//
-// A slot is read in two steps, mirroring `ReviveApi::get_storage`:
-//   1. read `Revive::AccountInfoOf[address]` from the MAIN trie, decode trie_id
-//   2. read `blake2_256(slot)` from the contract's CHILD trie trie_id
-//
-// Callers pin both `bestHash` and `trie_id` once per logical multi-slot read
-// (see `access-raw-storage.ts`). The API itself does NOT cache `trie_id`
-// across calls, because a contract redeploy would silently return stale
-// data otherwise.
+// Raw chainHead-backed contract storage, without runtime calls or metadata.
+// A logical read owns one best block across AccountInfoOf and every child slot.
+// Only current fork references and outstanding reads retain finalized history.
 
-import type { SubstrateClient } from "@polkadot-api/substrate-client";
+import type {
+  FollowResponse,
+  SubstrateClient,
+} from "@polkadot-api/substrate-client";
 import { StopError } from "@polkadot-api/substrate-client";
 import { Twox128, Blake2256, Hex } from "@polkadot-api/substrate-bindings";
 import { fromHex, toHex, mergeUint8 } from "@polkadot-api/utils";
 
 const enc = new TextEncoder();
-
-// Precomputed once: twox128("Revive") ++ twox128("AccountInfoOf").
 const ACCOUNT_INFO_OF_PREFIX = mergeUint8([
   Twox128(enc.encode("Revive")),
   Twox128(enc.encode("AccountInfoOf")),
 ]);
-
-/** SCALE `Vec<u8>` decoder (compact length + bytes), shared across calls. */
 const decodeVecU8 = Hex().dec;
 
-/**
- * Error thrown when an `Api` operation runs after the underlying chainHead
- * follow has stopped. Callers should treat this as "redial needed",
- * distinct from a `null` "slot not set" result.
- */
+/** A dead API generation; the existing resolver owner must redial. */
 export class ApiStoppedError extends Error {
   constructor(cause?: unknown) {
     super("chainHead follow stopped", { cause });
@@ -43,169 +28,295 @@ export class ApiStoppedError extends Error {
   }
 }
 
+/** Valid only inside the withContract callback, at one block and child trie. */
+export interface ContractStorage {
+  readSlot(slotKey: `0x${string}`): Promise<Uint8Array | null>;
+}
+
 export interface Api {
-  /**
-   * Resolves once the chain head is initialized and a block is available.
-   * Rejects with `ApiStoppedError` if the follow dies before then.
-   */
+  /** Rejects with ApiStoppedError if initialization or the generation stops. */
   whenReady(): Promise<void>;
-  /** Latest known best-block hash, or `null` before the first `initialized`. */
-  bestHash(): string | null;
   /**
-   * Walk `Revive::AccountInfoOf[contractAddress]` at `atHash`. Returns the
-   * contract's child-trie id, or `null` if the account is missing or not a
-   * Contract variant. Always queries the network. There is no cache.
+   * Retain the best block before the first await, resolve the contract trie
+   * afresh, and release on callback completion/error. Missing contracts return
+   * null without invoking read. A stopped generation rejects outstanding reads.
    */
-  resolveTrieId(
+  withContract<T>(
     contractAddress: string,
-    atHash: string,
-  ): Promise<Uint8Array | null>;
-  /**
-   * Read a 32-byte EVM storage slot of a Revive contract. Optional `atHash`
-   * and `trieId` let callers pin a multi-slot read to a single block and trie
-   * id (avoids torn reads when smoldot emits `bestBlockChanged` mid-loop).
-   * `null` if unset.
-   */
-  readSlot(
-    contractAddress: string,
-    slotKey: `0x${string}`,
-    atHash?: string,
-    trieId?: Uint8Array,
-  ): Promise<Uint8Array | null>;
-  /**
-   * Subscribe to the chainHead follow stopping. Fires at most once. Returns
-   * an unsubscribe.
-   */
+    read: (storage: ContractStorage) => Promise<T>,
+  ): Promise<T | null>;
+  /** Fires once, including explicit destroy; late subscribers fire immediately. */
   onStop(cb: () => void): () => void;
-  /** Stop the chainHead follow. The owning `SubstrateClient` is NOT destroyed. */
+  /** End this generation, not the caller-owned SubstrateClient. Idempotent. */
   destroy(): void;
 }
 
-/**
- * Build an `Api` over an existing `SubstrateClient`. Opens its own
- * `chainHead` follow (`withRuntime: false`, no metadata fetch) and reads
- * from the best block. The caller owns the client's lifecycle.
- */
+interface Pin {
+  readers: number;
+}
+
 export function createRawApi(client: SubstrateClient): Api {
-  let bestHashRef: string | null = null;
-  let stopped = false;
+  let follow: FollowResponse | undefined = undefined;
+  let bestHash: string | null = null;
+  let finalizedHash: string | null = null;
+  let stopped: ApiStoppedError | null = null;
+  const pins = new Map<string, Pin>();
+  const obsolete = new Set<string>();
   const stopCbs = new Set<() => void>();
-  let resolveReady: (() => void) | null = null;
-  let rejectReady: ((err: unknown) => void) | null = null;
-  const ready = new Promise<void>((res, rej) => {
-    resolveReady = res;
-    rejectReady = rej;
+  const pending = new Set<(error: ApiStoppedError) => void>();
+  const operations = new AbortController();
+  let resolveReady!: () => void;
+  let rejectReady!: (error: ApiStoppedError) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  // Owners can destroy before anyone asks for readiness.
+  void ready.catch(() => {
+    // Rejection remains observable through whenReady().
   });
 
-  function markStopped(err?: unknown): void {
-    if (stopped) {
+  function terminate(cause?: unknown): void {
+    if (stopped !== null) {
       return;
     }
-    stopped = true;
-    if (rejectReady !== null) {
-      // Always wrap so callers can `instanceof ApiStoppedError` to
-      // distinguish "follow died" from a transient network error inside an
-      // operation. The original error is preserved as `cause`.
-      const wrapped =
-        err instanceof ApiStoppedError ? err : new ApiStoppedError(err);
-      rejectReady(wrapped);
-      rejectReady = null;
-      resolveReady = null;
+    stopped =
+      cause instanceof ApiStoppedError ? cause : new ApiStoppedError(cause);
+    bestHash = finalizedHash = null;
+    rejectReady(stopped);
+    for (const reject of pending) {
+      reject(stopped);
+    }
+    pending.clear();
+    // substrate-client unfollow rejects operations with DisjointError and does
+    // not call onFollowError. Set our state first and explicitly cancel reads.
+    operations.abort(stopped);
+    pins.clear();
+    obsolete.clear();
+    try {
+      follow?.unfollow();
+      // eslint-disable-next-line no-restricted-syntax -- teardown can race an already-dead transport.
+    } catch {
+      /* the generation is already closed */
     }
     for (const cb of stopCbs) {
       try {
         cb();
-        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one buggy subscriber must not block the others.
+        // eslint-disable-next-line no-restricted-syntax -- one subscriber must not block the other owners.
       } catch {
-        /* ignore */
+        /* continue notifying */
       }
     }
+    stopCbs.clear();
   }
 
-  const follow = client.chainHead(
+  // Queue once per event turn: synchronous provider initialization can precede
+  // chainHead's return, and release() can run while handling a follow event.
+  let releaseQueued = false;
+  function releaseObsolete(): void {
+    if (releaseQueued || stopped !== null) {
+      return;
+    }
+    releaseQueued = true;
+    queueMicrotask(() => {
+      releaseQueued = false;
+      if (stopped !== null || follow === undefined) {
+        return;
+      }
+      const hashes: string[] = [];
+      for (const hash of obsolete) {
+        if (hash === bestHash || hash === finalizedHash) {
+          continue;
+        }
+        if (pins.get(hash)?.readers !== 0) {
+          continue;
+        }
+        obsolete.delete(hash);
+        pins.delete(hash);
+        hashes.push(hash);
+      }
+      if (hashes.length === 0) {
+        return;
+      }
+      // A failed batch releases no blocks. End this follow rather than retain
+      // its history indefinitely; the existing reconnect owner recreates it.
+      try {
+        void follow.unpin(hashes).catch(terminate);
+      } catch (error) {
+        terminate(error);
+      }
+    });
+  }
+
+  follow = client.chainHead(
     false,
     (event) => {
-      if (event.type === "initialized") {
-        bestHashRef = event.finalizedBlockHashes.at(-1) ?? null;
-        resolveReady?.();
-        resolveReady = null;
-        rejectReady = null;
-      } else if (event.type === "bestBlockChanged") {
-        bestHashRef = event.bestBlockHash;
+      if (stopped !== null) {
+        return;
       }
+      switch (event.type) {
+        case "initialized":
+          for (const hash of event.finalizedBlockHashes) {
+            pins.set(hash, { readers: 0 });
+            obsolete.add(hash);
+          }
+          bestHash = finalizedHash = event.finalizedBlockHashes.at(-1) ?? null;
+          if (bestHash === null) {
+            terminate();
+            return;
+          }
+          resolveReady();
+          break;
+        case "newBlock":
+          pins.set(event.blockHash, { readers: 0 });
+          break;
+        case "bestBlockChanged":
+          bestHash = event.bestBlockHash;
+          break;
+        case "finalized":
+          if (finalizedHash !== null) {
+            obsolete.add(finalizedHash);
+          }
+          finalizedHash = event.finalizedBlockHashes.at(-1) ?? finalizedHash;
+          for (const hash of event.finalizedBlockHashes) {
+            obsolete.add(hash);
+          }
+          for (const hash of event.prunedBlockHashes) {
+            obsolete.add(hash);
+          }
+          break;
+      }
+      releaseObsolete();
     },
-    (err) => {
-      markStopped(err);
-    },
+    terminate,
   );
-
-  async function withStopGuard<T>(fn: () => Promise<T>): Promise<T> {
-    if (stopped) {
-      throw new ApiStoppedError();
-    }
-    try {
-      return await fn();
-    } catch (err) {
-      if (err instanceof StopError) {
-        markStopped(err);
-        throw new ApiStoppedError(err);
-      }
-      throw err;
-    }
+  if (operations.signal.aborted) {
+    follow.unfollow();
   }
 
-  async function resolveTrieId(
-    contractAddress: string,
-    atHash: string,
-  ): Promise<Uint8Array | null> {
-    const addr = fromHex(contractAddress); // 20-byte H160, Identity hasher
-    const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, addr]);
-    const accountInfoHex = await withStopGuard(() =>
-      follow.storage(atHash, "value", toHex(mainKey), null),
-    );
-    if (accountInfoHex === null) {
-      return null;
+  function guard<T>(fn: () => Promise<T>): Promise<T> {
+    if (stopped !== null) {
+      return Promise.reject(stopped);
     }
-    const accountInfo = fromHex(accountInfoHex);
-    // AccountInfo.account_type is an enum: tag 0x00 = Contract(ContractInfo).
-    // ContractInfo.trie_id is its first field, a SCALE `Vec<u8>`.
-    if (accountInfo[0] !== 0x00) {
-      return null;
+    return new Promise<T>((resolve, reject) => {
+      pending.add(reject);
+      let result: Promise<T>;
+      try {
+        result = fn();
+      } catch (error) {
+        pending.delete(reject);
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Contract storage read failed", { cause: error }),
+        );
+        return;
+      }
+      result
+        .then(resolve, (error: unknown) => {
+          if (error instanceof StopError) {
+            terminate(error);
+          }
+          reject(
+            stopped ??
+              (error instanceof Error
+                ? error
+                : new Error("Contract storage read failed", { cause: error })),
+          );
+        })
+        .finally(() => pending.delete(reject));
+    });
+  }
+
+  async function storage(
+    hash: string,
+    pin: Pin,
+    key: string,
+    trie: string | null,
+  ): Promise<string | null> {
+    // An operation also owns a reference: even if a callback throws without
+    // awaiting its last read, unpin must wait for that operation to settle.
+    pin.readers++;
+    try {
+      const activeFollow = follow;
+      if (activeFollow === undefined) {
+        const error = new ApiStoppedError();
+        terminate(error);
+        throw error;
+      }
+      return await guard(() =>
+        activeFollow.storage(hash, "value", key, trie, operations.signal),
+      );
+    } finally {
+      pin.readers--;
+      releaseObsolete();
     }
-    return fromHex(decodeVecU8(accountInfo.slice(1)));
   }
 
   return {
-    whenReady: () => ready,
-    bestHash: () => bestHashRef,
-    resolveTrieId,
-    async readSlot(contractAddress, slotKey, atHash, trieId) {
-      await ready;
-      const hash = atHash ?? bestHashRef;
-      if (hash === null) {
-        return null;
+    whenReady: () => (stopped === null ? ready : Promise.reject(stopped)),
+    async withContract(contractAddress, read) {
+      operations.signal.throwIfAborted();
+      if (bestHash === null) {
+        await ready;
       }
-      const trie = trieId ?? (await resolveTrieId(contractAddress, hash));
-      if (trie === null) {
-        return null;
+      operations.signal.throwIfAborted();
+      const hash = bestHash;
+      const pin = hash === null ? undefined : pins.get(hash);
+      if (hash === null || pin === undefined) {
+        const error = new ApiStoppedError();
+        terminate(error);
+        throw error;
       }
-      const childKey = Blake2256(fromHex(slotKey)); // Key::Fix hash path
-      const valueHex = await withStopGuard(() =>
-        follow.storage(hash, "value", toHex(childKey), toHex(trie)),
-      );
-      return valueHex === null ? null : fromHex(valueHex);
+      pin.readers++;
+      let active = true;
+      try {
+        const mainKey = toHex(
+          mergeUint8([ACCOUNT_INFO_OF_PREFIX, fromHex(contractAddress)]),
+        );
+        const accountHex = await storage(hash, pin, mainKey, null);
+        operations.signal.throwIfAborted();
+        if (accountHex === null) {
+          return null;
+        }
+        const account = fromHex(accountHex);
+        // AccountInfo.account_type: Contract tag 0, then SCALE Vec<u8> trie_id.
+        if (account[0] !== 0) {
+          return null;
+        }
+        const trie = decodeVecU8(account.slice(1));
+        const result = await guard(() =>
+          read({
+            async readSlot(slotKey) {
+              operations.signal.throwIfAborted();
+              if (!active) {
+                throw new Error("Contract storage scope has ended");
+              }
+              const key = toHex(Blake2256(fromHex(slotKey)));
+              const value = await storage(hash, pin, key, trie);
+              operations.signal.throwIfAborted();
+              return value === null ? null : fromHex(value);
+            },
+          }),
+        );
+        operations.signal.throwIfAborted();
+        return result;
+      } finally {
+        active = false;
+        pin.readers--;
+        releaseObsolete();
+      }
     },
     onStop(cb) {
-      if (stopped) {
-        // Fire immediately for late subscribers, matching `onSmoldotFatal`.
+      if (stopped !== null) {
         try {
           cb();
-          // eslint-disable-next-line no-restricted-syntax -- defensive: one buggy late subscriber must not break the registration.
+          // eslint-disable-next-line no-restricted-syntax -- late listeners follow the same defensive notification contract.
         } catch {
-          /* ignore */
+          /* already stopped */
         }
         return () => {
-          /* already stopped */
+          // Already stopped; no subscription was registered.
         };
       }
       stopCbs.add(cb);
@@ -213,13 +324,6 @@ export function createRawApi(client: SubstrateClient): Api {
         stopCbs.delete(cb);
       };
     },
-    destroy() {
-      try {
-        follow.unfollow();
-        // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: the follow may already be stopped.
-      } catch {
-        /* already stopped */
-      }
-    },
+    destroy: terminate,
   };
 }

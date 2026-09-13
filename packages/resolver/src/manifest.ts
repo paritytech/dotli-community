@@ -37,7 +37,7 @@ export const EXECUTABLE_MANIFEST_KEY = "executable";
  *  used for legacy contenthash reads.
  */
 export type ManifestResult<T> =
-  | { kind: "ok"; value: T }
+  | { kind: "ok"; value: T; raw: string }
   | { kind: "empty" }
   | { kind: "unsupported"; reason: string }
   | { kind: "invalid"; errors: string[] };
@@ -167,7 +167,7 @@ async function readManifestText<T>(
     { kind: metricKind, outcome: parsed.ok ? "ok" : "invalid" },
   );
   return parsed.ok
-    ? { kind: "ok", value: parsed.value }
+    ? { kind: "ok", value: parsed.value, raw }
     : { kind: "invalid", errors: parsed.errors };
 }
 

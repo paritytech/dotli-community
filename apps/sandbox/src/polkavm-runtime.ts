@@ -1,0 +1,3821 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { ArchiveFiles } from "@dotli/content/archive";
+import type {
+  PolkaVmDebugMessage,
+  PolkaVmDebugSnapshot,
+} from "@dotli/truapi-debug/dotli-debug-types";
+import {
+  POLKAVM_RUNTIME_SOURCE,
+  polkaVmRuntimeAssetUrl,
+} from "./polkavm-runtime-assets";
+import { Tri2dRenderer } from "./tri2d-renderer";
+import {
+  installPolkaVmTouchControls,
+  type PolkaVmTouchControls,
+} from "./polkavm-touch-controls";
+import {
+  WebGpuBridge,
+  observeSurfaceDimensions,
+  type WebGpuRequirements,
+} from "./webgpu";
+
+const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
+const MAX_ASSET_FILES = 2_048;
+const MAX_ASSET_NAME_BYTES = 1_024;
+const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
+const MAX_ASSET_BYTES = 256 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
+const MAX_SAVE_BYTES = 1024 * 1024;
+const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
+const MAX_HOST_FRAME_BYTES = 1024 * 1024;
+const MAX_PENDING_HOST_FRAMES = 32;
+const MAX_PENDING_HOST_FRAME_BYTES = 4 * 1024 * 1024;
+const MAX_UI_OUTPUT_COMMANDS = 64;
+const MAX_UI_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_UI_COPY_IMAGE_PIXELS = 1024 * 1024;
+const MAX_UI_COPY_IMAGE_DIMENSION = 2048;
+const MAX_UI_OPEN_URL_BYTES = 8 * 1024;
+const MAX_MEDIATED_INPUT_BYTES = 1024 * 1024;
+const TRUAPI_PORT_TIMEOUT_MS = 10_000;
+const INPUT_SAFE_AREA_INSETS = 16;
+const INPUT_KEYBOARD_INSETS = 17;
+const MAX_VIEW_INSET_PIXELS = 65_535;
+const POLKAVM_VIEW_INSETS = "dotli:polkavm-view-insets";
+const POLKAVM_VIEW_INSETS_REQUEST = "dotli:polkavm-view-insets-request";
+// Both backends execute the same guest-defined initialization work.
+const START_TIMEOUT_MS = 180_000;
+const SAVE_DB_NAME = "dotli-polkavm";
+const SAVE_DB_VERSION = 2;
+const SAVE_STORE = "saves";
+const TRANSLATION_STORE = "translations";
+type GraphicsProfile = "framebuffer" | "tri2d" | "webgpu-raster" | "webgpu";
+const decoder = new TextDecoder("utf-8", { fatal: true });
+const encoder = new TextEncoder();
+interface CompiledProgram {
+  module: WebAssembly.Module;
+  parts: WebAssembly.Module[];
+}
+const compiledPrograms = new Map<string, CompiledProgram>();
+let runtimeBytesPromise: Promise<ArrayBuffer> | null = null;
+
+export function polkaVmCompatibilityError(message: string): {
+  title: string;
+  detail: string;
+} | null {
+  const importName =
+    /translated (?:PolkaVM|CoreVM) guest uses unsupported import ([A-Za-z][A-Za-z0-9_]*)/.exec(
+      message,
+    )?.[1];
+  if (importName === undefined) {
+    return null;
+  }
+
+  const title = "App version isn't supported";
+  switch (importName) {
+    case "host_truapi_send":
+    case "host_truapi_poll":
+      return {
+        title,
+        detail: `This app version uses the older PolkaVM interface ${importName}, which this version of dot.li no longer supports. Update the app or ask its publisher to rebuild it.`,
+      };
+    case "host_motion_read":
+      return {
+        title,
+        detail: `This app requires motion input (${importName}), which this version of dot.li does not support. Update dot.li or open the app in a compatible host.`,
+      };
+    default:
+      return {
+        title,
+        detail: `This app requires the PolkaVM interface ${importName}, which this version of dot.li does not support. Update dot.li or open the app in a compatible host.`,
+      };
+  }
+}
+
+declare global {
+  interface Window {
+    __dotliPolkaVmMetrics?: PolkaVmDebugSnapshot;
+    __HOST_API_PORT__?: MessagePort;
+  }
+}
+
+export interface PolkaVmFileInputHandler {
+  id: string;
+  label: string;
+  extensions: string[];
+  mediaTypes: string[];
+  maxBytes: number;
+  mountPath: string;
+}
+
+interface PolkaVmDescriptor {
+  programPath: string;
+  graphicsProfile: GraphicsProfile;
+  webGpuRequirements: WebGpuRequirements | null;
+  webFallbackPath: string | null;
+  controls: string[];
+  inputFeatures: string[];
+  audioEnabled: boolean;
+  requiredAssets: string[];
+  fileInputHandlers: PolkaVmFileInputHandler[];
+  manifestVersion: number | null;
+}
+
+interface WorkerReady {
+  type: "ready";
+  backend: "compiler" | "interpreter";
+  compilerFallbackReason?: string;
+  compilerFallbackStage?: string;
+  cacheHit?: boolean;
+  translationMs?: number;
+  compilationMs?: number;
+  startupMs?: number;
+  translatedWasmBytes?: number;
+  usesMotion?: boolean;
+  usesPointerCapture?: boolean;
+}
+
+interface WorkerStartup {
+  type: "startup";
+  stage: string;
+}
+
+interface WorkerFrame {
+  type: "frame";
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+}
+
+interface WorkerTri2d {
+  type: "tri2d";
+  bytes: Uint8Array;
+}
+
+interface WorkerGpuBatch {
+  type: "gpu-batch";
+  bytes: Uint8Array;
+}
+interface WorkerAudio {
+  type: "audio";
+  sampleRate: number;
+  channels: number;
+  samples: Uint8Array;
+}
+
+interface WorkerMetrics {
+  type: "metrics";
+  updates: number;
+  updateP50Ms: number;
+  updateP95Ms: number;
+  updateMaxMs: number;
+}
+
+export type UiPlatformRect = readonly [number, number, number, number];
+
+export type UiPlatformCommand =
+  | Readonly<{ type: "copy-text"; text: string }>
+  | Readonly<{
+      type: "copy-image";
+      width: number;
+      height: number;
+      rgba: Uint8Array;
+    }>
+  | Readonly<{ type: "open-url"; url: string }>;
+
+export interface UiPlatformOutput {
+  cursorIcon: string;
+  mutableTextUnderCursor: boolean;
+  ime: Readonly<{
+    rect: UiPlatformRect;
+    cursorRect: UiPlatformRect;
+  }> | null;
+  commands: readonly UiPlatformCommand[];
+}
+
+export interface UiPlatformCommandTarget {
+  postMessage(
+    message: Readonly<{
+      type: "dotli:polkavm-ui-command";
+      command: UiPlatformCommand;
+    }>,
+    targetOrigin: string,
+  ): void;
+}
+
+const keyCodes: Readonly<Record<string, number>> = Object.freeze({
+  KeyA: 0x04,
+  KeyB: 0x05,
+  KeyC: 0x06,
+  KeyD: 0x07,
+  KeyE: 0x08,
+  KeyF: 0x09,
+  KeyG: 0x0a,
+  KeyH: 0x0b,
+  KeyI: 0x0c,
+  KeyJ: 0x0d,
+  KeyK: 0x0e,
+  KeyL: 0x0f,
+  KeyM: 0x10,
+  KeyN: 0x11,
+  KeyO: 0x12,
+  KeyP: 0x13,
+  KeyQ: 0x14,
+  KeyR: 0x15,
+  KeyS: 0x16,
+  KeyT: 0x17,
+  KeyU: 0x18,
+  KeyV: 0x19,
+  KeyW: 0x1a,
+  KeyX: 0x1b,
+  KeyY: 0x1c,
+  KeyZ: 0x1d,
+  Digit1: 0x1e,
+  Digit2: 0x1f,
+  Digit3: 0x20,
+  Digit4: 0x21,
+  Digit5: 0x22,
+  Digit6: 0x23,
+  Digit7: 0x24,
+  Digit8: 0x25,
+  Digit9: 0x26,
+  Digit0: 0x27,
+  Enter: 0x28,
+  Escape: 0x29,
+  Backspace: 0x2a,
+  Tab: 0x2b,
+  Space: 0x2c,
+  Minus: 0x2d,
+  Equal: 0x2e,
+  BracketLeft: 0x2f,
+  BracketRight: 0x30,
+  Backslash: 0x31,
+  Semicolon: 0x33,
+  Quote: 0x34,
+  Backquote: 0x35,
+  Comma: 0x36,
+  Period: 0x37,
+  Slash: 0x38,
+  CapsLock: 0x39,
+  F1: 0x3a,
+  F2: 0x3b,
+  F3: 0x3c,
+  F4: 0x3d,
+  F5: 0x3e,
+  F6: 0x3f,
+  F7: 0x40,
+  F8: 0x41,
+  F9: 0x42,
+  F10: 0x43,
+  F11: 0x44,
+  F12: 0x45,
+  Insert: 0x49,
+  Home: 0x4a,
+  PageUp: 0x4b,
+  Delete: 0x4c,
+  End: 0x4d,
+  PageDown: 0x4e,
+  ArrowRight: 0x4f,
+  ArrowLeft: 0x50,
+  ArrowDown: 0x51,
+  ArrowUp: 0x52,
+  ControlLeft: 0xe0,
+  ShiftLeft: 0xe1,
+  AltLeft: 0xe2,
+  MetaLeft: 0xe3,
+  ControlRight: 0xe4,
+  ShiftRight: 0xe5,
+  AltRight: 0xe6,
+  MetaRight: 0xe7,
+});
+const pointerButtons: Readonly<Record<number, number>> = Object.freeze({
+  0: 1,
+  1: 3,
+  2: 2,
+});
+const uiCursorIcons: Readonly<Partial<Record<string, true>>> = Object.freeze({
+  default: true,
+  none: true,
+  "context-menu": true,
+  help: true,
+  pointer: true,
+  progress: true,
+  wait: true,
+  cell: true,
+  crosshair: true,
+  text: true,
+  "vertical-text": true,
+  alias: true,
+  copy: true,
+  move: true,
+  "no-drop": true,
+  "not-allowed": true,
+  grab: true,
+  grabbing: true,
+  "all-scroll": true,
+  "ew-resize": true,
+  "nesw-resize": true,
+  "nwse-resize": true,
+  "ns-resize": true,
+  "e-resize": true,
+  "se-resize": true,
+  "s-resize": true,
+  "sw-resize": true,
+  "w-resize": true,
+  "nw-resize": true,
+  "n-resize": true,
+  "ne-resize": true,
+  "col-resize": true,
+  "row-resize": true,
+  "zoom-in": true,
+  "zoom-out": true,
+});
+
+function object(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+export interface PolkaVmViewInsets {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export function validatedPolkaVmViewInsets(
+  value: unknown,
+): PolkaVmViewInsets | null {
+  const message = object(value);
+  const keyboard = object(message?.keyboard);
+  if (message?.type !== POLKAVM_VIEW_INSETS || keyboard === null) {
+    return null;
+  }
+  const values = [keyboard.left, keyboard.top, keyboard.right, keyboard.bottom];
+  if (
+    values.some(
+      (inset) =>
+        !Number.isInteger(inset) ||
+        Number(inset) < 0 ||
+        Number(inset) > MAX_VIEW_INSET_PIXELS,
+    )
+  ) {
+    return null;
+  }
+  return {
+    left: Number(values[0]),
+    top: Number(values[1]),
+    right: Number(values[2]),
+    bottom: Number(values[3]),
+  };
+}
+
+export function expectedPolkaVmParentOrigin(
+  hostname: string,
+  protocol: string,
+  port: string,
+): string | null {
+  const marker = ".app.";
+  const markerIndex = hostname.lastIndexOf(marker);
+  if (
+    markerIndex <= 0 ||
+    markerIndex + marker.length >= hostname.length ||
+    (protocol !== "https:" && protocol !== "http:")
+  ) {
+    return null;
+  }
+  const parentHostname =
+    hostname.slice(0, markerIndex) +
+    "." +
+    hostname.slice(markerIndex + marker.length);
+  return `${protocol}//${parentHostname}${port === "" ? "" : `:${port}`}`;
+}
+
+interface PageCacheTarget {
+  addEventListener(
+    type: "pageshow",
+    listener: (event: PageTransitionEvent) => void,
+  ): void;
+}
+
+const pageCacheRestoreTargets = new WeakSet<PageCacheTarget>();
+
+export function installPageCacheRestoreReload(
+  target: PageCacheTarget = window,
+  reload: () => void = () => {
+    location.reload();
+  },
+): void {
+  if (pageCacheRestoreTargets.has(target)) {
+    return;
+  }
+  pageCacheRestoreTargets.add(target);
+  let reloadRequested = false;
+  target.addEventListener("pageshow", (event) => {
+    if (!event.persisted || reloadRequested) {
+      return;
+    }
+    reloadRequested = true;
+    reload();
+  });
+}
+
+function uiPlatformRect(value: unknown): UiPlatformRect | null {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 4 ||
+    !value.every((coordinate) => Number.isFinite(coordinate)) ||
+    value[2] < value[0] ||
+    value[3] < value[1]
+  ) {
+    return null;
+  }
+  return [value[0], value[1], value[2], value[3]];
+}
+
+export function validatedUiPlatformOutput(
+  value: unknown,
+): UiPlatformOutput | null {
+  const output = object(value);
+  if (
+    output === null ||
+    typeof output.cursorIcon !== "string" ||
+    !Object.hasOwn(uiCursorIcons, output.cursorIcon) ||
+    typeof output.mutableTextUnderCursor !== "boolean" ||
+    !Array.isArray(output.commands) ||
+    output.commands.length > MAX_UI_OUTPUT_COMMANDS
+  ) {
+    return null;
+  }
+
+  let ime: UiPlatformOutput["ime"] = null;
+  if (output.ime !== null) {
+    const rawIme = object(output.ime);
+    const rect = uiPlatformRect(rawIme?.rect);
+    const cursorRect = uiPlatformRect(rawIme?.cursorRect);
+    if (rawIme === null || rect === null || cursorRect === null) {
+      return null;
+    }
+    ime = { rect, cursorRect };
+  }
+
+  const commands: UiPlatformCommand[] = [];
+  for (const value of output.commands) {
+    const command = object(value);
+    if (command?.type === "copy-text") {
+      if (
+        typeof command.text !== "string" ||
+        encoder.encode(command.text).byteLength > MAX_UI_COPY_TEXT_BYTES
+      ) {
+        return null;
+      }
+      commands.push({ type: "copy-text", text: command.text });
+      continue;
+    }
+    if (command?.type === "copy-image") {
+      if (
+        !Number.isInteger(command.width) ||
+        !Number.isInteger(command.height) ||
+        Number(command.width) <= 0 ||
+        Number(command.height) <= 0 ||
+        Number(command.width) > MAX_UI_COPY_IMAGE_DIMENSION ||
+        Number(command.height) > MAX_UI_COPY_IMAGE_DIMENSION ||
+        Number(command.width) * Number(command.height) >
+          MAX_UI_COPY_IMAGE_PIXELS ||
+        !(command.rgba instanceof Uint8Array) ||
+        command.rgba.byteLength !==
+          Number(command.width) * Number(command.height) * 4
+      ) {
+        return null;
+      }
+      commands.push({
+        type: "copy-image",
+        width: Number(command.width),
+        height: Number(command.height),
+        rgba: command.rgba,
+      });
+      continue;
+    }
+    if (command?.type === "open-url") {
+      if (
+        typeof command.url !== "string" ||
+        command.url === "" ||
+        encoder.encode(command.url).byteLength > MAX_UI_OPEN_URL_BYTES ||
+        typeof command.newSurface !== "boolean"
+      ) {
+        return null;
+      }
+      commands.push({
+        type: "open-url",
+        url: command.url,
+      });
+      continue;
+    }
+    return null;
+  }
+
+  return {
+    cursorIcon: output.cursorIcon,
+    mutableTextUnderCursor: output.mutableTextUnderCursor,
+    ime,
+    commands,
+  };
+}
+
+export function postFirstUiPlatformCommand(
+  output: UiPlatformOutput,
+  target: UiPlatformCommandTarget,
+  targetOrigin: string | null,
+): boolean {
+  const command = output.commands.at(0);
+  if (command === undefined || targetOrigin === null) {
+    return false;
+  }
+  target.postMessage(
+    { type: "dotli:polkavm-ui-command", command },
+    targetOrigin,
+  );
+  return true;
+}
+
+function cleanPath(value: unknown): string | null {
+  if (typeof value !== "string" || value === "" || value.includes("\\")) {
+    return null;
+  }
+  const path = value.replace(/^\/+/, "");
+  const parts = path.split("/");
+  return parts.some((part) => part === "" || part === "." || part === "..")
+    ? null
+    : path;
+}
+
+export function validatedFileInputHandlers(
+  value: unknown,
+  programPath: string,
+): PolkaVmFileInputHandler[] {
+  if (value === undefined) {
+    return [];
+  }
+  const capability = object(value);
+  if (
+    capability?.abiVersion !== 1 ||
+    !Array.isArray(capability.handlers) ||
+    capability.handlers.length === 0 ||
+    capability.handlers.length > 16 ||
+    Object.keys(capability).some(
+      (key) => !["abiVersion", "handlers"].includes(key),
+    )
+  ) {
+    throw new Error("PolkaVM App v2 has an invalid fileInput capability");
+  }
+  const ids = new Set<string>();
+  const mountPaths = new Set<string>();
+  return capability.handlers.map((handlerValue) => {
+    const handler = object(handlerValue);
+    const extensions = handler?.extensions ?? [];
+    const mediaTypes = handler?.mediaTypes ?? [];
+    const mountPath =
+      typeof handler?.mountPath === "string" &&
+      !handler.mountPath.startsWith("/")
+        ? cleanPath(handler.mountPath)
+        : null;
+    if (
+      handler === null ||
+      Object.keys(handler).some(
+        (key) =>
+          ![
+            "id",
+            "label",
+            "extensions",
+            "mediaTypes",
+            "maxBytes",
+            "mountPath",
+          ].includes(key),
+      ) ||
+      typeof handler.id !== "string" ||
+      !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(handler.id) ||
+      ids.has(handler.id) ||
+      typeof handler.label !== "string" ||
+      handler.label.trim() === "" ||
+      encoder.encode(handler.label).byteLength > 80 ||
+      !Array.isArray(extensions) ||
+      !Array.isArray(mediaTypes) ||
+      (extensions.length === 0 && mediaTypes.length === 0) ||
+      new Set(extensions).size !== extensions.length ||
+      extensions.some(
+        (extension) =>
+          typeof extension !== "string" ||
+          !/^\.[a-z0-9]{1,16}$/.test(extension),
+      ) ||
+      new Set(mediaTypes).size !== mediaTypes.length ||
+      mediaTypes.some(
+        (mediaType) =>
+          typeof mediaType !== "string" ||
+          mediaType.length > 127 ||
+          !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType),
+      ) ||
+      !Number.isSafeInteger(handler.maxBytes) ||
+      (handler.maxBytes as number) < 1 ||
+      (handler.maxBytes as number) > MAX_ASSET_FILE_BYTES ||
+      mountPath === null ||
+      encoder.encode(mountPath).byteLength > MAX_ASSET_NAME_BYTES ||
+      mountPath === programPath ||
+      mountPaths.has(mountPath)
+    ) {
+      throw new Error("PolkaVM App v2 has an invalid fileInput handler");
+    }
+    ids.add(handler.id);
+    mountPaths.add(mountPath);
+    return {
+      id: handler.id,
+      label: handler.label,
+      extensions: [...(extensions as string[])],
+      mediaTypes: [...(mediaTypes as string[])],
+      maxBytes: handler.maxBytes as number,
+      mountPath,
+    };
+  });
+}
+
+export function matchingFileInputHandlers(
+  handlers: readonly PolkaVmFileInputHandler[],
+  file: Readonly<Pick<File, "name" | "size" | "type">>,
+): PolkaVmFileInputHandler[] {
+  if (!Number.isSafeInteger(file.size) || file.size < 0) {
+    return [];
+  }
+  const name = file.name.split(/[\\/]/).at(-1) ?? "";
+  const dot = name.lastIndexOf(".");
+  const extension = dot < 0 ? "" : name.slice(dot).toLowerCase();
+  const mediaType = file.type.toLowerCase();
+  return handlers.filter(
+    (handler) =>
+      file.size <= handler.maxBytes &&
+      (handler.extensions.includes(extension) ||
+        (mediaType !== "" && handler.mediaTypes.includes(mediaType))),
+  );
+}
+
+function assertExternalManifest(
+  embedded: Uint8Array,
+  externalManifest: string | null,
+): void {
+  if (externalManifest === null) {
+    throw new Error("external App manifest is required for App manifest v2");
+  }
+  const external = encoder.encode(externalManifest);
+  if (
+    external.byteLength !== embedded.byteLength ||
+    external.some((byte, index) => byte !== embedded[index])
+  ) {
+    throw new Error(
+      "embedded App manifest does not match the external executable record",
+    );
+  }
+}
+
+function parseManifest(
+  files: ArchiveFiles,
+  externalManifest: string | null = null,
+  enforceExternal = true,
+): PolkaVmDescriptor | null {
+  if (!Object.hasOwn(files, "manifest.json")) {
+    return null;
+  }
+  const bytes = files["manifest.json"];
+  let value: unknown;
+  try {
+    value = JSON.parse(decoder.decode(bytes));
+  } catch {
+    return null;
+  }
+  const manifest = object(value);
+  const runtime = object(manifest?.runtime);
+  if (runtime?.kind !== "polkavm") {
+    return null;
+  }
+
+  const programPath = cleanPath(runtime.entrypoint);
+  if (programPath?.endsWith(".polkavm") !== true) {
+    throw new Error("PolkaVM manifest has an invalid runtime entrypoint");
+  }
+  const modalities = object(manifest?.modalities);
+  let graphicsProfile: GraphicsProfile;
+  let webGpuRequirements: WebGpuRequirements | null = null;
+  let controls: string[];
+  let inputFeatures: string[];
+  let audioEnabled: boolean;
+  let manifestVersion: number | null = null;
+  let webFallbackPath: string | null = null;
+  let fileInputHandlers: PolkaVmFileInputHandler[] = [];
+  if (manifest?.$v === 2 && manifest.kind === "app") {
+    // `$v: 2` versions the manifest, not the guest boundary. Every published
+    // App selects PolkaVM application runtime ABI v1, the only version the
+    // runtime contract defines.
+    if (runtime.abiVersion !== 1) {
+      throw new Error("PolkaVM App v2 runtime requires ABI version 1");
+    }
+    if (runtime.fallback !== undefined) {
+      const fallback = object(runtime.fallback);
+      webFallbackPath = cleanPath(fallback?.entrypoint);
+      if (
+        fallback?.kind !== "web" ||
+        webFallbackPath?.endsWith(".html") !== true
+      ) {
+        throw new Error(
+          "PolkaVM App v2 web fallback requires a relative HTML entrypoint",
+        );
+      }
+    }
+    const capabilities = object(manifest.capabilities);
+    const graphics = object(capabilities?.graphics);
+    if (
+      graphics?.abiVersion !== 1 ||
+      !["framebuffer", "tri2d", "webgpu-raster", "webgpu"].includes(
+        String(graphics.profile),
+      )
+    ) {
+      throw new Error(
+        "dotli supports framebuffer, Tri2D, WebGPU Raster, and WebGPU ABI version 1 PolkaVM Apps",
+      );
+    }
+    graphicsProfile = graphics.profile as GraphicsProfile;
+    const graphicsFeatures = Array.isArray(graphics.requiredFeatures)
+      ? graphics.requiredFeatures
+      : null;
+    if (
+      graphicsFeatures === null ||
+      graphicsFeatures.some((feature) => typeof feature !== "string") ||
+      graphicsFeatures.length > 0
+    ) {
+      throw new Error("PolkaVM App v2 requires unsupported graphics features");
+    }
+    if (graphicsProfile === "webgpu-raster" || graphicsProfile === "webgpu") {
+      const requiredLimits = object(graphics.requiredLimits);
+      if (requiredLimits === null) {
+        throw new Error("WebGPU requires explicit bounded limits");
+      }
+      const limits: Record<string, number> = {};
+      for (const [name, value] of Object.entries(requiredLimits)) {
+        if (
+          !Number.isSafeInteger(value) ||
+          (value as number) <= 0 ||
+          ![
+            "maxTextureDimension2D",
+            "maxBufferSize",
+            "maxBindingsPerBindGroup",
+            "maxBindGroups",
+            "maxVertexBuffers",
+            "maxVertexAttributes",
+            "maxColorAttachments",
+            "maxStorageBufferBindingSize",
+            "maxStorageBuffersPerShaderStage",
+            "maxComputeWorkgroupStorageSize",
+            "maxComputeInvocationsPerWorkgroup",
+            "maxComputeWorkgroupSizeX",
+            "maxComputeWorkgroupSizeY",
+            "maxComputeWorkgroupSizeZ",
+            "maxComputeWorkgroupsPerDimension",
+          ].includes(name)
+        ) {
+          throw new Error(`WebGPU requires unsupported limit ${name}`);
+        }
+        limits[name] = value as number;
+      }
+      webGpuRequirements = {
+        requiredFeatures: graphicsFeatures as string[],
+        requiredLimits: limits,
+      };
+    } else if (graphics.requiredLimits !== undefined) {
+      throw new Error("non-WebGPU graphics profiles cannot require GPU limits");
+    }
+    const deviceInput =
+      capabilities?.deviceInput === undefined
+        ? null
+        : object(capabilities.deviceInput);
+    const deviceFeatures =
+      deviceInput === null
+        ? []
+        : Array.isArray(deviceInput.requiredFeatures)
+          ? deviceInput.requiredFeatures
+          : null;
+    if (
+      (deviceInput !== null && deviceInput.abiVersion !== 1) ||
+      deviceFeatures === null ||
+      deviceFeatures.some(
+        (feature) =>
+          typeof feature !== "string" ||
+          ![
+            "pointer",
+            "keyboard",
+            "text",
+            "ime",
+            "focus",
+            "wheel",
+            "motion",
+            "camera-ur",
+          ].includes(feature),
+      )
+    ) {
+      throw new Error("PolkaVM App v2 requires unsupported device input");
+    }
+    const audio =
+      capabilities?.audio === undefined ? null : object(capabilities.audio);
+    if (
+      audio !== null &&
+      (audio.abiVersion !== 1 ||
+        !Array.isArray(audio.requiredFeatures) ||
+        audio.requiredFeatures.length > 0)
+    ) {
+      throw new Error("PolkaVM App v2 requires unsupported audio features");
+    }
+    controls = deviceFeatures.map(
+      (feature) =>
+        (feature as string)[0].toUpperCase() + (feature as string).slice(1),
+    );
+    // Device input is baseline App ABI behavior, not a manifest opt-in.
+    inputFeatures = ["pointer", "keyboard", "text", "ime", "focus", "wheel"];
+    if (deviceFeatures.includes("motion")) {
+      inputFeatures.push("motion");
+    }
+    if (deviceFeatures.includes("camera-ur")) {
+      inputFeatures.push("camera-ur");
+    }
+    audioEnabled = audio !== null;
+    fileInputHandlers = validatedFileInputHandlers(
+      capabilities?.fileInput,
+      programPath,
+    );
+    manifestVersion = 2;
+    if (enforceExternal) {
+      assertExternalManifest(bytes, externalManifest);
+    }
+  } else if (
+    manifest?.$schema === "epoca:experimental-product/v1" &&
+    manifest.$v === 1 &&
+    manifest.kind === "framebuffer"
+  ) {
+    const framebuffer = object(modalities?.framebuffer);
+    if (framebuffer?.abiVersion !== 1) {
+      throw new Error("PolkaVM framebuffer manifest requires ABI version 1");
+    }
+    controls = Array.isArray(framebuffer.controls)
+      ? framebuffer.controls.filter(
+          (control): control is string => typeof control === "string",
+        )
+      : [];
+    inputFeatures = ["pointer", "keyboard", "wheel", "motion"];
+    audioEnabled = true;
+    graphicsProfile = "framebuffer";
+  } else if (
+    manifest?.$schema === "epoca:experimental-product/v2" &&
+    manifest.$v === 2 &&
+    manifest.kind === "application"
+  ) {
+    const graphics = object(modalities?.graphics);
+    if (graphics?.abiVersion !== 1 || graphics.profile !== "framebuffer") {
+      throw new Error(
+        "dotli currently supports only framebuffer ABI version 1 PolkaVM applications",
+      );
+    }
+    const generalInput = object(modalities?.generalInput);
+    controls = Array.isArray(generalInput?.controls)
+      ? generalInput.controls.filter(
+          (control): control is string => typeof control === "string",
+        )
+      : [];
+    inputFeatures = ["pointer", "keyboard", "wheel", "motion"];
+    audioEnabled = modalities?.audio !== undefined;
+    graphicsProfile = "framebuffer";
+  } else {
+    throw new Error("PolkaVM package uses an unsupported manifest version");
+  }
+
+  const requiredAssets: string[] = [];
+  if (Array.isArray(manifest.contentSlots)) {
+    for (const slotValue of manifest.contentSlots) {
+      const slot = object(slotValue);
+      const mount = cleanPath(slot?.mount);
+      if (slot?.required === true && mount !== null) {
+        requiredAssets.push(mount);
+      }
+    }
+  }
+  return {
+    graphicsProfile,
+    webGpuRequirements,
+    webFallbackPath,
+    programPath,
+    controls,
+    inputFeatures,
+    audioEnabled,
+    requiredAssets,
+    fileInputHandlers,
+    manifestVersion,
+  };
+}
+
+export function isPolkaVmPackage(files: ArchiveFiles): boolean {
+  return parseManifest(files, null, false) !== null;
+}
+
+export function describePolkaVmPackage(
+  files: ArchiveFiles,
+  externalManifest: string | null = null,
+): PolkaVmDescriptor | null {
+  return parseManifest(files, externalManifest);
+}
+
+export function webGpuAdapterMeetsRequirements(
+  adapter: GPUAdapter | null,
+  requirements: WebGpuRequirements,
+): boolean {
+  if (adapter === null) {
+    return false;
+  }
+  if (
+    requirements.requiredFeatures.some(
+      (feature) => !adapter.features.has(feature),
+    )
+  ) {
+    return false;
+  }
+  const limits = adapter.limits as unknown as Record<string, number>;
+  return Object.entries(requirements.requiredLimits).every(
+    ([name, required]) => (limits[name] ?? 0) >= required,
+  );
+}
+
+export async function polkavmWebFallbackEntrypoint(
+  files: ArchiveFiles,
+  externalManifest: string | null,
+): Promise<string | null> {
+  const descriptor = parseManifest(files, externalManifest);
+  if (descriptor === null) {
+    return null;
+  }
+  const { graphicsProfile, webFallbackPath, webGpuRequirements } = descriptor;
+  if (
+    webFallbackPath === null ||
+    (graphicsProfile !== "webgpu-raster" && graphicsProfile !== "webgpu") ||
+    webGpuRequirements === null
+  ) {
+    return null;
+  }
+  const gpu = Reflect.get(navigator, "gpu") as GPU | undefined;
+  let adapter: GPUAdapter | null;
+  try {
+    adapter = gpu === undefined ? null : await gpu.requestAdapter();
+  } catch {
+    adapter = null;
+  }
+  if (webGpuAdapterMeetsRequirements(adapter, webGpuRequirements)) {
+    return null;
+  }
+  if (!Object.hasOwn(files, webFallbackPath)) {
+    throw new Error("PolkaVM web fallback entrypoint is missing");
+  }
+  return webFallbackPath;
+}
+
+export function validateFiles(
+  files: ArchiveFiles,
+  descriptor: PolkaVmDescriptor,
+): void {
+  if (!Object.hasOwn(files, descriptor.programPath)) {
+    throw new Error("PolkaVM package is missing its program");
+  }
+  const program = files[descriptor.programPath];
+  if (program.byteLength === 0 || program.byteLength > MAX_PROGRAM_BYTES) {
+    throw new Error("PolkaVM package has an oversized program");
+  }
+  const entries = Object.entries(files).filter(
+    ([path]) => path !== "manifest.json" && path !== descriptor.programPath,
+  );
+  if (entries.length > MAX_ASSET_FILES) {
+    throw new Error("PolkaVM package contains too many assets");
+  }
+  let total = 0;
+  for (const [path, bytes] of entries) {
+    if (cleanPath(path) === null || bytes.byteLength > MAX_ASSET_FILE_BYTES) {
+      throw new Error(`PolkaVM package has an invalid asset: ${path}`);
+    }
+    total += bytes.byteLength;
+    if (total > MAX_ASSET_BYTES) {
+      throw new Error("PolkaVM package exceeds the asset byte limit");
+    }
+  }
+  for (const path of descriptor.requiredAssets) {
+    if (!Object.hasOwn(files, path)) {
+      throw new Error(
+        `PolkaVM package is missing required content mount ${path}`,
+      );
+    }
+  }
+}
+
+function ownedBytes(value: Uint8Array): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(value.byteLength);
+  bytes.set(value);
+  return bytes;
+}
+
+export interface TruapiPortScope {
+  __HOST_API_PORT__?: MessagePort;
+  addEventListener(
+    type: "message",
+    listener: (event: MessageEvent<unknown>) => void,
+  ): void;
+  removeEventListener(
+    type: "message",
+    listener: (event: MessageEvent<unknown>) => void,
+  ): void;
+}
+
+export interface TruapiPortTarget {
+  postMessage(message: unknown, targetOrigin: string): void;
+}
+
+export function waitForTruapiPort(
+  scope: TruapiPortScope,
+  target: TruapiPortTarget,
+  parentOrigin: string,
+  timeoutMs = TRUAPI_PORT_TIMEOUT_MS,
+): Promise<MessagePort> {
+  if (scope.__HOST_API_PORT__ instanceof MessagePort) {
+    return Promise.resolve(scope.__HOST_API_PORT__);
+  }
+
+  const { promise, resolve, reject } = Promise.withResolvers<MessagePort>();
+  let timer = 0;
+  const cleanup = (): void => {
+    globalThis.clearTimeout(timer);
+    scope.removeEventListener("message", onMessage);
+  };
+  const onMessage = (event: MessageEvent<unknown>): void => {
+    if (
+      event.source !== target ||
+      event.origin !== parentOrigin ||
+      object(event.data)?.type !== "truapi-init"
+    ) {
+      return;
+    }
+    const [port] = event.ports;
+    if (!(port instanceof MessagePort)) {
+      cleanup();
+      reject(new Error("TrUAPI initialization did not include a MessagePort"));
+      return;
+    }
+    cleanup();
+    scope.__HOST_API_PORT__ = port;
+    resolve(port);
+  };
+  scope.addEventListener("message", onMessage);
+  timer = globalThis.setTimeout(() => {
+    cleanup();
+    reject(
+      new Error(
+        `TrUAPI Host port was not available within ${String(timeoutMs)}ms`,
+      ),
+    );
+  }, timeoutMs);
+  target.postMessage({ type: "truapi-ready" }, parentOrigin);
+  return promise;
+}
+
+const HOST_FRAME_RETRY_DELAY_MS = 16;
+const MAX_HOST_FRAME_RETRIES = 64;
+
+export interface HostFrameResponseTarget {
+  postMessage(message: unknown, transfer: Transferable[]): void;
+}
+
+export interface HostFrameResponseQueueOptions {
+  maxResponses?: number;
+  maxBytes?: number;
+  retryDelayMs?: number;
+  maxRetries?: number;
+  setTimer?: (callback: () => void, delayMs: number) => number;
+  clearTimer?: (timer: number) => void;
+}
+
+interface HostFrameResponseEntry {
+  bytes: Uint8Array<ArrayBuffer>;
+  retries: number;
+  seq: number;
+}
+
+// The canonical worker bounds its internal host-frame response queue and
+// acknowledges every sequenced response with a synchronous
+// `host-frame-response-accepted` or nonfatal `host-frame-response-rejected`
+// ack echoing the delivery's `seq`. This queue attaches a fresh monotonically
+// increasing sequence to every post (retries included), dequeues only on the
+// matching accepted ack, retries rejected responses in their original order
+// on a paced timer, and consumes mismatched or late acks as no-ops. `fail`
+// fires only on protocol violations or exhausted retries.
+export class HostFrameResponseQueue {
+  private readonly target: HostFrameResponseTarget;
+  private readonly fail: (error: Error) => void;
+  private readonly maxResponses: number;
+  private readonly maxBytes: number;
+  private readonly retryDelayMs: number;
+  private readonly maxRetries: number;
+  private readonly setTimer: (callback: () => void, delayMs: number) => number;
+  private readonly clearTimer: (timer: number) => void;
+  private readonly queue: HostFrameResponseEntry[] = [];
+  private queuedBytes = 0;
+  private inFlight: HostFrameResponseEntry | null = null;
+  private retryTimer: number | null = null;
+  private nextSeq = 1;
+  private started = false;
+  private closed = false;
+
+  constructor(
+    target: HostFrameResponseTarget,
+    fail: (error: Error) => void,
+    options: HostFrameResponseQueueOptions = {},
+  ) {
+    this.target = target;
+    this.fail = fail;
+    this.maxResponses = options.maxResponses ?? MAX_PENDING_HOST_FRAMES;
+    this.maxBytes = options.maxBytes ?? MAX_PENDING_HOST_FRAME_BYTES;
+    this.retryDelayMs = options.retryDelayMs ?? HOST_FRAME_RETRY_DELAY_MS;
+    this.maxRetries = options.maxRetries ?? MAX_HOST_FRAME_RETRIES;
+    this.setTimer =
+      options.setTimer ??
+      ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
+    this.clearTimer =
+      options.clearTimer ??
+      ((timer) => {
+        globalThis.clearTimeout(timer);
+      });
+  }
+
+  get pendingCount(): number {
+    return this.queue.length;
+  }
+
+  get pendingBytes(): number {
+    return this.queuedBytes;
+  }
+
+  enqueue(value: Uint8Array): void {
+    if (this.closed) {
+      return;
+    }
+    if (
+      this.queue.length >= this.maxResponses ||
+      this.queuedBytes + value.byteLength > this.maxBytes
+    ) {
+      this.abort(new Error("Host-frame response queue overflow"));
+      return;
+    }
+    this.queue.push({ bytes: ownedBytes(value), retries: 0, seq: 0 });
+    this.queuedBytes += value.byteLength;
+    this.pump();
+  }
+
+  // The worker only accepts host-frame responses once it reported `ready`.
+  start(): void {
+    if (this.started || this.closed) {
+      return;
+    }
+    this.started = true;
+    this.pump();
+  }
+
+  // Returns true when the message was a delivery ack consumed by the queue.
+  handleMessage(message: Record<string, unknown> | null): boolean {
+    const type = message?.type;
+    if (this.closed || typeof type !== "string") {
+      return false;
+    }
+    if (type === "host-frame-response-accepted") {
+      const entry = this.inFlight;
+      if (entry !== null && message?.seq === entry.seq) {
+        this.inFlight = null;
+        this.queue.shift();
+        this.queuedBytes -= entry.bytes.byteLength;
+        this.pump();
+      }
+      // A mismatched ack belongs to a superseded delivery; the retained
+      // response stays owned by the current in-flight sequence.
+      return true;
+    }
+    if (type === "host-frame-response-rejected") {
+      const entry = this.inFlight;
+      if (entry === null || message?.seq !== entry.seq) {
+        // A late rejection for a sequence that already settled: the retained
+        // response is neither dropped nor re-posted.
+        return true;
+      }
+      if (message.reason !== "queue-full") {
+        this.abort(
+          new Error("PolkaVM worker sent an invalid host-frame rejection"),
+        );
+        return true;
+      }
+      entry.retries += 1;
+      if (entry.retries > this.maxRetries) {
+        this.abort(new Error("Host-frame response retry limit exceeded"));
+        return true;
+      }
+      this.inFlight = null;
+      this.scheduleRetry();
+      return true;
+    }
+    return false;
+  }
+
+  close(): void {
+    this.closed = true;
+    if (this.retryTimer !== null) {
+      this.clearTimer(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.inFlight = null;
+    this.queue.length = 0;
+    this.queuedBytes = 0;
+  }
+
+  private abort(error: Error): void {
+    this.close();
+    this.fail(error);
+  }
+
+  private pump(): void {
+    if (
+      !this.started ||
+      this.closed ||
+      this.inFlight !== null ||
+      this.retryTimer !== null ||
+      this.queue.length === 0
+    ) {
+      return;
+    }
+    const entry = this.queue[0];
+    entry.seq = this.nextSeq++;
+    this.inFlight = entry;
+    const payload = ownedBytes(entry.bytes);
+    this.target.postMessage(
+      { type: "host-frame-response", bytes: payload, seq: entry.seq },
+      [payload.buffer],
+    );
+  }
+
+  private scheduleRetry(): void {
+    if (this.retryTimer !== null) {
+      return;
+    }
+    this.retryTimer = this.setTimer(() => {
+      this.retryTimer = null;
+      this.pump();
+    }, this.retryDelayMs);
+  }
+}
+
+async function programDigest(program: Uint8Array): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", ownedBytes(program).buffer),
+  );
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+function runtimeBytes(): Promise<ArrayBuffer> {
+  runtimeBytesPromise ??= fetch(
+    polkaVmRuntimeAssetUrl("polkavm-browser-runtime.wasm"),
+    {
+      cache: "force-cache",
+    },
+  ).then((response) => {
+    if (!response.ok) {
+      throw new Error(
+        `PolkaVM runtime fetch failed: HTTP ${String(response.status)}`,
+      );
+    }
+    return response.arrayBuffer();
+  });
+  return runtimeBytesPromise;
+}
+
+function openSaveDb(): Promise<IDBDatabase> {
+  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(SAVE_DB_NAME, SAVE_DB_VERSION);
+  request.onerror = () => {
+    reject(request.error ?? new Error("save DB failed"));
+  };
+  request.onupgradeneeded = () => {
+    if (!request.result.objectStoreNames.contains(SAVE_STORE)) {
+      request.result.createObjectStore(SAVE_STORE);
+    }
+    if (!request.result.objectStoreNames.contains(TRANSLATION_STORE)) {
+      request.result.createObjectStore(TRANSLATION_STORE);
+    }
+  };
+  request.onsuccess = () => {
+    resolve(request.result);
+  };
+  return promise;
+}
+
+async function loadSave(key: string): Promise<Uint8Array | null> {
+  const db = await openSaveDb();
+  try {
+    const transaction = db.transaction(SAVE_STORE, "readonly");
+    const request = transaction.objectStore(SAVE_STORE).get(key);
+    const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error("save read failed"));
+    };
+    const value = await promise;
+    return value instanceof ArrayBuffer && value.byteLength <= MAX_SAVE_BYTES
+      ? new Uint8Array(value)
+      : null;
+  } finally {
+    db.close();
+  }
+}
+
+async function storeSave(key: string, bytes: Uint8Array): Promise<void> {
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_SAVE_BYTES) {
+    return;
+  }
+  const db = await openSaveDb();
+  try {
+    const transaction = db.transaction(SAVE_STORE, "readwrite");
+    transaction.objectStore(SAVE_STORE).put(bytes.slice().buffer, key);
+    const { promise, resolve, reject } = Promise.withResolvers<undefined>();
+    transaction.oncomplete = () => {
+      resolve(undefined);
+    };
+    transaction.onerror = () => {
+      reject(transaction.error ?? new Error("save write failed"));
+    };
+    await promise;
+  } finally {
+    db.close();
+  }
+}
+
+async function loadTranslation(
+  key: string,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const db = await openSaveDb();
+  try {
+    const transaction = db.transaction(TRANSLATION_STORE, "readonly");
+    const request = transaction.objectStore(TRANSLATION_STORE).get(key);
+    const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error("translation cache read failed"));
+    };
+    const value = await promise;
+    return value instanceof ArrayBuffer &&
+      value.byteLength > 0 &&
+      value.byteLength <= MAX_TRANSLATED_WASM_BYTES
+      ? new Uint8Array(value)
+      : null;
+  } finally {
+    db.close();
+  }
+}
+
+async function storeTranslation(key: string, bytes: Uint8Array): Promise<void> {
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_TRANSLATED_WASM_BYTES) {
+    return;
+  }
+  const db = await openSaveDb();
+  try {
+    const transaction = db.transaction(TRANSLATION_STORE, "readwrite");
+    transaction
+      .objectStore(TRANSLATION_STORE)
+      .put(ownedBytes(bytes).buffer, key);
+    const { promise, resolve, reject } = Promise.withResolvers<undefined>();
+    transaction.oncomplete = () => {
+      resolve(undefined);
+    };
+    transaction.onerror = () => {
+      reject(transaction.error ?? new Error("translation cache write failed"));
+    };
+    await promise;
+  } finally {
+    db.close();
+  }
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, Math.round(value)));
+}
+
+export function encodedInput(
+  type: number,
+  code: number,
+  x = 0,
+  y = 0,
+): Uint8Array {
+  const bytes = new Uint8Array(8);
+  const view = new DataView(bytes.buffer);
+  bytes[0] = type;
+  bytes[1] = code;
+  if (type === 6 || type === 14) {
+    view.setInt16(2, clamp(x, -32768, 32767), true);
+    view.setInt16(4, clamp(y, -32768, 32767), true);
+  } else {
+    view.setUint16(2, clamp(x, 0, 65535), true);
+    view.setUint16(4, clamp(y, 0, 65535), true);
+  }
+  return bytes;
+}
+
+export function encodedWheelInput(
+  deltaX: number,
+  deltaY: number,
+  scale: number,
+): Uint8Array {
+  // DOM deltas describe viewport movement; the App ABI follows egui's
+  // content-movement convention, so both axes have the opposite sign.
+  return encodedInput(14, 0, -deltaX * scale, -deltaY * scale);
+}
+
+const MAX_TEXT_INPUT_BYTES = 4 * 1024;
+const TEXT_CHUNK_BYTES = 6;
+const TEXT_CHUNK_START = 0x40;
+const TEXT_CHUNK_END = 0x80;
+
+export function encodedTextInput(type: 8 | 9 | 10, text: string): Uint8Array[] {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.byteLength > MAX_TEXT_INPUT_BYTES) {
+    return [];
+  }
+  const records: Uint8Array[] = [];
+  let offset = 0;
+  do {
+    let end = Math.min(offset + TEXT_CHUNK_BYTES, encoded.byteLength);
+    while (
+      end > offset &&
+      end < encoded.byteLength &&
+      (encoded[end] & 0xc0) === 0x80
+    ) {
+      end -= 1;
+    }
+    const length = end - offset;
+    const record = new Uint8Array(8);
+    record[0] = type;
+    record[1] =
+      length |
+      (offset === 0 ? TEXT_CHUNK_START : 0) |
+      (end === encoded.byteLength ? TEXT_CHUNK_END : 0);
+    record.set(encoded.subarray(offset, end), 2);
+    records.push(record);
+    offset = end;
+  } while (offset < encoded.byteLength);
+  return records;
+}
+
+const MOTION_SAMPLE_BYTES = 48;
+const MOTION_FLAG_ACCELERATION = 1;
+const MOTION_FLAG_ROTATION = 2;
+const MOTION_FLAG_POINTER_EMULATED = 4;
+const POINTER_ROTATION_DEGREES_PER_PIXEL = 0.15;
+const MAX_POINTER_ROTATION_RATE = 720;
+
+export interface MotionSampleValues {
+  flags: number;
+  sequence: number;
+  timestampMs: number;
+  accelerationX: number;
+  accelerationY: number;
+  accelerationZ: number;
+  rotationAlpha: number;
+  rotationBeta: number;
+  rotationGamma: number;
+}
+
+export function encodedMotionSample(sample: MotionSampleValues): Uint8Array {
+  if (
+    !Number.isInteger(sample.flags) ||
+    sample.flags <= 0 ||
+    (sample.flags & ~7) !== 0 ||
+    ((sample.flags & MOTION_FLAG_POINTER_EMULATED) !== 0 &&
+      (sample.flags & MOTION_FLAG_ROTATION) === 0) ||
+    !Number.isInteger(sample.sequence) ||
+    sample.sequence <= 0 ||
+    sample.sequence > 0xffffffff ||
+    !Number.isFinite(sample.timestampMs) ||
+    sample.timestampMs < 0 ||
+    [
+      sample.accelerationX,
+      sample.accelerationY,
+      sample.accelerationZ,
+      sample.rotationAlpha,
+      sample.rotationBeta,
+      sample.rotationGamma,
+    ].some((value) => !Number.isFinite(value))
+  ) {
+    throw new Error("invalid MotionSample v1");
+  }
+  const bytes = new Uint8Array(MOTION_SAMPLE_BYTES);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x50, 0x4d, 0x4f, 0x31]);
+  view.setUint16(4, 1, true);
+  view.setUint16(6, sample.flags, true);
+  view.setUint32(8, MOTION_SAMPLE_BYTES, true);
+  view.setUint32(12, sample.sequence, true);
+  view.setFloat64(16, sample.timestampMs, true);
+  for (const [offset, value] of [
+    [24, sample.accelerationX],
+    [28, sample.accelerationY],
+    [32, sample.accelerationZ],
+    [36, sample.rotationAlpha],
+    [40, sample.rotationBeta],
+    [44, sample.rotationGamma],
+  ] as const) {
+    view.setFloat32(offset, value, true);
+  }
+  return bytes;
+}
+
+export function encodedPointerMotionSample(
+  deltaX: number,
+  deltaY: number,
+  elapsedMs: number,
+  sequence: number,
+  timestampMs: number,
+): Uint8Array {
+  if (
+    !Number.isFinite(deltaX) ||
+    !Number.isFinite(deltaY) ||
+    !Number.isFinite(elapsedMs) ||
+    elapsedMs <= 0
+  ) {
+    throw new Error("invalid pointer motion sample");
+  }
+  const degreesPerSecond = (delta: number): number =>
+    Math.max(
+      -MAX_POINTER_ROTATION_RATE,
+      Math.min(
+        MAX_POINTER_ROTATION_RATE,
+        (delta * POINTER_ROTATION_DEGREES_PER_PIXEL * 1_000) / elapsedMs,
+      ),
+    );
+  return encodedMotionSample({
+    flags: MOTION_FLAG_ROTATION | MOTION_FLAG_POINTER_EMULATED,
+    sequence,
+    timestampMs,
+    accelerationX: 0,
+    accelerationY: 0,
+    accelerationZ: 0,
+    rotationAlpha: 0,
+    rotationBeta: degreesPerSecond(deltaY),
+    rotationGamma: degreesPerSecond(deltaX),
+  });
+}
+
+// CoreVM's mouse ABI is a signed byte. Drop individual samples outside that
+// range as pointer-lock discontinuities, then bound the normal backlog
+// accumulated before the next display frame.
+const MAX_COREVM_POINTER_DELTA = 127;
+
+export function normalizedPointerDelta(
+  movementX: number,
+  movementY: number,
+  firstAfterPointerLock: boolean,
+): [number, number] | null {
+  if (
+    firstAfterPointerLock ||
+    !Number.isFinite(movementX) ||
+    !Number.isFinite(movementY) ||
+    Math.abs(movementX) > MAX_COREVM_POINTER_DELTA ||
+    Math.abs(movementY) > MAX_COREVM_POINTER_DELTA
+  ) {
+    return null;
+  }
+  return [movementX, movementY];
+}
+
+export function accumulateRelativePointerDelta(
+  currentX: number,
+  currentY: number,
+  deltaX: number,
+  deltaY: number,
+): [number, number] {
+  return [
+    clamp(
+      currentX + deltaX,
+      -MAX_COREVM_POINTER_DELTA,
+      MAX_COREVM_POINTER_DELTA,
+    ),
+    clamp(
+      currentY + deltaY,
+      -MAX_COREVM_POINTER_DELTA,
+      MAX_COREVM_POINTER_DELTA,
+    ),
+  ];
+}
+
+function createShell(controls: string[]): {
+  surface: HTMLElement;
+  canvas: HTMLCanvasElement;
+  status: HTMLElement;
+} {
+  const style = document.createElement("style");
+  style.id = "dotli-polkavm-style";
+  style.textContent = `
+    html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden;overscroll-behavior:none}
+    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) minmax(29px,auto);position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-surface{position:relative;min-width:0;min-height:0;overflow:hidden;container-type:size}
+    #dotli-polkavm-surface.dotli-file-drag{outline:2px solid #e6007a;outline-offset:-2px}
+    #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+    #dotli-polkavm-canvas[data-polkavm-profile="framebuffer"]{top:50%;right:auto;bottom:auto;left:50%;width:min(100cqw,calc(100cqh * var(--dotli-polkavm-frame-aspect,1)));height:min(100cqh,calc(100cqw * var(--dotli-polkavm-frame-inverse-aspect,1)));transform:translate(-50%,-50%)}
+    .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
+    #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
+    #dotli-polkavm-status:empty{display:none}
+    #dotli-polkavm-file-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
+    #dotli-polkavm-file-open:hover{border-color:#e6007a}
+    #dotli-polkavm-file-open:disabled{cursor:wait;opacity:.55}
+    .dotli-file-consent-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:#000a;font:14px/1.45 system-ui,sans-serif}
+    .dotli-file-consent{width:min(440px,100%);border:1px solid #ffffff26;border-radius:14px;padding:22px;background:#17181c;color:#fff;box-shadow:0 24px 80px #000b}
+    .dotli-file-consent h2{margin:0 0 8px;font-size:20px}
+    .dotli-file-consent p{margin:0;color:#b8bbc3}
+    .dotli-file-consent-detail{margin:16px 0;padding:12px;border-radius:8px;background:#0b0c0f;font:12px/1.45 ui-monospace,monospace;overflow-wrap:anywhere;white-space:pre-wrap}
+    .dotli-file-consent select{width:100%;margin:0 0 16px;padding:8px;border:1px solid #ffffff30;border-radius:7px;background:#0b0c0f;color:#fff}
+    .dotli-file-consent-actions{display:flex;justify-content:flex-end;gap:8px}
+    .dotli-file-consent button{border:0;border-radius:7px;padding:8px 12px;font:600 13px system-ui,sans-serif;cursor:pointer}
+    .dotli-file-consent-cancel{background:#303238;color:#fff}
+    .dotli-file-consent-approve{background:#e6007a;color:#fff}
+    #dotli-polkavm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
+  `;
+  const shell = document.createElement("main");
+  shell.id = "dotli-polkavm-shell";
+  const surface = document.createElement("div");
+  surface.id = "dotli-polkavm-surface";
+  const canvas = document.createElement("canvas");
+  canvas.id = "dotli-polkavm-canvas";
+  canvas.tabIndex = 0;
+  const status = document.createElement("div");
+  status.id = "dotli-polkavm-status";
+  status.className = "dotli-polkavm-overlay";
+  status.textContent = "Translating PolkaVM application…";
+  const controlText = document.createElement("div");
+  controlText.id = "dotli-polkavm-controls";
+  controlText.textContent = controls.join(" · ");
+  surface.append(canvas, status, controlText);
+  shell.append(surface);
+  document.getElementById("dotli-polkavm-style")?.remove();
+  document.head.append(style);
+  document.body.replaceChildren(shell);
+  return { surface, canvas, status };
+}
+
+function filePickerAccept(
+  handlers: readonly PolkaVmFileInputHandler[],
+): string {
+  const values = new Set<string>();
+  for (const handler of handlers) {
+    for (const extension of handler.extensions) {
+      values.add(extension);
+    }
+    for (const mediaType of handler.mediaTypes) {
+      values.add(mediaType);
+    }
+  }
+  return [...values].join(",");
+}
+
+function formatFileBytes(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+    : `${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+function askFileInputConsent(
+  file: File,
+  handlers: readonly PolkaVmFileInputHandler[],
+): Promise<PolkaVmFileInputHandler | null> {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "dotli-file-consent-backdrop";
+    const modal = document.createElement("div");
+    modal.className = "dotli-file-consent";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    const heading = document.createElement("h2");
+    heading.textContent = "Give this file to the app?";
+    const explanation = document.createElement("p");
+    explanation.textContent =
+      "The app will receive the file and restart to load it.";
+    const detail = document.createElement("div");
+    detail.className = "dotli-file-consent-detail";
+    detail.textContent = `${file.name} · ${formatFileBytes(file.size)}\n${handlers[0].label}`;
+    let selected = handlers[0];
+    const select =
+      handlers.length > 1 ? document.createElement("select") : null;
+    if (select !== null) {
+      for (const handler of handlers) {
+        const option = document.createElement("option");
+        option.value = handler.id;
+        option.textContent = handler.label;
+        select.append(option);
+      }
+      select.addEventListener("change", () => {
+        selected =
+          handlers.find((handler) => handler.id === select.value) ??
+          handlers[0];
+        detail.textContent = `${file.name} · ${formatFileBytes(file.size)}\n${selected.label}`;
+      });
+    }
+    const actions = document.createElement("div");
+    actions.className = "dotli-file-consent-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "dotli-file-consent-cancel";
+    cancel.textContent = "Cancel";
+    const approve = document.createElement("button");
+    approve.type = "button";
+    approve.className = "dotli-file-consent-approve";
+    approve.textContent = "Give to app";
+    actions.append(cancel, approve);
+    modal.append(heading, explanation, detail);
+    if (select !== null) {
+      modal.append(select);
+    }
+    modal.append(actions);
+    backdrop.append(modal);
+    document.body.append(backdrop);
+    let settled = false;
+    const finish = (handler: PolkaVmFileInputHandler | null): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.removeEventListener("keydown", keydown);
+      backdrop.remove();
+      resolve(handler);
+    };
+    const keydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        finish(null);
+      }
+    };
+    cancel.addEventListener("click", () => {
+      finish(null);
+    });
+    approve.addEventListener("click", () => {
+      finish(selected);
+    });
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) {
+        finish(null);
+      }
+    });
+    window.addEventListener("keydown", keydown);
+    cancel.focus();
+  });
+}
+
+function installFileInputControls(
+  surface: HTMLElement,
+  status: HTMLElement,
+  handlers: readonly PolkaVmFileInputHandler[],
+  deliver: (
+    handler: PolkaVmFileInputHandler,
+    bytes: Uint8Array,
+    file: File,
+  ) => Promise<void>,
+): () => void {
+  if (handlers.length === 0) {
+    return () => undefined;
+  }
+  const open = document.createElement("button");
+  open.id = "dotli-polkavm-file-open";
+  open.type = "button";
+  open.textContent = "Open file";
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = filePickerAccept(handlers);
+  picker.hidden = true;
+  surface.append(open, picker);
+  let busy = false;
+  const process = async (file: File): Promise<void> => {
+    if (busy) {
+      return;
+    }
+    const candidates = matchingFileInputHandlers(handlers, file);
+    if (candidates.length === 0) {
+      status.textContent = "This app does not accept that file.";
+      return;
+    }
+    const handler = await askFileInputConsent(file, candidates);
+    if (handler === null) {
+      status.textContent = "";
+      return;
+    }
+    busy = true;
+    open.disabled = true;
+    status.textContent = `Reading ${file.name}…`;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (
+        bytes.byteLength !== file.size ||
+        bytes.byteLength > handler.maxBytes
+      ) {
+        throw new Error("File size changed while it was being read.");
+      }
+      status.textContent = `Loading ${file.name}…`;
+      await deliver(handler, bytes, file);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "File delivery failed.";
+      (document.getElementById("dotli-polkavm-status") ?? status).textContent =
+        message;
+      busy = false;
+      if (open.isConnected) {
+        open.disabled = false;
+      }
+    }
+  };
+  const click = (): void => {
+    picker.click();
+  };
+  const change = (): void => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (file !== undefined) {
+      void process(file);
+    }
+  };
+  const dragover = (event: DragEvent): void => {
+    if (
+      !busy &&
+      [...(event.dataTransfer?.items ?? [])].some(
+        (item) => item.kind === "file",
+      )
+    ) {
+      event.preventDefault();
+      if (event.dataTransfer !== null) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+      surface.classList.add("dotli-file-drag");
+    }
+  };
+  const dragleave = (event: DragEvent): void => {
+    if (
+      !(event.relatedTarget instanceof Node) ||
+      !surface.contains(event.relatedTarget)
+    ) {
+      surface.classList.remove("dotli-file-drag");
+    }
+  };
+  const drop = (event: DragEvent): void => {
+    const file = event.dataTransfer?.files[0];
+    if (file === undefined) {
+      return;
+    }
+    event.preventDefault();
+    surface.classList.remove("dotli-file-drag");
+    void process(file);
+  };
+  open.addEventListener("click", click);
+  picker.addEventListener("change", change);
+  surface.addEventListener("dragover", dragover);
+  surface.addEventListener("dragleave", dragleave);
+  surface.addEventListener("drop", drop);
+  return () => {
+    open.removeEventListener("click", click);
+    picker.removeEventListener("change", change);
+    surface.removeEventListener("dragover", dragover);
+    surface.removeEventListener("dragleave", dragleave);
+    surface.removeEventListener("drop", drop);
+    open.remove();
+    picker.remove();
+    document.querySelector(".dotli-file-consent-backdrop")?.remove();
+  };
+}
+
+function installInput(
+  canvas: HTMLCanvasElement,
+  webGpu: WebGpuBridge | null,
+  graphicsProfile: GraphicsProfile,
+  inputFeatures: readonly string[],
+  send: (bytes: Uint8Array) => void,
+  sendMotion: (bytes: Uint8Array) => void,
+  sendMotionStatus: (availability: 0 | 1 | 2) => void,
+  sendPointerCaptureState: (active: boolean) => void,
+  pointerCaptureRequested: () => boolean,
+  motionRequested: () => boolean,
+  parentOrigin: string | null,
+  resumeAudio: () => void,
+): {
+  applyUiOutput: (output: UiPlatformOutput) => void;
+  cleanup: () => void;
+  sendSurfaceMetrics: () => void;
+  setPointerCaptureRequest: (capture: boolean) => void;
+  supportsPointerCapture: () => boolean;
+} {
+  const pressed = new Set<number>();
+  const heldPointerButtons = new Set<number>();
+  const touchKeys = new Set<number>();
+  const touchButtons = new Set<number>();
+  const inputFeatureSet = new Set(inputFeatures);
+  const textInput =
+    inputFeatureSet.has("text") || inputFeatureSet.has("ime")
+      ? document.createElement("textarea")
+      : null;
+  if (textInput !== null) {
+    textInput.tabIndex = -1;
+    textInput.spellcheck = false;
+    textInput.setAttribute("autocomplete", "off");
+    textInput.setAttribute("autocapitalize", "off");
+    textInput.style.cssText =
+      "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+    document.body.append(textInput);
+  }
+  let composing = false;
+  let lastPreedit: string | null = null;
+  let pendingCompositionCommit: string | null = null;
+  // The active guest text context requests focus through UI output. Baseline
+  // text support must not open the software keyboard for non-text applications.
+  let wantsTextInput = false;
+  let reportedFocused = false;
+  let firstMoveAfterPointerLock = false;
+  let relativeX = 0;
+  let relativeY = 0;
+  let relativeFrame: number | null = null;
+  let pointerCaptureArmed = false;
+  let captureRequested = false;
+  let touchCaptureActive = false;
+  let touchControls: PolkaVmTouchControls | null = null;
+  const coarsePointer = window.matchMedia("(any-pointer: coarse)");
+  const touchControlsEligible = (): boolean =>
+    coarsePointer.matches &&
+    inputFeatureSet.has("keyboard") &&
+    inputFeatureSet.has("pointer");
+  const pointerCaptureSupported =
+    typeof canvas.requestPointerLock === "function" &&
+    typeof document.exitPointerLock === "function";
+  canvas.dataset.polkavmPointerCaptureArmed = "false";
+  canvas.dataset.polkavmPointerCaptured = "false";
+  // Mouse/pen compatibility input remains single-pointer. Touch contacts use
+  // independent ABI records with IDs that stay stable for their full lifetime.
+  let activePointer: number | null = null;
+  const activeTouches = new Map<number, { id: number; x: number; y: number }>();
+  let motionSequence = 0;
+  let motionX = 0;
+  let motionY = 0;
+  let motionFrame: number | null = null;
+  let motionWindowStarted = performance.now();
+  let previousPointer: [number, number] | null = null;
+  let motionPermissionRequested = false;
+  const nextMotionSequence = (): number => {
+    motionSequence = motionSequence === 0xffffffff ? 1 : motionSequence + 1;
+    return motionSequence;
+  };
+  const flushPointerMotion = (now: number): void => {
+    motionFrame = null;
+    const x = motionX;
+    const y = motionY;
+    motionX = 0;
+    motionY = 0;
+    if (x === 0 && y === 0) {
+      return;
+    }
+    const elapsedMs = Math.max(1, now - motionWindowStarted);
+    motionWindowStarted = now;
+    sendMotion(
+      encodedPointerMotionSample(x, y, elapsedMs, nextMotionSequence(), now),
+    );
+  };
+  const queuePointerMotion = (x: number, y: number): void => {
+    if (!motionRequested()) {
+      return;
+    }
+    motionX += x;
+    motionY += y;
+    motionFrame ??= window.requestAnimationFrame(flushPointerMotion);
+  };
+  const requestDeviceMotionPermission = (): void => {
+    if (
+      !motionRequested() ||
+      motionPermissionRequested ||
+      typeof DeviceMotionEvent === "undefined"
+    ) {
+      return;
+    }
+    motionPermissionRequested = true;
+    const constructor = DeviceMotionEvent as typeof DeviceMotionEvent & {
+      requestPermission?: () => Promise<"granted" | "denied">;
+    };
+    if (typeof constructor.requestPermission === "function") {
+      void constructor
+        .requestPermission()
+        .then((permission) => {
+          sendMotionStatus(
+            permission === "granted" || typeof PointerEvent !== "undefined"
+              ? 1
+              : 2,
+          );
+        })
+        .catch(() => {
+          motionPermissionRequested = false;
+          sendMotionStatus(typeof PointerEvent !== "undefined" ? 1 : 2);
+        });
+    } else {
+      sendMotionStatus(1);
+    }
+  };
+  const deviceMotion = (event: DeviceMotionEvent): void => {
+    if (!motionRequested()) {
+      return;
+    }
+    const acceleration = event.accelerationIncludingGravity;
+    const rotation = event.rotationRate;
+    const accelerationValues = [
+      acceleration?.x,
+      acceleration?.y,
+      acceleration?.z,
+    ];
+    const rotationValues = [rotation?.alpha, rotation?.beta, rotation?.gamma];
+    const hasAcceleration = accelerationValues.every(
+      (value) => typeof value === "number" && Number.isFinite(value),
+    );
+    const hasRotation = rotationValues.every(
+      (value) => typeof value === "number" && Number.isFinite(value),
+    );
+    if (!hasAcceleration && !hasRotation) {
+      return;
+    }
+    sendMotion(
+      encodedMotionSample({
+        flags:
+          (hasAcceleration ? MOTION_FLAG_ACCELERATION : 0) |
+          (hasRotation ? MOTION_FLAG_ROTATION : 0),
+        sequence: nextMotionSequence(),
+        timestampMs: performance.now(),
+        accelerationX: hasAcceleration ? (acceleration?.x ?? 0) : 0,
+        accelerationY: hasAcceleration ? (acceleration?.y ?? 0) : 0,
+        accelerationZ: hasAcceleration ? (acceleration?.z ?? 0) : 0,
+        rotationAlpha: hasRotation ? (rotation?.alpha ?? 0) : 0,
+        rotationBeta: hasRotation ? (rotation?.beta ?? 0) : 0,
+        rotationGamma: hasRotation ? (rotation?.gamma ?? 0) : 0,
+      }),
+    );
+  };
+  const flushRelativePointer = (): void => {
+    relativeFrame = null;
+    const x = relativeX;
+    const y = relativeY;
+    relativeX = 0;
+    relativeY = 0;
+    if (x !== 0 || y !== 0) {
+      send(encodedInput(6, 0, x, y));
+      queuePointerMotion(x, y);
+    }
+  };
+  const queueRelativePointer = (x: number, y: number): void => {
+    [relativeX, relativeY] = accumulateRelativePointerDelta(
+      relativeX,
+      relativeY,
+      x,
+      y,
+    );
+    relativeFrame ??= window.requestAnimationFrame(flushRelativePointer);
+  };
+  const clearPointerMotion = (): void => {
+    if (relativeFrame !== null) {
+      window.cancelAnimationFrame(relativeFrame);
+      relativeFrame = null;
+    }
+    relativeX = 0;
+    relativeY = 0;
+    if (motionFrame !== null) {
+      window.cancelAnimationFrame(motionFrame);
+      motionFrame = null;
+    }
+    motionX = 0;
+    motionY = 0;
+    motionWindowStarted = performance.now();
+    previousPointer = null;
+  };
+  const releasePointerLock = (): void => {
+    if (document.pointerLockElement !== canvas) {
+      return;
+    }
+    try {
+      document.exitPointerLock();
+    } catch (error) {
+      console.warn(
+        `Could not release PolkaVM pointer lock: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+  const pointerLockChanged = (): void => {
+    clearPointerMotion();
+    const locked = document.pointerLockElement === canvas;
+    const active = locked || touchCaptureActive;
+    firstMoveAfterPointerLock = locked;
+    if (active) {
+      pointerCaptureArmed = false;
+    }
+    if (pointerCaptureRequested()) {
+      sendPointerCaptureState(active);
+    }
+    canvas.dataset.polkavmPointerCaptureArmed = pointerCaptureArmed
+      ? "true"
+      : "false";
+    canvas.dataset.polkavmPointerCaptured = active ? "true" : "false";
+  };
+  const canvasPosition = (event: PointerEvent): [number, number] => {
+    const bounds = canvas.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return [0, 0];
+    }
+    return [
+      ((event.clientX - bounds.left) *
+        (webGpu?.physicalWidth ?? canvas.width)) /
+        bounds.width,
+      ((event.clientY - bounds.top) *
+        (webGpu?.physicalHeight ?? canvas.height)) /
+        bounds.height,
+    ];
+  };
+  const allocateTouchId = (): number | null => {
+    for (let id = 0; id <= 0xff; id++) {
+      let used = false;
+      for (const touch of activeTouches.values()) {
+        used ||= touch.id === id;
+      }
+      if (!used) {
+        return id;
+      }
+    }
+    return null;
+  };
+  const touch = (event: PointerEvent, type: 18 | 19 | 20 | 21): void => {
+    const [x, y] = canvasPosition(event);
+    let contact = activeTouches.get(event.pointerId);
+    if (type === 18) {
+      if (contact !== undefined) {
+        return;
+      }
+      const id = allocateTouchId();
+      if (id === null) {
+        return;
+      }
+      contact = { id, x, y };
+      activeTouches.set(event.pointerId, contact);
+      requestDeviceMotionPermission();
+      if (event.isTrusted && parentOrigin !== null) {
+        window.parent.postMessage(
+          { type: "dotli:polkavm-user-activation" },
+          parentOrigin,
+        );
+      }
+      (wantsTextInput && textInput !== null ? textInput : canvas).focus({
+        preventScroll: true,
+      });
+      resumeAudio();
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (error) {
+        console.warn(
+          `Could not capture the PolkaVM touch pointer: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } else if (contact === undefined) {
+      return;
+    } else {
+      contact.x = x;
+      contact.y = y;
+    }
+    event.preventDefault();
+    send(encodedInput(type, contact.id, x, y));
+    if (type === 20 || type === 21) {
+      activeTouches.delete(event.pointerId);
+      releaseCapturedPointer(event.pointerId);
+    }
+  };
+  const sendTextRecords = (type: 8 | 9 | 10, text: string): void => {
+    for (const record of encodedTextInput(type, text)) {
+      send(record);
+    }
+  };
+  const syncFocus = (): void => {
+    const focused =
+      document.visibilityState !== "hidden" &&
+      document.hasFocus() &&
+      (document.activeElement === canvas ||
+        (textInput !== null && document.activeElement === textInput));
+    if (focused === reportedFocused) {
+      return;
+    }
+    reportedFocused = focused;
+    if (!focused) {
+      touchControls?.reset();
+      touchCaptureActive = false;
+      pointerLockChanged();
+      for (const code of pressed) {
+        send(encodedInput(2, code));
+      }
+      pressed.clear();
+      for (const button of heldPointerButtons) {
+        send(encodedInput(4, button));
+      }
+      heldPointerButtons.clear();
+      if (activePointer !== null) {
+        releaseCapturedPointer(activePointer);
+        activePointer = null;
+      }
+      if (composing && inputFeatureSet.has("ime")) {
+        send(encodedInput(12, 0));
+      }
+      composing = false;
+      lastPreedit = null;
+      pendingCompositionCommit = null;
+      if (textInput !== null) {
+        textInput.value = "";
+      }
+      for (const [pointerId, contact] of activeTouches) {
+        send(encodedInput(21, contact.id, contact.x, contact.y));
+        releaseCapturedPointer(pointerId);
+      }
+      activeTouches.clear();
+    }
+    if (inputFeatureSet.has("focus")) {
+      send(encodedInput(13, focused ? 1 : 0));
+    }
+  };
+  const focusChanged = (): void => {
+    queueMicrotask(syncFocus);
+  };
+  const paste = (event: ClipboardEvent): void => {
+    if (
+      !inputFeatureSet.has("text") ||
+      !wantsTextInput ||
+      composing ||
+      (document.activeElement !== canvas &&
+        document.activeElement !== textInput) ||
+      event.clipboardData?.types.includes("text/plain") !== true
+    ) {
+      return;
+    }
+    event.preventDefault();
+    pendingCompositionCommit = null;
+    sendTextRecords(8, event.clipboardData.getData("text/plain"));
+    if (textInput !== null) {
+      textInput.value = "";
+    }
+  };
+  const beforeInput = (event: InputEvent): void => {
+    if (
+      !inputFeatureSet.has("text") ||
+      composing ||
+      event.isComposing ||
+      event.data === null
+    ) {
+      return;
+    }
+    if (
+      pendingCompositionCommit !== null &&
+      event.data === pendingCompositionCommit &&
+      (event.inputType === "insertText" ||
+        event.inputType === "insertCompositionText")
+    ) {
+      pendingCompositionCommit = null;
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      return;
+    }
+    pendingCompositionCommit = null;
+    sendTextRecords(8, event.data);
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+  };
+  const input = (): void => {
+    pendingCompositionCommit = null;
+    if (!composing && textInput !== null) {
+      textInput.value = "";
+    }
+  };
+  const compositionStart = (): void => {
+    if (composing) {
+      return;
+    }
+    composing = true;
+    lastPreedit = null;
+    pendingCompositionCommit = null;
+    if (inputFeatureSet.has("ime")) {
+      send(encodedInput(11, 0));
+    }
+  };
+  const compositionUpdate = (event: CompositionEvent): void => {
+    if (composing && inputFeatureSet.has("ime") && event.data !== lastPreedit) {
+      lastPreedit = event.data;
+      sendTextRecords(9, event.data);
+    }
+  };
+  const compositionEnd = (event: CompositionEvent): void => {
+    if (!composing) {
+      return;
+    }
+    composing = false;
+    lastPreedit = null;
+    pendingCompositionCommit = event.data;
+    if (inputFeatureSet.has("ime")) {
+      sendTextRecords(10, event.data);
+      send(encodedInput(12, 0));
+    } else if (inputFeatureSet.has("text")) {
+      sendTextRecords(8, event.data);
+    }
+    if (textInput !== null) {
+      textInput.value = "";
+    }
+  };
+  const wheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const scale =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? Math.max(1, canvas.clientHeight)
+          : 1;
+    send(encodedWheelInput(event.deltaX, event.deltaY, scale));
+  };
+  const keydown = (event: KeyboardEvent): void => {
+    // Candidate navigation and confirmation belong to the active IME, not the
+    // guest's editor shortcuts. Text arrives through the composition records.
+    if (composing || event.isComposing) {
+      return;
+    }
+    requestDeviceMotionPermission();
+    if (event.code === "Escape" && document.pointerLockElement === canvas) {
+      event.preventDefault();
+      const code = keyCodes.Escape;
+      send(encodedInput(1, code));
+      window.setTimeout(() => {
+        send(encodedInput(2, code));
+      }, 50);
+      releasePointerLock();
+      return;
+    }
+    if (!(event.code in keyCodes)) {
+      return;
+    }
+    const code = keyCodes[event.code];
+    if (pressed.has(code) && !event.repeat) {
+      if (!event.metaKey || code >= 0xe0) {
+        return;
+      }
+      // A fresh Command chord can arrive without macOS releasing its last key.
+      send(encodedInput(2, code));
+    }
+    if (event.isTrusted && parentOrigin !== null) {
+      window.parent.postMessage(
+        { type: "dotli:polkavm-user-activation" },
+        parentOrigin,
+      );
+    }
+    if (
+      inputFeatureSet.has("text") &&
+      wantsTextInput &&
+      textInput !== null &&
+      (document.activeElement === canvas ||
+        document.activeElement === textInput) &&
+      !event.altKey &&
+      ((event.code === "KeyV" && (event.ctrlKey || event.metaKey)) ||
+        (event.code === "Insert" &&
+          event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey))
+    ) {
+      // Let the browser deliver clipboard data through the trusted paste event.
+      // Do not also dispatch the guest's session-clipboard paste shortcut.
+      textInput.focus({ preventScroll: true });
+      return;
+    }
+    if (
+      textInput === null ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.code === "Tab"
+    ) {
+      event.preventDefault();
+    }
+    pressed.add(code);
+    resumeAudio();
+    if (!touchKeys.has(code) || event.repeat) {
+      send(encodedInput(1, code));
+    }
+  };
+  const keyup = (event: KeyboardEvent): void => {
+    if (!(event.code in keyCodes)) {
+      return;
+    }
+    const code = keyCodes[event.code];
+    if (!pressed.delete(code)) {
+      return;
+    }
+    event.preventDefault();
+    if (!touchKeys.has(code)) {
+      send(encodedInput(2, code));
+    }
+    if (
+      !event.metaKey &&
+      (code === keyCodes.MetaLeft || code === keyCodes.MetaRight)
+    ) {
+      // macOS can omit keyup for keys released while Command is held.
+      for (const held of pressed) {
+        if (held < 0xe0) {
+          pressed.delete(held);
+          if (!touchKeys.has(held)) {
+            send(encodedInput(2, held));
+          }
+        }
+      }
+    }
+  };
+  const pointer = (event: PointerEvent, type: 3 | 4): void => {
+    if (!(event.button in pointerButtons)) {
+      return;
+    }
+    event.preventDefault();
+    resumeAudio();
+    const button = pointerButtons[event.button];
+    if (type === 3) {
+      heldPointerButtons.add(button);
+    } else if (!heldPointerButtons.delete(button)) {
+      return;
+    }
+    if (touchButtons.has(button)) {
+      return;
+    }
+    const [x, y] = canvasPosition(event);
+    send(encodedInput(type, button, x, y));
+  };
+  const move = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 19);
+      return;
+    }
+    if (!event.isPrimary) {
+      return;
+    }
+    if (document.pointerLockElement === canvas) {
+      const delta = normalizedPointerDelta(
+        event.movementX,
+        event.movementY,
+        firstMoveAfterPointerLock,
+      );
+      firstMoveAfterPointerLock = false;
+      if (delta !== null) {
+        // Pointer events can outpace a guest frame by an order of magnitude.
+        // Coalesce them once per display frame so a render stall cannot replay
+        // a stale queue as one camera snap.
+        queueRelativePointer(delta[0], delta[1]);
+      }
+      return;
+    }
+    const [x, y] = canvasPosition(event);
+    send(encodedInput(5, 0, x, y));
+    if (previousPointer !== null) {
+      queuePointerMotion(
+        event.clientX - previousPointer[0],
+        event.clientY - previousPointer[1],
+      );
+    }
+    previousPointer = [event.clientX, event.clientY];
+  };
+  const down = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 18);
+      return;
+    }
+    if (!event.isPrimary) {
+      return;
+    }
+    requestDeviceMotionPermission();
+    if (
+      event.isTrusted &&
+      event.button in pointerButtons &&
+      parentOrigin !== null
+    ) {
+      window.parent.postMessage(
+        { type: "dotli:polkavm-user-activation" },
+        parentOrigin,
+      );
+    }
+    previousPointer = [event.clientX, event.clientY];
+    (wantsTextInput && textInput !== null ? textInput : canvas).focus({
+      preventScroll: true,
+    });
+    move(event);
+    pointer(event, 3);
+    if (
+      pointerCaptureArmed &&
+      event.button === 0 &&
+      typeof canvas.requestPointerLock === "function" &&
+      document.pointerLockElement !== canvas
+    ) {
+      void canvas.requestPointerLock().catch(() => undefined);
+    }
+    if (
+      event.button in pointerButtons &&
+      document.pointerLockElement !== canvas
+    ) {
+      activePointer = event.pointerId;
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // Capture is an optimisation: a browser that refuses it still delivers
+        // events while the pointer stays over the canvas.
+        console.warn(
+          `Could not capture the PolkaVM pointer: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  };
+  const releaseCapturedPointer = (pointerId: number): void => {
+    try {
+      if (canvas.hasPointerCapture(pointerId)) {
+        canvas.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      console.warn(
+        `Could not release the PolkaVM pointer capture: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+  const up = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 20);
+      return;
+    }
+    if (!event.isPrimary) {
+      return;
+    }
+    pointer(event, 4);
+    activePointer = null;
+    previousPointer = null;
+    releaseCapturedPointer(event.pointerId);
+  };
+  // Chrome cancels the pointer stream when it claims a gesture, and iOS cancels
+  // on system edge gestures. Neither delivers `pointerup`, so synthesise the
+  // release the guest is waiting for.
+  const cancel = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      touch(event, 21);
+      return;
+    }
+    if (
+      activePointer !== event.pointerId ||
+      (event.type === "lostpointercapture" &&
+        document.pointerLockElement === canvas)
+    ) {
+      return;
+    }
+    activePointer = null;
+    previousPointer = null;
+    const [x, y] = canvasPosition(event);
+    for (const button of heldPointerButtons) {
+      if (!touchButtons.has(button)) {
+        send(encodedInput(4, button, x, y));
+      }
+    }
+    heldPointerButtons.clear();
+    releaseCapturedPointer(event.pointerId);
+  };
+  const contextmenu = (event: MouseEvent): void => {
+    event.preventDefault();
+  };
+  const surfaceScale = (): number =>
+    Math.max(1 / 32, Math.min(4, window.devicePixelRatio || 1));
+  const sendSurfaceMetrics = (): void => {
+    if (graphicsProfile === "framebuffer") {
+      return;
+    }
+    const bounds = canvas.getBoundingClientRect();
+    const scale = surfaceScale();
+    const width = clamp(bounds.width * scale, 1, 4_096);
+    const height = clamp(bounds.height * scale, 1, 4_096);
+    send(encodedInput(7, clamp(scale * 32, 1, 128), width, height));
+  };
+  const applyUiOutput = (output: UiPlatformOutput): void => {
+    canvas.style.cursor = output.cursorIcon;
+    wantsTextInput = output.mutableTextUnderCursor || output.ime !== null;
+    if (textInput === null) {
+      return;
+    }
+    if (output.ime === null) {
+      if (composing) {
+        composing = false;
+        lastPreedit = null;
+        pendingCompositionCommit = null;
+        if (inputFeatureSet.has("ime")) {
+          send(encodedInput(12, 0));
+        }
+      }
+      if (document.activeElement === textInput) {
+        canvas.focus({ preventScroll: true });
+      }
+      return;
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+    const logicalWidth =
+      (webGpu?.physicalWidth ?? canvas.width) / surfaceScale();
+    const logicalHeight =
+      (webGpu?.physicalHeight ?? canvas.height) / surfaceScale();
+    const scaleX = bounds.width / Math.max(1, logicalWidth);
+    const scaleY = bounds.height / Math.max(1, logicalHeight);
+    const cursor = output.ime.cursorRect;
+    const x = bounds.left + ((cursor[0] + cursor[2]) / 2) * scaleX;
+    const y = bounds.top + ((cursor[1] + cursor[3]) / 2) * scaleY;
+    textInput.style.left = `${String(Math.max(bounds.left, Math.min(bounds.right - 1, x)))}px`;
+    textInput.style.top = `${String(Math.max(bounds.top, Math.min(bounds.bottom - 1, y)))}px`;
+    if (document.activeElement === canvas) {
+      textInput.focus({ preventScroll: true });
+    }
+  };
+  // Relative-pointer games already request capture through the App ABI. On
+  // touch hardware the host supplies that input through an FPS overlay, without
+  // changing raw touch delivery for ordinary apps or requiring Pointer Lock.
+  const createTouchControls = (): PolkaVmTouchControls =>
+    installPolkaVmTouchControls(canvas.parentElement ?? canvas, {
+      activate: (event) => {
+        canvas.focus({ preventScroll: true });
+        syncFocus();
+        resumeAudio();
+        requestDeviceMotionPermission();
+        if (!touchCaptureActive) {
+          touchCaptureActive = true;
+          pointerLockChanged();
+        }
+        if (event.isTrusted && parentOrigin !== null) {
+          window.parent.postMessage(
+            { type: "dotli:polkavm-user-activation" },
+            parentOrigin,
+          );
+        }
+      },
+      key: (key, down) => {
+        const code = keyCodes[key];
+        if (!Object.hasOwn(keyCodes, key) || touchKeys.has(code) === down) {
+          return;
+        }
+        if (down) {
+          touchKeys.add(code);
+        } else {
+          touchKeys.delete(code);
+        }
+        if (!pressed.has(code)) {
+          send(encodedInput(down ? 1 : 2, code));
+        }
+      },
+      button: (button, down) => {
+        if (touchButtons.has(button) === down) {
+          return;
+        }
+        if (down) {
+          touchButtons.add(button);
+        } else {
+          touchButtons.delete(button);
+        }
+        if (!heldPointerButtons.has(button)) {
+          send(
+            encodedInput(
+              down ? 3 : 4,
+              button,
+              canvas.width / 2,
+              canvas.height / 2,
+            ),
+          );
+        }
+      },
+      look: (x, y) => {
+        send(encodedInput(6, 0, x, y));
+        queuePointerMotion(x, y);
+      },
+    });
+  const updateTouchControls = (): void => {
+    const enabled = captureRequested && touchControlsEligible();
+    if (enabled) {
+      touchControls ??= createTouchControls();
+    }
+    touchControls?.setEnabled(enabled);
+    if (!enabled && touchCaptureActive) {
+      touchCaptureActive = false;
+      pointerLockChanged();
+    }
+  };
+  coarsePointer.addEventListener("change", updateTouchControls);
+  document.addEventListener("visibilitychange", focusChanged);
+  const stopObservingDimensions =
+    graphicsProfile !== "framebuffer"
+      ? observeSurfaceDimensions(canvas, sendSurfaceMetrics)
+      : null;
+  canvas.addEventListener("focus", focusChanged);
+  canvas.addEventListener("blur", focusChanged);
+  window.addEventListener("focus", focusChanged);
+  window.addEventListener("blur", focusChanged);
+  if (textInput !== null) {
+    textInput.addEventListener("beforeinput", beforeInput);
+    textInput.addEventListener("input", input);
+    textInput.addEventListener("compositionstart", compositionStart);
+    textInput.addEventListener("compositionupdate", compositionUpdate);
+    textInput.addEventListener("compositionend", compositionEnd);
+    textInput.addEventListener("focus", focusChanged);
+    textInput.addEventListener("blur", focusChanged);
+  }
+  if (inputFeatureSet.has("wheel")) {
+    canvas.addEventListener("wheel", wheel, { passive: false });
+  }
+  document.addEventListener("pointerlockchange", pointerLockChanged);
+  window.addEventListener("keydown", keydown);
+  window.addEventListener("keyup", keyup);
+  window.addEventListener("paste", paste);
+  window.addEventListener("devicemotion", deviceMotion);
+  canvas.addEventListener("pointerdown", down);
+  canvas.addEventListener("pointerup", up);
+  canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointercancel", cancel);
+  canvas.addEventListener("lostpointercapture", cancel);
+  canvas.addEventListener("contextmenu", contextmenu);
+  return {
+    applyUiOutput,
+    sendSurfaceMetrics,
+    supportsPointerCapture: () =>
+      pointerCaptureSupported || touchControlsEligible(),
+    setPointerCaptureRequest: (capture) => {
+      captureRequested = capture;
+      updateTouchControls();
+      pointerCaptureArmed =
+        capture &&
+        pointerCaptureSupported &&
+        document.pointerLockElement !== canvas &&
+        !touchCaptureActive;
+      canvas.dataset.polkavmPointerCaptureArmed = pointerCaptureArmed
+        ? "true"
+        : "false";
+      if (!capture) {
+        releasePointerLock();
+      }
+    },
+    cleanup: () => {
+      coarsePointer.removeEventListener("change", updateTouchControls);
+      document.removeEventListener("visibilitychange", focusChanged);
+      touchControls?.cleanup();
+      touchCaptureActive = false;
+      stopObservingDimensions?.();
+      if (
+        document.activeElement === canvas ||
+        (textInput !== null && document.activeElement === textInput)
+      ) {
+        (document.activeElement as HTMLElement).blur();
+      }
+      pointerCaptureArmed = false;
+      canvas.dataset.polkavmPointerCaptureArmed = "false";
+      canvas.dataset.polkavmPointerCaptured = "false";
+      releasePointerLock();
+      clearPointerMotion();
+      document.removeEventListener("pointerlockchange", pointerLockChanged);
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
+      window.removeEventListener("paste", paste);
+      window.removeEventListener("devicemotion", deviceMotion);
+      canvas.removeEventListener("focus", focusChanged);
+      canvas.removeEventListener("blur", focusChanged);
+      window.removeEventListener("focus", focusChanged);
+      window.removeEventListener("blur", focusChanged);
+      if (textInput !== null) {
+        textInput.removeEventListener("beforeinput", beforeInput);
+        textInput.removeEventListener("input", input);
+        textInput.removeEventListener("compositionstart", compositionStart);
+        textInput.removeEventListener("compositionupdate", compositionUpdate);
+        textInput.removeEventListener("compositionend", compositionEnd);
+        textInput.removeEventListener("focus", focusChanged);
+        textInput.removeEventListener("blur", focusChanged);
+        textInput.remove();
+      }
+      canvas.removeEventListener("wheel", wheel);
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointercancel", cancel);
+      canvas.removeEventListener("lostpointercapture", cancel);
+      heldPointerButtons.clear();
+      activeTouches.clear();
+      canvas.removeEventListener("contextmenu", contextmenu);
+    },
+  };
+}
+
+export async function runPolkaVmApplication(
+  files: ArchiveFiles,
+  cid: string,
+  externalManifest: string | null = null,
+): Promise<void> {
+  const descriptor = parseManifest(files, externalManifest);
+  if (descriptor === null) {
+    throw new Error("package is not a PolkaVM application");
+  }
+  validateFiles(files, descriptor);
+  const forceInterpreter =
+    new URLSearchParams(location.search).get("polkavmMode") === "interpreter";
+
+  const started = performance.now();
+  if (
+    descriptor.inputFeatures.includes("motion") &&
+    typeof PointerEvent === "undefined" &&
+    typeof DeviceMotionEvent === "undefined"
+  ) {
+    throw new Error("required motion input is unavailable");
+  }
+  const { surface, canvas, status } = createShell(descriptor.controls);
+  if (forceInterpreter) {
+    status.textContent = "Starting PolkaVM interpreter…";
+  }
+  const context =
+    descriptor.graphicsProfile === "framebuffer"
+      ? canvas.getContext("2d", { alpha: false })
+      : null;
+  if (descriptor.graphicsProfile === "framebuffer" && context === null) {
+    throw new Error("2D canvas is unavailable");
+  }
+  const tri2d =
+    descriptor.graphicsProfile === "tri2d" ? new Tri2dRenderer(canvas) : null;
+  canvas.dataset.polkavmProfile = descriptor.graphicsProfile;
+
+  const runtime = await runtimeBytes();
+  const program = ownedBytes(files[descriptor.programPath]);
+  const cacheKey = `${POLKAVM_RUNTIME_SOURCE}:${await programDigest(program)}`;
+  const compiledProgram = forceInterpreter
+    ? undefined
+    : compiledPrograms.get(cacheKey);
+  const compiledBytes =
+    !forceInterpreter && compiledProgram === undefined
+      ? await loadTranslation(cacheKey)
+      : null;
+  let saveIdentity = cid;
+  const saveIdentityPaths = new Set(descriptor.requiredAssets);
+  for (const handler of descriptor.fileInputHandlers) {
+    if (Object.hasOwn(files, handler.mountPath)) {
+      saveIdentityPaths.add(handler.mountPath);
+    }
+  }
+  if (saveIdentityPaths.size > 0) {
+    const fingerprints: string[] = [];
+    for (const path of [...saveIdentityPaths].sort()) {
+      fingerprints.push(path, await programDigest(files[path]));
+    }
+    saveIdentity = await programDigest(
+      encoder.encode(fingerprints.join("\u0000")),
+    );
+  }
+  const saveKey = `${location.hostname}:${saveIdentity}`;
+  const assets = Object.entries(files)
+    .filter(
+      ([path]) => path !== "manifest.json" && path !== descriptor.programPath,
+    )
+    .map(([path, bytes]) => ({ path, bytes: ownedBytes(bytes) }));
+  const save = await loadSave(saveKey);
+  if (
+    save !== null &&
+    !assets.some((asset) => asset.path === "save/cartridge.sav")
+  ) {
+    assets.push({ path: "save/cartridge.sav", bytes: ownedBytes(save) });
+  }
+
+  const parentOrigin = expectedPolkaVmParentOrigin(
+    location.hostname,
+    location.protocol,
+    location.port,
+  );
+  if (parentOrigin === null) {
+    throw new Error("cannot authenticate the PolkaVM host origin");
+  }
+  const {
+    promise: startedPromise,
+    resolve: resolveStarted,
+    reject: rejectStarted,
+  } = Promise.withResolvers<undefined>();
+  const hostFramePort = await waitForTruapiPort(
+    window,
+    window.parent,
+    parentOrigin,
+  );
+  const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-worker.js"));
+  const closeHostFramePort = (): void => {
+    hostFramePort.onmessage = null;
+    hostFramePort.onmessageerror = null;
+    hostFramePort.close();
+    if (window.__HOST_API_PORT__ === hostFramePort) {
+      delete window.__HOST_API_PORT__;
+    }
+  };
+  canvas.dataset.polkavmHostFrameRequests = "0";
+  canvas.dataset.polkavmHostFrameResponses = "0";
+  let failRuntime = (error: Error): void => {
+    status.textContent = error.message;
+    rejectStarted(error);
+    worker.postMessage({ type: "stop" });
+    worker.terminate();
+    closeHostFramePort();
+  };
+  const failHostFrame = (error: Error): void => {
+    failRuntime(error);
+  };
+  const hostFrameQueue = new HostFrameResponseQueue(worker, failHostFrame);
+  hostFramePort.onmessage = (event: MessageEvent<unknown>): void => {
+    if (
+      !(event.data instanceof Uint8Array) ||
+      event.data.byteLength === 0 ||
+      event.data.byteLength > MAX_HOST_FRAME_BYTES
+    ) {
+      failHostFrame(new Error("Host returned an invalid host frame"));
+      return;
+    }
+    canvas.dataset.polkavmHostFrameResponses = String(
+      Number(canvas.dataset.polkavmHostFrameResponses) + 1,
+    );
+    hostFrameQueue.enqueue(event.data);
+  };
+  hostFramePort.onmessageerror = () => {
+    failHostFrame(new Error("Host port could not decode a host frame"));
+  };
+  hostFramePort.start();
+  let audioContext: AudioContext | null = null;
+  let audioCursor = 0;
+  let firstFrame = false;
+  let frameWindowStarted = performance.now();
+  let frameWindowCount = 0;
+  const polkavmMetrics: PolkaVmDebugSnapshot = {
+    backend: "starting",
+    cacheHit: false,
+    translationMs: 0,
+    compilationMs: 0,
+    startupMs: 0,
+    startupStage: "worker-created",
+    firstFrameMs: 0,
+    translatedWasmBytes: 0,
+    frames: 0,
+    fps: 0,
+    updates: 0,
+    updateP50Ms: 0,
+    updateP95Ms: 0,
+    updateMaxMs: 0,
+    audioChunks: 0,
+    audioSamples: 0,
+  };
+  window.__dotliPolkaVmMetrics = polkavmMetrics;
+
+  const updateMetrics = (): void => {
+    canvas.dataset.polkavmBackend = polkavmMetrics.backend;
+    canvas.dataset.polkavmCacheHit = String(polkavmMetrics.cacheHit);
+    canvas.dataset.polkavmTranslationMs = String(polkavmMetrics.translationMs);
+    canvas.dataset.polkavmCompilationMs = String(polkavmMetrics.compilationMs);
+    canvas.dataset.polkavmStartupMs = String(polkavmMetrics.startupMs);
+    canvas.dataset.polkavmStartupStage = polkavmMetrics.startupStage;
+    canvas.dataset.polkavmFirstFrameMs = String(polkavmMetrics.firstFrameMs);
+    canvas.dataset.polkavmFrames = String(polkavmMetrics.frames);
+    canvas.dataset.polkavmFps = String(polkavmMetrics.fps);
+    canvas.dataset.polkavmUpdates = String(polkavmMetrics.updates);
+    canvas.dataset.polkavmUpdateP50Ms = String(polkavmMetrics.updateP50Ms);
+    canvas.dataset.polkavmUpdateP95Ms = String(polkavmMetrics.updateP95Ms);
+    canvas.dataset.polkavmUpdateMaxMs = String(polkavmMetrics.updateMaxMs);
+    canvas.dataset.polkavmAudioChunks = String(polkavmMetrics.audioChunks);
+    canvas.dataset.polkavmAudioSamples = String(polkavmMetrics.audioSamples);
+    const message: PolkaVmDebugMessage = {
+      type: "dotli:polkavm-metrics",
+      metrics: polkavmMetrics,
+    };
+    window.parent.postMessage(message, parentOrigin);
+  };
+  const setStartupStage = (stage: string): void => {
+    if (firstFrame) {
+      return;
+    }
+    polkavmMetrics.startupStage = stage;
+    status.textContent = `PolkaVM startup: ${stage.replaceAll("-", " ")}…`;
+    updateMetrics();
+  };
+  const presentedFrame = (): void => {
+    polkavmMetrics.frames++;
+    canvas.dataset.polkavmFrames = String(polkavmMetrics.frames);
+    frameWindowCount++;
+    const now = performance.now();
+    if (now - frameWindowStarted >= 500) {
+      polkavmMetrics.fps =
+        (frameWindowCount * 1000) / (now - frameWindowStarted);
+      frameWindowStarted = now;
+      frameWindowCount = 0;
+      updateMetrics();
+    }
+    if (!firstFrame) {
+      firstFrame = true;
+      polkavmMetrics.firstFrameMs = now - started;
+      polkavmMetrics.startupStage = "first-frame";
+      status.textContent = "";
+      window.clearTimeout(timer);
+      updateMetrics();
+      resolveStarted(undefined);
+    }
+  };
+
+  const resumeAudio = (): void => {
+    audioContext ??= new AudioContext({ sampleRate: 48_000 });
+    if (audioContext.state === "suspended") {
+      void audioContext.resume();
+    }
+  };
+  const playAudio = (message: WorkerAudio): void => {
+    if (
+      !Number.isInteger(message.channels) ||
+      message.channels < 1 ||
+      message.channels > 2 ||
+      !Number.isInteger(message.sampleRate) ||
+      message.sampleRate < 8_000 ||
+      message.sampleRate > 96_000 ||
+      !(message.samples instanceof Uint8Array) ||
+      message.samples.byteLength === 0 ||
+      message.samples.byteLength > MAX_AUDIO_BYTES ||
+      message.samples.byteLength % (message.channels * 2) !== 0
+    ) {
+      return;
+    }
+    polkavmMetrics.audioChunks++;
+    polkavmMetrics.audioSamples += message.samples.byteLength / 2;
+    canvas.dataset.polkavmAudioChunks = String(polkavmMetrics.audioChunks);
+    canvas.dataset.polkavmAudioSamples = String(polkavmMetrics.audioSamples);
+    if (
+      canvas.dataset.polkavmAudioNonzero !== "true" &&
+      message.samples.some((byte) => byte !== 0)
+    ) {
+      canvas.dataset.polkavmAudioNonzero = "true";
+    }
+    resumeAudio();
+    if (audioContext?.state !== "running") {
+      audioCursor = 0;
+      return;
+    }
+    const samples = new Int16Array(
+      message.samples.buffer,
+      message.samples.byteOffset,
+      message.samples.byteLength / 2,
+    );
+    const frameCount = samples.length / message.channels;
+    const start = Math.max(audioCursor, audioContext.currentTime + 0.02);
+    if (
+      start + frameCount / message.sampleRate - audioContext.currentTime >
+      0.25
+    ) {
+      return;
+    }
+    const buffer = audioContext.createBuffer(
+      message.channels,
+      frameCount,
+      message.sampleRate,
+    );
+    for (let channel = 0; channel < message.channels; channel++) {
+      const output = buffer.getChannelData(channel);
+      for (let index = 0; index < frameCount; index++) {
+        output[index] = samples[index * message.channels + channel] / 32768;
+      }
+    }
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.start(start);
+    audioCursor = start + buffer.duration;
+  };
+
+  const onStartTimeout = (): void => {
+    const label =
+      forceInterpreter || polkavmMetrics.backend === "interpreter"
+        ? "PolkaVM interpreter"
+        : "PolkaVM application";
+    failRuntime(
+      new Error(
+        `${label} did not present a frame within ${String(START_TIMEOUT_MS / 1000)}s (last stage: ${polkavmMetrics.startupStage})`,
+      ),
+    );
+  };
+  const timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
+  let webGpu: WebGpuBridge | null = null;
+  let gpuCapabilities: Uint8Array | null = null;
+  if (
+    descriptor.graphicsProfile === "webgpu-raster" ||
+    descriptor.graphicsProfile === "webgpu"
+  ) {
+    if (descriptor.webGpuRequirements === null) {
+      throw new Error("WebGPU requirements are missing");
+    }
+    webGpu = new WebGpuBridge(canvas, descriptor.webGpuRequirements, {
+      capabilities: (bytes) => {
+        const capabilities = ownedBytes(bytes);
+        worker.postMessage({ type: "gpu-capabilities", bytes: capabilities }, [
+          capabilities.buffer,
+        ]);
+      },
+      event: (bytes) => {
+        worker.postMessage({ type: "gpu-event", bytes }, [bytes.buffer]);
+      },
+      presented: presentedFrame,
+      error: (error) => {
+        failRuntime(error);
+      },
+    });
+    try {
+      gpuCapabilities = await webGpu.capabilities;
+    } catch (error) {
+      webGpu.dispose();
+      failRuntime(
+        error instanceof Error ? error : new Error("WebGPU startup failed"),
+      );
+      return startedPromise;
+    }
+  }
+
+  let usesMotion = false;
+  let usesPointerCapture = false;
+  let activeMediatedInput:
+    | { handle: number; mediaType: string; maxBytes: number }
+    | undefined;
+  let relayedMotionSequence = 0;
+  let workerReady = false;
+  let keyboardInsets: PolkaVmViewInsets = {
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  };
+  const postViewInsets = (
+    eventType: number,
+    insets: PolkaVmViewInsets,
+  ): void => {
+    worker.postMessage({
+      type: "view-insets",
+      eventType,
+      left: insets.left,
+      top: insets.top,
+      right: insets.right,
+      bottom: insets.bottom,
+    });
+  };
+  const onParentViewInsets = (event: MessageEvent<unknown>): void => {
+    if (event.source !== window.parent || event.origin !== parentOrigin) {
+      return;
+    }
+    const validated = validatedPolkaVmViewInsets(event.data);
+    if (validated === null) {
+      return;
+    }
+    keyboardInsets = validated;
+    canvas.dataset.polkavmKeyboardInsets = [
+      validated.left,
+      validated.top,
+      validated.right,
+      validated.bottom,
+    ].join(",");
+    if (workerReady) {
+      postViewInsets(INPUT_KEYBOARD_INSETS, keyboardInsets);
+    }
+  };
+  const sendMotion = (bytes: Uint8Array): void => {
+    const flags = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).getUint16(6, true);
+    canvas.dataset.polkavmMotionSamples = String(
+      Number(canvas.dataset.polkavmMotionSamples ?? 0) + 1,
+    );
+    canvas.dataset.polkavmMotionSource =
+      (flags & MOTION_FLAG_POINTER_EMULATED) !== 0 ? "pointer" : "device";
+    worker.postMessage({ type: "motion", bytes }, [bytes.buffer]);
+  };
+  const onParentMotion = (event: MessageEvent<unknown>): void => {
+    if (event.source !== window.parent || event.origin !== parentOrigin) {
+      return;
+    }
+    const message = object(event.data);
+    if (message?.type === "dotli:polkavm-mediated-input-result") {
+      const active = activeMediatedInput;
+      const resultStatus = Number(message.status);
+      const resultBytes = message.bytes;
+      const ready = resultStatus === 3;
+      if (
+        active === undefined ||
+        message.handle !== active.handle ||
+        !Number.isInteger(resultStatus) ||
+        resultStatus < 3 ||
+        resultStatus > 6 ||
+        (ready &&
+          (!(resultBytes instanceof Uint8Array) ||
+            resultBytes.byteLength === 0 ||
+            resultBytes.byteLength > active.maxBytes ||
+            resultBytes.byteLength > MAX_MEDIATED_INPUT_BYTES)) ||
+        (!ready && resultBytes !== undefined)
+      ) {
+        return;
+      }
+      activeMediatedInput = undefined;
+      if (ready) {
+        const bytes = ownedBytes(resultBytes as Uint8Array);
+        worker.postMessage(
+          {
+            type: "mediated-input-result",
+            handle: active.handle,
+            status: resultStatus,
+            bytes,
+          },
+          [bytes.buffer],
+        );
+      } else {
+        worker.postMessage({
+          type: "mediated-input-result",
+          handle: active.handle,
+          status: resultStatus,
+        });
+      }
+      return;
+    }
+    if (
+      message?.type === "dotli:polkavm-motion-status" &&
+      Number.isInteger(message.availability) &&
+      Number(message.availability) >= 0 &&
+      Number(message.availability) <= 2
+    ) {
+      worker.postMessage({
+        type: "motion-status",
+        availability: Number(message.availability),
+      });
+      return;
+    }
+    if (message?.type !== "dotli:polkavm-motion-sample") {
+      return;
+    }
+    const acceleration = object(message.acceleration);
+    const rotation = object(message.rotation);
+    const accelerationX = acceleration?.x;
+    const accelerationY = acceleration?.y;
+    const accelerationZ = acceleration?.z;
+    const rotationAlpha = rotation?.alpha;
+    const rotationBeta = rotation?.beta;
+    const rotationGamma = rotation?.gamma;
+    const finite = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value);
+    const hasAcceleration =
+      finite(accelerationX) && finite(accelerationY) && finite(accelerationZ);
+    const hasRotation =
+      finite(rotationAlpha) && finite(rotationBeta) && finite(rotationGamma);
+    if (!hasAcceleration && !hasRotation) {
+      return;
+    }
+    relayedMotionSequence =
+      relayedMotionSequence === 0xffffffff ? 1 : relayedMotionSequence + 1;
+    sendMotion(
+      encodedMotionSample({
+        flags:
+          (hasAcceleration ? MOTION_FLAG_ACCELERATION : 0) |
+          (hasRotation ? MOTION_FLAG_ROTATION : 0),
+        sequence: relayedMotionSequence,
+        timestampMs: finite(message.timestampMs)
+          ? message.timestampMs
+          : performance.now(),
+        accelerationX: finite(accelerationX) ? accelerationX : 0,
+        accelerationY: finite(accelerationY) ? accelerationY : 0,
+        accelerationZ: finite(accelerationZ) ? accelerationZ : 0,
+        rotationAlpha: finite(rotationAlpha) ? rotationAlpha : 0,
+        rotationBeta: finite(rotationBeta) ? rotationBeta : 0,
+        rotationGamma: finite(rotationGamma) ? rotationGamma : 0,
+      }),
+    );
+  };
+  window.addEventListener("message", onParentMotion);
+  window.addEventListener("message", onParentViewInsets);
+  window.parent.postMessage(
+    { type: POLKAVM_VIEW_INSETS_REQUEST },
+    parentOrigin,
+  );
+  const {
+    applyUiOutput,
+    cleanup: cleanupInput,
+    sendSurfaceMetrics,
+    setPointerCaptureRequest,
+    supportsPointerCapture,
+  } = installInput(
+    canvas,
+    webGpu,
+    descriptor.graphicsProfile,
+    descriptor.inputFeatures,
+    (bytes) => {
+      worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
+    },
+    sendMotion,
+    (availability) => {
+      worker.postMessage({ type: "motion-status", availability });
+    },
+    (active) => {
+      worker.postMessage({ type: "pointer-capture-state", active });
+    },
+    () => usesPointerCapture,
+    () => usesMotion,
+    parentOrigin,
+    resumeAudio,
+  );
+  let cleanupFileInputControls = (): void => undefined;
+  let stopped = false;
+  function onTri2dContextLost(event: Event): void {
+    event.preventDefault();
+    recoverTri2d(new Error("Tri2D WebGL context was lost"));
+  }
+  const stop = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    cleanupFileInputControls();
+    window.removeEventListener("pagehide", stop);
+    window.clearTimeout(timer);
+    if (activeMediatedInput !== undefined) {
+      window.parent.postMessage(
+        {
+          type: "dotli:polkavm-mediated-input-cancel",
+          handle: activeMediatedInput.handle,
+        },
+        parentOrigin,
+      );
+      activeMediatedInput = undefined;
+    }
+    cleanupInput();
+    window.removeEventListener("message", onParentMotion);
+    window.removeEventListener("message", onParentViewInsets);
+    canvas.removeEventListener("webglcontextlost", onTri2dContextLost);
+    tri2d?.dispose();
+    worker.postMessage({ type: "stop" });
+    worker.terminate();
+    webGpu?.dispose();
+    void audioContext?.close();
+    closeHostFramePort();
+    hostFrameQueue.close();
+  };
+  failRuntime = (error: Error): void => {
+    status.textContent = error.message;
+    stop();
+    rejectStarted(error);
+  };
+  const recoverTri2d = (error: Error): void => {
+    if (stopped) {
+      return;
+    }
+    status.textContent = `${error.message}; restoring app…`;
+    stop();
+    rejectStarted(error);
+    window.parent.postMessage({ type: "dotli:sandbox-recover" }, parentOrigin);
+  };
+  if (tri2d !== null) {
+    canvas.addEventListener("webglcontextlost", onTri2dContextLost);
+  }
+  window.addEventListener("pagehide", stop, { once: true });
+  // pagehide stops the runtime, so a back-forward cache restore must recreate
+  // it. Ordinary tab/app switches only change visibility and must preserve
+  // the live guest and its session-only state.
+  installPageCacheRestoreReload();
+
+  worker.onmessage = (event: MessageEvent<unknown>): void => {
+    const message = object(event.data);
+    if (hostFrameQueue.handleMessage(message)) {
+      return;
+    }
+    switch (message?.type) {
+      case "startup": {
+        const startup = message as unknown as WorkerStartup;
+        if (typeof startup.stage === "string" && startup.stage !== "") {
+          setStartupStage(startup.stage);
+        }
+        break;
+      }
+      case "translated": {
+        setStartupStage("translated");
+        if (
+          message.cacheKey === cacheKey &&
+          message.bytes instanceof Uint8Array
+        ) {
+          void storeTranslation(cacheKey, message.bytes).catch(
+            (error: unknown) => {
+              console.warn(
+                `PolkaVM translation cache write failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            },
+          );
+        }
+        break;
+      }
+      case "compiled": {
+        setStartupStage("compiled");
+        const program = object(message.program);
+        if (
+          message.cacheKey === cacheKey &&
+          program?.module instanceof WebAssembly.Module &&
+          Array.isArray(program.parts) &&
+          program.parts.every(
+            (part: unknown) => part instanceof WebAssembly.Module,
+          )
+        ) {
+          compiledPrograms.delete(cacheKey);
+          compiledPrograms.set(cacheKey, {
+            module: program.module,
+            parts: program.parts,
+          });
+          if (compiledPrograms.size > 8) {
+            const oldest = compiledPrograms.keys().next().value;
+            if (oldest !== undefined) {
+              compiledPrograms.delete(oldest);
+            }
+          }
+        }
+        break;
+      }
+      case "ready": {
+        const ready = message as unknown as WorkerReady;
+        polkavmMetrics.backend = ready.backend;
+        if (ready.backend === "interpreter" && !forceInterpreter) {
+          polkavmMetrics.compilerFallbackReason = ready.compilerFallbackReason;
+          polkavmMetrics.compilerFallbackStage = ready.compilerFallbackStage;
+        } else {
+          delete polkavmMetrics.compilerFallbackReason;
+          delete polkavmMetrics.compilerFallbackStage;
+        }
+        polkavmMetrics.cacheHit = ready.cacheHit === true;
+        polkavmMetrics.translationMs = ready.translationMs ?? 0;
+        polkavmMetrics.compilationMs = ready.compilationMs ?? 0;
+        polkavmMetrics.startupMs = ready.startupMs ?? 0;
+        polkavmMetrics.translatedWasmBytes = ready.translatedWasmBytes ?? 0;
+        polkavmMetrics.startupStage = "ready";
+        status.textContent =
+          ready.backend === "compiler"
+            ? "PolkaVM→Wasm JIT ready"
+            : forceInterpreter
+              ? "PolkaVM interpreter ready (forced)"
+              : polkavmMetrics.compilerFallbackReason !== undefined
+                ? `PolkaVM interpreter ready (${polkavmMetrics.compilerFallbackStage === undefined ? "" : `${polkavmMetrics.compilerFallbackStage}: `}${polkavmMetrics.compilerFallbackReason})`
+                : "PolkaVM interpreter ready";
+        canvas.dataset.polkavmReady = "true";
+        updateMetrics();
+        workerReady = true;
+        postViewInsets(INPUT_SAFE_AREA_INSETS, {
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+        });
+        postViewInsets(INPUT_KEYBOARD_INSETS, keyboardInsets);
+        canvas.dataset.polkavmSafeAreaInsets = "0,0,0,0";
+        usesMotion = ready.usesMotion === true;
+        usesPointerCapture = ready.usesPointerCapture === true;
+        if (usesPointerCapture) {
+          worker.postMessage({
+            type: "pointer-capture-support",
+            supported: supportsPointerCapture(),
+          });
+        }
+        if (usesMotion) {
+          window.parent.postMessage(
+            { type: "dotli:polkavm-motion-request" },
+            parentOrigin,
+          );
+        }
+        sendSurfaceMetrics();
+        hostFrameQueue.start();
+        break;
+      }
+      case "pointer-capture": {
+        if (!usesPointerCapture || typeof message.capture !== "boolean") {
+          failRuntime(
+            new Error(
+              "PolkaVM guest emitted an invalid pointer capture request",
+            ),
+          );
+          return;
+        }
+        setPointerCaptureRequest(message.capture);
+        break;
+      }
+      case "mediated-input-request": {
+        const handle = Number(message.handle);
+        const maxBytes = Number(message.maxBytes);
+        if (
+          activeMediatedInput !== undefined ||
+          !descriptor.inputFeatures.includes("camera-ur") ||
+          message.kind !== "camera-ur" ||
+          !Number.isInteger(handle) ||
+          handle < 1 ||
+          handle > 0xffffffff ||
+          typeof message.mediaType !== "string" ||
+          message.mediaType.length > 64 ||
+          !/^[a-z0-9](?:[a-z0-9+._-]*[a-z0-9])?$/.test(message.mediaType) ||
+          !Number.isInteger(maxBytes) ||
+          maxBytes < 1 ||
+          maxBytes > MAX_MEDIATED_INPUT_BYTES
+        ) {
+          rejectStarted(
+            new Error(
+              "PolkaVM guest emitted an invalid mediated input request",
+            ),
+          );
+          return;
+        }
+        activeMediatedInput = {
+          handle,
+          mediaType: message.mediaType,
+          maxBytes,
+        };
+        window.parent.postMessage(
+          {
+            type: "dotli:polkavm-mediated-input-request",
+            handle,
+            kind: "camera-ur",
+            mediaType: message.mediaType,
+            maxBytes,
+          },
+          parentOrigin,
+        );
+        break;
+      }
+      case "mediated-input-cancel": {
+        const handle = Number(message.handle);
+        if (activeMediatedInput?.handle !== handle) {
+          rejectStarted(
+            new Error(
+              "PolkaVM guest emitted an invalid mediated input cancellation",
+            ),
+          );
+          return;
+        }
+        activeMediatedInput = undefined;
+        window.parent.postMessage(
+          { type: "dotli:polkavm-mediated-input-cancel", handle },
+          parentOrigin,
+        );
+        break;
+      }
+      case "host-frame-request": {
+        const bytes = message.bytes;
+        if (
+          !(bytes instanceof Uint8Array) ||
+          bytes.byteLength === 0 ||
+          bytes.byteLength > MAX_HOST_FRAME_BYTES
+        ) {
+          failRuntime(new Error("PolkaVM guest emitted an invalid host frame"));
+          return;
+        }
+        const request = ownedBytes(bytes);
+        canvas.dataset.polkavmHostFrameRequests = String(
+          Number(canvas.dataset.polkavmHostFrameRequests) + 1,
+        );
+        hostFramePort.postMessage(request, [request.buffer]);
+        break;
+      }
+      case "frame": {
+        const frame = message as unknown as WorkerFrame;
+        if (
+          descriptor.graphicsProfile !== "framebuffer" ||
+          context === null ||
+          !Number.isInteger(frame.width) ||
+          !Number.isInteger(frame.height) ||
+          frame.width <= 0 ||
+          frame.height <= 0 ||
+          !(frame.pixels instanceof Uint8Array) ||
+          frame.pixels.byteLength !== frame.width * frame.height * 4
+        ) {
+          failRuntime(
+            new Error("PolkaVM guest emitted an invalid framebuffer"),
+          );
+          return;
+        }
+        const pixelBuffer = frame.pixels.buffer;
+        if (!(pixelBuffer instanceof ArrayBuffer)) {
+          failRuntime(new Error("PolkaVM guest emitted a shared framebuffer"));
+          return;
+        }
+        const resized =
+          canvas.width !== frame.width || canvas.height !== frame.height;
+        if (resized) {
+          canvas.width = frame.width;
+          canvas.height = frame.height;
+          canvas.style.setProperty(
+            "--dotli-polkavm-frame-aspect",
+            String(frame.width / frame.height),
+          );
+          canvas.style.setProperty(
+            "--dotli-polkavm-frame-inverse-aspect",
+            String(frame.height / frame.width),
+          );
+        }
+        const pixels = new Uint8ClampedArray(
+          pixelBuffer,
+          frame.pixels.byteOffset,
+          frame.pixels.byteLength,
+        );
+        context.putImageData(
+          new ImageData(pixels, frame.width, frame.height),
+          0,
+          0,
+        );
+        presentedFrame();
+        break;
+      }
+      case "tri2d": {
+        const frame = message as unknown as WorkerTri2d;
+        if (
+          descriptor.graphicsProfile !== "tri2d" ||
+          tri2d === null ||
+          !(frame.bytes instanceof Uint8Array)
+        ) {
+          failRuntime(
+            new Error("PolkaVM guest emitted an invalid Tri2D frame"),
+          );
+          return;
+        }
+        try {
+          const metadata = tri2d.render(frame.bytes);
+          canvas.dataset.polkavmTri2dDraws = String(metadata.drawCount);
+          canvas.dataset.polkavmTri2dVertices = String(metadata.vertexCount);
+          canvas.dataset.polkavmTri2dIndices = String(metadata.indexCount);
+          presentedFrame();
+        } catch (error) {
+          const runtimeError =
+            error instanceof Error
+              ? error
+              : new Error("PolkaVM Tri2D rendering failed");
+          if (tri2d.isContextLost()) {
+            recoverTri2d(runtimeError);
+          } else {
+            failRuntime(runtimeError);
+          }
+        }
+        break;
+      }
+      case "ui-output": {
+        const output = validatedUiPlatformOutput(message.output);
+        if (output === null) {
+          failRuntime(
+            new Error("PolkaVM guest emitted an invalid UI platform output"),
+          );
+          return;
+        }
+        applyUiOutput(output);
+        canvas.dataset.polkavmCursor = output.cursorIcon;
+        canvas.dataset.polkavmIme = String(output.ime !== null);
+        canvas.dataset.polkavmUiCommands = String(
+          Number(canvas.dataset.polkavmUiCommands ?? 0) +
+            output.commands.length,
+        );
+        canvas.dataset.polkavmUiLastCommands = output.commands
+          .map((command) => command.type)
+          .join(",");
+        const command = output.commands.at(0);
+        if (command?.type === "copy-text" || command?.type === "copy-image") {
+          canvas.dataset.polkavmClipboardRequests = String(
+            Number(canvas.dataset.polkavmClipboardRequests ?? 0) + 1,
+          );
+        } else if (command !== undefined) {
+          canvas.dataset.polkavmNavigationRequests = String(
+            Number(canvas.dataset.polkavmNavigationRequests ?? 0) + 1,
+          );
+        }
+        postFirstUiPlatformCommand(output, window.parent, parentOrigin);
+        break;
+      }
+      case "gpu-batch": {
+        const batch = message as unknown as WorkerGpuBatch;
+        if (
+          (descriptor.graphicsProfile !== "webgpu-raster" &&
+            descriptor.graphicsProfile !== "webgpu") ||
+          webGpu === null ||
+          !(batch.bytes instanceof Uint8Array) ||
+          !(batch.bytes.buffer instanceof ArrayBuffer) ||
+          batch.bytes.byteLength === 0 ||
+          batch.bytes.byteLength > 4 * 1024 * 1024
+        ) {
+          failRuntime(
+            new Error("PolkaVM guest emitted an invalid WebGPU batch"),
+          );
+          return;
+        }
+        webGpu.submit(batch.bytes);
+        break;
+      }
+      case "audio":
+        playAudio(message as unknown as WorkerAudio);
+        break;
+      case "save": {
+        const bytes = message.bytes;
+        if (bytes instanceof Uint8Array) {
+          void storeSave(saveKey, bytes).catch((error: unknown) => {
+            console.warn(
+              `PolkaVM save write failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+        }
+        break;
+      }
+      case "metrics": {
+        const values = message as unknown as WorkerMetrics;
+        polkavmMetrics.updates = values.updates;
+        polkavmMetrics.updateP50Ms = values.updateP50Ms;
+        polkavmMetrics.updateP95Ms = values.updateP95Ms;
+        polkavmMetrics.updateMaxMs = values.updateMaxMs;
+        updateMetrics();
+        break;
+      }
+      case "log": {
+        const text = typeof message.message === "string" ? message.message : "";
+        console.warn(`[PolkaVM] ${text}`);
+        break;
+      }
+      case "error": {
+        const text =
+          typeof message.message === "string"
+            ? message.message
+            : "PolkaVM runtime failed";
+        failRuntime(new Error(text));
+        break;
+      }
+    }
+  };
+  worker.onerror = (event: ErrorEvent): void => {
+    failRuntime(
+      new Error(
+        event.message
+          ? `PolkaVM worker failed: ${event.message}`
+          : "PolkaVM worker failed",
+      ),
+    );
+  };
+
+  const runtimeCopy = runtime.slice(0);
+  const transfers: Transferable[] = [runtimeCopy, program.buffer];
+  if (compiledBytes !== null) {
+    transfers.push(compiledBytes.buffer);
+  }
+  for (const asset of assets) {
+    transfers.push(asset.bytes.buffer);
+  }
+  const gpuCapabilitiesBuffer = gpuCapabilities?.buffer;
+  if (gpuCapabilitiesBuffer !== undefined) {
+    transfers.push(gpuCapabilitiesBuffer);
+  }
+  worker.postMessage(
+    {
+      type: "start",
+      runtime: runtimeCopy,
+      program,
+      assets,
+      audioEnabled: descriptor.audioEnabled,
+      cacheKey,
+      compiledProgram,
+      compiledBytes: compiledBytes?.buffer,
+      graphicsProfile: descriptor.graphicsProfile,
+      gpuCapabilities: gpuCapabilitiesBuffer,
+      mediatedInputKinds: descriptor.inputFeatures.filter(
+        (feature) => feature === "camera-ur",
+      ),
+      motionAvailability:
+        typeof PointerEvent !== "undefined" ||
+        typeof DeviceMotionEvent !== "undefined"
+          ? 1
+          : 0,
+      forceInterpreter,
+    },
+    transfers,
+  );
+
+  await startedPromise.catch((error: unknown) => {
+    stop();
+    throw error;
+  });
+  cleanupFileInputControls = installFileInputControls(
+    surface,
+    status,
+    descriptor.fileInputHandlers,
+    async (handler, bytes) => {
+      const relaunchedFiles: ArchiveFiles = {
+        ...files,
+        [handler.mountPath]: bytes,
+      };
+      stop();
+      await runPolkaVmApplication(relaunchedFiles, cid, externalManifest);
+    },
+  );
+}

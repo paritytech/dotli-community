@@ -113,6 +113,34 @@ const errorResolveResponse = (
     }
   });
 `;
+const stoppedThenSuccessfulResolve = (cid: string): string => `
+  ${READY}
+  var resolveAttempts = 0;
+  window.addEventListener("message", function(e) {
+    if (!e.data || e.data.namespace !== "dotli:protocol" || e.data.method !== "resolveDotName") {
+      return;
+    }
+    resolveAttempts += 1;
+    if (resolveAttempts === 1) {
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ok: false,
+        error: "chainHead follow stopped (cause: ChainHead stopped)",
+        errorName: "ApiStoppedError",
+      }, "*");
+      return;
+    }
+    window.parent.postMessage({
+      namespace: "dotli:protocol",
+      kind: "response",
+      id: e.data.id,
+      ok: true,
+      result: ${JSON.stringify(cid)},
+    }, "*");
+  });
+`;
 
 const nullResolveResponse = `
   ${READY}
@@ -194,6 +222,25 @@ test("As a user using smoldot in shared worker, when the light client panics mid
   await expect(page.locator("#error-retry-btn-1")).toContainText(
     RETRY_LABEL_FROM_SMOLDOT,
   );
+});
+test("As a user, a stopped chainHead follow reconnects once without showing a domain error", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-shared-worker");
+  await mockProtocolIframe(
+    page,
+    stoppedThenSuccessfulResolve(
+      "bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa",
+    ),
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+  await findAppFrame(page, 10_000);
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveCount(0);
 });
 
 test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({

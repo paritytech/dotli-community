@@ -241,6 +241,7 @@
 [data-theme="light"] .signing-modal {
   background: #fff;
   border-color: #ddd;
+  color: #333;
 }
 [data-theme="light"] .signing-modal h2 {
   color: #111;
@@ -252,6 +253,14 @@
   background: #f5f5f5;
   border-color: #ddd;
   color: #555;
+}
+[data-theme="light"] .camera-input-picker span {
+  color: #555;
+}
+[data-theme="light"] .camera-input-picker select {
+  border-color: #ddd;
+  background: #f5f5f5;
+  color: #222;
 }
 [data-theme="light"] .signing-btn-cancel {
   border-color: #ddd;

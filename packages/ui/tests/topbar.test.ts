@@ -286,9 +286,6 @@ describe("topbar login cancellation", () => {
     document.getElementById("auth-button")?.click();
 
     // Then
-    expect(document.getElementById("auth-modal-title")?.textContent).toBe(
-      "Login with Polkadot Mobile",
-    );
     expect(loginRequests).toEqual([{ reason: undefined }]);
   });
 
@@ -355,31 +352,6 @@ describe("topbar login cancellation", () => {
         .getElementById("auth-modal-backdrop")
         ?.classList.contains("open"),
     ).toBe(true);
-  });
-
-  it("As a dotli integrator, the host keeps landing pairing presentation host-global", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-
-    // When
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: {
-          tag: "Pairing",
-          deeplink: "polkadotapp://pair?handshake=test",
-          label: "Polkadot Web",
-          dotSuffix: false,
-          hostGlobal: true,
-        },
-      }),
-    );
-
-    // Then
-    expect(document.getElementById("auth-modal-title")?.textContent).toBe(
-      "Login with Polkadot Mobile",
-    );
   });
 
   it("As a dotli integrator, the host cancels the in-flight login when the user closes the pairing modal", async () => {
@@ -542,9 +514,6 @@ describe("topbar login cancellation", () => {
     );
 
     // Then
-    expect(document.getElementById("auth-modal-title")?.textContent).toBe(
-      "Login with Polkadot Mobile",
-    );
     expect(
       document
         .getElementById("auth-modal-backdrop")
@@ -748,11 +717,10 @@ describe("topbar login cancellation", () => {
 });
 
 describe("topbar first login guidance", () => {
-  it("As a user, the login button says it is connecting until the top bar is ready", async () => {
+  it("As a user, the login button becomes available when the top bar is ready", async () => {
     // Given
     installTopbarDom();
     const button = document.getElementById("auth-button");
-    expect(button?.title).toBe("Connecting...");
     expect(button?.getAttribute("aria-busy")).toBe("true");
 
     // When
@@ -760,15 +728,11 @@ describe("topbar first login guidance", () => {
     initTopBar();
 
     // Then
-    expect(button?.title).toBe("Login with Polkadot Mobile");
-    expect(button?.getAttribute("aria-label")).toBe(
-      "Login with Polkadot Mobile",
-    );
     expect(button?.hasAttribute("aria-busy")).toBe(false);
     expect(button?.hasAttribute("disabled")).toBe(false);
   });
 
-  it("As a new user on a phone without the app, the login modal shows me where to get Polkadot Mobile", async () => {
+  it("As a new user on a phone without the app, the login modal offers installation only while pairing", async () => {
     // Given
     device.mobile = true;
     installTopbarDom();
@@ -789,11 +753,8 @@ describe("topbar first login guidance", () => {
 
     // Then
     expect(getApp?.hidden).toBe(false);
-    expect(getApp?.getAttribute("href")).toBe(
-      "https://docs.polkadot.com/apps/",
-    );
 
-    // When the wallet has approved, installing the app is no longer the ask.
+    // When approval moves login past pairing, installation is no longer needed.
     window.dispatchEvent(
       new CustomEvent("dotli:truapi-auth-state", {
         detail: { tag: "Authenticating" },

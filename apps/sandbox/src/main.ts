@@ -49,6 +49,13 @@ import { setNetworkOverride } from "@dotli/config/network";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
+import {
+  isPolkaVmPackage,
+  runPolkaVmApplication,
+  polkavmWebFallbackEntrypoint,
+  polkaVmCompatibilityError,
+} from "./polkavm-runtime";
+import { assertNoHostOwnedPaths } from "./host-owned-paths";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
@@ -84,6 +91,19 @@ function stripContractParamsFromUrl(): void {
   }
   history.replaceState(null, "", cleaned.toString());
 }
+/**
+ * A full reset is a one-shot host signal. Consume only that flag after the
+ * purge while retaining the PolkaVM launch contract, so reloading the host-owned
+ * canvas can start again with the same verified CID and manifest.
+ */
+function consumeFullResetParam(): void {
+  const cleaned = new URL(window.location.href);
+  if (!cleaned.searchParams.has(SANDBOX_CONTRACT_PARAMS.fullReset)) {
+    return;
+  }
+  cleaned.searchParams.delete(SANDBOX_CONTRACT_PARAMS.fullReset);
+  history.replaceState(null, "", cleaned.toString());
+}
 
 /**
  * Ask the host shell to rebuild this iframe with a fresh contract URL.
@@ -102,6 +122,18 @@ function requestHostRerender(reason: string): void {
   window.parent.postMessage({ type: "dotli:sandbox-recover" }, "*");
   window.setTimeout(() => {
     failLoading("Invalid sandbox URL", reason);
+  }, TIMEOUTS.SANDBOX_RECOVER);
+}
+/**
+ * A newer sandbox cannot safely interpret a contract emitted by an older host.
+ * Ask the parent to activate its waiting PWA build instead of re-rendering the
+ * same stale contract and looping.
+ */
+function requestHostUpdate(reason: string): void {
+  showStatus("Updating dot.li...");
+  window.parent.postMessage({ type: "dotli:host-update-required" }, "*");
+  window.setTimeout(() => {
+    failLoading("dot.li update required", reason);
   }, TIMEOUTS.SANDBOX_RECOVER);
 }
 
@@ -347,6 +379,8 @@ async function storeArchiveInSW(
   cid: string,
   contentBackend: string,
 ): Promise<void> {
+  assertNoHostOwnedPaths(Object.keys(files));
+
   const sw = navigator.serviceWorker.controller;
   if (!sw) {
     return;
@@ -358,9 +392,11 @@ async function storeArchiveInSW(
     const timer = setTimeout(() => {
       navigator.serviceWorker.removeEventListener("message", handler);
       reject(
-        new Error("Service worker did not acknowledge archive within 10s"),
+        new Error(
+          `Service worker did not acknowledge archive within ${String(TIMEOUTS.SW_ARCHIVE_STORE / 1000)}s`,
+        ),
       );
-    }, 10_000);
+    }, TIMEOUTS.SW_ARCHIVE_STORE);
 
     const handler = (evt: MessageEvent): void => {
       const msg = evt.data as { type?: string; reason?: string } | null;
@@ -408,6 +444,31 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
   const { injectSandboxChecker } =
     await import("@dotli/sandbox-checker/sandbox-checker");
   return injectSandboxChecker(html);
+}
+
+async function runPolkaVmIfPresent(
+  files: ArchiveFiles,
+  cid: string,
+  executableManifest: string | null,
+): Promise<false | null | string> {
+  if (!isPolkaVmPackage(files)) {
+    return false;
+  }
+  const fallback = await polkavmWebFallbackEntrypoint(
+    files,
+    executableManifest,
+  );
+  if (fallback !== null) {
+    showStatus("Starting compatible web fallback...");
+    return fallback;
+  }
+  showStatus("Starting PolkaVM application...");
+  // PolkaVM apps are host-owned canvases, not package HTML. Retain their launch
+  // contract so a browser or frame reload can verify and restart the same CID.
+  await runPolkaVmApplication(files, cid, executableManifest);
+  notifyLoadingDone();
+  performance.mark("dotli:app:end");
+  return null;
 }
 
 // Session-scoped decryption key cache: once a user decrypts a CID in this tab,
@@ -612,7 +673,9 @@ async function main(): Promise<void> {
   const urlParams = new URL(window.location.href).searchParams;
   const parsed = validateSandboxParams(urlParams);
   if (!parsed.ok) {
-    if (parsed.recoverable === true) {
+    if (parsed.hostUpdateRequired === true) {
+      requestHostUpdate(parsed.reason);
+    } else if (parsed.recoverable === true) {
       requestHostRerender(parsed.reason);
     } else {
       failLoading("Invalid sandbox URL", parsed.reason);
@@ -620,7 +683,8 @@ async function main(): Promise<void> {
     stopApp();
     return;
   }
-  const { cid, chainBackend, network, skipArchiveCache } = parsed.params;
+  const { cid, chainBackend, network, skipArchiveCache, executableManifest } =
+    parsed.params;
   const isGateway = chainBackend === "rpc-gateway";
 
   setNetworkOverride(network);
@@ -633,6 +697,7 @@ async function main(): Promise<void> {
   if (parsed.params.fullReset) {
     log.warn("[dot.li app] fullReset=1 → purging sandbox-origin state");
     await purgeSandboxOriginState();
+    consumeFullResetParam();
   }
 
   // Propagate the chainBackend and network choices into every metric emitted
@@ -670,16 +735,26 @@ async function main(): Promise<void> {
   const cachedFiles = skipArchiveCache
     ? null
     : await getCachedArchive(cid, cid, chainBackend);
-  if (cachedFiles) {
+  if (cachedFiles !== null) {
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
+    const polkavmRuntime = await runPolkaVmIfPresent(
+      cachedFiles,
+      cid,
+      executableManifest,
+    );
+    if (polkavmRuntime === null) {
+      stopApp();
+      return;
+    }
 
-    // Extract index.html and write it directly into this window so it
-    // occupies the APP iframe. An archive without index.html is invalid,
-    // so surface it instead of silently falling through to a no-op render.
-    const indexHtml = cachedFiles["index.html"] as Uint8Array | undefined;
+    // Extract the selected HTML entrypoint and write it directly into this
+    // window. An archive without that entrypoint is invalid.
+    const htmlPath =
+      typeof polkavmRuntime === "string" ? polkavmRuntime : "index.html";
+    const indexHtml = cachedFiles[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
-        "Archive cache hit missing index.html — cannot render a sandbox without a root document.",
+        "Archive is neither a supported PolkaVM product nor an HTML application.",
       );
     }
     // For multi-file archives, store files in the SW so it can serve
@@ -752,14 +827,38 @@ async function main(): Promise<void> {
   if (result.type === "single") {
     html = new TextDecoder().decode(result.content);
   } else {
-    // For multi-file archives, store files in the SW so it can serve
-    // sub-resources (CSS, JS, fonts) when the browser loads them.
+    // Native PolkaVM products run entirely from the verified in-memory files.
+    // Start them before persisting the archive: IndexedDB can take minutes for
+    // maximum-size packages, and caching must not block the first frame.
+    const polkavmRuntime = await runPolkaVmIfPresent(
+      result.files,
+      cid,
+      executableManifest,
+    );
+    if (polkavmRuntime === null) {
+      stopApp();
+      void storeArchiveInSW(result.files, cid, cid, chainBackend)
+        .then(() => {
+          log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+        })
+        .catch((error: unknown) => {
+          log.warn(
+            "[dot.li app] background archive persistence failed:",
+            error,
+          );
+        });
+      return;
+    }
+    // HTML products and PolkaVM web fallbacks need the SW as a synchronous
+    // virtual filesystem before their document can request sub-resources.
     await storeArchiveInSW(result.files, cid, cid, chainBackend);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
-    const indexHtml = result.files["index.html"] as Uint8Array | undefined;
+    const htmlPath =
+      typeof polkavmRuntime === "string" ? polkavmRuntime : "index.html";
+    const indexHtml = result.files[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
       throw new Error(
-        "Archive missing index.html — cannot render a sandbox without a root document.",
+        "Archive is neither a supported PolkaVM product nor an HTML application.",
       );
     }
     html = new TextDecoder().decode(indexHtml);
@@ -824,6 +923,11 @@ function run(): void {
         attempt: String(runAttempts),
       });
       const message = err instanceof Error ? err.message : String(err);
+      const compatibilityError = polkaVmCompatibilityError(message);
+      if (compatibilityError !== null) {
+        failLoading(compatibilityError.title, compatibilityError.detail);
+        return;
+      }
       failLoading(
         "Failed to load content",
         `${message} (via ${dependency})`,

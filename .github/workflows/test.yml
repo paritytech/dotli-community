@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify PolkaVM runtime assets
+        run: bun run check:polkavm-runtime
+
       - name: Run tests
         run: bunx --bun turbo run test
 
@@ -69,14 +72,26 @@ jobs:
         working-directory: apps/host
         env:
           VITE_METRICS: "true"
-        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts || true
+        run: bun run test:functional || true
 
       - name: Apply functional threshold
         working-directory: apps/host
         run: |
-          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
+          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
           if [ "$TOTAL" -lt 11 ]; then
-            echo "::error::expected at least 11 tests, got $TOTAL."
+            echo "::error::expected at least 11 executed tests, got $TOTAL."
+            exit 1
+          fi
+          RUNTIME_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          RUNTIME_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select((.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") and .ok == false)] | length' tests/functional/results.json)
+          echo "Executed PolkaVM functional specs: $RUNTIME_EXECUTED"
+          echo "PolkaVM functional failures: $RUNTIME_FAILED"
+          if [ "$RUNTIME_EXECUTED" -lt 4 ]; then
+            echo "::error::expected at least 4 executed PolkaVM functional specs, got $RUNTIME_EXECUTED."
+            exit 1
+          fi
+          if [ "$RUNTIME_FAILED" -gt 0 ]; then
+            echo "::error::PolkaVM functional specs must have 0 failures"
             exit 1
           fi
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)

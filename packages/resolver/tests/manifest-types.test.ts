@@ -22,6 +22,41 @@ const VALID_APP = {
   appVersion: [1, 0, 0],
 };
 
+const VALID_APP_V2 = {
+  $v: 2,
+  kind: "app",
+  appVersion: [0, 1, 7],
+  runtime: {
+    kind: "polkavm",
+    abiVersion: 1,
+    entrypoint: "app.polkavm",
+  },
+  capabilities: {
+    graphics: {
+      abiVersion: 1,
+      profile: "framebuffer",
+      requiredFeatures: [],
+    },
+    deviceInput: {
+      abiVersion: 1,
+      requiredFeatures: ["pointer", "keyboard"],
+    },
+    audio: { abiVersion: 1, requiredFeatures: [] },
+    fileInput: {
+      abiVersion: 1,
+      handlers: [
+        {
+          id: "snes-rom",
+          label: "SNES cartridge image",
+          extensions: [".sfc"],
+          maxBytes: 16 * 1024 * 1024,
+          mountPath: "game/cartridge.sfc",
+        },
+      ],
+    },
+  },
+};
+
 const VALID_WIDGET = {
   $v: 1,
   kind: "widget",
@@ -73,6 +108,130 @@ describe("validateRootManifest", () => {
 describe("validateExecutableManifest", () => {
   it("accepts a valid app manifest", () => {
     expect(validateExecutableManifest(VALID_APP).ok).toBe(true);
+  });
+
+  it("accepts App manifest v2 runtime capabilities", () => {
+    expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          deviceInput: {
+            abiVersion: 1,
+            requiredFeatures: ["pointer", "motion", "camera-ur"],
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          graphics: VALID_APP_V2.capabilities.graphics,
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          graphics: {
+            abiVersion: 1,
+            profile: "webgpu",
+            requiredFeatures: [],
+            requiredLimits: {
+              maxBufferSize: 1_048_576,
+              maxStorageBufferBindingSize: 1_048_576,
+              maxStorageBuffersPerShaderStage: 2,
+              maxComputeInvocationsPerWorkgroup: 64,
+              maxComputeWorkgroupSizeX: 64,
+              maxComputeWorkgroupsPerDimension: 1_024,
+            },
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        $v: 2,
+        kind: "app",
+        appVersion: [1, 0, 0],
+        runtime: { kind: "web", entrypoint: "index.html" },
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: {
+          ...VALID_APP_V2.runtime,
+          fallback: { kind: "web", entrypoint: "fallback/index.html" },
+        },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("rejects unsafe App v2 entrypoints and unknown required features", () => {
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: { ...VALID_APP_V2.runtime, entrypoint: "../app.polkavm" },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: {
+          ...VALID_APP_V2.runtime,
+          fallback: { kind: "web", entrypoint: "../fallback.html" },
+        },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          audio: { abiVersion: 1, requiredFeatures: ["spatial"] },
+        },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateExecutableManifest({
+        ...VALID_APP_V2,
+        capabilities: {
+          ...VALID_APP_V2.capabilities,
+          fileInput: {
+            ...VALID_APP_V2.capabilities.fileInput,
+            handlers: [
+              {
+                ...VALID_APP_V2.capabilities.fileInput.handlers[0],
+                mountPath: "../cartridge.sfc",
+              },
+            ],
+          },
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("accepts only the published PolkaVM runtime ABI", () => {
+    // A v2 manifest versions the manifest, not the guest boundary: every App
+    // the kit publishes selects runtime ABI v1.
+    expect(validateExecutableManifest(VALID_APP_V2).ok).toBe(true);
+    for (const abiVersion of [2, 0, "1", undefined]) {
+      const result = validateExecutableManifest({
+        ...VALID_APP_V2,
+        runtime: { ...VALID_APP_V2.runtime, abiVersion },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors.some((e) => /abiVersion must be 1/.test(e))).toBe(
+          true,
+        );
+      }
+    }
   });
 
   it("accepts a valid widget manifest", () => {

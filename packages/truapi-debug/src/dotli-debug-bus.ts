@@ -19,17 +19,24 @@
 // shell. The panel chunk itself is still dynamically imported, so
 // the heavy UI code stays out of the eager bundle.
 
-import { createNanoEvents } from "nanoevents";
+import { createNanoEvents, type Emitter } from "nanoevents";
 
-import type { DotliDebugEvent } from "./dotli-debug-types.ts";
+import type {
+  DotliDebugEvent,
+  PolkaVmDebugSnapshot,
+} from "./dotli-debug-types.ts";
 import type { TruapiDebugMessageEvent } from "./event-store.ts";
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
-let bus: ReturnType<
-  typeof createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>
-> | null = null;
+interface DebugBusEvents {
+  event: (event: DotliDebugBusEvent) => void;
+  polkavm: (snapshot: PolkaVmDebugSnapshot) => void;
+}
+
+let bus: Emitter<DebugBusEvents> | null = null;
 let listenerCount = 0;
+let latestPolkaVmSnapshot: PolkaVmDebugSnapshot | null = null;
 
 /**
  * Early-event buffer. The debug panel is dynamically imported from
@@ -59,7 +66,7 @@ function noopUnsubscribe(): void {
  * decision to enable the debug panel, before any emit site runs.
  */
 export function enableDotliDebugBuffering(): void {
-  bus ??= createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>();
+  bus ??= createNanoEvents<DebugBusEvents>();
   bufferingEnabled = true;
 }
 
@@ -79,6 +86,31 @@ export function emitDotliDebugEvent(event: DotliDebugBusEvent): void {
       bufferedEvents.shift();
     }
   }
+}
+
+/** Publish the latest PolkaVM runtime state without adding a sampled value to
+ * the event timeline. Silent no-op outside debug mode. */
+export function emitPolkaVmDebugSnapshot(snapshot: PolkaVmDebugSnapshot): void {
+  if (bus === null) {
+    return;
+  }
+  latestPolkaVmSnapshot = snapshot;
+  bus.emit("polkavm", snapshot);
+}
+
+/** Subscribe to live PolkaVM runtime state. The current snapshot is replayed
+ * immediately so a dynamically imported panel cannot miss startup metrics. */
+export function onPolkaVmDebugSnapshot(
+  callback: (snapshot: PolkaVmDebugSnapshot) => void,
+): () => void {
+  if (bus === null) {
+    return noopUnsubscribe;
+  }
+  const unsubscribe = bus.on("polkavm", callback);
+  if (latestPolkaVmSnapshot !== null) {
+    callback(latestPolkaVmSnapshot);
+  }
+  return unsubscribe;
 }
 
 /** Cheap gate for emit sites that build non-trivial payloads. */

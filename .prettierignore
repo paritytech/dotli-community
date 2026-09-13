@@ -3,4 +3,5 @@ node_modules/
 bun.lock
 tests/results/
 docs/
+apps/sandbox/public/polkavm-runtime/
 vendor/

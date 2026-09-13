@@ -60,6 +60,18 @@ body {
   margin-top: var(--topbar-height);
   text-align: center;
 }
+
+/* A mounted product owns the viewport. Without this the document keeps a
+   scrollable box behind the frame, so a drag inside the app pans the host page
+   and rubber-bands the URL bar instead of reaching the guest. Scoped to the
+   product frame: the landing and settings pages still scroll normally, and the
+   0x0 protocol iframe is aria-hidden so it never matches. */
+html:has(#app iframe:not([aria-hidden="true"])),
+body:has(#app iframe:not([aria-hidden="true"])) {
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 /* Scoped to `#app > .loading` because the bare `.loading` class is *also*
    used as a modifier on in-popover value spans (e.g. the domain info popover's
    "Resolving..." row). Before scoping, the full-viewport `min-height` on the
