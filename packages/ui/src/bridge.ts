@@ -68,8 +68,11 @@ import {
   createLocalWalletSecret,
   readLocalWalletSecret,
   deleteLocalWalletSecret,
+  exportLocalWalletMnemonic,
+  importLocalWalletMnemonic,
   isExperimentalWalletActive,
   LOCAL_WALLET_ENABLED_KEY,
+  LOCAL_WALLET_REVISION_KEY,
 } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
@@ -242,6 +245,9 @@ export const experimentalWalletControls = {
     }
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
+    for (const provider of [...liveCoreProviders]) {
+      provider.dispose();
+    }
     localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
     window.location.reload();
   },
@@ -259,6 +265,24 @@ export const experimentalWalletControls = {
     localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
     window.location.reload();
     return Promise.resolve();
+  },
+  async exportMnemonic(): Promise<string> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    return exportLocalWalletMnemonic();
+  },
+  async importMnemonic(mnemonic: string): Promise<void> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    await importLocalWalletMnemonic(mnemonic, () => {
+      for (const provider of [...liveCoreProviders]) {
+        provider.dispose();
+      }
+    });
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    window.location.reload();
   },
   async deleteWallet(): Promise<void> {
     if (!DEBUG) {
@@ -816,7 +840,14 @@ export function initBridgeEventListeners(
   ).__dotliTruapiBridgeReady = true;
   if (DEBUG) {
     window.addEventListener("storage", (event) => {
-      if (event.key === LOCAL_WALLET_ENABLED_KEY || event.key === null) {
+      if (
+        event.key === LOCAL_WALLET_ENABLED_KEY ||
+        event.key === LOCAL_WALLET_REVISION_KEY ||
+        event.key === null
+      ) {
+        for (const provider of [...liveCoreProviders]) {
+          provider.dispose();
+        }
         window.location.reload();
       }
     });

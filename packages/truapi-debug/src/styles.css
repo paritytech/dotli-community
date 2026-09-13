@@ -254,11 +254,9 @@
 .td-wallet-content {
   box-sizing: border-box;
   position: fixed;
-  bottom: 40px;
   right: 12px;
   width: 300px;
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 80px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -270,10 +268,6 @@
   color: #fbbf24;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   z-index: 1;
-}
-#truapi-debug-panel.docked-right .td-wallet-content {
-  top: 40px;
-  bottom: auto;
 }
 .td-wallet-content p {
   margin: 0;
@@ -287,6 +281,24 @@
 .td-wallet-content .td-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.td-wallet-content [hidden] {
+  display: none;
+}
+.td-wallet-phrase {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid #92400e;
+  border-radius: 4px;
+  background: #1f1f1f;
+  color: #fef3c7;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  user-select: text;
 }
 .td-btn {
   background: #1f1f1f;
