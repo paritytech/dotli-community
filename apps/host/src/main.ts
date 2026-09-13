@@ -43,7 +43,7 @@ import type { LoadingPhase } from "@dotli/ui/ui";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
 import { chainRoleForKey } from "@dotli/ui/chain-roles";
 import type { ChainRole } from "@dotli/config/network";
-import { startResolutionTrace } from "./resolution-trace";
+import { PHASE_BY_MILESTONE, startResolutionTrace } from "./resolution-trace";
 import {
   recordChainPhase,
   recordPeerCount,
@@ -1386,18 +1386,6 @@ async function main(): Promise<void> {
           showWarning(message);
         }, STALL_WARNING_MS),
       );
-    };
-
-    // `lifecycle_unstable_follow` reports a phase, a peer count and a health
-    // verdict. These are the milestones the protocol layer derives from it.
-    // Only the ones that name a phase are mapped, so a peer count arriving on
-    // its own never rewrites where the chain says it is.
-    const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
-      connecting: "connecting",
-      warpSyncProgress: "syncing",
-      warpSyncFinished: "ready",
-      bootstrapComplete: "ready",
-      stalled: "stalled",
     };
 
     // The debug panel's Resolution view draws one block per phase per chain,

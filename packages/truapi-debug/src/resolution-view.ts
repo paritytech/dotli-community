@@ -564,8 +564,18 @@ export function renderResolution(
     container.innerHTML = `<div class="td-res-empty">No page load recorded yet. Reload the page with the panel open.</div>`;
     return;
   }
-  container.innerHTML = `${renderSummary(model)}${renderChart(model)}`;
+  const html = `${renderSummary(model)}${renderChart(model)}`;
+  // A finished load builds the same markup on every tick, and reassigning
+  // identical innerHTML still forces a parse and layout. Comparing first
+  // makes the steady state free.
+  if (html === lastRendered.get(container)) {
+    return;
+  }
+  lastRendered.set(container, html);
+  container.innerHTML = html;
 }
+
+const lastRendered = new WeakMap<HTMLDivElement, string>();
 
 /**
  * One KPI card. `hint` is the plain-English explanation shown on hover, which is

@@ -13,8 +13,12 @@
 // never finishes is the one worth looking at, and a tree assembled at the end
 // is exactly the tree such a load never produces.
 
-import type { ChainKey } from "@dotli/resolver/chain-sync";
-import type { ChainPeer } from "@dotli/resolver/chain-sync";
+import type {
+  ChainKey,
+  ChainPeer,
+  ChainSyncKind,
+} from "@dotli/resolver/chain-sync";
+import type { ChainPhase } from "@dotli/ui/network-monitor";
 import { m, type SpanHandle, type SpanValue } from "@dotli/metrics/metrics";
 
 /** How a resolution ended. `abandoned` means the tab left before it did. */
@@ -25,11 +29,20 @@ export type CacheResult = "hit" | "miss";
 /** The phases a chain moves through, as the light client reports them. */
 type Phase = "connecting" | "syncing" | "ready";
 
-const PHASE_BY_MILESTONE: Partial<Record<string, Phase>> = {
+/**
+ * Which phase each sync milestone lands a chain in.
+ *
+ * The one map for every consumer, so the loading screen and this trace can
+ * never classify the same chain state differently. Milestones that name no
+ * phase (peers, firstPeer, recovered) are absent, so a peer count arriving on
+ * its own never rewrites where the chain says it is.
+ */
+export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
   connecting: "connecting",
   warpSyncProgress: "syncing",
   warpSyncFinished: "ready",
   bootstrapComplete: "ready",
+  stalled: "stalled",
 };
 
 /**
@@ -101,7 +114,7 @@ function newChainState(): ChainState {
 
 export interface ChainSyncFacts {
   chain: ChainKey;
-  syncKind: string;
+  syncKind: ChainSyncKind;
   peers?: number;
   reason?: string;
   at?: number;
@@ -233,7 +246,9 @@ export function startResolutionTrace(
       }
       const state = chainOf(event.chain);
       const phase = PHASE_BY_MILESTONE[event.syncKind];
-      if (phase !== undefined) {
+      // Stalls are recorded as attributes below, not as phase spans: a stall
+      // interrupts a phase rather than being one the chain moves through.
+      if (phase !== undefined && phase !== "stalled") {
         enterPhase(event.chain, state, phase);
       }
       switch (event.syncKind) {
@@ -263,7 +278,10 @@ export function startResolutionTrace(
             state.warpTarget = event.target;
           }
           break;
-        default:
+        case "connecting":
+        case "recovered":
+        case "warpSyncFinished":
+          // Fully handled by the phase mapping above.
           break;
       }
     },
