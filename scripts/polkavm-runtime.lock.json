@@ -3,7 +3,7 @@
   "package": "@parity/polkavm-browser-runtime",
   "packageVersion": "0.3.0",
   "upstreamRepository": "https://github.com/paritytech/polkavm-host-runtime",
-  "upstreamRevision": "46200874c61dfa8f68e9be8553c761c682dc89a1",
+  "upstreamRevision": "e60a6135be6e00c72c90ca4abe23d2002f4eb962",
   "polkavmRepository": "https://github.com/paritytech/polkavm",
   "polkavmRevision": "c160c13c3c29bf3219ce1404ec95976000235a94",
   "abi": {
@@ -14,10 +14,10 @@
   },
   "assets": {
     "polkavm-browser-runtime.wasm": "c8cd7d02cb79231bb644bb60b775225307abda5263c505181f5dcdadb8925680",
-    "polkavm-worker.js": "e5be8dcaa0c5e6af012d1718a2816e63c2f791cf607022fcc135d6273e4686f0",
+    "polkavm-worker.js": "49c6b327bd07b598fa9a7b0353820dd91fe8ff70cb365b3bad909a9bcc41c82f",
     "polkavm-gpu-worker.js": "447e1a9f8ffe4db4db83c37b70bfbeb2409b5ca9e437cb68d0d1822c053c07b4",
-    "SHA256SUMS": "28a1a81abc0bdf3887a7477faf608e9a7c9465920d02c1f3e4d5644c312b4ae7",
-    "SOURCE.json": "fe2ece832ec0a6497d73d6ff07592541f2fddeeadc542ef38d943975555bebd1",
+    "SHA256SUMS": "7f7948ead1968276f583063c9d0c520c51d15cdffdc455954a13e2b7944ba4b9",
+    "SOURCE.json": "4c3c55904b5774b6ffaa3812f31c044610d48530a8a8e7f4ebda9368575a620c",
     "LICENSE-MPL-2.0": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1",
     "PolkaVM-LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
     "PolkaVM-LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
