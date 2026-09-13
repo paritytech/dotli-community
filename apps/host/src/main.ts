@@ -304,7 +304,15 @@ let shieldVerified = false;
 // once the shield is verified, logout pins the topbar visible.
 function bindTopbarAutoHide(): void {
   window.addEventListener("dotli:authenticated", () => {
-    if (shieldVerified) {
+    if (
+      shieldVerified &&
+      !(
+        DEBUG &&
+        document.documentElement.classList.contains(
+          "experimental-wallet-active",
+        )
+      )
+    ) {
       armTopbarAutoHide();
     }
   });
@@ -327,7 +335,14 @@ function setShieldState(state: "validating" | "verified"): void {
   }
 
   shieldVerified = true;
-  armTopbarAutoHide();
+  if (
+    !(
+      DEBUG &&
+      document.documentElement.classList.contains("experimental-wallet-active")
+    )
+  ) {
+    armTopbarAutoHide();
+  }
 }
 
 async function resolveAppExecutableManifest(
@@ -907,8 +922,21 @@ async function main(): Promise<void> {
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
     void import("@dotli/truapi-debug/panel").then(
-      ({ setupTruapiDebugPanel }) => {
-        setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
+      async ({ setupTruapiDebugPanel }) => {
+        // Runtime debug opt-ins can open diagnostics in production, but must
+        // never expose wallet creation or key-management controls there.
+        if (DEBUG) {
+          // Preserve the existing lazy render-chunk boundary: a static bridge
+          // import would load its runtime dependencies before they are needed.
+          const { experimentalWalletControls } =
+            await import("@dotli/ui/bridge");
+          setupTruapiDebugPanel({
+            startCollapsed: !debugMode.explicit,
+            experimentalWallet: experimentalWalletControls,
+          });
+        } else {
+          setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
+        }
         log.warn(`[dot.li] TrUAPI debug panel enabled`);
       },
     );

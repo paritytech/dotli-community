@@ -96,6 +96,13 @@ export interface SetupOptions {
    * mount expanded.
    */
   startCollapsed?: boolean;
+  /** Supplied only by debug builds, never by the runtime panel opt-in. */
+  experimentalWallet?: {
+    isActive(): boolean;
+    activate(): Promise<void>;
+    disconnect(): Promise<void>;
+    deleteWallet(): Promise<void>;
+  };
 }
 
 /**
@@ -135,6 +142,9 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   };
 
   const ui = buildPanel(state, store);
+  if (options.experimentalWallet !== undefined) {
+    installExperimentalWalletControls(ui, options.experimentalWallet);
+  }
   document.body.appendChild(ui.panel);
   applyDockPosition(ui, state, { persist: false });
   if (state.collapsed) {
@@ -407,6 +417,112 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   wireBodySplitter(ui, state);
 
   return ui;
+}
+
+function installExperimentalWalletControls(
+  ui: PanelUI,
+  wallet: NonNullable<SetupOptions["experimentalWallet"]>,
+): void {
+  const menu = document.createElement("details");
+  menu.className = "td-wallet-menu";
+  const summary = document.createElement("summary");
+  summary.className = "td-btn";
+  summary.textContent = "Test wallet";
+  menu.appendChild(summary);
+  const content = document.createElement("div");
+  content.className = "td-wallet-content";
+  const status = document.createElement("p");
+  status.textContent = wallet.isActive()
+    ? "Experimental wallet active"
+    : "Experimental wallet disconnected";
+  content.appendChild(status);
+  const activate = document.createElement("button");
+  activate.type = "button";
+  activate.className = "td-btn";
+  activate.textContent = "Enable / use test wallet";
+  const disconnect = document.createElement("button");
+  disconnect.type = "button";
+  disconnect.className = "td-btn";
+  disconnect.textContent = "Disconnect";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "td-btn td-wallet-delete";
+  remove.textContent = "Delete test wallet";
+  const message = document.createElement("p");
+  message.className = "td-wallet-message";
+  message.setAttribute("role", "alert");
+  message.hidden = true;
+  content.append(activate, disconnect, remove, message);
+  menu.appendChild(content);
+  ui.counts.after(menu);
+
+  const buttons = [activate, disconnect, remove];
+  let pending = false;
+  const syncButtons = (): void => {
+    activate.disabled = pending || wallet.isActive();
+    disconnect.disabled = pending || !wallet.isActive();
+    remove.disabled = pending;
+  };
+  syncButtons();
+
+  const run = async (
+    operation: "activate" | "disconnect" | "deleteWallet",
+  ): Promise<void> => {
+    if (pending) {
+      return;
+    }
+    if (
+      operation === "activate" &&
+      !window.confirm(
+        "Experimental browser wallet — testing only.\n\n" +
+          "Do not use valuable funds. There is no recovery: deleting the wallet or clearing this site's data permanently loses access.\n\n" +
+          "Malicious scripts running on this origin can recover your keys. Encryption in browser storage does not protect against them.\n\n" +
+          "Real networks and real transactions remain possible; this is not a test-network sandbox.\n\n" +
+          "Enable / use this test wallet?",
+      )
+    ) {
+      return;
+    }
+    if (
+      operation === "deleteWallet" &&
+      !window.confirm(
+        "Permanently delete this test wallet?\n\n" +
+          "This deletes the browser's wallet keys. Access to this account and any funds will be permanently lost. There is no recovery or undo.",
+      )
+    ) {
+      return;
+    }
+    pending = true;
+    for (const button of buttons) {
+      button.disabled = true;
+    }
+    content.setAttribute("aria-busy", "true");
+    message.hidden = false;
+    message.textContent = "Updating test wallet; the page will reload…";
+    try {
+      await wallet[operation]();
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      message.textContent =
+        `Could not ${operation === "deleteWallet" ? "delete" : operation} the test wallet. ` +
+        "Check that browser storage is available, then retry. " +
+        detail;
+      menu.open = true;
+    } finally {
+      pending = false;
+      content.removeAttribute("aria-busy");
+      syncButtons();
+    }
+  };
+  activate.addEventListener("click", () => {
+    void run("activate");
+  });
+  disconnect.addEventListener("click", () => {
+    void run("disconnect");
+  });
+  remove.addEventListener("click", () => {
+    void run("deleteWallet");
+  });
 }
 
 const COPY_FLASH_MS = 1200;
