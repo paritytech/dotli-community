@@ -13,7 +13,7 @@
 let received = 0;
 let installed = false;
 
-/** Total bytes received over the light client's transports so far. */
+/** Total bytes received over the light client transports so far. */
 export function chainBytesReceived(): number {
   return received;
 }
@@ -40,7 +40,7 @@ function sizeOf(data: unknown): number {
  * Wrap `WebSocket` and `RTCDataChannel` so their inbound frames are tallied.
  *
  * Idempotent, and a no-op outside a browser. Listeners are added rather than
- * replacing `onmessage`, so smoldot's own handler is untouched.
+ * replacing `onmessage`, so the handler smoldot installed is untouched.
  */
 export function installByteMeter(): void {
   if (installed || typeof window === "undefined") {

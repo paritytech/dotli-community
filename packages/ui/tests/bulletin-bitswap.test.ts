@@ -5,9 +5,8 @@ import { describe, it, expect } from "vitest";
 import { onContentProgress, __testing } from "@dotli/ui/bulletin-bitswap";
 
 describe("Content progress reporting works", () => {
-  it("As a user, my download progress reaches the loading bar and the trace alike", () => {
-    // Given the resolution trace and the loading bar both subscribe, and a
-    // single callback slot would hand the stream to whichever came last.
+  it("As a user, the loading bar keeps moving while the trace listens along", () => {
+    // Given
     const first: number[] = [];
     const second: number[] = [];
     onContentProgress(({ bytesFetched }) => first.push(bytesFetched));
@@ -22,7 +21,7 @@ describe("Content progress reporting works", () => {
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
 
-    // When one unsubscribes, the other keeps receiving.
+    // When
     unsubscribe();
     __testing.noteBlock(new Uint8Array(50));
     expect(first).toHaveLength(2);

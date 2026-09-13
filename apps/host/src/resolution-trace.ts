@@ -68,7 +68,7 @@ function sampleRate(): number {
 /**
  * Whether this load records child spans.
  *
- * Decided at the start, because Sentry fixes a trace's sampling when its root
+ * Decided at the start, because Sentry fixes the sampling of a trace when its root
  * opens and a failure discovered 30 seconds later cannot retroactively add
  * children.
  */
@@ -130,7 +130,7 @@ export interface ResolutionTrace {
   }) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
-  /** Archive download progress, from the sandbox's own reports. */
+  /** Archive download progress, from the sandbox reports. */
   content: (fetched: number, total: number | null) => void;
   /** The name resolved, or did not. */
   nameResolved: (cid: string | null) => void;
@@ -223,7 +223,7 @@ export function startResolutionTrace(
     state.phaseSpan?.end(at());
     state.phase = phase;
     // Named in full rather than just the phase: `child` does not inherit the
-    // parent's name, so four chains would otherwise all report `dotli.ready`
+    // name of the parent, so four chains would otherwise all report `dotli.ready`
     // and only be separable by walking to their parent.
     state.phaseSpan =
       state.span === null
@@ -284,7 +284,7 @@ export function startResolutionTrace(
       }
       const state = chainOf(event.chain);
       if (event.dbCache !== undefined) {
-        // First answer wins: Bulletin's second connection always misses.
+        // First answer wins: the second Bulletin connection always misses.
         state.dbCache ??= event.dbCache;
       }
       if (event.peers !== undefined) {
@@ -300,7 +300,7 @@ export function startResolutionTrace(
       sampleBar();
       const now = performance.now();
       const elapsed = now - lastBytesAt;
-      // A rate needs two readings. The seed reading is the page's own start
+      // A rate needs two readings. The seed reading is page start
       // with nothing downloaded, so the first report already has a partner.
       if (elapsed > 0) {
         const rate = ((received - lastBytes) / elapsed) * 1000;
@@ -394,7 +394,7 @@ export function startResolutionTrace(
   return trace;
 }
 
-/** The loading bar's own percentage, which is what the visitor was shown. */
+/** The percentage the loading bar showed, which is what the visitor was shown. */
 function readBarPercent(): number {
   const fill = document.querySelector<HTMLElement>(".loading-progress-fill");
   const width = fill?.style.width ?? "";
@@ -449,7 +449,7 @@ function chainAttributes(
       .join(",")
       .slice(0, 1000);
     if (state.warpTarget !== null) {
-      // How far behind the chain's own peers were. A lag near zero says the
+      // How far behind the peers of the chain were. A lag near zero says the
       // network was fine and the time went somewhere else.
       attrs.peer_best_lag = state.warpTarget - median;
     }

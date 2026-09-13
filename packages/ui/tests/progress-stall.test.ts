@@ -82,7 +82,6 @@ describe("The loading bar reports when it stops moving", () => {
     advancePhase(1);
 
     // When
-    // A real report every second, which is what a healthy download looks like.
     for (let i = 1; i <= 6; i += 1) {
       vi.advanceTimersByTime(1_000);
       nudgePhaseProgress(i / 10, "content");
@@ -150,8 +149,7 @@ describe("The loading bar never stands still", () => {
   }
 
   it("As a user whose download reports nothing at all, the number still moves every 3 seconds", () => {
-    // Given a step that promised a real percentage and never delivers one,
-    // which is what a peerless content chain looks like.
+    // Given
     initPhases(PHASES);
     advancePhase(1);
 
@@ -162,7 +160,7 @@ describe("The loading bar never stands still", () => {
       seen.push(shownPercent());
     }
 
-    // Then no two consecutive samples three seconds apart are equal
+    // Then
     const frozen = seen.filter((v, i) => i > 0 && v === seen[i - 1]);
     expect(frozen).toEqual([]);
   });
@@ -172,10 +170,10 @@ describe("The loading bar never stands still", () => {
     initPhases(PHASES);
     advancePhase(1);
 
-    // When a very long silence, far longer than the band's runway
+    // When
     vi.advanceTimersByTime(10 * 60_000);
 
-    // Then it stops at the band's own target rather than implying the load is done
+    // Then
     expect(shownPercent()).toBeLessThanOrEqual(PHASES[1].target);
   });
 
@@ -186,7 +184,7 @@ describe("The loading bar never stands still", () => {
     vi.advanceTimersByTime(9_000);
     const crept = shownPercent();
 
-    // When a real report arrives well ahead of where the creep had reached
+    // When
     nudgePhaseProgress(0.9, "content");
 
     // Then

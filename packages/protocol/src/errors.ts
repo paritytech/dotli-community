@@ -28,7 +28,7 @@ export const PROTOCOL_ERRORS = {
   FRAME_UNAVAILABLE: "Shared protocol iframe is unavailable",
   /** The iframe loaded but never sent its ready signal. */
   FRAME_READY_TIMEOUT: "Shared protocol iframe timed out (no ready signal)",
-  /** The host iframe's `load` event never fired. */
+  /** The `load` event of the host iframe never fired. */
   HOST_FRAME_LOAD_TIMEOUT: "Shared host iframe timed out while loading",
   /** The host iframe fired `error` instead of `load`. */
   HOST_FRAME_LOAD_FAILED: "Shared host iframe failed to load",

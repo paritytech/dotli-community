@@ -35,7 +35,7 @@ export interface ChainService {
    * Measured rather than assumed, and not derivable at runtime: no single
    * constant yields it for a parachain. `Timestamp.MinimumPeriod` is 0 on all
    * three here, and `Aura.SlotDuration` reads 12000 or 24000 because it is the
-   * async-backing slot, not the block time. A parachain's rate is its relay
+   * async-backing slot, not the block time. The rate of a parachain is its relay
    * slot divided by its `BLOCK_PROCESSING_VELOCITY`, which is a Rust generic
    * absent from metadata.
    */
@@ -519,7 +519,7 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
  * `ServicesConfig` already implies exactly this set by having exactly these
  * four fields. Naming it lets a popover row, its status and its block history
  * share one key, where today rows are keyed by genesis hash and sync state by
- * the resolver's own `ChainKey`. Config cannot import the resolver, so
+ * the resolver `ChainKey`. Config cannot import the resolver, so
  * `ChainKey` deliberately stays out of here.
  */
 export const CHAIN_ROLES = ["relay", "assethub", "bulletin", "people"] as const;

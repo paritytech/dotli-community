@@ -178,7 +178,7 @@ export function resetProtocolFrame(): void {
 function resetProtocolFrameState(reason?: Error): void {
   protocolIframe?.remove();
   protocolIframe = null;
-  // The rebuilt frame's byte meter restarts at zero, and the monotonic gate
+  // The byte meter of the rebuilt frame restarts at zero, and the monotonic gate
   // would otherwise drop every report until it passed the old total.
   lastNetBytesTotal = 0;
   hostFramePromise = null;
@@ -769,7 +769,7 @@ export function onProtocolChainDetail(
   };
 }
 
-/** Subscribe to the light client's running byte total. */
+/** Subscribe to the running byte total of the light client. */
 export function onProtocolNetBytes(
   listener: (event: ProtocolNetBytesEnvelope) => void,
 ): () => void {

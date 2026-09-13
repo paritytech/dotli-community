@@ -80,7 +80,7 @@ function archiveBytes(files: ArchiveFiles): number {
 }
 
 /**
- * Report a sandbox-origin debug event to the host's debug bus.
+ * Report a sandbox-origin debug event to the host debug bus.
  *
  * The sandbox runs on its own origin and cannot reach `emitDotliDebugEvent`,
  * so the host relays anything shaped like this whose layer is `sandbox`. See

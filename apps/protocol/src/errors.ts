@@ -4,7 +4,7 @@
 // What the protocol iframe says when it cannot serve a request.
 //
 // These messages leave the iframe over the protocol envelope and end up on the
-// host's error page, so the wording is part of the contract with the host. The
+// host error page, so the wording is part of the contract with the host. The
 // broker failure is shared with the SharedWorker, which raises the same
 // condition on its own thread.
 

@@ -375,7 +375,7 @@ export function setResolutionId(id: string): void {
   setDefaults({ resolution_id: id });
 }
 
-/** The current page load's correlation id, or null before the host mints it. */
+/** The correlation id of the current page load, or null before the host mints it. */
 export function getResolutionId(): string | null {
   return resolutionId;
 }

@@ -24,7 +24,7 @@ beforeEach(async () => {
 });
 
 /**
- * A chain's JSON-RPC pipe, standing in for one truapi-provider connection.
+ * The JSON-RPC pipe of one chain, standing in for one truapi-provider connection.
  *
  * `deliver` plays a raw response through the tap the way `./provider` does,
  * and returns whether the tap claimed it. Anything it does not claim would
@@ -88,7 +88,7 @@ const FOLLOW_UNSUPPORTED = JSON.stringify({
 /**
  * One `lifecycle_unstable_follow` notification.
  *
- * The subscription reports the chain's whole state every time, so a test
+ * The subscription reports the whole chain state every time, so a test
  * describes where the chain now stands rather than which milestone fired.
  */
 function state(
@@ -104,7 +104,7 @@ function state(
   });
 }
 
-/** The watchdog's verdict, in the shape `LifecycleHealth` serialises to. */
+/** The watchdog verdict, in the shape `LifecycleHealth` serialises to. */
 const OK = { kind: "ok" };
 const stalled = (reason: string) => ({ kind: "stalled", reason });
 
@@ -129,8 +129,7 @@ describe("Light client sync reporting works", () => {
     pipe.deliver(state("sub-1", { kind: "connecting" }, 0));
     pipe.deliver(state("sub-1", { kind: "ready" }, 2));
 
-    // Then. A zero count is reported too: "no peers yet" and "not sampled
-    // yet" are different things to a panel that shows the number.
+    // Then
     expect(seen).toEqual([
       { chain: "relay", kind: "peers", peers: 0, isSyncing: true },
       { chain: "relay", kind: "connecting" },
@@ -162,8 +161,7 @@ describe("Light client sync reporting works", () => {
   });
 
   it("As a user whose relay finishes warping, the shell learns where the warp landed before the chain reports ready", () => {
-    // Given a listener reading milestones in order must never see the warp
-    // finish after the chain is already up.
+    // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
     const seen: unknown[] = [];
@@ -185,8 +183,7 @@ describe("Light client sync reporting works", () => {
   });
 
   it("As a user on a chain that never warped, the shell reports no warp milestones at all", () => {
-    // Given a parachain reaches ready without a warp to cover, so claiming it
-    // finished one would be an invention.
+    // Given
     enableSyncReporting({ milestones: ["asset-hub"], peerCounts: [] });
     const pipe = requirePipe("asset-hub");
     const seen: unknown[] = [];
@@ -241,7 +238,7 @@ describe("Light client sync reporting works", () => {
     const seen: unknown[] = [];
     onChainSync((event) => seen.push(event));
 
-    // When the watchdog stays stalled but changes its mind about why.
+    // When
     pipe.deliver(FOLLOW_REPLY);
     pipe.deliver(state("sub-1", { kind: "syncing" }, 0, stalled("noPeers")));
     pipe.deliver(state("sub-1", { kind: "syncing" }, 1, stalled("noProgress")));
@@ -268,8 +265,7 @@ describe("Light client sync reporting works", () => {
     const seen: unknown[] = [];
     onChainSync((event) => seen.push(event));
 
-    // Then the replay carries one event per kind, newest value only, in the
-    // order each kind was first seen.
+    // Then
     expect(seen).toEqual([
       { chain: "relay", kind: "peers", peers: 4, isSyncing: false },
       { chain: "relay", kind: "connecting" },
@@ -311,7 +307,7 @@ describe("Light client sync reporting works", () => {
       await vi.advanceTimersByTimeAsync(0);
       const before = pipe.healthRequests().length;
 
-      // When the follow starts reporting, its pushed counts supersede polling.
+      // When
       pipe.deliver(FOLLOW_REPLY);
       pipe.deliver(state("sub-1", { kind: "ready" }, 3));
       await vi.advanceTimersByTimeAsync(30_000);
@@ -323,7 +319,7 @@ describe("Light client sync reporting works", () => {
     }
   });
 
-  it("As a user loading an app, the shell's own sync questions never reach the app's chain traffic", () => {
+  it("As a user loading an app, the sync questions the shell asks never reach the chain traffic of the app", () => {
     // Given
     enableSyncReporting({ milestones: ["relay"], peerCounts: [] });
     const pipe = requirePipe("relay");
@@ -482,7 +478,7 @@ describe("Light client sync reporting is opt-in", () => {
   });
 
   it("As a user on a shell with no loading screen to feed, no peer counts are requested at all", () => {
-    // Given / When
+    // Given
     const pipe = openPipe("relay");
 
     // Then
@@ -491,9 +487,8 @@ describe("Light client sync reporting is opt-in", () => {
 });
 
 describe("Chain detail reporting works", () => {
-  it("As a user returning to a site, the chain's second connection cannot misreport my warm start as cold", async () => {
-    // Given Bulletin opens two connections and the store is read at most once
-    // per chain, so the second load always reports cold.
+  it("As a maintainer, a second connection to the same chain cannot rewrite a warm start as cold", async () => {
+    // Given
     const mod = await import("@dotli/resolver/chain-sync");
     const { getActiveServicesConfig } = await import("@dotli/config/network");
     const genesis = getActiveServicesConfig().bulletin.genesis;
@@ -508,7 +503,7 @@ describe("Chain detail reporting works", () => {
     expect(seen).toEqual([{ chain: "bulletin", dbCache: "hit" }]);
   });
 
-  it("As a user, a panel opened late still shows my warm start rather than the second connection's miss", async () => {
+  it("As a maintainer, a panel opened late still shows the warm start rather than the later miss", async () => {
     // Given
     const mod = await import("@dotli/resolver/chain-sync");
     const { getActiveServicesConfig } = await import("@dotli/config/network");

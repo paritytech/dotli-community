@@ -236,7 +236,7 @@ export interface SyncReportingConfig {
 
 // Sync reporting is opt-in per process and per chain, because it costs a
 // subscription plus an interceptor on every response the chain yields. The
-// protocol iframe's direct mode enables it for the chains its loading
+// protocol iframe, in direct mode, enables it for the chains its loading
 // screen actually shows. The SharedWorker never does, so its long-lived
 // provider does no work for a UI that cannot observe it.
 const milestoneChains = new Set<ChainKey>();
@@ -330,9 +330,9 @@ const armSideChannelWatchdog = (() => {
 })();
 
 /**
- * Attach the sync side channel to one chain's JSON-RPC pipe.
+ * Attach the sync side channel to the JSON-RPC pipe of one chain.
  *
- * `send` writes a raw JSON-RPC string onto that chain's connection. The
+ * `send` writes a raw JSON-RPC string onto the connection of that chain. The
  * returned tap must see every response, in order, before polkadot-api does.
  * Returns `null` for a chain nobody asked to report, so an unobserved chain
  * costs neither a subscription nor a per-response check.
@@ -346,9 +346,9 @@ export function attachChainSync(
   }
 
   let stopped = false;
-  // Subscription id of this chain's `lifecycle_unstable_follow`, learned from
+  // Subscription id of the `lifecycle_unstable_follow` for this chain, learned from
   // the follow reply. Notifications carry no request id, so this is how the
-  // tap tells our subscription's events apart from any other traffic.
+  // tap tells the events of our subscription apart from any other traffic.
   let followSubscription: string | null = null;
 
   let polls = 0;
@@ -421,7 +421,7 @@ export function attachChainSync(
   /**
    * Apply one `lifecycle_unstable_follow` state snapshot.
    *
-   * The subscription reports the chain's whole state on every change rather
+   * The subscription reports the whole chain state on every change rather
    * than a milestone, so the transitions the loading screen cares about are
    * derived by diffing against the last snapshot. `numPeers` rides along on
    * every event, which is why a chain with a working follow needs no

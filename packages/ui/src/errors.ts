@@ -4,7 +4,7 @@
 // What the shell says when a request from a product cannot be granted.
 //
 // Every message here leaves the shell. Some reach the visitor, the rest reach
-// the product's own error handler, which is why the wording is pinned in one
+// the product error handler, which is why the wording is pinned in one
 // place: a product may branch on the text, so a reworded message is a breaking
 // change rather than a copy edit.
 

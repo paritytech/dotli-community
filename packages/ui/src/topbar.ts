@@ -1239,16 +1239,16 @@ function stopPendingTicker(): void {
  * poll would keep four chains awake for something nobody has looked at.
  */
 /**
- * Watch each chain's best block over a client held for the session.
+ * Watch the best block of each chain over a client held for the session.
  *
  * One client per chain, held open, pays for metadata once. `bestBlocks$` then
  * reports every head change rather than whatever a poll happens to catch.
  */
 /**
- * How a single block's arrival reads on hover.
+ * How the arrival of a single block reads on hover.
  *
  * The interval comes first because it is the measurement, then how far past the
- * chain's own expectation it landed. A block inside the expectation has no delay
+ * expectation the chain declares it landed. A block inside the expectation has no delay
  * to report, and saying "0s late" would invite the reader to look for a problem
  * that is not there.
  */
@@ -1501,7 +1501,7 @@ function renderChainsPopover(parent: HTMLElement): void {
       if (chain.bars.length === 0) {
         // A ghost bar and a live estimate instead of static waiting words.
         // Before the first head nothing is predictable, so no number is shown.
-        // After it, the next block is genuinely due within the chain's own
+        // After it, the next block is genuinely due within the chain-declared
         // block time, and the ticker below keeps the estimate current.
         const ghost = document.createElement("span");
         ghost.className = "chains-bar chains-bar-pending";
@@ -1572,7 +1572,7 @@ function renderChainsPopover(parent: HTMLElement): void {
 
   // Countdown copy is honest by construction: it never shows zero or a
   // negative. When the estimate passes it swaps to words, and past 3x the
-  // panel's own verdict line escalates, so "due any moment" cannot linger.
+  // panel verdict line escalates, so "due any moment" cannot linger.
   const updatePending = (): void => {
     if (pendingCells.size === 0) {
       return;

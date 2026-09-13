@@ -7,7 +7,7 @@
 // one subscription per chain and stamps each new best block as it lands. The
 // metadata each client fetches is then paid once for the session.
 //
-// Arrival time is deliberately what gets measured, not the block's own
+// Arrival time is deliberately what gets measured, not the block
 // timestamp. Under a light client a parachain head is learned through relay
 // inclusion, so arrivals are burstier than authoring, but arrival is what this
 // session actually has and so it is what an honest indicator should show.
@@ -19,7 +19,7 @@ import {
 } from "@dotli/config/network";
 import { log } from "@dotli/shared/log";
 
-/** How a single block's arrival compares to what the chain promises. */
+/** How the arrival of a single block compares to what the chain promises. */
 export type BlockHealth = "onTime" | "late" | "veryLate";
 
 export interface BlockBar {
@@ -90,7 +90,7 @@ interface ChainState {
 }
 
 /**
- * What the light client is moving right now, for the panel's footer.
+ * What the light client is moving right now, for the panel footer.
  *
  * `total` is what the DAG root declares for the product archive, so it is
  * known only once the content phase starts, and null on a load served from
@@ -116,7 +116,7 @@ export interface TransferState {
 /** Everything needed to watch one chain, injected so tests can drive it. */
 export interface BlockSource {
   /**
-   * Subscribe to a chain's best block. Calls back with a block number each
+   * Subscribe to the best block of one chain. Calls back with a block number each
    * time the head changes. Returns an unsubscribe.
    */
   subscribe: (
@@ -129,7 +129,7 @@ export interface BlockSource {
 
 let source: BlockSource | null = null;
 let chains = new Map<ChainRole, ChainState>();
-// Held apart from `chains` because peer samples arrive on the protocol's sync
+// Held apart from `chains` because peer samples arrive on the protocol sync
 // stream whether or not the panel is open, and outlive a watch that was torn
 // down after the idle grace.
 let peerCounts = new Map<ChainRole, number>();
@@ -206,9 +206,9 @@ function detachAll(): void {
 }
 
 /**
- * Record what the light client reports about one chain's peers.
+ * Record what the light client reports about the peers of one chain.
  *
- * Fed from the protocol's sync stream rather than polled here, so it costs the
+ * Fed from the protocol sync stream rather than polled here, so it costs the
  * panel nothing. Unchanged counts are dropped: a steady connection reports the
  * same number every second and would repaint for nothing.
  */
@@ -221,7 +221,7 @@ export function recordPeerCount(role: ChainRole, peers: number): void {
 }
 
 /**
- * Record what the network is moving. Fed from the host's own byte meter and
+ * Record what the network is moving. Fed from the host byte meter and
  * the content download, so the panel neither samples nor counts anything of
  * its own.
  *
@@ -247,10 +247,10 @@ export function getTransfer(): TransferState {
 }
 
 /**
- * Record a chain's bootstrap phase, as reported by the light client.
+ * Record the bootstrap phase of a chain, as reported by the light client.
  *
  * Held apart from `chains` for the same reason peer counts are: it arrives on
- * the protocol's sync stream whether or not anyone has opened the panel.
+ * the protocol sync stream whether or not anyone has opened the panel.
  */
 export function recordChainPhase(role: ChainRole, phase: ChainPhase): void {
   if (phases.get(role) === phase) {

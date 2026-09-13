@@ -366,5 +366,5 @@ export function listenForSandboxBitswap(): void {
   });
 }
 
-/** Internal seams for unit tests. Not part of the module's API. */
+/** Internal seams for unit tests. Not part of the module API. */
 export const __testing = { noteBlock };

@@ -53,7 +53,7 @@ import {
 } from "./timeline.ts";
 
 const DEFAULT_CAPACITY = 2000;
-/** How often the Resolution view redraws an in-flight load's open block. */
+/** How often the Resolution view redraws the open block of an in-flight load. */
 const RESOLUTION_TICK_MS = 500;
 const STYLE_ID = "truapi-debug-styles";
 const PANEL_ID = "truapi-debug-panel";
@@ -856,14 +856,14 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
 /**
  * Zero-delay hover tooltip for any element under `root` carrying a
  * `data-tooltip` attribute. `pointerover` shows it, `pointermove` updates the
- * position, `pointerleave` hides it. Bypasses the browser's native `<title>`
+ * position, `pointerleave` hides it. Bypasses the browser-native `<title>`
  * delay so the information appears the instant the cursor lands.
  *
  * Delegated from `root` rather than bound per element, so a pane that rebuilds
  * its `innerHTML` on a timer keeps working without re-wiring.
  *
  * An element that also sets `data-tooltip-prose` gets a wrapped, width-capped
- * tooltip. The default stays on one line, which is what the timeline's short
+ * tooltip. The default stays on one line, which is what the short timeline
  * strings want.
  */
 function wireHoverTooltips(ui: PanelUI, root: HTMLElement): void {

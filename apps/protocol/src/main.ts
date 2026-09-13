@@ -19,9 +19,9 @@ import {
   installByteMeter,
 } from "@dotli/resolver/byte-meter";
 
-// Before anything opens a socket. smoldot's transports are the bulk of a
-// cold load's traffic and are invisible to resource timing, so the loading
-// screen's speed readout has no other source for them.
+// Before anything opens a socket. the smoldot transports are the bulk of
+// cold-load traffic and are invisible to resource timing, so the loading
+// screen speed readout has no other source for them.
 installByteMeter();
 
 // Do NOT silently reload on chunk preload failure. The protocol iframe is
@@ -118,7 +118,7 @@ import * as S from "@dotli/metrics/spans";
 // belong to the resolution that opened them.
 adoptResolutionId();
 
-/** Take the correlation id the host shell put on this iframe's URL. */
+/** Take the correlation id the host shell put on the URL of this iframe. */
 function adoptResolutionId(): void {
   try {
     const id = new URLSearchParams(window.location.search).get("resolutionId");
@@ -804,7 +804,7 @@ async function initDirectMode(): Promise<void> {
     );
   });
 
-  // Feed the host's speed readout. Cumulative totals on a fixed tick rather
+  // Feed the host speed readout. Cumulative totals on a fixed tick rather
   // than a rate, so the host owns the averaging and a dropped message just
   // widens one window.
   if (window.parent !== window) {

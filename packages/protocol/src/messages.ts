@@ -240,7 +240,7 @@ const VALID_KINDS = new Set([
 // postMessage data is untrusted and the envelope type alone cannot reject a
 // spoofed field, so the chain and the kind are checked at runtime. The lists
 // are repeated rather than imported because importing a value from the
-// resolver's smoldot module would drag smoldot into every bundle that talks
+// resolver smoldot module would drag smoldot into every bundle that talks
 // to the protocol.
 //
 // They are written as `Record<T, true>` rather than an array with

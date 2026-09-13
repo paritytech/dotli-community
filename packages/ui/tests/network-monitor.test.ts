@@ -65,9 +65,7 @@ describe("Block arrival colouring works", () => {
   });
 
   it("As a user on a 2s chain, the same gap is judged more harshly than on a 6s chain", () => {
-    // Given the measured rates, Storage at 6s and Hub at 2s. Six seconds is
-    // exactly on time for one and exactly the far edge of late for the other,
-    // which is the whole reason Bulletin cannot share a threshold with AssetHub.
+    // Given
     const gap = 6000;
 
     // Then
@@ -112,11 +110,11 @@ describe("The network monitor tracks blocks", () => {
     // When
     emit(genesis, 100);
 
-    // Then the first block cannot be judged, so it makes no bar
+    // Then
     expect(getNetworkStatus()[0].bars.length).toBe(0);
     expect(getNetworkStatus()[0].latest).toBe(100);
 
-    // When a second arrives on time
+    // When
     vi.advanceTimersByTime(relay.blockTimeMs);
     emit(genesis, 101);
 
@@ -155,25 +153,24 @@ describe("The network monitor tracks blocks", () => {
       emit(genesis, i);
     }
 
-    // Then the oldest are dropped rather than growing without limit.
+    // Then
     expect(getNetworkStatus()[0].bars.length).toBe(MAX_BARS);
   });
 
   it("As a user who kept the panel open, more history is retained than a strip can show", () => {
-    // Given a strip fits roughly 36 marks at its current width.
+    // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
     const genesis = relayGenesis();
 
-    // When a chain runs well past that
+    // When
     for (let i = 0; i < 60; i += 1) {
       vi.advanceTimersByTime(6000);
       emit(genesis, i);
     }
 
-    // Then the surplus is still there for a wider panel to reveal, rather than
-    // having been thrown away at the width the panel happened to have.
+    // Then
     expect(getNetworkStatus()[0].bars.length).toBeGreaterThan(36);
   });
 
@@ -184,8 +181,7 @@ describe("The network monitor tracks blocks", () => {
     startNetworkWatch();
     const genesis = relayGenesis();
 
-    // When the same head is announced repeatedly, as `bestBlocks$` does on a
-    // finalization or a new descendant, between two real blocks.
+    // When
     vi.advanceTimersByTime(6000);
     emit(genesis, 100);
     vi.advanceTimersByTime(6000);
@@ -195,8 +191,7 @@ describe("The network monitor tracks blocks", () => {
     vi.advanceTimersByTime(6000);
     emit(genesis, 102);
 
-    // Then the history holds the two blocks that actually arrived after the
-    // anchor, not five copies.
+    // Then
     const bars = getNetworkStatus()[0].bars;
     expect(bars.map((b) => b.number)).toEqual([101, 102]);
   });
@@ -264,7 +259,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0].reachable).toBe(false);
   });
 
-  it("As a renderer, I am told whenever a block lands", () => {
+  it("As a user with the panel open, a new block shows up the moment it lands", () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -279,8 +274,6 @@ describe("The network monitor tracks blocks", () => {
 
     // Then
     expect(calls).toBe(1);
-
-    // And after unsubscribing
     off();
     emit(relayGenesis(), 8);
     expect(calls).toBe(1);
@@ -294,7 +287,7 @@ describe("The network monitor tracks blocks", () => {
     const genesis = relayGenesis();
     emit(genesis, 1);
 
-    // When a block arrives well after the chain's own expectation
+    // When
     vi.advanceTimersByTime(15_000);
     emit(genesis, 2);
 
@@ -302,7 +295,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0].bars[0].gapMs).toBe(15_000);
   });
 
-  it("As a page being torn down, every subscription is dropped at once", () => {
+  it("As a user closing the page, nothing keeps watching the chains", () => {
     // Given
     const { source, liveCount } = fakeSource();
     setBlockSource(source);
@@ -361,7 +354,7 @@ describe("The network monitor tracks peers", () => {
     expect(byRole.get("people")).toBeNull();
   });
 
-  it("As a renderer, I am woken when a peer count changes but not when it repeats", () => {
+  it("As a user, the panel repaints when a peer count changes and stays quiet when it repeats", () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
@@ -410,7 +403,7 @@ describe("The network monitor tracks the connection", () => {
   });
 
   it("As a user opening the panel before anything moves, nothing is claimed about the connection", () => {
-    // Given / When / Then
+    // Given
     expect(getTransfer()).toEqual({
       bytesPerSecond: null,
       fetched: null,
@@ -418,15 +411,15 @@ describe("The network monitor tracks the connection", () => {
     });
   });
 
-  it("As a user watching a download, the speed and the progress each survive the other's update", () => {
-    // Given the speed and the download report on different schedules.
+  it("As a user watching a download, the speed and the progress each survive an update to the other", () => {
+    // Given
     recordTransfer({ bytesPerSecond: 962_560 });
     recordTransfer({ fetched: 6_400_000, total: 14_600_000 });
 
-    // When a fresh speed sample lands
+    // When
     recordTransfer({ bytesPerSecond: 1_010_000 });
 
-    // Then the download it knows nothing about is still there
+    // Then
     expect(getTransfer()).toEqual({
       bytesPerSecond: 1_010_000,
       fetched: 6_400_000,
@@ -434,7 +427,7 @@ describe("The network monitor tracks the connection", () => {
     });
   });
 
-  it("As a renderer, I am woken when the transfer changes but not when it repeats", () => {
+  it("As a user, the panel repaints when the transfer changes and stays quiet when it repeats", () => {
     // Given
     let woken = 0;
     subscribeNetwork(() => {
@@ -451,15 +444,15 @@ describe("The network monitor tracks the connection", () => {
   });
 
   it("As a user on a load that declared no size, no progress is invented", () => {
-    // Given a DAG root that carried no total
+    // Given
     recordTransfer({ fetched: 900_000, total: null });
 
-    // Then the panel has nothing to divide by
+    // Then
     expect(getTransfer().total).toBeNull();
   });
 });
 
-describe("The network monitor tracks each chain's phase", () => {
+describe("The network monitor tracks the phase of each chain", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
@@ -494,7 +487,7 @@ describe("The network monitor tracks each chain's phase", () => {
     startNetworkWatch();
     const relay = () => getNetworkStatus().find((c) => c.role === "relay");
 
-    // When / Then
+    // When
     recordChainPhase("relay", "connecting");
     expect(relay()?.phase).toBe("connecting");
     recordChainPhase("relay", "syncing");
@@ -503,7 +496,7 @@ describe("The network monitor tracks each chain's phase", () => {
     expect(relay()?.phase).toBe("ready");
   });
 
-  it("As a renderer, I am woken when a phase changes but not when it repeats", () => {
+  it("As a user, the panel repaints when a chain phase changes and stays quiet when it repeats", () => {
     // Given
     let woken = 0;
     subscribeNetwork(() => {
@@ -520,7 +513,7 @@ describe("The network monitor tracks each chain's phase", () => {
   });
 });
 
-/** The active network's relay genesis, which the fake source keys on. */
+/** The relay genesis of the active network, which the fake source keys on. */
 function relayGenesis(): string {
   return getActiveChainRoles()[0].genesis;
 }

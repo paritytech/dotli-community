@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The one place the resolver's wire names meet the config's role names.
+// The one place the resolver wire names meet the config role names.
 //
 // `ChainKey` travels on the chain-sync envelope and `ChainRole` names the four
 // chains config knows about. Keeping the translation here means the popover can

@@ -87,8 +87,6 @@ async function openPanel(): Promise<HTMLElement> {
     push(n);
   };
   const { initTopBar } = await import("@dotli/ui/topbar");
-  // `initTopBar` installs the real source, so the fake has to land after it
-  // and before the panel opens and starts watching.
   initTopBar();
   monitor.setBlockSource({
     isReachable: () => true,
@@ -123,51 +121,48 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("The network panel's blocks arrive as motion", () => {
+describe("The network panel blocks arrive as motion", () => {
   it("As a user watching a chain, the newest block sits at the right-hand end", async () => {
     // Given
     const strip = await openPanel();
 
-    // When three blocks land in order
+    // When
     emit(100);
     emit(101);
     emit(102);
 
-    // Then the last mark in the strip is the newest, and the strip packs to
-    // the right so that is the end the visitor sees it arrive at.
+    // Then
     const marks = strip.querySelectorAll<HTMLElement>(BAR);
     expect([...marks].map((m) => m.dataset.block)).toEqual(["101", "102"]);
     expect(getComputedStyle(strip).flexDirection).not.toBe("row-reverse");
   });
 
   it("As a user watching a chain, a block already on screen keeps its own bar", async () => {
-    // Given two blocks already drawn
+    // Given
     const strip = await openPanel();
     emit(100);
     emit(101);
     emit(102);
     const first = strip.querySelector<HTMLElement>('[data-block="101"]');
 
-    // When another block lands
+    // When
     emit(103);
 
-    // Then the earlier bar is the same element, not a rebuilt copy, which is
-    // what lets it be animated rather than replaced.
+    // Then
     expect(strip.querySelector('[data-block="101"]')).toBe(first);
   });
 
   it("As a user watching a chain, the strip glides left as the new block appears", async () => {
-    // Given a strip with bars already on it
+    // Given
     const strip = await openPanel();
     emit(100);
     emit(101);
     emit(102);
 
-    // When the next block lands
+    // When
     emit(103);
 
-    // Then the strip is offset by the room the new bar took and handed a
-    // transition to close it, and the new bar is marked for its own entrance.
+    // Then
     expect(strip.classList.contains("is-sliding")).toBe(true);
     expect(strip.style.transform).toBe("translateX(0)");
     const newest = strip.querySelector<HTMLElement>('[data-block="103"]');
@@ -175,11 +170,10 @@ describe("The network panel's blocks arrive as motion", () => {
   });
 
   it("As a user opening the panel on a chain with history, nothing slides", async () => {
-    // Given a panel opened when the chain already has bars, the whole strip
-    // is drawn at once and there is no arrival to animate.
+    // Given
     const strip = await openPanel();
 
-    // When the very first block is drawn
+    // When
     emit(100);
     emit(101);
 

@@ -105,7 +105,7 @@
 .td-tooltip.visible {
   opacity: 1;
 }
-/* A sentence needs to wrap; the timeline's short strings do not, so the
+/* A sentence needs to wrap; the short timeline strings do not, so the
    single-line default stays put and this is opt-in per element. */
 .td-tooltip.is-prose {
   white-space: normal;

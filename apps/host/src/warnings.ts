@@ -5,7 +5,7 @@
 //
 // A warning is not an error. The load is still running and may well finish,
 // so every line here says what is happening and, where it can, why. The copy
-// lives beside `errors.ts` because both are the host's user-facing words.
+// lives beside `errors.ts` because both carry the user-facing copy of the host.
 
 import type { ChainKey } from "@dotli/resolver/chain-sync";
 
@@ -35,14 +35,14 @@ export interface StallFacts {
   peers: number | null;
   /** Bytes per second across every network the shell can see, or null. */
   bytesPerSecond: number | null;
-  /** Smoldot's own word for why it stalled, on `stalled` only. */
+  /** The word smoldot itself uses for why it stalled, on `stalled` only. */
   reason?: string;
 }
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {
   relay: "Polkadot",
   "asset-hub": "the name registry",
-  bulletin: "the app's files",
+  bulletin: "the app files",
 };
 
 function throughput(bytesPerSecond: number | null): string | null {

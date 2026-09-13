@@ -26,7 +26,7 @@
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">
 //     ?fullReset=<"0" | "1">
-//     ?resolutionId=<correlation id for this page load's telemetry>
+//     ?resolutionId=<correlation id for the telemetry of this page load>
 //     ?v=<schema version integer, reserved for future breakage>
 //
 // When we add a new required param, bump SANDBOX_SCHEMA_VERSION and

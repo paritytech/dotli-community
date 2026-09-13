@@ -85,7 +85,7 @@ body {
 
 /* Loading logo spinner. rAF-driven via JS, CSS just sets transform-origin. */
 .loading-logo {
-  /* Desktop's `gap-10` between the spinner and the copy below it. */
+  /* The desktop `gap-10` between the spinner and the copy below it. */
   margin-bottom: 40px;
   transition: opacity 0.8s ease;
 }
@@ -206,7 +206,7 @@ body {
 /* Shown only while a chain has stopped making progress, so it must read as
    information rather than failure. Amber is already AA on both themes. */
 .loading-warning {
-  /* Always laid out, shown by visibility. The slot's height is reserved so
+  /* Always laid out, shown by visibility. The slot height is reserved so
      the warning appearing or its text rewrapping cannot shift the logo, bar
      and sentence above it, which is exactly when the screen must look calm. */
   visibility: hidden;
@@ -234,7 +234,7 @@ body {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  /* Nudged onto the first line's baseline rather than its box top. */
+  /* Nudged onto the baseline of the first line rather than its box top. */
   margin-top: 1px;
 }
 
@@ -411,7 +411,7 @@ body {
   color: #a3a3a3;
   margin-bottom: 5px;
 }
-/* Secondary to the chain's name: the count is context for the bars below, not
+/* Secondary to the chain name: the count is context for the bars below, not
    a heading of its own. Tabular figures so a changing count cannot reflow the
    row it sits on. */
 /* Connection footer, under the per-chain bars. Its two rows read as a pair of

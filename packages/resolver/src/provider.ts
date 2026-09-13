@@ -334,7 +334,7 @@ export function observeChain(genesisHash: string): () => void {
     };
   }
   const connection = factory(() => {
-    // Nothing reads this chain. Responses to the tap's own requests are
+    // Nothing reads this chain. Responses to the requests the tap itself sent are
     // consumed before they reach here. Anything else is chain chatter we
     // opened the connection to provoke, not to handle.
   });

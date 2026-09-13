@@ -10,7 +10,7 @@
 // which caches answered.
 //
 // Distinct from the Timeline view, which is event-shaped and swimlaned by
-// genesis hash. This one is state-shaped and keyed by the chain's role, so the
+// genesis hash. This one is state-shaped and keyed by chain role, so the
 // question it answers is "where did the time go", not "what was said".
 //
 // The model is built from the debug events alone, and deliberately not shared
@@ -74,7 +74,7 @@ export interface ResolutionModel {
   summary: ResolutionSummary;
 }
 
-/** Layers the view reads. Everything else is the Timeline's business. */
+/** Layers the view reads. Everything else belongs to the Timeline. */
 const KEPT_LAYERS = new Set([
   "boot",
   "resolve",
@@ -143,9 +143,9 @@ function num(v: unknown): number | null {
  * Anchored on the newest `boot:started` rather than on one `flowId`: the boot,
  * resolve and render layers each mint their own flow, so a single id covers
  * only part of a load. Everything recorded from that boot onward belongs to
- * it, because a page load is the lifetime of this panel's own realm.
+ * it, because a page load is the lifetime of the realm this panel lives in.
  *
- * Pure: `now` is passed in so an in-flight load's open block can be drawn to
+ * Pure: `now` is passed in so the open block of an in-flight load can be drawn to
  * the current moment without the builder reaching for a clock.
  */
 export function buildResolution(
@@ -194,7 +194,7 @@ export function buildResolution(
 }
 
 /**
- * Fill in each row's peer count from the whole load, not just the drawing
+ * Fill in the peer count of each row from the whole load, not just the drawing
  * window.
  *
  * A chain reports its phases in the first moments and finds its peers a beat
@@ -580,7 +580,7 @@ const lastRendered = new WeakMap<HTMLDivElement, string>();
 /**
  * One KPI card. `hint` is the plain-English explanation shown on hover, which is
  * the only place several of these are disambiguated: `sync download` counts
- * chain traffic and `app size` counts the dApp's files, and nothing else on
+ * chain traffic and `app size` counts the dApp files, and nothing else on
  * screen says so.
  */
 interface Fact {
@@ -629,7 +629,7 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "app on screen",
       value: s.renderedMs === null ? "—" : formatMs(s.renderedMs),
-      hint: "When the sandbox wrote the app's document. This is the app actually visible, not the iframe being created, which happens seconds earlier on a cold load.",
+      hint: "When the sandbox wrote the app document. This is the app actually visible, not the iframe being created, which happens seconds earlier on a cold load.",
     },
     {
       key: "first byte",
@@ -640,12 +640,12 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "sync download",
       value: s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
-      hint: "Every byte the light client pulled off the network, counted from boot until the app's frame was attached. Warp syncing the relay dominates a cold start. The app's own download rides the same connections but mostly arrives after this stops counting, so it is largely absent here.",
+      hint: "Every byte the light client pulled off the network, counted from boot until the app frame was attached. Warp syncing the relay dominates a cold start. The download of the app itself rides the same connections but mostly arrives after this stops counting, so it is largely absent here.",
     },
     {
       key: "app size",
       value: appSizeText(s),
-      hint: "How big the app is once unpacked, and how many files it came in. Fetched over the light client's own connections, or read straight from the archive cache.",
+      hint: "How big the app is once unpacked, and how many files it came in. Fetched over the connections the light client already holds, or read straight from the archive cache.",
     },
     {
       key: "average speed",
@@ -662,13 +662,13 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       key: "CID cache",
       value: "",
       valueHtml: cacheText(s.cidCache),
-      hint: "Whether this name's content id was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.",
+      hint: "Whether the content id for this name was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
     {
       key: "archive cache",
       value: "",
       valueHtml: cacheText(s.archiveCache),
-      hint: "Whether the app's files were already in the service worker's cache, so nothing had to be fetched. \u201cSkipped\u201d means the cache is turned off in settings.",
+      hint: "Whether the app files were already in the service worker cache, so nothing had to be fetched. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
   ];
 }

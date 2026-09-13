@@ -88,8 +88,8 @@ const OPTS = {
 };
 
 describe("A resolution is traced as one unit", () => {
-  it("As a user, my page load is recorded as one trace carrying what I asked for", () => {
-    // Given / When
+  it("As a maintainer, one search returns the whole page load with what was asked for", () => {
+    // Given
     startResolutionTrace(OPTS);
 
     // Then
@@ -103,9 +103,8 @@ describe("A resolution is traced as one unit", () => {
     });
   });
 
-  it("As a user, a chain appears in my load's trace only once it has actually started", () => {
-    // Given Bulletin is created late, once the content phase starts, so a span
-    // opened at boot would claim it was idle rather than absent.
+  it("As a maintainer, a chain appears in the trace only once it has actually started", () => {
+    // Given
     const trace = startResolutionTrace(OPTS);
 
     // Then
@@ -118,7 +117,7 @@ describe("A resolution is traced as one unit", () => {
     expect(span("chain.bulletin")?.parent).toBe(span("resolution"));
   });
 
-  it("As a user, my trace shows how long each chain spent in every phase", () => {
+  it("As a maintainer, I can read how long each chain spent in every phase", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -139,7 +138,7 @@ describe("A resolution is traced as one unit", () => {
     }
   });
 
-  it("As a user, the time a chain spent connecting is recorded as a closed interval", () => {
+  it("As a maintainer, the time a chain spent connecting is a closed interval", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -147,13 +146,12 @@ describe("A resolution is traced as one unit", () => {
     trace.chainSync({ chain: "relay", syncKind: "connecting" });
     trace.chainSync({ chain: "relay", syncKind: "bootstrapComplete" });
 
-    // Then the time spent connecting is a closed interval, not an open one.
+    // Then
     expect(span("chain.relay.connecting")?.ended).toBe(true);
   });
 
-  it("As a user, my trace records how far the relay had to catch up", () => {
-    // Given a chain can enter `syncing` more than once, so these belong on the
-    // chain rather than split across however many syncing spans it opened.
+  it("As a maintainer, I can read how far the relay had to catch up", () => {
+    // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
@@ -180,7 +178,7 @@ describe("A resolution is traced as one unit", () => {
     });
   });
 
-  it("As a user, my trace records whether a chain started warm and who it was talking to", () => {
+  it("As a maintainer, I can read whether a chain started warm and who it was talking to", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
     trace.chainSync({ chain: "relay", syncKind: "connecting" });
@@ -205,7 +203,7 @@ describe("A resolution is traced as one unit", () => {
 });
 
 describe("A resolution reports how it ended", () => {
-  it("As a user, my successful load is recorded with how long it took", () => {
+  it("As a maintainer, a rendered load reports its outcome and duration", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -222,9 +220,8 @@ describe("A resolution reports how it ended", () => {
     expect(root?.ended).toBe(true);
   });
 
-  it("As a user who gave up waiting, my abandoned load is still reported", () => {
-    // Given a slow link can sit on the loading screen forever without ever
-    // reaching an error page, so the failure is invisible unless it is flushed.
+  it("As a maintainer, a load the visitor walked away from still reaches me", () => {
+    // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
@@ -237,7 +234,7 @@ describe("A resolution reports how it ended", () => {
     expect(span("resolution")?.ended).toBe(true);
   });
 
-  it("As a user whose load failed, the reason it failed is kept", () => {
+  it("As a maintainer, a failed load keeps the reason it failed", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -251,8 +248,8 @@ describe("A resolution reports how it ended", () => {
     });
   });
 
-  it("As a user, navigating away after a successful load cannot rewrite its outcome", () => {
-    // Given a page that renders and is then navigated away from fires both.
+  it("As a maintainer, a navigation after success cannot rewrite the outcome", () => {
+    // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
@@ -265,28 +262,26 @@ describe("A resolution reports how it ended", () => {
     });
   });
 
-  it("As a user, a chain that never finished cannot hold my load's trace open", () => {
-    // Given a chain that never reached ready.
+  it("As a maintainer, a chain that never finished cannot hold the trace open", () => {
+    // Given
     const trace = startResolutionTrace(OPTS);
     trace.chainSync({ chain: "asset-hub", syncKind: "connecting" });
 
     // When
     trace.finish("abandoned");
 
-    // Then nothing is left open to hang the transaction.
+    // Then
     expect(spans.every((s) => s.ended)).toBe(true);
   });
 
-  it("As a user, the progress I actually saw is reported, not a forced 100%", () => {
-    // Given the loading screen forces the bar to 100% and removes it before
-    // `finish` runs, so reading the DOM at the end reports 100% every time and
-    // the drift this measurement exists to catch would be invisible.
+  it("As a maintainer, I see the progress the visitor actually saw, not a forced 100%", () => {
+    // Given
     document.body.innerHTML =
       '<div class="loading-progress-fill" style="width: 62%"></div>';
     const trace = startResolutionTrace(OPTS);
     trace.bytes(1_000);
 
-    // When the screen is torn down before the trace closes
+    // When
     document.body.innerHTML = "";
     trace.finish("rendered");
 
@@ -294,7 +289,7 @@ describe("A resolution reports how it ended", () => {
     expect(span("resolution")?.attributes.bar_at_render).toBe(62);
   });
 
-  it("As a user, my trace records how much the load downloaded", () => {
+  it("As a maintainer, I can read how much the load downloaded", () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 

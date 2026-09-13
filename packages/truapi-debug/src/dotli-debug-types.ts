@@ -442,9 +442,9 @@ export interface FailoverEvent {
  *  than drawing four empty rows.
  *
  *  `phase` is the derived milestone the loading screen also uses, not
- *  smoldot's raw `LifecycleState`. A phase is emitted when it changes, so
+ *  the raw `LifecycleState` from smoldot. A phase is emitted when it changes, so
  *  consecutive events bound the interval the chain spent in the previous
- *  one. A chain's peer count moves on its own schedule rather than with its
+ *  one. The peer count of a chain moves on its own schedule rather than with its
  *  phase, so `peers` carries each change; `bytes` is the light client's
  *  cumulative received total, sampled on a tick. */
 export type ChainEvent =

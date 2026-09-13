@@ -158,7 +158,7 @@ describe("validateSandboxParams: v3 cid contract", () => {
 
 describe("validateSandboxParams: resolution id", () => {
   it("As the sandbox, I read the resolution id the host threaded through", () => {
-    // Given a contract carrying the host's correlation id.
+    // Given a contract carrying the host correlation id.
     const params = search({
       [SANDBOX_CONTRACT_PARAMS.resolutionId]:
         "f1e2d3c4-b5a6-4778-8899-aabbccddeeff",
@@ -223,12 +223,12 @@ describe("validateSandboxParams: resolution id", () => {
     }
   });
 
-  it("As a dApp, the resolution id is stripped from my URL with the rest of the contract", () => {
+  it("As a user, the app I open never sees the tracking id in its URL", () => {
     // Given the strip iterates the contract param map.
     const keys = Object.values(SANDBOX_CONTRACT_PARAMS);
 
     // Then the id is in that map, so `stripContractParamsFromUrl` removes it
-    // and it never leaks into the product's own `location.search`.
+    // and it never leaks into the product `location.search`.
     expect(keys).toContain(SANDBOX_CONTRACT_PARAMS.resolutionId);
   });
 });

@@ -70,7 +70,7 @@ describe("resolution id", () => {
     expect(getResolutionId()).toBe("f1e2d3c4-b5a6-4778-8899-aabbccddeeff");
   });
 
-  it("As a realm booting before the host mints one, I see no id rather than a fabricated one", async () => {
+  it("As a maintainer, a realm that boots before the host mints an id reports none rather than a fabricated one", async () => {
     // Given a fresh module, as a realm gets on boot.
     vi.resetModules();
     const { getResolutionId } = await import("../src/metrics");
@@ -79,7 +79,7 @@ describe("resolution id", () => {
     expect(getResolutionId()).toBeNull();
   });
 
-  it("As a metrics-stripped build, I still carry the id so the URLs match", async () => {
+  it("As a maintainer, a metrics-stripped build still carries the id so the URLs line up", async () => {
     // Given the no-op twin that replaces the real module when VITE_METRICS
     // is unset. It drops the Sentry tagging but must not drop propagation,
     // or the sandbox and protocol URLs would differ between builds.

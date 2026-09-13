@@ -221,10 +221,10 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 const T0 = performance.now();
 // Warp progress holds one phase while the distance closes, so it is sampled
 // on this tick rather than emitted per step: a long warp would otherwise
-// crowd the debug panel's ring buffer with hundreds of near-identical rows.
+// crowd the debug panel ring buffer with hundreds of near-identical rows.
 const CHAIN_WARP_DEBUG_MS = 1000;
-// The light client's byte total is posted every 500ms. Sampling every other
-// one keeps a minute-long load's byte series well under a hundred rows while
+// The byte total from the light client is posted every 500ms. Sampling every other
+// one keeps the byte series of a minute-long load well under a hundred rows while
 // still resolving the peak.
 const CHAIN_BYTES_DEBUG_MS = 1000;
 /** Ceiling for a load that never renders, so the series cannot run forever. */
@@ -874,7 +874,7 @@ async function main(): Promise<void> {
       ? crypto.randomUUID()
       : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 
-  // The same id Sentry groups a resolution by, so the debug panel's swimlane
+  // The same id Sentry groups a resolution by, so the debug panel swimlane
   // and the trace of the same page load can be lined up against each other.
   // Minting a second uuid for the identical concept would only invite the two
   // to drift and force every query to join on both.
@@ -1166,7 +1166,7 @@ async function main(): Promise<void> {
     "asset-hub-ready": 2,
     "resolving-content": 3,
   };
-  // Only direct mode relays the sandbox's bitswap traffic through this window,
+  // Only direct mode relays sandbox bitswap traffic through this window,
   // so it is the only backend that can report a download percentage.
   const countsContentBytes = chainBackend === "smoldot-direct";
   // The label names the step for us. What the visitor reads is the stage's
@@ -1277,14 +1277,14 @@ async function main(): Promise<void> {
     trace.content(bytesFetched, totalBytes);
   });
 
-  // Advance the loading bar from smoldot's typed lifecycle stream instead of
+  // Advance the loading bar from typed smoldot lifecycle milestones instead of
   // scraping log prose. `firstPeer` on the Asset Hub means a peer was
   // discovered, so the sync band can start crawling. `bootstrapComplete`
   // means the first finalized block landed, so the resolver can read
   // storage. Health samples put a live peer count under the headline while
   // the chain bootstraps, and stall events replace it with honest copy.
   // Events are emitted from the protocol iframe, which owns smoldot in
-  // direct mode, and arrive through the protocol client's origin- and
+  // direct mode, and arrive through the protocol client origin- and
   // source-gated listener. The `statusToPhase` log-text path remains as a
   // fallback for the other backends, which forward neither.
   if (chainBackend === "smoldot-direct") {
@@ -1293,7 +1293,7 @@ async function main(): Promise<void> {
     // at every handover, which put a zero on screen at exactly the moments
     // the load looked slowest.
     // Warn when a chain stops making progress. Every lifecycle event re-arms
-    // that chain's timer, so a chain warns only if it sits in one state past
+    // the timer for that chain, so a chain warns only if it sits in one state past
     // the threshold. Peers and throughput are recorded as they arrive, so the
     // warning can say what is happening rather than only that it is slow.
     const livePeers = new Map<CriticalChain, number>();
@@ -1378,7 +1378,7 @@ async function main(): Promise<void> {
       );
     };
 
-    // The debug panel's Resolution view draws one block per phase per chain,
+    // The debug panel Resolution view draws one block per phase per chain,
     // so a transition is only worth an event when the phase actually changes.
     // Bulletin attaches two taps, one from the warm-up connection and one from
     // the broker's, and would otherwise contribute every block twice. Warp
@@ -1398,7 +1398,7 @@ async function main(): Promise<void> {
         PHASE_BY_MILESTONE[event.syncKind] ??
         (event.syncKind === "recovered" ? "syncing" : undefined);
       if (event.syncKind === "peers" && event.peers !== undefined) {
-        // A chain's peer count moves independently of its phase, and the relay
+        // The peer count of a chain moves independently of its phase, and the relay
         // typically finds its peers only after the last phase transition. Riding
         // along on `phase` alone leaves the panel reporting the count frozen at
         // that transition, which for the relay is zero.
@@ -1473,7 +1473,7 @@ async function main(): Promise<void> {
             if (event.peers > 0) {
               // The download can start, so the clock is a fair fallback from
               // here. Holding is only honest while there is no peer to fetch
-              // from: an archive served from the sandbox's own cache never
+              // from: an archive served from the sandbox cache never
               // asks this window for a block, and would otherwise sit at the
               // band base until the app painted.
               releasePhaseProgress();
@@ -1521,21 +1521,21 @@ async function main(): Promise<void> {
       }
     });
 
-    // Speed is the whole load's throughput, not one step's. The chain sync
+    // Speed is the throughput of the whole load, not of one step. The chain sync
     // dominates the first half of a cold load and the archive download the
     // second, so both are added up and the rate is taken over a short
     // trailing window. Reporting only the archive left the readout at zero
     // for the seconds the light client was working hardest.
-    // One counter, not two. The byte meter wraps the protocol frame's own
+    // One counter, not two. The byte meter wraps the protocol frame
     // WebSockets, and bitswap rides those same sockets, so the archive is
     // already inside this number. Adding the content total on top counted
     // every downloaded byte twice and reported speeds above the physical
     // link rate.
     let chainBytes = 0;
-    // Seeded at the page's own start with nothing downloaded, which is true
+    // Seeded at page start with nothing downloaded, which is true
     // and means the first report from the protocol frame already has a second
     // reading to be measured against. Without it the readout stayed blank
-    // until the frame's second message.
+    // until the second message from the frame.
     const samples: { at: number; total: number }[] = [{ at: 0, total: 0 }];
     const SPEED_WINDOW_MS = 3_000;
     const reportSpeed = (): void => {
@@ -1553,8 +1553,8 @@ async function main(): Promise<void> {
     };
     // The byte series exists to describe the resolution, so it closes once the
     // product is on screen. Left running it posts a row a second for as long as
-    // the tab stays open, which pushes the load's own events out of the debug
-    // panel's ring buffer. A load that never renders is bounded by the sample
+    // the tab stays open, which pushes the events of the load itself out of the debug
+    // panel ring buffer. A load that never renders is bounded by the sample
     // cap instead.
     let lastBytesDebugAt = 0;
     let lastBytesDebugTotal = -1;
@@ -1601,7 +1601,7 @@ async function main(): Promise<void> {
     // declares.
     onContentProgress(({ bytesFetched, totalBytes }) => {
       recordTransfer({ fetched: bytesFetched, total: totalBytes });
-      // The download's true fraction drives the bar itself, which is where
+      // The true download fraction drives the bar itself, which is where
       // a percentage belongs. Printing the same number as text alongside it
       // said the same thing twice.
       if (totalBytes === null) {

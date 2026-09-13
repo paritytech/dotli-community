@@ -91,7 +91,7 @@ let phaseReportsProgress = false;
  * How long the bar may sit at one percentage before it owes an explanation.
  *
  * The per-chain watchdog cannot see this. A load whose content chain never
- * finds a peer leaves every chain's lifecycle quiet while the bar creeps to its
+ * finds a peer leaves every chain lifecycle quiet while the bar creeps to its
  * ceiling and parks, measured at over a minute in one run.
  */
 const PROGRESS_STALL_MS = 4_000;
@@ -381,7 +381,7 @@ function writeStatus(message: string): void {
       );
       // Dims as it empties and brightens as the new line arrives, so the
       // turnover reads as one settling motion rather than a text scramble.
-      // Only a shallow dip: this block's contrast is built on solid colours
+      // Only a shallow dip: the contrast of this block is built on solid colours
       // precisely because opacity once sank it below AA, and 0.75 of #d4d4d4
       // is still 7.5:1 against the page.
       status.style.opacity = String(1 - 0.25 * gone);
@@ -458,7 +458,7 @@ function stopStageMessages(): void {
 
 /**
  * Advance to a specific phase (0-indexed).
- * Jumps the indicator to the phase's base percentage and begins crawling
+ * Jumps the indicator to the base percentage of the phase and begins crawling
  * toward its target. Updates the headline text.
  * No-ops if the phase is already active or past.
  */
@@ -469,7 +469,7 @@ export function advancePhase(index: number): void {
   currentPhase = index;
 
   const { base, target, expectedMs, reportsProgress } = phases[index];
-  // Each step has to earn the indicator back: the previous step's real
+  // Each step has to earn the indicator back: the real progress of the previous step
   // percentage says nothing about this one. A step that publishes its own
   // figure holds the indicator at its band base until the figure arrives,
   // rather than crawling somewhere the real number cannot then reach.
@@ -478,13 +478,13 @@ export function advancePhase(index: number): void {
     setProgress(base);
   }
   targetProgress = target;
-  // Pace the crawl so the band is traversed over the step's typical
+  // Pace the crawl so the band is traversed over the typical time of the step
   // duration: each tick advances a constant slice sized to cross from
   // `base` to `target` in `expectedMs`. This is what makes the bar move
   // steadily through a long sync instead of stalling near the top.
   crawlStep =
     ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
-  // Headroom for a band that overruns: the next band's space, or the ceiling
+  // Headroom for a band that overruns: the space of the next band, or the ceiling
   // for the last one. A band that reports a real percentage lends nothing,
   // since creeping into it would put the indicator above the figure that step
   // is about to publish.
@@ -515,7 +515,7 @@ export function advancePhase(index: number): void {
  * signal can never rewind it.
  *
  * The `stage` is checked against the running one, so a signal cannot drive a
- * band it does not own. Without it the relay's warp fraction arriving mid-sync
+ * band it does not own. Without it the relay warp fraction arriving mid-sync
  * would both move the Asset Hub band and freeze its crawl.
  */
 export function nudgePhaseProgress(
@@ -630,7 +630,7 @@ export function listenForSandboxStatus(): void {
     if (!isSandboxOrigin(event.origin)) {
       return;
     }
-    // The sandbox's own progress prose is written for a developer reading
+    // The progress prose the sandbox writes is written for a developer reading
     // the console, so it is left there. The stage messages narrate this step
     // to the user, and `done` is the part the loading screen acts on.
     if (data.done === true) {
