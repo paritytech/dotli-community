@@ -185,12 +185,15 @@ describe("user confirmation modal", () => {
       value: {
         tag: "LegacyAccount",
         value: {
-          signer:
-            "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
-          payload: {
-            tag: "Bytes",
-            value: { bytes: "0x48656c6c6f2c20776f726c6421" },
+          request: {
+            signer:
+              "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
+            payload: {
+              tag: "Bytes",
+              value: { bytes: "0x48656c6c6f2c20776f726c6421" },
+            },
           },
+          watermarked: true,
         },
       },
     };
@@ -209,6 +212,50 @@ describe("user confirmation modal", () => {
       Message: "0x48656c6c6f2c20776f726c6421",
     });
     expect(document.body.textContent).not.toContain("Request");
+    expect(document.querySelector(".signing-field-warning")).toBeNull();
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
+  });
+
+  it("As a dotli integrator, the host warns before an unwatermarked raw signature", async () => {
+    // Given
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const review: UserConfirmationReview = {
+      tag: "SignRaw",
+      value: {
+        tag: "Product",
+        value: {
+          request: {
+            account: {
+              dotNsIdentifier: "truapi-playground.dot",
+              derivationIndex: { tag: "Index", value: 0 },
+            },
+            payload: { tag: "Bytes", value: { bytes: "0x0304" } },
+          },
+          watermarked: false,
+        },
+      },
+    };
+
+    // When
+    const confirmation = confirmUserAction(review);
+
+    // Then
+    expect(modalFields()).toEqual({
+      App: "localhost:3000",
+      Signer: "truapi-playground.dot / 0",
+      Message: "0x0304",
+      Warning: "Unprotected signature: may authorize transactions",
+    });
+    expect(
+      document.querySelector(".signing-field-warning .signing-field-label")
+        ?.textContent,
+    ).toBe("Warning");
 
     // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();

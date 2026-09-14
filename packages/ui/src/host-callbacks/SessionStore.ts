@@ -277,6 +277,10 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
+    // Public manifest JSON cached per product, so one product's revoked
+    // grant expires without touching the others.
+    case "ProductManifest":
+      return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
   }
 }
 

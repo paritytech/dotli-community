@@ -12,10 +12,12 @@
 import {
   decodeWireMessage,
   encodeWireMessage,
-  HostRequestLoginResponse,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
   scale,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginRequest,
+  VersionedHostRequestLoginResponse,
   type HostRequestLoginResponse as LoginResponse,
   type WireProvider as Provider,
   createMessagePortProvider,
@@ -503,7 +505,7 @@ function emitWireFrameDebug(
       productId,
       requestId: decoded.value.requestId,
       payload: describeWireFrame(
-        decoded.value.payload.id,
+        decoded.value.payload,
         decoded.value.payload.value,
       ),
     });
@@ -577,19 +579,17 @@ export function requestCoreLogin(
   reason?: string,
 ): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(
-        HostRequestLoginResponse,
-        scale.CallError(VersionedHostRequestLoginError),
-      ),
-    ],
-  });
+  // Codec 2 legs carry Result outside and the version wrapper inside.
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
-      id: ACCOUNT_REQUEST_LOGIN.request,
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType: MESSAGE_TYPE_REQUEST,
       value: VersionedHostRequestLoginRequest.enc({
         tag: "V1",
         value: { reason },
@@ -646,18 +646,20 @@ export function requestCoreLogin(
           rejectRequest(decoded.error);
           return;
         }
+        const { payload } = decoded.value;
         if (
           decoded.value.requestId !== requestId ||
-          decoded.value.payload.id !== ACCOUNT_REQUEST_LOGIN.response
+          payload.traitId !== ACCOUNT_REQUEST_LOGIN.trait ||
+          payload.methodId !== ACCOUNT_REQUEST_LOGIN.method ||
+          payload.messageType !== MESSAGE_TYPE_RESPONSE
         ) {
           return;
         }
         cleanup();
         try {
-          const envelope = responseCodec.dec(decoded.value.payload.value);
-          const result = envelope.value;
+          const result = responseCodec.dec(payload.value);
           if (result.success) {
-            resolveRequest(result.value);
+            resolveRequest(result.value.value);
           } else {
             const error = new LoginRequestError(result.value);
             rejectRequest(error);
