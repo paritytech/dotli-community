@@ -30,9 +30,10 @@ const cachedCidExists = (label: string): Promise<boolean> =>
     open.onsuccess = () => {
       const db = open.result;
       // `waitForCachedCid` calls this on a timer, so without the close a page
-      // accumulates one handle per poll. Nothing in this suite upgrades the
-      // schema afterwards, which is the only thing those handles could block,
-      // so this is hygiene rather than a fix for an observed failure.
+      // accumulates one handle per poll. Each of those blocks a schema upgrade
+      // and the `deleteDatabase` sweep in `packages/ui/src/topbar.ts`, neither of
+      // which any functional test reaches after a probe, so this is hygiene
+      // rather than a fix for an observed failure.
       const done = (found: boolean): void => {
         db.close();
         resolve(found);

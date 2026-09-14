@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Host shell settings: cache flags and chain backend selection.
+ * Host shell settings: cache flags and network transport selection.
  *
  * `skipWorkerCache` is not covered. The flag triggers an IDB purge sweep
  * in `apps/protocol/src/main.ts`, but the protocol-origin IDB it targets
@@ -21,6 +21,7 @@
 
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { defaultBackend } from "@dotli/config/mode";
 import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
@@ -62,6 +63,17 @@ async function readChainBackendState(
     expected,
     { timeout: 10_000 },
   );
+  // A revisit already holds the right value in localStorage, so the wait above
+  // can be satisfied before the shell has canonicalised the URL. Every
+  // non-default transport ends up named in the address bar, so wait for that
+  // too. A default one is stripped, and there is no transition to wait for.
+  if (expected !== defaultBackend()) {
+    await page.waitForFunction(
+      (e) => window.location.href.includes(`chainBackend=${e}`),
+      expected,
+      { timeout: 10_000 },
+    );
+  }
   return page.evaluate(() => ({
     chainBackend: localStorage.getItem("dotli:chain-backend"),
     cacheSettings: localStorage.getItem("dotli:cache-settings"),
@@ -133,7 +145,7 @@ test.describe("Settings works", () => {
     expect(state.chainBackend).toBe("smoldot-direct");
     // The link asked for the default mode, and a default axis is stripped from
     // the address bar, so landing in it leaves a clean URL rather than one
-    // that still names it. See the contract in `packages/config/url-settings`.
+    // that still names it. See the contract in `packages/config/src/url-settings.ts`.
     expect(state.url).not.toContain("chainBackend=");
   });
 
@@ -202,7 +214,7 @@ test.describe("Settings works", () => {
     expect(state.url).toContain("chainBackend=smoldot-shared-worker");
   });
 
-  test("As a user who picked trusted providers, my address bar records it on every visit", async ({
+  test("As a user who picked trusted providers, my address bar records it", async ({
     page,
   }) => {
     // Given
@@ -293,7 +305,7 @@ test.describe("Settings works", () => {
         // assertion above mean "skipped the cache" rather than "had nothing to
         // skip". It survives because `updateCacheSettings` writes the stored
         // setting directly. A user flipping the same switch on the settings
-        // screen would also hit `clearCidCache` in `packages/ui/topbar`, which
+        // screen would also hit `clearCidCache` in `packages/ui/src/topbar.ts`, which
         // no test covers.
         expect(await hasCachedCid(page, DOMAIN)).toBe(true);
       } finally {

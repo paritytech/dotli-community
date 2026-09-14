@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Cold resolution test against every supported backend, plus warm start
- * across a browser restart.
+ * Cold resolution test against every supported network transport, plus warm
+ * start across a browser restart.
  *
  * Env overrides: DOMAIN, PORT, TIMEOUT_MS, WARM_DOMAIN
  */
@@ -62,9 +62,9 @@ interface SmoldotDbState {
 /**
  * Read the provider's smoldot database store from the protocol iframe.
  *
- * The store lives on the protocol origin rather than the product's, and in
- * the default backend the provider writes it from a SharedWorker, so this is
- * the only vantage point the test has on warm start.
+ * The store lives on the protocol origin rather than the product's, and the
+ * warm-start transport writes it from a SharedWorker, so this is the only
+ * vantage point the test has on warm start.
  */
 async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
   const frame = page.frames().find((f) => f.url().startsWith(PROTOCOL_ORIGIN));
