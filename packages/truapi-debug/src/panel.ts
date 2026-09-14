@@ -94,6 +94,19 @@ export interface SetupOptions {
   /** Supplied only by debug builds, never by the runtime panel opt-in. */
   experimentalWallet?: {
     isActive(): boolean;
+    networkLabel(): string;
+    getIdentity(): Promise<{
+      network: string;
+      identityAccountId: string;
+      liteUsername?: string;
+    }>;
+    refreshUsername(): Promise<{
+      identityAccountId: string;
+      liteUsername?: string;
+    }>;
+    claimLiteUsername(
+      baseUsername: string,
+    ): Promise<{ identityAccountId: string; liteUsername?: string }>;
     activate(): Promise<void>;
     disconnect(): Promise<void>;
     deleteWallet(): Promise<void>;
@@ -402,7 +415,7 @@ function installExperimentalWalletControls(
   menu.className = "td-wallet-menu";
   const summary = document.createElement("summary");
   summary.className = "td-btn";
-  summary.textContent = "Test wallet";
+  summary.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 3h6M10 3v7l-5.4 8.6A2 2 0 0 0 6.3 22h11.4a2 2 0 0 0 1.7-3.4L14 10V3M8 16h8"/></svg> Test wallet`;
   menu.appendChild(summary);
   const content = document.createElement("div");
   content.className = "td-wallet-content";
@@ -414,8 +427,45 @@ function installExperimentalWalletControls(
   warning.textContent =
     "Testing only — never use valuable funds or import your real wallet. " +
     "Without a recovery phrase backup, deleting this wallet or clearing site data permanently loses access. " +
-    "Scripts on this origin can access your keys despite storage encryption. Real transactions remain possible.";
+    "Scripts on this and other trusted host origins can access your shared wallet keys despite storage encryption. Real transactions remain possible.";
   content.append(status, warning);
+  const network = document.createElement("p");
+  network.textContent = `Network: ${wallet.networkLabel()}`;
+  const identity = document.createElement("p");
+  identity.className = "td-wallet-identity";
+  identity.textContent = "Identity: enable the test wallet to view";
+  const registeredName = document.createElement("p");
+  registeredName.textContent = "Lite username: not checked";
+  const usernameLabel = document.createElement("label");
+  usernameLabel.textContent = "Base Lite username (no suffix)";
+  const username = document.createElement("input");
+  username.type = "text";
+  username.className = "td-wallet-phrase";
+  username.autocomplete = "off";
+  username.autocapitalize = "off";
+  username.spellcheck = false;
+  username.setAttribute("aria-label", "Base Lite username to claim");
+  usernameLabel.appendChild(username);
+  const claim = document.createElement("button");
+  claim.type = "button";
+  claim.className = "td-btn";
+  claim.textContent = "Claim Lite username";
+  const refresh = document.createElement("button");
+  refresh.type = "button";
+  refresh.className = "td-btn";
+  refresh.textContent = "Refresh username";
+  const usernameHint = document.createElement("p");
+  usernameHint.textContent =
+    "Refresh discovers names already registered to this identity. Claim submits a real registration on the selected network; nothing is registered automatically.";
+  content.append(
+    network,
+    identity,
+    registeredName,
+    usernameLabel,
+    claim,
+    refresh,
+    usernameHint,
+  );
   const activate = document.createElement("button");
   activate.type = "button";
   activate.className = "td-btn";
@@ -455,7 +505,7 @@ function installExperimentalWalletControls(
   scope.textContent =
     "English BIP-39: 12, 15, 18, 21 or 24 words. No passphrase or custom derivation path. " +
     "Uses native Polkadot host/Substrate account derivation, not Bitcoin/Ethereum seed derivation. " +
-    "A phrase restores keys, not local permissions or username metadata. Keep it private; anyone with it controls the wallet.";
+    "A phrase restores keys, not permissions. Use Refresh username to discover its registered name on this network. Keep it private; anyone with it controls the wallet.";
   const importButton = document.createElement("button");
   importButton.type = "button";
   importButton.className = "td-btn";
@@ -486,6 +536,11 @@ function installExperimentalWalletControls(
   let pending = false;
   let disposed = false;
   let sensitiveGeneration = 0;
+  let currentIdentity:
+    | { identityAccountId: string; liteUsername?: string }
+    | undefined;
+  let identityReadGeneration = 0;
+  let claimNeedsRefresh = false;
   const isVisible = (): boolean => !disposed && menu.open;
   const clearSensitive = (): void => {
     sensitiveGeneration++;
@@ -527,6 +582,10 @@ function installExperimentalWalletControls(
       message.hidden = true;
     } else {
       positionMenu();
+      if (pending) {
+        message.hidden = false;
+      }
+      void loadIdentity();
     }
   };
   menu.addEventListener("toggle", onToggle);
@@ -541,8 +600,138 @@ function installExperimentalWalletControls(
     importButton.disabled = pending;
     remove.disabled = pending;
     input.disabled = pending;
+    username.disabled = pending || !wallet.isActive();
+    claim.disabled =
+      pending ||
+      claimNeedsRefresh ||
+      !wallet.isActive() ||
+      currentIdentity === undefined ||
+      !!currentIdentity.liteUsername ||
+      username.value.trim() === "";
+    refresh.disabled = pending || !wallet.isActive();
   };
   syncButtons();
+
+  const loadIdentity = async (): Promise<void> => {
+    const generation = ++identityReadGeneration;
+    status.textContent = wallet.isActive()
+      ? "Experimental wallet active"
+      : "Experimental wallet disconnected";
+    if (!wallet.isActive()) {
+      currentIdentity = undefined;
+      identity.textContent = "Identity: enable the test wallet to view";
+      registeredName.textContent = "Lite username: not checked";
+      syncButtons();
+      return;
+    }
+    try {
+      const result = await wallet.getIdentity();
+      if (disposed || generation !== identityReadGeneration) {
+        return;
+      }
+      currentIdentity = result;
+      network.textContent = `Network: ${result.network}`;
+      identity.textContent = `Identity: ${result.identityAccountId}`;
+      registeredName.textContent = result.liteUsername
+        ? `Registered Lite username: ${result.liteUsername}`
+        : "Lite username: none loaded — use Refresh to check the chain";
+    } catch (error) {
+      if (!disposed && generation === identityReadGeneration) {
+        currentIdentity = undefined;
+        identity.textContent = `Identity unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    } finally {
+      if (!disposed) {
+        syncButtons();
+      }
+    }
+  };
+  const onIdentityChanged = (): void => {
+    if (isVisible()) {
+      void loadIdentity();
+    }
+  };
+  window.addEventListener("dotli:truapi-auth-state", onIdentityChanged);
+  username.addEventListener("input", syncButtons);
+  const runUsername = async (register: boolean): Promise<void> => {
+    if (pending || disposed || !wallet.isActive()) {
+      return;
+    }
+    const baseUsername = username.value.trim();
+    if (
+      register &&
+      (claimNeedsRefresh ||
+        currentIdentity === undefined ||
+        currentIdentity.liteUsername ||
+        baseUsername === "")
+    ) {
+      return;
+    }
+    if (
+      register &&
+      !window.confirm(
+        `Claim the Lite username "${baseUsername}" on ${wallet.networkLabel()}?\n\n` +
+          `Identity: ${currentIdentity?.identityAccountId ?? ""}\n\n` +
+          "This submits a real registration. A backend response alone is not success; the wallet will wait for chain ownership confirmation.",
+      )
+    ) {
+      return;
+    }
+    pending = true;
+    clearSensitive();
+    syncButtons();
+    content.setAttribute("aria-busy", "true");
+    message.hidden = false;
+    message.textContent = register
+      ? "Submitting registration and waiting for chain ownership confirmation…"
+      : "Checking registered username ownership on chain…";
+    try {
+      const result = register
+        ? await wallet.claimLiteUsername(baseUsername)
+        : await wallet.refreshUsername();
+      if (disposed) {
+        return;
+      }
+      currentIdentity = result;
+      claimNeedsRefresh = false;
+      identity.textContent = `Identity: ${result.identityAccountId}`;
+      registeredName.textContent = result.liteUsername
+        ? `Registered Lite username: ${result.liteUsername}`
+        : "Lite username: no registration found on chain";
+      message.hidden = false;
+      message.textContent = result.liteUsername
+        ? `Chain ownership confirmed: ${result.liteUsername}. Shared metadata saved and running apps updated.`
+        : "Chain check complete: no Lite username is registered to this identity on this network.";
+      if (result.liteUsername) {
+        username.value = "";
+      }
+    } catch (error) {
+      if (!disposed) {
+        if (register) {
+          claimNeedsRefresh = true;
+        }
+        message.hidden = false;
+        message.textContent = `${register ? "Claim" : "Refresh"} did not complete: ${
+          error instanceof Error ? error.message : String(error)
+        }${register ? " Use Refresh username before trying another claim." : ""}`;
+        // A claim can be on-chain even if persistence or another app's refresh
+        // fails. Re-read native state so Retry cannot accidentally claim again.
+        await loadIdentity();
+      }
+    } finally {
+      pending = false;
+      if (!disposed) {
+        content.removeAttribute("aria-busy");
+        syncButtons();
+      }
+    }
+  };
+  claim.addEventListener("click", () => {
+    void runUsername(true);
+  });
+  refresh.addEventListener("click", () => {
+    void runUsername(false);
+  });
 
   const run = async (
     operation:
@@ -592,7 +781,7 @@ function installExperimentalWalletControls(
         "Import this phrase and replace the browser's test wallet?\n\n" +
           "Testing only: never import a real wallet or one holding valuable funds. Scripts on this origin can access its keys.\n\n" +
           "Back up the current test wallet's phrase first or lose access to it. " +
-          "Successful import clears test-wallet permissions, activates the imported wallet and reloads the page. Mobile pairing is preserved.",
+          "Successful import replaces the shared test wallet for all trusted product hosts, resets wallet-bound permissions, activates the imported wallet and reloads the page. Mobile pairing is preserved.",
       )
     ) {
       return;
@@ -624,16 +813,18 @@ function installExperimentalWalletControls(
         clearSensitive();
         await wallet[operation]();
       }
-    } catch {
+    } catch (error) {
       if (isVisible()) {
         // Import/export errors can originate in crypto libraries: never echo
         // arbitrary error details containing a phrase into diagnostics or DOM.
         message.textContent =
-          operation === "importMnemonic"
-            ? "Import failed. Use 12, 15, 18, 21 or 24 English BIP-39 words with a valid checksum, no passphrase/path, and ensure browser storage is available."
-            : operation === "exportMnemonic"
-              ? "Could not reveal a phrase. Enable or import a test wallet first and ensure browser storage is available."
-              : `Could not ${operation === "deleteWallet" ? "delete" : operation} the test wallet. Check browser storage and retry.`;
+          error instanceof Error && error.name === "WalletConflictError"
+            ? "A different test wallet is already stored, or another product changed the wallet. Reveal the recovery phrase to back up this origin's preserved wallet, then explicitly import it to replace the shared wallet. Delete removes both the shared wallet and any preserved origin-local copy."
+            : operation === "importMnemonic"
+              ? "Import failed. Use 12, 15, 18, 21 or 24 English BIP-39 words with a valid checksum, no passphrase/path, and ensure browser storage is available."
+              : operation === "exportMnemonic"
+                ? "Could not reveal a phrase. Enable or import a test wallet first and ensure browser storage is available."
+                : `Could not ${operation === "deleteWallet" ? "delete" : operation} the test wallet. Check browser storage and retry.`;
       }
     } finally {
       pending = false;
@@ -659,6 +850,8 @@ function installExperimentalWalletControls(
   return () => {
     disposed = true;
     clearSensitive();
+    identityReadGeneration++;
+    window.removeEventListener("dotli:truapi-auth-state", onIdentityChanged);
     menu.removeEventListener("toggle", onToggle);
     resizeObserver.disconnect();
     window.removeEventListener("resize", positionMenu);

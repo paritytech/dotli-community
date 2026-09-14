@@ -15,6 +15,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin";
+import { handleIdentityProxy, IDENTITY_PROXY_PREFIX } from "./identity-proxy";
 
 const RUNTIME_CONFIG_PATH = "/dotli-network.js";
 
@@ -223,6 +224,10 @@ Bun.serve({
   hostname: "0.0.0.0",
   async fetch(req) {
     const url = new URL(req.url);
+
+    if (url.pathname.startsWith(IDENTITY_PROXY_PREFIX)) {
+      return handleIdentityProxy(req);
+    }
 
     if (url.pathname === TUNNEL_PATH) {
       collectEnvelope(await req.text());

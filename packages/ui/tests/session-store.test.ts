@@ -13,9 +13,15 @@ import {
   LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
   readLocalWalletSecret,
+  setLocalWalletEnabled,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
 import type { CoreStorageKey } from "@parity/truapi-host";
+import type {
+  SharedWalletOperation,
+  SharedWalletState,
+} from "@dotli/protocol/wallet-storage";
+import { handleWalletOperation } from "../../../apps/protocol/src/wallet-storage";
 
 const buildFlags = vi.hoisted(() => ({ debug: false }));
 vi.mock("@dotli/config/config", async (importOriginal) => ({
@@ -30,9 +36,21 @@ const sharedAuth = vi.hoisted(() => ({
   listeners: new Set<
     (change: { siteId: string; key: string; value: string | null }) => void
   >(),
+  walletListeners: new Set<(state: SharedWalletState) => void>(),
 }));
 
 vi.mock("@dotli/protocol/client", () => ({
+  requestSharedWallet: async (
+    _siteId: string,
+    operation: SharedWalletOperation,
+  ) =>
+    handleWalletOperation(operation, (state) => {
+      for (const listener of sharedAuth.walletListeners) listener(state);
+    }),
+  subscribeSharedWallet: (listener: (state: SharedWalletState) => void) => {
+    sharedAuth.walletListeners.add(listener);
+    return () => sharedAuth.walletListeners.delete(listener);
+  },
   readSharedAuthStorage: async (siteId: string, key: string) => {
     return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
   },
@@ -92,6 +110,8 @@ const CONNECTED_DETAIL = {
   primaryUsername: "pgherveou.04",
 };
 
+const walletLockTails = new Map<string, Promise<void>>();
+
 describe("session-store host callbacks", () => {
   beforeEach(() => {
     buildFlags.debug = false;
@@ -99,6 +119,24 @@ describe("session-store host callbacks", () => {
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
     vi.restoreAllMocks();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request<T>(name: string, callback: () => Promise<T>): Promise<T> {
+          const result = (walletLockTails.get(name) ?? Promise.resolve()).then(
+            callback,
+          );
+          walletLockTails.set(
+            name,
+            result.then(
+              () => undefined,
+              () => undefined,
+            ),
+          );
+          return result;
+        },
+      },
+    });
   });
 
   it("As a dotli integrator, the host round-trips the host core session blob", async () => {
@@ -363,7 +401,7 @@ describe("session-store host callbacks", () => {
     expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
   });
 
-  it("As a local wallet user, my signing identity is encrypted, stable, and deletable", async () => {
+  it("keeps the shared wallet stable across reads and removes custody on deletion", async () => {
     // Given
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
@@ -374,29 +412,6 @@ describe("session-store host callbacks", () => {
 
     // Then
     expect(first.created).toBe(true);
-    expect(first.secret).toHaveLength(32);
-    const opened = Promise.withResolvers<IDBDatabase>();
-    const openRequest = indexedDB.open("dotli-core");
-    openRequest.onsuccess = () => {
-      opened.resolve(openRequest.result);
-    };
-    openRequest.onerror = () => {
-      opened.reject(openRequest.error);
-    };
-    const db = await opened.promise;
-    const storedValue = Promise.withResolvers<unknown>();
-    const readRequest = db
-      .transaction("keys")
-      .objectStore("keys")
-      .get("local-wallet-entropy-v1");
-    readRequest.onsuccess = () => {
-      storedValue.resolve(readRequest.result);
-    };
-    readRequest.onerror = () => {
-      storedValue.reject(readRequest.error);
-    };
-    expect(await storedValue.promise).toMatch(/^enc1:0x/);
-    db.close();
 
     // When
     first.secret.fill(0);
@@ -445,7 +460,7 @@ describe("session-store host callbacks", () => {
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    await setLocalWalletEnabled(true);
     const experimental = createSessionStoreAdapters();
     await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
     await experimental.writeCoreStorage(grant, new Uint8Array([4]));
@@ -505,7 +520,7 @@ describe("session-store host callbacks", () => {
     const { secret } = await createLocalWalletSecret();
     const expected = Array.from(secret);
     secret.fill(0);
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    await setLocalWalletEnabled(true);
     buildFlags.debug = false;
     const events: unknown[] = [];
     const onState = (event: Event) =>
@@ -537,7 +552,9 @@ describe("session-store host callbacks", () => {
     await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
     await mobile.writeCoreStorage(grant, new Uint8Array([2]));
     buildFlags.debug = true;
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
     const experimental = createSessionStoreAdapters();
     expect(
       await experimental.readCoreStorage(AUTH_SESSION_KEY),
@@ -816,8 +833,7 @@ describe("session-store host callbacks", () => {
       UI_STATE_CACHE_KEY,
       JSON.stringify(CONNECTED_DETAIL),
     );
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
     expect(events).toEqual([]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
@@ -830,8 +846,7 @@ describe("session-store host callbacks", () => {
     await flushMicrotasks();
     events.length = 0;
 
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
 
     // Then
     expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
@@ -843,7 +858,7 @@ describe("session-store host callbacks", () => {
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    await setLocalWalletEnabled(true);
     sharedAuth.storage.set(
       UI_STATE_CACHE_KEY,
       JSON.stringify(CONNECTED_DETAIL),
@@ -873,8 +888,7 @@ describe("session-store host callbacks", () => {
 
     // When
     await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
 
     // Then
     expect(events).toEqual([
@@ -897,8 +911,7 @@ describe("session-store host callbacks", () => {
     );
 
     // When
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
 
     // Then: the malformed cache is discarded instead of being laundered into
     // a typed session state with non-string fields.
