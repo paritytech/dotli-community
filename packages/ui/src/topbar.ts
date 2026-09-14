@@ -457,8 +457,8 @@ export function initTopBar(
         label: "Wallet restoration",
         text:
           error instanceof Error && error.name === "WalletConflictError"
-            ? "A different test wallet is already stored. Open Debug → Test wallet to reveal and back up the preserved recovery phrase before explicitly importing or deleting."
-            : "Could not restore the wallet session. Check browser storage access; test-wallet recovery controls remain available in Debug → Test wallet.",
+            ? "A different test wallet is already stored. Open Host inspector → Recovery to reveal and back up the preserved recovery phrase before explicitly importing or deleting."
+            : "Could not restore the wallet session. Check browser storage access; test-wallet recovery controls remain available in Host inspector → Recovery.",
         browserNotification: false,
         dismissMs: 0,
       });
@@ -537,7 +537,7 @@ function syncExperimentalWalletPresentation(): void {
     hint.id = "experimental-wallet-hint";
     hint.className = "user-popover-hint";
     hint.textContent =
-      "Testing only. Username claim / refresh and recovery phrase: Debug → Test wallet. Disconnect to sign in with Polkadot Mobile.";
+      "Testing only. Open the Host inspector for username, allowances and Recovery settings. Disconnect to sign in with Polkadot Mobile.";
     userPopoverUsername.insertAdjacentElement("afterend", hint);
   }
 }
@@ -557,8 +557,12 @@ function renderLoggedOut(): void {
 
 function renderExperimentalWalletBadge(): void {
   authButton.innerHTML = `<div class="user-badge user-badge-experimental">${EXPERIMENTAL_WALLET_SVG}</div>`;
-  authButton.title = "Experimental test wallet — testing only";
-  authButton.setAttribute("aria-label", "Experimental test wallet");
+  authButton.title =
+    "Open Host inspector — experimental test wallet, testing only";
+  authButton.setAttribute(
+    "aria-label",
+    "Open Host inspector — experimental test wallet",
+  );
 }
 
 function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
@@ -898,7 +902,10 @@ function renderError(message: string, kind: LoginFailureKind): void {
 }
 
 function handleAuthButtonClick(): void {
-  if (truapiSessionConnected || isExperimentalWalletActive()) {
+  if (isExperimentalWalletActive()) {
+    userPopover.classList.remove("open");
+    window.dispatchEvent(new Event("dotli:host-inspector-open"));
+  } else if (truapiSessionConnected) {
     userPopover.classList.toggle("open");
   } else {
     openModal();

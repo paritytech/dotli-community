@@ -42,6 +42,7 @@ import {
   type FilterState,
 } from "./filters.ts";
 import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
+import { createHostInspector } from "./host-inspector.ts";
 import {
   applyTimelineSelection,
   buildTimelineContainer,
@@ -86,6 +87,35 @@ function writeStoredDock(dock: DockPosition): void {
   }
 }
 
+export interface InspectorIdentity {
+  network: string;
+  identityAccountId: string;
+  liteUsername?: string;
+  fullUsername?: string;
+  publicKey?: string;
+}
+
+export interface InspectorResource {
+  id: string;
+  label: string;
+  request: unknown;
+}
+
+export interface InspectorProduct {
+  id: string;
+  name: string;
+  origin: string;
+  accountPublicKey?: string;
+  accountError?: string;
+  derivation: string;
+  permissions: {
+    id: string;
+    label: string;
+    status: "ask" | "granted" | "denied";
+  }[];
+  resources: InspectorResource[];
+}
+
 export interface SetupOptions {
   /** Hard cap on retained events before oldest are evicted. */
   capacity?: number;
@@ -100,11 +130,13 @@ export interface SetupOptions {
   experimentalWallet?: {
     isActive(): boolean;
     networkLabel(): string;
-    getIdentity(): Promise<{
-      network: string;
-      identityAccountId: string;
-      liteUsername?: string;
-    }>;
+    getIdentity(): Promise<InspectorIdentity>;
+    getProduct(): Promise<InspectorProduct | null>;
+    describeResource(resource: unknown): InspectorResource | null;
+    requestResource(
+      productId: string,
+      resource: unknown,
+    ): Promise<"Allocated" | "Rejected" | "NotAvailable">;
     refreshUsername(): Promise<{
       identityAccountId: string;
       liteUsername?: string;
@@ -160,7 +192,11 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   const disposeWalletControls =
     options.experimentalWallet === undefined
       ? undefined
-      : installExperimentalWalletControls(ui, options.experimentalWallet);
+      : installExperimentalWalletControls(
+          ui,
+          options.experimentalWallet,
+          store,
+        );
   document.body.appendChild(ui.panel);
   applyDockPosition(ui, state, { persist: false });
   if (state.collapsed) {
@@ -247,13 +283,14 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     // of the iframe rather than reserving a full-height column. Mirrors
     // how bottom-dock collapse overlays only the bottom 32px.
     iframe.style.width = state.collapsed
-      ? "100%"
-      : `calc(100vw - ${String(panel.offsetWidth)}px)`;
+      ? "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))"
+      : `calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px) - ${String(panel.offsetWidth)}px)`;
   } else {
     // Host's renderIframe sets inline width:100%. Restore
     // that explicitly. Clearing to "" falls back to the HTML iframe
     // default of 300px and breaks the layout.
-    iframe.style.width = "100%";
+    iframe.style.width =
+      "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))";
     const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
     iframe.style.height = `calc(100vh - ${topOffset} - ${String(panelHeight)}px)`;
   }
@@ -266,7 +303,8 @@ function restoreIframeLayout(): void {
   }
   const hasTopbar = document.getElementById("topbar") !== null;
   iframe.style.height = hasTopbar ? `calc(100vh - ${TOPBAR_HEIGHT})` : "100vh";
-  iframe.style.width = "100%";
+  iframe.style.width =
+    "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))";
 }
 
 type PanelView = "list" | "timeline" | "runtime";
@@ -439,15 +477,11 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
 function installExperimentalWalletControls(
   ui: PanelUI,
   wallet: NonNullable<SetupOptions["experimentalWallet"]>,
+  store: EventStore,
 ): () => void {
-  const menu = document.createElement("details");
-  menu.className = "td-wallet-menu";
-  const summary = document.createElement("summary");
-  summary.className = "td-btn";
-  summary.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 3h6M10 3v7l-5.4 8.6A2 2 0 0 0 6.3 22h11.4a2 2 0 0 0 1.7-3.4L14 10V3M8 16h8"/></svg> Test wallet`;
-  menu.appendChild(summary);
-  const content = document.createElement("div");
-  content.className = "td-wallet-content";
+  const inspector = createHostInspector(wallet, store);
+  const { content, overview, recovery } = inspector;
+  ui.counts.after(inspector.entry);
   const status = document.createElement("p");
   status.textContent = wallet.isActive()
     ? "Experimental wallet active"
@@ -457,7 +491,7 @@ function installExperimentalWalletControls(
     "Testing only — never use valuable funds or import your real wallet. " +
     "Without a recovery phrase backup, deleting this wallet or clearing site data permanently loses access. " +
     "Scripts on this and other trusted host origins can access your shared wallet keys despite storage encryption. Real transactions remain possible.";
-  content.append(status, warning);
+  overview.append(status, warning);
   const network = document.createElement("p");
   network.textContent = `Network: ${wallet.networkLabel()}`;
   const identity = document.createElement("p");
@@ -486,7 +520,7 @@ function installExperimentalWalletControls(
   const usernameHint = document.createElement("p");
   usernameHint.textContent =
     "Refresh discovers names already registered to this identity. Claim submits a real registration on the selected network; nothing is registered automatically.";
-  content.append(
+  overview.append(
     network,
     identity,
     registeredName,
@@ -547,9 +581,11 @@ function installExperimentalWalletControls(
   message.className = "td-wallet-message";
   message.setAttribute("role", "alert");
   message.hidden = true;
-  content.append(
-    activate,
-    disconnect,
+  overview.append(activate, disconnect, inspector.productDetails);
+  const recoveryHeading = document.createElement("h3");
+  recoveryHeading.textContent = "Recovery settings";
+  recovery.append(recoveryHeading);
+  recovery.append(
     reveal,
     phrase,
     hide,
@@ -557,21 +593,17 @@ function installExperimentalWalletControls(
     scope,
     importButton,
     remove,
-    message,
   );
-  menu.appendChild(content);
-  ui.counts.after(menu);
+  content.append(message);
 
   let pending = false;
   let disposed = false;
   const isDisposed = (): boolean => disposed;
   let sensitiveGeneration = 0;
-  let currentIdentity:
-    | { identityAccountId: string; liteUsername?: string }
-    | undefined;
+  let currentIdentity: InspectorIdentity | undefined;
   let identityReadGeneration = 0;
   let claimNeedsRefresh = false;
-  const isVisible = (): boolean => !disposed && menu.open;
+  const isVisible = (): boolean => !disposed && inspector.isOpen();
   const clearSensitive = (): void => {
     sensitiveGeneration++;
     phrase.value = "";
@@ -579,46 +611,19 @@ function installExperimentalWalletControls(
     hide.hidden = true;
     input.value = "";
   };
-  const positionMenu = (): void => {
-    if (!isVisible()) {
-      return;
-    }
-    const rect = summary.getBoundingClientRect();
-    const margin = 12;
-    const gap = 6;
-    const above = Math.max(
-      0,
-      Math.min(window.innerHeight, rect.top) - margin - gap,
-    );
-    const below = Math.max(
-      0,
-      window.innerHeight - Math.max(0, rect.bottom) - margin - gap,
-    );
-    const openAbove = above >= below;
-    content.style.top = openAbove
-      ? "auto"
-      : `${String(Math.max(margin, rect.bottom + gap))}px`;
-    content.style.bottom = openAbove
-      ? `${String(Math.max(margin, window.innerHeight - rect.top + gap))}px`
-      : "auto";
-    content.style.maxHeight = `${String(Math.max(above, below))}px`;
-  };
-  const resizeObserver = new ResizeObserver(positionMenu);
-  resizeObserver.observe(ui.panel);
-  window.addEventListener("resize", positionMenu);
-  const onToggle = (): void => {
-    if (!menu.open) {
+  inspector.onVisibilityChange(() => {
+    if (!inspector.isRecoveryVisible()) {
       clearSensitive();
+    }
+    if (!inspector.isOpen()) {
       message.hidden = true;
     } else {
-      positionMenu();
       if (pending) {
         message.hidden = false;
       }
       void loadIdentity();
     }
-  };
-  menu.addEventListener("toggle", onToggle);
+  });
   hide.addEventListener("click", () => {
     clearSensitive();
     message.hidden = true;
@@ -649,8 +654,10 @@ function installExperimentalWalletControls(
       : "Experimental wallet disconnected";
     if (!wallet.isActive()) {
       currentIdentity = undefined;
-      identity.textContent = "Identity: enable the test wallet to view";
-      registeredName.textContent = "Lite username: not checked";
+      inspector.setIdentity(undefined);
+      identity.textContent =
+        "Identity: connect the experimental wallet to view";
+      registeredName.textContent = "Username: no wallet connected";
       syncButtons();
       return;
     }
@@ -659,16 +666,28 @@ function installExperimentalWalletControls(
       if (disposed || generation !== identityReadGeneration) {
         return;
       }
+      if (
+        currentIdentity?.identityAccountId !== result.identityAccountId ||
+        currentIdentity.network !== result.network
+      ) {
+        clearSensitive();
+      }
       currentIdentity = result;
+      inspector.setIdentity(result);
       network.textContent = `Network: ${result.network}`;
-      identity.textContent = `Identity: ${result.identityAccountId}`;
+      identity.textContent = `Identity account: ${result.identityAccountId}${result.publicKey !== undefined ? ` · Public key: ${result.publicKey}` : ""}`;
+      const fullUsername = result.fullUsername ?? "";
+      const liteUsername = result.liteUsername ?? "";
       registeredName.textContent =
-        result.liteUsername !== undefined && result.liteUsername !== ""
-          ? `Registered Lite username: ${result.liteUsername}`
-          : "Lite username: none loaded — use Refresh to check the chain";
+        fullUsername !== ""
+          ? `Full username: ${fullUsername}${liteUsername !== "" ? ` · Lite username: ${liteUsername}` : ""}`
+          : liteUsername !== ""
+            ? `Lite username: ${liteUsername}`
+            : "No username — use Refresh to check the chain";
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {
         currentIdentity = undefined;
+        inspector.setIdentity(undefined);
         identity.textContent = `Identity unavailable: ${error instanceof Error ? error.message : String(error)}`;
       }
     } finally {
@@ -678,11 +697,11 @@ function installExperimentalWalletControls(
     }
   };
   const onIdentityChanged = (): void => {
-    if (isVisible()) {
-      void loadIdentity();
-    }
+    clearSensitive();
+    void loadIdentity();
   };
   window.addEventListener("dotli:truapi-auth-state", onIdentityChanged);
+  window.addEventListener("dotli:product-loaded", onIdentityChanged);
   username.addEventListener("input", syncButtons);
   const runUsername = async (register: boolean): Promise<void> => {
     if (pending || disposed || !wallet.isActive()) {
@@ -723,7 +742,14 @@ function installExperimentalWalletControls(
       if (isDisposed()) {
         return;
       }
-      currentIdentity = result;
+      currentIdentity = {
+        ...(currentIdentity?.identityAccountId === result.identityAccountId
+          ? currentIdentity
+          : {}),
+        network: wallet.networkLabel(),
+        ...result,
+      };
+      inspector.setIdentity(currentIdentity);
       claimNeedsRefresh = false;
       identity.textContent = `Identity: ${result.identityAccountId}`;
       registeredName.textContent =
@@ -774,6 +800,14 @@ function installExperimentalWalletControls(
       | "exportMnemonic"
       | "importMnemonic",
   ): Promise<void> => {
+    if (
+      (operation === "exportMnemonic" ||
+        operation === "importMnemonic" ||
+        operation === "deleteWallet") &&
+      !inspector.isRecoveryVisible()
+    ) {
+      return;
+    }
     if (pending || disposed) {
       return;
     }
@@ -831,7 +865,10 @@ function installExperimentalWalletControls(
     try {
       if (operation === "exportMnemonic") {
         const mnemonic = await wallet.exportMnemonic();
-        if (isVisible() && generation === sensitiveGeneration) {
+        if (
+          inspector.isRecoveryVisible() &&
+          generation === sensitiveGeneration
+        ) {
           phrase.value = mnemonic;
           phrase.hidden = false;
           hide.hidden = false;
@@ -880,14 +917,14 @@ function installExperimentalWalletControls(
   remove.addEventListener("click", () => {
     void run("deleteWallet");
   });
+  void loadIdentity();
   return () => {
     disposed = true;
     clearSensitive();
     identityReadGeneration++;
     window.removeEventListener("dotli:truapi-auth-state", onIdentityChanged);
-    menu.removeEventListener("toggle", onToggle);
-    resizeObserver.disconnect();
-    window.removeEventListener("resize", positionMenu);
+    window.removeEventListener("dotli:product-loaded", onIdentityChanged);
+    inspector.dispose();
   };
 }
 

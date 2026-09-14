@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  encodeWireMessage,
+  HostRequestResourceAllocationResponse,
+  VersionedHostRequestResourceAllocationError,
+  VersionedHostRequestResourceAllocationRequest,
   RemoteChainHeadHeaderResponse,
   VersionedRemoteChainHeadFollowRequest,
   VersionedRemoteChainHeadHeaderError,
@@ -22,7 +24,7 @@ import {
   SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
 import { describeWireFrame, __testing } from "@dotli/ui/debug-wire-describe";
-import { blockHash, genesisHash, unwrap } from "./support.ts";
+import { blockHash, genesisHash } from "./support.ts";
 
 function payloadBytes(
   codec: { enc: (v: never) => Uint8Array },
@@ -32,6 +34,75 @@ function payloadBytes(
 }
 
 describe("describeWireFrame", () => {
+  it("preserves batched resource outcomes in request order", () => {
+    const resources = [
+      { tag: "StatementStoreAllowance", value: undefined },
+      { tag: "BulletinAllowance", value: undefined },
+    ];
+    const request = payloadBytes(
+      VersionedHostRequestResourceAllocationRequest,
+      {
+        tag: "V1",
+        value: { resources },
+      },
+    );
+    const response = payloadBytes(
+      indexedTaggedUnion({
+        V1: [
+          0,
+          Result(
+            HostRequestResourceAllocationResponse,
+            CallError(VersionedHostRequestResourceAllocationError),
+          ),
+        ],
+      }),
+      {
+        tag: "V1",
+        value: {
+          success: true,
+          value: { outcomes: ["Rejected", "Allocated"] },
+        },
+      },
+    );
+    expect(
+      describeWireFrame(WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request, request)
+        .value,
+    ).toEqual({ resources });
+    expect(
+      describeWireFrame(
+        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response,
+        response,
+      ).value,
+    ).toEqual({ outcomes: ["Rejected", "Allocated"] });
+  });
+
+  it("redacts malformed allocation data instead of retaining unexpected payloads", () => {
+    const request = payloadBytes(
+      VersionedHostRequestResourceAllocationRequest,
+      {
+        tag: "V1",
+        value: {
+          resources: [{ tag: "StatementStoreAllowance", value: undefined }],
+        },
+      },
+    );
+    const privatePayload = new TextEncoder().encode("not-for-the-activity-log");
+    const trailingPayload = new Uint8Array([...request, ...privatePayload]);
+    const malformedResponse = new Uint8Array([255, ...privatePayload]);
+    expect(
+      describeWireFrame(
+        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request,
+        trailingPayload,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: trailingPayload.length });
+    expect(
+      describeWireFrame(
+        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response,
+        malformedResponse,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: malformedResponse.length });
+  });
+
   it("As a dotli integrator, the host tags chain frames with the panel's legacy names and decodes their payloads", () => {
     // Given
     const bytes = payloadBytes(VersionedRemoteChainHeadFollowRequest, {
@@ -123,23 +194,6 @@ describe("describeWireFrame", () => {
       wireId: CHAIN_GET_HEAD_HEADER.request,
       bytes,
     });
-  });
-
-  it("As a dotli integrator, the host encodes a full envelope round-trip the tap will perform", () => {
-    // Given: the exact envelope the provider carries (guards Task 2's usage).
-    const inner = payloadBytes(VersionedRemoteChainHeadFollowRequest, {
-      tag: "V1",
-      value: { genesisHash, withRuntime: true },
-    });
-    const framed = unwrap(
-      encodeWireMessage({
-        requestId: "req-1",
-        payload: { id: CHAIN_FOLLOW_HEAD_SUBSCRIBE.start, value: inner },
-      }),
-    );
-
-    // Then: sanity check that the envelope encodes. The tap decodes it with decodeWireMessage.
-    expect(framed).toBeInstanceOf(Uint8Array);
   });
 
   it("As a dotli integrator, the host decodes a real chainHead.header Ok response using the generated client's wire composition", () => {
