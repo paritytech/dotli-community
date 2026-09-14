@@ -20,6 +20,7 @@ const SAFE_BOTTOM = "var(--safe-bottom, 0px)";
 const SAFE_LEFT = "var(--safe-left, 0px)";
 const SAFE_RIGHT = "var(--safe-right, 0px)";
 const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
+const HOST_INSPECTOR_WIDTH = "var(--host-inspector-width, 0px)";
 
 export interface ProductIframeBox {
   top: string;
@@ -37,7 +38,7 @@ export function productIframeBox(opts: {
   return {
     top,
     left: SAFE_LEFT,
-    width: `calc(100% - ${SAFE_LEFT} - ${SAFE_RIGHT})`,
+    width: `calc(100% - ${SAFE_LEFT} - ${SAFE_RIGHT} - ${HOST_INSPECTOR_WIDTH})`,
     height: `calc(100dvh - ${top} - ${SAFE_BOTTOM})`,
   };
 }
