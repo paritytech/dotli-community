@@ -1282,6 +1282,18 @@ async function main(): Promise<void> {
   });
   onProtocolChainDetail((event) => {
     trace.chainDetail(event);
+    if (event.dbCache !== undefined) {
+      emitDotliDebugEvent({
+        layer: "chain",
+        event: "dbcache",
+        flowId: bootFlowId,
+        timestamp: Date.now(),
+        payload: {
+          chain: chainRoleForKey(event.chain),
+          dbCache: event.dbCache,
+        },
+      });
+    }
   });
   onProtocolNetBytes(({ received }) => {
     trace.bytes(received);

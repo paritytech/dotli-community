@@ -860,6 +860,7 @@
 }
 .td-res-summary {
   display: grid;
+  width: 100%;
   /* Fills the panel. A minimum wide enough that thirteen cards settle into
      about two rows on a bottom dock rather than a crushed single line. */
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

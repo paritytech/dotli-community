@@ -44,6 +44,8 @@ export interface ResolutionRow {
   peersMax: number | null;
   warpAt: number | null;
   warpTarget: number | null;
+  /** Whether the light client resumed this chain from its stored database. */
+  dbCache: "hit" | "miss" | null;
 }
 
 export type CacheResult = "hit" | "miss" | "skipped" | null;
@@ -299,6 +301,7 @@ function buildRows(
       peersMax: null,
       warpAt: null,
       warpTarget: null,
+      dbCache: null,
     });
   }
 
@@ -306,13 +309,25 @@ function buildRows(
     if (ev.layer !== "chain") {
       continue;
     }
-    if (ev.event !== "phase" && ev.event !== "peers") {
+    if (
+      ev.event !== "phase" &&
+      ev.event !== "peers" &&
+      ev.event !== "dbcache"
+    ) {
       continue;
     }
     const p = payloadOf(ev);
     const role = CHAIN_ROLES.find((r) => r === str(p.chain));
     const row = role === undefined ? undefined : byRole.get(role);
     if (row === undefined) {
+      continue;
+    }
+    if (ev.event === "dbcache") {
+      const cache = str(p.dbCache);
+      if (cache === "hit" || cache === "miss") {
+        // First answer wins, matching the resolver-side latch.
+        row.dbCache ??= cache;
+      }
       continue;
     }
     if (ev.event === "peers") {
@@ -604,18 +619,18 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       key: "outcome",
       value: "",
       valueHtml: outcomeText(s),
-      hint: "How far the load got. \u201cResolved\u201d means a content id was found for the name. On its own that does not mean the app rendered \u2014 read \u201capp on screen\u201d for that.",
+      hint: "How far the load got. \u201cResolved\u201d means a content id was found for the name. That alone does not mean the app rendered. Read \u201capp on screen\u201d for that.",
     },
     {
       key: "network transport",
       value: "",
       valueHtml: transportText(s),
-      hint: "How this load reached the chain. The smoldot light client verifies blocks itself; the RPC gateway trusts a remote node to answer honestly.",
+      hint: "How this load reached the chain. The smoldot light client verifies blocks itself. The RPC gateway trusts a remote node to answer honestly.",
     },
     {
       key: "elapsed",
       value: formatMs(model.elapsedMs),
-      hint: "Wall clock for the whole load, from the host starting up to the app being on screen.",
+      hint: "The duration of the whole load, from the host starting up to the app being on screen.",
     },
     {
       key: "resolved in",
@@ -630,12 +645,12 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "first byte",
       value: s.firstByteMs === null ? "—" : formatMs(s.firstByteMs),
-      hint: "Roughly when data first moved. The byte counter is only sampled about once a second, so treat this as an upper bound. Everything before it is finding peers and opening connections.",
+      hint: "Roughly when data first moved. The byte counter is sampled about once a second, so treat this as an upper bound. Everything before it is finding peers and opening connections.",
     },
     {
       key: "downloaded during connection",
       value: s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
-      hint: "Every byte the light client pulled off the network, counted from boot until the app frame was attached. Warp syncing the relay dominates a cold start. The download of the app itself rides the same connections but mostly arrives after this stops counting, so it is largely absent here.",
+      hint: "Every byte the light client pulled off the network, counted from boot until the app frame was attached.",
     },
     {
       key: "app size",
@@ -645,12 +660,12 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "average speed",
       value: formatRate(s.avgBytesPerSecond),
-      hint: "Sync download over the time it took to arrive. It includes the wait before any data moved, so it reads lower than your actual link speed.",
+      hint: "The bytes downloaded during connection divided by the time they took to arrive. The wait before any data moved is included, so it reads lower than the real link speed.",
     },
     {
       key: "peak speed",
       value: formatRate(s.peakBytesPerSecond),
-      hint: "The best rate seen between two byte samples, which are about a second apart. That makes it a one-second average, not a true instantaneous peak.",
+      hint: "The best rate seen between two byte samples, taken about a second apart. That makes it a one-second average, not a true peak.",
     },
     {
       key: "CID cache",
@@ -795,6 +810,9 @@ function rowMeta(row: ResolutionRow): string {
   }
   if (row.warpAt !== null && row.warpTarget !== null) {
     parts.push(`warped to ${String(row.warpAt)} of ${String(row.warpTarget)}`);
+  }
+  if (row.dbCache !== null) {
+    parts.push(`db ${row.dbCache}`);
   }
   return parts.join(" · ");
 }

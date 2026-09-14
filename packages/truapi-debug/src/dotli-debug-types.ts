@@ -464,6 +464,16 @@ export type ChainEvent =
     }
   | {
       layer: "chain";
+      event: "dbcache";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        chain: string;
+        dbCache: "hit" | "miss";
+      };
+    }
+  | {
+      layer: "chain";
       event: "peers";
       flowId: string;
       timestamp: number;
