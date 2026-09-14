@@ -578,7 +578,7 @@ function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
   const username =
     state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
   if (experimental) {
-    authButton.title = `Experimental test wallet — ${getActiveServicesConfig().label}${username ? ` — ${username}` : " — no username loaded"}`;
+    authButton.title = `Experimental test wallet — ${getActiveServicesConfig().label}${username !== undefined && username !== "" ? ` — ${username}` : " — no username loaded"}`;
     userPopoverUsername.title =
       state.identityAccountId ?? state.publicKey ?? "";
   } else {
