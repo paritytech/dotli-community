@@ -141,14 +141,13 @@ import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
 import {
   describeError,
   ERROR_TITLES,
-  forcedError,
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
   HOST_ERRORS,
   HOST_UNAVAILABLE_DETAIL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
-  trustedProviderHost,
+  trustedProviderHosts,
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
 } from "./errors";
@@ -835,12 +834,15 @@ async function applyUrlSettings(): Promise<void> {
 }
 
 /**
- * The last error kind the visitor was shown a recovery screen for.
+ * The error kind the visitor was shown a recovery screen for on the attempt
+ * immediately before this one.
  *
  * Unlike the `dotli:pending-reset:*` signals this one is not consumed on read:
- * it has to outlive the reload it describes, so the second sighting of the same
- * failure can offer a stronger remedy than the first. Per tab by design — a
- * fresh tab is a fresh visitor as far as this is concerned.
+ * it has to outlive the reload it describes, so a failure that survives a
+ * reload can offer a stronger remedy than one seen for the first time. Cleared
+ * on every successful load, which is what keeps it meaning "this reload did not
+ * help" rather than "this tab saw that error at some point". Per tab by design.
+ * A fresh tab is a fresh visitor as far as this is concerned.
  */
 const ERROR_SEEN_KEY = "dotli:error-seen";
 
@@ -860,6 +862,15 @@ function rememberError(kind: string): void {
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode; without it every failure stays a first sighting, which is the safe default.
   } catch {
     /* sessionStorage unavailable: the escalation simply never triggers */
+  }
+}
+
+function forgetError(): void {
+  try {
+    sessionStorage.removeItem(ERROR_SEEN_KEY);
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, in which case nothing was ever written and there is nothing to clear.
+  } catch {
+    /* sessionStorage unavailable: nothing was stored, so nothing to clear */
   }
 }
 
@@ -1756,10 +1767,6 @@ async function main(): Promise<void> {
   };
 
   try {
-    const forced = forcedError(window.location.search, DEBUG);
-    if (forced !== null) {
-      throw forced;
-    }
     const cachedCid = cacheSettings.skipCidCache
       ? null
       : await getCachedCid(label);
@@ -1786,6 +1793,7 @@ async function main(): Promise<void> {
         advancePhase(contentFetchPhase);
         await renderAppSubdomain(cachedCid, label);
       });
+      forgetError();
       void recordRecentLabel(label);
       void applyProductBranding(label, chainBackend).catch((err: unknown) => {
         log.warn(
@@ -1953,6 +1961,7 @@ async function main(): Promise<void> {
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(cid, label);
+    forgetError();
     void recordRecentLabel(label);
     void applyProductBranding(label, chainBackend).catch((err: unknown) => {
       log.warn(
@@ -2019,12 +2028,17 @@ async function main(): Promise<void> {
       return;
     }
     if (error.recovery === "reload") {
-      showError(error.title, error.message, {
-        label: RELOAD_BTN_LABEL,
-        onClick: () => {
-          window.location.reload();
+      showError(
+        error.title,
+        error.message,
+        {
+          label: RELOAD_BTN_LABEL,
+          onClick: () => {
+            window.location.reload();
+          },
         },
-      });
+        error.tips,
+      );
       return;
     }
     // Tiered failover: any smoldot becomes rpc-gateway, rpc-gateway becomes smoldot-shared-worker.
@@ -2076,7 +2090,7 @@ async function main(): Promise<void> {
         title: "Your connection won't be verified",
         detail: trustedProviderWarning(
           withActiveTld(label),
-          trustedProviderHost(),
+          trustedProviderHosts(),
         ),
         actions: [
           { label: TRY_ANYWAY_BTN_LABEL, onClick: commitFailover },
@@ -2100,7 +2114,12 @@ async function main(): Promise<void> {
       // Only the gated direction records a sighting. Remembering a failure seen
       // on the gateway would skip the Settings step for a visitor who later hits
       // the same kind on the light client, where it really is their first.
-      if (nextBackend === "rpc-gateway") {
+      //
+      // `unknown` is never recorded. It is the catch-all bucket, so two
+      // unrelated failures both key as `unknown` and the second would read as a
+      // repeat of the first, handing over the one-click drop to a trusted
+      // provider on what is genuinely a first sighting.
+      if (nextBackend === "rpc-gateway" && error.kind !== "unknown") {
         rememberError(error.kind);
       }
       showErrorPage({

@@ -542,8 +542,12 @@ test("As a user, when the same failure survives a reload, the error page escalat
   );
 
   // When
+  // Armed before the click: `waitForLoadState` after it can resolve against
+  // the document that is about to be torn down, which would let the assertions
+  // below read the pre-reload screen.
+  const reloaded = page.waitForEvent("load");
   await page.locator("#error-retry-btn").click();
-  await page.waitForLoadState("domcontentloaded");
+  await reloaded;
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(

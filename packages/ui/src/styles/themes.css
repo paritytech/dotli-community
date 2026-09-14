@@ -267,8 +267,7 @@
   color: #202124;
 }
 [data-theme="light"] .error-page-detail,
-[data-theme="light"] .error-page-tips,
-[data-theme="light"] .error-page-footnote {
+[data-theme="light"] .error-page-tips {
   color: #666;
 }
 [data-theme="light"] .error-page-retry {

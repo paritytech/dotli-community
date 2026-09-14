@@ -916,8 +916,15 @@ function run(): void {
       // open the connection, and it is the single most common way the gateway
       // path fails. Passed through verbatim it reads as a bug in the app, so
       // the one case that has a plain-language equivalent gets it.
+      //
+      // The dynamic-import failure has to be excluded explicitly: its message
+      // starts with the same four words but means a missing app chunk, not an
+      // unreachable gateway. Blaming the gateway for a rotated asset sends the
+      // visitor after the wrong thing entirely.
       const message =
-        dependency === "ipfs-gateway" && raw.includes("Failed to fetch")
+        dependency === "ipfs-gateway" &&
+        raw.includes("Failed to fetch") &&
+        !raw.includes("dynamically imported module")
           ? gatewayUnreachable(
               endpointHost(
                 getActiveServicesConfig().bulletin.ipfsGateways.at(0),

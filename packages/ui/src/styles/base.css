@@ -311,12 +311,6 @@ body {
   margin: 0.25rem 0 0;
   padding-left: 1.4em;
 }
-.error-page-footnote {
-  margin: 1.75rem 0 0;
-  font-size: 0.9rem;
-  color: #888;
-  line-height: 1.6;
-}
 .error-page-actions {
   display: flex;
   justify-content: space-between;
@@ -366,11 +360,7 @@ body {
 .error-page-retry-icon svg {
   display: block;
 }
-/* Ordered, not placed by DOM position: the array order is the id contract
-   (`#error-retry-btn` is always the first action), so which button is the
-   recommended one is expressed here instead. */
 .error-page-retry--primary {
-  order: 1;
   color: #0a0a0a;
   background: #fafafa;
   border-color: #fafafa;

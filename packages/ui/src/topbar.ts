@@ -37,6 +37,7 @@ import {
   setBackend,
   isSharedWorkerAvailable,
   isVerifiedSession,
+  BACKEND_LABELS,
   type Backend,
   type CacheSettings,
 } from "@dotli/config/mode";
@@ -2054,17 +2055,17 @@ function renderModePopover(): void {
   const chainChoices: [Backend, string, string][] = [
     [
       "smoldot-direct",
-      "Light Client Per-Tab",
+      BACKEND_LABELS["smoldot-direct"],
       "Verified in your browser, separate per tab (recommended)",
     ],
     [
       "smoldot-shared-worker",
-      "Light Client Shared",
+      BACKEND_LABELS["smoldot-shared-worker"],
       "Verified in your browser, shared across tabs",
     ],
     [
       "rpc-gateway",
-      "Trusted Providers",
+      BACKEND_LABELS["rpc-gateway"],
       "Fetched from trusted servers, fastest but less private",
     ],
   ];
@@ -2711,14 +2712,7 @@ function buildBaseDiagnosticsRows(): [label: string, value: string][] {
 }
 
 function backendLabel(b: Backend): string {
-  switch (b) {
-    case "smoldot-shared-worker":
-      return "Light Client Shared";
-    case "smoldot-direct":
-      return "Light Client Per-Tab";
-    case "rpc-gateway":
-      return "Trusted Providers";
-  }
+  return BACKEND_LABELS[b];
 }
 
 /** Gather the smoldot readouts a diagnostic report quotes. */
