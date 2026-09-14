@@ -51,6 +51,7 @@ import type { ResolveOptions } from "@dotli/resolver/resolve";
 import { isExecutableKind } from "@dotli/shared/executables";
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
+  DEBUG,
   SITE_ID,
   TIMEOUTS,
   type SiteId,
@@ -96,6 +97,12 @@ import {
   type ProtocolRequestMap,
 } from "@dotli/protocol/messages";
 import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
+import {
+  handleWalletOperation,
+  WALLET_DB_NAME,
+  withSharedWalletRevision,
+} from "./wallet-storage";
+import { isSharedWalletState } from "@dotli/protocol/wallet-storage";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -294,11 +301,9 @@ function bindSharedAuthListener(): void {
     // embedding page.
     parentOrigin = event.origin;
 
-    try {
-      handleSharedAuthRequest(data, event.origin, (response) => {
-        postToSource(event.source, event.origin, response);
-      });
-    } catch (error: unknown) {
+    void handleSharedAuthRequest(data, event.origin, (response) => {
+      postToSource(event.source, event.origin, response);
+    }).catch((error: unknown) => {
       countSharedReject("auth", "validation");
       postToSource(event.source, event.origin, {
         namespace: "dotli:protocol",
@@ -308,7 +313,101 @@ function bindSharedAuthListener(): void {
         error: serializeError(error),
         errorName: errorName(error),
       });
-    }
+    });
+  });
+}
+
+/** Debug-only secret RPC. Only the validated trusted parent may use it. */
+function bindSharedWalletListener(): void {
+  if (!DEBUG) return;
+  const channel = new BroadcastChannel("dotli:shared-wallet");
+  channel.addEventListener("message", (event: MessageEvent) => {
+    const data: unknown = event.data;
+    if (
+      !isProtocolEnvelope(data) ||
+      data.kind !== "wallet-storage-changed" ||
+      data.siteId !== SITE_ID ||
+      !isSharedWalletState(data.state) ||
+      parentOrigin === null ||
+      !isSharedAuthOriginAllowed(parentOrigin) ||
+      window.parent === window
+    )
+      return;
+    // Explicit construction ensures no secret-bearing extra fields get relayed.
+    window.parent.postMessage(
+      {
+        namespace: "dotli:protocol",
+        kind: "wallet-storage-changed",
+        siteId: SITE_ID,
+        state: {
+          version: data.state.version,
+          revision: data.state.revision,
+          enabled: data.state.enabled,
+          hasWallet: data.state.hasWallet,
+        },
+      },
+      parentOrigin,
+    );
+  });
+  window.addEventListener("message", (event: MessageEvent) => {
+    const request: unknown = event.data;
+    if (
+      !isProtocolEnvelope(request) ||
+      request.kind !== "request" ||
+      request.method !== "walletStorage"
+    )
+      return;
+    if (
+      event.source !== window.parent ||
+      !isSharedAuthOriginAllowed(event.origin)
+    )
+      return;
+    parentOrigin = event.origin;
+    void (async () => {
+      const payload = request.payload as ProtocolRequestMap["walletStorage"];
+      assertSharedAuthSiteId(payload?.siteId);
+      if (typeof payload.operation !== "object" || payload.operation === null)
+        throw new Error("Invalid wallet operation");
+      const result = await handleWalletOperation(
+        payload.operation,
+        (state) => {
+          try {
+            channel.postMessage({
+              namespace: "dotli:protocol",
+              kind: "wallet-storage-changed",
+              siteId: SITE_ID,
+              state,
+            });
+          } catch (error: unknown) {
+            log.warn(
+              "[dot.li protocol] Wallet revision broadcast failed:",
+              error,
+            );
+          }
+        },
+        request.deadlineMs,
+      );
+      try {
+        postToSource(event.source, event.origin, {
+          namespace: "dotli:protocol",
+          kind: "response",
+          id: request.id,
+          ok: true,
+          result,
+        });
+      } finally {
+        result.secret?.fill(0);
+      }
+    })().catch((error: unknown) => {
+      postToSource(event.source, event.origin, {
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: request.id,
+        ok: false,
+        error: serializeError(error),
+        errorName: errorName(error),
+      });
+    });
   });
 }
 
@@ -393,7 +492,7 @@ function getRequestedNetwork(): RequestedNetwork {
 async function purgeWorkerCaches(): Promise<void> {
   // Throw on enumeration failure and await each delete: a silent log-and-
   // continue would let smoldot boot against the still-present stale DB.
-  const KEEP = new Set(["dotli", "dotli-sw"]);
+  const KEEP = new Set(["dotli", "dotli-sw", WALLET_DB_NAME, "dotli-core"]);
   if (
     typeof indexedDB === "undefined" ||
     typeof indexedDB.databases !== "function"
@@ -618,7 +717,8 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     }
     if (
       isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method)
+      isSharedModeRequestMethod(data.method) ||
+      data.method === "walletStorage"
     ) {
       return;
     }
@@ -781,7 +881,8 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
     }
     if (
       isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method)
+      isSharedModeRequestMethod(data.method) ||
+      data.method === "walletStorage"
     ) {
       return;
     }
@@ -946,11 +1047,11 @@ function bindSharedModeListener(): void {
   });
 }
 
-function handleSharedAuthRequest(
+async function handleSharedAuthRequest(
   request: ProtocolRequestEnvelope,
   origin: string,
   respond: ResponseCallback,
-): void {
+): Promise<void> {
   if (!isSharedAuthRequestMethod(request.method)) {
     throw new Error(`Not a shared auth request: ${request.method as string}`);
   }
@@ -981,11 +1082,22 @@ function handleSharedAuthRequest(
       if (typeof payload.value !== "string") {
         throw new Error("Invalid shared auth value");
       }
-      localStorage.setItem(
-        buildSharedAuthStorageKey(payload.siteId, payload.key),
-        payload.value,
-      );
-      broadcastSharedAuthChange(payload.siteId, payload.key, payload.value);
+      const { siteId, key, value } = payload;
+      const commit = (): void => {
+        localStorage.setItem(buildSharedAuthStorageKey(siteId, key), value);
+        broadcastSharedAuthChange(siteId, key, value);
+      };
+      if (payload.walletRevision !== undefined) {
+        if (!DEBUG)
+          throw new Error("Experimental wallets require a debug build");
+        await withSharedWalletRevision(
+          payload.walletRevision,
+          commit,
+          request.deadlineMs,
+        );
+      } else {
+        commit();
+      }
       respond({
         namespace: "dotli:protocol",
         kind: "response",
@@ -1087,7 +1199,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
     // reaching the engine means one of those filters is broken.
     if (
       isSharedAuthRequestMethod(request.method) ||
-      isSharedModeRequestMethod(request.method)
+      isSharedModeRequestMethod(request.method) ||
+      request.method === "walletStorage"
     ) {
       throw new Error(
         `Shared storage request reached the chain engine: ${request.method}`,
@@ -1318,6 +1431,7 @@ clearLegacySharedAuthSession();
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();
+bindSharedWalletListener();
 
 void init().catch((err: unknown) => {
   log.error("[dot.li protocol] Init failed:", err);

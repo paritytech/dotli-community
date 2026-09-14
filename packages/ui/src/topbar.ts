@@ -9,6 +9,7 @@
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
+import { showNotification } from "./notification";
 import {
   formatAppVersion,
   getActiveAppManifest,
@@ -290,22 +291,7 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
-  if (isExperimentalWalletActive()) {
-    document.documentElement.classList.add("experimental-wallet-active");
-    const label = userPopover.querySelector(".label");
-    if (label) {
-      label.textContent = "Experimental test wallet";
-    }
-    const disconnectLabel = userPopoverDisconnect.querySelector("span");
-    if (disconnectLabel) {
-      disconnectLabel.textContent = "Disconnect test wallet";
-    }
-    const hint = document.createElement("div");
-    hint.className = "user-popover-hint";
-    hint.textContent =
-      "Testing only. Disconnect to sign in with Polkadot Mobile. Recovery phrase: Debug → Test wallet.";
-    userPopoverUsername.insertAdjacentElement("afterend", hint);
-  }
+  syncExperimentalWalletPresentation();
 
   modalBackdrop.setAttribute("role", "dialog");
   modalBackdrop.setAttribute("aria-modal", "true");
@@ -466,7 +452,17 @@ export function initTopBar(
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
   scheduleIdle(() => {
-    void emitPersistedSessionUiState();
+    void emitPersistedSessionUiState().catch((error: unknown) => {
+      showNotification({
+        label: "Wallet restoration",
+        text:
+          error instanceof Error && error.name === "WalletConflictError"
+            ? "A different test wallet is already stored. Open Debug → Test wallet to reveal and back up the preserved recovery phrase before explicitly importing or deleting."
+            : "Could not restore the wallet session. Check browser storage access; test-wallet recovery controls remain available in Debug → Test wallet.",
+        browserNotification: false,
+        dismissMs: 0,
+      });
+    });
   });
 }
 
@@ -515,7 +511,39 @@ function renderAuthState(state: DotliAuthState): void {
   }
 }
 
+function syncExperimentalWalletPresentation(): void {
+  const experimental = isExperimentalWalletActive();
+  document.documentElement.classList.toggle(
+    "experimental-wallet-active",
+    experimental,
+  );
+  const label = userPopover.querySelector(".label");
+  if (label) {
+    label.textContent = experimental
+      ? "Experimental test wallet"
+      : "Welcome back";
+  }
+  const disconnectLabel = userPopoverDisconnect.querySelector("span");
+  if (disconnectLabel) {
+    disconnectLabel.textContent = experimental
+      ? "Disconnect test wallet"
+      : "Log out";
+  }
+  const existing = document.getElementById("experimental-wallet-hint");
+  if (!experimental) {
+    existing?.remove();
+  } else if (existing === null) {
+    const hint = document.createElement("div");
+    hint.id = "experimental-wallet-hint";
+    hint.className = "user-popover-hint";
+    hint.textContent =
+      "Testing only. Username claim / refresh and recovery phrase: Debug → Test wallet. Disconnect to sign in with Polkadot Mobile.";
+    userPopoverUsername.insertAdjacentElement("afterend", hint);
+  }
+}
+
 function renderLoggedOut(): void {
+  syncExperimentalWalletPresentation();
   if (isExperimentalWalletActive()) {
     renderExperimentalWalletBadge();
   } else {
@@ -534,6 +562,7 @@ function renderExperimentalWalletBadge(): void {
 }
 
 function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
+  syncExperimentalWalletPresentation();
   const experimental = isExperimentalWalletActive();
   if (experimental) {
     renderExperimentalWalletBadge();
@@ -548,6 +577,13 @@ function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
   }
   const username =
     state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
+  if (experimental) {
+    authButton.title = `Experimental test wallet — ${getActiveServicesConfig().label}${username ? ` — ${username}` : " — no username loaded"}`;
+    userPopoverUsername.title =
+      state.identityAccountId ?? state.publicKey ?? "";
+  } else {
+    userPopoverUsername.removeAttribute("title");
+  }
   userPopoverUsername.textContent =
     username ??
     shortenAccount(state.identityAccountId ?? state.publicKey) ??

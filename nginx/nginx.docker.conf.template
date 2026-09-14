@@ -34,6 +34,10 @@ server {
     root ${WEBROOT}/host;
     index index.html;
 
+    resolver 127.0.0.11 valid=300s ipv6=off;
+    resolver_timeout 5s;
+    include /etc/nginx/snippets/dotli-identity-proxy.conf;
+
     location = /__preview {
         set $csp_ancestors "${CSP}";
         include /etc/nginx/snippets/dotli-headers-iframeable.conf;
@@ -65,6 +69,8 @@ server {
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
+    location ^~ /__dotli-identity { return 404; }
+
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
     location / {
@@ -89,6 +95,8 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
+    location ^~ /__dotli-identity { return 404; }
+
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
     location / {
@@ -111,6 +119,10 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+
+    resolver 127.0.0.11 valid=300s ipv6=off;
+    resolver_timeout 5s;
+    include /etc/nginx/snippets/dotli-identity-proxy.conf;
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
