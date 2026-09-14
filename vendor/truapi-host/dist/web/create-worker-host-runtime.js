@@ -13,6 +13,7 @@ let nextSessionChatIdentityKeyRequestId = 0;
 let nextDeviceEncryptionKeyRequestId = 0;
 let nextProductSubtreePublicKeyRequestId = 0;
 let nextSessionActivationRequestId = 0;
+let nextLocalIdentityRequestId = 0;
 let nextChatActionRequestId = 0;
 let nextCustomRenderId = 0;
 function encodePermissionAuthorizationRequest(request) {
@@ -311,6 +312,7 @@ function handleDeviceEncryptionKeyResponse(state, msg) {
 function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingDisconnects, error);
     rejectAll(state.pendingSessionActivations, error);
+    rejectAll(state.pendingLocalIdentities, error);
     rejectAll(state.pendingPermissionAuthorizationStatuses, error);
     rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
     rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
@@ -353,6 +355,22 @@ function sendSessionActivationRequest(state, buildMessage) {
         return Promise.reject(state.closedError ?? new Error("runtime disposed"));
     }
     return sendWorkerRequest(state, state.pendingSessionActivations, () => ++nextSessionActivationRequestId, undefined, buildMessage);
+}
+function sendLocalIdentityRequest(state, buildMessage) {
+    if (state.disposed) {
+        return Promise.reject(state.closedError ?? new Error("runtime disposed"));
+    }
+    const { promise, resolve, reject } = Promise.withResolvers();
+    const requestId = ++nextLocalIdentityRequestId;
+    state.pendingLocalIdentities.set(requestId, { resolve, reject });
+    try {
+        state.worker.postMessage(buildMessage(requestId));
+    }
+    catch (error) {
+        state.pendingLocalIdentities.delete(requestId);
+        reject(error);
+    }
+    return promise;
 }
 function closeCoreState(core, error) {
     if (core.disposed)
@@ -429,6 +447,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             chainConnections: new Map(),
             pendingDisconnects: new Map(),
             pendingSessionActivations: new Map(),
+            pendingLocalIdentities: new Map(),
             pendingPermissionAuthorizationStatuses: new Map(),
             pendingPermissionAuthorizationStatusBatches: new Map(),
             pendingSetPermissionAuthorizationStatuses: new Map(),
@@ -485,6 +504,11 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     break;
                 case "sessionActivationResponse":
                     handleSessionActivationResponse(state, msg);
+                    break;
+                case "localIdentityResponse":
+                    settlePending(state.pendingLocalIdentities, msg.requestId, msg.ok
+                        ? { ok: true, value: msg.identity }
+                        : { ok: false, error: msg.error });
                     break;
                 case "permissionAuthorizationStatusResponse":
                     handlePermissionAuthorizationStatusResponse(state, msg);
@@ -778,6 +802,20 @@ function buildRuntime(state) {
                 requestId,
                 secret,
                 liteUsername,
+            }));
+        },
+        refreshLocalIdentity() {
+            return sendLocalIdentityRequest(state, (requestId) => ({
+                kind: "refreshLocalIdentity",
+                requestId,
+            }));
+        },
+        registerLocalLiteUsername(baseUsername, identityBackendBaseUrl) {
+            return sendLocalIdentityRequest(state, (requestId) => ({
+                kind: "registerLocalLiteUsername",
+                requestId,
+                baseUsername,
+                identityBackendBaseUrl,
             }));
         },
         getPermissionAuthorizationStatus(productId, request) {
