@@ -28,6 +28,7 @@ import { getBackend, type Backend } from "@dotli/config/mode";
 import { log } from "@dotli/shared/log";
 import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
+import type { SmoldotDbChain, SmoldotDbOutcome } from "./messages";
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -139,6 +140,23 @@ export function getProtocolOrigin(): string {
     return `http://host.localhost:${port}`;
   }
   return `https://host.${BASE_DOMAIN}`;
+}
+
+// Set per chain from the protocol iframe's unsolicited `smoldot-db`
+// broadcasts. A chain stays "unknown" on the gateway path, which runs no
+// light client, and until its store answers.
+const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+
+/**
+ * Whether one chain began from pre-existing smoldot state this page load.
+ *
+ * The host tags its resolution telemetry with this so a cold sync and a warm
+ * resume are separate populations rather than one blended average.
+ */
+export function getSmoldotDbOutcome(
+  chain: SmoldotDbChain,
+): SmoldotDbOutcome | "unknown" {
+  return smoldotDbOutcomes.get(chain) ?? "unknown";
 }
 
 function resolveProtocolReady(): void {
@@ -363,6 +381,23 @@ function bindMessageListener(): void {
       case "ready":
         resolveProtocolReady();
         return;
+      case "smoldot-db":
+        // `isProtocolEnvelope` validates only namespace and kind, and these
+        // values become Sentry tags: gate them so a buggy frame cannot write
+        // unbounded tag values through the compile-time-only narrowing.
+        {
+          const chain: string = msg.chain;
+          const outcome: string = msg.outcome;
+          if (
+            (chain === "relay" || chain === "hub" || chain === "bulletin") &&
+            (outcome === "hit" ||
+              outcome === "miss" ||
+              outcome === "unavailable")
+          ) {
+            smoldotDbOutcomes.set(chain, outcome);
+          }
+        }
+        return;
       case "auth-storage-changed": {
         const change: SharedAuthStorageChange = {
           siteId: msg.siteId,
@@ -391,6 +426,11 @@ const IFRAME_READY_TIMEOUT_MS = 240_000;
 
 function createHostIframe(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    // Cleared here rather than on the teardown path. `resetProtocolFrameState`
+    // runs synchronously inside the `fatal` arm, ahead of the microtask that
+    // rejects the host's pending resolve, so clearing there would strip the
+    // tags from exactly the failures they exist to explain.
+    smoldotDbOutcomes.clear();
     const iframe = document.createElement("iframe");
     const params = new URLSearchParams();
     // Fall back to the stored Backend when the async

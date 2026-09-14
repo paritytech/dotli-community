@@ -13,6 +13,10 @@
 declare const self: SharedWorkerGlobalScope;
 
 import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
+import type {
+  SmoldotDbChain,
+  SmoldotDbOutcome,
+} from "@dotli/protocol/messages";
 import { MAX_CONNECTIONS_PER_ORIGIN } from "@dotli/config/config";
 import {
   isValidNetwork,
@@ -23,6 +27,7 @@ import {
   createChainProvider,
   isChainSupported,
   onProviderFatal,
+  onSmoldotDbOutcome,
 } from "@dotli/resolver/provider";
 import {
   resolveDotName,
@@ -127,14 +132,23 @@ onProviderFatal((message) => {
   swError(
     `Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`,
   );
-  const fatal: ProtocolEnvelope = {
+  broadcastToPorts({ namespace: "dotli:protocol", kind: "fatal", message });
+});
+
+// Tell every connected tab which chains began from pre-existing state. The
+// provider replay only covers this in-worker subscriber, never MessagePorts,
+// so the record-time broadcast reaches only ports connected at that instant.
+// `latchedSmoldotDb` covers the rest: the connect handler below replays it to
+// every port that arrives later.
+const latchedSmoldotDb = new Map<SmoldotDbChain, SmoldotDbOutcome>();
+onSmoldotDbOutcome((chain, outcome) => {
+  latchedSmoldotDb.set(chain, outcome);
+  broadcastToPorts({
     namespace: "dotli:protocol",
-    kind: "fatal",
-    message,
-  };
-  for (const port of ports) {
-    sendToPort(port, fatal);
-  }
+    kind: "smoldot-db",
+    chain,
+    outcome,
+  });
 });
 
 // Placeholder broker manager until pre-sync creates the real one.
@@ -247,6 +261,12 @@ async function presync(): Promise<void> {
 function assertString(value: unknown, name: string): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Invalid ${name}: expected non-empty string`);
+  }
+}
+
+function broadcastToPorts(envelope: ProtocolEnvelope): void {
+  for (const port of ports) {
+    sendToPort(port, envelope);
   }
 }
 
@@ -595,6 +615,17 @@ self.addEventListener("connect", (event) => {
     // Engine already synced, signal ready immediately.
     const readyMsg: SWReady = { type: "ready" };
     port.postMessage(readyMsg);
+    // This tab joins a worker whose recorded chains are already live, so it
+    // pays no sync cost regardless of what the worker's own first load did.
+    // Report the state this tab got rather than the worker's disk outcomes.
+    for (const chain of latchedSmoldotDb.keys()) {
+      sendToPort(port, {
+        namespace: "dotli:protocol",
+        kind: "smoldot-db",
+        chain,
+        outcome: "hit",
+      });
+    }
   } else if (presyncFailureMessage !== null) {
     // Pre-sync already failed. Surface the original cause immediately
     // instead of queuing this port forever.
@@ -605,6 +636,17 @@ self.addEventListener("connect", (event) => {
     port.postMessage(errorMsg);
   } else {
     // Engine still syncing. Queue the port and signal when pre-sync completes.
+    // A port arriving after a store read missed that record-time broadcast
+    // and would otherwise never learn the outcome. It waits on the same sync
+    // the worker is running, so the worker's outcomes are its own.
+    for (const [chain, outcome] of latchedSmoldotDb) {
+      sendToPort(port, {
+        namespace: "dotli:protocol",
+        kind: "smoldot-db",
+        chain,
+        outcome,
+      });
+    }
     swLog("Engine not ready yet, queuing port for ready signal");
     pendingPorts.push(port);
   }

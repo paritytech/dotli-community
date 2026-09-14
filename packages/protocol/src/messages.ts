@@ -123,6 +123,28 @@ export interface ProtocolReadyEnvelope {
 }
 
 /**
+ * Unsolicited broadcast naming whether one chain's access began from
+ * pre-existing smoldot state, sent once per chain as its store answers.
+ *
+ * "hit" covers two sources of pre-existing state that cost the tab the same
+ * nothing: a stored finalized-database blob was loaded, or the tab joined a
+ * SharedWorker whose chain was already synced. "miss" means the chain synced
+ * from its chain-spec checkpoint. "unavailable" means the store could not
+ * answer at all, which is a different population from a healthy first visit.
+ * The blobs live in the protocol origin's IndexedDB, which the host origin
+ * cannot read, so these messages are the host's only view of them.
+ */
+export type SmoldotDbChain = "relay" | "hub" | "bulletin";
+export type SmoldotDbOutcome = "hit" | "miss" | "unavailable";
+
+export interface ProtocolSmoldotDbEnvelope {
+  namespace: "dotli:protocol";
+  kind: "smoldot-db";
+  chain: SmoldotDbChain;
+  outcome: SmoldotDbOutcome;
+}
+
+/**
  * Unsolicited broadcast from the protocol iframe (or its SharedWorker) when
  * smoldot has crashed/panicked. A panic leaves every chain dead. Any
  * in-flight request would hang indefinitely, so the client rejects all
@@ -215,6 +237,7 @@ export type ProtocolEnvelope =
   | ProtocolChainMessageEnvelope
   | ProtocolChainHaltEnvelope
   | ProtocolReadyEnvelope
+  | ProtocolSmoldotDbEnvelope
   | ProtocolFatalEnvelope
   | ProtocolInitFailedEnvelope
   | ProtocolChainSyncEnvelope
@@ -229,6 +252,7 @@ const VALID_KINDS = new Set([
   "chain-message",
   "chain-halt",
   "ready",
+  "smoldot-db",
   "fatal",
   "init-failed",
   "chain-sync",

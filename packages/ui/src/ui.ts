@@ -613,6 +613,15 @@ export function dismissLoading(): void {
  * nested cross-origin frame or browser extension) could spoof the status
  * text or prematurely dismiss the overlay while content is still loading.
  */
+// One-shot subscribers for the sandbox's terminal `done` signal. The host
+// uses it to time telemetry that must not be captured before the content
+// fetch has run (the bulletin chain is only dialed during that fetch).
+const sandboxDoneCallbacks: (() => void)[] = [];
+
+export function onSandboxDone(cb: () => void): void {
+  sandboxDoneCallbacks.push(cb);
+}
+
 export function listenForSandboxStatus(): void {
   window.addEventListener("message", (event: MessageEvent) => {
     // Cheap shape check first — `message` fires for all postMessage traffic
@@ -635,6 +644,9 @@ export function listenForSandboxStatus(): void {
     // to the user, and `done` is the part the loading screen acts on.
     if (data.done === true) {
       dismissLoading();
+      for (const cb of sandboxDoneCallbacks.splice(0)) {
+        cb();
+      }
     }
   });
 }
@@ -889,7 +901,8 @@ export function showLanding(): void {
 
   input.addEventListener("input", clearNavError);
 
-  input.focus();
+  // Not focused on load: that hijacks screen reader order and pops the mobile
+  // keyboard over the recents before anything has been read.
 
   // Move the auth and theme buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");

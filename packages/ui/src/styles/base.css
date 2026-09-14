@@ -145,6 +145,11 @@ body {
     transform: translateX(100%);
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .loading-progress-fill {
+    transition: none;
+  }
+}
 /* The loading text ranks by size, weight, and family, never by contrast:
    every string here has to clear 4.5:1 against the page. Dimming with
    `opacity` is what used to sink the whole block to 1.8-3.2:1, so these
@@ -304,6 +309,11 @@ body {
 }
 .error-page-retry:active {
   transform: translateY(1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .error-page-retry {
+    transition: none;
+  }
 }
 .error-page-retry-icon {
   display: inline-flex;

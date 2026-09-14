@@ -28,7 +28,7 @@ describe("product iframe box", () => {
       "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))",
     );
     expect(box.height).toBe(
-      "calc(100vh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))",
+      "calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))",
     );
   });
 
@@ -42,7 +42,7 @@ describe("product iframe box", () => {
     // Then
     expect(box.top).toBe("var(--safe-top, 0px)");
     expect(box.height).toBe(
-      "calc(100vh - var(--safe-top, 0px) - var(--safe-bottom, 0px))",
+      "calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))",
     );
   });
 
