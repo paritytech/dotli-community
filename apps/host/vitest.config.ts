@@ -6,8 +6,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     // Only unit tests. The e2e, functional and performance suites are
-    // Playwright and have their own configs and runners.
-    include: ["tests/unit/**/*.test.ts"],
+    // Playwright and have their own configs and runners. Tests sitting beside
+    // the file they cover are picked up from `src` too.
+    include: ["tests/unit/**/*.test.ts", "src/**/*.test.ts"],
     environment: "happy-dom",
     globals: false,
   },

@@ -859,7 +859,7 @@ function errorAlreadySeen(kind: string): boolean {
 function rememberError(kind: string): void {
   try {
     sessionStorage.setItem(ERROR_SEEN_KEY, kind);
-    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode; without it every failure stays a first sighting, which is the safe default.
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode. Without it every failure stays a first sighting, which is the safe default.
   } catch {
     /* sessionStorage unavailable: the escalation simply never triggers */
   }
@@ -2056,7 +2056,7 @@ async function main(): Promise<void> {
       if (error.resetProtocol === true) {
         try {
           sessionStorage.setItem("dotli:pending-reset:protocol", "1");
-          // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode; the purge is best-effort while the reload below is unconditional.
+          // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode. The purge is best-effort while the reload below is unconditional.
         } catch {
           /* sessionStorage unavailable: reload without the purge */
         }

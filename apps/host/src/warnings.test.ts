@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { describeStall } from "../../src/warnings";
+import { describeStall } from "./warnings";
 
 describe("describeStall throughput", () => {
-  it("reads a trickle in bytes rather than rounding it to zero", () => {
+  it("As a user on a slow connection, I see the real rate rather than zero", () => {
     expect(
       describeStall({ chain: "relay", peers: 2, bytesPerSecond: 300 }),
     ).toBe("Fetching Polkadot from 2 computers at 300 B/s. Slower than usual.");
   });
 
-  it("says nothing is arriving rather than printing a zero rate", () => {
+  it("As a user with nothing arriving, I am told that instead of shown a zero rate", () => {
     expect(
       describeStall({ chain: "relay", peers: 2, bytesPerSecond: 0.4 }),
     ).toBe(
@@ -19,13 +19,13 @@ describe("describeStall throughput", () => {
     );
   });
 
-  it("keeps kilobytes for rates a kilobyte and over", () => {
+  it("As a user on an ordinary connection, I see the rate in kilobytes", () => {
     expect(
       describeStall({ chain: "relay", peers: 2, bytesPerSecond: 2048 }),
     ).toBe("Fetching Polkadot from 2 computers at 2 kB/s. Slower than usual.");
   });
 
-  it("keeps megabytes for the fastest rates", () => {
+  it("As a user on a fast connection, I see the rate in megabytes", () => {
     expect(
       describeStall({ chain: "bulletin", peers: 1, bytesPerSecond: 2_097_152 }),
     ).toBe(

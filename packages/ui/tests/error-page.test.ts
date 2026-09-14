@@ -13,13 +13,13 @@ beforeEach(() => {
 describe("showErrorPage escaping", () => {
   // The detail line carries the domain the visitor typed, so every segment of
   // it is attacker-influenced. A raw `innerHTML` write here is an XSS sink.
-  it("escapes a plain-string detail", () => {
+  it("As a visitor, markup in an error message is shown to me as text", () => {
     showErrorPage({ title: "t", detail: XSS });
     expect(document.querySelector("img")).toBeNull();
     expect(document.querySelector(".error-page-detail")?.textContent).toBe(XSS);
   });
 
-  it("escapes the plain segments of a segmented detail", () => {
+  it("As a visitor, markup in the plain parts of a message is shown to me as text", () => {
     showErrorPage({ title: "t", detail: [XSS, " tail"] });
     expect(document.querySelector("img")).toBeNull();
     expect(document.querySelector(".error-page-detail")?.textContent).toBe(
@@ -27,20 +27,20 @@ describe("showErrorPage escaping", () => {
     );
   });
 
-  it("escapes the bolded segments of a segmented detail", () => {
+  it("As a visitor, markup in the bolded parts of a message is shown to me as text", () => {
     showErrorPage({ title: "t", detail: [{ strong: XSS }] });
     expect(document.querySelector("img")).toBeNull();
     const strong = document.querySelector(".error-page-detail strong");
     expect(strong?.textContent).toBe(XSS);
   });
 
-  it("escapes the title", () => {
+  it("As a visitor, markup in an error title is shown to me as text", () => {
     showErrorPage({ title: XSS });
     expect(document.querySelector("img")).toBeNull();
     expect(document.querySelector(".error-page-title")?.textContent).toBe(XSS);
   });
 
-  it("escapes tips", () => {
+  it("As a visitor, markup in a tip is shown to me as text", () => {
     showErrorPage({ title: "t", tips: [XSS] });
     expect(document.querySelector("img")).toBeNull();
     expect(
@@ -48,7 +48,7 @@ describe("showErrorPage escaping", () => {
     ).toBe(XSS);
   });
 
-  it("escapes action labels", () => {
+  it("As a visitor, markup in a button label is shown to me as text", () => {
     showErrorPage({
       title: "t",
       actions: [{ label: XSS, onClick: () => undefined }],
@@ -64,14 +64,14 @@ describe("showErrorPage escaping", () => {
 describe("showErrorPage primary action", () => {
   const noop = (): void => undefined;
 
-  it("treats the only action as primary", () => {
+  it("As a visitor, a lone button is the recommended one", () => {
     showErrorPage({ title: "t", actions: [{ label: "A", onClick: noop }] });
     expect(document.querySelector("#error-retry-btn")?.className).toContain(
       "error-page-retry--primary",
     );
   });
 
-  it("defaults to the first action when none declares itself primary", () => {
+  it("As a visitor, the first button is recommended when none is marked", () => {
     showErrorPage({
       title: "t",
       actions: [
@@ -89,7 +89,7 @@ describe("showErrorPage primary action", () => {
 
   // The gated failover screen puts `Go Back` second and marks it primary, so
   // this ordering is the one the two-step confirmation depends on.
-  it("honours a primary declared on a later action", () => {
+  it("As a visitor, the button marked primary is the recommended one wherever it sits", () => {
     showErrorPage({
       title: "t",
       actions: [
@@ -107,7 +107,7 @@ describe("showErrorPage primary action", () => {
 
   // Reading order, DOM order and tab order have to agree. Placing the primary
   // with CSS `order` instead left the tab sequence running right to left.
-  it("renders the primary last so tab order matches reading order", () => {
+  it("As a keyboard user, I reach the buttons in the order I read them", () => {
     showErrorPage({
       title: "t",
       actions: [
@@ -121,7 +121,7 @@ describe("showErrorPage primary action", () => {
     expect(labels).toEqual(["Open Settings", "Reload"]);
   });
 
-  it("leaves a single action alone", () => {
+  it("As a visitor, a lone button keeps its place", () => {
     showErrorPage({
       title: "t",
       actions: [{ label: "Only", primary: true, onClick: noop }],
@@ -136,7 +136,7 @@ describe("showErrorPage primary action", () => {
   // last, so an id keyed on render position instead of array position would
   // hand `#error-retry-btn` to the wrong button. The reverse arrangement does
   // not catch it, because there the two positions coincide.
-  it("keeps #error-retry-btn on the first action even when it renders last", () => {
+  it("As a test author, the first action keeps its id even when it renders last", () => {
     showErrorPage({
       title: "t",
       actions: [
@@ -154,7 +154,7 @@ describe("showErrorPage primary action", () => {
     ).toBe("Open Settings");
   });
 
-  it("keeps #error-retry-btn on the first action whichever one is primary", () => {
+  it("As a test author, the first action keeps its id whichever button is primary", () => {
     showErrorPage({
       title: "t",
       actions: [
@@ -170,17 +170,17 @@ describe("showErrorPage primary action", () => {
 });
 
 describe("showErrorPage optional blocks", () => {
-  it("omits the tips block when there are no tips", () => {
+  it("As a visitor, I see no empty Try list when there is nothing to suggest", () => {
     showErrorPage({ title: "t", tips: [] });
     expect(document.querySelector(".error-page-tips")).toBeNull();
   });
 
-  it("omits the actions block when there are no actions", () => {
+  it("As a visitor, I see no empty button row when there is nothing to click", () => {
     showErrorPage({ title: "t", actions: [] });
     expect(document.querySelector(".error-page-actions")).toBeNull();
   });
 
-  it("passes the click event to the handler so popovers can stop propagation", () => {
+  it("As a visitor, clicking a button that opens a panel leaves the panel open", () => {
     let got: unknown = null;
     showErrorPage({
       title: "t",
@@ -198,7 +198,7 @@ describe("showErrorPage optional blocks", () => {
     expect(typeof (got as MouseEvent).stopPropagation).toBe("function");
   });
 
-  it("renders the warning glyph only when one is asked for", () => {
+  it("As a visitor, I see the warning mark only on a screen that warns me", () => {
     showErrorPage({ title: "t", glyph: "warning" });
     expect(document.querySelector(".error-page-glyph--warning")).not.toBeNull();
 
@@ -211,13 +211,13 @@ describe("showErrorPage focus", () => {
   // The button that triggered the render is gone, so without this the focus
   // lands on body and a screen reader announces nothing. The interstitial
   // replaces one error screen with another in place, which is the worst case.
-  it("moves focus to the title so the new screen is announced", () => {
+  it("As a screen-reader user, the new screen is announced when it replaces the old one", () => {
     showErrorPage({ title: "Your connection won't be verified" });
     const title = document.querySelector(".error-page-title");
     expect(document.activeElement).toBe(title);
   });
 
-  it("keeps the title out of the tab sequence", () => {
+  it("As a keyboard user, the title does not take a tab stop", () => {
     showErrorPage({ title: "t" });
     expect(
       document.querySelector(".error-page-title")?.getAttribute("tabindex"),
@@ -226,14 +226,14 @@ describe("showErrorPage focus", () => {
 });
 
 describe("showError shim", () => {
-  it("forwards tips to the underlying page", () => {
+  it("As a visitor, tips passed to the shorthand still reach the page", () => {
     showError("t", "d", undefined, ["Check the cable."]);
     expect(
       document.querySelector(".error-page-tips-list li")?.textContent,
     ).toBe("Check the cable.");
   });
 
-  it("wraps a bare function as a Retry action", () => {
+  it("As a visitor, a bare retry callback becomes a Retry button", () => {
     let clicked = false;
     showError("t", "d", () => {
       clicked = true;
