@@ -20,26 +20,35 @@ export function hostResolveStarted(page: Page): Promise<boolean> {
 /**
  * Browser-side check for a cached CID entry under `label`.
  *
- * Defined as a standalone function so the two Playwright entry points
- * below (`hasCachedCid` via `page.evaluate`, `waitForCachedCid` via
- * `page.waitForFunction`) share one IDB query body instead of two
- * copies that can drift.
+ * Opened without a version so the request adopts whatever schema the app
+ * created. Naming one pins the probe to a number that
+ * `packages/storage/src/db.ts` is free to bump, and a lower number fails
+ * the open with `VersionError`, which reads here as "nothing cached".
  */
 const cachedCidExists = (label: string): Promise<boolean> =>
   new Promise<boolean>((resolve) => {
     const open = indexedDB.open("dotli");
     open.onsuccess = () => {
+      const db = open.result;
+      // `waitForCachedCid` calls this on a timer, so without the close a page
+      // accumulates one handle per poll. Nothing in this suite upgrades the
+      // schema afterwards, which is the only thing those handles could block,
+      // so this is hygiene rather than a fix for an observed failure.
+      const done = (found: boolean): void => {
+        db.close();
+        resolve(found);
+      };
       try {
-        const tx = open.result.transaction("cids", "readonly");
+        const tx = db.transaction("cids", "readonly");
         const req = tx.objectStore("cids").get(label);
         req.onsuccess = () => {
-          resolve(req.result !== undefined);
+          done(req.result !== undefined);
         };
         req.onerror = () => {
-          resolve(false);
+          done(false);
         };
       } catch {
-        resolve(false);
+        done(false);
       }
     };
     open.onerror = () => {

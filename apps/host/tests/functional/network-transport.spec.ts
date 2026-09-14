@@ -35,7 +35,11 @@ import { test, expect } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
 import { findAppFrame } from "../product-frame";
-import { seedBackend, seedSettings } from "./fixtures/settings";
+import {
+  seedBackend,
+  seedSettings,
+  TRANSPORT_LABELS,
+} from "./fixtures/settings";
 import { resetSharedMode } from "./helpers/shared-mode-reset";
 
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -100,11 +104,11 @@ async function settledGauge(
   return readGauge(request);
 }
 
-for (const [label, backend, expected] of [
-  ["per-product smoldot", "smoldot-direct", 2],
-  ["shared smoldot", "smoldot-shared-worker", 1],
+for (const [backend, expected] of [
+  ["smoldot-direct", 2],
+  ["smoldot-shared-worker", 1],
 ] as const) {
-  test(`As a user using ${label}, two open tabs open ${String(expected)} active light client(s)`, async ({
+  test(`As a user on ${TRANSPORT_LABELS[backend]}, two open tabs open ${String(expected)} active light client(s)`, async ({
     context,
     request,
   }) => {

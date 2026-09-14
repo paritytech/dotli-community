@@ -22,20 +22,37 @@ it will produce an error string and nothing else to debug with.
 
 ## How the gate works
 
-The `functional` job in `.github/workflows/test.yml` runs three spec files and
+The `functional` job in `.github/workflows/test.yml` runs five spec files and
 discards Playwright's exit code with `|| true`. Only a `jq` threshold decides
 the outcome.
 
-| Spec                 | Tests | Nature            | Threshold          |
-| -------------------- | ----- | ----------------- | ------------------ |
-| `loading.spec.ts`    | 16    | Hermetic          | 0 failures allowed |
-| `resolution.spec.ts` | 3     | Network dependent | 2 failures allowed |
-| `navigation.spec.ts` | 12    | Network dependent | none               |
+| Spec                        | Tests | Nature            | Gates                               |
+| --------------------------- | ----- | ----------------- | ----------------------------------- |
+| `loading.spec.ts`           | 16    | Hermetic          | 0 failures                          |
+| `resolution.spec.ts`        | 4     | Network dependent | 2 failures tolerated                |
+| `navigation.spec.ts`        | 12    | Network dependent | none                                |
+| `network-transport.spec.ts` | 2     | Network dependent | 0 failures, 0 skipped               |
+| `host-settings.spec.ts`     | 28    | Mixed             | 0 failures, 0 skipped, 28 must run  |
+
+One more gate covers the run as a whole: a floor of 11 tests across every spec.
+It is low enough that any one file can vanish without tripping it. Delete all 28
+host-settings tests and the remaining 34 still clear it, which is why that file
+carries its own count.
+
+The two network-dependent thresholds are deliberately uneven. Twelve of
+`host-settings.spec.ts`'s tests resolve `host-playground.paseo` and none of them
+is tolerated, while `resolution.spec.ts` forgives two of its four for the same
+dependency. Both go red in a total outage, since three failures clear
+resolution's tolerance of two. The difference shows up in a partial one: a
+single broken transport is invisible in resolution and fires immediately in
+host-settings. That is weakness 4 read the other way round, and it is only
+comfortable to live with once Phase 0 lands. Until then a red run still leaves
+an error string and nothing to open.
 
 Two consequences follow, and both showed up in this incident.
 
-`resolution.spec.ts` has three tests and tolerates two failures, so the job only
-turns red when all three chain backends fail at once. Anything less is invisible.
+`resolution.spec.ts` tolerates two failures, so two of its three chain backends
+can be broken and the job stays green. Anything less is invisible.
 
 `navigation.spec.ts` has no threshold at all. All 12 of its tests can fail
 without affecting the job's outcome. In every red run they did.
@@ -126,8 +143,10 @@ runs, so they are not the discriminator either.
 - The CID matches the one published by the host-playground deploy at
   2026-08-17 11:16
 
-A local run of the full suite on `main` passes 31 of 31, with resolution
-succeeding on all three backends.
+A local run of the three gated specs on `main` passed 31 of 31 that day, with
+resolution succeeding on all three backends. The suite is 62 tests now. The two
+files that joined the run list bring 30 of the extra 31, and `resolution.spec.ts`
+gained a warm-start test for the last one.
 
 ## Structural weaknesses
 
@@ -148,11 +167,27 @@ it will recur.
    documents that `NETWORK` must match the first entry of the build's
    `VITE_NETWORKS`, but nothing checks it. Reordering that variable would make
    the tests assert the wrong domain while the app is correct.
-6. **`host-settings.spec.ts` is orphaned.** It sits in the Playwright `testDir`
-   but is excluded by the explicit file list in CI, so roughly 20 tests never run.
+6. **`host-settings.spec.ts` was orphaned.** It sat in the Playwright `testDir`
+   but was excluded by the explicit file list in CI, so its 28 tests never ran
+   and five of them failed for months. Two asserted the opposite of the URL
+   contract in `packages/config/src/url-settings.ts`. The other three were
+   right about the cache and failed because the probe they used could never
+   return true: `helpers/cache.ts` opened IndexedDB at version 1 while the app
+   had moved on to 4, so every lookup failed with `VersionError` and read as
+   "nothing cached".
+   It is now in the list, gated at 0 failures and at a minimum of 28 tests,
+   because the suite-wide floor is too low to notice one file dropping out.
+   That count sits exactly on today's total, so deleting a test deliberately
+   means editing the gate in the same commit.
 7. **`reuseExistingServer: true` adopts a stale preview server.** Harmless on a
    fresh runner, a real source of false results locally.
 8. **The job has no `timeout-minutes`.** Unlike `e2e-product`, which sets 35.
+9. **Two `loading.spec.ts` tests assert nothing.** The pair checking that the
+   host shell spawns no light client worker passes with the filter widened to
+   match every worker URL, because the page creates no workers at all under
+   `mockProtocolIframe`. `page.on("worker")` also never reports a SharedWorker,
+   so the shared variant could not observe one even unmocked. They count toward
+   loading's 0-failure gate and cover nothing.
 
 ## Phased plan
 
@@ -188,8 +223,8 @@ regression.
 - Reconsider the `resolution.spec.ts` tolerance of 2 of 3. Report per-backend
   results so a single persistently broken backend is visible even when the job
   is green.
-- Decide whether `host-settings.spec.ts` should run in CI. Either add it to the
-  file list or move it out of the Functional `testDir`.
+- ~~Decide whether `host-settings.spec.ts` should run in CI.~~ Done: it is in
+  the file list with its own failure and count gates.
 
 ### Phase 3: reduce the external surface
 
@@ -227,7 +262,7 @@ deployment pipeline.
 - [ ] Add a failure threshold for `navigation.spec.ts`
 - [ ] Emit per-backend resolution results into the job summary
 - [ ] Re-evaluate the `resolution.spec.ts` tolerance of 2 of 3
-- [ ] Resolve the orphaned `host-settings.spec.ts`
+- [x] Resolve the orphaned `host-settings.spec.ts`
 
 ### Phase 3
 
