@@ -76,7 +76,7 @@ async function disableSharedWorker(page: Page): Promise<void> {
 }
 
 test.describe("Settings works", () => {
-  test("As a first-time user, when I open an app it runs on its own smoldot instance for this tab", async ({
+  test("As a first-time user, I get a per-tab light client without choosing one", async ({
     page,
   }) => {
     // When
@@ -289,10 +289,13 @@ test.describe("Settings works", () => {
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
         expect(await hostResolveStarted(page)).toBe(true);
-        // Changing a cache setting wipes this origin, so the entry saved on the
-        // first visit is gone rather than merely ignored, and with the cache off
-        // nothing writes a new one. See the wipe in `applyUrlSettings`.
-        expect(await hasCachedCid(page, DOMAIN)).toBe(false);
+        // The entry from the first visit is still here, which is what makes the
+        // assertion above mean "skipped the cache" rather than "had nothing to
+        // skip". It survives because `updateCacheSettings` writes the stored
+        // setting directly. A user flipping the same switch on the settings
+        // screen would also hit `clearCidCache` in `packages/ui/topbar`, which
+        // no test covers.
+        expect(await hasCachedCid(page, DOMAIN)).toBe(true);
       } finally {
         await context.close();
       }

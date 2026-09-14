@@ -9,29 +9,33 @@
 - **Structure with Given / When / Then.** Every multi-step test body uses `// Given`, `// When`, `// Then` comments to separate setup, action, and assertions.
 
 ```ts
-test("As a user using per-product smoldot, the host must only spawn one instance of the light client", async ({
-  page,
+test("As a user on a per-tab light client who turns the dotNS cache off, every visit looks the name up again", async ({
+  browser,
 }) => {
   // Given
-  await setBackend(page, "smoldot-direct");
-  await mockProtocolIframe(page, successfulResolveResponse("bafyfake..."));
-  const workerUrls: string[] = [];
-  page.on("worker", (w) => {
-    workerUrls.push(w.url());
+  const { context, page } = await setupTest(browser, {
+    backend: "smoldot-direct",
+    cacheSeed: CACHE_ENABLED,
   });
+  await page.goto(BASE_URL, { waitUntil: "commit" });
+  await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
+  await waitForCachedCid(page, DOMAIN, 5_000);
 
   // When
-  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(5_000);
+  await updateCacheSettings(page, SKIP_CID_ONLY);
+  await page.goto(BASE_URL, { waitUntil: "commit" });
 
   // Then
-  const hostShellOrigin = `http://${DOMAIN}.localhost:${PORT}`;
-  const hostShellSmoldotWorkers = workerUrls.filter(
-    (url) => url.startsWith(hostShellOrigin) && url.includes("smoldot_worker"),
-  );
-  expect(hostShellSmoldotWorkers).toEqual([]);
+  await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
+  expect(await hostResolveStarted(page)).toBe(true);
+  expect(await hasCachedCid(page, DOMAIN)).toBe(true);
 });
 ```
+
+Note what the last line buys. Without it the test passes whether the cache was
+skipped or was simply empty, so the assertion above it would mean nothing. A
+test that cannot fail for the reason its title gives is worse than no test,
+because the suite reports it as coverage.
 
 ### How to Document
 

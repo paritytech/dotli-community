@@ -69,7 +69,7 @@ jobs:
         working-directory: apps/host
         env:
           VITE_METRICS: "true"
-        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts || true
+        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/host-settings.spec.ts || true
 
       - name: Apply functional threshold
         working-directory: apps/host
@@ -87,9 +87,15 @@ jobs:
           # itself without VITE_METRICS, which is exactly how it would silently
           # stop running.
           TRANSPORT_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
+          SETTINGS_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          # The TOTAL floor above sits far below the suite size, so it would
+          # not notice this file dropping out of the run list again.
+          SETTINGS_RAN=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts")] | length' tests/functional/results.json)
+          SETTINGS_SKIPPED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts") | .tests[]?.results[]? | select(.status == "skipped")] | length' tests/functional/results.json)
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
           echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
+          echo "host-settings.spec.ts failures: $SETTINGS_FAILED (ran: $SETTINGS_RAN, skipped: $SETTINGS_SKIPPED)"
           if [ "$LOADING_FAILED" -gt 0 ]; then
             echo "::error::loading.spec.ts must have 0 failures"
             exit 1
@@ -104,6 +110,18 @@ jobs:
           fi
           if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
             echo "::error::network-transport.spec.ts skipped $TRANSPORT_SKIPPED test(s); VITE_METRICS is not reaching the run step"
+            exit 1
+          fi
+          if [ "$SETTINGS_RAN" -lt 28 ]; then
+            echo "::error::expected at least 28 host-settings.spec.ts tests, got $SETTINGS_RAN"
+            exit 1
+          fi
+          if [ "$SETTINGS_FAILED" -gt 0 ]; then
+            echo "::error::host-settings.spec.ts must have 0 failures"
+            exit 1
+          fi
+          if [ "$SETTINGS_SKIPPED" -gt 0 ]; then
+            echo "::error::host-settings.spec.ts skipped $SETTINGS_SKIPPED test(s); a skip reads as a pass in both gates above"
             exit 1
           fi
 
