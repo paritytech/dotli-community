@@ -141,12 +141,30 @@ jobs:
 
       - run: ssh-keyscan ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
+      # Only this environment opts into config updates. Validate routing before
+      # either config or frontend uploads; all other environments stay dist-only.
+      - name: Deploy identity proxy config
+        if: matrix.environment == 'westendli.dev' && vars.DEPLOY_NGINX == 'true'
+        run: make ci-deploy-nginx ENV=dev-westend
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
       - name: Deploy
         run: make ci-deploy
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Smoke identity proxy
+        if: matrix.environment == 'westendli.dev' && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://westendli.dev/__dotli-identity/paseo/attester \
+            | jq -e 'type == "object" and (.attester | type == "string" and test("^0x[0-9a-fA-F]{64}$"))'
 
   product-smoke:
     name: Smoke ${{ matrix.environment }} products
