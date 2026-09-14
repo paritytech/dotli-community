@@ -18,8 +18,8 @@ import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
-// transient and retryable. INVALID_PARAMS and FAIL are terminal.
-const ERR_INVALID_PARAMS = -32602;
+// the retryable pair. Anything else, including an invalid CID, falls to the
+// terminal branch below.
 const ERR_FAIL = -32810;
 const ERR_FAIL_RETRY = -32811;
 const ERR_FAIL_BACKOFF = -32812;
@@ -133,11 +133,21 @@ function noteBlock(bytes: Uint8Array): void {
     cb(progress);
   }
 }
+/** Marks a local abort. A numeric code could collide: JSON-RPC reserves only
+ *  -32768..-32000, so the rest of the space belongs to the chain. */
+const ABORT_ERROR_NAME = "AbortError";
 
 const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_CAP_MS = 5_000;
+
+// smoldot calls -32810 permanent, but it only means every peer connected at
+// that instant answered DONT_HAVE: it never adds later peers and never looks up
+// providers, so a retry gets a fresh, larger set. Bounded by attempts and not a
+// clock, which anything slow in between drains, including the -32812 runs this
+// exists to survive. Eight buys 27.5s against the 3 to 15 observed live.
+const DISCOVERY_RETRIES = 8;
 
 interface PendingResolver {
   resolve: (bytes: Uint8Array) => void;
@@ -208,61 +218,147 @@ function errorCode(err: unknown): number | null {
   return null;
 }
 
-/** Fetch one CID block via the protocol iframe's smoldot. */
-export async function bitswapGet(cid: string): Promise<Uint8Array> {
+function abortError(cid: string): Error {
+  const err = new Error(`bitswap_v1_get(${cid}): aborted`);
+  err.name = ABORT_ERROR_NAME;
+  return err;
+}
+
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    // `addEventListener` never fires on a signal that is already aborted.
+    if (signal?.aborted === true) {
+      reject(new Error("aborted"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort(): void {
+      clearTimeout(timer);
+      reject(new Error("aborted"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Fetch one CID block via the protocol iframe's smoldot.
+ *
+ * Pass `signal` from anything that can be torn down while a fetch is open. A
+ * retrying call can now run for the full budget, so without one an abandoned
+ * caller leaves it firing into a light client nobody is listening to.
+ */
+export async function bitswapGet(
+  cid: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
+  let discoveryAttempts = 0;
+  let transientAttempts = 0;
   let attempt = 0;
   for (;;) {
     attempt += 1;
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       throw new Error(
-        `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempt - 1)} attempts)`,
+        `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempt - 1)} attempts made)`,
       );
     }
     const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining);
     try {
-      return await sendOnce(cid, callTimeout);
+      return await sendOnce(cid, callTimeout, signal);
     } catch (err) {
       const code = errorCode(err);
-      if (code === ERR_INVALID_PARAMS || code === ERR_FAIL) {
+
+      // Each kind of failure ramps on its own counter. Sharing one means a
+      // couple of -32812s arrive first and pin the discovery retries at the
+      // 5s cap, spending the allowance on two or three tries instead of eight.
+      let backoffAttempt: number;
+      if (code === ERR_FAIL) {
+        discoveryAttempts += 1;
+        if (discoveryAttempts > DISCOVERY_RETRIES) {
+          throw Object.assign(
+            new Error(
+              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryAttempts)} failures (${String(attempt)} attempts made): ${serializeError(err)}`,
+            ),
+            { code },
+          );
+        }
+        backoffAttempt = discoveryAttempts;
+      } else if (code === ERR_FAIL_RETRY || code === ERR_FAIL_BACKOFF) {
+        transientAttempts += 1;
+        backoffAttempt = transientAttempts;
+      } else {
         throw err;
       }
-      if (code === ERR_FAIL_RETRY || code === ERR_FAIL_BACKOFF) {
-        const delay = Math.min(
-          BACKOFF_CAP_MS,
-          BACKOFF_BASE_MS * 2 ** Math.min(attempt - 1, 4),
-        );
-        log.warn(
-          `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
-        );
-        await new Promise<void>((r) => setTimeout(r, delay));
-        continue;
+
+      // Each counter is incremented before it is read, so both are >= 1 here.
+      // The floor of 1ms keeps the loop off a zero delay once the budget is
+      // nearly spent. The next iteration's deadline check ends the call.
+      const delay = Math.min(
+        BACKOFF_CAP_MS,
+        BACKOFF_BASE_MS * 2 ** Math.min(backoffAttempt - 1, 4),
+        Math.max(1, deadline - Date.now()),
+      );
+      log.warn(
+        `[dot.li bitswap] ${cid} retry attempt=${String(attempt)} code=${String(code)} delay=${String(delay)}ms`,
+      );
+      try {
+        await sleep(delay, signal);
+      } catch {
+        throw abortError(cid);
       }
-      throw err;
     }
   }
 }
 
-function sendOnce(cid: string, timeoutMs: number): Promise<Uint8Array> {
+function sendOnce(
+  cid: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const id = nextId++;
   const conn = ensureConnection();
   return new Promise<Uint8Array>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    // Same reason as in `sleep`, and the cost of missing it is larger here:
+    // the fallback is the 60s per-call timeout rather than one backoff.
+    if (signal?.aborted === true) {
+      reject(abortError(cid));
+      return;
+    }
+    // Every exit runs the same teardown. Doing it per-path leaked an abort
+    // listener on the timeout path, and the caller's signal outlives the call
+    // (one per subscription), so they accumulated for as long as it lived.
+    const cleanup = (): void => {
+      clearTimeout(timer);
       pending.delete(id);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const timer = setTimeout(() => {
       const err = new Error(
         `bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`,
       );
       (err as { code?: number }).code = ERR_FAIL_RETRY;
+      cleanup();
       reject(err);
     }, timeoutMs);
+    // Abort has to reach the in-flight call, not just the gap between
+    // retries. smoldot has no cancel for a request already issued, so the
+    // entry is dropped and its late reply lands on an empty slot.
+    function onAbort(): void {
+      cleanup();
+      reject(abortError(cid));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
     pending.set(id, {
       resolve: (bytes) => {
-        clearTimeout(timer);
+        cleanup();
         resolve(bytes);
       },
       reject: (err) => {
-        clearTimeout(timer);
+        cleanup();
         reject(err);
       },
     });
@@ -279,6 +375,11 @@ interface BitswapGetMessage {
   type: "dotli:bitswap-get";
   id: string;
   cid: string;
+}
+
+interface BitswapAbortMessage {
+  type: "dotli:bitswap-abort";
+  ids: string[];
 }
 
 interface BitswapResultOk {
@@ -309,8 +410,43 @@ function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
   );
 }
 
+function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  return (
+    obj.type === "dotli:bitswap-abort" &&
+    Array.isArray(obj.ids) &&
+    obj.ids.every((id) => typeof id === "string")
+  );
+}
+
+/**
+ * Live relayed fetches, per requesting frame and then per request id.
+ *
+ * The relay outlives the sandbox it serves, so a fetch started for a page the
+ * user has navigated away from keeps retrying and posts its result into a dead
+ * frame. Nothing in the DOM tells us the frame went: the sandbox has to say so,
+ * which it does on `pagehide`.
+ *
+ * The frame is the outer key for two reasons. Origin alone does not identify
+ * one, and every product runs at a sandbox origin, so origin-only gating would
+ * let any product cancel another's fetches with ids that are sequential and so
+ * guessable in bulk. And ids restart at 1 in every frame, so a flat map lets a
+ * second frame's entry overwrite a first frame's and strand it unabortable —
+ * `renderIframe` keeps the outgoing product alive while its replacement boots,
+ * so two frames really do coexist.
+ */
+const inFlight = new Map<MessageEventSource, Map<string, AbortController>>();
+let relayInstalled = false;
+
 /** Idempotent. Call once at host startup. */
 export function listenForSandboxBitswap(): void {
+  if (relayInstalled) {
+    return;
+  }
+  relayInstalled = true;
   if (getBackend() === "rpc-gateway") {
     log.warn(
       "[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.",
@@ -324,6 +460,25 @@ export function listenForSandboxBitswap(): void {
   }
   window.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
+    if (isBitswapAbortMessage(data)) {
+      if (!isSandboxOrigin(event.origin) || event.source === null) {
+        return;
+      }
+      // Reaching only this frame's own fetches is what stops one product
+      // cancelling another's.
+      const own = inFlight.get(event.source);
+      if (own === undefined) {
+        return;
+      }
+      for (const id of data.ids) {
+        own.get(id)?.abort();
+        own.delete(id);
+      }
+      if (own.size === 0) {
+        inFlight.delete(event.source);
+      }
+      return;
+    }
     if (!isBitswapGetMessage(data)) {
       return;
     }
@@ -337,7 +492,24 @@ export function listenForSandboxBitswap(): void {
     if (source === null) {
       return;
     }
-    void bitswapGet(data.cid)
+    const aborter = new AbortController();
+    let own = inFlight.get(source);
+    if (own === undefined) {
+      own = new Map<string, AbortController>();
+      inFlight.set(source, own);
+    }
+    own.set(data.id, aborter);
+    void bitswapGet(data.cid, aborter.signal)
+      .finally(() => {
+        // A frame reusing an id while its earlier fetch is still open would
+        // otherwise have that earlier fetch's cleanup drop the newer entry.
+        if (own.get(data.id) === aborter) {
+          own.delete(data.id);
+        }
+        if (own.size === 0) {
+          inFlight.delete(source);
+        }
+      })
       .then((bytes) => {
         noteBlock(bytes);
         const reply: BitswapResultOk = {

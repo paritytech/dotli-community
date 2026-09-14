@@ -7,10 +7,14 @@ import { resolve } from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@dotli/content": resolve(import.meta.dirname, "src"),
-      "@dotli/config": resolve(import.meta.dirname, "../config/src"),
-      "@dotli/shared": resolve(import.meta.dirname, "../shared/src"),
-      "@dotli/protocol": resolve(import.meta.dirname, "../protocol/src"),
+      "@dotli/config": resolve(
+        import.meta.dirname,
+        "../../packages/config/src",
+      ),
+      "@dotli/shared": resolve(
+        import.meta.dirname,
+        "../../packages/shared/src",
+      ),
     },
   },
   test: {
@@ -21,8 +25,6 @@ export default defineConfig({
   define: {
     "import.meta.env.DEV": "false",
     "import.meta.env.VITE_APP_DEBUG": '"true"',
-    // getEnabledNetworks() requires VITE_NETWORKS (no default by design); the
-    // test build supplies it the same way a deployment does.
     "import.meta.env.VITE_NETWORKS": '"paseo-next-v2,previewnet"',
   },
 });

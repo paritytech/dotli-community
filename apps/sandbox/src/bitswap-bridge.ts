@@ -38,6 +38,31 @@ function ensureListener(): void {
     return;
   }
   listenerInstalled = true;
+  // The host keeps fetching for us after this frame is gone, and a fetch that
+  // found no providers now retries for tens of seconds rather than failing at
+  // about a second. Nothing tells the host the frame went, so say so.
+  window.addEventListener("pagehide", (event: PageTransitionEvent) => {
+    // `persisted` means the frame is going into the back/forward cache and can
+    // come back through `pageshow`. Cancelling then would strand the restored
+    // frame: the host would have aborted, and the restored page would still be
+    // awaiting a fetch it can no longer be answered about.
+    if (event.persisted || pending.size === 0) {
+      return;
+    }
+    window.parent.postMessage(
+      { type: "dotli:bitswap-abort", ids: [...pending.keys()] },
+      "*",
+    );
+    // Reject rather than clear. Dropping the resolvers turns a cancellation
+    // into a promise that can never settle, because the reply listener
+    // early-returns on an id it no longer knows.
+    for (const [, entry] of pending) {
+      entry.reject(
+        new Error("bitswap-relay: aborted, the sandbox frame was torn down"),
+      );
+    }
+    pending.clear();
+  });
   window.addEventListener("message", (event: MessageEvent) => {
     if (!isBitswapResultMessage(event.data)) {
       return;
