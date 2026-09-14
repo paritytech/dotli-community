@@ -1709,8 +1709,12 @@ async function createCoreProvider(
             // Stored public metadata is only a discovery hint. Activation with a
             // supplied username does not verify ownership; re-check the chain.
             activatedIdentity = await signing.refreshLocalIdentity();
-            if (activatedIdentity.identityAccountId !== binding.identityAccountId) {
-              throw new Error("Restored username did not match the active wallet.");
+            if (
+              activatedIdentity.identityAccountId !== binding.identityAccountId
+            ) {
+              throw new Error(
+                "Restored username did not match the active wallet.",
+              );
             }
           }
           if (
@@ -1753,7 +1757,9 @@ async function createCoreProvider(
         : !isCurrentLocalWallet(localContext))
     ) {
       provider.dispose();
-      throw new Error("Wallet changed while the product provider was starting.");
+      throw new Error(
+        "Wallet changed while the product provider was starting.",
+      );
     }
     const unregisterChat = chatCapable
       ? registerChatConnection(productId, {
