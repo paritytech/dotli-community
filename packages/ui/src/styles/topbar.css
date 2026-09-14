@@ -67,6 +67,8 @@
   width: fit-content;
   align-items: center;
   gap: 10px;
+  padding: 11px 14px;
+  margin-left: -14px;
   text-decoration: none;
 }
 .topbar-logo svg {
@@ -228,6 +230,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   padding: 8px 10px;
   background: transparent;
   border: none;
@@ -329,13 +332,14 @@
   }
 }
 .topbar-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
-  min-width: 36px;
-  padding: 0 10px;
+  height: 44px;
+  min-width: 50px;
+  padding: 0 15px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -615,14 +619,11 @@
 }
 
 /* Mode Button & Popover */
-#mode-button {
-  position: relative;
-}
 #mode-button.gateway-mode::after {
   content: "";
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 9px;
+  right: 10px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1104,14 +1105,11 @@
 }
 
 /* Permissions Button State */
-#permissions-button {
-  position: relative;
-}
 #permissions-button.has-grants::after {
   content: "";
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 9px;
+  right: 10px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1315,9 +1313,6 @@
 }
 
 /* ── Chat Panel ─────────────────────────── */
-#chat-button {
-  position: relative;
-}
 #chat-button.active {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.08);
@@ -1325,8 +1320,8 @@
 }
 .chat-unread-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 6px;
+  right: 7px;
   min-width: 14px;
   height: 14px;
   padding: 0 3px;

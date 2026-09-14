@@ -359,25 +359,27 @@
 [data-theme="light"] .landing-tag {
   border-color: #ddd;
 }
-[data-theme="light"] .landing-recent-pill {
+[data-theme="light"] .landing-recent-label {
   background: #fff;
   border-color: #ddd;
+  color: #555;
 }
-[data-theme="light"] .landing-recent-pill:hover {
+[data-theme="light"] .landing-recent-pill:hover .landing-recent-label {
   border-color: #bbb;
   background: #f0f0f0;
 }
-[data-theme="light"] .landing-recent-label {
+[data-theme="light"] .landing-recent-remove {
   color: #555;
 }
-[data-theme="light"] .landing-recent-remove {
+[data-theme="light"] .landing-recent-remove::before {
   background: #e4e4e4;
   border-color: #fff;
-  color: #555;
 }
 [data-theme="light"] .landing-recent-remove:hover {
-  background: #d0d0d0;
   color: #111;
+}
+[data-theme="light"] .landing-recent-remove:hover::before {
+  background: #d0d0d0;
 }
 
 [data-theme="light"] .permissions-popover-header {
