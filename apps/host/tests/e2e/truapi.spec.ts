@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect } from "./fixtures/paired";
+import type { Page } from "@playwright/test";
+import { test, expect, currentProductFrame } from "./fixtures/paired";
 import {
   waitForPlaygroundReady,
   runTestExpectSuccess,
@@ -38,8 +39,8 @@ test.describe("dot.li > host-playground.dot", () => {
       );
     });
 
-    // Red on main since before the CLI swap: the product-side
-    // accounts-provider-alias check itself reports FAILED.
+    // Needs a People Lite ring key registered for the personhood ring owner;
+    // the fresh per-run lite username has none, so the card stops early.
     test.fixme("Product Account Alias", async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, "accounts-provider-alias");
     });
@@ -133,8 +134,8 @@ test.describe("dot.li > host-playground.dot", () => {
       expect(status).toBe("success");
     });
 
-    // Red on main since before the CLI swap: the combined allocation
-    // times out at 30s while the individual allowance tests pass.
+    // The CLI allocates the three resources serially (~55 s together) while
+    // the card keeps host-playground's 30 s default; needs timeoutMs there.
     test.fixme("All Allowances", async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
@@ -325,9 +326,9 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "navigate-polkadot");
     });
 
-    // Red on main since before the CLI swap: the iframe lands on
-    // /navigation?id=… while the assertion expects /page?id=….
-    test.fixme("As a product user, I can navigate within the current product", async ({
+    // The card pushes /navigation/ with query and fragment intact; Next may
+    // drop the trailing slash, so accept either spelling.
+    test("As a product user, I can navigate within the current product", async ({
       productFrame,
     }) => {
       // Given
@@ -342,7 +343,7 @@ test.describe("dot.li > host-playground.dot", () => {
       // Then
       await expect
         .poll(() => productFrame.url())
-        .toContain("/page?id=hello#fragment=something");
+        .toMatch(/\/navigation\/?\?id=hello#fragment=something$/);
       await productFrame.getByRole("link", { name: "Back to tests" }).click();
       await waitForPlaygroundReady(productFrame);
     });
@@ -468,71 +469,186 @@ test.describe("dot.li > host-playground.dot", () => {
     });
   });
 
-  // Funded operations (skipped, needs a faucet-funded account). Funded paths
-  // exercise transaction submission. Out of scope until we wire a faucet step
-  // into the fixture.
+  // Signer paths that need no balance: an intentionally invalid broadcast,
+  // offline signing, and revive writes paying fees from the PGAS slot.
+  test.describe("Transactions", () => {
+    test("Chain Tx: Broadcast", async ({ pairedPage, productFrame }) => {
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "chain-transaction-broadcast",
+        ["Allow"],
+        { timeoutMs: 30_000 },
+      );
+
+      // Then
+      expect(status).toBe("success");
+    });
+
+    test("Chain Tx: Stop Broadcast", async ({ pairedPage, productFrame }) => {
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "chain-transaction-stop",
+        ["Allow"],
+        { timeoutMs: 30_000 },
+      );
+
+      // Then
+      expect(status).toBe("success");
+    });
+
+    // The signing host refuses product-account createTransaction while the
+    // chain's tx-extension pipeline (v0) lacks VerifyMultiSignature. Same below.
+    test.fixme("Create Transaction", async ({ pairedPage, productFrame }) => {
+      // Given
+      test.setTimeout(120_000);
+
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "create-transaction",
+        ["Allow", "Sign"],
+        { timeoutMs: 60_000 },
+      );
+
+      // Then
+      expect(status).toBe("success");
+    });
+
+    test.fixme("Contract: Store Value", async ({
+      pairedPage,
+      productFrame,
+    }) => {
+      // Given
+      test.setTimeout(150_000);
+
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "contract-store-value",
+        ["Allow", "Sign"],
+        { timeoutMs: 90_000 },
+      );
+
+      // Then
+      expect(status).toBe("success");
+    });
+
+    test.fixme("Sign Batch Payload", async ({ pairedPage, productFrame }) => {
+      // Given: the card waits for finality, not best-block inclusion.
+      test.setTimeout(240_000);
+
+      // When
+      const status = await runWebSignedTest(
+        pairedPage,
+        productFrame,
+        "sign-batch-payload",
+        ["Allow", "Sign"],
+        { timeoutMs: 180_000 },
+      );
+
+      // Then
+      expect(status).toBe("success");
+    });
+  });
+
+  // Payable calls move PAS from the per-run product account, which nothing
+  // funds yet. Skipped until a globalSetup faucet step tops it up.
   test.describe("Funded operations", () => {
-    test.skip("Sign Batch Payload", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "sign-batch-payload");
-    });
-    test.skip("Create Transaction", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "create-transaction");
-    });
-    test.skip("Contract: Store Value", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-store-value");
-    });
     test.skip("Contract: Deposit (payable)", async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, "contract-deposit");
     });
     test.skip("Contract: Withdraw", async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, "contract-withdraw");
     });
-    test.skip("Chain Tx: Broadcast", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-transaction-broadcast");
-    });
-    test.skip("Chain Tx: Stop Broadcast", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-transaction-stop");
-    });
+    // The core answers every coin_payment method with Unsupported, and the
+    // card would pass vacuously with zero updates. Skip until payments land.
     test.skip("Payment: Balance Subscribe", async ({ productFrame }) => {
       await runTestExpectSuccess(productFrame, "payment-balance-subscribe");
     });
   });
 
-  // Device Permissions (skipped, mobile/system-level prompts). These hit
-  // native system permission prompts on iOS/Android. In headless Chromium
-  // they have no host-side equivalent. Listed for coverage parity with
-  // host-playground.
-
+  // dot.li answers device permissions with its own Permission Request modal,
+  // which the fixture's auto-allow poller accepts. No system prompt is hit.
   test.describe("Device permissions", () => {
-    test.skip("Camera", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-camera");
+    // Granting a Permissions Policy directive re-renders the product iframe
+    // so the new `allow` attribute applies, which also wipes the results.
+    const RELOADING = [
+      ["Camera", "camera"],
+      ["Microphone", "microphone"],
+      ["Bluetooth", "bluetooth"],
+      ["Biometrics", "biometrics"],
+      ["Clipboard", "clipboard"],
+      ["Location", "location"],
+      ["NFC", "nfc"],
+    ] as const;
+
+    for (const [name, id] of RELOADING) {
+      test(name, async ({ pairedPage }) => {
+        await grantReloadingDevicePermission(
+          pairedPage,
+          `device-permission-${id}`,
+        );
+      });
+    }
+
+    // Notifications has no policy directive and OpenUrl is auto-granted, so
+    // neither re-renders the iframe. Re-find the frame after the tests above.
+    test("Notifications", async ({ pairedPage }) => {
+      const frame = await currentProductFrame(pairedPage);
+      await runTestExpectSuccess(frame, "device-permission-notifications");
     });
-    test.skip("Microphone", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-microphone");
-    });
-    test.skip("Bluetooth", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-bluetooth");
-    });
-    test.skip("Biometrics", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-biometrics");
-    });
-    test.skip("Clipboard", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-clipboard");
-    });
-    test.skip("Location", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-location");
-    });
-    test.skip("NFC", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-nfc");
-    });
-    test.skip("Notifications", async ({ productFrame }) => {
-      await runTestExpectSuccess(
-        productFrame,
-        "device-permission-notifications",
-      );
-    });
-    test.skip("Open URL", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-open-url");
+
+    test("Open URL", async ({ pairedPage }) => {
+      const frame = await currentProductFrame(pairedPage);
+      await runTestExpectSuccess(frame, "device-permission-open-url");
     });
   });
 });
+
+/**
+ * Click a device permission card whose grant re-renders the product iframe.
+ * The first click raises the modal; once it is accepted the host boots a
+ * replacement frame and detaches this one, so wait for the fresh frame and
+ * click again, when the stored grant answers at once. When the permission is
+ * already granted (a retry) the first click settles in place instead.
+ */
+async function grantReloadingDevicePermission(
+  page: Page,
+  testId: string,
+): Promise<void> {
+  const frame = await currentProductFrame(page);
+  const entries = frame.locator('[data-testid="log-entry"]');
+  const initialCount = await entries.count();
+  const button = frame.locator(`[data-testid="run-${testId}"]`);
+  await expect(button).toBeVisible({ timeout: 10_000 });
+  await button.click();
+
+  const deadline = Date.now() + 40_000;
+  let settledAt: number | null = null;
+  while (!frame.isDetached()) {
+    if (Date.now() > deadline) {
+      throw new Error(`${testId}: no reload and no result within 40s`);
+    }
+    if (settledAt === null) {
+      const count = await entries.count().catch(() => 0);
+      if (count > initialCount) {
+        settledAt = Date.now();
+      }
+    } else if (Date.now() - settledAt > 8_000) {
+      // The grant was already stored, so the card resolved without a reload.
+      await expect(entries.first()).toHaveAttribute("data-status", "success");
+      return;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  const reloaded = await currentProductFrame(page);
+  await waitForPlaygroundReady(reloaded);
+  await runTestExpectSuccess(reloaded, testId);
+}

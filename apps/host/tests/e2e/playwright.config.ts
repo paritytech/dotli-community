@@ -5,6 +5,10 @@ import { defineConfig } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { baseConfig } from "../playwright.base.config";
+import {
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  isValidNetwork,
+} from "@dotli/config/network";
 
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 
@@ -62,6 +66,7 @@ const dotliWebServer = {
 const webServer: Array<
   typeof dotliWebServer & {
     cwd?: string;
+    env?: Record<string, string>;
   }
 > = [dotliWebServer];
 if (localProductUrl !== undefined) {
@@ -83,12 +88,26 @@ if (localProductUrl !== undefined) {
       `host-playground checkout not found at ${hostPlaygroundRoot}. Set E2E_PRODUCT_REPO=/path/to/host-playground.`,
     );
   }
+  // host-playground defaults to previewnet, so pin its chain to the network
+  // the signing host pairs on or every chain and contract card targets a
+  // genesis this host rejects.
+  const network = process.env.SIGNING_HOST_NETWORK ?? "";
+  if (!isValidNetwork(network)) {
+    throw new Error(
+      `SIGNING_HOST_NETWORK must name a known network, got ${JSON.stringify(network)}`,
+    );
+  }
   webServer.unshift({
     command: `yarn dev --port ${productUrl.port || "80"}`,
     cwd: hostPlaygroundRoot,
     url: productUrl.origin,
     reuseExistingServer: true,
     timeout: 30_000,
+    env: {
+      ...(process.env as Record<string, string>),
+      NEXT_PUBLIC_NETWORK_GENESIS_HASH:
+        NETWORK_NAME_TO_SERVICES_CONFIG[network].assethub.genesis,
+    },
   });
 }
 
