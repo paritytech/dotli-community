@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
+import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
 
 const mocks = vi.hoisted(() => ({
   scheduleNotification: vi.fn(),
@@ -99,8 +100,6 @@ describe("prompt rate limiting across host callbacks", () => {
   it("As a dotli integrator, the host counts permission and notification prompts against one shared budget", async () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
-    const { createHostCallbacks } =
-      await import("@dotli/ui/host-callbacks/handlers");
     const { permissions, notifications } = createHostCallbacks({
       label: "myapp",
     });
