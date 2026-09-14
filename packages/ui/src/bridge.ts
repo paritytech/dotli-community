@@ -323,7 +323,8 @@ async function updateLocalIdentity(
             );
       if (
         identity.identityAccountId !== wallet.binding.identityAccountId ||
-        (baseUsername !== undefined && !identity.liteUsername?.trim())
+        (baseUsername !== undefined &&
+          (identity.liteUsername?.trim() ?? "") === "")
       ) {
         throw new Error(
           "Native username confirmation did not match the active identity.",
@@ -1606,6 +1607,7 @@ async function createCoreProvider(
   let activatedIdentity: LocalIdentity | undefined;
   let liveWallet: LiveLocalWallet | undefined;
   let runtimeDisposed = false;
+  const isRuntimeDisposed = (): boolean => runtimeDisposed;
   let runtime: WorkerPairingHostRuntime | WorkerSigningHostRuntime | undefined;
   const disposeNativeRuntime = (): void => {
     runtimeDisposed = true;
@@ -1638,7 +1640,7 @@ async function createCoreProvider(
       // Worker messages queued before replacement must never repaint a new
       // identity or overwrite the separate Mobile session UI cache.
       if (
-        runtimeDisposed ||
+        isRuntimeDisposed() ||
         (localContext === undefined
           ? isExperimentalWalletActive()
           : !isCurrentLocalWallet(localContext))
@@ -1650,7 +1652,7 @@ async function createCoreProvider(
         if (account !== undefined && /^(?:0x)?[0-9a-fA-F]{64}$/.test(account)) {
           activatedIdentity = {
             identityAccountId: `0x${account.replace(/^0x/, "").toLowerCase()}`,
-            ...(state.value.liteUsername
+            ...((state.value.liteUsername ?? "") !== ""
               ? { liteUsername: state.value.liteUsername }
               : {}),
           };
@@ -1659,7 +1661,7 @@ async function createCoreProvider(
           }
         }
       }
-      return forwardAuthState?.(state);
+      forwardAuthState(state);
     };
     if (localContext !== undefined) {
       const secret = await readLocalWalletSecret();
@@ -1681,14 +1683,14 @@ async function createCoreProvider(
           },
         );
         runtime = signing;
-        if (runtimeDisposed || !isCurrentLocalWallet(localContext)) {
+        if (isRuntimeDisposed() || !isCurrentLocalWallet(localContext)) {
           throw new Error(
             "Test wallet changed while the signing worker was starting.",
           );
         }
         await signing.activateLocalSession(secret);
         if (
-          runtimeDisposed ||
+          isRuntimeDisposed() ||
           !isCurrentLocalWallet(localContext) ||
           activatedIdentity === undefined
         ) {
@@ -1702,7 +1704,7 @@ async function createCoreProvider(
         };
         await withLocalIdentityUpdate(async () => {
           const cached = await readVerifiedLocalIdentity(binding);
-          if (runtimeDisposed || !isCurrentLocalWallet(binding)) {
+          if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
             throw new Error("Test wallet changed during username restoration.");
           }
           if (cached?.liteUsername !== undefined) {
@@ -1718,7 +1720,7 @@ async function createCoreProvider(
             }
           }
           if (
-            runtimeDisposed ||
+            isRuntimeDisposed() ||
             !isCurrentLocalWallet(binding) ||
             activatedIdentity === undefined
           ) {
@@ -1740,7 +1742,7 @@ async function createCoreProvider(
         callbacks,
         { hostConfig },
       );
-      if (runtimeDisposed || isExperimentalWalletActive()) {
+      if (isRuntimeDisposed() || isExperimentalWalletActive()) {
         throw new Error(
           "Wallet mode changed while the Mobile worker was starting.",
         );
@@ -1751,7 +1753,7 @@ async function createCoreProvider(
       executionKind: chatCapable ? "Worker" : "App",
     });
     if (
-      runtimeDisposed ||
+      isRuntimeDisposed() ||
       (localContext === undefined
         ? isExperimentalWalletActive()
         : !isCurrentLocalWallet(localContext))

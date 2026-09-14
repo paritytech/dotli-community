@@ -627,18 +627,26 @@ function acceptSharedWalletState(
   if (
     sharedWalletState !== undefined &&
     state.version < sharedWalletState.version
-  )
+  ) {
     return;
+  }
   sharedWalletState = state;
   const revision = localStorage.getItem(LOCAL_WALLET_REVISION_KEY);
   const enabled = localStorage.getItem(LOCAL_WALLET_ENABLED_KEY);
   const nextEnabled = state.enabled ? "1" : null;
-  if (revision !== state.revision) clearExperimentalCoreStorage();
-  if (state.revision === null)
+  if (revision !== state.revision) {
+    clearExperimentalCoreStorage();
+  }
+  if (state.revision === null) {
     localStorage.removeItem(LOCAL_WALLET_REVISION_KEY);
-  else localStorage.setItem(LOCAL_WALLET_REVISION_KEY, state.revision);
-  if (nextEnabled === null) localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
-  else localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, nextEnabled);
+  } else {
+    localStorage.setItem(LOCAL_WALLET_REVISION_KEY, state.revision);
+  }
+  if (nextEnabled === null) {
+    localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+  } else {
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, nextEnabled);
+  }
   if (notify && walletHydrated) {
     // Update both guards before invoking the bridge, which disposes old signers.
     const key =
@@ -661,24 +669,39 @@ function acceptSharedWalletState(
   }
 }
 
+function currentWalletVersion(): number {
+  if (sharedWalletState === undefined) {
+    throw new Error("Shared wallet state is unavailable");
+  }
+  return sharedWalletState.version;
+}
+
 /**
  * Hydrate from host.<root>, then migrate an origin-local encrypted wallet only
  * if the shared store is uninitialized (or already holds exactly that wallet).
  * A tombstone is initialized; migration can never undo a deletion.
  */
 export function initializeLocalWalletState(): Promise<void> {
-  if (!DEBUG) return Promise.resolve();
+  if (!DEBUG) {
+    return Promise.resolve();
+  }
   if (!walletSubscriptionBound) {
     walletSubscriptionBound = true;
-    subscribeSharedWallet((state) => acceptSharedWalletState(state, true));
+    subscribeSharedWallet((state) => {
+      acceptSharedWalletState(state, true);
+    });
     // A suspended page may have missed a broadcast. Reconcile before reuse.
     window.addEventListener("pageshow", () => {
-      if (!walletHydrated) return;
+      if (!walletHydrated) {
+        return;
+      }
       void requestSharedWallet(SITE_ID, { action: "state" })
-        .then(({ state }) => acceptSharedWalletState(state, true))
-        .catch((error: unknown) =>
-          log.warn("[dot.li] Shared wallet refresh failed:", error),
-        );
+        .then(({ state }) => {
+          acceptSharedWalletState(state, true);
+        })
+        .catch((error: unknown) => {
+          log.warn("[dot.li] Shared wallet refresh failed:", error);
+        });
     });
   }
   walletInitialization ??= (async () => {
@@ -715,11 +738,14 @@ async function readLegacyLocalWallet(): Promise<
   const db = await openKeyDb();
   try {
     const encoded = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
-    if (encoded === undefined) return undefined;
-    if (!encoded.startsWith(ENCRYPTED_VALUE_PREFIX))
+    if (encoded === undefined) {
+      return undefined;
+    }
+    if (!encoded.startsWith(ENCRYPTED_VALUE_PREFIX)) {
       throw new Error(
         "Saved local wallet has an unknown format; its data has been preserved.",
       );
+    }
     const bytes = decodeStoredBytes(
       encoded.slice(ENCRYPTED_VALUE_PREFIX.length),
       "local wallet entropy",
@@ -769,7 +795,7 @@ async function removeLegacyLocalWallet(
 ): Promise<void> {
   const db = await openKeyDb();
   try {
-    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const { promise, resolve, reject } = Promise.withResolvers<undefined>();
     const tx = db.transaction(KEY_DB_STORE, "readwrite");
     const store = tx.objectStore(KEY_DB_STORE);
     const request = store.get(LOCAL_WALLET_SECRET_ID);
@@ -778,16 +804,22 @@ async function removeLegacyLocalWallet(
       if (request.result !== undefined && request.result !== expected) {
         conflict = true;
         tx.abort();
-      } else store.delete(LOCAL_WALLET_SECRET_ID);
+      } else {
+        store.delete(LOCAL_WALLET_SECRET_ID);
+      }
     };
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => {
+      resolve(undefined);
+    };
     tx.onabort = tx.onerror = () => {
       const error = new Error(
         conflict
           ? "Local wallet changed during migration. Export its preserved recovery phrase before replacing it."
           : "Local wallet removal failed",
       );
-      if (conflict) error.name = "WalletConflictError";
+      if (conflict) {
+        error.name = "WalletConflictError";
+      }
       reject(error);
     };
     await promise;
@@ -797,12 +829,14 @@ async function removeLegacyLocalWallet(
 }
 
 export async function setLocalWalletEnabled(active: boolean): Promise<void> {
-  if (!DEBUG) throw new Error("Experimental wallets require a debug build");
+  if (!DEBUG) {
+    throw new Error("Experimental wallets require a debug build");
+  }
   const expectedVersion = sharedWalletState?.version;
   await initializeLocalWalletState();
   const result = await requestSharedWallet(SITE_ID, {
     action: "enabled",
-    expectedVersion: expectedVersion ?? sharedWalletState!.version,
+    expectedVersion: expectedVersion ?? currentWalletVersion(),
     enabled: active,
   });
   acceptSharedWalletState(result.state);
@@ -810,7 +844,9 @@ export async function setLocalWalletEnabled(active: boolean): Promise<void> {
 
 /** Caller must zero its page-memory entropy after transferring it to a signer. */
 export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
-  if (!DEBUG) return undefined;
+  if (!DEBUG) {
+    return undefined;
+  }
   await initializeLocalWalletState();
   const result = await requestSharedWallet(SITE_ID, { action: "read" });
   if (
@@ -825,12 +861,14 @@ export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
 }
 
 export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
-  if (!DEBUG) throw new Error("Experimental wallets require a debug build");
+  if (!DEBUG) {
+    throw new Error("Experimental wallets require a debug build");
+  }
   const expectedVersion = sharedWalletState?.version;
   await initializeLocalWalletState();
   const result = await requestSharedWallet(SITE_ID, {
     action: "create",
-    expectedVersion: expectedVersion ?? sharedWalletState!.version,
+    expectedVersion: expectedVersion ?? currentWalletVersion(),
   });
   if (
     sharedWalletState !== undefined &&
@@ -840,8 +878,9 @@ export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
     throw new Error("Wallet changed during creation. Try again.");
   }
   acceptSharedWalletState(result.state);
-  if (result.secret === undefined)
+  if (result.secret === undefined) {
     throw new Error("Shared wallet creation returned no entropy");
+  }
   return { secret: result.secret, created: result.created === true };
 }
 
@@ -860,8 +899,9 @@ export async function exportLocalWalletMnemonic(): Promise<string> {
     secret = await readLocalWalletSecret();
   } catch (error) {
     // Migration conflicts must remain recoverable through the existing export UI.
-    if (!(error instanceof Error) || error.name !== "WalletConflictError")
+    if (!(error instanceof Error) || error.name !== "WalletConflictError") {
       throw error;
+    }
     secret = (await readLegacyLocalWallet())?.secret;
   }
   if (secret === undefined) {
@@ -912,10 +952,11 @@ export async function importLocalWalletMnemonic(
         !(error instanceof Error) ||
         error.name !== "WalletConflictError" ||
         sharedWalletState === undefined
-      )
+      ) {
         throw error;
+      }
     }
-    const expectedVersion = startingVersion ?? sharedWalletState!.version;
+    const expectedVersion = startingVersion ?? currentWalletVersion();
     beforeReplace?.();
     const result = await requestSharedWallet(SITE_ID, {
       action: "import",
@@ -937,8 +978,9 @@ export async function deleteLocalWalletSecret(): Promise<void> {
   if (!DEBUG) {
     throw new Error("Experimental wallets require a debug build");
   }
-  if (walletMutationPending)
+  if (walletMutationPending) {
     throw new Error("Another wallet change is already in progress");
+  }
   walletMutationPending = true;
   const expectedVersion = sharedWalletState?.version;
   try {
@@ -950,12 +992,13 @@ export async function deleteLocalWalletSecret(): Promise<void> {
         !(error instanceof Error) ||
         error.name !== "WalletConflictError" ||
         sharedWalletState === undefined
-      )
+      ) {
         throw error;
+      }
     }
     const result = await requestSharedWallet(SITE_ID, {
       action: "delete",
-      expectedVersion: expectedVersion ?? sharedWalletState!.version,
+      expectedVersion: expectedVersion ?? currentWalletVersion(),
     });
     acceptSharedWalletState(result.state);
     await removeLegacyLocalWallet(legacy);

@@ -102,7 +102,10 @@ import {
   WALLET_DB_NAME,
   withSharedWalletRevision,
 } from "./wallet-storage";
-import { isSharedWalletState } from "@dotli/protocol/wallet-storage";
+import {
+  isSharedWalletOperation,
+  isSharedWalletState,
+} from "@dotli/protocol/wallet-storage";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -319,7 +322,9 @@ function bindSharedAuthListener(): void {
 
 /** Debug-only secret RPC. Only the validated trusted parent may use it. */
 function bindSharedWalletListener(): void {
-  if (!DEBUG) return;
+  if (!DEBUG) {
+    return;
+  }
   const channel = new BroadcastChannel("dotli:shared-wallet");
   channel.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
@@ -331,8 +336,9 @@ function bindSharedWalletListener(): void {
       parentOrigin === null ||
       !isSharedAuthOriginAllowed(parentOrigin) ||
       window.parent === window
-    )
+    ) {
       return;
+    }
     // Explicit construction ensures no secret-bearing extra fields get relayed.
     window.parent.postMessage(
       {
@@ -355,19 +361,28 @@ function bindSharedWalletListener(): void {
       !isProtocolEnvelope(request) ||
       request.kind !== "request" ||
       request.method !== "walletStorage"
-    )
+    ) {
       return;
+    }
     if (
       event.source !== window.parent ||
       !isSharedAuthOriginAllowed(event.origin)
-    )
+    ) {
       return;
+    }
     parentOrigin = event.origin;
     void (async () => {
-      const payload = request.payload as ProtocolRequestMap["walletStorage"];
-      assertSharedAuthSiteId(payload?.siteId);
-      if (typeof payload.operation !== "object" || payload.operation === null)
+      const payload: unknown = request.payload;
+      if (
+        typeof payload !== "object" ||
+        payload === null ||
+        !("siteId" in payload) ||
+        !("operation" in payload) ||
+        !isSharedWalletOperation(payload.operation)
+      ) {
         throw new Error("Invalid wallet operation");
+      }
+      assertSharedAuthSiteId(payload.siteId);
       const result = await handleWalletOperation(
         payload.operation,
         (state) => {
@@ -1088,8 +1103,9 @@ async function handleSharedAuthRequest(
         broadcastSharedAuthChange(siteId, key, value);
       };
       if (payload.walletRevision !== undefined) {
-        if (!DEBUG)
+        if (!DEBUG) {
           throw new Error("Experimental wallets require a debug build");
+        }
         await withSharedWalletRevision(
           payload.walletRevision,
           commit,

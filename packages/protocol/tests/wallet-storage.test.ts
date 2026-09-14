@@ -4,7 +4,10 @@
 import { webcrypto } from "node:crypto";
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SharedWalletOperation } from "@dotli/protocol/wallet-storage";
+import {
+  isSharedWalletOperation,
+  type SharedWalletOperation,
+} from "@dotli/protocol/wallet-storage";
 import {
   handleWalletOperation,
   withSharedWalletRevision,
@@ -50,6 +53,30 @@ afterEach(() => {
 });
 
 describe("shared wallet custody", () => {
+  it("rejects unknown operation tags and malformed import entropy at the RPC boundary", () => {
+    expect(
+      isSharedWalletOperation({
+        action: "replace",
+        expectedVersion: 0,
+        secret: entropy(1),
+      }),
+    ).toBe(false);
+    expect(
+      isSharedWalletOperation({
+        action: "import",
+        expectedVersion: 0,
+        secret: "not binary entropy",
+      }),
+    ).toBe(false);
+    expect(
+      isSharedWalletOperation({
+        action: "import",
+        expectedVersion: 0,
+        secret: entropy(1),
+      }),
+    ).toBe(true);
+  });
+
   it("allows only one competing replacement at a captured version", async () => {
     const original = await operate({
       action: "import",
