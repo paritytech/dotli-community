@@ -10,7 +10,11 @@ import {
 } from "../../src/errors";
 import { test } from "./helpers/shared-mode-reset";
 import { findAppFrame } from "../product-frame";
-import { seedBackend, type Backend } from "./fixtures/settings";
+import {
+  seedBackend,
+  TRANSPORT_LABELS,
+  type Backend,
+} from "./fixtures/settings";
 import { TIMEOUTS } from "@dotli/config/timeouts";
 import { METHOD_TIMEOUTS } from "@dotli/protocol/method-timeouts";
 
@@ -144,7 +148,7 @@ const successfulResolveResponse = (cid: string): string => `
   });
 `;
 
-test("As a user using smoldot directly, when the light client panics mid-resolution, I see the appropriate error and can switch backend", async ({
+test("As a user on a per-tab light client, when the light client panics mid-resolution, I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -170,7 +174,7 @@ test("As a user using smoldot directly, when the light client panics mid-resolut
   );
 });
 
-test("As a user using smoldot in shared worker, when the light client panics mid-resolution, I see the appropriate error and can switch backend", async ({
+test("As a user on a shared light client, when the light client panics mid-resolution, I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -196,7 +200,7 @@ test("As a user using smoldot in shared worker, when the light client panics mid
   );
 });
 
-test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({
+test("As a user on a shared light client, when the browser can't create a worker, I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -225,7 +229,7 @@ test("As a user using smoldot in shared worker, when the browser can't create a 
   );
 });
 
-test("As a user using smoldot in shared worker, when the worker dies silently, I see the appropriate error and can switch backend", async ({
+test("As a user on a shared light client, when the worker dies silently, I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -254,7 +258,7 @@ test("As a user using smoldot in shared worker, when the worker dies silently, I
   );
 });
 
-test("As a user using smoldot directly, when the sync times out (>45s) I see the appropriate error and can switch backend", async ({
+test("As a user on a per-tab light client, when the sync times out (>45s) I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -287,7 +291,7 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
   );
 });
 
-test("As a user using smoldot directly, when every peer WebSocket is unavailable, I see a typed Hub failure before the generic request timeout", async ({
+test("As a user on a per-tab light client, when every peer WebSocket is unavailable, I see a typed Hub failure before the generic request timeout", async ({
   page,
 }) => {
   // Given
@@ -335,7 +339,7 @@ test("As a user using smoldot directly, when every peer WebSocket is unavailable
   expect(blockedSockets).toBeGreaterThan(0);
 });
 
-test("As a user using smoldot in shared worker, when the sync times out (>45s) I see the appropriate error and can switch backend", async ({
+test("As a user on a shared light client, when the sync times out (>45s) I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -389,7 +393,7 @@ test("As a user, when the app chunks fail to load mid-session, I see the appropr
   await expect(page.locator("#error-retry-btn")).toContainText("Reload");
 });
 
-test("As a user using smoldot directly, when smoldot rejects the chain spec, I see the appropriate error and can switch backend", async ({
+test("As a user on a per-tab light client, when the light client rejects the chain spec, I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -418,7 +422,7 @@ test("As a user using smoldot directly, when smoldot rejects the chain spec, I s
   );
 });
 
-test("As a user using smoldot in shared worker, when smoldot rejects the chain spec, I see the appropriate error and can switch backend", async ({
+test("As a user on a shared light client, when the light client rejects the chain spec, I see the appropriate error and can switch network transport", async ({
   page,
 }) => {
   // Given
@@ -495,7 +499,7 @@ test("As a user, when the domain's contenthash is unsupported or malformed, I se
   await expect(page.locator("#error-retry-btn")).toHaveCount(0);
 });
 
-test("As a user, after a resolution failure, clicking retry switches backend and the app loads successfully", async ({
+test("As a user, after a resolution failure, clicking retry switches my network transport and the app loads successfully", async ({
   page,
 }) => {
   // Given
@@ -522,7 +526,7 @@ test("As a user, after a resolution failure, clicking retry switches backend and
   expect(backendAfter).toBe("rpc-gateway");
 });
 
-test("As a user, after a resolution failure, I can refresh instead of switching backend, and the backend stays unchanged", async ({
+test("As a user, after a resolution failure, I can refresh instead of switching network transport, and my network transport stays unchanged", async ({
   page,
 }) => {
   // Given
@@ -554,11 +558,8 @@ test("As a user, after a resolution failure, I can refresh instead of switching 
   expect(backendAfter).toBe("smoldot-direct");
 });
 
-for (const [label, backend] of [
-  ["per-product smoldot", "smoldot-direct"],
-  ["shared smoldot", "smoldot-shared-worker"],
-] as const) {
-  test(`As a user using ${label}, the host must only spawn one instance of the light client`, async ({
+for (const backend of ["smoldot-direct", "smoldot-shared-worker"] as const) {
+  test(`As a user on ${TRANSPORT_LABELS[backend]}, the host shell spawns no light client worker of its own`, async ({
     page,
   }) => {
     // Given

@@ -35,7 +35,7 @@ async function seedBackend(page: Page): Promise<void> {
 }
 
 test.describe("URL parameters are forwarded into the product", () => {
-  test("when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product", async ({
+  test("As a user, when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product", async ({
     page,
   }) => {
     // Given
@@ -52,7 +52,7 @@ test.describe("URL parameters are forwarded into the product", () => {
     expect(loc.hash).toBe("#h");
   });
 
-  test("when I open http://<label>.dot.li/foo%20bar, the percent-encoding survives into the product pathname", async ({
+  test("As a user, when I open http://<label>.dot.li/foo%20bar, the percent-encoding survives into the product pathname", async ({
     page,
   }) => {
     // Given
@@ -67,7 +67,7 @@ test.describe("URL parameters are forwarded into the product", () => {
     expect(loc.pathname).toBe("/foo%20bar");
   });
 
-  test("when I open http://<label>.dot.li/?a=1&a=2, both values reach the product", async ({
+  test("As a user, when I open http://<label>.dot.li/?a=1&a=2, both values reach the product", async ({
     page,
   }) => {
     // Given
@@ -82,7 +82,7 @@ test.describe("URL parameters are forwarded into the product", () => {
     expect(new URLSearchParams(loc.search).getAll("a")).toEqual(["1", "2"]);
   });
 
-  test("when I open http://<label>.dot.li/?a=, the empty query value reaches the product", async ({
+  test("As a user, when I open http://<label>.dot.li/?a=, the empty query value reaches the product", async ({
     page,
   }) => {
     // Given
@@ -102,7 +102,7 @@ test.describe("Host URL bar preserves the entered URL after render", () => {
   // `applyUrlSettings` canonicalises the URL on every load so non-default
   // settings axes (rpc-gateway here) get re-inserted. Assert the user's
   // own params survive, not that canonicalisation is a no-op.
-  test("after the product renders from http://<label>.dot.li/foo?a=b#h, the URL bar still shows /foo?a=b#h", async ({
+  test("As a user, after the product renders from http://<label>.dot.li/foo?a=b#h, the URL bar still shows /foo?a=b#h", async ({
     page,
   }) => {
     // Given
@@ -121,7 +121,7 @@ test.describe("Host URL bar preserves the entered URL after render", () => {
 });
 
 test.describe("Reloading the page preserves the URL", () => {
-  test("when I reload http://<label>.dot.li/foo?a=b, the path and query survive the reload", async ({
+  test("As a user, when I reload http://<label>.dot.li/foo?a=b, the path and query survive the reload", async ({
     page,
   }) => {
     // Given
@@ -142,7 +142,7 @@ test.describe("Reloading the page preserves the URL", () => {
 });
 
 test.describe("Sandbox URL hygiene: host contract keys never reach the product", () => {
-  test("with a cold cache, when the product loads, the host contract keys are not visible in the product's URL", async ({
+  test("As a user with a cold cache, when the product loads, the host contract keys are not visible in the product's URL", async ({
     page,
   }) => {
     // Given
@@ -158,7 +158,7 @@ test.describe("Sandbox URL hygiene: host contract keys never reach the product",
     assertNoContractKeys(loc.search);
   });
 
-  test("with a warm cache, when the product loads, the host contract keys are still not visible in the product's URL", async ({
+  test("As a user with a warm cache, when the product loads, the host contract keys are still not visible in the product's URL", async ({
     page,
   }) => {
     // Given
@@ -180,7 +180,7 @@ test.describe("Sandbox URL hygiene: host contract keys never reach the product",
 });
 
 test.describe("Validator regression guards", () => {
-  test("when the sandbox receives an unknown chainBackend value, the sandbox renders an error page instead of guessing a default", async ({
+  test("As a user, when the sandbox receives an unknown network transport value, the sandbox renders an error page instead of guessing a default", async ({
     browser,
   }) => {
     // Given
@@ -219,7 +219,7 @@ test.describe("Validator regression guards", () => {
     }
   });
 
-  test("when I open http://<label>.dot.li/?ref=42, the unknown key reaches the product and does not trigger the validator", async ({
+  test("As a user, when I open http://<label>.dot.li/?ref=42, the unknown key reaches the product and does not trigger the validator", async ({
     page,
   }) => {
     // Given
@@ -245,7 +245,7 @@ test.describe("Validator regression guards", () => {
     assertNoContractKeys(loc.search);
   });
 
-  test("when I open http://<label>.dot.li/?chainBackend=foo, the host's valid value wins and my value is dropped from the product's URL", async ({
+  test("As a user, when I open http://<label>.dot.li/?chainBackend=foo, the host's valid network transport wins and my value is dropped from the product's URL", async ({
     page,
   }) => {
     // Given
@@ -269,7 +269,7 @@ test.describe("Validator regression guards", () => {
 });
 
 test.describe("Sandbox side-effects from URL contract keys", () => {
-  test("when I open http://<label>.dot.li/?fullReset=1, sandbox-origin IndexedDB is purged before the product loads", async ({
+  test("As a user, when I open http://<label>.dot.li/?fullReset=1, sandbox-origin IndexedDB is purged before the product loads", async ({
     browser,
   }) => {
     // Given

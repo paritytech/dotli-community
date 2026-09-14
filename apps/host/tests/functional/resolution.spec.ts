@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Cold resolution test against every supported backend, plus warm start
- * across a browser restart.
+ * Cold resolution test against every supported network transport, plus warm
+ * start across a browser restart.
  *
  * Env overrides: DOMAIN, PORT, TIMEOUT_MS, WARM_DOMAIN
  */
@@ -15,7 +15,7 @@ import { chromium, expect, type Page } from "@playwright/test";
 import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
-import { BACKENDS, seedSettings } from "./fixtures/settings";
+import { BACKENDS, TRANSPORT_LABELS, seedSettings } from "./fixtures/settings";
 import { BROWSER_PERMISSIONS, seedPermissions } from "./fixtures/permissions";
 import { test } from "./helpers/shared-mode-reset";
 
@@ -31,9 +31,9 @@ const SNAPSHOT_WINDOW_MS = 35_000;
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 2);
 
-test.describe("Resolution across chain backends", () => {
+test.describe("Resolution across network transports", () => {
   for (const backend of BACKENDS) {
-    test(`As a user opening ${DOTNS_NAME} via ${backend}, the shell loads the app`, async ({
+    test(`As a user opening ${DOTNS_NAME} on ${TRANSPORT_LABELS[backend]}, the shell loads the app`, async ({
       browser,
     }) => {
       // Given
@@ -62,9 +62,9 @@ interface SmoldotDbState {
 /**
  * Read the provider's smoldot database store from the protocol iframe.
  *
- * The store lives on the protocol origin rather than the product's, and in
- * the default backend the provider writes it from a SharedWorker, so this is
- * the only vantage point the test has on warm start.
+ * The store lives on the protocol origin rather than the product's, and the
+ * warm-start transport writes it from a SharedWorker, so this is the only
+ * vantage point the test has on warm start.
  */
 async function readSmoldotDb(page: Page): Promise<SmoldotDbState> {
   const frame = page.frames().find((f) => f.url().startsWith(PROTOCOL_ORIGIN));

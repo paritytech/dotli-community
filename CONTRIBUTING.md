@@ -9,29 +9,39 @@
 - **Structure with Given / When / Then.** Every multi-step test body uses `// Given`, `// When`, `// Then` comments to separate setup, action, and assertions.
 
 ```ts
-test("As a user using per-product smoldot, the host must only spawn one instance of the light client", async ({
-  page,
+test("As a user on a per-tab light client who turns the dotNS cache off, every visit looks the name up again", async ({
+  browser,
 }) => {
   // Given
-  await setBackend(page, "smoldot-direct");
-  await mockProtocolIframe(page, successfulResolveResponse("bafyfake..."));
-  const workerUrls: string[] = [];
-  page.on("worker", (w) => {
-    workerUrls.push(w.url());
+  const { context, page } = await setupTest(browser, {
+    backend: "smoldot-direct",
+    cacheSeed: CACHE_ENABLED,
   });
+  await page.goto(BASE_URL, { waitUntil: "commit" });
+  await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
+  await waitForCachedCid(page, DOMAIN, 5_000);
 
-  // When
-  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(5_000);
+  try {
+    // When
+    await updateCacheSettings(page, SKIP_CID_ONLY);
+    await page.goto(BASE_URL, { waitUntil: "commit" });
 
-  // Then
-  const hostShellOrigin = `http://${DOMAIN}.localhost:${PORT}`;
-  const hostShellSmoldotWorkers = workerUrls.filter(
-    (url) => url.startsWith(hostShellOrigin) && url.includes("smoldot_worker"),
-  );
-  expect(hostShellSmoldotWorkers).toEqual([]);
+    // Then
+    await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
+    expect(await hostResolveStarted(page)).toBe(true);
+    expect(await hasCachedCid(page, DOMAIN)).toBe(true);
+  } finally {
+    await context.close();
+  }
 });
 ```
+
+Note what the last assertion buys. The Given already proves an entry existed, so
+without it the test would still pass if something deleted that entry between the
+two visits, and the assertion above it would then mean "nothing to skip" rather
+than "skipped". A test that can pass for a reason other than the
+one its title gives is worse than no test, because the suite reports it as
+coverage.
 
 ### How to Document
 

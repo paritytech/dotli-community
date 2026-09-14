@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Host shell settings: cache flags and chain backend selection.
+ * Host shell settings: cache flags and network transport selection.
  *
  * `skipWorkerCache` is not covered. The flag triggers an IDB purge sweep
  * in `apps/protocol/src/main.ts`, but the protocol-origin IDB it targets
@@ -21,6 +21,7 @@
 
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { defaultBackend } from "@dotli/config/mode";
 import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
@@ -36,6 +37,7 @@ import {
   CACHE_ENABLED,
   SKIP_ARCHIVE_ONLY,
   SKIP_CID_ONLY,
+  TRANSPORT_LABELS,
   updateCacheSettings,
 } from "./fixtures/settings";
 import { test } from "./helpers/shared-mode-reset";
@@ -61,6 +63,17 @@ async function readChainBackendState(
     expected,
     { timeout: 10_000 },
   );
+  // A revisit already holds the right value in localStorage, so the wait above
+  // can be satisfied before the shell has canonicalised the URL. Every
+  // non-default transport ends up named in the address bar, so wait for that
+  // too. A default one is stripped, and there is no transition to wait for.
+  if (expected !== defaultBackend()) {
+    await page.waitForFunction(
+      (e) => window.location.href.includes(`chainBackend=${e}`),
+      expected,
+      { timeout: 10_000 },
+    );
+  }
   return page.evaluate(() => ({
     chainBackend: localStorage.getItem("dotli:chain-backend"),
     cacheSettings: localStorage.getItem("dotli:cache-settings"),
@@ -75,7 +88,7 @@ async function disableSharedWorker(page: Page): Promise<void> {
 }
 
 test.describe("Settings works", () => {
-  test("As a first-time user, when I open an app it runs on its own smoldot instance for this tab", async ({
+  test("As a first-time user, I get a per-tab light client without choosing one", async ({
     page,
   }) => {
     // When
@@ -101,7 +114,7 @@ test.describe("Settings works", () => {
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user opening a link that selects ${backend}, my session runs in that mode and stays there`, async ({
+    test(`As a user opening a link that selects ${TRANSPORT_LABELS[backend]}, my session runs in that mode and stays there`, async ({
       page,
     }) => {
       // When
@@ -130,7 +143,10 @@ test.describe("Settings works", () => {
     // Then
     const state = await readChainBackendState(page, "smoldot-direct");
     expect(state.chainBackend).toBe("smoldot-direct");
-    expect(state.url).toContain("chainBackend=smoldot-direct");
+    // The link asked for the default mode, and a default axis is stripped from
+    // the address bar, so landing in it leaves a clean URL rather than one
+    // that still names it. See the contract in `packages/config/src/url-settings.ts`.
+    expect(state.url).not.toContain("chainBackend=");
   });
 
   test("As a user who arrived through such a link, reloading without it keeps me in the mode I landed in", async ({
@@ -198,7 +214,7 @@ test.describe("Settings works", () => {
     expect(state.url).toContain("chainBackend=smoldot-shared-worker");
   });
 
-  test("As a user who picked trusted providers, my address bar records it on every visit", async ({
+  test("As a user who picked trusted providers, my address bar records it", async ({
     page,
   }) => {
     // Given
@@ -234,11 +250,13 @@ test.describe("Settings works", () => {
     expect(cache.skipWorkerCache).toBe(false);
     expect(state.url).toContain("skipCidCache=1");
     expect(state.url).toContain("skipArchiveCache=1");
-    expect(state.url).toContain("skipWorkerCache=0");
+    // The worker cache was left at its default, so it is stripped rather than
+    // written back as `=0`. Only the axes I actually changed travel in the link.
+    expect(state.url).not.toContain("skipWorkerCache=");
   });
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
       // Given
@@ -263,7 +281,7 @@ test.describe("Settings works", () => {
       }
     });
 
-    test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
       // Given
@@ -283,6 +301,12 @@ test.describe("Settings works", () => {
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
         expect(await hostResolveStarted(page)).toBe(true);
+        // The entry from the first visit is still here, which is what makes the
+        // assertion above mean "skipped the cache" rather than "had nothing to
+        // skip". It survives because `updateCacheSettings` writes the stored
+        // setting directly. A user flipping the same switch on the settings
+        // screen would also hit `clearCidCache` in `packages/ui/src/topbar.ts`, which
+        // no test covers.
         expect(await hasCachedCid(page, DOMAIN)).toBe(true);
       } finally {
         await context.close();
@@ -291,7 +315,7 @@ test.describe("Settings works", () => {
   }
 
   for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the archive cache on, revisiting a site checks my local copy first`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} with the archive cache on, revisiting a site checks my local copy first`, async ({
       browser,
     }) => {
       // Given
@@ -315,7 +339,7 @@ test.describe("Settings works", () => {
       }
     });
 
-    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
+    test(`As a user on ${TRANSPORT_LABELS[backend]} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
       browser,
     }) => {
       // Given
