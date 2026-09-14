@@ -4333,6 +4333,24 @@ export type HostProductDeviceChatRequest =
         productAccountId: ProductAccountId;
         payload: HexString;
     };
+}
+/** Read the authorized wallet's public Chat identity for incoming requests. */
+ | {
+    tag: "Identity";
+    value: {
+        productAccountId: ProductAccountId;
+    };
+}
+/** Verify a peer's identity-to-device binding without exposing shared keys. */
+ | {
+    tag: "VerifyPeerDevice";
+    value: {
+        productAccountId: ProductAccountId;
+        peerIdentityAccountId: HexString;
+        peerChatPublicKey: HexString;
+        peerDeviceAccountId: HexString;
+        proof: HexString;
+    };
 };
 export const HostProductDeviceChatRequest: Codec<HostProductDeviceChatRequest>;
 /** Result of a product-device Chat v2 identity operation. */
@@ -4368,6 +4386,21 @@ export type HostProductDeviceChatResponse =
     tag: "RequestProofSigned";
     value: {
         signature: HexString;
+    };
+}
+/** Public Chat identity of the authorized wallet. */
+ | {
+    tag: "Identity";
+    value: {
+        identityAccountId: HexString;
+        chatPublicKey: HexString;
+    };
+}
+/** Result of verifying a peer identity-to-device binding. */
+ | {
+    tag: "PeerDeviceVerified";
+    value: {
+        valid: boolean;
     };
 };
 export const HostProductDeviceChatResponse: Codec<HostProductDeviceChatResponse>;
@@ -5604,7 +5637,7 @@ export { ResultAsync, SubscriptionError };
 export type { ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 1;
 export declare const TRUAPI_CODEC_VERSION: 1;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "bc027235799b1185";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "31bbc7e37560ad31";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;

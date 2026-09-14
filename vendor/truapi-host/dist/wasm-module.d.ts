@@ -1,4 +1,5 @@
 import type { PermissionAuthorizationRuntime } from "./worker-permission-authorization.js";
+import type { LocalIdentity } from "./worker-protocol.js";
 export interface WorkerCustomRendererSubscription {
     cancel(): void;
     free(): void;
@@ -40,6 +41,13 @@ export interface WorkerPairingHostRuntime extends WorkerHostRuntime {
 export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     activateLocalSession(secret: Uint8Array): Promise<void>;
     activateLocalSessionWithIdentity(secret: Uint8Array, liteUsername?: string): Promise<void>;
+    localIdentityContext(): {
+        activationId: string;
+        identityAccountId: string;
+    };
+    localIdentityAuthProof(activationId: string, challenge: Uint8Array): Uint8Array;
+    localLiteRegistrationBody(activationId: string, usernameBase: string, verifier: Uint8Array): Promise<string>;
+    refreshLocalIdentity(activationId: string): Promise<LocalIdentity>;
 }
 /** Module surface the wasm-pack glue exports. */
 export interface WasmModuleShape {

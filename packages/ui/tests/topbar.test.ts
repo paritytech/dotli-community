@@ -819,10 +819,12 @@ describe("topbar boot rehydration", () => {
     await flushMicrotasks();
 
     // Then
-    expect(document.getElementById("auth-button")?.textContent).toBe("PG");
-    expect(document.getElementById("user-popover-username")?.textContent).toBe(
-      "pgherveou.04",
-    );
+    await vi.waitFor(() => {
+      expect(document.getElementById("auth-button")?.textContent).toBe("PG");
+      expect(
+        document.getElementById("user-popover-username")?.textContent,
+      ).toBe("pgherveou.04");
+    });
   });
 
   it("As a dotli integrator, the host stays logged out when no session is persisted", async () => {

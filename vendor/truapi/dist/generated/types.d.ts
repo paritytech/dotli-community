@@ -3809,6 +3809,24 @@ export type HostProductDeviceChatRequest =
         productAccountId: ProductAccountId;
         payload: HexString;
     };
+}
+/** Read the authorized wallet's public Chat identity for incoming requests. */
+ | {
+    tag: "Identity";
+    value: {
+        productAccountId: ProductAccountId;
+    };
+}
+/** Verify a peer's identity-to-device binding without exposing shared keys. */
+ | {
+    tag: "VerifyPeerDevice";
+    value: {
+        productAccountId: ProductAccountId;
+        peerIdentityAccountId: HexString;
+        peerChatPublicKey: HexString;
+        peerDeviceAccountId: HexString;
+        proof: HexString;
+    };
 };
 export declare const HostProductDeviceChatRequest: S.Codec<HostProductDeviceChatRequest>;
 /** Result of a product-device Chat v2 identity operation. */
@@ -3844,6 +3862,21 @@ export type HostProductDeviceChatResponse =
     tag: "RequestProofSigned";
     value: {
         signature: HexString;
+    };
+}
+/** Public Chat identity of the authorized wallet. */
+ | {
+    tag: "Identity";
+    value: {
+        identityAccountId: HexString;
+        chatPublicKey: HexString;
+    };
+}
+/** Result of verifying a peer identity-to-device binding. */
+ | {
+    tag: "PeerDeviceVerified";
+    value: {
+        valid: boolean;
     };
 };
 export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;

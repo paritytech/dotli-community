@@ -144,6 +144,68 @@ describe("createChainBrokerManager", () => {
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("routes legacy extrinsic updates only to their owner and releases the watch", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote("people", "sender", (message) =>
+      messagesA.push(message),
+    );
+    manager.connectRemote("people", "receiver", (message) =>
+      messagesB.push(message),
+    );
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "author_submitAndWatchExtrinsic",
+        params: ["0x0102"],
+      }),
+    );
+    const upstream = harness.sent[0]!;
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "author_extrinsicUpdate",
+      params: { subscription: "up-legacy", result: "ready" },
+    });
+    harness.emit({ jsonrpc: "2.0", id: upstream.id, result: "up-legacy" });
+    const response: unknown = JSON.parse(messagesA[0]!);
+    if (
+      response === null ||
+      typeof response !== "object" ||
+      !("result" in response) ||
+      typeof response.result !== "string"
+    ) {
+      throw new Error("Expected a subscription token");
+    }
+    const localToken = response.result;
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "author_extrinsicUpdate",
+      params: { subscription: "up-legacy", result: { inBlock: "0xabc" } },
+    });
+    expect(messagesA.slice(1).map((message) => JSON.parse(message))).toEqual([
+      {
+        jsonrpc: "2.0",
+        method: "author_extrinsicUpdate",
+        params: { subscription: localToken, result: "ready" },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "author_extrinsicUpdate",
+        params: { subscription: localToken, result: { inBlock: "0xabc" } },
+      },
+    ]);
+    expect(messagesB).toEqual([]);
+    connectionA?.disconnect();
+    expect(harness.sent[1]).toMatchObject({
+      method: "author_unwatchExtrinsic",
+      params: ["up-legacy"],
+    });
+    manager.disconnectAll();
+  });
+
   it("releases transactionWatch subscriptions on disconnect", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);

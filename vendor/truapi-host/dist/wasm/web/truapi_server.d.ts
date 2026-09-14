@@ -199,6 +199,18 @@ export class WasmSigningHostRuntime {
      */
     disconnectSession(): Promise<void>;
     /**
+     * Return the UID public key followed by its native sr25519 backend-auth proof.
+     */
+    localIdentityAuthProof(activation_id: string, challenge: Uint8Array): Uint8Array;
+    /**
+     * Capture an opaque activation fence and its UID account.
+     */
+    localIdentityContext(): any;
+    /**
+     * Build registration JSON without exporting entropy or implementing proofs in JavaScript.
+     */
+    localLiteRegistrationBody(activation_id: string, username_base: string, verifier: Uint8Array): Promise<string>;
+    /**
      * Build a shared signing runtime from host callbacks and host config.
      */
     constructor(callbacks: any, host_config: any);
@@ -219,6 +231,10 @@ export class WasmSigningHostRuntime {
      * signing session.
      */
     productSubtreePublicKey(product_id: string, timeout_ms?: number | null): Promise<Uint8Array | undefined>;
+    /**
+     * Install freshly verified dotNS metadata only for the captured local activation.
+     */
+    refreshLocalIdentity(activation_id: string): Promise<any>;
     /**
      * Read the active local session's X25519 chat identity private key.
      */
@@ -312,20 +328,24 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_clearProductState: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_deviceEncryptionKey: (a: number) => number;
     readonly wasmsigninghostruntime_disconnectSession: (a: number) => number;
+    readonly wasmsigninghostruntime_localIdentityAuthProof: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly wasmsigninghostruntime_localIdentityContext: (a: number, b: number) => void;
+    readonly wasmsigninghostruntime_localLiteRegistrationBody: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wasmsigninghostruntime_new: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number) => void;
     readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_16607: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_16609: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4892: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4893: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_10602: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4894: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_16736: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_16738: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4931: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4932: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_10716: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4933: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

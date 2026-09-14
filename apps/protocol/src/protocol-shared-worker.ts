@@ -527,6 +527,11 @@ async function handleRequest(
       return;
     }
 
+    case "walletStorage":
+      throw new Error(
+        "Wallet storage is only available through the trusted protocol iframe",
+      );
+
     default: {
       const _method: never = request.method;
       throw new Error(`Unknown protocol method: ${_method as string}`);

@@ -271,6 +271,7 @@
 }
 .td-wallet-content p {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .td-wallet-content .td-wallet-delete {
   color: #fca5a5;

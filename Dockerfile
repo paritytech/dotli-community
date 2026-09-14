@@ -42,8 +42,8 @@ RUN bun run build:prod
 FROM nginx:alpine
 ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173
 
-# jq: the entrypoint validates the runtime network config before nginx starts.
-RUN apk add --no-cache jq
+# jq validates runtime network config; CA roots verify the identity API upstream.
+RUN apk add --no-cache jq ca-certificates
 
 COPY --from=build /src/apps/host/dist     /srv/dotli/host
 COPY --from=build /src/apps/sandbox/dist  /srv/dotli/app

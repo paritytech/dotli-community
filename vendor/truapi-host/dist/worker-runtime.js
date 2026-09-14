@@ -7,6 +7,7 @@ import { TRUAPI_CODEC_VERSION } from "@parity/truapi";
 import { createWorkerRawCallbacks, } from "./generated/worker-callbacks.js";
 import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, } from "./worker-permission-authorization.js";
 import { errorMessage } from "./error.js";
+import { resolveLocalIdentity } from "./worker-local-identity.js";
 import { handlePublishChatAction, handleRenderCustomMessageStart, stopRender, stopRendersForCore, } from "./worker-chat.js";
 import { dispatchChainResponse, dispatchSubscriptionError, dispatchSubscriptionItem, } from "./worker-dispatch.js";
 import { dispatchFrame, disposeAwaitingFrames, } from "./worker-core-registry.js";
@@ -506,6 +507,50 @@ const inFlightFrames = new Map();
 /** Live custom-message render subscriptions, keyed by main-thread render id. */
 const renders = new Map();
 let wasm = null;
+let identityAbort = null;
+const identityOperations = new Set();
+function handleLocalIdentity(requestId, registration) {
+    const rt = runtime;
+    if (!rt || !isSigningRuntime(rt) || identityAbort) {
+        postToMain({
+            kind: "localIdentityResponse",
+            requestId,
+            ok: false,
+            error: identityAbort
+                ? "local identity operation already in progress"
+                : "signing runtime is not active",
+        });
+        return;
+    }
+    const controller = new AbortController();
+    identityAbort = controller;
+    const operation = (async () => {
+        try {
+            const identity = await resolveLocalIdentity(rt, controller.signal, registration);
+            controller.signal.throwIfAborted();
+            postToMain({
+                kind: "localIdentityResponse",
+                requestId,
+                ok: true,
+                identity,
+            });
+        }
+        catch (error) {
+            postToMain({
+                kind: "localIdentityResponse",
+                requestId,
+                ok: false,
+                error: errorMessage(error),
+            });
+        }
+        finally {
+            if (identityAbort === controller)
+                identityAbort = null;
+        }
+    })();
+    identityOperations.add(operation);
+    void operation.finally(() => identityOperations.delete(operation));
+}
 function isPairingRuntime(candidate) {
     return "cancelPairing" in candidate;
 }
@@ -590,6 +635,7 @@ ctx.addEventListener("message", (ev) => {
             void handleFrame(msg.coreId, msg.bytes);
             break;
         case "disconnectSession":
+            identityAbort?.abort(new Error("local identity session disconnected"));
             void handleDisconnectSession(msg.requestId);
             break;
         case "cancelPairing":
@@ -629,6 +675,7 @@ ctx.addEventListener("message", (ev) => {
                 : Promise.reject(new Error("pairing runtime is not active")));
             break;
         case "activateLocalSession": {
+            identityAbort?.abort(new Error("local identity activation changed"));
             const { secret } = msg;
             void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => isSigningRuntime(rt)
                 ? rt.activateLocalSession(secret)
@@ -636,12 +683,19 @@ ctx.addEventListener("message", (ev) => {
             break;
         }
         case "activateLocalSessionWithIdentity": {
+            identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
             void handleSessionActivation(msg.requestId, "activateLocalSessionWithIdentity", (rt) => isSigningRuntime(rt)
                 ? rt.activateLocalSessionWithIdentity(secret, liteUsername)
                 : Promise.reject(new Error("signing runtime is not active")));
             break;
         }
+        case "refreshLocalIdentity":
+            handleLocalIdentity(msg.requestId);
+            break;
+        case "registerLocalLiteUsername":
+            handleLocalIdentity(msg.requestId, msg);
+            break;
         case "getPermissionAuthorizationStatus":
             void handleGetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request);
             break;
@@ -699,8 +753,12 @@ ctx.addEventListener("message", (ev) => {
             // down; free the captured handle after the cores finish disposing.
             const disposing = runtime;
             runtime = null;
+            identityAbort?.abort(new Error("runtime disposed"));
             void (async () => {
                 try {
+                    if (disposing && isSigningRuntime(disposing))
+                        await disposing.disconnectSession();
+                    await Promise.allSettled(identityOperations);
                     await Promise.all([...cores.keys()].map((coreId) => disposeCore(coreId)));
                     disposing?.free();
                 }

@@ -1,4 +1,6 @@
 import { DEBUG, SITE_ID } from "@dotli/config/config";
+import { getNetwork, type Network } from "@dotli/config/network";
+import type { LocalIdentity } from "@parity/truapi-host/web";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
 import { entropyToMnemonic, mnemonicToEntropy } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
@@ -14,8 +16,11 @@ import {
   readSharedAuthStorage,
   subscribeSharedAuthStorage,
   writeSharedAuthStorage,
+  requestSharedWallet,
+  subscribeSharedWallet,
 } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
+import type { SharedWalletState } from "@dotli/protocol/wallet-storage";
 import { dispatchAuthState } from "./AuthState";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
@@ -29,6 +34,166 @@ const UI_STATE_CACHE_KEY = `${SHARED_CORE_SESSION_KEY}:ui-state`;
 export const LOCAL_WALLET_ENABLED_KEY = "dotli:local-wallet-enabled";
 const EXPERIMENTAL_CORE_STORAGE_PREFIX = "dotli:experimental-core:";
 export const LOCAL_WALLET_REVISION_KEY = "dotli:local-wallet-revision";
+const VERIFIED_LOCAL_IDENTITY_PREFIX = "dotli:verified-local-identity:";
+
+export interface LocalWalletContext {
+  network: Network;
+  revision: string | null;
+}
+
+export interface LocalWalletIdentityBinding extends LocalWalletContext {
+  identityAccountId: string;
+}
+
+export function localWalletContext(): LocalWalletContext {
+  return {
+    network: getNetwork(),
+    revision: localStorage.getItem(LOCAL_WALLET_REVISION_KEY),
+  };
+}
+
+export function isCurrentLocalWallet(context: LocalWalletContext): boolean {
+  return (
+    !walletMutationPending &&
+    isExperimentalWalletActive() &&
+    context.network === getNetwork() &&
+    context.revision === localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+  );
+}
+
+// Include the network in the grant namespace as well as the replacement
+// revision. Switching chains must not silently reuse another chain's grants.
+function localWalletStorageGeneration(): string {
+  return `${getNetwork()}:${localStorage.getItem(LOCAL_WALLET_REVISION_KEY) ?? "initial"}`;
+}
+
+function verifiedLocalIdentityKey(binding: LocalWalletIdentityBinding): string {
+  return `${VERIFIED_LOCAL_IDENTITY_PREFIX}${binding.network}:${binding.identityAccountId}`;
+}
+
+function boundLocalIdentityKey(binding: LocalWalletIdentityBinding): string {
+  return `${EXPERIMENTAL_CORE_STORAGE_PREFIX}${binding.revision ?? "initial"}:${verifiedLocalIdentityKey(binding)}`;
+}
+
+function parseVerifiedLocalIdentity(
+  raw: string | null,
+  binding: LocalWalletIdentityBinding,
+  requireRevision: boolean,
+): LocalIdentity | undefined {
+  if (raw === null) {
+    return undefined;
+  }
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null) {
+      return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    if (
+      record.version !== 1 ||
+      record.network !== binding.network ||
+      record.identityAccountId !== binding.identityAccountId ||
+      !/^0x[0-9a-f]{64}$/.test(binding.identityAccountId) ||
+      (requireRevision && record.revision !== binding.revision) ||
+      (record.liteUsername !== undefined &&
+        (typeof record.liteUsername !== "string" ||
+          record.liteUsername.trim() === ""))
+    ) {
+      return undefined;
+    }
+    return {
+      identityAccountId: binding.identityAccountId,
+      ...(typeof record.liteUsername === "string"
+        ? { liteUsername: record.liteUsername }
+        : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Restore only after native activation has identified this exact wallet.
+ * The shared record contains public, previously chain-verified metadata, not
+ * entropy or grants. A product origin binds the record to the current wallet
+ * revision only after deriving the same identity natively.
+ */
+export async function readVerifiedLocalIdentity(
+  binding: LocalWalletIdentityBinding,
+): Promise<LocalIdentity | undefined> {
+  if (!isCurrentLocalWallet(binding)) {
+    return undefined;
+  }
+  let identity: LocalIdentity | undefined;
+  try {
+    identity = parseVerifiedLocalIdentity(
+      await readSharedAuthStorage(SITE_ID, verifiedLocalIdentityKey(binding)),
+      binding,
+      false,
+    );
+  } catch {
+    identity = parseVerifiedLocalIdentity(
+      localStorage.getItem(boundLocalIdentityKey(binding)),
+      binding,
+      true,
+    );
+  }
+  if (!isCurrentLocalWallet(binding)) {
+    return undefined;
+  }
+  if (identity !== undefined) {
+    localStorage.setItem(
+      boundLocalIdentityKey(binding),
+      JSON.stringify({
+        version: 1,
+        ...binding,
+        ...identity,
+      }),
+    );
+  }
+  return identity;
+}
+
+/** Called only with a successful native chain lookup/registration result. */
+export async function writeVerifiedLocalIdentity(
+  binding: LocalWalletIdentityBinding,
+  identity: LocalIdentity,
+): Promise<void> {
+  if (!isCurrentLocalWallet(binding)) {
+    throw new Error(
+      "Test wallet changed while checking its username. Try again with the current wallet.",
+    );
+  }
+  const encoded = JSON.stringify({ version: 1, ...binding, ...identity });
+  if (parseVerifiedLocalIdentity(encoded, binding, true) === undefined) {
+    throw new Error("Native identity did not match the active test wallet.");
+  }
+  // Commit under the protocol wallet lock, so a late native registration
+  // cannot publish metadata after this identity has been retired remotely.
+  await writeSharedAuthStorage(
+    SITE_ID,
+    verifiedLocalIdentityKey(binding),
+    encoded,
+    binding.revision,
+  );
+  if (!isCurrentLocalWallet(binding)) {
+    throw new Error("Test wallet changed while saving its username.");
+  }
+  localStorage.setItem(boundLocalIdentityKey(binding), encoded);
+}
+
+export function onVerifiedLocalIdentityChanged(
+  listener: () => void,
+): () => void {
+  return subscribeSharedAuthStorage((change) => {
+    if (
+      change.siteId === SITE_ID &&
+      change.key.startsWith(VERIFIED_LOCAL_IDENTITY_PREFIX)
+    ) {
+      listener();
+    }
+  });
+}
 
 export function isExperimentalWalletActive(): boolean {
   return DEBUG && localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) === "1";
@@ -151,11 +316,12 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
  * without a cached state it degrades to a bare `connected: true`.
  */
 export async function emitPersistedSessionUiState(): Promise<void> {
+  await initializeLocalWalletState();
   let hasLocalWallet = false;
   if (isExperimentalWalletActive()) {
     const secret = await readLocalWalletSecret();
     if (secret === undefined) {
-      localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+      await setLocalWalletEnabled(false);
     } else {
       secret.fill(0);
       hasLocalWallet = true;
@@ -186,9 +352,7 @@ export function createSessionStoreAdapters(): CoreStorage {
   // Capture the mode for the lifetime of these callbacks. Switching modes
   // reloads the page; pending writes must not cross into the other identity.
   const experimental = isExperimentalWalletActive();
-  const generation = experimental
-    ? localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
-    : null;
+  const generation = experimental ? localWalletStorageGeneration() : null;
   return {
     async readCoreStorage(key) {
       return readCoreStorageValue(key, experimental, generation);
@@ -197,10 +361,7 @@ export function createSessionStoreAdapters(): CoreStorage {
       await writeCoreStorageValue(key, value, experimental, generation);
     },
     async clearCoreStorage(key) {
-      if (
-        !experimental ||
-        generation === localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
-      ) {
+      if (!experimental || generation === localWalletStorageGeneration()) {
         await clearCoreStorageValue(key, experimental, generation);
       }
     },
@@ -214,7 +375,7 @@ async function readCoreStorageValue(
 ): Promise<Uint8Array | undefined> {
   if (
     experimental &&
-    generation !== localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+    (walletMutationPending || generation !== localWalletStorageGeneration())
   ) {
     return undefined;
   }
@@ -269,7 +430,7 @@ async function writeCoreStorageValue(
   const encoded = await encodeCoreStorageValue(key, value);
   if (
     !experimental ||
-    generation === localStorage.getItem(LOCAL_WALLET_REVISION_KEY)
+    (!walletMutationPending && generation === localWalletStorageGeneration())
   ) {
     localStorage.setItem(
       coreLocalStorageKey(key, experimental, generation),
@@ -452,121 +613,236 @@ export interface LocalWalletSecret {
   created: boolean;
 }
 
-/**
- * Read the browser-local wallet entropy. The persisted value is AES-GCM
- * ciphertext; its non-extractable key lives in IndexedDB beside it.
- */
-export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
-  if (!DEBUG) {
-    return undefined;
-  }
-  const db = await openKeyDb();
-  let stored: string | undefined;
-  try {
-    stored = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
-  } finally {
-    db.close();
-  }
-  if (stored?.startsWith(ENCRYPTED_VALUE_PREFIX) !== true) {
-    if (stored !== undefined) {
-      await deleteLocalWalletSecret();
+let sharedWalletState: SharedWalletState | undefined;
+let walletInitialization: Promise<void> | undefined;
+let walletHydrated = false;
+let walletSubscriptionBound = false;
+let walletMutationPending = false;
+
+/** Cache metadata only. The shared protocol record remains authoritative. */
+function acceptSharedWalletState(
+  state: SharedWalletState,
+  notify = false,
+): void {
+  if (
+    sharedWalletState !== undefined &&
+    state.version < sharedWalletState.version
+  )
+    return;
+  sharedWalletState = state;
+  const revision = localStorage.getItem(LOCAL_WALLET_REVISION_KEY);
+  const enabled = localStorage.getItem(LOCAL_WALLET_ENABLED_KEY);
+  const nextEnabled = state.enabled ? "1" : null;
+  if (revision !== state.revision) clearExperimentalCoreStorage();
+  if (state.revision === null)
+    localStorage.removeItem(LOCAL_WALLET_REVISION_KEY);
+  else localStorage.setItem(LOCAL_WALLET_REVISION_KEY, state.revision);
+  if (nextEnabled === null) localStorage.removeItem(LOCAL_WALLET_ENABLED_KEY);
+  else localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, nextEnabled);
+  if (notify && walletHydrated) {
+    // Update both guards before invoking the bridge, which disposes old signers.
+    const key =
+      revision !== state.revision
+        ? LOCAL_WALLET_REVISION_KEY
+        : enabled !== nextEnabled
+          ? LOCAL_WALLET_ENABLED_KEY
+          : null;
+    if (key !== null) {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key,
+          oldValue: key === LOCAL_WALLET_REVISION_KEY ? revision : enabled,
+          newValue:
+            key === LOCAL_WALLET_REVISION_KEY ? state.revision : nextEnabled,
+          storageArea: localStorage,
+        }),
+      );
     }
-    return undefined;
   }
-  const bytes = decodeStoredBytes(
-    stored.slice(ENCRYPTED_VALUE_PREFIX.length),
-    "local wallet entropy",
-  );
-  if (bytes === undefined || bytes.length <= CORE_SECRET_NONCE_LENGTH) {
-    await deleteLocalWalletSecret();
-    return undefined;
+}
+
+/**
+ * Hydrate from host.<root>, then migrate an origin-local encrypted wallet only
+ * if the shared store is uninitialized (or already holds exactly that wallet).
+ * A tombstone is initialized; migration can never undo a deletion.
+ */
+export function initializeLocalWalletState(): Promise<void> {
+  if (!DEBUG) return Promise.resolve();
+  if (!walletSubscriptionBound) {
+    walletSubscriptionBound = true;
+    subscribeSharedWallet((state) => acceptSharedWalletState(state, true));
+    // A suspended page may have missed a broadcast. Reconcile before reuse.
+    window.addEventListener("pageshow", () => {
+      if (!walletHydrated) return;
+      void requestSharedWallet(SITE_ID, { action: "state" })
+        .then(({ state }) => acceptSharedWalletState(state, true))
+        .catch((error: unknown) =>
+          log.warn("[dot.li] Shared wallet refresh failed:", error),
+        );
+    });
   }
+  walletInitialization ??= (async () => {
+    const wasEnabled = localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) === "1";
+    const { state } = await requestSharedWallet(SITE_ID, { action: "state" });
+    acceptSharedWalletState(state);
+    const legacy = await readLegacyLocalWallet();
+    if (legacy !== undefined) {
+      try {
+        const migrated = await requestSharedWallet(SITE_ID, {
+          action: "migrate",
+          expectedVersion: state.version,
+          secret: legacy.secret,
+          enabled: wasEnabled,
+        });
+        acceptSharedWalletState(migrated.state);
+        await removeLegacyLocalWallet(legacy.encoded);
+      } finally {
+        legacy.secret.fill(0);
+      }
+    }
+    walletHydrated = true;
+  })().catch((error: unknown) => {
+    walletInitialization = undefined;
+    throw error;
+  });
+  return walletInitialization;
+}
+
+/** Strict recovery reader: malformed or undecryptable entropy is never erased. */
+async function readLegacyLocalWallet(): Promise<
+  { secret: Uint8Array<ArrayBuffer>; encoded: string } | undefined
+> {
+  const db = await openKeyDb();
   try {
+    const encoded = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
+    if (encoded === undefined) return undefined;
+    if (!encoded.startsWith(ENCRYPTED_VALUE_PREFIX))
+      throw new Error(
+        "Saved local wallet has an unknown format; its data has been preserved.",
+      );
+    const bytes = decodeStoredBytes(
+      encoded.slice(ENCRYPTED_VALUE_PREFIX.length),
+      "local wallet entropy",
+    );
+    const key = await idbGetKey(db);
+    if (
+      bytes === undefined ||
+      bytes.length <= CORE_SECRET_NONCE_LENGTH ||
+      key === undefined
+    ) {
+      throw new Error(
+        "Saved local wallet cannot be decrypted; its data has been preserved.",
+      );
+    }
     const secret = new Uint8Array(
       await crypto.subtle.decrypt(
         { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
-        await coreSecretStorageKey(),
+        key,
         bytes.slice(CORE_SECRET_NONCE_LENGTH),
       ),
     );
-    if (!isValidEntropyLength(secret.length)) {
+    if (secret.length < 16 || secret.length > 32 || secret.length % 4 !== 0) {
       secret.fill(0);
-      await deleteLocalWalletSecret();
-      return undefined;
+      throw new Error(
+        "Saved local wallet entropy is invalid; its data has been preserved.",
+      );
     }
-    return secret;
-  } catch (err) {
-    log.warn("[dot.li] dropping undecryptable local wallet entropy:", err);
-    await deleteLocalWalletSecret();
-    return undefined;
-  }
-}
-
-/**
- * Return the existing local wallet entropy or create one atomically across
- * tabs. The caller must zero the returned page-memory copy after handing it to
- * the signing worker.
- */
-export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
-  if (!DEBUG) {
-    throw new Error("Experimental wallets require a debug build");
-  }
-  const existing = await readLocalWalletSecret();
-  if (existing !== undefined) {
-    return { secret: existing, created: false };
-  }
-
-  const secret = crypto.getRandomValues(new Uint8Array(32));
-  let encoded: string;
-  try {
-    encoded = await encryptLocalWalletSecret(secret);
-  } catch (error) {
-    secret.fill(0);
-    throw error;
-  }
-
-  const db = await openKeyDb();
-  try {
-    await idbWriteString(db, LOCAL_WALLET_SECRET_ID, encoded);
-    return { secret, created: true };
-  } catch (err) {
-    const winner = await idbGetString(db, LOCAL_WALLET_SECRET_ID);
-    secret.fill(0);
-    if (winner === undefined) {
-      throw err;
-    }
+    return { secret, encoded };
   } finally {
     db.close();
   }
+}
 
-  const winner = await readLocalWalletSecret();
-  if (winner === undefined) {
-    throw new Error("local wallet creation winner could not be decrypted");
+/** Snapshot the legacy slot before an explicit replacement, without decrypting it. */
+async function legacyWalletCiphertext(): Promise<string | undefined> {
+  const db = await openKeyDb();
+  try {
+    return await idbGetString(db, LOCAL_WALLET_SECRET_ID);
+  } finally {
+    db.close();
   }
-  return { secret: winner, created: false };
 }
 
-function isValidEntropyLength(length: number): boolean {
-  return length >= 16 && length <= 32 && length % 4 === 0;
+/** Delete only the legacy ciphertext actually migrated, not a concurrent import. */
+async function removeLegacyLocalWallet(
+  expected: string | undefined,
+): Promise<void> {
+  const db = await openKeyDb();
+  try {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const tx = db.transaction(KEY_DB_STORE, "readwrite");
+    const store = tx.objectStore(KEY_DB_STORE);
+    const request = store.get(LOCAL_WALLET_SECRET_ID);
+    let conflict = false;
+    request.onsuccess = () => {
+      if (request.result !== undefined && request.result !== expected) {
+        conflict = true;
+        tx.abort();
+      } else store.delete(LOCAL_WALLET_SECRET_ID);
+    };
+    tx.oncomplete = () => resolve();
+    tx.onabort = tx.onerror = () => {
+      const error = new Error(
+        conflict
+          ? "Local wallet changed during migration. Export its preserved recovery phrase before replacing it."
+          : "Local wallet removal failed",
+      );
+      if (conflict) error.name = "WalletConflictError";
+      reject(error);
+    };
+    await promise;
+  } finally {
+    db.close();
+  }
 }
 
-async function encryptLocalWalletSecret(
-  secret: Uint8Array<ArrayBuffer>,
-): Promise<string> {
-  const nonce = crypto.getRandomValues(
-    new Uint8Array(CORE_SECRET_NONCE_LENGTH),
-  );
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce },
-      await coreSecretStorageKey(),
-      secret,
-    ),
-  );
-  const stored = new Uint8Array(nonce.length + ciphertext.length);
-  stored.set(nonce);
-  stored.set(ciphertext, nonce.length);
-  return ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+export async function setLocalWalletEnabled(active: boolean): Promise<void> {
+  if (!DEBUG) throw new Error("Experimental wallets require a debug build");
+  const expectedVersion = sharedWalletState?.version;
+  await initializeLocalWalletState();
+  const result = await requestSharedWallet(SITE_ID, {
+    action: "enabled",
+    expectedVersion: expectedVersion ?? sharedWalletState!.version,
+    enabled: active,
+  });
+  acceptSharedWalletState(result.state);
+}
+
+/** Caller must zero its page-memory entropy after transferring it to a signer. */
+export async function readLocalWalletSecret(): Promise<Uint8Array | undefined> {
+  if (!DEBUG) return undefined;
+  await initializeLocalWalletState();
+  const result = await requestSharedWallet(SITE_ID, { action: "read" });
+  if (
+    sharedWalletState !== undefined &&
+    result.state.version < sharedWalletState.version
+  ) {
+    result.secret?.fill(0);
+    throw new Error("Wallet changed while reading its entropy. Try again.");
+  }
+  acceptSharedWalletState(result.state, true);
+  return result.secret;
+}
+
+export async function createLocalWalletSecret(): Promise<LocalWalletSecret> {
+  if (!DEBUG) throw new Error("Experimental wallets require a debug build");
+  const expectedVersion = sharedWalletState?.version;
+  await initializeLocalWalletState();
+  const result = await requestSharedWallet(SITE_ID, {
+    action: "create",
+    expectedVersion: expectedVersion ?? sharedWalletState!.version,
+  });
+  if (
+    sharedWalletState !== undefined &&
+    result.state.version < sharedWalletState.version
+  ) {
+    result.secret?.fill(0);
+    throw new Error("Wallet changed during creation. Try again.");
+  }
+  acceptSharedWalletState(result.state);
+  if (result.secret === undefined)
+    throw new Error("Shared wallet creation returned no entropy");
+  return { secret: result.secret, created: result.created === true };
 }
 
 /**
@@ -579,7 +855,15 @@ export async function exportLocalWalletMnemonic(): Promise<string> {
   if (!DEBUG) {
     throw new Error("Experimental wallets require a debug build");
   }
-  const secret = await readLocalWalletSecret();
+  let secret: Uint8Array | undefined;
+  try {
+    secret = await readLocalWalletSecret();
+  } catch (error) {
+    // Migration conflicts must remain recoverable through the existing export UI.
+    if (!(error instanceof Error) || error.name !== "WalletConflictError")
+      throw error;
+    secret = (await readLegacyLocalWallet())?.secret;
+  }
   if (secret === undefined) {
     throw new Error(
       "No test wallet is stored. Enable one or import a phrase first.",
@@ -594,8 +878,8 @@ export async function exportLocalWalletMnemonic(): Promise<string> {
 
 /**
  * Import checksum-validated English BIP-39 entropy (12/15/18/21/24 words).
- * No passphrase or custom derivation path is supported. Stop old signing
- * workers only after validation/encryption, immediately before replacement.
+ * No passphrase or custom derivation path is supported. The callback retires
+ * old signers before the revision-checked shared replacement.
  */
 export async function importLocalWalletMnemonic(
   mnemonic: string,
@@ -613,39 +897,78 @@ export async function importLocalWalletMnemonic(
       "Invalid recovery phrase. Use 12, 15, 18, 21 or 24 English BIP-39 words with a valid checksum; no passphrase or derivation path.",
     );
   }
+  if (walletMutationPending) {
+    secret.fill(0);
+    throw new Error("Another wallet change is already in progress");
+  }
+  walletMutationPending = true;
+  const startingVersion = sharedWalletState?.version;
   try {
-    const encoded = await encryptLocalWalletSecret(secret);
-    const db = await openKeyDb();
+    const legacy = await legacyWalletCiphertext();
     try {
-      beforeReplace?.();
-      await idbWriteString(db, LOCAL_WALLET_SECRET_ID, encoded, true);
-      clearExperimentalCoreStorage();
-    } finally {
-      db.close();
+      await initializeLocalWalletState();
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.name !== "WalletConflictError" ||
+        sharedWalletState === undefined
+      )
+        throw error;
     }
+    const expectedVersion = startingVersion ?? sharedWalletState!.version;
+    beforeReplace?.();
+    const result = await requestSharedWallet(SITE_ID, {
+      action: "import",
+      expectedVersion,
+      secret,
+    });
+    acceptSharedWalletState(result.state);
+    await removeLegacyLocalWallet(legacy);
+    walletHydrated = true;
+    walletInitialization = Promise.resolve();
   } finally {
     secret.fill(0);
+    walletMutationPending = false;
   }
 }
 
-/** Permanently remove the browser-local wallet identity from this origin. */
+/** Permanently delete the shared wallet, retaining its anti-resurrection tombstone. */
 export async function deleteLocalWalletSecret(): Promise<void> {
   if (!DEBUG) {
     throw new Error("Experimental wallets require a debug build");
   }
-  const db = await openKeyDb();
+  if (walletMutationPending)
+    throw new Error("Another wallet change is already in progress");
+  walletMutationPending = true;
+  const expectedVersion = sharedWalletState?.version;
   try {
-    await idbDelete(db, LOCAL_WALLET_SECRET_ID);
+    const legacy = await legacyWalletCiphertext();
+    try {
+      await initializeLocalWalletState();
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.name !== "WalletConflictError" ||
+        sharedWalletState === undefined
+      )
+        throw error;
+    }
+    const result = await requestSharedWallet(SITE_ID, {
+      action: "delete",
+      expectedVersion: expectedVersion ?? sharedWalletState!.version,
+    });
+    acceptSharedWalletState(result.state);
+    await removeLegacyLocalWallet(legacy);
+    walletHydrated = true;
+    walletInitialization = Promise.resolve();
   } finally {
-    db.close();
+    walletMutationPending = false;
   }
-  clearExperimentalCoreStorage();
 }
 
 function clearExperimentalCoreStorage(): void {
-  // A replacement has its own grant namespace, including across tabs. Retired
-  // workers cannot publish old grants into the imported identity's namespace.
-  localStorage.setItem(LOCAL_WALLET_REVISION_KEY, crypto.randomUUID());
+  // Retired workers cannot publish old grants into the replacement namespace.
+  // Revision itself is exclusively assigned by the authoritative shared store.
   for (let index = localStorage.length - 1; index >= 0; index--) {
     const key = localStorage.key(index);
     if (key?.startsWith(EXPERIMENTAL_CORE_STORAGE_PREFIX) === true) {
@@ -772,48 +1095,6 @@ function idbGetString(
   };
   request.onerror = () => {
     reject(request.error ?? new Error("indexedDB string read failed"));
-  };
-  return promise;
-}
-
-function idbWriteString(
-  db: IDBDatabase,
-  key: string,
-  value: string,
-  replace = false,
-): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
-  const tx = db.transaction(KEY_DB_STORE, "readwrite");
-  const store = tx.objectStore(KEY_DB_STORE);
-  if (replace) {
-    store.put(value, key);
-  } else {
-    store.add(value, key);
-  }
-  tx.oncomplete = () => {
-    resolve(undefined);
-  };
-  tx.onerror = () => {
-    reject(tx.error ?? new Error("indexedDB string write failed"));
-  };
-  tx.onabort = () => {
-    reject(tx.error ?? new Error("indexedDB string write aborted"));
-  };
-  return promise;
-}
-
-function idbDelete(db: IDBDatabase, key: string): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
-  const tx = db.transaction(KEY_DB_STORE, "readwrite");
-  tx.objectStore(KEY_DB_STORE).delete(key);
-  tx.oncomplete = () => {
-    resolve(undefined);
-  };
-  tx.onerror = () => {
-    reject(tx.error ?? new Error("indexedDB delete failed"));
-  };
-  tx.onabort = () => {
-    reject(tx.error ?? new Error("indexedDB delete aborted"));
   };
   return promise;
 }
