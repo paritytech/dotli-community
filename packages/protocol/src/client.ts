@@ -19,6 +19,7 @@ import type {
 } from "@dotli/resolver/manifest";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
+  getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
   getActiveSupportedGenesisHashes,
   getNetwork,
@@ -780,6 +781,21 @@ export function onProtocolNetBytes(
   };
 }
 
+/**
+ * Whether a connection to this chain can actually be served.
+ *
+ * Wider than `isRemoteChainSupported`: the advertised set is curated for
+ * dApps, while Bulletin stays connectable in gateway mode so the network
+ * panel can watch its blocks over the configured RPC.
+ */
+export function isRemoteChainConnectable(genesisHash: string): boolean {
+  const supported =
+    getBackend() === "rpc-gateway"
+      ? getActiveCoreGatewaySupportedGenesisHashes()
+      : getActiveSupportedGenesisHashes();
+  return supported.has(genesisHash.toLowerCase());
+}
+
 export function isRemoteChainSupported(genesisHash: string): boolean {
   // Advertise only what the *active* backend can actually serve. Gateway mode
   // bridges a curated RPC subset, while smoldot can run any configured chain.
@@ -810,7 +826,7 @@ function buildJsonRpcError(
 export function createRemoteChainProvider(
   genesisHash: string,
 ): JsonRpcProvider | null {
-  if (!isRemoteChainSupported(genesisHash)) {
+  if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
 

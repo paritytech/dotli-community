@@ -587,6 +587,13 @@ export function getActiveGatewaySupportedGenesisHashes(): Set<string> {
   return new Set(getActiveGatewayChains().map((c) => c.genesis.toLowerCase()));
 }
 
+/** Genesis hashes (lowercased) the core gateway seam can serve. */
+export function getActiveCoreGatewaySupportedGenesisHashes(): Set<string> {
+  return new Set(
+    getActiveCoreGatewayChains().map((c) => c.genesis.toLowerCase()),
+  );
+}
+
 /** Gateway chains accepted by the shared Rust-core connection callback. */
 export function getActiveCoreGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();

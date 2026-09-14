@@ -592,9 +592,6 @@ interface Fact {
   hint: string;
 }
 
-/** Starts the next group on its own row. */
-const GROUP_BREAK: Fact = { key: "", value: "", hint: "" };
-
 function summaryFacts(model: ResolutionModel): Fact[] {
   const s = model.summary;
   return [
@@ -615,7 +612,6 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       valueHtml: transportText(s),
       hint: "How this load reached the chain. The smoldot light client verifies blocks itself; the RPC gateway trusts a remote node to answer honestly.",
     },
-    GROUP_BREAK,
     {
       key: "elapsed",
       value: formatMs(model.elapsedMs),
@@ -636,9 +632,8 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       value: s.firstByteMs === null ? "—" : formatMs(s.firstByteMs),
       hint: "Roughly when data first moved. The byte counter is only sampled about once a second, so treat this as an upper bound. Everything before it is finding peers and opening connections.",
     },
-    GROUP_BREAK,
     {
-      key: "sync download",
+      key: "downloaded during connection",
       value: s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
       hint: "Every byte the light client pulled off the network, counted from boot until the app frame was attached. Warp syncing the relay dominates a cold start. The download of the app itself rides the same connections but mostly arrives after this stops counting, so it is largely absent here.",
     },
@@ -657,7 +652,6 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       value: formatRate(s.peakBytesPerSecond),
       hint: "The best rate seen between two byte samples, which are about a second apart. That makes it a one-second average, not a true instantaneous peak.",
     },
-    GROUP_BREAK,
     {
       key: "CID cache",
       value: "",
@@ -675,12 +669,11 @@ function summaryFacts(model: ResolutionModel): Fact[] {
 
 function renderSummary(model: ResolutionModel): string {
   const cards = summaryFacts(model)
-    .map((fact) =>
-      fact === GROUP_BREAK
-        ? `<div class="td-res-group-break"></div>`
-        : `<div class="td-res-fact"><dt>${escapeHtml(fact.key)}` +
-          `<span class="td-res-info" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose aria-hidden="true">i</span>` +
-          `</dt><dd>${fact.valueHtml ?? escapeHtml(fact.value)}</dd></div>`,
+    .map(
+      (fact) =>
+        `<div class="td-res-fact"><dt>${escapeHtml(fact.key)}` +
+        `<span class="td-res-info" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose aria-hidden="true">i</span>` +
+        `</dt><dd>${fact.valueHtml ?? escapeHtml(fact.value)}</dd></div>`,
     )
     .join("");
   return `<dl class="td-res-summary">${cards}</dl>`;

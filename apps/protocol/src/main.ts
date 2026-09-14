@@ -76,8 +76,8 @@ import {
 // these either. Smoldot for shared-worker mode lives inside
 // `./protocol-shared-worker.ts`, which is already a separate bundle.
 import {
-  createRpcChainProvider,
-  isRpcChainSupported,
+  createCoreRpcChainProvider,
+  isCoreRpcChainSupported,
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
 import { errorName, serializeError } from "@dotli/shared/errors";
@@ -888,8 +888,11 @@ function initRpcMode(): void {
   );
 
   const engine = createEngine({
-    createChainProvider: createRpcChainProvider,
-    isChainSupported: isRpcChainSupported,
+    // The core set rather than the advertised one, so the network panel can
+    // watch Bulletin blocks over its configured RPC. Advertisement to dApps
+    // stays curated separately in `isRemoteChainSupported`.
+    createChainProvider: createCoreRpcChainProvider,
+    isChainSupported: isCoreRpcChainSupported,
     // No resolver: gateway-mode resolution doesn't go through this iframe.
   });
 

@@ -27,6 +27,7 @@ import {
 } from "@dotli/shared/active-manifest";
 import {
   createRemoteChainProvider,
+  isRemoteChainConnectable,
   isRemoteChainSupported,
 } from "@dotli/protocol/client";
 import {
@@ -1265,7 +1266,7 @@ function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
 
 function createBlockSource(): BlockSource {
   return {
-    isReachable: (genesis) => isRemoteChainSupported(genesis),
+    isReachable: (genesis) => isRemoteChainConnectable(genesis),
     subscribe: (genesis, onBlock) => {
       // A record rather than two locals: the returned unsubscribe runs after
       // this function has gone, and a plain boolean flipped from there cannot
@@ -1394,7 +1395,6 @@ function stripCapacity(strip: HTMLElement, fallback: number): number {
 
 function renderChainsPopover(parent: HTMLElement): void {
   parent.replaceChildren();
-  const backend = getBackend();
 
   appendSectionHeader(parent, "Network");
   const statusRow = document.createElement("div");
@@ -1404,20 +1404,14 @@ function renderChainsPopover(parent: HTMLElement): void {
   statusRow.append(dot, text);
   parent.appendChild(statusRow);
 
-  const trusted = backend === "rpc-gateway";
-
+  // The verdict reads from block arrivals, which both backends produce, so a
+  // gateway connection reports its health the same way a light client does.
   const paint = (): void => {
     const { text: label, tone } = describeLiveNetwork();
     dot.className = `chains-status-dot is-${tone}`;
     text.textContent = label;
   };
-
-  if (trusted) {
-    dot.className = "chains-status-dot is-idle";
-    text.textContent = "Served by a trusted provider, not a light client here";
-  } else {
-    paint();
-  }
+  paint();
 
   // A labelled strip per chain rather than a table. The bars answer whether
   // blocks are arriving. The peer count beside the name answers who they are
@@ -1467,7 +1461,7 @@ function renderChainsPopover(parent: HTMLElement): void {
     if (cell === undefined) {
       return;
     }
-    if (trusted || !chain.reachable || chain.peers === null) {
+    if (!chain.reachable || chain.peers === null) {
       cell.textContent = "";
       cell.removeAttribute("aria-label");
       return;
@@ -1488,10 +1482,7 @@ function renderChainsPopover(parent: HTMLElement): void {
         continue;
       }
       if (!chain.reachable) {
-        cell.textContent =
-          chain.role === "bulletin" && trusted
-            ? "served over the IPFS gateway"
-            : "no endpoint on this network";
+        cell.textContent = "no endpoint on this network";
         cell.classList.add("is-unavailable");
         continue;
       }
@@ -1565,9 +1556,7 @@ function renderChainsPopover(parent: HTMLElement): void {
       }
     }
     updatePending();
-    if (!trusted) {
-      paint();
-    }
+    paint();
   };
 
   // Countdown copy is honest by construction: it never shows zero or a
@@ -1622,8 +1611,16 @@ function renderChainsPopover(parent: HTMLElement): void {
   parent.appendChild(footer);
 
   const renderTransfer = (): void => {
+    // Speed and size describe the load. Once the product is on screen they
+    // describe history, so the footer empties rather than sitting at its
+    // final numbers forever.
+    if (currentProductLabel !== null) {
+      speedRow.textContent = "";
+      sizeRow.textContent = "";
+      return;
+    }
     const { bytesPerSecond, fetched, total } = getTransfer();
-    if (trusted || bytesPerSecond === null) {
+    if (bytesPerSecond === null) {
       speedRow.textContent = "";
     } else {
       speedRow.innerHTML =

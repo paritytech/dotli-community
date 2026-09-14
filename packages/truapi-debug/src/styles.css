@@ -855,21 +855,13 @@
 }
 .td-res-summary {
   display: grid;
-  /* Capped rather than filling the panel. Bottom-docked the panel is as wide as
-     the window, which gave eleven columns and crushed all thirteen cards onto
-     one line. Four columns keeps each group readable as a row. */
-  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
-  max-width: 640px;
+  /* Fills the panel. A minimum wide enough that thirteen cards settle into
+     about two rows on a bottom dock rather than a crushed single line. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px 14px;
   /* Explicit, because this is a `dl` and would otherwise pick up the browser's
      default block margin. */
   margin: 0 0 12px;
-}
-/* Starts the next group on its own row whatever the column count, so the
-   grouping survives a narrow dock and a dragged resize. */
-.td-res-group-break {
-  grid-column: 1 / -1;
-  height: 0;
 }
 /* The only hover target in the summary. Hovering a card itself does nothing,
    so the pointer can cross the grid without tooltips firing. */
@@ -899,8 +891,6 @@
 .td-res-fact dt {
   display: flex;
   align-items: center;
-}
-.td-res-fact dt {
   color: #6b7280;
   font-size: 9.5px;
   letter-spacing: 0.04em;
