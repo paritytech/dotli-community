@@ -1326,6 +1326,11 @@ function formatSize(bytes: number): string {
 }
 
 function formatRate(bytesPerSecond: number): string {
+  // Below half a kilobyte the kB rounding reads "0 kB/s", which says the
+  // opposite of what is happening: bytes are moving, just barely.
+  if (bytesPerSecond < 1024) {
+    return `${String(Math.round(bytesPerSecond))} B/s`;
+  }
   return bytesPerSecond < 1_048_576
     ? `${String(Math.round(bytesPerSecond / 1024))} kB/s`
     : `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;

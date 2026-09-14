@@ -46,8 +46,15 @@ const CHAIN_WORDS: Record<CriticalChain, string> = {
 };
 
 function throughput(bytesPerSecond: number | null): string | null {
-  if (bytesPerSecond === null || bytesPerSecond <= 0) {
+  // Under a byte a second there is no honest number to print, and the sentence
+  // for "connected but nothing arriving" already covers it.
+  if (bytesPerSecond === null || bytesPerSecond < 1) {
     return null;
+  }
+  // Below half a kilobyte the kB rounding reads "0 kB/s", which says the
+  // opposite of what is happening: bytes are moving, just barely.
+  if (bytesPerSecond < 1024) {
+    return `${String(Math.round(bytesPerSecond))} B/s`;
   }
   return bytesPerSecond < 1_048_576
     ? `${String(Math.round(bytesPerSecond / 1024))} kB/s`
