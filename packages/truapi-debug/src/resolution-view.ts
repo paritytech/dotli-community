@@ -190,20 +190,18 @@ export function buildResolution(
     flowId: load[0].flowId,
     startedAt,
     elapsedMs: Math.max(0, endedAt - startedAt),
-    rows: withLatestPeers(buildRows(mine, startedAt, endedAt), load),
+    rows: withLatestPeers(buildRows(mine, startedAt, endedAt), mine),
     summary,
   };
 }
 
 /**
- * Fill in the peer count of each row from the whole load, not just the drawing
- * window.
+ * Fill in the peer count of each row from the bounded load window.
  *
  * A chain reports its phases in the first moments and finds its peers a beat
- * later, often after the last phase change that bounds the chart. Reading the
- * count off the window alone showed "0 peers" for a chain that plainly had
- * some. Only the number is taken from outside the window. The blocks, and so
- * everything that moves, stay bounded by it.
+ * later, so the count is taken from any peer event inside the window rather
+ * than only the ones riding phase changes. Events after the window are the
+ * network panel to report: this view freezes once the resolution is over.
  */
 function withLatestPeers(
   rows: ResolutionRow[],
@@ -274,16 +272,23 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   // The chains outlive the paint on a cached load. A CID-cache hit puts the
   // product on screen in ~50ms while every chain is still `connecting`, so
   // ending the window at the paint dropped every chain event and left four
-  // empty rows. Phases stop once each chain is ready, so following them does
-  // not make the chart grow for as long as the tab is open.
-  //
-  // The sandbox starts working only once the iframe exists, so every event it
-  // reports lands after `render:iframe_ready`. Without following it the archive
-  // cache result falls outside the window and the summary reads "not reported"
-  // for a lookup that plainly happened. Bounded for the same reason as the
-  // phases: the sandbox reports during its boot and then hands over to the dApp.
-  return Math.max(last, lastChainPhase, lastSandbox);
+  // empty rows. The sandbox reports its cache answer just after the paint for
+  // the same reason. Both extensions are capped: a stall or a phase change
+  // minutes later belongs to the network panel, not to this picture of the
+  // resolution, and following it would grow the chart for as long as the tab
+  // stays open.
+  const grace = last + LOAD_END_GRACE_MS;
+  return Math.max(
+    last,
+    Math.min(lastChainPhase, grace),
+    Math.min(lastSandbox, grace),
+  );
 }
+
+// How long after the paint a chain phase or sandbox report may still extend
+// the window. Long enough for a cached load to catch its chains going ready,
+// short enough that the view settles and never moves again.
+const LOAD_END_GRACE_MS = 30_000;
 
 function buildRows(
   mine: readonly DotliDebugEvent[],
