@@ -641,7 +641,7 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
     origin:
       context.product.mode === "iframe"
         ? new URL(context.product.url, window.location.href).origin
-        : getAppOrigin(context.product.label),
+        : sandboxOriginForLabel(context.product.label),
     accountPublicKey,
     accountError,
     derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
