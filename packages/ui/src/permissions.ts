@@ -150,7 +150,7 @@ function providerFor(label: string): PermissionAuthorizationProvider | null {
   return permissionProviders.get(label)?.at(-1) ?? null;
 }
 
-function authorizationRequest(
+export function authorizationRequest(
   permission: PermissionName,
 ): PermissionAuthorizationRequest {
   if (
@@ -169,7 +169,7 @@ function authorizationRequest(
   return { tag: "Device", value: permission };
 }
 
-function fromAuthorizationStatus(
+export function fromAuthorizationStatus(
   status: PermissionAuthorizationStatus,
 ): PermissionStatus {
   switch (status) {

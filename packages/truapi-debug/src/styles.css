@@ -105,7 +105,7 @@
   position: fixed;
   bottom: 0;
   left: 0;
-  right: 0;
+  right: var(--host-inspector-width, 0px);
   background: #0b0b0b;
   color: #d4d4d4;
   border-top: 1px solid #1f1f1f;
@@ -132,13 +132,13 @@
    resize handle moves from the top edge to a 5px column on the left. */
 #truapi-debug-panel.docked-right {
   top: 0;
-  right: 0;
+  right: var(--host-inspector-width, 0px);
   bottom: 0;
   left: auto;
   width: 480px;
   height: auto;
   max-height: none;
-  max-width: 80vw;
+  max-width: min(80vw, calc(100vw - var(--host-inspector-width, 0px) - 240px));
   border-top: none;
   border-left: 1px solid #1f1f1f;
   grid-template-columns: 5px 1fr;
@@ -222,43 +222,129 @@
 .td-spacer {
   margin-left: auto;
 }
-.td-wallet-menu {
+.td-wallet-entry {
   flex-shrink: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.td-wallet-content {
-  box-sizing: border-box;
+.hi-backdrop {
   position: fixed;
-  right: 12px;
-  width: 300px;
-  max-width: calc(100vw - 24px);
-  overflow-y: auto;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+  z-index: 1400;
+}
+.hi-surface {
+  position: fixed;
+  inset: 0;
+  overflow: clip;
+  pointer-events: none;
+  z-index: 1500;
+}
+.host-inspector {
+  box-sizing: border-box;
+  pointer-events: auto;
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 420px;
+  max-width: 100%;
+  height: 100dvh;
+  padding: max(16px, var(--safe-top, 0px)) max(16px, var(--safe-right, 0px))
+    max(16px, var(--safe-bottom, 0px)) 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid #92400e;
-  border-radius: 6px;
-  background: #141414;
-  color: #fbbf24;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  z-index: 1;
-}
-.td-wallet-content p {
-  margin: 0;
+  gap: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
+  background: #141414;
+  color: #e5e5e5;
+  border-left: 1px solid #454545;
+  box-shadow: -8px 0 32px rgb(0 0 0 / 30%);
+  font:
+    13px/1.5 system-ui,
+    sans-serif;
+  z-index: 1500;
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 180ms ease-out,
+    visibility 180ms;
 }
-.td-wallet-content .td-wallet-delete {
+.host-inspector.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+.host-inspector header,
+.hi-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.host-inspector h2 {
+  margin: 0 auto 0 0;
+  font-size: 19px;
+}
+.host-inspector h3 {
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+.host-inspector p {
+  margin: 0;
+}
+.hi-view,
+.hi-product,
+.hi-resource {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.hi-product,
+.hi-resource {
+  border-top: 1px solid #383838;
+  padding-top: 12px;
+}
+.hi-tabs [aria-selected="true"] {
+  border-color: #e6007a;
+  color: #fff;
+}
+.host-inspector .td-btn {
+  padding: 7px 10px;
+  white-space: normal;
+  text-align: start;
+}
+.host-inspector :focus-visible {
+  outline: 2px solid #ff81c4;
+  outline-offset: 3px;
+}
+.host-inspector .td-wallet-delete {
   color: #fca5a5;
+}
+.host-inspector .td-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.host-inspector [hidden],
+.hi-backdrop[hidden] {
+  display: none;
+}
+.hi-activity {
+  margin: 0;
+  padding-left: 20px;
+}
+.hi-activity li {
+  padding-bottom: 10px;
 }
 .td-wallet-message {
   overflow-wrap: anywhere;
 }
-.td-wallet-content .td-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.td-wallet-content [hidden] {
-  display: none;
+@media (prefers-reduced-motion: reduce) {
+  .host-inspector {
+    transition: none;
+  }
 }
 .td-wallet-phrase {
   box-sizing: border-box;
