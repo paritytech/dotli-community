@@ -31,7 +31,9 @@ export interface SharedWalletResult {
 export function isSharedWalletState(
   value: unknown,
 ): value is SharedWalletState {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const state = value as SharedWalletState;
   return (
     Number.isSafeInteger(state.version) &&
@@ -40,4 +42,45 @@ export function isSharedWalletState(
     typeof state.enabled === "boolean" &&
     typeof state.hasWallet === "boolean"
   );
+}
+
+export function isSharedWalletOperation(
+  value: unknown,
+): value is SharedWalletOperation {
+  if (typeof value !== "object" || value === null || !("action" in value)) {
+    return false;
+  }
+  if (value.action === "state" || value.action === "read") {
+    return true;
+  }
+  if (
+    !("expectedVersion" in value) ||
+    typeof value.expectedVersion !== "number" ||
+    !Number.isSafeInteger(value.expectedVersion) ||
+    value.expectedVersion < 0
+  ) {
+    return false;
+  }
+  switch (value.action) {
+    case "create":
+    case "delete":
+      return true;
+    case "enabled":
+      return "enabled" in value && typeof value.enabled === "boolean";
+    case "import":
+    case "migrate":
+      return (
+        "secret" in value &&
+        value.secret instanceof Uint8Array &&
+        value.secret.length >= 16 &&
+        value.secret.length <= 32 &&
+        value.secret.length % 4 === 0 &&
+        (value.action === "import" ||
+          !("enabled" in value) ||
+          value.enabled === undefined ||
+          typeof value.enabled === "boolean")
+      );
+    default:
+      return false;
+  }
 }

@@ -535,6 +535,7 @@ function installExperimentalWalletControls(
 
   let pending = false;
   let disposed = false;
+  const isDisposed = (): boolean => disposed;
   let sensitiveGeneration = 0;
   let currentIdentity:
     | { identityAccountId: string; liteUsername?: string }
@@ -606,7 +607,7 @@ function installExperimentalWalletControls(
       claimNeedsRefresh ||
       !wallet.isActive() ||
       currentIdentity === undefined ||
-      !!currentIdentity.liteUsername ||
+      (currentIdentity.liteUsername ?? "") !== "" ||
       username.value.trim() === "";
     refresh.disabled = pending || !wallet.isActive();
   };
@@ -632,9 +633,10 @@ function installExperimentalWalletControls(
       currentIdentity = result;
       network.textContent = `Network: ${result.network}`;
       identity.textContent = `Identity: ${result.identityAccountId}`;
-      registeredName.textContent = result.liteUsername
-        ? `Registered Lite username: ${result.liteUsername}`
-        : "Lite username: none loaded — use Refresh to check the chain";
+      registeredName.textContent =
+        result.liteUsername !== undefined && result.liteUsername !== ""
+          ? `Registered Lite username: ${result.liteUsername}`
+          : "Lite username: none loaded — use Refresh to check the chain";
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {
         currentIdentity = undefined;
@@ -662,7 +664,7 @@ function installExperimentalWalletControls(
       register &&
       (claimNeedsRefresh ||
         currentIdentity === undefined ||
-        currentIdentity.liteUsername ||
+        (currentIdentity.liteUsername ?? "") !== "" ||
         baseUsername === "")
     ) {
       return;
@@ -689,24 +691,26 @@ function installExperimentalWalletControls(
       const result = register
         ? await wallet.claimLiteUsername(baseUsername)
         : await wallet.refreshUsername();
-      if (disposed) {
+      if (isDisposed()) {
         return;
       }
       currentIdentity = result;
       claimNeedsRefresh = false;
       identity.textContent = `Identity: ${result.identityAccountId}`;
-      registeredName.textContent = result.liteUsername
-        ? `Registered Lite username: ${result.liteUsername}`
-        : "Lite username: no registration found on chain";
+      registeredName.textContent =
+        result.liteUsername !== undefined && result.liteUsername !== ""
+          ? `Registered Lite username: ${result.liteUsername}`
+          : "Lite username: no registration found on chain";
       message.hidden = false;
-      message.textContent = result.liteUsername
-        ? `Chain ownership confirmed: ${result.liteUsername}. Shared metadata saved and running apps updated.`
-        : "Chain check complete: no Lite username is registered to this identity on this network.";
-      if (result.liteUsername) {
+      message.textContent =
+        result.liteUsername !== undefined && result.liteUsername !== ""
+          ? `Chain ownership confirmed: ${result.liteUsername}. Shared metadata saved and running apps updated.`
+          : "Chain check complete: no Lite username is registered to this identity on this network.";
+      if ((result.liteUsername ?? "") !== "") {
         username.value = "";
       }
     } catch (error) {
-      if (!disposed) {
+      if (!isDisposed()) {
         if (register) {
           claimNeedsRefresh = true;
         }
@@ -720,7 +724,7 @@ function installExperimentalWalletControls(
       }
     } finally {
       pending = false;
-      if (!disposed) {
+      if (!isDisposed()) {
         content.removeAttribute("aria-busy");
         syncButtons();
       }

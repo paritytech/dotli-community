@@ -26,9 +26,12 @@ function openDb(): Promise<IDBDatabase> {
   const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
   const request = indexedDB.open(WALLET_DB_NAME, 1);
   request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-  request.onsuccess = () => resolve(request.result);
-  request.onerror = () =>
+  request.onsuccess = () => {
+    resolve(request.result);
+  };
+  request.onerror = () => {
     reject(request.error ?? new Error("Wallet database unavailable"));
+  };
   return promise;
 }
 
@@ -38,20 +41,26 @@ function readRecord(db: IDBDatabase): Promise<WalletRecord | undefined> {
   >();
   const tx = db.transaction(STORE);
   const request = tx.objectStore(STORE).get(SLOT);
-  tx.oncomplete = () => resolve(request.result as WalletRecord | undefined);
-  tx.onabort = tx.onerror = () =>
+  tx.oncomplete = () => {
+    resolve(request.result as WalletRecord | undefined);
+  };
+  tx.onabort = tx.onerror = () => {
     reject(tx.error ?? new Error("Wallet read failed"));
+  };
   return promise;
 }
 
 /** The lock covers crypto awaits; the transaction makes key/ciphertext/state durable together. */
 function writeRecord(db: IDBDatabase, record: WalletRecord): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const { promise, resolve, reject } = Promise.withResolvers<undefined>();
   const tx = db.transaction(STORE, "readwrite");
   tx.objectStore(STORE).put(record, SLOT);
-  tx.oncomplete = () => resolve();
-  tx.onabort = tx.onerror = () =>
+  tx.oncomplete = () => {
+    resolve(undefined);
+  };
+  tx.onabort = tx.onerror = () => {
     reject(tx.error ?? new Error("Wallet write failed"));
+  };
   return promise;
 }
 
@@ -67,7 +76,9 @@ function stateOf(record: WalletRecord | undefined): SharedWalletState {
 async function decrypt(
   record: WalletRecord | undefined,
 ): Promise<Uint8Array<ArrayBuffer> | undefined> {
-  if (record?.encrypted === undefined) return undefined;
+  if (record?.encrypted === undefined) {
+    return undefined;
+  }
   if (
     record.key === undefined ||
     record.key.extractable ||
@@ -113,21 +124,28 @@ export async function handleWalletOperation(
   changed: (state: SharedWalletState) => void,
   deadlineMs?: number,
 ): Promise<SharedWalletResult> {
-  if (!navigator.locks || !crypto.subtle) {
+  if (
+    typeof navigator.locks === "undefined" ||
+    typeof crypto.subtle === "undefined"
+  ) {
     throw new Error(
       "Shared wallets require secure-context Web Locks, Web Crypto and IndexedDB",
     );
   }
   return navigator.locks.request(LOCK, async () => {
-    if (deadlineMs !== undefined && Date.now() >= deadlineMs)
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
       throw new Error("Wallet request expired");
+    }
     const db = await openDb();
     try {
       const record = await readRecord(db);
       const state = stateOf(record);
-      if (operation.action === "state") return { state };
-      if (operation.action === "read")
+      if (operation.action === "state") {
+        return { state };
+      }
+      if (operation.action === "read") {
         return { state, secret: await decrypt(record) };
+      }
       if (
         !Number.isSafeInteger(operation.expectedVersion) ||
         operation.expectedVersion !== state.version
@@ -140,18 +158,19 @@ export async function handleWalletOperation(
         return { state, secret: await decrypt(record), created: false };
       }
       if (operation.action === "migrate" || operation.action === "import") {
-        if (!validEntropy(operation.secret))
+        if (!validEntropy(operation.secret)) {
           throw new Error("Invalid wallet entropy");
+        }
       }
       if (operation.action === "migrate" && record !== undefined) {
         const existing = await decrypt(record);
         try {
           if (
-            existing !== undefined &&
-            existing.length === operation.secret.length &&
+            existing?.length === operation.secret.length &&
             existing.every((byte, index) => byte === operation.secret[index])
-          )
+          ) {
             return { state };
+          }
           throw conflict(
             "This origin has a different saved wallet, or the shared wallet was deleted. Export the preserved local recovery phrase, then explicitly import it to replace the shared wallet. Delete permanently removes both the shared wallet and this origin's saved copy.",
           );
@@ -160,20 +179,28 @@ export async function handleWalletOperation(
         }
       }
       if (operation.action === "enabled") {
-        if (typeof operation.enabled !== "boolean")
+        if (typeof operation.enabled !== "boolean") {
           throw new Error("Invalid wallet mode");
-        if (operation.enabled && !state.hasWallet)
+        }
+        if (operation.enabled && !state.hasWallet) {
           throw new Error("Create or import a wallet before enabling Lite");
-        if (state.enabled === operation.enabled) return { state };
+        }
+        if (state.enabled === operation.enabled) {
+          return { state };
+        }
       }
-      if (state.version === Number.MAX_SAFE_INTEGER)
+      if (state.version === Number.MAX_SAFE_INTEGER) {
         throw new Error("Wallet revision exhausted");
+      }
       let next: WalletRecord;
       let secret: Uint8Array<ArrayBuffer> | undefined;
       if (operation.action === "enabled") {
+        if (record === undefined) {
+          throw conflict("Wallet is unavailable");
+        }
         // Enabling does not change the identity/grant revision.
         next = {
-          ...record!,
+          ...record,
           version: state.version + 1,
           enabled: operation.enabled,
         };
@@ -184,11 +211,7 @@ export async function handleWalletOperation(
           revision: crypto.randomUUID(),
           enabled: false,
         };
-      } else if (
-        operation.action === "create" ||
-        operation.action === "import" ||
-        operation.action === "migrate"
-      ) {
+      } else {
         secret =
           operation.action === "create"
             ? crypto.getRandomValues(new Uint8Array(32))
@@ -224,13 +247,12 @@ export async function handleWalletOperation(
           secret.fill(0);
           throw error;
         }
-      } else {
-        throw new Error("Invalid wallet operation");
       }
       let returnedSecret = false;
       try {
-        if (deadlineMs !== undefined && Date.now() >= deadlineMs)
+        if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
           throw new Error("Wallet request expired");
+        }
         await writeRecord(db, next);
         const nextState = stateOf(next);
         changed(nextState);
@@ -240,15 +262,18 @@ export async function handleWalletOperation(
           ...(operation.action === "create" ? { secret, created: true } : {}),
         };
       } finally {
-        if (!returnedSecret) secret?.fill(0);
+        if (!returnedSecret) {
+          secret?.fill(0);
+        }
       }
     } finally {
       db.close();
       if (
         (operation.action === "import" || operation.action === "migrate") &&
         operation.secret instanceof Uint8Array
-      )
+      ) {
         operation.secret.fill(0);
+      }
     }
   });
 }
@@ -259,14 +284,16 @@ export async function withSharedWalletRevision(
   commit: () => void,
   deadlineMs?: number,
 ): Promise<void> {
-  if (!navigator.locks)
+  if (typeof navigator.locks === "undefined") {
     throw new Error("Shared wallets require secure-context Web Locks");
+  }
   await navigator.locks.request(LOCK, async () => {
     const db = await openDb();
     try {
       const record = await readRecord(db);
-      if (deadlineMs !== undefined && Date.now() >= deadlineMs)
+      if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
         throw new Error("Wallet request expired");
+      }
       if (
         record === undefined ||
         !record.enabled ||
