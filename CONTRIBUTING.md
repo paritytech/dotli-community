@@ -21,21 +21,27 @@ test("As a user on a per-tab light client who turns the dotNS cache off, every v
   await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
   await waitForCachedCid(page, DOMAIN, 5_000);
 
-  // When
-  await updateCacheSettings(page, SKIP_CID_ONLY);
-  await page.goto(BASE_URL, { waitUntil: "commit" });
+  try {
+    // When
+    await updateCacheSettings(page, SKIP_CID_ONLY);
+    await page.goto(BASE_URL, { waitUntil: "commit" });
 
-  // Then
-  await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
-  expect(await hostResolveStarted(page)).toBe(true);
-  expect(await hasCachedCid(page, DOMAIN)).toBe(true);
+    // Then
+    await waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct");
+    expect(await hostResolveStarted(page)).toBe(true);
+    expect(await hasCachedCid(page, DOMAIN)).toBe(true);
+  } finally {
+    await context.close();
+  }
 });
 ```
 
-Note what the last line buys. Without it the test passes whether the cache was
-skipped or was simply empty, so the assertion above it would mean nothing. A
-test that cannot fail for the reason its title gives is worse than no test,
-because the suite reports it as coverage.
+Note what the last assertion buys. The Given already proves an entry existed, so
+without it the test would still pass if something deleted that entry between the
+two visits, and the assertion above it would then mean "nothing to skip" rather
+than "skipped". A test that can pass for a reason other than the
+one its title gives is worse than no test, because the suite reports it as
+coverage.
 
 ### How to Document
 

@@ -1,13 +1,14 @@
 # Functional test analysis
 
-Status as of 2026-08-17. Investigation covered CI history, the test suite itself,
-the on-chain state of `host-playground.paseo`, and a local reproduction.
+The incident below is as of 2026-08-17. Everything about the gate as it stands
+is current with this branch. Investigation covered CI history, the test suite
+itself, the network state of `host-playground.paseo`, and a local reproduction.
 
 ## Summary
 
 The Functional job is green on `main` today (`f75874f6`). It was red for exactly
 five consecutive runs between 2026-08-04 and 2026-08-14, and the failure was
-stable rather than flaky: the same 15 specs, the same error text, and the same
+stable rather than flaky: the same 15 tests, the same error text, and the same
 run duration every time.
 
 No defect in this repository caused it. The shell could not resolve
@@ -39,23 +40,30 @@ It is low enough that any one file can vanish without tripping it. Delete all 28
 host-settings tests and the remaining 34 still clear it, which is why that file
 carries its own count.
 
-The two network-dependent thresholds are deliberately uneven. Twelve of
-`host-settings.spec.ts`'s tests resolve `host-playground.paseo` and none of them
-is tolerated, while `resolution.spec.ts` forgives two of its four for the same
-dependency. Both go red in a total outage, since three failures clear
-resolution's tolerance of two. The difference shows up in a partial one: a
-single broken transport is invisible in resolution and fires immediately in
-host-settings. That is weakness 4 read the other way round, and it is only
-comfortable to live with once Phase 0 lands. Until then a red run still leaves
-an error string and nothing to open.
-
 Two consequences follow, and both showed up in this incident.
 
-`resolution.spec.ts` tolerates two failures, so two of its three chain backends
-can be broken and the job stays green. Anything less is invisible.
+`resolution.spec.ts` tolerates two failures, so two of its four
+network-dependent tests can fail without its own gate reporting anything. Two
+broken transports usually means two failures, but the warm-start test is pinned
+to the shared light client, so breaking the shared one as one of the two costs
+three and does trip it. Under the tolerance the log still reports a count, but
+nothing says which transport broke.
 
 `navigation.spec.ts` has no threshold at all. All 12 of its tests can fail
-without affecting the job's outcome. In every red run they did.
+without the gate reading one of them. In every red run they did. The job still
+goes red on the outage that causes it, but through host-settings rather than
+through anything navigation reports.
+
+The thresholds over live-network tests are deliberately uneven. Four specs
+resolve `host-playground.paseo`. `resolution.spec.ts` forgives two of its four,
+`navigation.spec.ts` forgives all twelve, and `network-transport.spec.ts` and
+the twelve live-network tests in `host-settings.spec.ts` forgive none. A total
+outage turns three of the four red, all four resolution tests failing against a
+tolerance of two, and only navigation staying silent. The difference that
+matters shows up in a partial outage, where one broken transport is tolerated by
+resolution and immediate in host-settings. That is the first consequence above
+read the other way round, and it is only comfortable to live with once Phase 0
+lands. Until then a red run still leaves an error string and nothing to open.
 
 ## Timeline
 
@@ -118,9 +126,9 @@ sits entirely outside this repository.
 
 The commit that appears to have fixed it, `29ef38b6` "chore: refresh chain
 specs", cannot be the cause. It touched only `paseo.smol.json` and
-`previewnet.smol.json` by one line each, and the `rpc-gateway` backend failed
-identically in the red runs. That backend never loads a chain spec or a light
-client. Whatever broke was common to all three backends, which leaves only the
+`previewnet.smol.json` by one line each, and the `rpc-gateway` transport failed
+identically in the red runs. That transport never loads a chain spec or a light
+client. Whatever broke was common to all three transports, which leaves only the
 dotNS lookup.
 
 Light client peering is likewise exonerated. The `rpc-gateway` failures returned
@@ -130,7 +138,7 @@ answer from the chain, not a stall.
 Chrome Local Network Access denials appear in the logs of both red and green
 runs, so they are not the discriminator either.
 
-## Current on-chain state, verified
+## Current network state, verified
 
 `host-playground.paseo` resolves correctly right now. Read directly from
 `paseo-asset-hub-next-rpc.polkadot.io` against content resolver
@@ -143,27 +151,36 @@ runs, so they are not the discriminator either.
 - The CID matches the one published by the host-playground deploy at
   2026-08-17 11:16
 
-A local run of the three gated specs on `main` passed 31 of 31 that day, with
-resolution succeeding on all three backends. The suite is 62 tests now. The two
-files that joined the run list bring 30 of the extra 31, and `resolution.spec.ts`
-gained a warm-start test for the last one.
+A local run of the three specs in the run list on `main` that day passed 31 of
+31, with resolution succeeding on all three transports. The suite is 62 tests
+now. The two files that joined the run list bring 30 of the extra 31, and
+`resolution.spec.ts` gained a warm-start test for the last one.
 
 ## Structural weaknesses
 
 These are the reasons this incident took so long to understand, and the reasons
 it will recur.
 
-1. **The job captures no diagnostics.** `tests/playwright.base.config.ts` sets no
-   `trace`, `screenshot` or `video`, and the Functional job has no
+1. **The job captures no diagnostics.** `apps/host/tests/playwright.base.config.ts`
+   sets no `trace`, `screenshot` or `video`, and the Functional job has no
    `upload-artifact` step. A red run leaves an error string and nothing to open.
 2. **A cross-repo dependency is invisible in the failure.** The suite silently
    requires `paritytech/host-playground` to have deployed successfully to the
    matching network. Nothing in the failure output says so.
-3. **`navigation.spec.ts` is ungated.** Twelve network-dependent tests can fail
-   permanently without anyone noticing, because the threshold never reads them.
-4. **The resolution threshold hides partial outages.** One or two backends can be
-   broken indefinitely and the job stays green.
-5. **The test-side network constant is unenforced.** `apps/host/tests/env.ts:21`
+3. **`navigation.spec.ts` is ungated.** The threshold never reads its twelve
+   tests, so a regression in URL forwarding or sandbox hygiene fails silently
+   and nothing else covers that behaviour. A network outage no longer hides
+   there: navigation pins `rpc-gateway`, and the outage that fails all twelve
+   also fails four `host-settings.spec.ts` tests at a tolerance of zero.
+4. **The resolution threshold reports a count without naming the transport.**
+   One transport can stay broken indefinitely without resolution failing, and
+   so can two as long as neither is the shared light client. The log line
+   `resolution.spec.ts failures: 1` is all a reader gets, and the job itself
+   does now go red anyway, because the same outage fails four
+   `host-settings.spec.ts` tests against a tolerance of zero. That makes this a
+   reporting gap rather than a hole in the gate, which is what Phase 2's
+   per-transport reporting is for.
+5. **The test-side network constant is unenforced.** `apps/host/tests/env.ts:22`
    documents that `NETWORK` must match the first entry of the build's
    `VITE_NETWORKS`, but nothing checks it. Reordering that variable would make
    the tests assert the wrong domain while the app is correct.
@@ -174,7 +191,11 @@ it will recur.
    right about the cache and failed because the probe they used could never
    return true: `helpers/cache.ts` opened IndexedDB at version 1 while the app
    had moved on to 4, so every lookup failed with `VersionError` and read as
-   "nothing cached".
+   "nothing cached". The same helper's `waitForCachedCid` never waited either,
+   because `page.waitForFunction` does not await an async predicate. Both are
+   fixed, but only the version is covered: restore the old waiter with the
+   probe left correct and all six cache tests still pass, so nothing would
+   catch it regressing to a no-op.
    It is now in the list, gated at 0 failures and at a minimum of 28 tests,
    because the suite-wide floor is too low to notice one file dropping out.
    That count sits exactly on today's total, so deleting a test deliberately
@@ -188,6 +209,14 @@ it will recur.
    `mockProtocolIframe`. `page.on("worker")` also never reports a SharedWorker,
    so the shared variant could not observe one even unmocked. They count toward
    loading's 0-failure gate and cover nothing.
+10. **A gate is only as good as the stability of what it reads.**
+    `readChainBackendState` waited on `localStorage` alone, which a revisit
+    already satisfies, so six tests could read the address bar before the shell
+    had rewritten it. That flaked once in eight runs, invisible while the file
+    sat outside CI and a red required job the moment it joined one. The helper
+    now waits for the rewrite as well. Anything else promoted into a
+    zero-tolerance gate deserves the same look first, because `retries: 0`
+    turns a rare flake into a red job with no artifact to open.
 
 ## Phased plan
 
@@ -214,17 +243,18 @@ regression.
 - If the name has no contenthash, fail the job with an explicit message naming
   `paritytech/host-playground` as the upstream, not a generic test failure.
 - Assert at preflight that `NETWORK` matches the first entry of `VITE_NETWORKS`,
-  closing the gap at `apps/host/tests/env.ts:21`.
+  closing the gap at `apps/host/tests/env.ts:22`.
 
 ### Phase 2: close the gating holes
 
 - Give `navigation.spec.ts` a threshold. It has 12 tests and currently zero
   gating.
-- Reconsider the `resolution.spec.ts` tolerance of 2 of 3. Report per-backend
-  results so a single persistently broken backend is visible even when the job
-  is green.
+- Reconsider the `resolution.spec.ts` tolerance of 2 of 4. Now that a broken
+  transport reddens the job through host-settings, tightening it buys clarity
+  about which transport broke rather than catching anything new, so report
+  per-transport results and weigh whether the tolerance is worth keeping.
 - ~~Decide whether `host-settings.spec.ts` should run in CI.~~ Done: it is in
-  the file list with its own failure and count gates.
+  the file list with its own failure, skip and count gates.
 
 ### Phase 3: reduce the external surface
 
@@ -243,7 +273,8 @@ deployment pipeline.
 
 ### Phase 0
 
-- [ ] Enable Playwright `trace` on failure in `tests/playwright.base.config.ts`
+- [ ] Enable Playwright `trace` on failure in
+      `apps/host/tests/playwright.base.config.ts`
 - [ ] Enable Playwright `screenshot` on failure
 - [ ] Add `upload-artifact` for `apps/host/tests/functional/test-results/`
 - [ ] Add `timeout-minutes: 20` to the `functional` job
@@ -260,8 +291,8 @@ deployment pipeline.
 ### Phase 2
 
 - [ ] Add a failure threshold for `navigation.spec.ts`
-- [ ] Emit per-backend resolution results into the job summary
-- [ ] Re-evaluate the `resolution.spec.ts` tolerance of 2 of 3
+- [ ] Emit per-transport resolution results into the job summary
+- [ ] Re-evaluate the `resolution.spec.ts` tolerance of 2 of 4
 - [x] Resolve the orphaned `host-settings.spec.ts`
 
 ### Phase 3
