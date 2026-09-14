@@ -127,7 +127,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
 | `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
-| `navigateTo`                   | Opens URLs in new tabs                                                                |
+| `navigateTo`                   | Moves the current tab to another dotNS product; external URLs open in a new tab       |
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
