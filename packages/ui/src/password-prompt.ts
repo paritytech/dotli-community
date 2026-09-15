@@ -7,6 +7,7 @@
 // Follows the same DOM pattern as permission-modal.ts and signing.css.
 
 import { ERRORS } from "./errors";
+import { openModalDialog } from "./modal-dialog";
 
 /**
  * Show a password prompt modal. Resolves with the entered password,
@@ -14,9 +15,6 @@ import { ERRORS } from "./errors";
  */
 export function showPasswordPrompt(opts?: { error?: string }): Promise<string> {
   return new Promise((resolve, reject) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
-
     const modal = document.createElement("div");
     modal.className = "signing-modal";
 
@@ -57,6 +55,7 @@ export function showPasswordPrompt(opts?: { error?: string }): Promise<string> {
     input.type = "password";
     input.className = "password-prompt-input";
     input.placeholder = "Password";
+    input.setAttribute("aria-label", "Password");
     input.autocomplete = "off";
     input.spellcheck = false;
     desc.appendChild(input);
@@ -79,26 +78,41 @@ export function showPasswordPrompt(opts?: { error?: string }): Promise<string> {
     footer.appendChild(unlockBtn);
 
     modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
+
+    let settled = false;
+    function cancel(): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      dialog.close();
+      reject(new Error(ERRORS.DECRYPTION_CANCELLED));
+    }
+
+    function submit(): void {
+      const password = input.value;
+      if (settled || password === "") {
+        return;
+      }
+      settled = true;
+      dialog.close();
+      resolve(password);
+    }
+
+    // Clicking the backdrop does not dismiss. Encrypted content has no
+    // fallback to show, so the user must explicitly cancel or submit.
+    const dialog = openModalDialog(modal, {
+      dialogClass: "signing-dialog",
+      title: heading,
+      description: hint,
+      initialFocus: input,
+      onCancel: cancel,
+    });
 
     // Enable button when input is non-empty
     input.addEventListener("input", () => {
       unlockBtn.disabled = input.value === "";
     });
-
-    function cleanup(): void {
-      backdrop.remove();
-    }
-
-    function submit(): void {
-      const password = input.value;
-      if (password === "") {
-        return;
-      }
-      cleanup();
-      resolve(password);
-    }
 
     unlockBtn.addEventListener("click", submit);
     input.addEventListener("keydown", (e) => {
@@ -107,17 +121,6 @@ export function showPasswordPrompt(opts?: { error?: string }): Promise<string> {
       }
     });
 
-    cancelBtn.addEventListener("click", () => {
-      cleanup();
-      reject(new Error(ERRORS.DECRYPTION_CANCELLED));
-    });
-
-    // Clicking the backdrop should not dismiss. The user must explicitly
-    // cancel or submit. Encrypted content has no fallback to show.
-
-    // Focus the input after appending to DOM
-    requestAnimationFrame(() => {
-      input.focus();
-    });
+    cancelBtn.addEventListener("click", cancel);
   });
 }

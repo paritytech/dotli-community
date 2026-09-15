@@ -29,7 +29,7 @@ const TOPBAR_SURFACE_IDS = [
   "user-popover",
   "mode-popover",
   "permissions-popover",
-  "auth-modal-backdrop",
+  "auth-modal-dialog",
 ];
 
 // The mobile "more" flyout and the shield explainer live inside #topbar, so
@@ -158,10 +158,16 @@ function topbarHoldsFocus(): boolean {
   );
 }
 
+// Popovers flag open state with a class; the pairing <dialog> uses the
+// native open attribute.
 function hasOpenSurface(): boolean {
-  return OPEN_SURFACE_IDS.some(
-    (id) => document.getElementById(id)?.classList.contains("open") === true,
-  );
+  return OPEN_SURFACE_IDS.some((id) => {
+    const surface = document.getElementById(id);
+    return (
+      surface !== null &&
+      (surface.classList.contains("open") || surface.hasAttribute("open"))
+    );
+  });
 }
 
 /** True while the user is working in the bar, so it must stay on screen. */

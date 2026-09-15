@@ -7,6 +7,7 @@ import {
   type EnforceablePermissionName,
 } from "./permissions";
 import { blockingModalAbortError } from "./blocking-modal-queue";
+import { openModalDialog } from "./modal-dialog";
 
 // dot.li Permission request modal (vanilla DOM)
 //
@@ -108,8 +109,10 @@ export function showPermissionRequestModal(
   signal?: AbortSignal,
 ): Promise<PermissionPromptDecision> {
   return new Promise((resolve, reject) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
+    if (signal?.aborted === true) {
+      reject(blockingModalAbortError(signal.reason));
+      return;
+    }
 
     const modal = document.createElement("div");
     modal.className = "signing-modal";
@@ -184,13 +187,11 @@ export function showPermissionRequestModal(
     footer.appendChild(allowBtn);
 
     modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
 
     let settled = false;
     function cleanup(): void {
       signal?.removeEventListener("abort", onAbort);
-      backdrop.remove();
+      dialog.close();
     }
 
     function finish(decision: PermissionPromptDecision): void {
@@ -211,10 +212,21 @@ export function showPermissionRequestModal(
       reject(blockingModalAbortError(signal?.reason));
     }
 
-    if (signal?.aborted === true) {
-      onAbort();
-      return;
-    }
+    // Escape and backdrop clicks dismiss without storing a decision.
+    const dialog = openModalDialog(modal, {
+      dialogClass: "signing-dialog",
+      title: heading,
+      description: desc,
+      // Land on the safe action so a stray Enter cannot grant the permission.
+      initialFocus: denyBtn,
+      onCancel: () => {
+        finish("dismissed");
+      },
+      onBackdropClick: () => {
+        finish("dismissed");
+      },
+    });
+
     signal?.addEventListener("abort", onAbort, { once: true });
 
     denyBtn.addEventListener("click", () => {
@@ -223,13 +235,6 @@ export function showPermissionRequestModal(
 
     allowBtn.addEventListener("click", () => {
       finish("granted");
-    });
-
-    // Close on backdrop click (outside modal)
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        finish("dismissed");
-      }
     });
   });
 }
