@@ -1614,6 +1614,39 @@
 .chat-custom-spacer {
   flex: 1;
 }
+.chat-custom-image {
+  display: block;
+}
+.chat-custom-effect {
+  display: inline-block;
+  max-width: 100%;
+}
+.chat-custom-effect-rainbow {
+  background: linear-gradient(
+    90deg,
+    #ff5f6d,
+    #ffc371,
+    #47e3a0,
+    #4facfe,
+    #b06ab3,
+    #ff5f6d
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: chat-rainbow-shift 6s linear infinite;
+}
+@keyframes chat-rainbow-shift {
+  to {
+    background-position: 200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-custom-effect-rainbow {
+    animation: none;
+  }
+}
 .chat-custom-text {
   overflow-wrap: anywhere;
 }

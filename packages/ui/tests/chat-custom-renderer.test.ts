@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CustomRendererNode } from "@parity/truapi";
+import type { RendererNode } from "@parity/truapi";
 import { renderCustomNode } from "@dotli/ui/chat/custom-renderer";
 
 const noAction = (): void => undefined;
 
-function renderElement(node: CustomRendererNode): HTMLElement {
+function renderElement(node: RendererNode): HTMLElement {
   const rendered = renderCustomNode(node, noAction);
   if (!(rendered instanceof HTMLElement)) {
     throw new Error("expected an element");
@@ -14,7 +14,7 @@ function renderElement(node: CustomRendererNode): HTMLElement {
 
 describe("chat custom renderer", () => {
   it("As a product, every layout node maps onto host DOM", () => {
-    const tree: CustomRendererNode = {
+    const tree: RendererNode = {
       tag: "Column",
       value: {
         modifiers: [
@@ -23,7 +23,7 @@ describe("chat custom renderer", () => {
             tag: "Background",
             value: {
               color: "BgSurfaceContainer",
-              shape: { tag: "Rounded", value: { radius: 10 } },
+              shape: { tag: "Rounded", value: 10 },
             },
           },
         ],
@@ -43,13 +43,13 @@ describe("chat custom renderer", () => {
           {
             tag: "Row",
             value: {
-              modifiers: [{ tag: "FillWidth", value: { enabled: true } }],
+              modifiers: [{ tag: "FillWidth", value: true }],
               props: {
                 verticalAlignment: "Bottom",
                 horizontalArrangement: "End",
               },
               children: [
-                { tag: "Spacer", value: { modifiers: [], children: [] } },
+                { tag: "Spacer", value: { modifiers: [] } },
                 { tag: "Nil" },
               ],
             },
@@ -58,7 +58,7 @@ describe("chat custom renderer", () => {
             tag: "Box",
             value: {
               modifiers: [
-                { tag: "MinHeight", value: { height: 40 } },
+                { tag: "MinHeight", value: 40 },
                 {
                   tag: "Border",
                   value: {
@@ -116,9 +116,9 @@ describe("chat custom renderer", () => {
       value: {
         modifiers: [
           { tag: "Margin", value: { top: 1, end: 2, bottom: 3, start: 4 } },
-          { tag: "Width", value: { width: 120 } },
-          { tag: "Height", value: { height: 60 } },
-          { tag: "MinWidth", value: { width: 80 } },
+          { tag: "Width", value: 120 },
+          { tag: "Height", value: 60 },
+          { tag: "MinWidth", value: 80 },
         ],
         props: {},
         children: [],
@@ -195,7 +195,6 @@ describe("chat custom renderer", () => {
             enabled: true,
             valueChangeAction: "name-changed",
           },
-          children: [],
         },
       },
       onAction,
@@ -213,6 +212,60 @@ describe("chat custom renderer", () => {
       "name-changed",
       new TextEncoder().encode("Alice"),
     );
+  });
+
+  it("As a product, opacity, blending and the new node kinds map onto host DOM", () => {
+    const effect = renderElement({
+      tag: "Effect",
+      value: {
+        props: { effect: "Rainbow" },
+        children: [
+          {
+            tag: "Box",
+            value: {
+              modifiers: [
+                { tag: "Opacity", value: 51 },
+                { tag: "BlendingMode", value: "Multiply" },
+                {
+                  tag: "Background",
+                  value: { color: "BgSurfaceMain", shape: { tag: "Square" } },
+                },
+              ],
+              props: {},
+              children: [
+                {
+                  tag: "Image",
+                  value: {
+                    modifiers: [
+                      { tag: "Width", value: 24 },
+                      { tag: "Height", value: 24 },
+                    ],
+                    props: {
+                      source: { tag: "Archive", value: "icon.png" },
+                      fit: "Cover",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(effect.className).toBe(
+      "chat-custom-effect chat-custom-effect-rainbow",
+    );
+    const box = effect.children[0] as HTMLElement;
+    expect(box.style.opacity).toBe("0.2");
+    expect(box.style.mixBlendMode).toBe("multiply");
+    expect(box.style.borderRadius).toBe("0px");
+    // Image bytes are not fetched yet: the node is empty space, never an URL.
+    const image = box.children[0] as HTMLElement;
+    expect(image.className).toBe("chat-custom-image");
+    expect(image.style.width).toBe("24px");
+    expect(image.style.height).toBe("24px");
+    expect(image.childNodes).toHaveLength(0);
+    expect(image.querySelector("img")).toBeNull();
   });
 
   it("As a product, text can never inject markup", () => {
