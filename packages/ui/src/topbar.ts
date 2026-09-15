@@ -496,7 +496,8 @@ function scheduleIdle(callback: () => void): void {
 /**
  * Render one auth state. The modal lifecycle is state-driven: `Pairing`
  * opens it with the QR, `Authenticating` replaces the QR with progress,
- * `Connected` closes it, `LoginFailed` shows a retryable error, and
+ * `Connected` closes it, and `LoginFailed` shows a retryable Mobile error.
+ * `WalletUnavailable` revokes authentication without entering Mobile pairing.
  * `Disconnected` only updates the badge so an unrelated disconnect signal
  * can never close an active pairing modal.
  */
@@ -505,6 +506,10 @@ function renderAuthState(state: DotliAuthState): void {
   switch (state.tag) {
     case "Disconnected":
       renderLoggedOut();
+      break;
+    case "WalletUnavailable":
+      userPopover.classList.remove("open");
+      renderLoggedOut(state.reason);
       break;
     case "Pairing":
       openModal(
@@ -560,7 +565,7 @@ function syncExperimentalWalletPresentation(): void {
   }
 }
 
-function renderLoggedOut(): void {
+function renderLoggedOut(unavailableReason?: string): void {
   syncExperimentalWalletPresentation();
   if (isExperimentalWalletActive()) {
     const display = readLocalWalletDisplay();
@@ -568,6 +573,10 @@ function renderLoggedOut(): void {
       renderExperimentalWalletBadge();
     } else {
       renderSessionBadge(display);
+    }
+    if (unavailableReason !== undefined) {
+      authButton.title += ` — wallet unavailable, last known identity only: ${unavailableReason}`;
+    } else if (display !== undefined) {
       authButton.title += " — last known identity, verifying";
     }
   } else {

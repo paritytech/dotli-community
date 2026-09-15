@@ -20,7 +20,7 @@ async function journey(name, warmCtx) {
     }
   });
   const t0 = Date.now();
-  await p.goto("https://host-playground.westend.li/", { waitUntil: "commit" });
+  await p.goto("https://host-playground.paseoli.dev/", { waitUntil: "commit" });
   await p.locator("#chains-button.visible").waitFor({ timeout: 180000 });
   const dur = ((Date.now() - t0) / 1000).toFixed(1);
   // Give the transaction envelope time to flush after render.

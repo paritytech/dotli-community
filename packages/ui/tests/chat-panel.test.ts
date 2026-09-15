@@ -126,6 +126,27 @@ describe("chat panel", () => {
     expect(byId("chat-panel").hidden).toBe(true);
   });
 
+  it("closes authenticated Chat when the native wallet becomes unavailable", async () => {
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-wallet-unavailable");
+    const button = byId("chat-button");
+    button.click();
+    expect(byId("chat-panel").hidden).toBe(false);
+
+    window.dispatchEvent(
+      new CustomEvent("dotli:truapi-auth-state", {
+        detail: { tag: "WalletUnavailable", reason: "Native worker stopped" },
+      }),
+    );
+    expect(button.hidden).toBe(true);
+    expect(byId("chat-panel").hidden).toBe(true);
+
+    setLoggedIn(true);
+    expect(button.hidden).toBe(false);
+    expect(byId("chat-panel").hidden).toBe(true);
+  });
+
   it("As a user, an empty room list shows a waiting hint", async () => {
     const { panel } = await loadChatModules();
     panel.initChatPanel();

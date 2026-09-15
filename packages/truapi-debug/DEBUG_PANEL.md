@@ -57,7 +57,7 @@ The panel ships in every build. Default behavior depends on the build
 flag `VITE_APP_DEBUG`:
 
 - **Dev environments** (`VITE_APP_DEBUG=true`: `bun run preview:debug`
-  locally, `paseoli.dev` and `dotli.dev` in CI via the `APP_DEBUG`
+  locally, `paseoli.dev` in CI via the `APP_DEBUG`
   GitHub Environment secret): the panel auto-mounts **collapsed**
   (header-only) so it's a one-click expand away without covering
   content unsolicited.
@@ -221,6 +221,12 @@ as **verifying**, scoped to this origin's wallet revision and network. Display
 restoration is separate from native authentication: cached names cannot authorize
 claims or product permissions. Native verification replaces the display, while a
 failed check retains last-known metadata and offers a manual verification retry.
+
+A failed native worker is retired immediately. Wallet marks its last-known
+identity as display-only, disables native username and resource operations, and
+does not open a Mobile pairing dialog or automatically restart the session.
+**Retry wallet verification** creates a fresh native owner. Recovery controls
+remain available, and healthy product sessions are not disposed by this failure.
 
 See [Experimental test wallet](../../README.md#experimental-test-wallet) for
 activation, claim confirmation, custody risks, and recovery behavior.
