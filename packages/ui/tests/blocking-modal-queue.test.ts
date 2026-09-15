@@ -29,9 +29,7 @@ describe("blocking modal queue", () => {
     const camera = callbacks.permissions.devicePermission("Camera");
 
     // Then
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
+    expect(document.querySelectorAll("dialog.signing-dialog")).toHaveLength(1);
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Account Access",
     );
@@ -46,16 +44,14 @@ describe("blocking modal queue", () => {
         "Permission Request",
       );
     });
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
+    expect(document.querySelectorAll("dialog.signing-dialog")).toHaveLength(1);
 
     // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
     // Then
     await expect(camera).resolves.toEqual({ granted: true });
-    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    expect(document.querySelector("dialog.signing-dialog")).toBeNull();
     scope.dispose();
   });
 
@@ -79,7 +75,7 @@ describe("blocking modal queue", () => {
     const first = devicePermission("Notifications");
     const second = devicePermission("Notifications");
     await vi.waitFor(() => {
-      expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
+      expect(document.querySelectorAll("dialog.signing-dialog")).toHaveLength(
         1,
       );
     });
@@ -92,7 +88,7 @@ describe("blocking modal queue", () => {
       { granted: true },
       { granted: true },
     ]);
-    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    expect(document.querySelector("dialog.signing-dialog")).toBeNull();
     expect(status).toBe("Authorized");
     scope.dispose();
     unregister();
@@ -128,9 +124,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(first).rejects.toMatchObject({ name: "AbortError" });
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
+    expect(document.querySelectorAll("dialog.signing-dialog")).toHaveLength(1);
     expect(document.querySelector(".signing-field-value")?.textContent).toBe(
       "second.dot",
     );

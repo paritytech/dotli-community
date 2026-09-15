@@ -248,7 +248,12 @@
         </div>
 
         <!-- QR Pairing Modal -->
-        <div class="auth-modal-backdrop" id="auth-modal-backdrop">
+        <dialog
+            class="auth-modal-dialog"
+            id="auth-modal-dialog"
+            aria-labelledby="auth-modal-title"
+            aria-describedby="auth-modal-hint"
+        >
             <div class="auth-modal">
                 <h2 id="auth-modal-title">Login with Polkadot Mobile</h2>
                 <p class="auth-modal-reason" id="auth-modal-reason" hidden></p>
@@ -261,7 +266,7 @@
                     Cancel
                 </button>
             </div>
-        </div>
+        </dialog>
 
         <!-- User Popover -->
         <div class="user-popover" id="user-popover">
