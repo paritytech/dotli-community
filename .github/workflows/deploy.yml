@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           # Environments a PR label is allowed to target (development only).
-          ALLOWED='["paseoli.dev"]'
+          ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
             release)
               echo 'environments=["paseo.li"]' >> "$GITHUB_OUTPUT"
