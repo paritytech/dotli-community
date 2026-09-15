@@ -846,6 +846,86 @@ describe("topbar boot rehydration", () => {
     }
   });
 
+  it.each(["startup", "connected"] as const)(
+    "keeps %s wallet failures out of Mobile pairing and recovers on native success",
+    async (phase) => {
+      installTopbarDom();
+      buildFlags.debug = true;
+      vi.stubGlobal(
+        "requestIdleCallback",
+        vi.fn(() => 0),
+      );
+      // Re-import after reset: wallet mode and startup DOM are per-case state.
+      const { LOCAL_WALLET_ENABLED_KEY, writeUiStateCache } =
+        await import("@dotli/ui/host-callbacks/SessionStore");
+      localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+      const session = {
+        connected: true,
+        identityAccountId: `0x${"ab".repeat(32)}`,
+        liteUsername: "alice.02",
+        primaryUsername: "alice.02",
+      };
+      await writeUiStateCache(session);
+      const { initTopBar } = await import("@dotli/ui/topbar");
+      initTopBar();
+      if (phase === "connected") {
+        window.dispatchEvent(
+          new CustomEvent("dotli:truapi-auth-state", {
+            detail: { tag: "Connected", session },
+          }),
+        );
+      }
+      const authenticated = vi.fn();
+      const loggedOut = vi.fn();
+      window.addEventListener("dotli:authenticated", authenticated);
+      window.addEventListener("dotli:logged-out", loggedOut);
+      try {
+        window.dispatchEvent(
+          new CustomEvent("dotli:truapi-auth-state", {
+            detail: {
+              tag: "WalletUnavailable",
+              reason: "Native wallet provider closed",
+            },
+          }),
+        );
+        expect(
+          document.getElementById("user-popover-username")?.textContent,
+        ).toBe("alice.02");
+        const button = document.getElementById("auth-button");
+        expect(button?.title).toContain("unavailable");
+        expect(button?.title).not.toContain("verifying");
+        expect(
+          document
+            .getElementById("auth-modal-backdrop")
+            ?.classList.contains("open"),
+        ).toBe(false);
+        expect(authenticated).not.toHaveBeenCalled();
+        expect(loggedOut).toHaveBeenCalled();
+
+        window.dispatchEvent(
+          new CustomEvent("dotli:truapi-auth-state", {
+            detail: {
+              tag: "Connected",
+              session: {
+                ...session,
+                liteUsername: "bob.02",
+                primaryUsername: "bob.02",
+              },
+            },
+          }),
+        );
+        expect(
+          document.getElementById("user-popover-username")?.textContent,
+        ).toBe("bob.02");
+        expect(button?.title).not.toContain("unavailable");
+        expect(authenticated).toHaveBeenCalled();
+      } finally {
+        window.removeEventListener("dotli:authenticated", authenticated);
+        window.removeEventListener("dotli:logged-out", loggedOut);
+      }
+    },
+  );
+
   it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {
     // Given
     installTopbarDom();
