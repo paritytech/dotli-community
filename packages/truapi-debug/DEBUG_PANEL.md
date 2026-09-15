@@ -21,6 +21,7 @@ users who never see the panel pay zero download cost.
 - [Views](#views)
   - [List view](#list-view)
   - [Timeline view](#timeline-view)
+  - [Wallet view](#wallet-view)
 - [Filters](#filters)
 - [Detail pane](#detail-pane)
 - [Design concepts](#design-concepts)
@@ -40,10 +41,11 @@ users who never see the panel pay zero download cost.
 A resizable, dockable panel at the bottom of the viewport. It mounts
 visible whenever debug mode is on; the panel's `×` button exits debug
 mode entirely (see [Enabling and disabling](#enabling-and-disabling)).
-The primary pane offers **List** and **Timeline** event views. When the
-active product runs in PolkaVM, a live header badge and **Runtime** view
-appear with backend, startup, frame, update, translation, cache, and audio
-diagnostics. The event views retain a detail inspector and draggable splitter.
+For PolkaVM products, a live header badge and **Runtime** view show backend,
+startup, frame, update, translation, cache, and audio diagnostics.
+The **List** and **Timeline** tabs share a detail inspector for the selected
+event, with a draggable splitter between the panes. **Resolution** and the
+debug-build-only **Wallet** tab use the full pane width.
 
 Hover any element in the Timeline for a zero-delay tooltip with the
 decoded method + summary. Click any row or box to pin it in the
@@ -198,6 +200,24 @@ its header badge. Clicking the badge opens the Runtime view with:
 The snapshot is replaced in place rather than appended to List or Timeline.
 Loading another product clears it. PolkaVM no longer renders a separate
 diagnostics overlay over product content.
+
+### Wallet view
+
+In builds compiled with `VITE_APP_DEBUG=true`, Wallet contains activation,
+username claims and refresh, current-product accounts and permissions, and a
+collapsed Recovery section. The persistent header badge expands the pane and
+selects Wallet; the active account badge uses the same `dotli:wallet-open` event.
+There is no separate wallet overlay, activity viewer, or docking control.
+
+Wallet identity is owned by a persistent native host session and is available
+before any product loads. Product replacement does not clear its username or
+cancel a pending claim. Current-product details refresh independently.
+Switching away from Wallet or collapsing the pane clears sensitive Recovery
+fields without cancelling username monitoring. Closing the debug pane exits
+debug mode and reloads the page, ending that page's native session.
+
+See [Experimental test wallet](../../README.md#experimental-test-wallet) for
+activation, claim confirmation, custody risks, and recovery behavior.
 
 ## Filters
 
