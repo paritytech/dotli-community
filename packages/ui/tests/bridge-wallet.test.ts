@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState, RequiredHostCallbacks } from "@parity/truapi-host";
 import type { LocalIdentity } from "@parity/truapi-host/web";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
+import type * as BridgeModule from "@dotli/ui/bridge";
+import type * as ModalQueueModule from "@dotli/ui/blocking-modal-queue";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -151,17 +153,16 @@ const recordAuth = (event: Event) => {
   auth.push((event as CustomEvent<DotliAuthState>).detail);
 };
 
-async function boot() {
-  const [bridge, { createBlockingModalCoordinator }] = await Promise.all([
-    import("@dotli/ui/bridge"),
-    import("@dotli/ui/blocking-modal-queue"),
-  ]);
+let bridge: typeof BridgeModule;
+let createBlockingModalCoordinator: typeof ModalQueueModule.createBlockingModalCoordinator;
+
+function boot() {
   bridge.initBridgeEventListeners(createBlockingModalCoordinator());
   return bridge;
 }
 
 describe("host-owned experimental identity", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     wallet.revision = "original";
     wallet.username = undefined;
@@ -177,13 +178,17 @@ describe("host-owned experimental identity", () => {
     localStorage.setItem("dotli:local-wallet-enabled", "1");
     document.body.innerHTML = '<div id="app"></div>';
     window.addEventListener("dotli:truapi-auth-state", recordAuth);
+    [bridge, { createBlockingModalCoordinator }] = await Promise.all([
+      import("@dotli/ui/bridge"),
+      import("@dotli/ui/blocking-modal-queue"),
+    ]);
   });
   afterEach(() => {
     window.removeEventListener("dotli:truapi-auth-state", recordAuth);
   });
 
   it("queries and claims identity before a product exists", async () => {
-    const { experimentalWalletControls: controls } = await boot();
+    const { experimentalWalletControls: controls } = boot();
     await expect(controls.getIdentity()).resolves.toMatchObject({
       identityAccountId: wallet.account,
     });
@@ -204,7 +209,7 @@ describe("host-owned experimental identity", () => {
     wallet.username = "alice.westend";
     const gate = deferred<void>();
     wallet.refreshGate = gate.promise;
-    const { experimentalWalletControls: controls } = await boot();
+    const { experimentalWalletControls: controls } = boot();
     const query = controls.getIdentity();
     await vi.waitFor(() => expect(wallet.sessions).toHaveLength(1));
     expect(auth).toEqual([]);
@@ -221,7 +226,7 @@ describe("host-owned experimental identity", () => {
   });
 
   it("keeps wallet identity and global auth through failed and successful product replacement", async () => {
-    const { experimentalWalletControls: controls, renderIframe } = await boot();
+    const { experimentalWalletControls: controls, renderIframe } = boot();
     await controls.claimLiteUsername("alice");
     await renderIframe("https://first.example/", "first");
     const before = auth.slice();
@@ -245,7 +250,7 @@ describe("host-owned experimental identity", () => {
   });
 
   it("returns the confirmed wallet claim when a running product cannot refresh its account", async () => {
-    const { experimentalWalletControls: controls, renderIframe } = await boot();
+    const { experimentalWalletControls: controls, renderIframe } = boot();
     await renderIframe("https://first.example/", "first");
     wallet.failProductRefresh = true;
     await expect(controls.claimLiteUsername("alice")).resolves.toMatchObject({
@@ -261,8 +266,7 @@ describe("host-owned experimental identity", () => {
   });
 
   it("finishes an in-flight claim while a product is replaced", async () => {
-    const { experimentalWalletControls: controls, renderAppSubdomain } =
-      await boot();
+    const { experimentalWalletControls: controls, renderAppSubdomain } = boot();
     await renderAppSubdomain("first-cid", "first");
     const gate = deferred<void>();
     wallet.claimGate = gate.promise;
@@ -291,7 +295,7 @@ describe("host-owned experimental identity", () => {
     wallet.cachedUsername = "forged.westend";
     const gate = deferred<void>();
     wallet.refreshGate = gate.promise;
-    const { experimentalWalletControls: controls } = await boot();
+    const { experimentalWalletControls: controls } = boot();
     const query = controls.getIdentity();
     const failed = expect(query).rejects.toThrow("Identity chain unavailable");
     await vi.waitFor(() => expect(wallet.sessions).toHaveLength(1));
@@ -307,7 +311,7 @@ describe("host-owned experimental identity", () => {
   });
 
   it("rejects a late claim and native callback from a replaced identity", async () => {
-    const { experimentalWalletControls: controls } = await boot();
+    const { experimentalWalletControls: controls } = boot();
     await controls.getIdentity();
     const gate = deferred<void>();
     wallet.claimGate = gate.promise;
