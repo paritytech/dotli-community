@@ -12,10 +12,11 @@ import {
 /**
  * UI-level auth state dispatched on `dotli:truapi-auth-state`. Mirrors the
  * core's `AuthState` with byte fields already converted for rendering, plus
- * the pairing presentation context the topbar modal needs.
+ * pairing presentation context and persistent wallet availability.
  */
 export type DotliAuthState =
   | { tag: "Disconnected" }
+  | { tag: "WalletUnavailable"; reason: string }
   | {
       tag: "Pairing";
       deeplink: string;
