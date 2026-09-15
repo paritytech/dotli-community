@@ -45,7 +45,7 @@ import {
   type FilterState,
 } from "./filters.ts";
 import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
-import { createHostInspector } from "./host-inspector.ts";
+import { createWalletView, type WalletView } from "./wallet-view.ts";
 import {
   formatPending,
   openCalls,
@@ -200,11 +200,13 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   };
 
   const ui = buildPanel(state, store);
+  ui.tabs.wallet.hidden = options.experimentalWallet === undefined;
   const disposeWalletControls =
     options.experimentalWallet === undefined
       ? undefined
       : installExperimentalWalletControls(
           ui,
+          state,
           options.experimentalWallet,
           store,
         );
@@ -217,11 +219,42 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   // When a new product iframe is mounted, re-apply the iframe height
   // adjustment so the panel doesn't cover freshly-rendered app content.
+  let geometryFrame = 0;
+  let observedTopbar: HTMLElement | null = null;
   const onProductLoaded = (): void => {
+    const topbar =
+      document.getElementById("landing-auth") ??
+      document.getElementById("topbar");
+    if (topbar !== observedTopbar) {
+      if (observedTopbar !== null) {
+        layoutObserver.unobserve(observedTopbar);
+      }
+      chromeObserver.disconnect();
+      observedTopbar = topbar;
+      if (topbar !== null) {
+        layoutObserver.observe(topbar);
+        chromeObserver.observe(topbar, {
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden"],
+        });
+      }
+    }
     adjustIframeForPanel(ui.panel, state);
+    if (
+      geometryFrame === 0 &&
+      topbar
+        ?.getAnimations()
+        .some((animation) => animation.playState === "running") === true
+    ) {
+      geometryFrame = requestAnimationFrame(() => {
+        geometryFrame = 0;
+        onProductLoaded();
+      });
+    }
   };
   window.addEventListener("dotli:product-loaded", onProductLoaded);
   const layoutObserver = new ResizeObserver(onProductLoaded);
+  const chromeObserver = new MutationObserver(onProductLoaded);
   layoutObserver.observe(ui.panel);
   const onTopbarTransition = (event: TransitionEvent): void => {
     if (event.target instanceof HTMLElement && event.target.id === "topbar") {
@@ -233,6 +266,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   document.addEventListener("transitionend", onTopbarTransition);
 
   ui.closeBtn.addEventListener("click", () => {
+    ui.walletView?.setVisible(false);
     // Exit debug mode entirely: the panel is bound to debug mode, and
     // re-entry is via the host Settings "Open in debug mode" button.
     try {
@@ -292,7 +326,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   // Initial render + iframe adjustment.
   render(ui, state, store, { fullList: true });
-  adjustIframeForPanel(ui.panel, state);
+  onProductLoaded();
 
   return () => {
     window.clearInterval(resolutionTick);
@@ -301,6 +335,8 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
     layoutObserver.disconnect();
+    chromeObserver.disconnect();
+    cancelAnimationFrame(geometryFrame);
     window.removeEventListener("resize", onProductLoaded);
     window.removeEventListener("topbar:visibility", onProductLoaded);
     document.removeEventListener("transitionend", onTopbarTransition);
@@ -312,6 +348,19 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
 /** Adjust the currently-mounted product iframe so the panel doesn't overlay it. */
 function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
+  const topbar =
+    document.getElementById("landing-auth") ??
+    document.getElementById("topbar");
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty(
+    "--debug-content-top",
+    `${String(Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0))}px`,
+  );
+  const rect = panel.getBoundingClientRect();
+  rootStyle.setProperty(
+    "--debug-panel-width",
+    `${String(state.dock === "right" && !state.collapsed && rect.height > 0 ? rect.width : 0)}px`,
+  );
   const iframe = document.querySelector<HTMLIFrameElement>(
     'iframe:not([aria-hidden="true"])',
   );
@@ -324,21 +373,22 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     // When collapsed, the 32px header bar overlays the top-right corner
     // of the iframe rather than reserving a full-height column. Mirrors
     // how bottom-dock collapse overlays only the bottom 32px.
-    iframe.style.width = state.collapsed
-      ? "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))"
-      : `calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px) - ${String(panel.offsetWidth)}px)`;
+    iframe.style.width =
+      "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--debug-panel-width, 0px))";
   } else {
     // Host's renderIframe sets inline width:100%. Restore
     // that explicitly. Clearing to "" falls back to the HTML iframe
     // default of 300px and breaks the layout.
     iframe.style.width =
-      "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))";
+      "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
     const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
     iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px - var(--safe-bottom, 0px))`;
   }
 }
 
 function restoreIframeLayout(): void {
+  document.documentElement.style.removeProperty("--debug-content-top");
+  document.documentElement.style.removeProperty("--debug-panel-width");
   const iframe = document.querySelector<HTMLIFrameElement>(
     'iframe:not([aria-hidden="true"])',
   );
@@ -348,10 +398,10 @@ function restoreIframeLayout(): void {
   const topOffset = Math.max(0, iframe.getBoundingClientRect().top);
   iframe.style.height = `calc(100dvh - ${String(topOffset)}px - var(--safe-bottom, 0px))`;
   iframe.style.width =
-    "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))";
+    "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
 }
 
-type PanelView = "list" | "timeline" | "resolution";
+type PanelView = "list" | "timeline" | "resolution" | "wallet";
 
 interface PanelState {
   collapsed: boolean;
@@ -388,6 +438,7 @@ interface PanelUI {
   detail: HTMLDivElement;
   bodySplitter: HTMLDivElement;
   tooltip: HTMLDivElement;
+  walletView?: WalletView;
 }
 
 function buildPanel(state: PanelState, store: EventStore): PanelUI {
@@ -397,6 +448,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   panel.innerHTML = `
     <div class="td-resize-handle" role="separator" aria-orientation="horizontal"></div>
     <div class="td-header">
+      <div class="td-header-tools">
       <span class="td-title">TrUAPI Debug</span>
       <span class="td-counts">0 events</span>
       <span class="td-spacer"></span>
@@ -404,6 +456,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       <button class="td-btn td-clear" type="button">Clear</button>
       <button class="td-btn td-btn-icon td-export" type="button" title="Download as JSON" aria-label="Download as JSON">${EXPORT_ICON_SVG}</button>
       <button class="td-btn td-btn-icon td-copy" type="button" title="Copy to clipboard" aria-label="Copy to clipboard">${COPY_ICON_SVG}</button>
+      </div>
       <button class="td-btn td-btn-icon td-dock" type="button" title="Dock to right" aria-label="Dock to right"></button>
       <button class="td-btn td-btn-icon td-collapse" type="button" title="Collapse">▼</button>
       <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)">×</button>
@@ -439,6 +492,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
           <button class="td-tab active" role="tab" data-view="list" type="button">List</button>
           <button class="td-tab" role="tab" data-view="timeline" type="button">Timeline</button>
           <button class="td-tab" role="tab" data-view="resolution" type="button">Resolution</button>
+          <button class="td-tab" id="td-tab-wallet" role="tab" aria-controls="td-wallet-view" data-view="wallet" type="button">Wallet</button>
         </div>
         <div class="td-list" role="list" tabindex="0"></div>
         <!-- timeline mount point — populated at setup time -->
@@ -495,6 +549,9 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       resolution: panel.querySelector(
         '.td-tab[data-view="resolution"]',
       ) as HTMLButtonElement,
+      wallet: panel.querySelector(
+        '.td-tab[data-view="wallet"]',
+      ) as HTMLButtonElement,
     },
     list: panel.querySelector(".td-list") as HTMLDivElement,
     timeline,
@@ -520,12 +577,24 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
 
 function installExperimentalWalletControls(
   ui: PanelUI,
+  state: PanelState,
   wallet: NonNullable<SetupOptions["experimentalWallet"]>,
   store: EventStore,
 ): () => void {
-  const inspector = createHostInspector(wallet, store, ui.panel);
-  const { content, overview, recovery } = inspector;
-  ui.counts.after(inspector.entry);
+  const walletView = createWalletView(wallet, store);
+  ui.walletView = walletView;
+  const { content, overview, recovery } = walletView;
+  ui.panel.querySelector(".td-views")?.append(content);
+  ui.panel.querySelector(".td-header")?.prepend(walletView.entry);
+  const openWallet = (): void => {
+    if (state.collapsed) {
+      ui.collapseBtn.click();
+    }
+    ui.tabs.wallet.click();
+    content.focus();
+  };
+  walletView.entry.addEventListener("click", openWallet);
+  window.addEventListener("dotli:wallet-open", openWallet);
   const status = document.createElement("p");
   status.className = "td-wallet-status";
   status.textContent = wallet.isActive()
@@ -576,7 +645,7 @@ function installExperimentalWalletControls(
   usernameHint.id = "td-wallet-username-hint";
   usernameHint.className = "td-wallet-hint";
   const usernameActions = document.createElement("div");
-  usernameActions.className = "hi-actions";
+  usernameActions.className = "td-wallet-actions";
   usernameActions.append(claim, refresh);
   const activate = document.createElement("button");
   activate.type = "button";
@@ -631,7 +700,7 @@ function installExperimentalWalletControls(
   message.setAttribute("role", "alert");
   message.hidden = true;
   const walletActions = document.createElement("div");
-  walletActions.className = "hi-actions";
+  walletActions.className = "td-wallet-actions";
   walletActions.append(activate, disconnect);
   overview.append(
     walletActions,
@@ -642,7 +711,7 @@ function installExperimentalWalletControls(
     usernameLabel,
     usernameActions,
     usernameHint,
-    inspector.productDetails,
+    walletView.productDetails,
   );
   const recoveryHeading = document.createElement("h3");
   recoveryHeading.textContent = "Recovery settings";
@@ -724,7 +793,7 @@ function installExperimentalWalletControls(
           ? ""
           : `For identity ${operation.identity.identityAccountId} on ${operation.identity.network}. The selected wallet changed; this result will not replace its identity. `) +
         (operation.register
-          ? "Waiting for chain ownership confirmation. Closing this inspector does not cancel the claim."
+          ? "Waiting for chain ownership confirmation. Leaving the Wallet tab does not cancel the claim."
           : "Checking chain ownership only; no registration is submitted.");
     } else if (activating) {
       title = "Enabling test wallet…";
@@ -764,8 +833,8 @@ function installExperimentalWalletControls(
       operation?.register === true ? "Claim pending…" : "Claim Lite username";
     refresh.textContent =
       operation?.register === false ? "Refreshing…" : "Refresh username";
-    inspector.entry.title = `${title} — ${detail}`;
-    inspector.entry.textContent =
+    walletView.entry.title = `${title} — ${detail}`;
+    walletView.entry.textContent =
       operation !== undefined || activating
         ? title
         : !active
@@ -778,7 +847,7 @@ function installExperimentalWalletControls(
                 ? "Wallet · check failed"
                 : "Wallet · username unknown");
   };
-  const isVisible = (): boolean => !disposed && inspector.isOpen();
+  const isVisible = (): boolean => !disposed && walletView.isOpen();
   const clearSensitive = (): void => {
     sensitiveGeneration++;
     phrase.value = "";
@@ -786,14 +855,13 @@ function installExperimentalWalletControls(
     hide.hidden = true;
     input.value = "";
   };
-  inspector.onVisibilityChange(() => {
-    if (!inspector.isRecoveryVisible()) {
+  walletView.onVisibilityChange(() => {
+    if (!walletView.isRecoveryVisible()) {
       clearSensitive();
-    }
-    if (!inspector.isOpen()) {
       message.hidden = true;
-    } else if (!pending) {
-      void loadIdentity();
+    }
+    if (!walletView.isOpen()) {
+      message.hidden = true;
     }
   });
   hide.addEventListener("click", () => {
@@ -835,7 +903,7 @@ function installExperimentalWalletControls(
         clearSensitive();
       }
       currentIdentity = undefined;
-      inspector.setIdentity(undefined);
+      walletView.setIdentity(undefined);
       identity.textContent =
         "Identity: connect the experimental wallet to view";
       identityUnavailable = false;
@@ -880,7 +948,7 @@ function installExperimentalWalletControls(
             }
           : result;
       identityUnavailable = false;
-      inspector.setIdentity(currentIdentity);
+      walletView.setIdentity(currentIdentity);
       network.textContent = `Network: ${result.network}`;
       identity.textContent = `Identity account: ${result.identityAccountId}${result.publicKey !== undefined ? ` · Public key: ${result.publicKey}` : ""}`;
       if (
@@ -921,7 +989,6 @@ function installExperimentalWalletControls(
     void loadIdentity();
   };
   window.addEventListener("dotli:truapi-auth-state", onIdentityChanged);
-  window.addEventListener("dotli:product-loaded", onIdentityChanged);
   username.addEventListener("input", syncButtons);
   const runUsername = async (register: boolean): Promise<void> => {
     if (pending || disposed || identityLoading || !wallet.isActive()) {
@@ -998,7 +1065,7 @@ function installExperimentalWalletControls(
         liteUsername: result.liteUsername,
         network: selectedIdentity.network,
       };
-      inspector.setIdentity(currentIdentity);
+      walletView.setIdentity(currentIdentity);
       usernameStatus =
         result.liteUsername !== undefined && result.liteUsername !== ""
           ? {
@@ -1060,7 +1127,7 @@ function installExperimentalWalletControls(
       (operation === "exportMnemonic" ||
         operation === "importMnemonic" ||
         operation === "deleteWallet") &&
-      !inspector.isRecoveryVisible()
+      !walletView.isRecoveryVisible()
     ) {
       return;
     }
@@ -1124,7 +1191,7 @@ function installExperimentalWalletControls(
         const mnemonic = await wallet.exportMnemonic();
         if (
           !isDisposed() &&
-          inspector.isRecoveryVisible() &&
+          walletView.isRecoveryVisible() &&
           generation === sensitiveGeneration
         ) {
           phrase.value = mnemonic;
@@ -1187,8 +1254,8 @@ function installExperimentalWalletControls(
     clearSensitive();
     identityReadGeneration++;
     window.removeEventListener("dotli:truapi-auth-state", onIdentityChanged);
-    window.removeEventListener("dotli:product-loaded", onIdentityChanged);
-    inspector.dispose();
+    window.removeEventListener("dotli:wallet-open", openWallet);
+    walletView.dispose();
   };
 }
 
@@ -1306,6 +1373,7 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     }
     ui.panel.classList.toggle("collapsed", state.collapsed);
     ui.collapseBtn.textContent = state.collapsed ? "▲" : "▼";
+    ui.walletView?.setVisible(state.view === "wallet" && !state.collapsed);
     adjustIframeForPanel(ui.panel, state);
   });
   ui.dockBtn.addEventListener("click", () => {
@@ -1607,12 +1675,38 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
         HTMLButtonElement,
       ][]) {
         tab.classList.toggle("active", name === view);
+        tab.setAttribute("aria-selected", String(name === view));
+        tab.tabIndex = name === view ? 0 : -1;
       }
       ui.list.classList.toggle("hidden", view !== "list");
       ui.timeline.classList.toggle("hidden", view !== "timeline");
       ui.resolution.classList.toggle("hidden", view !== "resolution");
       ui.panel.classList.toggle("res-view", view === "resolution");
+      ui.panel.classList.toggle("wallet-view", view === "wallet");
+      ui.walletView?.content.classList.toggle("hidden", view !== "wallet");
+      ui.walletView?.setVisible(view === "wallet" && !state.collapsed);
       render(ui, state, store, { fullList: true });
+    });
+    btn.setAttribute("aria-selected", String(state.view === view));
+    btn.tabIndex = state.view === view ? 0 : -1;
+    btn.addEventListener("keydown", (event) => {
+      const tabs = Object.values(ui.tabs).filter((tab) => tab.hidden === false);
+      const index = tabs.indexOf(btn);
+      const next =
+        event.key === "ArrowRight"
+          ? tabs[(index + 1) % tabs.length]
+          : event.key === "ArrowLeft"
+            ? tabs[(index + tabs.length - 1) % tabs.length]
+            : event.key === "Home"
+              ? tabs[0]
+              : event.key === "End"
+                ? tabs.at(-1)
+                : undefined;
+      if (next !== undefined) {
+        event.preventDefault();
+        next.click();
+        next.focus();
+      }
     });
   }
 }
@@ -1828,7 +1922,7 @@ function render(
       ui.resolution,
       buildResolution(state.resolution.events(), Date.now()),
     );
-  } else {
+  } else if (state.view === "timeline") {
     // The timeline is cheap enough to always full-rebuild for now;
     // a future phase can switch to incremental geometry updates if
     // needed. Re-rendered on every new event (rAF-throttled) so

@@ -153,7 +153,7 @@
   width: 480px;
   height: auto;
   max-height: none;
-  max-width: min(80vw, calc(100vw - 240px));
+  max-width: min(80vw, max(320px, calc(100vw - 240px)));
   border-top: none;
   border-left: 1px solid #1f1f1f;
   grid-template-columns: 5px 1fr;
@@ -217,12 +217,22 @@
 .td-header {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 0 12px;
   border-bottom: 1px solid #1f1f1f;
   background: #141414;
   min-width: 0;
+  gap: 6px;
+}
+.td-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
+}
+.td-header-tools > * {
+  flex-shrink: 0;
 }
 .td-title {
   color: #a3a3a3;
@@ -239,71 +249,23 @@
 }
 .td-wallet-entry {
   flex-shrink: 0;
-  max-width: 180px;
+  max-width: min(180px, 40%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hi-backdrop,
-.hi-surface {
-  position: fixed;
-  top: max(var(--safe-top, 0px), var(--hi-top, 0px));
-  bottom: max(var(--safe-bottom, 0px), var(--hi-bottom, 0px));
-  left: var(--safe-left, 0px);
-  right: max(var(--safe-right, 0px), var(--hi-right, 0px));
-}
-.hi-backdrop {
-  background: rgb(0 0 0 / 25%);
-  z-index: 938;
-}
-.hi-surface {
-  overflow: clip;
-  pointer-events: none;
-  z-index: 940;
-}
-.host-inspector {
+.td-wallet-view {
   box-sizing: border-box;
-  pointer-events: auto;
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: 420px;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
   overflow-wrap: anywhere;
-  background: #0b0b0b;
-  color: #d4d4d4;
-  border-left: 1px solid #1f1f1f;
-  box-shadow: -4px 0 12px rgb(0 0 0 / 40%);
-  font-family:
-    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-  font-size: 12px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 12px;
   line-height: 1.45;
-  transform: translateX(100%);
-  visibility: hidden;
-  transition:
-    transform 180ms ease-out,
-    visibility 180ms;
 }
-.host-inspector.is-open {
-  transform: translateX(0);
-  visibility: visible;
-}
-.host-inspector.is-docked {
-  box-shadow: none;
-}
-.host-inspector > header {
-  min-height: 32px;
-  flex-shrink: 0;
-  gap: 8px;
-}
-.host-inspector h2 {
-  margin: 0 auto 0 0;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.host-inspector h3 {
+.td-wallet-view h3 {
   margin: 4px 0 0;
   font:
     500 11px system-ui,
@@ -311,67 +273,57 @@
   color: #a3a3a3;
   letter-spacing: 0.02em;
 }
-.host-inspector p {
+.td-wallet-view p {
   margin: 0;
 }
-.hi-view,
-.hi-product,
-.hi-resource {
+.td-wallet-overview,
+.td-wallet-recovery-content,
+.td-wallet-product,
+.td-wallet-resource {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
 }
-.hi-view {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  padding: 12px;
+.td-wallet-recovery {
+  margin-top: 16px;
+  border-top: 1px solid #1f1f1f;
+  padding-top: 12px;
 }
-.hi-actions {
+.td-wallet-recovery summary {
+  cursor: pointer;
+}
+.td-wallet-recovery-content {
+  padding-top: 12px;
+}
+.td-wallet-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.hi-tabs {
-  min-height: 26px;
-  flex-shrink: 0;
-  overflow-x: auto;
-}
-.hi-product,
-.hi-resource {
+.td-wallet-product,
+.td-wallet-resource {
   border-top: 1px solid #1f1f1f;
   padding-top: 8px;
 }
-.host-inspector .td-btn {
+.td-wallet-view .td-btn {
   white-space: normal;
   text-align: start;
 }
-.hi-view > .td-btn {
+.td-wallet-recovery-content > .td-btn {
   align-self: flex-start;
 }
-.host-inspector :focus-visible,
+.td-wallet-view :focus-visible,
 #truapi-debug-panel .td-btn:focus-visible,
 #truapi-debug-panel .td-tab:focus-visible {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
 }
-.host-inspector .td-wallet-delete {
+.td-wallet-view .td-wallet-delete {
   color: #fca5a5;
 }
-.host-inspector [hidden],
-.hi-backdrop[hidden] {
+#truapi-debug-panel [hidden] {
   display: none;
-}
-.hi-activity {
-  margin: 0;
-  padding-left: 20px;
-}
-.hi-activity li {
-  padding: 6px 0;
-  border-bottom: 1px solid #1f1f1f;
 }
 .td-wallet-message {
   overflow: auto;
@@ -418,22 +370,16 @@
 .td-wallet-username[data-state="failed"] {
   border-left-color: #f87171;
 }
-.host-inspector .td-wallet-username-input {
+.td-wallet-view .td-wallet-username-input {
   box-sizing: border-box;
   display: block;
   width: 100%;
   margin-top: 4px;
 }
 @media (pointer: coarse) {
-  .host-inspector .td-btn,
-  .host-inspector .td-tab,
-  .host-inspector .td-input {
+  .td-wallet-view .td-btn,
+  .td-wallet-view .td-input {
     min-height: 36px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .host-inspector {
-    transition: none;
   }
 }
 .td-wallet-phrase {
@@ -582,13 +528,24 @@
 /* The Resolution view has nothing to select, so the detail pane would only
    ever say "select an event". The chart takes the whole width instead. */
 #truapi-debug-panel.res-view .td-body,
-#truapi-debug-panel.docked-right.res-view .td-body {
+#truapi-debug-panel.docked-right.res-view .td-body,
+#truapi-debug-panel.wallet-view .td-body,
+#truapi-debug-panel.docked-right.wallet-view .td-body {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
 #truapi-debug-panel.res-view .td-body-splitter,
-#truapi-debug-panel.res-view .td-detail {
+#truapi-debug-panel.res-view .td-detail,
+#truapi-debug-panel.wallet-view .td-body-splitter,
+#truapi-debug-panel.wallet-view .td-detail,
+#truapi-debug-panel.wallet-view .td-filters {
   display: none;
+}
+#truapi-debug-panel.wallet-view:not(.collapsed) {
+  grid-template-rows: 5px 32px 1fr;
+}
+#truapi-debug-panel.docked-right.wallet-view:not(.collapsed) {
+  grid-template-rows: 32px 0 1fr;
 }
 
 /* Draggable divider between the views pane and the detail pane. */
@@ -626,6 +583,8 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  overflow-x: auto;
+  min-width: 0;
   padding: 0 10px;
   border-bottom: 1px solid #1f1f1f;
   background: #0f0f0f;
