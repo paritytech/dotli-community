@@ -40,9 +40,7 @@ describe("user confirmation modal", () => {
     });
 
     // Then
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
+    expect(document.querySelectorAll("dialog.signing-dialog")).toHaveLength(1);
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Account Access",
     );
@@ -54,9 +52,7 @@ describe("user confirmation modal", () => {
     await expect(accountAccess).resolves.toBe(true);
 
     // Then
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
+    expect(document.querySelectorAll("dialog.signing-dialog")).toHaveLength(1);
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
       "Identity Disclosure",
     );
@@ -66,7 +62,7 @@ describe("user confirmation modal", () => {
 
     // Then
     await expect(identityDisclosure).resolves.toBe(true);
-    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    expect(document.querySelector("dialog.signing-dialog")).toBeNull();
   });
 
   it("As a dotli integrator, the host renders legacy payload signing as structured transaction fields", async () => {
@@ -560,12 +556,37 @@ describe("user confirmation modal", () => {
     const confirmation = confirmUserAction(review);
 
     // When
-    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+    document.querySelector<HTMLDialogElement>("dialog.signing-dialog")?.click();
 
     // Then
     await expect(confirmation).rejects.toThrow(
       "User dismissed identity disclosure dialog",
     );
+  });
+
+  it("As a keyboard user, I press Escape on a signing prompt and nothing is signed", async () => {
+    // Given
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const confirmation = confirmUserAction({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+    const dialog = document.querySelector<HTMLDialogElement>(
+      "dialog.signing-dialog",
+    );
+    expect(dialog?.open).toBe(true);
+    expect(document.activeElement?.textContent).toBe("Deny");
+
+    // When the browser turns Escape into a cancel event on the open dialog
+    dialog?.dispatchEvent(new Event("cancel", { cancelable: true }));
+
+    // Then
+    await expect(confirmation).resolves.toBe(false);
+    expect(document.querySelector("dialog.signing-dialog")).toBeNull();
   });
 
   it("As a dotli integrator, the host allows preimage submission from its dedicated dialog", async () => {

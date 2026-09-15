@@ -136,7 +136,7 @@
   box-shadow: 0 0 6px rgba(255, 140, 0, 0.4);
 }
 
-[data-theme="light"] .auth-modal-backdrop {
+[data-theme="light"] .auth-modal-dialog::backdrop {
   background: rgba(0, 0, 0, 0.3);
 }
 [data-theme="light"] .auth-modal h2 {

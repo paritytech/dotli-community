@@ -17,14 +17,14 @@ function installDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
     <button id="auth-button" disabled></button>
-    <div id="auth-modal-backdrop">
+    <dialog id="auth-modal-dialog">
       <div id="auth-modal-title"></div>
       <div id="auth-modal-qr"></div>
       <div id="auth-modal-reason"></div>
       <div id="auth-modal-hint"></div>
       <a id="auth-modal-get-app" hidden></a>
       <button id="auth-modal-close"></button>
-    </div>
+    </dialog>
     <div id="user-popover">
       <span id="user-popover-username"></span>
       <button id="user-popover-disconnect"></button>

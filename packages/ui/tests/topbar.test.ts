@@ -46,18 +46,22 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+function authDialog(): HTMLDialogElement | null {
+  return document.querySelector<HTMLDialogElement>("#auth-modal-dialog");
+}
+
 function installTopbarDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
     <button id="auth-button" title="Connecting..." aria-label="Connecting..." aria-busy="true" disabled></button>
-    <div id="auth-modal-backdrop">
+    <dialog id="auth-modal-dialog">
       <div id="auth-modal-title"></div>
       <div id="auth-modal-qr"></div>
       <div id="auth-modal-reason"></div>
       <div id="auth-modal-hint"></div>
       <a id="auth-modal-get-app" hidden></a>
       <button id="auth-modal-close"></button>
-    </div>
+    </dialog>
     <div id="user-popover">
       <span id="user-popover-username"></span>
       <button id="user-popover-disconnect"></button>
@@ -246,22 +250,14 @@ describe("topbar login cancellation", () => {
     document.getElementById("auth-button")?.click();
 
     // Then
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(false);
+    expect(authDialog()?.open).toBe(false);
 
     // When
     releaseBlockingPrompt?.();
     await blockingPrompt;
 
     // Then
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(true);
+    expect(authDialog()?.open).toBe(true);
 
     document.getElementById("auth-modal-close")?.click();
     scope.dispose();
@@ -316,11 +312,7 @@ describe("topbar login cancellation", () => {
 
     // Then
     expect(loginRequests).toEqual([{ reason: undefined }]);
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(true);
+    expect(authDialog()?.open).toBe(true);
   });
 
   it("As a dotli integrator, the host keeps the pairing modal open through an unrelated disconnected state", async () => {
@@ -350,11 +342,7 @@ describe("topbar login cancellation", () => {
     );
 
     // Then
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(true);
+    expect(authDialog()?.open).toBe(true);
   });
 
   it("As a dotli integrator, the host keeps landing pairing presentation host-global", async () => {
@@ -406,11 +394,7 @@ describe("topbar login cancellation", () => {
 
     // Then
     expect(cancels).toBe(1);
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(false);
+    expect(authDialog()?.open).toBe(false);
     expect(document.getElementById("auth-modal-qr")?.children).toHaveLength(0);
   });
 
@@ -437,17 +421,41 @@ describe("topbar login cancellation", () => {
     await flushMicrotasks();
 
     // Then
-    const backdrop = document.getElementById("auth-modal-backdrop");
-    expect(backdrop?.classList.contains("open")).toBe(true);
-    expect(document.activeElement).toBe(backdrop);
+    const dialog = authDialog();
+    expect(dialog?.open).toBe(true);
+    expect(document.activeElement).toBe(dialog);
 
-    // When
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // When the browser turns Escape into a cancel event on the open dialog
+    dialog?.dispatchEvent(new Event("cancel", { cancelable: true }));
 
     // Then
-    expect(backdrop?.classList.contains("open")).toBe(false);
+    expect(dialog?.open).toBe(false);
     expect(cancels).toBe(1);
     expect(document.activeElement).toBe(document.getElementById("auth-button"));
+  });
+
+  it("As a keyboard user, focus returns to the auth button I opened the pairing modal from", async () => {
+    // Given
+    installTopbarDom();
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    const authButton = document.getElementById("auth-button");
+    authButton?.focus();
+
+    // When
+    authButton?.click();
+    await flushMicrotasks();
+
+    // Then
+    expect(authDialog()?.open).toBe(true);
+    expect(document.activeElement).toBe(authDialog());
+
+    // When
+    document.getElementById("auth-modal-close")?.click();
+
+    // Then
+    expect(authDialog()?.open).toBe(false);
+    expect(document.activeElement).toBe(authButton);
   });
 
   it("As a dotli integrator, the host closes the pairing modal when the session connects", async () => {
@@ -480,11 +488,7 @@ describe("topbar login cancellation", () => {
     );
 
     // Then
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(false);
+    expect(authDialog()?.open).toBe(false);
     expect(cancels).toBe(0);
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
   });
@@ -516,11 +520,7 @@ describe("topbar login cancellation", () => {
       "Logging in...",
     );
     expect(document.querySelector("#auth-modal-qr .spinner")).not.toBeNull();
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(true);
+    expect(authDialog()?.open).toBe(true);
   });
 
   it("As a dotli integrator, the host keeps the retry view for login failures", async () => {
@@ -545,11 +545,7 @@ describe("topbar login cancellation", () => {
     expect(document.getElementById("auth-modal-title")?.textContent).toBe(
       "Login with Polkadot Mobile",
     );
-    expect(
-      document
-        .getElementById("auth-modal-backdrop")
-        ?.classList.contains("open"),
-    ).toBe(true);
+    expect(authDialog()?.open).toBe(true);
     expect(document.getElementById("auth-modal-qr")?.textContent).toContain(
       "Retry",
     );

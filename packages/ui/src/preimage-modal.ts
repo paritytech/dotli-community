@@ -11,6 +11,7 @@
 
 import { blockingModalAbortError } from "./blocking-modal-queue";
 import { ERRORS } from "./errors";
+import { openModalDialog } from "./modal-dialog";
 
 function formatSize(bytes: number): string {
   return bytes >= 1024
@@ -23,8 +24,10 @@ export function showPreimageSubmitModal(
   signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
+    if (signal?.aborted === true) {
+      reject(blockingModalAbortError(signal.reason));
+      return;
+    }
 
     const modal = document.createElement("div");
     modal.className = "signing-modal";
@@ -66,13 +69,11 @@ export function showPreimageSubmitModal(
     footer.appendChild(allowBtn);
 
     modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
 
     let settled = false;
     function cleanup(): void {
       signal?.removeEventListener("abort", onAbort);
-      backdrop.remove();
+      dialog.close();
     }
 
     function finish(error?: Error): void {
@@ -92,10 +93,17 @@ export function showPreimageSubmitModal(
       finish(blockingModalAbortError(signal?.reason));
     }
 
-    if (signal?.aborted === true) {
-      onAbort();
-      return;
-    }
+    const dialog = openModalDialog(modal, {
+      dialogClass: "signing-dialog",
+      title: heading,
+      description: fieldsContainer,
+      // Land on the safe action so a stray Enter cannot approve the upload.
+      initialFocus: cancelBtn,
+      onCancel: () => {
+        finish(new Error(ERRORS.PREIMAGE_SUBMIT_DENIED));
+      },
+    });
+
     signal?.addEventListener("abort", onAbort, { once: true });
 
     cancelBtn.addEventListener("click", () => {
