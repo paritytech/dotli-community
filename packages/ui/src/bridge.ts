@@ -15,7 +15,9 @@ import {
   createTransport,
   decodeWireMessage,
   encodeWireMessage,
-  HostRequestLoginResponse,
+  VersionedHostRequestLoginResponse,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
   scale,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginRequest,
@@ -97,13 +99,11 @@ import { productIframeBox } from "./product-iframe-box";
 import { installPolkaVmViewInsetsRelay } from "./polkavm-view-insets";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { describeWireFrame } from "./debug-wire-describe";
-// TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
-import {
-  createLegacyNovaChainHeadProvider,
-  createWindowMessageProvider,
-} from "./legacy-host-bridge";
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
-import { registerChatConnection } from "./chat/service";
+import {
+  createRendererImageLoader,
+  registerChatConnection,
+} from "./chat/service";
 import { showNotification } from "./notification";
 import { ERRORS } from "./errors";
 
@@ -1615,10 +1615,7 @@ function emitWireFrameDebug(
       direction,
       productId,
       requestId: decoded.value.requestId,
-      payload: describeWireFrame(
-        decoded.value.payload.id,
-        decoded.value.payload.value,
-      ),
+      payload: describeWireFrame(decoded.value.payload),
     });
     // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {
@@ -1690,19 +1687,16 @@ export function requestCoreLogin(
   reason?: string,
 ): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(
-        HostRequestLoginResponse,
-        scale.CallError(VersionedHostRequestLoginError),
-      ),
-    ],
-  });
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
-      id: ACCOUNT_REQUEST_LOGIN.request,
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType: MESSAGE_TYPE_REQUEST,
       value: VersionedHostRequestLoginRequest.enc({
         tag: "V1",
         value: { reason },
@@ -1761,16 +1755,17 @@ export function requestCoreLogin(
         }
         if (
           decoded.value.requestId !== requestId ||
-          decoded.value.payload.id !== ACCOUNT_REQUEST_LOGIN.response
+          decoded.value.payload.traitId !== ACCOUNT_REQUEST_LOGIN.trait ||
+          decoded.value.payload.methodId !== ACCOUNT_REQUEST_LOGIN.method ||
+          decoded.value.payload.messageType !== MESSAGE_TYPE_RESPONSE
         ) {
           return;
         }
         cleanup();
         try {
-          const envelope = responseCodec.dec(decoded.value.payload.value);
-          const result = envelope.value;
+          const result = responseCodec.dec(decoded.value.payload.value);
           if (result.success) {
-            resolveRequest(result.value);
+            resolveRequest(result.value.value);
           } else {
             const error = new LoginRequestError(result.value);
             rejectRequest(error);
@@ -1809,6 +1804,7 @@ async function createHost(args: {
   sandbox: string;
   label: string;
   productId?: string;
+  archiveCid?: string;
   container: HTMLElement;
   extraAllow?: readonly string[];
   debugFlowId: string;
@@ -1817,6 +1813,7 @@ async function createHost(args: {
   const generation = renderGeneration;
   const coreProvider = await createCoreProvider(args.label, {
     productId: args.productId,
+    archiveCid: args.archiveCid,
   });
   const unregisterPermissions = registerPermissionAuthorizationProvider(
     args.label,
@@ -1826,10 +1823,7 @@ async function createHost(args: {
   const productId = args.productId ?? labelToProductId(args.label);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
-  // TODO(remove-legacy-nova): `legacyProbeCleanup` (including its two `?.()`
-  // call sites in `dispose()` and the catch block below) exists only for the
-  // legacy probe block tagged further down.
-  let legacyProbeCleanup: (() => void) | null = null;
+  let productProbeCleanup: (() => void) | null = null;
   let disposeViewInsets: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
@@ -1868,20 +1862,11 @@ async function createHost(args: {
       );
     }
 
-    // DEPRECATED legacy host-API support. Modern products announce themselves
-    // with `{type:"truapi-ready"}` and use the MessagePort wired above. Products
-    // still on the Nova host-api SDK instead post raw SCALE frames (Uint8Array)
-    // to `window.parent`. Detect that first frame and re-pipe the core over a
-    // window-postMessage provider.
-    //
-    // TODO(remove-legacy-nova): once the last legacy Nova product migrates to
-    // `@parity/truapi`, delete this probe block (through the
-    // `legacyProbeCleanup` assignment below), the `legacyProbeCleanup`
-    // declaration and call sites tagged above, the `legacy-host-bridge`
-    // import at the top of this file, and the tagged `legacy-host-bridge.ts`
-    // module itself. Modern products need no probe: the MessagePort from
-    // `onPort` is the only wiring.
-    let probeMode: "pending" | "modern" | "legacy" = "pending";
+    // Codec-1 Nova products post raw SCALE frames to window.parent. Those
+    // bytes have no codec marker and must never reach the codec-2 decoder.
+    // Only the modern SDK's transferred MessagePort is supported.
+    let probeMode: "pending" | "modern" = "pending";
+    let warnedLegacyTransport = false;
     const onProbe = (event: MessageEvent): void => {
       const targetWindow = host.iframe.contentWindow;
       if (
@@ -1900,37 +1885,24 @@ async function createHost(args: {
             args.allowedOrigin,
             [channel.port2],
           );
-        } else if (probeMode === "pending") {
+        } else {
           probeMode = "modern";
         }
         return;
       }
-      if (probeMode !== "pending") {
-        return;
-      }
-      if (event.data instanceof Uint8Array) {
-        probeMode = "legacy";
-        legacyProbeCleanup?.();
-        // Drop the unused modern MessagePort pipe before rewiring.
-        cleanupProductSide();
-        const windowProvider = createWindowMessageProvider(
-          targetWindow,
-          args.allowedOrigin,
-        );
-        const legacyProvider = createLegacyNovaChainHeadProvider(
-          windowProvider,
-          productId,
-        );
-        productProvider = legacyProvider;
-        disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
-        // Replay the handshake frame the probe just consumed.
-        windowProvider.injectInbound(event.data);
+      if (event.data instanceof Uint8Array && !warnedLegacyTransport) {
+        warnedLegacyTransport = true;
+        showNotification({
+          text: "This product uses the unsupported legacy Nova host API. Update it to @parity/truapi 0.16 or newer with the MessagePort transport.",
+          label: "Product update required",
+          browserNotification: false,
+        });
       }
     };
     window.addEventListener("message", onProbe);
-    legacyProbeCleanup = () => {
+    productProbeCleanup = () => {
       window.removeEventListener("message", onProbe);
-      legacyProbeCleanup = null;
+      productProbeCleanup = null;
     };
 
     return {
@@ -1950,7 +1922,7 @@ async function createHost(args: {
         mediatedInputHost.stop();
         unregisterPermissions();
         disposeViewInsets?.();
-        legacyProbeCleanup?.();
+        productProbeCleanup?.();
         cleanupProductSide();
         coreProvider.dispose();
         host.dispose();
@@ -1959,7 +1931,7 @@ async function createHost(args: {
   } catch (error) {
     disposeViewInsets?.();
     unregisterPermissions();
-    legacyProbeCleanup?.();
+    productProbeCleanup?.();
     cleanupProductSide();
     coreProvider.dispose();
     throw error;
@@ -1973,6 +1945,7 @@ async function createCoreProvider(
     pairingDotSuffix?: boolean;
     pairingHostGlobal?: boolean;
     productId?: string;
+    archiveCid?: string;
     walletOwner?: boolean;
   } = {},
 ): Promise<CoreProvider> {
@@ -2190,16 +2163,21 @@ async function createCoreProvider(
     }
     const unregisterChat = chatCapable
       ? registerChatConnection(productId, {
+          loadRendererImage: createRendererImageLoader(options.archiveCid),
           publish: (action) =>
             provider.publishChatAction === undefined
               ? Promise.reject(new Error("chat publishing unavailable"))
               : provider.publishChatAction(action),
-          renderCustomMessage: (request, sink) => {
-            if (provider.renderCustomMessage === undefined) {
-              sink.onError?.(new Error("custom rendering unavailable"));
+          publishRendererAction: (action) =>
+            provider.publishRendererAction === undefined
+              ? Promise.reject(new Error("renderer publishing unavailable"))
+              : provider.publishRendererAction(action),
+          render: (request, sink) => {
+            if (provider.render === undefined) {
+              sink.onError?.(new Error("rendering unavailable"));
               return noop;
             }
-            return provider.renderCustomMessage(request, sink);
+            return provider.render(request, sink);
           },
         })
       : noop;
@@ -2566,6 +2544,7 @@ export async function renderAppSubdomain(
     sandbox:
       "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
     label,
+    archiveCid: cid,
     extraAllow: isPolkaVm ? ["accelerometer", "gyroscope"] : [],
     viewInsetsRelay: isPolkaVm,
     container: app,

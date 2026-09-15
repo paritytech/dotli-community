@@ -270,11 +270,29 @@ Local development uses wildcard subdomains:
 The product E2E suite can load the source checkout directly through dotli's
 localhost proxy instead of resolving the published `host-playground.dot` CID.
 By default it expects the product at `../../../host-playground` relative to
-this repository, and the `truapi-host` CLI from
-[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+this repository. The signing host must match `upstreamRevision` in this
+branch's `vendor/truapi-host.lock.json`, not the latest released CLI. CI checks
+out that exact [host-rust-core](https://github.com/paritytech/host-rust-core)
+commit, generates its sources, and builds `truapi-host` locally.
+
+To build the matching binary in a fresh sibling checkout, install Rust stable,
+Rust nightly with `rustfmt`, and Node.js 22/npm, then run from this repository:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+revision="$(jq -er '.upstreamRevision' vendor/truapi-host.lock.json)"
+git clone --no-checkout https://github.com/paritytech/host-rust-core ../host-rust-core-e2e
+git -C ../host-rust-core-e2e fetch --depth=1 origin "$revision"
+git -C ../host-rust-core-e2e checkout --detach "$revision"
+(
+  cd ../host-rust-core-e2e
+  npm ci --ignore-scripts
+  RUSTUP_TOOLCHAIN=stable TRUAPI_SKIP_PACKAGE_BUILD=1 ./scripts/codegen.sh
+  cargo +stable build --locked -p truapi-host-cli --bin truapi-host
+)
+export SIGNING_HOST_BIN="$(pwd)/../host-rust-core-e2e/target/debug/truapi-host"
+export TRUAPI_HOST_NO_UPDATE=1
+echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$revision"
+"$SIGNING_HOST_BIN" --version
 ```
 
 ```bash
@@ -296,9 +314,13 @@ flow through either light-client backend:
 E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
 ```
 
-Set `SIGNING_HOST_BIN` to a locally built binary (e.g.
-`../host-rust-core/target/debug/truapi-host`) instead of installing, and
-`SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI
+`SIGNING_HOST_BIN` also accepts an existing locally built binary; use an
+absolute path because the E2E command runs from `apps/host`. Without it the
+suite looks up `truapi-host` on `PATH`; ensure that binary was built from the
+same lock revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`.
+Rebuild when the lock revision changes, including when switching between
+generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a
+non-default network. The CLI
 keeps its account state under `apps/host/tests/e2e/.auth/signing-host`, so
 repeat runs reuse one test account; the first run registers a fresh lite
 username on-chain and can take a few minutes.

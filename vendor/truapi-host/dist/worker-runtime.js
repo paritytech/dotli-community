@@ -8,7 +8,8 @@ import { createWorkerRawCallbacks, } from "./generated/worker-callbacks.js";
 import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, } from "./worker-permission-authorization.js";
 import { errorMessage } from "./error.js";
 import { resolveLocalIdentity } from "./worker-local-identity.js";
-import { handlePublishChatAction, handleRenderCustomMessageStart, stopRender, stopRendersForCore, } from "./worker-chat.js";
+import { CHAT_ACTION_ENTRY_POINT, RENDERER_ACTION_ENTRY_POINT, handlePublishAction, } from "./worker-actions.js";
+import { handleRenderStart, stopRender, stopRendersForCore, } from "./worker-renderer.js";
 import { dispatchChainResponse, dispatchSubscriptionError, dispatchSubscriptionItem, } from "./worker-dispatch.js";
 import { dispatchFrame, disposeAwaitingFrames, } from "./worker-core-registry.js";
 // A literal specifier so bundlers resolve the glue statically and emit it
@@ -103,11 +104,26 @@ function chainConnect(genesisHash, onResponse) {
 }
 /** Build the host-level callback object passed to the WASM runtime. */
 function buildRawCallbacks(capabilities) {
-    return createWorkerRawCallbacks({
-        callbackRequest,
-        startSubscription,
-        chainConnect,
-    }, capabilities);
+    return {
+        ...createWorkerRawCallbacks({
+            callbackRequest,
+            startSubscription,
+            chainConnect,
+        }, capabilities),
+        /**
+         * Demand on a product's worker crossed zero. Every transition arrives
+         * here in ledger order, whether this thread asked for it through
+         * `acquireWorker`/`releaseWorker` or the core took the reference itself
+         * for an open render.
+         */
+        workerDemandChanged(productId, transition) {
+            postToMain({
+                kind: "workerDemandChanged",
+                productId,
+                wanted: transition === "Start",
+            });
+        },
+    };
 }
 /** Encode raw frame bytes as base64 (JSON can't carry binary over the WS). */
 function toBase64(bytes) {
@@ -504,7 +520,7 @@ const cores = new Map();
 // core for the whole duration of an async method, so `free()` throws while one
 // is in flight. `disposeCore` aborts these then awaits them before freeing.
 const inFlightFrames = new Map();
-/** Live custom-message render subscriptions, keyed by main-thread render id. */
+/** Live render subscriptions, keyed by main-thread render id. */
 const renders = new Map();
 let wasm = null;
 let identityAbort = null;
@@ -657,6 +673,12 @@ ctx.addEventListener("message", (ev) => {
                 runtime.notifySessionStoreChanged();
             }
             break;
+        case "acquireWorker":
+            runtime?.acquireWorker(msg.productId);
+            break;
+        case "releaseWorker":
+            runtime?.releaseWorker(msg.productId);
+            break;
         case "activateStoredSession":
             void handleSessionActivation(msg.requestId, "activateStoredSession", (rt) => isPairingRuntime(rt)
                 ? rt.activateStoredSession()
@@ -736,12 +758,15 @@ ctx.addEventListener("message", (ev) => {
             break;
         }
         case "publishChatAction":
-            handlePublishChatAction(cores.get(msg.coreId), postToMain, msg.coreId, msg.requestId, msg.action);
+            handlePublishAction(CHAT_ACTION_ENTRY_POINT, cores.get(msg.coreId), postToMain, msg.coreId, msg.requestId, msg.action);
             break;
-        case "renderCustomMessageStart":
-            handleRenderCustomMessageStart(cores.get(msg.coreId), postToMain, renders, msg.coreId, msg.renderId, msg.messageId, msg.messageType, msg.payload);
+        case "publishRendererAction":
+            handlePublishAction(RENDERER_ACTION_ENTRY_POINT, cores.get(msg.coreId), postToMain, msg.coreId, msg.requestId, msg.action);
             break;
-        case "renderCustomMessageStop":
+        case "renderStart":
+            handleRenderStart(cores.get(msg.coreId), postToMain, renders, msg.coreId, msg.renderId, msg.request);
+            break;
+        case "renderStop":
             stopRender(renders, msg.renderId);
             break;
         case "disposeCore":
