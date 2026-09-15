@@ -217,7 +217,9 @@ export function createHostInspector(
     if (disposed) {
       return;
     }
-    const topbar = document.getElementById("topbar");
+    const topbar =
+      document.getElementById("landing-auth") ??
+      document.getElementById("topbar");
     if (topbar !== observedTopbar) {
       if (observedTopbar !== null) {
         resizeObserver.unobserve(observedTopbar);
@@ -780,10 +782,10 @@ export function createHostInspector(
         product = null;
       }
       identity = next;
+      const fullName = next?.fullUsername ?? "";
+      const liteName = next?.liteUsername ?? "";
       entry.textContent = wallet.isActive()
-        ? next?.fullUsername ||
-          next?.liteUsername ||
-          "Wallet · username unknown"
+        ? fullName || liteName || "Wallet · username unknown"
         : "Connect wallet";
       void loadProduct();
     },

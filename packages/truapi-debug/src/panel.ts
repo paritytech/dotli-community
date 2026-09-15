@@ -720,13 +720,11 @@ function installExperimentalWalletControls(
     if (nameDetail.textContent !== detail) {
       nameDetail.textContent = detail;
     }
+    const fullName = currentIdentity?.fullUsername ?? "";
+    const liteName = currentIdentity?.liteUsername ?? "";
     const names = [
-      currentIdentity?.fullUsername
-        ? `Full: ${currentIdentity.fullUsername}`
-        : "",
-      currentIdentity?.liteUsername
-        ? `Lite: ${currentIdentity.liteUsername}`
-        : "",
+      fullName !== "" ? `Full: ${fullName}` : "",
+      liteName !== "" ? `Lite: ${liteName}` : "",
     ].filter(Boolean);
     const lastKnown =
       names.length === 0 ? "" : `Last known username · ${names.join(" · ")}`;
@@ -744,8 +742,8 @@ function installExperimentalWalletControls(
         ? title
         : !wallet.isActive()
           ? "Connect wallet"
-          : currentIdentity?.fullUsername ||
-            currentIdentity?.liteUsername ||
+          : fullName ||
+            liteName ||
             (usernameStatus.kind === "unclaimed"
               ? "Wallet · unclaimed"
               : usernameStatus.kind === "failed"
@@ -859,7 +857,8 @@ function installExperimentalWalletControls(
       if (
         (usernameStatus.kind === "unknown" ||
           usernameStatus.kind === "unclaimed") &&
-        result.liteUsername
+        result.liteUsername !== undefined &&
+        result.liteUsername !== ""
       ) {
         usernameStatus = {
           kind: "unknown",
@@ -915,7 +914,6 @@ function installExperimentalWalletControls(
     if (
       register &&
       (usernameStatus.kind === "claimed" ||
-        currentIdentity === undefined ||
         (currentIdentity.liteUsername ?? "") !== "" ||
         baseUsername === "")
     ) {
@@ -925,7 +923,7 @@ function installExperimentalWalletControls(
       register &&
       !window.confirm(
         `Claim the Lite username "${baseUsername}" on ${wallet.networkLabel()}?\n\n` +
-          `Identity: ${currentIdentity?.identityAccountId ?? ""}\n\n` +
+          `Identity: ${currentIdentity.identityAccountId}\n\n` +
           "This submits a real registration. A backend response alone is not success; the wallet will wait for chain ownership confirmation.",
       )
     ) {
@@ -962,7 +960,7 @@ function installExperimentalWalletControls(
           "The chain result belongs to a different wallet identity; it was not applied.",
         );
       }
-      if (register && !result.liteUsername) {
+      if (register && (result.liteUsername ?? "") === "") {
         throw new Error(
           "The claim returned without a chain-confirmed username.",
         );
@@ -974,18 +972,19 @@ function installExperimentalWalletControls(
         network: selectedIdentity.network,
       };
       inspector.setIdentity(currentIdentity);
-      usernameStatus = result.liteUsername
-        ? {
-            kind: "claimed",
-            title: `Lite username claimed: ${result.liteUsername}`,
-            detail: "Chain ownership confirmed for this identity.",
-          }
-        : {
-            kind: "unclaimed",
-            title: "Lite username unclaimed",
-            detail:
-              "Chain check confirmed no Lite username for this identity. Enter a base name to claim one.",
-          };
+      usernameStatus =
+        result.liteUsername !== undefined && result.liteUsername !== ""
+          ? {
+              kind: "claimed",
+              title: `Lite username claimed: ${result.liteUsername}`,
+              detail: "Chain ownership confirmed for this identity.",
+            }
+          : {
+              kind: "unclaimed",
+              title: "Lite username unclaimed",
+              detail:
+                "Chain check confirmed no Lite username for this identity. Enter a base name to claim one.",
+            };
       message.hidden = true;
       if ((result.liteUsername ?? "") !== "") {
         username.value = "";
@@ -1096,7 +1095,7 @@ function installExperimentalWalletControls(
       if (operation === "exportMnemonic") {
         const mnemonic = await wallet.exportMnemonic();
         if (
-          !disposed &&
+          !isDisposed() &&
           inspector.isRecoveryVisible() &&
           generation === sensitiveGeneration
         ) {
@@ -1129,7 +1128,7 @@ function installExperimentalWalletControls(
       }
     } finally {
       pending = false;
-      if (!disposed) {
+      if (!isDisposed()) {
         content.removeAttribute("aria-busy");
         syncButtons();
       }
@@ -1318,15 +1317,6 @@ function applyDockPosition(
   state.expandedHeight = "";
   ui.panel.style.removeProperty("--td-left-width");
   ui.panel.style.removeProperty("--td-top-height");
-  // Right-dock sits below the host topbar (40px) so the dock toggle and
-  // session controls remain reachable. Bottom-dock clears the override
-  // since it pins to the viewport bottom edge.
-  if (state.dock === "right") {
-    const hasTopbar = document.getElementById("topbar") !== null;
-    ui.panel.style.top = hasTopbar ? "40px" : "0";
-  } else {
-    ui.panel.style.top = "";
-  }
   if (state.dock === "right") {
     ui.dockBtn.innerHTML = DOCK_BOTTOM_SVG;
     ui.dockBtn.title = "Dock to bottom";

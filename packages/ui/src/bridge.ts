@@ -269,7 +269,7 @@ async function updateLocalIdentity(
         throw new Error("Test wallet changed while confirming its username.");
       }
       wallet.identity = identity;
-      if (baseUsername !== undefined) {
+      if (baseUsername !== undefined && identity.liteUsername !== undefined) {
         showNotification({
           text: `${identity.liteUsername} is confirmed on-chain and ready to use.`,
           label: "Username claimed",
