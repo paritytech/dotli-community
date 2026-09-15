@@ -53,7 +53,7 @@ export function createWalletView(
   store: EventStore,
 ): WalletView {
   const entry = button(
-    wallet.isActive() ? "Wallet · username unknown" : "Connect wallet",
+    wallet.isActive() ? "Wallet · verifying…" : "Connect wallet",
   );
   entry.classList.add("td-wallet-entry");
   entry.setAttribute("aria-controls", "td-wallet-view");
@@ -221,7 +221,9 @@ export function createWalletView(
     if (identity === undefined) {
       productDetails.append(
         paragraph(
-          "Connect the experimental wallet to inspect its product account and permissions.",
+          wallet.isActive()
+            ? "Native wallet verification is required before inspecting its product account or requesting resources."
+            : "Connect the experimental wallet to inspect its product account and permissions.",
         ),
       );
       return;
@@ -485,11 +487,6 @@ export function createWalletView(
         product = null;
       }
       identity = next;
-      const fullName = next?.fullUsername ?? "";
-      const liteName = next?.liteUsername ?? "";
-      entry.textContent = wallet.isActive()
-        ? fullName || liteName || "Wallet · username unknown"
-        : "Connect wallet";
       void loadProduct();
     },
     dispose(): void {
