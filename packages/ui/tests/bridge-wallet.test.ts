@@ -25,10 +25,13 @@ const wallet = vi.hoisted(() => ({
   claimStarted: false,
   failNextProduct: false,
   failProductRefresh: false,
+  closeNextProvider: false,
   sessions: [] as {
     disposed: boolean;
     username?: string;
     publish: (state: AuthState) => void;
+    close: (error: Error) => void;
+    closeCallbacks: Set<(error: Error) => void>;
   }[],
 }));
 
@@ -70,12 +73,25 @@ vi.mock("@parity/truapi-host/web", () => ({
     _worker: unknown,
     callbacks: RequiredHostCallbacks,
   ) => {
+    let closeError: Error | undefined;
+    const closeCallbacks = new Set<(error: Error) => void>();
     const session = {
       disposed: false,
       username: undefined as string | undefined,
       publish: (state: AuthState) => callbacks.auth.authStateChanged(state),
+      closeCallbacks,
+      close: (error: Error) => {
+        if (closeError !== undefined) return;
+        closeError = error;
+        session.disposed = true;
+        for (const callback of [...closeCallbacks]) callback(error);
+        closeCallbacks.clear();
+      },
     };
     wallet.sessions.push(session);
+    const assertLive = () => {
+      if (session.disposed) throw new Error("Native session disposed");
+    };
     const identity = (): LocalIdentity => ({
       identityAccountId: wallet.account,
       ...(wallet.username === undefined
@@ -83,7 +99,7 @@ vi.mock("@parity/truapi-host/web", () => ({
         : { liteUsername: wallet.username }),
     });
     const publish = (username?: string) => {
-      if (session.disposed) throw new Error("Native session disposed");
+      assertLive();
       session.username = username;
       session.publish({
         tag: "Connected",
@@ -99,6 +115,7 @@ vi.mock("@parity/truapi-host/web", () => ({
         publish();
       },
       refreshLocalIdentity: async () => {
+        assertLive();
         if (wallet.failProductRefresh && wallet.sessions[0] !== session) {
           throw new Error("Product identity chain unavailable");
         }
@@ -107,31 +124,42 @@ vi.mock("@parity/truapi-host/web", () => ({
         return identity();
       },
       registerLocalLiteUsername: async (name: string) => {
+        assertLive();
         wallet.claimStarted = true;
         await wallet.claimGate;
+        assertLive();
         wallet.username = `${name}.westend`;
         publish(wallet.username);
         return identity();
       },
       createProvider: async () => {
+        assertLive();
         if (wallet.sessions.length > 1 && wallet.failNextProduct) {
           wallet.failNextProduct = false;
           throw new Error("Product startup failed");
         }
+        if (wallet.closeNextProvider) {
+          wallet.closeNextProvider = false;
+          session.close(new Error("Wallet provider already closed"));
+        }
         return {
-          postMessage: () => {},
+          postMessage: () => assertLive(),
           subscribe: () => () => {},
-          subscribeClose: () => () => {},
+          subscribeClose: (callback: (error: Error) => void) => {
+            if (closeError !== undefined) callback(closeError);
+            else closeCallbacks.add(callback);
+            return () => closeCallbacks.delete(callback);
+          },
           disconnectSession: async () => {},
           getPermissionAuthorizationStatus: async () => "NotDetermined",
           getPermissionAuthorizationStatuses: async (requests: unknown[]) =>
             requests.map(() => "NotDetermined"),
           setPermissionAuthorizationStatus: async () => {},
-          dispose: () => {},
+          dispose: () => session.close(new Error("Native provider disposed")),
         };
       },
       dispose: () => {
-        session.disposed = true;
+        session.close(new Error("Native session disposed"));
       },
     };
   },
@@ -172,6 +200,7 @@ describe("host-owned experimental identity", () => {
     wallet.claimStarted = false;
     wallet.failNextProduct = false;
     wallet.failProductRefresh = false;
+    wallet.closeNextProvider = false;
     wallet.sessions.length = 0;
     auth.length = 0;
     localStorage.clear();
@@ -291,6 +320,97 @@ describe("host-owned experimental identity", () => {
     });
   });
 
+  it("retires a failed owner without retiring its product and explicitly retries native operations", async () => {
+    const { experimentalWalletControls: controls, renderIframe } = boot();
+    await controls.claimLiteUsername("alice");
+    await renderIframe("https://first.example/", "first");
+    const [owner, product] = wallet.sessions;
+    const lateCloseCallbacks = [...owner.closeCallbacks];
+    const display = controls.getCachedIdentity();
+    expect(display).toMatchObject({
+      identityAccountId: wallet.account,
+      primaryUsername: "alice.westend",
+    });
+    const before = auth.length;
+    owner.close(new Error("Wallet worker terminated"));
+    owner.publish({ tag: "Disconnected" });
+    expect(auth.slice(before)).toEqual([
+      { tag: "WalletUnavailable", reason: "Wallet worker terminated" },
+    ]);
+    expect(controls.getCachedIdentity()).toEqual(display);
+    expect(owner.disposed).toBe(true);
+    expect(product.disposed).toBe(false);
+    expect(document.querySelector("iframe")?.dataset.src).toBe(
+      "https://first.example/",
+    );
+    expect(wallet.sessions).toHaveLength(2);
+
+    await expect(controls.getIdentity()).resolves.toMatchObject({
+      liteUsername: "alice.westend",
+    });
+    const replacement = wallet.sessions[2];
+    const afterRetry = auth.slice();
+    for (const callback of lateCloseCallbacks) {
+      callback(new Error("Late old worker close"));
+    }
+    expect(auth).toEqual(afterRetry);
+    expect(replacement.disposed).toBe(false);
+    await expect(controls.refreshUsername()).resolves.toMatchObject({
+      liteUsername: "alice.westend",
+    });
+    await expect(controls.claimLiteUsername("bob")).resolves.toMatchObject({
+      liteUsername: "bob.westend",
+    });
+    expect(product.disposed).toBe(false);
+    expect(product.username).toBe("bob.westend");
+    expect(wallet.sessions).toHaveLength(3);
+  });
+
+  it("does not publish a failure or retire a replacement after intentional owner disposal", async () => {
+    const { experimentalWalletControls: controls } = boot();
+    await controls.getIdentity();
+    const owner = wallet.sessions[0];
+    const lateCloseCallbacks = [...owner.closeCallbacks];
+    const before = auth.slice();
+    wallet.revision = "replacement";
+    await expect(controls.getIdentity()).rejects.toThrow(
+      "wallet or network changed",
+    );
+    expect(owner.disposed).toBe(true);
+    expect(auth).toEqual(before);
+    await controls.getIdentity();
+    const replacement = wallet.sessions[1];
+    for (const callback of lateCloseCallbacks) {
+      callback(new Error("Late intentionally disposed worker"));
+    }
+    await expect(controls.claimLiteUsername("alice")).resolves.toMatchObject({
+      liteUsername: "alice.westend",
+    });
+    expect(replacement.disposed).toBe(false);
+    expect(auth.some((state) => state.tag === "WalletUnavailable")).toBe(false);
+    expect(wallet.sessions).toHaveLength(2);
+  });
+
+  it("rejects an already-closed owner once and allows an explicit retry", async () => {
+    wallet.closeNextProvider = true;
+    const { experimentalWalletControls: controls } = boot();
+    await expect(controls.getIdentity()).rejects.toThrow(
+      "Wallet provider already closed",
+    );
+    expect(auth.filter((state) => state.tag === "WalletUnavailable")).toEqual([
+      { tag: "WalletUnavailable", reason: "Wallet provider already closed" },
+    ]);
+    expect(auth.some((state) => state.tag === "LoginFailed")).toBe(false);
+    expect(auth.some((state) => state.tag === "Connected")).toBe(false);
+    expect(wallet.sessions[0].disposed).toBe(true);
+    await expect(controls.refreshUsername()).resolves.toMatchObject({
+      identityAccountId: wallet.account,
+    });
+    expect(wallet.sessions).toHaveLength(2);
+    expect(wallet.sessions[1].disposed).toBe(false);
+    expect(auth.at(-1)).toMatchObject({ tag: "Connected" });
+  });
+
   it("surfaces a native restoration failure instead of publishing cached identity", async () => {
     wallet.cachedUsername = "forged.westend";
     const gate = deferred<void>();
@@ -304,10 +424,13 @@ describe("host-owned experimental identity", () => {
     expect(auth.some((state) => state.tag === "Connected")).toBe(false);
     await vi.waitFor(() =>
       expect(auth.at(-1)).toMatchObject({
-        tag: "LoginFailed",
+        tag: "WalletUnavailable",
         reason: "Identity chain unavailable",
       }),
     );
+    expect(auth.some((state) => state.tag === "LoginFailed")).toBe(false);
+    expect(wallet.sessions[0].disposed).toBe(true);
+    expect(wallet.cachedUsername).toBe("forged.westend");
   });
 
   it("rejects a late claim and native callback from a replaced identity", async () => {
