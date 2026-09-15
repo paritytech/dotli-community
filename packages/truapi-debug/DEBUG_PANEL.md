@@ -216,6 +216,12 @@ Switching away from Wallet or collapsing the pane clears sensitive Recovery
 fields without cancelling username monitoring. Closing the debug pane exits
 debug mode and reloads the page, ending that page's native session.
 
+On a full page reload, previously reported identity metadata appears immediately
+as **verifying**, scoped to this origin's wallet revision and network. Display
+restoration is separate from native authentication: cached names cannot authorize
+claims or product permissions. Native verification replaces the display, while a
+failed check retains last-known metadata and offers a manual verification retry.
+
 See [Experimental test wallet](../../README.md#experimental-test-wallet) for
 activation, claim confirmation, custody risks, and recovery behavior.
 

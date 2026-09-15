@@ -1,4 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as Config from "@dotli/config/config";
+
+const buildFlags = vi.hoisted(() => ({ debug: false }));
+vi.mock("@dotli/config/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof Config>()),
+  get DEBUG() {
+    return buildFlags.debug;
+  },
+}));
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -81,6 +90,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  buildFlags.debug = false;
   device.mobile = false;
   localStorage.clear();
   sharedAuth.storage.clear();
@@ -788,6 +798,54 @@ describe("topbar first login guidance", () => {
 });
 
 describe("topbar boot rehydration", () => {
+  it("shows last-known experimental identity before idle without authenticating", async () => {
+    installTopbarDom();
+    buildFlags.debug = true;
+    vi.stubGlobal(
+      "requestIdleCallback",
+      vi.fn(() => 0),
+    );
+    // Import after module reset and wallet-mode selection to exercise page startup.
+    const { LOCAL_WALLET_ENABLED_KEY, writeUiStateCache } =
+      await import("@dotli/ui/host-callbacks/SessionStore");
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    await writeUiStateCache({
+      connected: true,
+      identityAccountId: `0x${"ab".repeat(32)}`,
+      liteUsername: "alice.02",
+      primaryUsername: "alice.02",
+    });
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    const authenticated = vi.fn();
+    const authState = vi.fn();
+    window.addEventListener("dotli:authenticated", authenticated);
+    window.addEventListener("dotli:truapi-auth-state", authState);
+    try {
+      initTopBar();
+      expect(
+        document.getElementById("user-popover-username")?.textContent,
+      ).toBe("alice.02");
+      expect(authenticated).not.toHaveBeenCalled();
+      expect(authState).not.toHaveBeenCalled();
+
+      window.dispatchEvent(
+        new CustomEvent("dotli:truapi-auth-state", {
+          detail: {
+            tag: "Connected",
+            session: { connected: true, liteUsername: "bob.02" },
+          },
+        }),
+      );
+      expect(
+        document.getElementById("user-popover-username")?.textContent,
+      ).toBe("bob.02");
+      expect(authenticated).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("dotli:authenticated", authenticated);
+      window.removeEventListener("dotli:truapi-auth-state", authState);
+    }
+  });
+
   it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {
     // Given
     installTopbarDom();

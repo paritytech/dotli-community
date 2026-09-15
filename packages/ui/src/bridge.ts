@@ -86,6 +86,7 @@ import {
   localWalletContext,
   isCurrentLocalWallet,
   readVerifiedLocalIdentity,
+  readLocalWalletDisplay,
   writeVerifiedLocalIdentity,
   type LocalWalletIdentityBinding,
   LOCAL_WALLET_ENABLED_KEY,
@@ -727,6 +728,12 @@ export const experimentalWalletControls = {
   isActive: isExperimentalWalletActive,
   networkLabel(): string {
     return getActiveServicesConfig().label;
+  },
+  getCachedIdentity() {
+    const display = readLocalWalletDisplay();
+    return display === undefined
+      ? undefined
+      : { ...display, network: getActiveServicesConfig().label };
   },
   async getIdentity(): Promise<
     LocalIdentity & {
