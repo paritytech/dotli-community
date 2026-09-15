@@ -68,7 +68,7 @@ TRUAPI_HOST_LOCAL_PACKAGE := $(TRUAPI_REPO)/js/packages/truapi-host/package.json
 # back certbot's API calls.
 APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static certbot python3-certbot-dns-cloudflare rsync ufw curl ca-certificates
 
-.PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
+.PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy ci-deploy-nginx deploy-nginx render-nginx _require-env _require-env-name
 
 build: link-truapi-local
 	bun run build
@@ -142,12 +142,16 @@ deploy: _require-env build
 # env tag → envsubst tokens for nginx/nginx.conf.template. ZONE is a unique
 # per-domain limit_req zone name; RL is "" (rate-limiting on) for the
 # RATE_LIMITED_ENVS and "#" (commented out) for everything else.
+# CI isolates snippets by site; manual deployments retain the shared directory.
+NGINX_SNIPPETS_DIR ?= /etc/nginx/snippets
+_nginx_snippet_paths = sed 's|/etc/nginx/snippets/|$(NGINX_SNIPPETS_DIR)/|g'
+_nginx_comment := \#
 _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
-	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,\#)' \
-	SENTRY='$(if $(SENTRY_DSN),,\#)' \
+	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,$(_nginx_comment))' \
+	SENTRY='$(if $(SENTRY_DSN),,$(_nginx_comment))' \
 	SENTRY_INGEST='$(SENTRY_INGEST)' SENTRY_PROJECT='$(SENTRY_PROJECT)' \
-	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template
+	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template | $(_nginx_snippet_paths)
 
 # Warn (to stderr — render-nginx pipes stdout) instead of failing: envs
 # without Sentry are legitimate, but a silently dead tunnel is not.
@@ -165,10 +169,18 @@ deploy-nginx: _require-env
 	$(_sentry_warn)
 	$(eval REMOTE_TARGET := $(or $(REMOTE),$(REMOTE_FOR_$(ENV))))
 	$(eval SITE := $(SITE_$(ENV)))
-	$(_nginx_render) > /tmp/$(SITE).nginx
-	rsync -avz --delete $(if $(SENTRY_DSN),,--exclude=dotli-sentry-tunnel.conf --delete-excluded) nginx/snippets/ $(REMOTE_TARGET):/tmp/dotli-nginx-snippets/
-	scp /tmp/$(SITE).nginx $(REMOTE_TARGET):/tmp/$(SITE).nginx
-	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 /etc/nginx/snippets && sudo rsync -av /tmp/dotli-nginx-snippets/ /etc/nginx/snippets/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
+	@set -eu; \
+	stage=$$(mktemp -d); \
+	trap 'rm -rf "$$stage"' EXIT; \
+	$(_nginx_render) > "$$stage/$(SITE).nginx"; \
+	mkdir "$$stage/snippets"; \
+	for snippet in nginx/snippets/*.conf; do \
+		if [ -z "$(SENTRY_DSN)" ] && [ "$${snippet##*/}" = dotli-sentry-tunnel.conf ]; then continue; fi; \
+		$(_nginx_snippet_paths) "$$snippet" > "$$stage/snippets/$${snippet##*/}"; \
+	done; \
+	rsync -avz --delete "$$stage/snippets/" $(REMOTE_TARGET):/tmp/$(SITE)-nginx-snippets/; \
+	scp "$$stage/$(SITE).nginx" $(REMOTE_TARGET):/tmp/$(SITE).nginx
+	ssh $(REMOTE_TARGET) 'sudo install -d -m 0755 $(NGINX_SNIPPETS_DIR) && sudo rsync -av /tmp/$(SITE)-nginx-snippets/ $(NGINX_SNIPPETS_DIR)/ && sudo cp /tmp/$(SITE).nginx /etc/nginx/sites-available/$(SITE) && sudo ln -sf /etc/nginx/sites-available/$(SITE) /etc/nginx/sites-enabled/$(SITE) && sudo nginx -t && sudo systemctl reload nginx'
 
 define _rsync_dist
 rsync -avz --delete --filter='P /assets/' apps/host/dist/     $(1):$(2)/host/
@@ -183,6 +195,16 @@ ci-deploy:
 	@test -n "$(DEPLOY_PATH)" || (echo "ci-deploy: DEPLOY_PATH not set"; exit 1)
 	$(call _rsync_dist,$(DEPLOY_USER)@$(DEPLOY_HOST),$(DEPLOY_PATH))
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'find $(DEPLOY_PATH)/*/assets/ -type f -mtime +7 -delete 2>/dev/null || true'
+
+# Opt-in CI config rollout. Reject implicit ENV and mismatched web roots before
+# uploading anything; never inherit the local REMOTE or the default paseo env.
+ci-deploy-nginx:
+	@test "$(origin ENV)" = "command line" || (echo "ci-deploy-nginx: pass ENV=dev-polkadot or ENV=dev-westend explicitly"; exit 1)
+	@case "$(ENV)" in dev-polkadot|dev-westend) ;; *) echo "ci-deploy-nginx: only ENV=dev-polkadot or ENV=dev-westend is allowed"; exit 1 ;; esac
+	@test -n "$(DEPLOY_USER)" || (echo "ci-deploy-nginx: DEPLOY_USER not set"; exit 1)
+	@test -n "$(DEPLOY_HOST)" || (echo "ci-deploy-nginx: DEPLOY_HOST not set"; exit 1)
+	@test "$(DEPLOY_PATH)" = "$(DEPLOY_PATH_$(ENV))" || (echo "ci-deploy-nginx: DEPLOY_PATH must be $(DEPLOY_PATH_$(ENV)) for ENV=$(ENV)"; exit 1)
+	$(MAKE) deploy-nginx ENV="$(ENV)" REMOTE="$(DEPLOY_USER)@$(DEPLOY_HOST)" NGINX_SNIPPETS_DIR="/etc/nginx/snippets/$(SITE_$(ENV))"
 
 # Validates ENV is a known tag. No remote required, so render-nginx can use it.
 _require-env-name:

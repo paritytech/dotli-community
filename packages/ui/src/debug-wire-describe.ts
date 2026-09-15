@@ -237,12 +237,66 @@ function buildGenericNames(): Map<number, GenericEntry> {
 let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
 
+const allocationResponseCodec = indexedTaggedUnion({
+  V1: [
+    0,
+    Result(
+      generated.HostRequestResourceAllocationResponse,
+      CallError(generated.VersionedHostRequestResourceAllocationError),
+    ),
+  ],
+});
+
 export function describeWireFrame(
   wireId: number,
   bytes: Uint8Array,
 ): { tag: string; value: unknown } {
   chainEntries ??= buildChainEntries();
   genericNames ??= buildGenericNames();
+
+  // Only allocation resource selectors and outcomes are inspector metadata.
+  // Never retain arbitrary native error reasons or malformed raw payloads.
+  if (
+    wireId === WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request ||
+    wireId === WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response
+  ) {
+    const isRequest = wireId === WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request;
+    const tag = isRequest
+      ? "resource_allocation_request_request"
+      : "resource_allocation_request_response";
+    try {
+      if (isRequest) {
+        const request =
+          generated.VersionedHostRequestResourceAllocationRequest.dec(bytes);
+        const encoded =
+          generated.VersionedHostRequestResourceAllocationRequest.enc(request);
+        if (
+          encoded.length === bytes.length &&
+          encoded.every((byte, index) => byte === bytes[index])
+        ) {
+          return { tag, value: { resources: request.value.resources } };
+        }
+      } else {
+        const response = allocationResponseCodec.dec(bytes);
+        const encoded = allocationResponseCodec.enc(response);
+        if (
+          encoded.length === bytes.length &&
+          encoded.every((byte, index) => byte === bytes[index])
+        ) {
+          return {
+            tag,
+            value: response.value.success
+              ? { outcomes: response.value.value.outcomes }
+              : { failed: true },
+          };
+        }
+      }
+    } catch {
+      // Invalid metadata must not affect transport delivery or reveal bytes.
+      return { tag, value: { redacted: true, byteLength: bytes.length } };
+    }
+    return { tag, value: { redacted: true, byteLength: bytes.length } };
+  }
 
   const chain = chainEntries.get(wireId);
   if (chain !== undefined) {

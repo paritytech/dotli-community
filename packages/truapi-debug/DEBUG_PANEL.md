@@ -21,6 +21,7 @@ users who never see the panel pay zero download cost.
 - [Views](#views)
   - [List view](#list-view)
   - [Timeline view](#timeline-view)
+  - [Wallet view](#wallet-view)
 - [Filters](#filters)
 - [Detail pane](#detail-pane)
 - [Design concepts](#design-concepts)
@@ -40,9 +41,9 @@ users who never see the panel pay zero download cost.
 A resizable, dockable panel at the bottom of the viewport. It mounts
 visible whenever debug mode is on; the panel's `×` button exits debug
 mode entirely (see [Enabling and disabling](#enabling-and-disabling)).
-The left pane is your choice of **List** or **Timeline**; the right
-pane is the detail inspector for the selected event. A draggable
-splitter between them lets you rebalance the panes.
+The **List** and **Timeline** tabs share a detail inspector for the selected
+event, with a draggable splitter between the panes. **Resolution** and the
+debug-build-only **Wallet** tab use the full pane width.
 
 Hover any element in the Timeline for a zero-delay tooltip with the
 decoded method + summary. Click any row or box to pin it in the
@@ -143,7 +144,7 @@ Dotli-internal host-side orchestration, captured by
 
 ## Views
 
-Both views operate on the same filtered slice of the event store.
+List and Timeline operate on the same filtered slice of the event store.
 Clicking an event in one view pins the same event in the detail
 pane regardless of which view is active.
 
@@ -179,6 +180,36 @@ Each swimlane has its own horizontal scroll, so a chain with many
 concurrent operations can grow wide without pushing the whole view.
 Vertical scroll is shared across all swimlanes, so events at the
 same Y in different swimlanes occurred at the same moment.
+
+### Wallet view
+
+In builds compiled with `VITE_APP_DEBUG=true`, Wallet contains activation,
+username claims and refresh, current-product accounts and permissions, and a
+collapsed Recovery section. The persistent header badge expands the pane and
+selects Wallet; the active account badge uses the same `dotli:wallet-open` event.
+There is no separate wallet overlay, activity viewer, or docking control.
+
+Wallet identity is owned by a persistent native host session and is available
+before any product loads. Product replacement does not clear its username or
+cancel a pending claim. Current-product details refresh independently.
+Switching away from Wallet or collapsing the pane clears sensitive Recovery
+fields without cancelling username monitoring. Closing the debug pane exits
+debug mode and reloads the page, ending that page's native session.
+
+On a full page reload, previously reported identity metadata appears immediately
+as **verifying**, scoped to this origin's wallet revision and network. Display
+restoration is separate from native authentication: cached names cannot authorize
+claims or product permissions. Native verification replaces the display, while a
+failed check retains last-known metadata and offers a manual verification retry.
+
+A failed native worker is retired immediately. Wallet marks its last-known
+identity as display-only, disables native username and resource operations, and
+does not open a Mobile pairing dialog or automatically restart the session.
+**Retry wallet verification** creates a fresh native owner. Recovery controls
+remain available, and healthy product sessions are not disposed by this failure.
+
+See [Experimental test wallet](../../README.md#experimental-test-wallet) for
+activation, claim confirmation, custody risks, and recovery behavior.
 
 ## Filters
 

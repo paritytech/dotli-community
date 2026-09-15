@@ -17,7 +17,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
-import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
+import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config/config";
 import {
   getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
@@ -50,6 +50,12 @@ import {
   METHOD_TIMEOUTS,
   UNTIMED_METHODS,
 } from "./method-timeouts";
+import type {
+  SharedWalletOperation,
+  SharedWalletResult,
+  SharedWalletState,
+} from "./wallet-storage";
+import { isSharedWalletState } from "./wallet-storage";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -79,6 +85,7 @@ let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
+const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
@@ -381,6 +388,20 @@ function bindMessageListener(): void {
       case "ready":
         resolveProtocolReady();
         return;
+      case "wallet-storage-changed":
+        if (msg.siteId === SITE_ID && isSharedWalletState(msg.state)) {
+          for (const listener of sharedWalletListeners) {
+            try {
+              listener(msg.state);
+            } catch (error) {
+              log.error(
+                "[dot.li protocol] Shared wallet listener failed:",
+                error,
+              );
+            }
+          }
+        }
+        return;
       case "smoldot-db":
         // `isProtocolEnvelope` validates only namespace and kind, and these
         // values become Sentry tags: gate them so a buggy frame cannot write
@@ -596,7 +617,8 @@ async function postRequest<M extends ProtocolRequestMethod>(
   payload: ProtocolRequestMap[M],
   onProgress?: (message: string) => void,
   needsProtocolReady = !isSharedAuthRequestMethod(method) &&
-    !isSharedModeRequestMethod(method),
+    !isSharedModeRequestMethod(method) &&
+    method !== "walletStorage",
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
@@ -698,6 +720,26 @@ export async function resolveRootManifestRemote(
   })) as ManifestResult<RootManifest>;
 }
 
+/** Secrets travel only over the validated protocol iframe RPC, never HTTP mode sync. */
+export async function requestSharedWallet(
+  siteId: SiteId,
+  operation: SharedWalletOperation,
+): Promise<SharedWalletResult> {
+  return (await postRequest("walletStorage", {
+    siteId,
+    operation,
+  })) as SharedWalletResult;
+}
+
+export function subscribeSharedWallet(
+  listener: (state: SharedWalletState) => void,
+): () => void {
+  sharedWalletListeners.add(listener);
+  return () => {
+    sharedWalletListeners.delete(listener);
+  };
+}
+
 export async function readSharedAuthStorage(
   siteId: SiteId,
   key: string,
@@ -711,8 +753,14 @@ export async function writeSharedAuthStorage(
   siteId: SiteId,
   key: string,
   value: string,
+  walletRevision?: string | null,
 ): Promise<void> {
-  await postRequest("authStorageWrite", { siteId, key, value });
+  await postRequest("authStorageWrite", {
+    siteId,
+    key,
+    value,
+    ...(walletRevision === undefined ? {} : { walletRevision }),
+  });
 }
 
 export async function clearSharedAuthStorage(
