@@ -254,7 +254,10 @@ describe("describeWireFrame", () => {
     const interruptBytes = new Uint8Array([4, 5, 6]);
 
     // When
-    const stopFrame = wireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_STOP);
+    const stopFrame = wireFrameId(
+      CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_STOP,
+    );
     const interruptFrame = wireFrameId(
       CHAIN_FOLLOW_HEAD_SUBSCRIBE,
       MESSAGE_TYPE_INTERRUPT,

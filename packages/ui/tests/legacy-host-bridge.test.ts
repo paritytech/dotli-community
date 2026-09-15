@@ -465,7 +465,12 @@ describe("createLegacyNovaChainHeadProvider", () => {
     // When
     harness.emit(followStart("wire-old"));
     harness.emit(
-      frame("handshake", SYSTEM_HANDSHAKE, MESSAGE_TYPE_REQUEST, new Uint8Array()),
+      frame(
+        "handshake",
+        SYSTEM_HANDSHAKE,
+        MESSAGE_TYPE_REQUEST,
+        new Uint8Array(),
+      ),
     );
     harness.emit(followStart("wire-new"));
     harness.emit(
