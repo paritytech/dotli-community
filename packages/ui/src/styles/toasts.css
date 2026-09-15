@@ -26,7 +26,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 60vh;
+  max-height: 60dvh;
   overflow-y: auto;
   padding: 12px;
   margin: -12px;
@@ -193,4 +193,14 @@ a.notif-body:hover {
 .notif-leave {
   animation: notif-out 0.25s ease forwards;
   pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-stack:not(.expanded) .notif-card {
+    transition: none;
+  }
+  .notif-enter,
+  .notif-leave {
+    animation-duration: 0.01ms;
+  }
 }

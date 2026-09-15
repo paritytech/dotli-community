@@ -210,20 +210,20 @@
 [data-theme="light"] .loading h1 {
   color: #111;
 }
+[data-theme="light"] .loading-warning {
+  /* 6.50:1 */
+  color: #92400e;
+}
 [data-theme="light"] #status {
   color: #1a1a1a;
-}
-[data-theme="light"] .loading-hint {
-  color: #b45309;
-}
-[data-theme="light"] .loading-hint.visible {
-  opacity: 0.9;
 }
 [data-theme="light"] .loading-progress-bar {
   background: rgba(0, 0, 0, 0.06);
 }
 [data-theme="light"] .loading-progress-fill {
-  background: rgba(0, 0, 0, 0.35);
+  /* The fill is the state indicator, so it needs 3:1 as a non-text
+     component. 0.35 gave 2.43:1 against the page; 0.5 gives 3.88:1. */
+  background: rgba(0, 0, 0, 0.5);
 }
 /* Loading logo — dark-mode uses `fill: #fff` on the petals, which is
    invisible on the light-theme cream body. Flip to near-black so the
@@ -232,7 +232,10 @@
   fill: #111;
 }
 [data-theme="light"] .loading-progress-pct {
-  color: #333;
+  /* 4.89:1, and kept below the detail line so the ranking survives the
+     flip. #333 would clear AA too, but it would outrank the headline's
+     own secondary line. */
+  color: #6b6b6b;
 }
 [data-theme="light"] .spinner {
   border-color: #ddd;
@@ -270,31 +273,35 @@
   background: #f5f5f5;
 }
 [data-theme="light"] .error-page-title {
-  color: #111;
+  color: #202124;
 }
-[data-theme="light"] .error-page-detail {
+[data-theme="light"] .error-page-detail,
+[data-theme="light"] .error-page-tips {
   color: #666;
 }
 [data-theme="light"] .error-page-retry {
+  color: #1a1a1a;
+  background: transparent;
+  border-color: rgba(0, 0, 0, 0.24);
+}
+[data-theme="light"] .error-page-retry:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.4);
+}
+[data-theme="light"] .error-page-retry--primary {
   color: #fafafa;
   background: #1a1a1a;
   border-color: #1a1a1a;
 }
-[data-theme="light"] .error-page-retry:hover {
+[data-theme="light"] .error-page-retry--primary:hover {
   background: #000;
   border-color: #000;
 }
-[data-theme="light"] .error-page-retry + .error-page-retry {
-  color: #1a1a1a;
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.18);
-}
-[data-theme="light"] .error-page-retry + .error-page-retry:hover {
-  background: rgba(0, 0, 0, 0.07);
-  border-color: rgba(0, 0, 0, 0.32);
-}
 [data-theme="light"] .error-page-glyph {
   color: rgba(0, 0, 0, 0.22);
+}
+[data-theme="light"] .error-page-glyph--warning {
+  color: #d93025;
 }
 [data-theme="light"] .error-page-inner--unreached .error-page-detail {
   color: #555;
@@ -368,25 +375,27 @@
 [data-theme="light"] .landing-tag {
   border-color: #ddd;
 }
-[data-theme="light"] .landing-recent-pill {
+[data-theme="light"] .landing-recent-label {
   background: #fff;
   border-color: #ddd;
+  color: #555;
 }
-[data-theme="light"] .landing-recent-pill:hover {
+[data-theme="light"] .landing-recent-pill:hover .landing-recent-label {
   border-color: #bbb;
   background: #f0f0f0;
 }
-[data-theme="light"] .landing-recent-label {
+[data-theme="light"] .landing-recent-remove {
   color: #555;
 }
-[data-theme="light"] .landing-recent-remove {
+[data-theme="light"] .landing-recent-remove::before {
   background: #e4e4e4;
   border-color: #fff;
-  color: #555;
 }
 [data-theme="light"] .landing-recent-remove:hover {
-  background: #d0d0d0;
   color: #111;
+}
+[data-theme="light"] .landing-recent-remove:hover::before {
+  background: #d0d0d0;
 }
 
 [data-theme="light"] .permissions-popover-header {
@@ -575,6 +584,79 @@
 [data-theme="light"] .permission-modal-notice {
   color: rgba(0, 0, 0, 0.5);
 }
+
+/* Green, amber and red all need darkening on the cream panel to clear 3:1 as
+   non-text marks. Measured against #fdfdfd, the composited light surface. */
+[data-theme="light"] .chains-bar.is-onTime {
+  /* 4.93:1 */
+  background: #15803d;
+}
+[data-theme="light"] .chains-bar.is-late {
+  /* 4.94:1 */
+  background: #b45309;
+}
+[data-theme="light"] .chains-bar.is-veryLate {
+  /* 4.86:1 */
+  background: #b91c1c;
+}
+[data-theme="light"] .chains-bars {
+  border-bottom-color: rgba(0, 0, 0, 0.16);
+}
+[data-theme="light"] .chains-group-label {
+  /* 7.10:1 */
+  color: #525252;
+}
+[data-theme="light"] .chains-transfer-label {
+  /* 5.24:1 on the cream panel */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-transfer-value {
+  /* 12.6:1 */
+  color: #1a1a1a;
+}
+[data-theme="light"] .chains-tips {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.09);
+}
+[data-theme="light"] .chains-tips-title {
+  /* 12.6:1 */
+  color: #1a1a1a;
+}
+[data-theme="light"] .chains-tips-list {
+  /* 5.24:1 on the cream panel */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-tips-list li::marker {
+  color: #8a8a8a;
+}
+[data-theme="light"] .chains-group-peers {
+  /* 5.24:1 on the cream panel */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-bar-pending {
+  /* 5.24:1 on the cream panel */
+  background: #6b6b6b;
+}
+[data-theme="light"] .chains-bars-waiting,
+[data-theme="light"] .chains-bars-cell.is-unavailable {
+  /* 5.24:1 */
+  color: #6b6b6b;
+}
+[data-theme="light"] .chains-status {
+  color: #1a1a1a;
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+}
+[data-theme="light"] .chains-status-dot.is-ok {
+  background: #15803d;
+}
+[data-theme="light"] .chains-status-dot.is-warn {
+  background: #b45309;
+}
+[data-theme="light"] .chains-status-dot.is-idle {
+  background: #6b6b6b;
+}
+
 [data-theme="light"] .chat-panel {
   background: rgb(250, 250, 250);
   border-left-color: rgba(0, 0, 0, 0.1);
@@ -667,4 +749,10 @@
   --chat-fg-success: #16a34a;
   --chat-fg-error: #dc2626;
   --chat-fg-warning: #d97706;
+}
+
+/* Matches the opaque dark rule in base.css: the network panel sits over the
+   product iframe, where a translucent surface shows the app straight through. */
+[data-theme="light"] .more-popover.chains-popover {
+  background: rgb(245, 245, 245);
 }

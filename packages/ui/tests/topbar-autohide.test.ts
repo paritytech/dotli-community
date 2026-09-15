@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// happy-dom rejects var() inside calc(), so the box helper is mocked with
-// plain values here. The real inset math is covered by product-iframe-box tests.
+// happy-dom rejects var() inside calc() and drops a bare dvh length, so the
+// box helper is mocked with plain stand-in values here. The real inset math and
+// units are covered by product-iframe-box tests.
 vi.mock("@dotli/ui/product-iframe-box", () => ({
   productIframeBox: (opts: { topbarOffset: boolean }) =>
     opts.topbarOffset
@@ -9,7 +10,7 @@ vi.mock("@dotli/ui/product-iframe-box", () => ({
           top: "56px",
           left: "0px",
           width: "100%",
-          height: "calc(100vh - 56px)",
+          height: "calc(100dvh - 56px)",
         }
       : { top: "0px", left: "0px", width: "100%", height: "100vh" },
 }));
@@ -30,7 +31,7 @@ function installTopbarDom(): void {
     <div class="permissions-popover" id="permissions-popover"></div>
     <div class="auth-modal-backdrop" id="auth-modal-backdrop"></div>
     <div id="app">
-      <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100vh - 56px)"></iframe>
+      <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
     </div>
     <a id="toast" href="/">a toast that also lives after the app</a>
   `;
@@ -314,7 +315,7 @@ describe("topbar auto-hide motion and layout", () => {
 
     // When a new render restyles the frame with the topbar offset
     appFrame().style.top = "56px";
-    appFrame().style.height = "calc(100vh - 56px)";
+    appFrame().style.height = "calc(100dvh - 56px)";
     window.dispatchEvent(
       new CustomEvent("dotli:product-loaded", { detail: { label: "demo" } }),
     );
@@ -340,7 +341,7 @@ describe("topbar auto-hide motion and layout", () => {
     // Then
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe("56px");
-    expect(appFrame().style.height).toBe("calc(100vh - 56px)");
+    expect(appFrame().style.height).toBe("calc(100dvh - 56px)");
     expect(appFrame().style.transform).toBe("");
   });
 });

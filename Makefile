@@ -211,11 +211,12 @@ ci-deploy:
 # Opt-in CI config rollout. Reject implicit ENV and mismatched web roots before
 # uploading anything; never inherit the local REMOTE or the default paseo env.
 ci-deploy-nginx:
-	@test "$(origin ENV)" = "command line" && test "$(ENV)" = dev-westend || (echo "ci-deploy-nginx: pass ENV=dev-westend explicitly"; exit 1)
+	@test "$(origin ENV)" = "command line" || (echo "ci-deploy-nginx: pass ENV=dev-polkadot or ENV=dev-westend explicitly"; exit 1)
+	@case "$(ENV)" in dev-polkadot|dev-westend) ;; *) echo "ci-deploy-nginx: only ENV=dev-polkadot or ENV=dev-westend is allowed"; exit 1 ;; esac
 	@test -n "$(DEPLOY_USER)" || (echo "ci-deploy-nginx: DEPLOY_USER not set"; exit 1)
 	@test -n "$(DEPLOY_HOST)" || (echo "ci-deploy-nginx: DEPLOY_HOST not set"; exit 1)
-	@test "$(DEPLOY_PATH)" = "$(DEPLOY_PATH_dev-westend)" || (echo "ci-deploy-nginx: DEPLOY_PATH must be $(DEPLOY_PATH_dev-westend)"; exit 1)
-	$(MAKE) deploy-nginx ENV=dev-westend REMOTE="$(DEPLOY_USER)@$(DEPLOY_HOST)" NGINX_SNIPPETS_DIR=/etc/nginx/snippets/westendli.dev
+	@test "$(DEPLOY_PATH)" = "$(DEPLOY_PATH_$(ENV))" || (echo "ci-deploy-nginx: DEPLOY_PATH must be $(DEPLOY_PATH_$(ENV)) for ENV=$(ENV)"; exit 1)
+	$(MAKE) deploy-nginx ENV="$(ENV)" REMOTE="$(DEPLOY_USER)@$(DEPLOY_HOST)" NGINX_SNIPPETS_DIR="/etc/nginx/snippets/$(SITE_$(ENV))"
 
 # Validates ENV is a known tag. No remote required, so render-nginx can use it.
 _require-env-name:

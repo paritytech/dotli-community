@@ -89,6 +89,7 @@ vi.mock("@dotli/metrics/metrics", () => ({
     measure: vi.fn(),
     timer: vi.fn(() => mocks.timerStop),
   },
+  getResolutionId: vi.fn(() => null),
 }));
 
 function makeProvider(): MockProvider {
