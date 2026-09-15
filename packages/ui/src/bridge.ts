@@ -874,12 +874,16 @@ async function createCoreProvider(
             provider.publishChatAction === undefined
               ? Promise.reject(new Error("chat publishing unavailable"))
               : provider.publishChatAction(action),
-          renderCustomMessage: (request, sink) => {
-            if (provider.renderCustomMessage === undefined) {
-              sink.onError?.(new Error("custom rendering unavailable"));
+          publishRendererAction: (item) =>
+            provider.publishRendererAction === undefined
+              ? Promise.reject(new Error("renderer actions unavailable"))
+              : provider.publishRendererAction(item),
+          render: (request, sink) => {
+            if (provider.render === undefined) {
+              sink.onError?.(new Error("rendering unavailable"));
               return noop;
             }
-            return provider.renderCustomMessage(request, sink);
+            return provider.render(request, sink);
           },
         })
       : noop;

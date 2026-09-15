@@ -148,11 +148,13 @@ manifest.
 
 Custom messages (`ChatMessageContent::Custom`) render live: when a custom
 message cell scrolls into view, the panel asks the product to draw it
-(`chat.custom_message_render`) and renders the streamed tree with the
-host's own design system (`src/chat/custom-renderer.ts`). The tree is a
-closed vocabulary of layouts and design tokens, so a product can never
-inject markup, styles, or URLs. Button taps and text-field edits flow back
-as `ActionTriggered` actions, as do taps on `Actions`-content buttons.
+through the Renderer service (`renderer.render`, with a `ChatMessage`
+render context) and renders the streamed tree with the host's own design
+system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
+layouts and design tokens, so a product can never inject markup, styles, or
+URLs. Button taps and text-field edits inside a rendered tree flow back on
+`renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
+`ActionTriggered` chat actions.
 
 ### App iframe model
 
