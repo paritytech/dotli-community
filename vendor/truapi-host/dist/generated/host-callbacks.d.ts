@@ -214,6 +214,19 @@ export type CoreStorageKey =
         peerStatementAccountId: Uint8Array;
         peerEncryptionPublicKey: Uint8Array;
     };
+}
+/**
+ * Cached root manifest of one product, as published to dotNS.
+ *
+ * The value carries the manifest JSON alongside the time it was read. The
+ * core honours it for a bounded lifetime, which is what makes a revoked
+ * trust grant eventually take effect.
+ */
+ | {
+    tag: "ProductManifest";
+    value: {
+        productId: string;
+    };
 };
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -476,6 +489,8 @@ export type SignPayloadReview =
 };
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
+ * Hosts must display the payload according to `watermarked` and warn that
+ * unwatermarked signatures can authorize transactions.
  */
 export type SignRawReview = 
 /**
@@ -483,14 +498,20 @@ export type SignRawReview =
  */
 {
     tag: "Product";
-    value: HostSignRawRequest;
+    value: {
+        request: HostSignRawRequest;
+        watermarked: boolean;
+    };
 }
 /**
  * Legacy-account raw signing request.
  */
  | {
     tag: "LegacyAccount";
-    value: HostSignRawWithLegacyAccountRequest;
+    value: {
+        request: HostSignRawWithLegacyAccountRequest;
+        watermarked: boolean;
+    };
 };
 /**
  * Review shown before signing an RFC-0023 VRF transcript.
@@ -732,6 +753,8 @@ export declare const SessionUiInfo: S.Codec<SessionUiInfo>;
 export declare const SignPayloadReview: S.Codec<SignPayloadReview>;
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
+ * Hosts must display the payload according to `watermarked` and warn that
+ * unwatermarked signatures can authorize transactions.
  */
 export declare const SignRawReview: S.Codec<SignRawReview>;
 /**
@@ -1069,10 +1092,19 @@ export interface PreimageHost {
  * The core namespaces product keys before calling this trait. Host
  * implementations may treat `key` as opaque or decode it with
  * `ProductStorageKey` when their physical storage is separated by product.
+ * Storage errors are pinned to `v01` rather than taken from `truapi::latest`.
+ * The read error gained a cross-product refusal in v0.2 that the core decides
+ * before it ever calls a host, so a host has no way to produce it and should
+ * not have to match on it.
  */
 export interface ProductStorage {
     /**
      * Read a value by key.
+     *
+     * Always the calling product's own storage. A read addressed at another
+     * product is adjudicated in the core against that product's manifest and
+     * refused there, so a host is never asked to enforce a grant and has no
+     * variant for one.
      */
     read(key: string): Promise<Uint8Array | undefined>;
     /**

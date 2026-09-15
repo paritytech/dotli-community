@@ -4,9 +4,16 @@
  * plus the Polkadot-flavour helpers it does not ship (hex-encoded bytes,
  * lazy recursive codecs, and `V<N>`-indexed tagged unions).
  */
-import { type Codec } from "scale-ts";
+import { type Codec, type ResultPayload } from "scale-ts";
 export type { Codec };
 export type { ResultPayload } from "scale-ts";
+/**
+ * Bare-named type alias matching generated codegen's naming convention for
+ * generic wire types: `Result<Ok, Err>` is used as both a value (the codec
+ * builder re-exported below) and a type (this alias for scale-ts's own
+ * `ResultPayload`) in generated `types.ts`.
+ */
+export type Result<Ok, Err> = ResultPayload<Ok, Err>;
 export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, bool, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
 /**
  * Substrate `OptionBool`: a one-byte `Option<bool>`.

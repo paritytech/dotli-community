@@ -1,36 +1,6 @@
 /* @ts-self-types="./truapi_server.d.ts" */
 
 /**
- * Cancellable observation of one custom-message render instance. Dropping the
- * handle on the JS side does not stop the stream; call `cancel`.
- */
-export class WasmCustomRendererSubscription {
-    static __wrap(ptr) {
-        const obj = Object.create(WasmCustomRendererSubscription.prototype);
-        obj.__wbg_ptr = ptr;
-        WasmCustomRendererSubscriptionFinalization.register(obj, obj.__wbg_ptr, obj);
-        return obj;
-    }
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        WasmCustomRendererSubscriptionFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wasmcustomrenderersubscription_free(ptr, 0);
-    }
-    /**
-     * Stop delivering renderer updates. Idempotent.
-     */
-    cancel() {
-        wasm.wasmcustomrenderersubscription_cancel(this.__wbg_ptr);
-    }
-}
-if (Symbol.dispose) WasmCustomRendererSubscription.prototype[Symbol.dispose] = WasmCustomRendererSubscription.prototype.free;
-
-/**
  * JS-callable handle to a long-lived pairing-host runtime shared by product
  * cores.
  */
@@ -44,6 +14,17 @@ export class WasmPairingHostRuntime {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_wasmpairinghostruntime_free(ptr, 0);
+    }
+    /**
+     * Take one reference on the product's worker for a modality holder. The
+     * first one reports `"Start"` to the host's `workerDemandChanged`
+     * callback. Pair every call with one `releaseWorker`.
+     * @param {string} product_id
+     */
+    acquireWorker(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmpairinghostruntime_acquireWorker(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * Activate an externally persisted canonical session without writing it
@@ -195,6 +176,16 @@ export class WasmPairingHostRuntime {
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmpairinghostruntime_productSubtreePublicKey(this.__wbg_ptr, ptr0, len0, isLikeNone(timeout_ms) ? Number.MAX_SAFE_INTEGER : (timeout_ms) >>> 0);
         return takeObject(ret);
+    }
+    /**
+     * Release one reference. The last one reports `"Stop"`, after which the
+     * host may stop the worker; releasing with none held is a no-op.
+     * @param {string} product_id
+     */
+    releaseWorker(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmpairinghostruntime_releaseWorker(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * Clear canonical paired-session state without notifying the peer.
@@ -372,6 +363,27 @@ export class WasmProductRuntime {
         }
     }
     /**
+     * Publish one action triggered inside a product-rendered body, buffered
+     * until the product subscribes. Takes a SCALE-encoded
+     * `HostRendererActionSubscribeItem`.
+     * @param {Uint8Array} item
+     */
+    publishRendererAction(item) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(item, wasm.__wbindgen_export);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmproductruntime_publishRendererAction(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            if (r1) {
+                throw takeObject(r0);
+            }
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * Push a SCALE-encoded protocol frame into the dispatcher. Responses
      * (and subscription items) flow back through the `emitFrame`
      * callback.
@@ -385,37 +397,31 @@ export class WasmProductRuntime {
         return takeObject(ret);
     }
     /**
-     * Start the host-initiated render subscription for one stored custom Chat
-     * message. `onUpdate` receives each replacement tree as a SCALE-encoded
-     * `CustomRendererNode`. Exactly one terminal follows: `onComplete` when the
-     * stream ended with the last tree standing, or `onError` when the product
-     * could not serve the render and the last tree is partial. Rejects when
-     * this connection may not reach Chat.
-     * @param {string} message_id
-     * @param {string} message_type
-     * @param {Uint8Array} payload
+     * Start the host-initiated render subscription for one body. `request` is
+     * a SCALE-encoded `ProductRendererRenderRequest`. `onUpdate` receives each
+     * replacement tree as a SCALE-encoded `RendererNode`. Exactly one terminal
+     * follows: `onComplete` when the stream ended with the last tree standing,
+     * or `onError` when the product could not serve the render and the last
+     * tree is partial. Rejects when this connection may not render.
+     * @param {Uint8Array} request
      * @param {Function} on_update
      * @param {Function} on_complete
      * @param {Function} on_error
-     * @returns {WasmCustomRendererSubscription}
+     * @returns {WasmRendererSubscription}
      */
-    renderCustomMessage(message_id, message_type, payload, on_update, on_complete, on_error) {
+    render(request, on_update, on_complete, on_error) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            const ptr0 = passStringToWasm0(message_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const ptr0 = passArray8ToWasm0(request, wasm.__wbindgen_export);
             const len0 = WASM_VECTOR_LEN;
-            const ptr1 = passStringToWasm0(message_type, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-            const len1 = WASM_VECTOR_LEN;
-            const ptr2 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
-            const len2 = WASM_VECTOR_LEN;
-            wasm.wasmproductruntime_renderCustomMessage(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, addHeapObject(on_update), addHeapObject(on_complete), addHeapObject(on_error));
+            wasm.wasmproductruntime_render(retptr, this.__wbg_ptr, ptr0, len0, addHeapObject(on_update), addHeapObject(on_complete), addHeapObject(on_error));
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
             if (r2) {
                 throw takeObject(r1);
             }
-            return WasmCustomRendererSubscription.__wrap(r0);
+            return WasmRendererSubscription.__wrap(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -440,6 +446,36 @@ export class WasmProductRuntime {
 if (Symbol.dispose) WasmProductRuntime.prototype[Symbol.dispose] = WasmProductRuntime.prototype.free;
 
 /**
+ * Cancellable observation of one render instance. Dropping the handle on the
+ * JS side does not stop the stream; call `cancel`.
+ */
+export class WasmRendererSubscription {
+    static __wrap(ptr) {
+        const obj = Object.create(WasmRendererSubscription.prototype);
+        obj.__wbg_ptr = ptr;
+        WasmRendererSubscriptionFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmRendererSubscriptionFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmrenderersubscription_free(ptr, 0);
+    }
+    /**
+     * Stop delivering renderer updates. Idempotent.
+     */
+    cancel() {
+        wasm.wasmrenderersubscription_cancel(this.__wbg_ptr);
+    }
+}
+if (Symbol.dispose) WasmRendererSubscription.prototype[Symbol.dispose] = WasmRendererSubscription.prototype.free;
+
+/**
  * JS-callable handle to a wallet-local signing-host runtime.
  */
 export class WasmSigningHostRuntime {
@@ -452,6 +488,17 @@ export class WasmSigningHostRuntime {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_wasmsigninghostruntime_free(ptr, 0);
+    }
+    /**
+     * Take one reference on the product's worker for a modality holder. The
+     * first one reports `"Start"` to the host's `workerDemandChanged`
+     * callback. Pair every call with one `releaseWorker`.
+     * @param {string} product_id
+     */
+    acquireWorker(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmsigninghostruntime_acquireWorker(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * Activate a wallet-local session from raw BIP-39 entropy.
@@ -662,6 +709,16 @@ export class WasmSigningHostRuntime {
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmsigninghostruntime_refreshLocalIdentity(this.__wbg_ptr, ptr0, len0);
         return takeObject(ret);
+    }
+    /**
+     * Release one reference. The last one reports `"Stop"`, after which the
+     * host may stop the worker; releasing with none held is a no-op.
+     * @param {string} product_id
+     */
+    releaseWorker(product_id) {
+        const ptr0 = passStringToWasm0(product_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmsigninghostruntime_releaseWorker(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * Read the active local session's X25519 chat identity private key.
@@ -1011,7 +1068,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_16715(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_17075(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -1126,28 +1183,28 @@ function __wbg_get_imports() {
             console.warn(getObject(arg0));
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 19, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_3490);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 17, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_3545);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 2180, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_16712);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 2225, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_17072);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000003: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 1783, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_10739);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 18, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_3542);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000004: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 18, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_3489);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 1827, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_11090);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 20, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_3487);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 19, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_3544);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000006: function(arg0) {
@@ -1186,22 +1243,22 @@ function __wbg_get_imports() {
     };
 }
 
-function __wasm_bindgen_func_elem_10739(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_10739(arg0, arg1);
+function __wasm_bindgen_func_elem_11090(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_11090(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_3489(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_3489(arg0, arg1);
+function __wasm_bindgen_func_elem_3544(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_3544(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_3490(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_3490(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_3545(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_3545(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_3487(arg0, arg1) {
+function __wasm_bindgen_func_elem_3542(arg0, arg1) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_3487(retptr, arg0, arg1);
+        wasm.__wasm_bindgen_func_elem_3542(retptr, arg0, arg1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1212,10 +1269,10 @@ function __wasm_bindgen_func_elem_3487(arg0, arg1) {
     }
 }
 
-function __wasm_bindgen_func_elem_16712(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_17072(arg0, arg1, arg2) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_16712(retptr, arg0, arg1, addHeapObject(arg2));
+        wasm.__wasm_bindgen_func_elem_17072(retptr, arg0, arg1, addHeapObject(arg2));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1226,19 +1283,19 @@ function __wasm_bindgen_func_elem_16712(arg0, arg1, arg2) {
     }
 }
 
-function __wasm_bindgen_func_elem_16715(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_16715(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_17075(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_17075(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
-const WasmCustomRendererSubscriptionFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wasmcustomrenderersubscription_free(ptr, 1));
 const WasmPairingHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmpairinghostruntime_free(ptr, 1));
 const WasmProductRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmproductruntime_free(ptr, 1));
+const WasmRendererSubscriptionFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmrenderersubscription_free(ptr, 1));
 const WasmSigningHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmsigninghostruntime_free(ptr, 1));

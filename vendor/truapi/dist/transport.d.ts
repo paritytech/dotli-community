@@ -1,12 +1,19 @@
 import { type Result, type ResultAsync } from "neverthrow";
 import { type CallErrorValue, type ResultPayload } from "./scale.js";
-/** Wire discriminant reserved for method-independent protocol errors. **/
-export declare const PROTOCOL_ERROR_ID: 255;
+/**
+ * Wire trait discriminant reserved for method-independent protocol errors. No
+ * API trait may declare it, so no method is ever addressed here.
+ **/
+export declare const PROTOCOL_ERROR_TRAIT_ID: 255;
+/** Wire method discriminant reserved for method-independent protocol errors. **/
+export declare const PROTOCOL_ERROR_METHOD_ID: 255;
 /** The peer rejected an outbound frame because it does not support its API. **/
 export declare class UnsupportedMessageError extends Error {
-    /** Wire discriminant of the unsupported outbound frame. **/
-    readonly discriminant: number;
-    constructor(discriminant: number);
+    /** Trait discriminant of the unsupported outbound frame. **/
+    readonly traitId: number;
+    /** Method discriminant of the unsupported outbound frame. **/
+    readonly methodId: number;
+    constructor(traitId: number, methodId: number);
 }
 /** Call result returned when the peer does not recognize a request frame. **/
 export type UnsupportedCallError = Extract<CallErrorValue<never>, {
@@ -95,51 +102,39 @@ export interface ObservableLike<Item, Reason = never> {
     [Symbol.observable](): ObservableLike<Item, Reason>;
 }
 /**
- * Observable source accepted by generated channel methods as the
- * product-to-host request stream. Structurally satisfied by RxJS subjects and
- * observables as well as generated `ObservableLike` values.
+ * Product-side handler for a subscription the native host initiates.
+ *
+ * It receives the decoded request and two callbacks: `send` delivers one item
+ * to the host, and `interrupt` ends the stream, cleanly when called with no
+ * argument and with the method's interrupt value otherwise. The returned
+ * teardown, if any, runs once the stream ends: on the host's stop frame, on
+ * `interrupt`, when the transport closes, or when the host restarts the same
+ * request id.
  **/
-export interface ObservableSource<Item> {
-    /**
-     * Start consuming the source until the returned handle unsubscribes.
-     **/
-    subscribe(observer: Partial<Observer<Item>>): {
-        unsubscribe(): void;
-    };
-}
+export type HostInitiatedSubscriptionHandler<Request, Item, Reason = never> = (request: Request, send: (item: Item) => void, interrupt: (reason?: Reason) => void) => (() => void) | void;
 /**
- * Numeric frame ids for a one-shot request method.
+ * Wire discriminant pair addressing a method. One id addresses a method
+ * regardless of shape (request/response, or a subscription's four phases):
+ * which leg of the exchange a frame carries is the wire's own `messageType`
+ * byte, not a separate id per leg.
  **/
-export interface RequestFrameIds {
+export interface MethodIds {
     /**
-     * Wire discriminant for the outbound request frame.
+     * Wire trait discriminant.
      **/
-    request: number;
+    trait: number;
     /**
-     * Wire discriminant for the inbound response frame.
+     * Wire method discriminant within the trait.
      **/
-    response: number;
-}
-/**
- * Numeric frame ids for a subscription method.
- **/
-export interface SubscriptionFrameIds {
+    method: number;
     /**
-     * Wire discriminant for the outbound start frame.
+     * Whether this method's legs follow the request/response shape or the
+     * subscription shape (`"subscription"` covers both plain and result
+     * subscriptions, which share the same four-leg wire shape). The one piece
+     * of shape a payload-blind reader needs to interpret a frame's own
+     * `messageType` byte without decoding the payload.
      **/
-    start: number;
-    /**
-     * Wire discriminant for the outbound stop frame.
-     **/
-    stop: number;
-    /**
-     * Wire discriminant for the inbound interrupt frame.
-     **/
-    interrupt: number;
-    /**
-     * Wire discriminant for the inbound receive frame.
-     **/
-    receive: number;
+    kind: "request" | "subscription";
 }
 /**
  * Options accepted by `TrUApiTransport.request`.
@@ -148,15 +143,17 @@ export interface RequestParams<Ok, Err> {
     /**
      * Wire discriminants for this request method.
      **/
-    ids: RequestFrameIds;
+    ids: MethodIds;
     /**
-     * SCALE-encoded request payload bytes.
+     * SCALE-encoded request wrapper payload bytes (its own `V<N>` tag is the
+     * wire's only version signal), constructed by the generated caller.
      **/
     payload: Uint8Array;
     /**
-     * Decode SCALE response payload bytes into the wire `ResultPayload`
-     * envelope. The transport unwraps the envelope into
-     * `ResultAsync<Ok, Err | UnsupportedCallError>`.
+     * Decode a `Response`-leg frame's raw payload bytes into the typed Ok/Err
+     * outcome. Implementations decode `Result<{Method}Response,
+     * CallError<{Method}Error>>` directly. The transport unwraps the result
+     * into `ResultAsync<Ok, Err | UnsupportedCallError>`.
      **/
     decodeResponse: (payload: Uint8Array) => ResultPayload<Ok, Err>;
 }
@@ -167,17 +164,19 @@ export interface SubscribeRawParams {
     /**
      * Wire discriminants for this subscription method.
      **/
-    ids: SubscriptionFrameIds;
+    ids: MethodIds;
     /**
-     * SCALE-encoded subscription start payload bytes.
+     * SCALE-encoded `Start`-leg payload bytes: the request wrapper's own
+     * encoding, or empty bytes for a method with no request at all,
+     * constructed by the generated caller.
      **/
     payload: Uint8Array;
     /**
-     * Called with raw SCALE receive payload bytes.
+     * Called with a `Receive`-leg frame's raw payload bytes.
      **/
     onReceive: (payload: Uint8Array) => void;
     /**
-     * Called with raw SCALE interrupt payload bytes when the peer interrupts the subscription.
+     * Called with an `Interrupt`-leg frame's raw payload bytes.
      **/
     onInterrupt?: (payload: Uint8Array) => void;
     /**
@@ -186,27 +185,35 @@ export interface SubscribeRawParams {
      **/
     onClose?: (error: Error) => void;
 }
-/**
- * Handler for a subscription initiated by the native host.
- **/
-export type HostInitiatedSubscriptionHandler<Request, Item> = (request: Request) => ObservableSource<Item>;
 /** Product-side registration for one host-initiated subscription method. **/
-export interface HostInitiatedSubscriptionRegistration<Request, Item> {
+export interface HostInitiatedSubscriptionRegistration<Request, Item, Reason = never> {
     /** Install or replace the handler used for future start frames. **/
-    setHandler(handler: HostInitiatedSubscriptionHandler<Request, Item>): {
+    setHandler(handler: HostInitiatedSubscriptionHandler<Request, Item, Reason>): {
         unsubscribe(): void;
     };
 }
 /** Options used to register a host-initiated subscription method. **/
-export interface RegisterHostInitiatedSubscriptionParams<Request, Item> {
+export interface RegisterHostInitiatedSubscriptionParams<Request, Item, Reason = never> {
     /** Wire discriminants for the host-initiated subscription. **/
-    ids: SubscriptionFrameIds;
-    /** Decode the host's start payload. **/
+    ids: MethodIds;
+    /**
+     * Decode a `Start`-leg frame's raw payload bytes into the typed request.
+     **/
     decodeRequest(payload: Uint8Array): Request;
-    /** Encode one product renderer emission. **/
+    /**
+     * Encode one product emission as a `Receive`-leg frame's raw payload bytes.
+     **/
     encodeItem(item: Item): Uint8Array;
-    /** Exact payload used when the product declines a render instance. **/
-    interruptPayload: Uint8Array;
+    /**
+     * Encode an `Interrupt`-leg frame's raw payload bytes: the stream's clean
+     * end when `reason` is omitted, and the method's interrupt value otherwise.
+     **/
+    encodeInterrupt(reason?: Reason): Uint8Array;
+    /**
+     * Exact payload used when the transport ends a stream the product's handler
+     * never got to serve.
+     **/
+    declinePayload: Uint8Array;
     /** Number of starts retained before a handler is installed. **/
     bufferCapacity: number;
 }
@@ -214,14 +221,6 @@ export interface RegisterHostInitiatedSubscriptionParams<Request, Item> {
  * Byte-level transport used by generated client stubs.
  **/
 export interface TrUApiTransport {
-    /**
-     * SCALE codec version used by generated handshake calls.
-     *
-     * @deprecated TODO(shared-core-wire): remove this public transport field once
-     * generated handshake requests read `TRUAPI_CODEC_VERSION` directly instead
-     * of going through transport state.
-     **/
-    readonly codecVersion: number;
     /**
      * Send a one-shot request and resolve with the typed Ok/Err outcome.
      **/
@@ -231,7 +230,7 @@ export interface TrUApiTransport {
      **/
     subscribeRaw(params: SubscribeRawParams): Subscription;
     /** Register product-side handling for a host-initiated subscription. **/
-    registerHostInitiatedSubscription<Request, Item>(params: RegisterHostInitiatedSubscriptionParams<Request, Item>): HostInitiatedSubscriptionRegistration<Request, Item>;
+    registerHostInitiatedSubscription<Request, Item, Reason>(params: RegisterHostInitiatedSubscriptionParams<Request, Item, Reason>): HostInitiatedSubscriptionRegistration<Request, Item, Reason>;
     /**
      * Tear down the transport and release the listeners it registered on the
      * underlying `WireProvider`. Pending requests reject and live subscriptions
@@ -248,14 +247,37 @@ export interface TrUApiTransport {
  **/
 export interface Payload {
     /**
-     * Wire-table numeric discriminant.
+     * Wire-table trait discriminant: first byte of the `(trait, method)` pair.
      **/
-    id: number;
+    traitId: number;
     /**
-     * SCALE-encoded payload body.
+     * Wire-table method discriminant within the trait: second byte of the pair.
+     **/
+    methodId: number;
+    /**
+     * Which leg of the method's exchange this frame carries: `Request`/`Start`
+     * = 0, `Response`/`Receive` = 1, `Interrupt` = 2, `Stop` = 3. Third byte of
+     * the wire frame — readable generically, without decoding `value`.
+     **/
+    messageType: number;
+    /**
+     * SCALE-encoded payload body: that leg's own versioned wrapper, with no
+     * further tag identifying direction or version beyond the wrapper's own.
      **/
     value: Uint8Array;
 }
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_REQUEST = 0;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_START = 0;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_RESPONSE = 1;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_RECEIVE = 1;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_INTERRUPT = 2;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_STOP = 3;
 /**
  * Top-level TrUAPI wire message.
  **/
