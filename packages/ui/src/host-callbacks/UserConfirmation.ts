@@ -274,7 +274,7 @@ function createSignRawFields(
     },
   ];
   if (!watermarked) {
-    fields.push({
+    fields.unshift({
       label: "Warning",
       value:
         "Unwatermarked signing can authorize transactions. No message-protection wrapper will be added.",
