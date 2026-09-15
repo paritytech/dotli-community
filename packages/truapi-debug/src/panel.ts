@@ -920,6 +920,23 @@ function installExperimentalWalletControls(
   };
   syncButtons();
 
+  const markIdentityUnavailable = (reason: string): void => {
+    identityReadGeneration++;
+    identityGeneration++;
+    identityLoading = false;
+    identityUnavailable = true;
+    currentIdentity = undefined;
+    clearSensitive();
+    walletView.setIdentity(undefined);
+    // A failed provider is not evidence that its public identity disappeared.
+    usernameStatus = {
+      kind: "failed",
+      title: "Identity check failed",
+      detail: `${reason} Last-known display is not authorized. Retry wallet verification to check again.`,
+    };
+    syncButtons();
+  };
+
   const loadIdentity = async (): Promise<void> => {
     const generation = ++identityReadGeneration;
     identityLoading = wallet.isActive();
@@ -1006,14 +1023,9 @@ function installExperimentalWalletControls(
       }
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {
-        identityUnavailable = true;
-        walletView.setIdentity(undefined);
-        // A failed read is not evidence that the identity or its name disappeared.
-        usernameStatus = {
-          kind: "failed",
-          title: "Identity check failed",
-          detail: `${error instanceof Error ? error.message : String(error)} Last-known display is not authorized. Retry wallet verification to check again.`,
-        };
+        markIdentityUnavailable(
+          error instanceof Error ? error.message : String(error),
+        );
       }
     } finally {
       if (!disposed && generation === identityReadGeneration) {
@@ -1022,9 +1034,37 @@ function installExperimentalWalletControls(
       }
     }
   };
-  const onIdentityChanged = (): void => {
+  const onIdentityChanged = (event: Event): void => {
+    const state = (event as CustomEvent<{ tag: string; reason?: string }>)
+      .detail;
+    if (state.tag === "Connected") {
+      clearSensitive();
+      void loadIdentity();
+      return;
+    }
+    if (state.tag !== "WalletUnavailable" && state.tag !== "Disconnected") {
+      return;
+    }
+    displayIdentity = wallet.isActive()
+      ? (wallet.getCachedIdentity() ??
+        (displayIdentity?.network === wallet.networkLabel()
+          ? displayIdentity
+          : undefined))
+      : undefined;
+    if (wallet.isActive()) {
+      markIdentityUnavailable(
+        state.reason ?? "The native wallet is disconnected.",
+      );
+      return;
+    }
+    identityReadGeneration++;
+    identityGeneration++;
+    identityLoading = false;
+    identityUnavailable = false;
+    currentIdentity = undefined;
     clearSensitive();
-    void loadIdentity();
+    walletView.setIdentity(undefined);
+    syncButtons();
   };
   window.addEventListener("dotli:truapi-auth-state", onIdentityChanged);
   username.addEventListener("input", syncButtons);

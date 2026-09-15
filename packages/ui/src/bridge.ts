@@ -999,8 +999,7 @@ export function initBridgeEventListeners(
           generation === landingAuthGeneration
         ) {
           dispatchAuthState({
-            tag: "LoginFailed",
-            kind: "Other",
+            tag: "WalletUnavailable",
             reason: error instanceof Error ? error.message : String(error),
           });
         }
@@ -1751,14 +1750,17 @@ async function createCoreProvider(
           },
         })
       : noop;
+    let unsubscribeOwnerClose: (() => void) | undefined;
     const tracked = trackCoreProvider(
       wrapCoreProviderForDebug(provider, productId),
       runtime,
       () => {
         runtimeDisposed = true;
+        unsubscribeOwnerClose?.();
         localRuntimeDisposers.delete(disposeNativeRuntime);
         if (liveWallet !== undefined) {
           liveLocalWallets.delete(liveWallet.runtime);
+          providerWallets.delete(tracked);
         }
         unregisterChat();
         blockingModalScope.dispose();
@@ -1768,6 +1770,27 @@ async function createCoreProvider(
       providerWallets.set(tracked, liveWallet);
     }
     if (options.walletOwner === true) {
+      if (liveWallet !== undefined) {
+        let closeError: Error | undefined;
+        unsubscribeOwnerClose = tracked.subscribeClose?.((error) => {
+          if (isRuntimeDisposed()) {
+            return;
+          }
+          closeError = error;
+          disposeLandingAuthHost();
+          tracked.dispose();
+          dispatchAuthState({
+            tag: "WalletUnavailable",
+            reason: error.message,
+          });
+        });
+        // Subscription can synchronously report an already-closed provider.
+        // Do not publish Connected or return its retired native authority.
+        if (closeError !== undefined) {
+          unsubscribeOwnerClose?.();
+          throw closeError;
+        }
+      }
       walletAuthReady = true;
       if (pendingWalletAuthState !== undefined) {
         forwardAuthState(pendingWalletAuthState);
