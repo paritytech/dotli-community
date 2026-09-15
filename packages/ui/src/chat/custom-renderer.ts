@@ -4,17 +4,19 @@
 // Vanilla-DOM renderer for product-authored custom message trees.
 //
 // The tree is a closed vocabulary: the product names layouts and design
-// tokens, never markup, styles, or URLs, so everything it can express is
-// drawn from the host's own design system here and cannot reach past it.
-// Protocol-level port of the desktop host's React renderer.
+// tokens, never markup or styles. Images are fetched by the host from
+// typed content sources, never from a product-supplied URL.
 
 import type {
   Arrangement,
+  BlendingMode,
   ColorToken,
   ContentAlignment,
-  CustomRendererNode,
+  RendererNode,
   Dimensions,
   HorizontalAlignment,
+  ImageFit,
+  ImageSource,
   Modifier,
   Shape,
   Size,
@@ -23,10 +25,48 @@ import type {
 } from "@parity/truapi";
 
 /** Reports a user gesture inside a rendered tree back to the product. */
-export type CustomActionHandler = (
+export type RendererActionHandler = (
   actionId: string,
   payload?: Uint8Array,
 ) => void;
+
+/** Resources belong to one replacement tree, not to the message's lifetime. */
+export interface RendererResources {
+  signal: AbortSignal;
+  loadImage(source: ImageSource, signal: AbortSignal): Promise<Blob>;
+  onError(error: Error): void;
+}
+
+const IMAGE_FIT_CSS: Record<ImageFit, string> = {
+  None: "none",
+  Fill: "fill",
+  Cover: "cover",
+  Contain: "contain",
+  ScaleDown: "scale-down",
+};
+
+const BLENDING_MODE_CSS: Record<BlendingMode, string> = {
+  Normal: "normal",
+  Multiply: "multiply",
+  Screen: "screen",
+  Overlay: "overlay",
+  Darken: "darken",
+  Lighten: "lighten",
+  ColorDodge: "color-dodge",
+  ColorBurn: "color-burn",
+  HardLight: "hard-light",
+  SoftLight: "soft-light",
+  Difference: "difference",
+  Exclusion: "exclusion",
+  Hue: "hue",
+  Saturation: "saturation",
+  Color: "color",
+  Luminosity: "luminosity",
+};
+
+function unreachable(value: never): never {
+  throw new Error(`Unsupported renderer variant: ${JSON.stringify(value)}`);
+}
 
 // Semantic tokens resolve to chat-panel CSS custom properties so rendered
 // trees follow the host theme, matching the desktop host's token mapping.
@@ -107,14 +147,23 @@ function shapeToBorderRadius(shape: Shape | undefined): string | undefined {
   if (shape === undefined) {
     return undefined;
   }
-  return shape.tag === "Circle" ? "50%" : px(shape.value.radius);
+  switch (shape.tag) {
+    case "Circle":
+      return "50%";
+    case "Square":
+      return "0px";
+    case "Rounded":
+      return px(shape.value);
+    default:
+      return unreachable(shape);
+  }
 }
 
 // Two- and three-value CSS shorthands carry the spec's defaulting rules:
 // bottom falls back to top, start falls back to end.
 function dimensionsToCss(dims: Dimensions): string {
-  if (dims.bottom !== undefined && dims.start !== undefined) {
-    return `${px(dims.top)} ${px(dims.end)} ${px(dims.bottom)} ${px(dims.start)}`;
+  if (dims.start !== undefined) {
+    return `${px(dims.top)} ${px(dims.end)} ${px(dims.bottom ?? dims.top)} ${px(dims.start)}`;
   }
   if (dims.bottom !== undefined) {
     return `${px(dims.top)} ${px(dims.end)} ${px(dims.bottom)}`;
@@ -153,38 +202,43 @@ function applyModifiers(
         break;
       }
       case "Height":
-        style.height = px(mod.value.height);
+        style.height = px(mod.value);
         break;
       case "Width":
-        style.width = px(mod.value.width);
+        style.width = px(mod.value);
         break;
       case "MinWidth":
-        style.minWidth = px(mod.value.width);
+        style.minWidth = px(mod.value);
         break;
       case "MinHeight":
-        style.minHeight = px(mod.value.height);
+        style.minHeight = px(mod.value);
         break;
       case "FillWidth":
-        if (mod.value.enabled) {
-          style.width = "100%";
-        }
+        style.width = mod.value ? "100%" : "";
         break;
       case "FillHeight":
-        if (mod.value.enabled) {
-          style.height = "100%";
-        }
+        style.height = mod.value ? "100%" : "";
         break;
+      case "Opacity":
+        style.opacity = String(mod.value / 255);
+        break;
+      case "BlendingMode":
+        style.mixBlendMode = BLENDING_MODE_CSS[mod.value];
+        break;
+      default:
+        unreachable(mod);
     }
   }
 }
 
 function appendChildren(
   parent: HTMLElement,
-  children: CustomRendererNode[],
-  onAction: CustomActionHandler,
+  children: RendererNode[],
+  onAction: RendererActionHandler,
+  resources?: RendererResources,
 ): void {
   for (const child of children) {
-    const rendered = renderCustomNode(child, onAction);
+    const rendered = renderNode(child, onAction, resources);
     if (rendered !== null) {
       parent.appendChild(rendered);
     }
@@ -195,9 +249,10 @@ function appendChildren(
  * One node of a product-authored render tree, as host UI. Text lands via
  * `textContent`/text nodes, so product strings can never inject markup.
  */
-export function renderCustomNode(
-  node: CustomRendererNode,
-  onAction: CustomActionHandler,
+export function renderNode(
+  node: RendererNode,
+  onAction: RendererActionHandler,
+  resources?: RendererResources,
 ): globalThis.Node | null {
   switch (node.tag) {
     case "Nil":
@@ -219,7 +274,7 @@ export function renderCustomNode(
         box.style.justifyItems = alignment[1];
       }
       applyModifiers(box.style, modifiers);
-      appendChildren(box, children, onAction);
+      appendChildren(box, children, onAction, resources);
       return box;
     }
 
@@ -235,7 +290,7 @@ export function renderCustomNode(
           ARRANGEMENT_TO_JUSTIFY[props.verticalArrangement];
       }
       applyModifiers(column.style, modifiers);
-      appendChildren(column, children, onAction);
+      appendChildren(column, children, onAction, resources);
       return column;
     }
 
@@ -251,16 +306,15 @@ export function renderCustomNode(
         row.style.alignItems = VERTICAL_TO_FLEX[props.verticalAlignment];
       }
       applyModifiers(row.style, modifiers);
-      appendChildren(row, children, onAction);
+      appendChildren(row, children, onAction, resources);
       return row;
     }
 
     case "Spacer": {
-      const { modifiers, children } = node.value;
+      const { modifiers } = node.value;
       const spacer = document.createElement("div");
       spacer.className = "chat-custom-spacer";
       applyModifiers(spacer.style, modifiers);
-      appendChildren(spacer, children, onAction);
       return spacer;
     }
 
@@ -278,12 +332,12 @@ export function renderCustomNode(
         text.style.color = COLOR_TOKEN_CSS[props.color];
       }
       applyModifiers(text.style, modifiers);
-      appendChildren(text, children, onAction);
+      appendChildren(text, children, onAction, resources);
       return text;
     }
 
     case "Button": {
-      const { modifiers, props } = node.value;
+      const { modifiers, props, children } = node.value;
       const button = document.createElement("button");
       button.type = "button";
       const variant =
@@ -294,6 +348,7 @@ export function renderCustomNode(
             : "text";
       button.className = `chat-custom-btn chat-custom-btn-${variant}`;
       button.textContent = props.text;
+      appendChildren(button, children, onAction, resources);
       button.disabled = props.enabled === false || props.loading === true;
       button.classList.toggle(
         "chat-custom-btn-loading",
@@ -337,5 +392,91 @@ export function renderCustomNode(
       applyModifiers(field.style, modifiers);
       return field;
     }
+
+    case "Image": {
+      if (resources === undefined) {
+        throw new Error("Image rendering requires host resources");
+      }
+      const { modifiers, props } = node.value;
+      const image = document.createElement("img");
+      image.className = "chat-custom-image";
+      // The protocol has no alternative-text field; accompanying Text nodes
+      // carry descriptions. Never expose the opaque source as a URL or label.
+      image.alt = "";
+      image.style.objectFit = IMAGE_FIT_CSS[props.fit ?? "Fill"];
+      applyModifiers(image.style, modifiers);
+      const { signal } = resources;
+      image.addEventListener(
+        "error",
+        () => {
+          if (!signal.aborted) {
+            resources.onError(new Error("Renderer image could not be decoded"));
+          }
+        },
+        { signal },
+      );
+      void resources
+        .loadImage(props.source, signal)
+        .then((blob) => {
+          if (signal.aborted) {
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          signal.addEventListener(
+            "abort",
+            () => {
+              image.removeAttribute("src");
+              URL.revokeObjectURL(url);
+            },
+            { once: true },
+          );
+          image.src = url;
+        })
+        .catch((error: unknown) => {
+          if (!signal.aborted) {
+            resources.onError(
+              error instanceof Error ? error : new Error(String(error)),
+            );
+          }
+        });
+      return image;
+    }
+
+    case "Effect": {
+      if (resources === undefined) {
+        throw new Error("Effect rendering requires host resources");
+      }
+      const effect = document.createElement("div");
+      effect.className = "chat-custom-effect";
+      effect.style.position = "relative";
+      effect.style.isolation = "isolate";
+      appendChildren(effect, node.value.children, onAction, resources);
+      const tint = document.createElement("span");
+      tint.setAttribute("aria-hidden", "true");
+      tint.style.position = "absolute";
+      tint.style.inset = "0";
+      tint.style.pointerEvents = "none";
+      tint.style.mixBlendMode = "color";
+      tint.style.background =
+        "linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)";
+      effect.appendChild(tint);
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const animation = tint.animate(
+          [{ filter: "hue-rotate(0deg)" }, { filter: "hue-rotate(360deg)" }],
+          { duration: 4000, iterations: Infinity },
+        );
+        resources.signal.addEventListener(
+          "abort",
+          () => {
+            animation.cancel();
+          },
+          { once: true },
+        );
+      }
+      return effect;
+    }
+
+    default:
+      return unreachable(node);
   }
 }

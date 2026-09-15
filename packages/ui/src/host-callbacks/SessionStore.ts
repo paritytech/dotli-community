@@ -542,6 +542,10 @@ function coreLocalStorageKey(
       return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
+    case "ProductManifest":
+      return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
   }
 }
 

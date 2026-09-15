@@ -1,6 +1,9 @@
+// Dynamic imports intentionally reload bridge state after vi.resetModules().
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  HostRequestLoginResponse,
+  VersionedHostRequestLoginResponse,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
   VersionedHostRequestLoginError,
   decodeWireMessage,
   encodeWireMessage,
@@ -168,19 +171,13 @@ function loginResponseFrame(
     | { success: false; reason: string }
     | { success: false; hostFailure: string },
 ): Uint8Array {
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(
-        HostRequestLoginResponse,
-        scale.CallError(VersionedHostRequestLoginError),
-      ),
-    ] as const,
-  });
-  const value = responseCodec.enc({
-    tag: "V1",
-    value: result.success
-      ? { success: true, value: result.value }
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
+  const value = responseCodec.enc(
+    result.success
+      ? { success: true, value: { tag: "V1", value: result.value } }
       : "hostFailure" in result
         ? {
             success: false,
@@ -202,11 +199,13 @@ function loginResponseFrame(
               },
             },
           },
-  });
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
-      id: ACCOUNT_REQUEST_LOGIN.response,
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType: MESSAGE_TYPE_RESPONSE,
       value,
     },
   });
@@ -739,6 +738,49 @@ describe("bridge render lifecycle", () => {
     expect(ports?.[0]).toHaveProperty("postMessage");
   });
 
+  it("rejects legacy window frames without forwarding codec-1 bytes to the core", async () => {
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const notification = await import("@dotli/ui/notification");
+    const showNotification = vi
+      .spyOn(notification, "showNotification")
+      .mockImplementation(() => () => undefined);
+    const render = renderAppSubdomain("cid", "legacy");
+    await waitForProviderRequests(1);
+    const provider = makeProvider();
+    mocks.coreProviderDefers[0].resolve(provider);
+    await render;
+    const created = mocks.iframeHosts[0];
+    const source = created.iframe.contentWindow!;
+    // Empty request id, flat handshake discriminant 0, V1 tag, codec 1.
+    const data = new Uint8Array([0, 0, 0, 0, 1]);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source,
+        origin: "https://attacker.example",
+        data,
+      }),
+    );
+    expect(showNotification).not.toHaveBeenCalled();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source,
+        origin: created.allowedOrigin,
+        data,
+      }),
+    );
+    expect(provider.postMessage).not.toHaveBeenCalled();
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source,
+        origin: created.allowedOrigin,
+        data,
+      }),
+    );
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    showNotification.mockRestore();
+  });
+
   it("forwards a sandbox schema mismatch as a host PWA update request", async () => {
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
     const render = renderAppSubdomain("manifest-cid", "manifest-app");
@@ -849,6 +891,47 @@ describe("requestCoreLogin", () => {
     await expect(login).resolves.toBe("Success");
     expect(provider.subscribe).toHaveBeenCalledTimes(1);
     expect(provider.listener).toBeNull();
+  });
+
+  it("ignores responses for another trait, method, leg or request", async () => {
+    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const provider = makeLoginProvider({});
+    const promise = requestCoreLogin(provider);
+    const requestId = requestIdFromFrame(provider.postMessage.mock.calls[0][0]);
+    const response = decodeWireMessage(
+      loginResponseFrame(requestId, {
+        success: true,
+        value: "Success",
+      }),
+    );
+    if (response.isErr()) throw response.error;
+    for (const override of [
+      { traitId: ACCOUNT_REQUEST_LOGIN.trait + 1 },
+      { methodId: ACCOUNT_REQUEST_LOGIN.method + 1 },
+      { messageType: MESSAGE_TYPE_REQUEST },
+    ]) {
+      const frame = encodeWireMessage({
+        ...response.value,
+        payload: { ...response.value.payload, ...override },
+      });
+      if (frame.isErr()) throw frame.error;
+      provider.listener?.(frame.value);
+      expect(provider.listener).not.toBeNull();
+    }
+    provider.listener?.(
+      loginResponseFrame("another-request", {
+        success: true,
+        value: "Rejected",
+      }),
+    );
+    expect(provider.listener).not.toBeNull();
+    provider.listener?.(
+      loginResponseFrame(requestId, {
+        success: true,
+        value: "Success",
+      }),
+    );
+    await expect(promise).resolves.toBe("Success");
   });
 
   it("As a dotli integrator, the host rejects typed login errors as LoginRequestError", async () => {

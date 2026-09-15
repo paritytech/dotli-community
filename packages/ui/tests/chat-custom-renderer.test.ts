@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CustomRendererNode } from "@parity/truapi";
-import { renderCustomNode } from "@dotli/ui/chat/custom-renderer";
+import type { RendererNode } from "@parity/truapi";
+import { renderNode } from "@dotli/ui/chat/custom-renderer";
 
 const noAction = (): void => undefined;
 
-function renderElement(node: CustomRendererNode): HTMLElement {
-  const rendered = renderCustomNode(node, noAction);
+function renderElement(node: RendererNode): HTMLElement {
+  const rendered = renderNode(node, noAction);
   if (!(rendered instanceof HTMLElement)) {
     throw new Error("expected an element");
   }
@@ -14,7 +14,7 @@ function renderElement(node: CustomRendererNode): HTMLElement {
 
 describe("chat custom renderer", () => {
   it("As a product, every layout node maps onto host DOM", () => {
-    const tree: CustomRendererNode = {
+    const tree: RendererNode = {
       tag: "Column",
       value: {
         modifiers: [
@@ -23,7 +23,7 @@ describe("chat custom renderer", () => {
             tag: "Background",
             value: {
               color: "BgSurfaceContainer",
-              shape: { tag: "Rounded", value: { radius: 10 } },
+              shape: { tag: "Rounded", value: 10 },
             },
           },
         ],
@@ -43,13 +43,13 @@ describe("chat custom renderer", () => {
           {
             tag: "Row",
             value: {
-              modifiers: [{ tag: "FillWidth", value: { enabled: true } }],
+              modifiers: [{ tag: "FillWidth", value: true }],
               props: {
                 verticalAlignment: "Bottom",
                 horizontalArrangement: "End",
               },
               children: [
-                { tag: "Spacer", value: { modifiers: [], children: [] } },
+                { tag: "Spacer", value: { modifiers: [] } },
                 { tag: "Nil" },
               ],
             },
@@ -58,7 +58,7 @@ describe("chat custom renderer", () => {
             tag: "Box",
             value: {
               modifiers: [
-                { tag: "MinHeight", value: { height: 40 } },
+                { tag: "MinHeight", value: 40 },
                 {
                   tag: "Border",
                   value: {
@@ -116,9 +116,9 @@ describe("chat custom renderer", () => {
       value: {
         modifiers: [
           { tag: "Margin", value: { top: 1, end: 2, bottom: 3, start: 4 } },
-          { tag: "Width", value: { width: 120 } },
-          { tag: "Height", value: { height: 60 } },
-          { tag: "MinWidth", value: { width: 80 } },
+          { tag: "Width", value: 120 },
+          { tag: "Height", value: 60 },
+          { tag: "MinWidth", value: 80 },
         ],
         props: {},
         children: [],
@@ -132,7 +132,7 @@ describe("chat custom renderer", () => {
 
   it("As a user, tapping a button reports its click action", () => {
     const onAction = vi.fn();
-    const rendered = renderCustomNode(
+    const rendered = renderNode(
       {
         tag: "Button",
         value: {
@@ -158,7 +158,7 @@ describe("chat custom renderer", () => {
 
   it("As a user, disabled and loading buttons cannot fire actions", () => {
     const onAction = vi.fn();
-    const disabled = renderCustomNode(
+    const disabled = renderNode(
       {
         tag: "Button",
         value: {
@@ -183,7 +183,7 @@ describe("chat custom renderer", () => {
 
   it("As a user, editing a text field reports the typed value", () => {
     const onAction = vi.fn();
-    const field = renderCustomNode(
+    const field = renderNode(
       {
         tag: "TextField",
         value: {
@@ -195,7 +195,6 @@ describe("chat custom renderer", () => {
             enabled: true,
             valueChangeAction: "name-changed",
           },
-          children: [],
         },
       },
       onAction,
@@ -228,5 +227,187 @@ describe("chat custom renderer", () => {
     });
     expect(text.querySelector("img")).toBeNull();
     expect(text.textContent).toBe("<img src=x onerror=alert(1)>");
+  });
+
+  it("applies square corners, opacity and compositing to the rendered body", () => {
+    const box = renderElement({
+      tag: "Box",
+      value: {
+        modifiers: [
+          {
+            tag: "Background",
+            value: {
+              color: "BgSurfaceMain",
+              shape: { tag: "Rounded", value: 12 },
+            },
+          },
+          {
+            tag: "Border",
+            value: { width: 1, color: "FgPrimary", shape: { tag: "Square" } },
+          },
+          { tag: "Opacity", value: 128 },
+          { tag: "BlendingMode", value: "ColorDodge" },
+        ],
+        props: {},
+        children: [],
+      },
+    });
+    expect(box.style.borderRadius).toBe("0px");
+    expect(Number(box.style.opacity)).toBeCloseTo(128 / 255);
+    expect(box.style.mixBlendMode).toBe("color-dodge");
+  });
+
+  it("renders button children rather than silently discarding them", () => {
+    const button = renderElement({
+      tag: "Button",
+      value: {
+        modifiers: [],
+        props: { text: "Vote" },
+        children: [{ tag: "String", value: { text: " (3 remaining)" } }],
+      },
+    });
+    expect(button.textContent).toBe("Vote (3 remaining)");
+  });
+
+  it("loads images as host-owned object URLs and releases them with the tree", async () => {
+    const controller = new AbortController();
+    const createObjectURL = vi.fn(() => "blob:renderer-image");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = createObjectURL;
+        static revokeObjectURL = revokeObjectURL;
+      },
+    );
+    try {
+      const image = renderNode(
+        {
+          tag: "Image",
+          value: {
+            modifiers: [{ tag: "Width", value: 64 }],
+            props: {
+              source: { tag: "Archive", value: "icon.png" },
+              fit: "ScaleDown",
+            },
+          },
+        },
+        noAction,
+        {
+          signal: controller.signal,
+          loadImage: async () =>
+            new Blob(["image bytes"], { type: "image/png" }),
+          onError: (error) => {
+            throw error;
+          },
+        },
+      ) as HTMLImageElement;
+      await vi.waitFor(() =>
+        expect(image.getAttribute("src")).toBe("blob:renderer-image"),
+      );
+      expect(image.style.objectFit).toBe("scale-down");
+      expect(image.style.width).toBe("64px");
+      controller.abort();
+      expect(image.hasAttribute("src")).toBe(false);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:renderer-image");
+    } finally {
+      controller.abort();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not create image resources after the tree is disposed", async () => {
+    const controller = new AbortController();
+    let resolveImage!: (blob: Blob) => void;
+    const imageBytes = new Promise<Blob>((resolve) => {
+      resolveImage = resolve;
+    });
+    const onError = vi.fn();
+    const image = renderNode(
+      {
+        tag: "Image",
+        value: {
+          modifiers: [],
+          props: {
+            source: { tag: "Bulletin", value: "unused-cid" },
+            fit: "Contain",
+          },
+        },
+      },
+      noAction,
+      {
+        signal: controller.signal,
+        loadImage: () => imageBytes,
+        onError,
+      },
+    ) as HTMLImageElement;
+    controller.abort();
+    resolveImage(new Blob(["late bytes"]));
+    await imageBytes;
+    await Promise.resolve();
+    expect(image.hasAttribute("src")).toBe(false);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("tints effect children without intercepting their actions and cancels animation", () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const animate = vi.fn(() => ({ cancel }));
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    const originalAnimate = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      "animate",
+    );
+    Object.defineProperty(Element.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
+    try {
+      const onAction = vi.fn();
+      const effect = renderNode(
+        {
+          tag: "Effect",
+          value: {
+            props: { effect: "Rainbow" },
+            children: [
+              {
+                tag: "Button",
+                value: {
+                  modifiers: [],
+                  props: { text: "Tinted button", clickAction: "tap" },
+                  children: [],
+                },
+              },
+            ],
+          },
+        },
+        onAction,
+        {
+          signal: controller.signal,
+          loadImage: async () => {
+            throw new Error("No images in this tree");
+          },
+          onError: (error) => {
+            throw error;
+          },
+        },
+      ) as HTMLElement;
+      expect(effect.textContent).toBe("Tinted button");
+      expect(
+        effect.querySelector<HTMLElement>("[aria-hidden]")?.style.pointerEvents,
+      ).toBe("none");
+      effect.querySelector("button")?.click();
+      expect(onAction).toHaveBeenCalledWith("tap");
+      controller.abort();
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      controller.abort();
+      if (originalAnimate === undefined) {
+        Reflect.deleteProperty(Element.prototype, "animate");
+      } else {
+        Object.defineProperty(Element.prototype, "animate", originalAnimate);
+      }
+      vi.unstubAllGlobals();
+    }
   });
 });
