@@ -852,7 +852,7 @@ describe("session-store host callbacks", () => {
     expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
   });
 
-  it("As a local wallet user, my account badge survives reload without a paired session blob", async () => {
+  it("does not publish an experimental session from a stored secret or Mobile UI cache", async () => {
     // Given
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
@@ -871,10 +871,8 @@ describe("session-store host callbacks", () => {
     // When
     await emitPersistedSessionUiState();
 
-    // Then
-    expect(events).toEqual([
-      { tag: "Connected", session: { connected: true } },
-    ]);
+    // Only the persistent signing owner can publish a native identity.
+    expect(events).toEqual([]);
     await deleteLocalWalletSecret();
   });
 

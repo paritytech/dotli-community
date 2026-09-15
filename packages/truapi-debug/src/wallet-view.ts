@@ -10,8 +10,6 @@ import type {
 import type { EventStore, StoredTruapiEvent } from "./event-store.ts";
 
 type Wallet = NonNullable<SetupOptions["experimentalWallet"]>;
-type View = "overview" | "activity" | "recovery";
-const DOCK_KEY = "dotli:host-inspector-docked";
 
 function button(label: string): HTMLButtonElement {
   const element = document.createElement("button");
@@ -35,135 +33,58 @@ function field(parent: HTMLElement, label: string, value: string): void {
   parent.append(row);
 }
 
-interface HostInspector {
+export interface WalletView {
   entry: HTMLButtonElement;
   content: HTMLElement;
   overview: HTMLElement;
   recovery: HTMLElement;
   productDetails: HTMLElement;
   isOpen(): boolean;
+  setVisible(visible: boolean): void;
   isRecoveryVisible(): boolean;
   onVisibilityChange(callback: () => void): void;
   setIdentity(identity: Identity | undefined): void;
   dispose(): void;
 }
 
-/** One inspector, sharing the debug store rather than retaining another payload log. */
-export function createHostInspector(
+/** Wallet content inside the shared debug pane; activity stays in its existing views. */
+export function createWalletView(
   wallet: Wallet,
   store: EventStore,
-  debugPanel: HTMLElement,
-): HostInspector {
+): WalletView {
   const entry = button(
     wallet.isActive() ? "Wallet · username unknown" : "Connect wallet",
   );
   entry.classList.add("td-wallet-entry");
-  entry.setAttribute("aria-controls", "dotli-host-inspector");
+  entry.setAttribute("aria-controls", "td-wallet-view");
   entry.setAttribute("aria-expanded", "false");
-  const backdrop = document.createElement("div");
-  backdrop.className = "hi-backdrop";
-  backdrop.hidden = true;
+  entry.setAttribute("aria-live", "polite");
+  entry.setAttribute("aria-atomic", "true");
   const content = document.createElement("section");
-  content.id = "dotli-host-inspector";
-  content.className = "host-inspector";
-  content.setAttribute("role", "dialog");
-  content.setAttribute("aria-labelledby", "hi-heading");
-  content.setAttribute("aria-modal", "false");
-  content.setAttribute("aria-hidden", "true");
-  content.inert = true;
-  const header = document.createElement("header");
-  header.className = "td-header";
-  const heading = document.createElement("h2");
-  heading.id = "hi-heading";
-  heading.className = "td-title";
-  heading.textContent = "Host inspector";
-  heading.tabIndex = -1;
-  const dock = button("Dock");
-  dock.setAttribute("aria-label", "Dock inspector beside product");
-  const close = button("Close");
-  header.append(heading, dock, close);
-  const tablist = document.createElement("div");
-  tablist.className = "td-tabs hi-tabs";
-  tablist.setAttribute("role", "tablist");
-  tablist.setAttribute("aria-label", "Host inspector views");
+  content.id = "td-wallet-view";
+  content.className = "td-wallet-view hidden";
+  content.setAttribute("role", "tabpanel");
+  content.setAttribute("aria-labelledby", "td-tab-wallet");
+  content.tabIndex = 0;
   const overview = document.createElement("div");
-  const activity = document.createElement("div");
+  overview.className = "td-wallet-overview";
+  const recoveryDetails = document.createElement("details");
+  recoveryDetails.className = "td-wallet-recovery";
+  const recoverySummary = document.createElement("summary");
+  recoverySummary.textContent = "Recovery";
   const recovery = document.createElement("div");
-  const views = { overview, activity, recovery };
-  const tabs: Record<View, HTMLButtonElement> = {
-    overview: button("Overview"),
-    activity: button("Activity"),
-    recovery: button("Recovery"),
-  };
-  for (const view of ["overview", "activity", "recovery"] as const) {
-    const tab = tabs[view];
-    tab.className = "td-tab";
-    tab.id = `hi-tab-${view}`;
-    tab.setAttribute("role", "tab");
-    tab.setAttribute("aria-controls", `hi-view-${view}`);
-    tablist.append(tab);
-    views[view].id = `hi-view-${view}`;
-    views[view].className = "hi-view";
-    views[view].setAttribute("role", "tabpanel");
-    views[view].setAttribute("aria-labelledby", tab.id);
-    views[view].tabIndex = 0;
-    tab.addEventListener("click", () => {
-      selectView(view);
-    });
-    tab.addEventListener("keydown", (event) => {
-      const order: View[] = ["overview", "activity", "recovery"];
-      const index = order.indexOf(view);
-      const next =
-        event.key === "ArrowRight"
-          ? order[(index + 1) % 3]
-          : event.key === "ArrowLeft"
-            ? order[(index + 2) % 3]
-            : event.key === "Home"
-              ? order[0]
-              : event.key === "End"
-                ? order[2]
-                : undefined;
-      if (next !== undefined) {
-        event.preventDefault();
-        selectView(next);
-        tabs[next].focus();
-      }
-    });
-  }
+  recovery.className = "td-wallet-recovery-content";
+  recoveryDetails.append(recoverySummary, recovery);
   const productDetails = document.createElement("section");
-  productDetails.className = "hi-product";
-  const activityControls = document.createElement("div");
-  activityControls.className = "hi-actions";
-  const pause = button("Pause activity");
-  const clear = button("Clear activity");
-  activityControls.append(pause, clear);
-  const activityNote = paragraph(
-    "Redacted operations for the current product and identity only. Shared debug capture: Pause and Clear also affect the debug panel. No payloads, messages or keys are displayed here.",
-  );
-  const activityList = document.createElement("ol");
-  activityList.className = "hi-activity";
-  activity.append(activityNote, activityControls, activityList);
-  content.append(header, tablist, overview, activity, recovery);
-  const surface = document.createElement("div");
-  surface.className = "hi-surface";
-  surface.append(content);
-  document.body.append(backdrop, surface);
+  productDetails.className = "td-wallet-product";
+  content.append(overview, recoveryDetails);
 
   let opened = false;
   let disposed = false;
-  let view: View = "overview";
-  let docked = false;
-  try {
-    docked = localStorage.getItem(DOCK_KEY) === "1";
-    // eslint-disable-next-line no-restricted-syntax -- docking is optional when storage is unavailable.
-  } catch {
-    /* retain overlay */
-  }
-  const desktop = window.matchMedia("(min-width: 1100px)");
-  let returnFocus: HTMLElement | null = null;
   let identity: Identity | undefined;
   let product: Product | null = null;
   let productGeneration = 0;
+  let selectionGeneration = 0;
   let minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
   let actionPending = false;
   let renderFrame = 0;
@@ -174,174 +95,18 @@ export function createHostInspector(
   };
   const isDisposed = (): boolean => disposed;
 
-  function selectView(next: View): void {
-    view = next;
-    for (const name of ["overview", "activity", "recovery"] as const) {
-      const tab = tabs[name];
-      const selected = name === view;
-      tab.classList.toggle("active", selected);
-      tab.setAttribute("aria-selected", String(selected));
-      tab.tabIndex = selected ? 0 : -1;
-      views[name].hidden = !selected;
-    }
-    onVisibilityChange();
-    if (opened && view === "activity") {
-      renderActivity();
-    }
-  }
-
-  let geometryFrame = 0;
-  let observedTopbar: HTMLElement | null = null;
-  const resizeObserver = new ResizeObserver(() => {
-    scheduleGeometry();
-  });
-  const chromeObserver = new MutationObserver(() => {
-    scheduleGeometry();
-  });
-  resizeObserver.observe(debugPanel);
-  chromeObserver.observe(debugPanel, {
-    attributes: true,
-    attributeFilter: ["class", "style", "hidden"],
-  });
-
-  function scheduleGeometry(): void {
-    if (!disposed && geometryFrame === 0) {
-      geometryFrame = requestAnimationFrame(() => {
-        geometryFrame = 0;
-        geometry();
-      });
-    }
-  }
-
-  function geometry(): void {
-    if (disposed) {
-      return;
-    }
-    const topbar =
-      document.getElementById("landing-auth") ??
-      document.getElementById("topbar");
-    if (topbar !== observedTopbar) {
-      if (observedTopbar !== null) {
-        resizeObserver.unobserve(observedTopbar);
-      }
-      observedTopbar = topbar;
-      if (topbar !== null) {
-        resizeObserver.observe(topbar);
-        chromeObserver.observe(topbar, {
-          attributes: true,
-          attributeFilter: ["class", "style", "hidden"],
-        });
-      }
-    }
-    const top = Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0);
-    const debugTop = `${String(top)}px`;
-    if (
-      document.documentElement.style.getPropertyValue("--debug-content-top") !==
-      debugTop
-    ) {
-      document.documentElement.style.setProperty(
-        "--debug-content-top",
-        debugTop,
-      );
-    }
-    const debugRect = debugPanel.getBoundingClientRect();
-    const debugVisible = debugRect.width > 0 && debugRect.height > 0;
-    const debugRight = debugPanel.classList.contains("docked-right");
-    const debugCollapsed = debugPanel.classList.contains("collapsed");
-    const bottom =
-      debugVisible && !debugRight
-        ? Math.max(0, window.innerHeight - debugRect.top)
-        : 0;
-    const right =
-      debugVisible && debugRight && !debugCollapsed
-        ? Math.max(0, window.innerWidth - debugRect.left)
-        : 0;
-    const debugWidth = `${String(right)}px`;
-    if (
-      document.documentElement.style.getPropertyValue("--debug-panel-width") !==
-      debugWidth
-    ) {
-      document.documentElement.style.setProperty(
-        "--debug-panel-width",
-        debugWidth,
-      );
-    }
-    const inspectorTop =
-      debugVisible && debugRight && debugCollapsed
-        ? Math.max(top, debugRect.bottom)
-        : top;
-    for (const element of [surface, backdrop]) {
-      element.style.setProperty("--hi-top", `${String(inspectorTop)}px`);
-      element.style.setProperty("--hi-bottom", `${String(bottom)}px`);
-      element.style.setProperty("--hi-right", `${String(right)}px`);
-    }
-    const reserved = opened && docked && desktop.matches;
-    content.classList.toggle("is-docked", reserved);
-    dock.hidden = !desktop.matches;
-    dock.textContent = docked ? "Undock" : "Dock";
-    dock.setAttribute("aria-pressed", String(docked));
-    backdrop.hidden = !opened || reserved;
-    const width = reserved ? `${String(content.offsetWidth)}px` : "0px";
-    if (
-      document.documentElement.style.getPropertyValue(
-        "--host-inspector-width",
-      ) !== width
-    ) {
-      document.documentElement.style.setProperty(
-        "--host-inspector-width",
-        width,
-      );
-    }
-    // Transforms do not trigger ResizeObserver. Follow only active header
-    // transitions so the inspector stays below it throughout auto-hide.
-    if (
-      topbar
-        ?.getAnimations()
-        .some((animation) => animation.playState === "running") === true
-    ) {
-      scheduleGeometry();
-    }
-  }
-
-  function setOpen(next: boolean): void {
+  function setVisible(next: boolean): void {
     if (disposed || opened === next) {
       return;
     }
     opened = next;
-    if (opened) {
-      returnFocus =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : entry;
-    }
-    content.classList.toggle("is-open", opened);
-    content.inert = !opened;
-    content.setAttribute("aria-hidden", String(!opened));
     entry.setAttribute("aria-expanded", String(opened));
-    geometry();
+    if (!opened) {
+      recoveryDetails.open = false;
+    }
     onVisibilityChange();
     if (opened) {
-      heading.focus();
       void loadProduct();
-      renderActivity();
-    } else {
-      selectView("overview");
-      if (returnFocus?.isConnected === true) {
-        returnFocus.focus();
-      } else {
-        entry.focus();
-      }
-    }
-  }
-
-  function keydown(event: KeyboardEvent): void {
-    // Native approval dialogs sit above the inspector and own keyboard input.
-    if (!opened || document.querySelector(".signing-modal-backdrop") !== null) {
-      return;
-    }
-    if (event.key === "Escape" && content.contains(document.activeElement)) {
-      event.preventDefault();
-      setOpen(false);
     }
   }
 
@@ -442,59 +207,6 @@ export function createHostInspector(
     return { resources: Array.from(resources.values()), results };
   }
 
-  function renderActivity(): void {
-    pause.textContent = store.isPaused() ? "Resume activity" : "Pause activity";
-    activityList.replaceChildren();
-    const groups = new Map<
-      string,
-      { first: StoredTruapiEvent; last: StoredTruapiEvent }
-    >();
-    for (const event of currentEvents()) {
-      const group = groups.get(event.requestId);
-      if (group === undefined) {
-        groups.set(event.requestId, { first: event, last: event });
-      } else {
-        group.last = event;
-      }
-    }
-    // Wire operation tags are schema names; never render payload-derived text.
-    for (const { first, last } of Array.from(groups.values()).slice(-100)) {
-      const row = document.createElement("li");
-      const operation = /^[A-Za-z][A-Za-z0-9_.:]{0,100}$/.test(first.tag)
-        ? first.tag
-        : "Host operation";
-      const batch = allocationResources(first);
-      const statuses = allocationOutcomes(last);
-      const allocationFailed =
-        last.tag === "resource_allocation_request_response" &&
-        typeof last.payload === "object" &&
-        last.payload !== null &&
-        "failed" in last.payload &&
-        last.payload.failed === true;
-      const status =
-        batch !== null && statuses !== null && batch.length === statuses.length
-          ? batch
-              .map(
-                (resource, index) =>
-                  `${resource?.label ?? "Non-allowance resource (details hidden)"}: ${statuses[index] ?? "Unknown"}`,
-              )
-              .join("; ")
-          : allocationFailed
-            ? "Host returned an allocation error; outcome not inferred"
-            : last.tag.endsWith("_response")
-              ? "Response observed; success not inferred"
-              : "Observed; no correlated response retained";
-      row.textContent = `${new Date(first.receivedAt).toLocaleTimeString()} · ${operation} · ${status}`;
-      activityList.append(row);
-    }
-    if (groups.size === 0) {
-      const empty = document.createElement("li");
-      empty.textContent =
-        "No observed activity for this product and identity in the retained capture.";
-      activityList.append(empty);
-    }
-  }
-
   function renderProduct(): void {
     const focusedResource =
       document.activeElement instanceof HTMLButtonElement &&
@@ -527,7 +239,7 @@ export function createHostInspector(
     field(productDetails, "Origin", product.origin);
     field(
       productDetails,
-      "Account public key",
+      "Product account public key",
       product.accountPublicKey ?? "Unavailable",
     );
     if (product.accountError !== undefined) {
@@ -535,7 +247,7 @@ export function createHostInspector(
     }
     field(productDetails, "Derivation", product.derivation);
     const permissionsTitle = document.createElement("h3");
-    permissionsTitle.textContent = "Permissions";
+    permissionsTitle.textContent = "Product permissions";
     productDetails.append(permissionsTitle);
     for (const permission of product.permissions) {
       field(productDetails, permission.label, permission.status);
@@ -547,7 +259,7 @@ export function createHostInspector(
     }
     productDetails.append(
       paragraph(
-        "Permission changes are reviewed by the host when a product requests access. This inspector does not grant permissions implicitly.",
+        "Permission changes are reviewed by the host when a product requests access. The Wallet tab does not grant permissions implicitly.",
       ),
     );
     const allowancesTitle = document.createElement("h3");
@@ -561,7 +273,7 @@ export function createHostInspector(
     const observed = observedResources();
     for (const resource of observed.resources) {
       const row = document.createElement("div");
-      row.className = "hi-resource";
+      row.className = "td-wallet-resource";
       field(row, "Resource", resource.label);
       const outcome = observed.results.get(resource.id);
       row.append(
@@ -625,6 +337,7 @@ export function createHostInspector(
     }
     const selectedProduct = product;
     const selectedIdentity = identity;
+    const selectedGeneration = selectionGeneration;
     if (
       !window.confirm(
         `Request ${resource.label}?\n\nProduct: ${selectedProduct.name} (${selectedProduct.id})\nIdentity: ${selectedIdentity.identityAccountId}\nNetwork: ${selectedIdentity.network}\n\nAmount is determined by the native host; fees and remaining quota are not exposed. The host must review this explicit request. No automatic renewal.`,
@@ -641,13 +354,19 @@ export function createHostInspector(
         selectedProduct.id,
         resource.request,
       );
-      if (!isCurrentSelection(selectedIdentity, selectedProduct)) {
+      if (
+        selectedGeneration !== selectionGeneration ||
+        !isCurrentSelection(selectedIdentity, selectedProduct)
+      ) {
         return;
       }
       recordOutcome(resource.id, result);
     } catch {
       // Native errors may carry arbitrary details. Never retain/display them as activity.
-      if (isCurrentSelection(selectedIdentity, selectedProduct)) {
+      if (
+        selectedGeneration === selectionGeneration &&
+        isCurrentSelection(selectedIdentity, selectedProduct)
+      ) {
         recordOutcome(
           resource.id,
           "Outcome unknown — inspect host state before another request; no retry was made",
@@ -678,7 +397,6 @@ export function createHostInspector(
       }
       product = result;
       renderProduct();
-      renderActivity();
     } catch {
       if (disposed || generation !== productGeneration) {
         return;
@@ -689,24 +407,21 @@ export function createHostInspector(
           "Current product information is unavailable from the native host. No account or allowance is inferred.",
         ),
       );
-      renderActivity();
     }
   }
 
-  const open = (): void => {
-    setOpen(true);
-  };
   const productChanged = (): void => {
     productGeneration++;
+    selectionGeneration++;
     product = null;
+    minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
     outcomes.clear();
     renderProduct();
-    renderActivity();
     void loadProduct();
-    scheduleGeometry();
   };
   const pageHidden = (): void => {
     if (document.hidden) {
+      recoveryDetails.open = false;
       onVisibilityChange();
     }
   };
@@ -733,46 +448,17 @@ export function createHostInspector(
       if (disposed) {
         return;
       }
-      if (view === "activity") {
-        renderActivity();
-      }
       if (allocationsChanged) {
         allocationsChanged = false;
         renderProduct();
       }
     });
   });
-  pause.addEventListener("click", () => {
-    store.setPaused(!store.isPaused());
+  recoveryDetails.addEventListener("toggle", () => {
+    onVisibilityChange();
   });
-  clear.addEventListener("click", () => {
-    store.clear();
-  });
-  entry.addEventListener("click", open);
-  close.addEventListener("click", () => {
-    setOpen(false);
-  });
-  backdrop.addEventListener("click", () => {
-    setOpen(false);
-  });
-  dock.addEventListener("click", () => {
-    docked = !docked;
-    try {
-      localStorage.setItem(DOCK_KEY, docked ? "1" : "0");
-      // eslint-disable-next-line no-restricted-syntax -- optional preference only.
-    } catch {
-      /* keep session preference */
-    }
-    geometry();
-  });
-  window.addEventListener("dotli:host-inspector-open", open);
   window.addEventListener("dotli:product-loaded", productChanged);
-  window.addEventListener("resize", scheduleGeometry);
-  window.addEventListener("topbar:visibility", scheduleGeometry);
-  document.addEventListener("keydown", keydown);
   document.addEventListener("visibilitychange", pageHidden);
-  selectView("overview");
-  geometry();
 
   return {
     entry,
@@ -780,9 +466,10 @@ export function createHostInspector(
     overview,
     recovery,
     productDetails,
+    setVisible,
     isOpen: (): boolean => opened && !disposed,
     isRecoveryVisible: (): boolean =>
-      opened && view === "recovery" && !document.hidden && !disposed,
+      opened && recoveryDetails.open && !document.hidden && !disposed,
     onVisibilityChange(callback: () => void): void {
       onVisibilityChange = callback;
     },
@@ -794,6 +481,7 @@ export function createHostInspector(
         minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
         outcomes.clear();
         productGeneration++;
+        selectionGeneration++;
         product = null;
       }
       identity = next;
@@ -810,23 +498,9 @@ export function createHostInspector(
       productGeneration++;
       unsubscribe();
       cancelAnimationFrame(renderFrame);
-      window.removeEventListener("dotli:host-inspector-open", open);
       window.removeEventListener("dotli:product-loaded", productChanged);
-      window.removeEventListener("resize", scheduleGeometry);
-      window.removeEventListener("topbar:visibility", scheduleGeometry);
-      resizeObserver.disconnect();
-      chromeObserver.disconnect();
-      cancelAnimationFrame(geometryFrame);
-      document.removeEventListener("keydown", keydown);
       document.removeEventListener("visibilitychange", pageHidden);
-      document.documentElement.style.setProperty(
-        "--host-inspector-width",
-        "0px",
-      );
-      document.documentElement.style.removeProperty("--debug-content-top");
-      document.documentElement.style.removeProperty("--debug-panel-width");
-      surface.remove();
-      backdrop.remove();
+      content.remove();
       entry.remove();
     },
   };

@@ -310,25 +310,16 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
 }
 
 /**
- * Re-emit the cached UI state for the persisted same-origin session, if any.
- * Used at boot so a reload shows the logged-in badge before any core
+ * Re-emit cached UI state for the persisted same-origin Mobile session, if any.
+ * Used at boot so a reload shows the Mobile badge before any core
  * instance runs. Only emits when a persisted session blob actually exists;
  * without a cached state it degrades to a bare `connected: true`.
  */
 export async function emitPersistedSessionUiState(): Promise<void> {
   await initializeLocalWalletState();
-  let hasLocalWallet = false;
+  // Only the persistent signing owner can publish experimental identity.
+  // Disk metadata and secret availability are not native session proof.
   if (isExperimentalWalletActive()) {
-    const secret = await readLocalWalletSecret();
-    if (secret === undefined) {
-      await setLocalWalletEnabled(false);
-    } else {
-      secret.fill(0);
-      hasLocalWallet = true;
-    }
-  }
-  if (hasLocalWallet) {
-    dispatchAuthState({ tag: "Connected", session: { connected: true } });
     return;
   }
 

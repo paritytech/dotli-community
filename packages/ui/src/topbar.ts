@@ -465,16 +465,16 @@ export function initTopBar(
   // Show default logged-out state
   renderLoggedOut();
 
-  // Rehydrate the persisted same-origin session on idle so a reload shows
-  // the logged-in badge before any core instance boots.
+  // Rehydrate the persisted Mobile session before its core boots.
+  // Experimental identity is published only by its native wallet owner.
   scheduleIdle(() => {
     void emitPersistedSessionUiState().catch((error: unknown) => {
       showNotification({
         label: "Wallet restoration",
         text:
           error instanceof Error && error.name === "WalletConflictError"
-            ? "A different test wallet is already stored. Open Host inspector → Recovery to reveal and back up the preserved recovery phrase before explicitly importing or deleting."
-            : "Could not restore the wallet session. Check browser storage access; test-wallet recovery controls remain available in Host inspector → Recovery.",
+            ? "A different test wallet is already stored. Open Debug → Wallet → Recovery to reveal and back up the preserved recovery phrase before explicitly importing or deleting."
+            : "Could not restore the wallet session. Check browser storage access; test-wallet recovery controls remain available in Debug → Wallet → Recovery.",
         browserNotification: false,
         dismissMs: 0,
       });
@@ -553,7 +553,7 @@ function syncExperimentalWalletPresentation(): void {
     hint.id = "experimental-wallet-hint";
     hint.className = "user-popover-hint";
     hint.textContent =
-      "Testing only. Open the Host inspector for username, allowances and Recovery settings. Disconnect to sign in with Polkadot Mobile.";
+      "Testing only. Open Debug → Wallet for username, allowances and Recovery settings. Disconnect to sign in with Polkadot Mobile.";
     userPopoverUsername.insertAdjacentElement("afterend", hint);
   }
 }
@@ -573,11 +573,10 @@ function renderLoggedOut(): void {
 
 function renderExperimentalWalletBadge(): void {
   authButton.innerHTML = `<div class="user-badge user-badge-experimental">${EXPERIMENTAL_WALLET_SVG}</div>`;
-  authButton.title =
-    "Open Host inspector — experimental test wallet, testing only";
+  authButton.title = "Open Wallet tab — experimental test wallet, testing only";
   authButton.setAttribute(
     "aria-label",
-    "Open Host inspector — experimental test wallet",
+    "Open Wallet tab — experimental test wallet",
   );
 }
 
@@ -920,7 +919,7 @@ function renderError(message: string, kind: LoginFailureKind): void {
 function handleAuthButtonClick(): void {
   if (isExperimentalWalletActive()) {
     userPopover.classList.remove("open");
-    window.dispatchEvent(new Event("dotli:host-inspector-open"));
+    window.dispatchEvent(new Event("dotli:wallet-open"));
   } else if (truapiSessionConnected) {
     userPopover.classList.toggle("open");
   } else {
