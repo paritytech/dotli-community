@@ -247,16 +247,31 @@ export function createHostInspector(
     const debugRect = debugPanel.getBoundingClientRect();
     const debugVisible = debugRect.width > 0 && debugRect.height > 0;
     const debugRight = debugPanel.classList.contains("docked-right");
+    const debugCollapsed = debugPanel.classList.contains("collapsed");
     const bottom =
       debugVisible && !debugRight
         ? Math.max(0, window.innerHeight - debugRect.top)
         : 0;
     const right =
-      debugVisible && debugRight
+      debugVisible && debugRight && !debugCollapsed
         ? Math.max(0, window.innerWidth - debugRect.left)
         : 0;
+    const debugWidth = `${String(right)}px`;
+    if (
+      document.documentElement.style.getPropertyValue("--debug-panel-width") !==
+      debugWidth
+    ) {
+      document.documentElement.style.setProperty(
+        "--debug-panel-width",
+        debugWidth,
+      );
+    }
+    const inspectorTop =
+      debugVisible && debugRight && debugCollapsed
+        ? Math.max(top, debugRect.bottom)
+        : top;
     for (const element of [surface, backdrop]) {
-      element.style.setProperty("--hi-top", `${String(top)}px`);
+      element.style.setProperty("--hi-top", `${String(inspectorTop)}px`);
       element.style.setProperty("--hi-bottom", `${String(bottom)}px`);
       element.style.setProperty("--hi-right", `${String(right)}px`);
     }
@@ -809,6 +824,7 @@ export function createHostInspector(
         "0px",
       );
       document.documentElement.style.removeProperty("--debug-content-top");
+      document.documentElement.style.removeProperty("--debug-panel-width");
       surface.remove();
       backdrop.remove();
       entry.remove();

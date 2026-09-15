@@ -56,6 +56,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: calc(
+    100% - var(--host-inspector-width, 0px) - var(--debug-panel-width, 0px)
+  );
   min-height: var(--content-height);
   margin-top: var(--topbar-height);
   text-align: center;

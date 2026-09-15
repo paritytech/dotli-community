@@ -575,19 +575,9 @@ function installExperimentalWalletControls(
   const usernameHint = document.createElement("p");
   usernameHint.id = "td-wallet-username-hint";
   usernameHint.className = "td-wallet-hint";
-  usernameHint.textContent =
-    "Refresh discovers names already registered to this identity. Claim submits a real registration on the selected network; nothing is registered automatically.";
   const usernameActions = document.createElement("div");
   usernameActions.className = "hi-actions";
   usernameActions.append(claim, refresh);
-  overview.append(
-    registeredName,
-    network,
-    identity,
-    usernameLabel,
-    usernameActions,
-    usernameHint,
-  );
   const activate = document.createElement("button");
   activate.type = "button";
   activate.className = "td-btn";
@@ -643,7 +633,17 @@ function installExperimentalWalletControls(
   const walletActions = document.createElement("div");
   walletActions.className = "hi-actions";
   walletActions.append(activate, disconnect);
-  overview.append(warning, walletActions, inspector.productDetails);
+  overview.append(
+    walletActions,
+    warning,
+    registeredName,
+    network,
+    identity,
+    usernameLabel,
+    usernameActions,
+    usernameHint,
+    inspector.productDetails,
+  );
   const recoveryHeading = document.createElement("h3");
   recoveryHeading.textContent = "Recovery settings";
   recovery.append(recoveryHeading);
@@ -659,6 +659,7 @@ function installExperimentalWalletControls(
   content.append(message);
 
   let pending = false;
+  let activating = false;
   let disposed = false;
   const isDisposed = (): boolean => disposed;
   let sensitiveGeneration = 0;
@@ -682,6 +683,26 @@ function installExperimentalWalletControls(
     | undefined;
   const renderUsername = (): void => {
     const operation = usernameOperation;
+    const active = wallet.isActive() && !activating;
+    const fullName = currentIdentity?.fullUsername ?? "";
+    const liteName = currentIdentity?.liteUsername ?? "";
+    const hasLiteUsername =
+      liteName !== "" || usernameStatus.kind === "claimed";
+    const showClaim =
+      active && currentIdentity !== undefined && !hasLiteUsername;
+    activate.hidden = active;
+    activate.textContent = activating
+      ? "Enabling test wallet…"
+      : "Enable / use test wallet";
+    disconnect.hidden = !active;
+    usernameLabel.hidden = !showClaim;
+    claim.hidden = !showClaim;
+    usernameActions.hidden = !active;
+    refresh.hidden = !active;
+    usernameHint.hidden = !active;
+    usernameHint.textContent = hasLiteUsername
+      ? "Refresh username verifies ownership on the selected network; no registration is submitted."
+      : "Refresh discovers names already registered to this identity. Claim submits a real registration on the selected network; nothing is registered automatically.";
     const sameIdentity =
       operation?.identity.identityAccountId ===
         currentIdentity?.identityAccountId &&
@@ -689,7 +710,7 @@ function installExperimentalWalletControls(
     registeredName.dataset.state =
       operation !== undefined
         ? "pending"
-        : identityLoading && currentIdentity === undefined
+        : activating || (identityLoading && currentIdentity === undefined)
           ? "checking"
           : usernameStatus.kind;
     let title = usernameStatus.title;
@@ -705,12 +726,21 @@ function installExperimentalWalletControls(
         (operation.register
           ? "Waiting for chain ownership confirmation. Closing this inspector does not cancel the claim."
           : "Checking chain ownership only; no registration is submitted.");
-    } else if (!wallet.isActive()) {
-      title = "No wallet connected";
-      detail = "Enable the test wallet to check or claim a username.";
+    } else if (activating) {
+      title = "Enabling test wallet…";
+      detail =
+        "Wait for activation to finish before checking or claiming a username.";
+    } else if (!active) {
+      title = "Enable the test wallet first";
+      detail =
+        "Use Enable / use test wallet above to connect, then check or claim a username.";
     } else if (identityLoading && currentIdentity === undefined) {
       title = "Checking wallet identity…";
       detail = "Username ownership has not been checked on chain.";
+    } else if (usernameStatus.kind === "unknown" && liteName !== "") {
+      title = `Known Lite username: ${liteName}`;
+      detail =
+        "Loaded from wallet identity. Refresh username verifies ownership on chain.";
     }
     // Input changes also synchronize controls; do not re-announce unchanged
     // live status on every keystroke.
@@ -720,8 +750,6 @@ function installExperimentalWalletControls(
     if (nameDetail.textContent !== detail) {
       nameDetail.textContent = detail;
     }
-    const fullName = currentIdentity?.fullUsername ?? "";
-    const liteName = currentIdentity?.liteUsername ?? "";
     const names = [
       fullName !== "" ? `Full: ${fullName}` : "",
       liteName !== "" ? `Lite: ${liteName}` : "",
@@ -738,9 +766,9 @@ function installExperimentalWalletControls(
       operation?.register === false ? "Refreshing…" : "Refresh username";
     inspector.entry.title = `${title} — ${detail}`;
     inspector.entry.textContent =
-      operation !== undefined
+      operation !== undefined || activating
         ? title
-        : !wallet.isActive()
+        : !active
           ? "Connect wallet"
           : fullName ||
             liteName ||
@@ -779,7 +807,8 @@ function installExperimentalWalletControls(
     importButton.disabled = pending;
     remove.disabled = pending;
     input.disabled = pending;
-    username.disabled = pending || !wallet.isActive();
+    username.disabled =
+      pending || !wallet.isActive() || identityLoading || identityUnavailable;
     claim.disabled =
       pending ||
       !wallet.isActive() ||
@@ -855,16 +884,14 @@ function installExperimentalWalletControls(
       network.textContent = `Network: ${result.network}`;
       identity.textContent = `Identity account: ${result.identityAccountId}${result.publicKey !== undefined ? ` · Public key: ${result.publicKey}` : ""}`;
       if (
-        (usernameStatus.kind === "unknown" ||
-          usernameStatus.kind === "unclaimed") &&
-        result.liteUsername !== undefined &&
-        result.liteUsername !== ""
+        usernameStatus.kind === "unclaimed" &&
+        (currentIdentity.liteUsername ?? "") !== ""
       ) {
         usernameStatus = {
           kind: "unknown",
-          title: `Known Lite username: ${result.liteUsername}`,
+          title: "Username not checked",
           detail:
-            "Loaded from wallet identity. Refresh username verifies ownership on chain.",
+            "Refresh username checks this identity on chain. No claim is submitted.",
         };
       }
     } catch (error) {
@@ -1082,6 +1109,7 @@ function installExperimentalWalletControls(
     ) {
       return;
     }
+    activating = operation === "activate";
     pending = true;
     syncButtons();
     content.setAttribute("aria-busy", "true");
@@ -1112,6 +1140,9 @@ function installExperimentalWalletControls(
       } else {
         clearSensitive();
         await wallet[operation]();
+        if (!isDisposed()) {
+          await loadIdentity();
+        }
       }
     } catch (error) {
       if (isVisible()) {
@@ -1128,6 +1159,7 @@ function installExperimentalWalletControls(
       }
     } finally {
       pending = false;
+      activating = false;
       if (!isDisposed()) {
         content.removeAttribute("aria-busy");
         syncButtons();
