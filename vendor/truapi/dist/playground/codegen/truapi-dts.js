@@ -582,6 +582,14 @@ export type AllocatableResource =
  | {
     tag: "AutoSigning";
     value?: undefined;
+}
+/**
+ * Current UTC-day Statement Store allowance whose target is the product
+ * account selected by this derivation index.
+ */
+ | {
+    tag: "ProductStatementStoreAllowance";
+    value: DerivationIndex;
 };
 export const AllocatableResource: Codec<AllocatableResource>;
 /** Outcome of allocating a single resource (RFC 0010). */
@@ -1929,6 +1937,51 @@ export const VersionedHostPaymentTopUpResponse: Codec<VersionedHostPaymentTopUpR
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export const HostPlatform: Codec<HostPlatform>;
+/**
+ * Cipher suite used by product-device Chat identity-route operations.
+ *
+ * Legacy v2 preserves current mobile interoperability. Context-bound v1
+ * authenticates the product/network, both account roles, route, and direction.
+ */
+export type HostProductDeviceChatCipherSuite = 
+/** Existing Chat v2 CryptoKit-compatible empty-context HKDF and AEAD. */
+{
+    tag: "LegacyV2";
+    value?: undefined;
+}
+/** Domain-separated encryption for peers that explicitly support it. */
+ | {
+    tag: "ContextBoundV1";
+    value: {
+        peerAccountId: HexString;
+        channelId: HexString;
+    };
+};
+export const HostProductDeviceChatCipherSuite: Codec<HostProductDeviceChatCipherSuite>;
+/** Versioned envelope for [\`HostProductDeviceChatError\`]. */
+export type VersionedHostProductDeviceChatError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProductDeviceChatError;
+};
+export const VersionedHostProductDeviceChatError: Codec<VersionedHostProductDeviceChatError>;
+/** Versioned envelope for [\`HostProductDeviceChatRequest\`]. */
+export type VersionedHostProductDeviceChatRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProductDeviceChatRequest;
+};
+export const VersionedHostProductDeviceChatRequest: Codec<VersionedHostProductDeviceChatRequest>;
+/** Versioned envelope for [\`HostProductDeviceChatResponse\`]. */
+export type VersionedHostProductDeviceChatResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProductDeviceChatResponse;
+};
+export const VersionedHostProductDeviceChatResponse: Codec<VersionedHostProductDeviceChatResponse>;
 /** Versioned envelope for [\`HostPushNotificationCancelError\`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -4308,6 +4361,149 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export const HostPaymentTopUpRequest: Codec<HostPaymentTopUpRequest>;
+/** Product-device Chat v2 identity failure. */
+export type HostProductDeviceChatError = 
+/** No account-authority session is connected. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The user or Host rejected the operation. */
+ | {
+    tag: "Rejected";
+    value?: undefined;
+}
+/** The peer X25519 public key is invalid. */
+ | {
+    tag: "InvalidPeerKey";
+    value?: undefined;
+}
+/** The ciphertext failed structural or authentication checks. */
+ | {
+    tag: "InvalidCiphertext";
+    value?: undefined;
+}
+/** The Host could not complete the operation. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProductDeviceChatError: Codec<HostProductDeviceChatError>;
+/**
+ * Product-device Chat v2 identity operation.
+ *
+ * The wallet Chat identity secret and derived shared key remain host-private.
+ */
+export type HostProductDeviceChatRequest = 
+/** Resolve the product account as a Chat device and bind it to the wallet identity. */
+{
+    tag: "Bind";
+    value: {
+        productAccountId: ProductAccountId;
+        peerIdentityAccountId: HexString;
+        peerChatPublicKey: HexString;
+    };
+}
+/** Seal identity-route plaintext for the peer with a host-generated nonce. */
+ | {
+    tag: "Seal";
+    value: {
+        productAccountId: ProductAccountId;
+        peerChatPublicKey: HexString;
+        cipherSuite: HostProductDeviceChatCipherSuite;
+        plaintext: HexString;
+    };
+}
+/** Open an identity-route combined nonce/ciphertext/tag value. */
+ | {
+    tag: "Open";
+    value: {
+        productAccountId: ProductAccountId;
+        peerChatPublicKey: HexString;
+        cipherSuite: HostProductDeviceChatCipherSuite;
+        combinedCiphertext: HexString;
+    };
+}
+/** Sign the canonical Chat first-contact proof payload without wallet-message framing. */
+ | {
+    tag: "SignRequestProof";
+    value: {
+        productAccountId: ProductAccountId;
+        payload: HexString;
+    };
+}
+/** Read the authorized wallet's public Chat identity for incoming requests. */
+ | {
+    tag: "Identity";
+    value: {
+        productAccountId: ProductAccountId;
+    };
+}
+/** Verify a peer's identity-to-device binding without exposing shared keys. */
+ | {
+    tag: "VerifyPeerDevice";
+    value: {
+        productAccountId: ProductAccountId;
+        peerIdentityAccountId: HexString;
+        peerChatPublicKey: HexString;
+        peerDeviceAccountId: HexString;
+        proof: HexString;
+    };
+};
+export const HostProductDeviceChatRequest: Codec<HostProductDeviceChatRequest>;
+/** Result of a product-device Chat v2 identity operation. */
+export type HostProductDeviceChatResponse = 
+/** Wallet identity binding and deterministic peer routes. */
+{
+    tag: "IdentityBinding";
+    value: {
+        identityAccountId: HexString;
+        proof: HexString;
+        walletOwnSessionId: HexString;
+        peerOwnSessionId: HexString;
+        walletOutgoingChannelId: HexString;
+        walletIncomingChannelId: HexString;
+    };
+}
+/** Sealed identity-route payload. */
+ | {
+    tag: "Sealed";
+    value: {
+        combinedCiphertext: HexString;
+    };
+}
+/** Opened identity-route payload. */
+ | {
+    tag: "Opened";
+    value: {
+        plaintext: HexString;
+    };
+}
+/** Raw sr25519 signature over a canonical Chat request proof payload. */
+ | {
+    tag: "RequestProofSigned";
+    value: {
+        signature: HexString;
+    };
+}
+/** Public Chat identity of the authorized wallet. */
+ | {
+    tag: "Identity";
+    value: {
+        identityAccountId: HexString;
+        chatPublicKey: HexString;
+    };
+}
+/** Result of verifying a peer identity-to-device binding. */
+ | {
+    tag: "PeerDeviceVerified";
+    value: {
+        valid: boolean;
+    };
+};
+export const HostProductDeviceChatResponse: Codec<HostProductDeviceChatResponse>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [\`HostPushNotificationResponse\`]. */
@@ -5108,6 +5304,10 @@ export import VersionedHostPaymentTopUpError = T.VersionedHostPaymentTopUpError;
 export import VersionedHostPaymentTopUpRequest = T.VersionedHostPaymentTopUpRequest;
 export import VersionedHostPaymentTopUpResponse = T.VersionedHostPaymentTopUpResponse;
 export import HostPlatform = T.HostPlatform;
+export import HostProductDeviceChatCipherSuite = T.HostProductDeviceChatCipherSuite;
+export import VersionedHostProductDeviceChatError = T.VersionedHostProductDeviceChatError;
+export import VersionedHostProductDeviceChatRequest = T.VersionedHostProductDeviceChatRequest;
+export import VersionedHostProductDeviceChatResponse = T.VersionedHostProductDeviceChatResponse;
 export import VersionedHostPushNotificationCancelError = T.VersionedHostPushNotificationCancelError;
 export import VersionedHostPushNotificationCancelRequest = T.VersionedHostPushNotificationCancelRequest;
 export import VersionedHostPushNotificationCancelResponse = T.VersionedHostPushNotificationCancelResponse;
@@ -5317,6 +5517,9 @@ export import HostPaymentStatusSubscribeItem = T.HostPaymentStatusSubscribeItem;
 export import HostPaymentStatusSubscribeRequest = T.HostPaymentStatusSubscribeRequest;
 export import HostPaymentTopUpError = T.HostPaymentTopUpError;
 export import HostPaymentTopUpRequest = T.HostPaymentTopUpRequest;
+export import HostProductDeviceChatError = T.HostProductDeviceChatError;
+export import HostProductDeviceChatRequest = T.HostProductDeviceChatRequest;
+export import HostProductDeviceChatResponse = T.HostProductDeviceChatResponse;
 export import HostPushNotificationCancelRequest = T.HostPushNotificationCancelRequest;
 export import HostPushNotificationError = T.HostPushNotificationError;
 export import HostPushNotificationRequest = T.HostPushNotificationRequest;
@@ -5614,7 +5817,7 @@ export { ResultAsync, SubscriptionError };
 export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 2;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "e883e2c0b9857933";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "2a2713140f9fb3e1";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
@@ -5642,6 +5845,11 @@ export declare class AccountClient {
     listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
     /** Sign bytes directly with a registered ring-VRF member key. */
     ringVrfSign(request: T.HostAccountRingVrfSignRequest): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
+    /**
+     * Bind a product account as a Chat v2 device, or seal/open identity-route
+     * payloads without exposing the wallet Chat identity secret.
+     */
+    deviceChat(request: T.HostProductDeviceChatRequest): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
     /**
      * List non-product accounts the user owns.
      *
@@ -6113,6 +6321,11 @@ export declare const ACCOUNT_LIST_RING_VRF_KEYS: {
 export declare const ACCOUNT_RING_VRF_SIGN: {
     readonly trait: 2;
     readonly method: 10;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_PRODUCT_DEVICE_CHAT: {
+    readonly trait: 2;
+    readonly method: 11;
     readonly kind: "request";
 };
 export declare const CHAIN_FOLLOW_HEAD_SUBSCRIBE: {
