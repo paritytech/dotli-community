@@ -212,6 +212,11 @@ export interface TruapiSessionUiState {
   primaryUsername?: string;
 }
 
+/** Last native display metadata, not proof of a current authenticated session. */
+export type LocalWalletDisplay = Omit<TruapiSessionUiState, "connected"> & {
+  identityAccountId: string;
+};
+
 /** Convert the core's decoded session fields into the rendering-friendly
  * shape (hex-encoded keys) the topbar and UI-state cache use. */
 export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
@@ -232,16 +237,22 @@ export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   };
 }
 
-/** Persist (or clear, when disconnected) the boot-rehydration UI-state
- * cache next to the opaque session blob. Best-effort. */
+/** Persist public display metadata from native auth transitions. Mobile uses
+ * shared session storage; the experimental wallet uses origin-local storage. */
 export async function writeUiStateCache(
   detail: TruapiSessionUiState,
 ): Promise<void> {
-  // Never replace a mobile session's shared UI cache with a test identity.
-  if (isExperimentalWalletActive()) {
-    return;
-  }
   try {
+    // Never replace a mobile session's shared UI cache with a test identity.
+    if (isExperimentalWalletActive()) {
+      const key = `${EXPERIMENTAL_CORE_STORAGE_PREFIX}${localWalletStorageGeneration()}:ui-state`;
+      if (!detail.connected) {
+        localStorage.removeItem(key);
+      } else if (!walletMutationPending) {
+        localStorage.setItem(key, JSON.stringify(detail));
+      }
+      return;
+    }
     if (detail.connected) {
       await writeSharedAuthStorage(
         SITE_ID,
@@ -295,6 +306,35 @@ function parseUiStateCache(parsed: unknown): TruapiSessionUiState | null {
       ? { primaryUsername: state.primaryUsername }
       : {}),
   };
+}
+
+/**
+ * Read display-only metadata synchronously before native startup. This never
+ * activates a wallet or publishes auth; only the native owner can verify it.
+ */
+export function readLocalWalletDisplay(): LocalWalletDisplay | undefined {
+  try {
+    if (walletMutationPending || !isExperimentalWalletActive()) {
+      return undefined;
+    }
+    const raw = localStorage.getItem(
+      `${EXPERIMENTAL_CORE_STORAGE_PREFIX}${localWalletStorageGeneration()}:ui-state`,
+    );
+    if (raw === null) {
+      return undefined;
+    }
+    const state = parseUiStateCache(JSON.parse(raw));
+    if (
+      state?.identityAccountId === undefined ||
+      !/^0x[0-9a-f]{64}$/.test(state.identityAccountId)
+    ) {
+      return undefined;
+    }
+    const { connected: _connected, identityAccountId, ...metadata } = state;
+    return { ...metadata, identityAccountId };
+  } catch {
+    return undefined;
+  }
 }
 
 async function readUiStateCache(): Promise<TruapiSessionUiState | null> {

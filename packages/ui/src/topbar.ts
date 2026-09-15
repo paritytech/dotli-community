@@ -67,6 +67,7 @@ import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
   isExperimentalWalletActive,
+  readLocalWalletDisplay,
   type TruapiSessionUiState,
 } from "./host-callbacks/SessionStore";
 import {
@@ -462,7 +463,7 @@ export function initTopBar(
     moreButton?.setAttribute("aria-expanded", "false");
   });
 
-  // Show default logged-out state
+  // Restore display metadata without authenticating before the native owner boots.
   renderLoggedOut();
 
   // Rehydrate the persisted Mobile session before its core boots.
@@ -518,7 +519,8 @@ function renderAuthState(state: DotliAuthState): void {
       break;
     case "Connected":
       closeModal({ skipTruapiCancel: true });
-      renderTruapiLoggedIn(state.session);
+      renderSessionBadge(state.session);
+      window.dispatchEvent(new Event("dotli:authenticated"));
       break;
     case "LoginFailed":
       openModal();
@@ -561,7 +563,13 @@ function syncExperimentalWalletPresentation(): void {
 function renderLoggedOut(): void {
   syncExperimentalWalletPresentation();
   if (isExperimentalWalletActive()) {
-    renderExperimentalWalletBadge();
+    const display = readLocalWalletDisplay();
+    if (display === undefined) {
+      renderExperimentalWalletBadge();
+    } else {
+      renderSessionBadge(display);
+      authButton.title += " — last known identity, verifying";
+    }
   } else {
     authButton.innerHTML = USER_SVG;
     authButton.title = "Login with Polkadot Mobile";
@@ -580,7 +588,9 @@ function renderExperimentalWalletBadge(): void {
   );
 }
 
-function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
+function renderSessionBadge(
+  state: Omit<TruapiSessionUiState, "connected">,
+): void {
   syncExperimentalWalletPresentation();
   const experimental = isExperimentalWalletActive();
   if (experimental) {
@@ -612,13 +622,12 @@ function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
   setUserPopoverNoUsernameHint(
     !experimental && (username === undefined || username.length === 0),
   );
-  window.dispatchEvent(new Event("dotli:authenticated"));
 }
 
 // A session can install without any username (the account has no dotNS record
 // on this network), so initials only come from real names, never account hex.
 function truapiSessionInitials(
-  state: TruapiSessionUiState,
+  state: Omit<TruapiSessionUiState, "connected">,
 ): string | undefined {
   const fullName = state.fullUsername;
   if (fullName !== undefined && fullName.length > 0) {

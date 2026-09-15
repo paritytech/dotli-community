@@ -141,6 +141,7 @@ export interface SetupOptions {
   experimentalWallet?: {
     isActive(): boolean;
     networkLabel(): string;
+    getCachedIdentity(): InspectorIdentity | undefined;
     getIdentity(): Promise<InspectorIdentity>;
     getProduct(): Promise<InspectorProduct | null>;
     describeResource(resource: unknown): InspectorResource | null;
@@ -733,8 +734,11 @@ function installExperimentalWalletControls(
   const isDisposed = (): boolean => disposed;
   let sensitiveGeneration = 0;
   let currentIdentity: InspectorIdentity | undefined;
+  let displayIdentity = wallet.isActive()
+    ? wallet.getCachedIdentity()
+    : undefined;
   let identityReadGeneration = 0;
-  let identityLoading = false;
+  let identityLoading = wallet.isActive();
   let identityUnavailable = false;
   let identityGeneration = 0;
   let usernameStatus: {
@@ -753,12 +757,28 @@ function installExperimentalWalletControls(
   const renderUsername = (): void => {
     const operation = usernameOperation;
     const active = wallet.isActive() && !activating;
-    const fullName = currentIdentity?.fullUsername ?? "";
-    const liteName = currentIdentity?.liteUsername ?? "";
+    const fullName = active ? (displayIdentity?.fullUsername ?? "") : "";
+    const liteName = active ? (displayIdentity?.liteUsername ?? "") : "";
     const hasLiteUsername =
       liteName !== "" || usernameStatus.kind === "claimed";
     const showClaim =
       active && currentIdentity !== undefined && !hasLiteUsername;
+    status.textContent = !active
+      ? "Experimental wallet disconnected"
+      : identityLoading
+        ? "Verifying experimental wallet · last-known display only"
+        : identityUnavailable
+          ? "Experimental wallet verification failed · last-known display only"
+          : "Experimental wallet active";
+    network.textContent = `Network: ${active ? (displayIdentity?.network ?? wallet.networkLabel()) : wallet.networkLabel()}`;
+    identity.textContent =
+      active && displayIdentity !== undefined
+        ? `${identityLoading || identityUnavailable ? "Last known identity account" : "Identity account"}: ${displayIdentity.identityAccountId}${displayIdentity.publicKey !== undefined ? ` · Public key: ${displayIdentity.publicKey}` : ""}`
+        : active
+          ? identityLoading
+            ? "Identity account: verifying…"
+            : "Identity account unavailable"
+          : "Identity: connect the experimental wallet to view";
     activate.hidden = active;
     activate.textContent = activating
       ? "Enabling test wallet…"
@@ -779,7 +799,7 @@ function installExperimentalWalletControls(
     registeredName.dataset.state =
       operation !== undefined
         ? "pending"
-        : activating || (identityLoading && currentIdentity === undefined)
+        : activating || identityLoading
           ? "checking"
           : usernameStatus.kind;
     let title = usernameStatus.title;
@@ -803,9 +823,10 @@ function installExperimentalWalletControls(
       title = "Enable the test wallet first";
       detail =
         "Use Enable / use test wallet above to connect, then check or claim a username.";
-    } else if (identityLoading && currentIdentity === undefined) {
-      title = "Checking wallet identity…";
-      detail = "Username ownership has not been checked on chain.";
+    } else if (identityLoading) {
+      title = "Verifying wallet identity…";
+      detail =
+        "Last-known display is not verified. Claims require native identity confirmation; cached names do not authorize product permissions.";
     } else if (usernameStatus.kind === "unknown" && liteName !== "") {
       title = `Known Lite username: ${liteName}`;
       detail =
@@ -832,20 +853,28 @@ function installExperimentalWalletControls(
     claim.textContent =
       operation?.register === true ? "Claim pending…" : "Claim Lite username";
     refresh.textContent =
-      operation?.register === false ? "Refreshing…" : "Refresh username";
+      operation?.register === false
+        ? "Refreshing…"
+        : identityUnavailable
+          ? "Retry wallet verification"
+          : "Refresh username";
     walletView.entry.title = `${title} — ${detail}`;
     walletView.entry.textContent =
       operation !== undefined || activating
         ? title
         : !active
           ? "Connect wallet"
-          : fullName ||
-            liteName ||
-            (usernameStatus.kind === "unclaimed"
-              ? "Wallet · unclaimed"
-              : usernameStatus.kind === "failed"
-                ? "Wallet · check failed"
-                : "Wallet · username unknown");
+          : identityLoading
+            ? `${fullName || liteName || "Wallet"} · verifying…`
+            : identityUnavailable
+              ? `${fullName || liteName || "Wallet"} · verification failed`
+              : fullName ||
+                liteName ||
+                (usernameStatus.kind === "unclaimed"
+                  ? "Wallet · unclaimed"
+                  : usernameStatus.kind === "failed"
+                    ? "Wallet · check failed"
+                    : "Wallet · username unknown");
   };
   const isVisible = (): boolean => !disposed && walletView.isOpen();
   const clearSensitive = (): void => {
@@ -894,18 +923,27 @@ function installExperimentalWalletControls(
   const loadIdentity = async (): Promise<void> => {
     const generation = ++identityReadGeneration;
     identityLoading = wallet.isActive();
-    status.textContent = wallet.isActive()
-      ? "Experimental wallet active"
-      : "Experimental wallet disconnected";
+    // Re-read the display cache so network, wallet revision, and Mobile mode
+    // changes cannot carry a previous selection's display into this check.
+    displayIdentity = wallet.isActive()
+      ? wallet.getCachedIdentity()
+      : undefined;
+    // Never publish cached display as product authority. Keep an already verified
+    // selection during routine reads so its observed resource outcomes survive.
+    if (
+      currentIdentity === undefined ||
+      displayIdentity?.identityAccountId !==
+        currentIdentity.identityAccountId ||
+      displayIdentity.network !== currentIdentity.network
+    ) {
+      walletView.setIdentity(undefined);
+    }
     if (!wallet.isActive()) {
       if (currentIdentity !== undefined) {
         identityGeneration++;
         clearSensitive();
       }
       currentIdentity = undefined;
-      walletView.setIdentity(undefined);
-      identity.textContent =
-        "Identity: connect the experimental wallet to view";
       identityUnavailable = false;
       usernameStatus = {
         kind: "unknown",
@@ -924,10 +962,17 @@ function installExperimentalWalletControls(
       }
       if (
         currentIdentity?.identityAccountId !== result.identityAccountId ||
-        currentIdentity.network !== result.network
+        currentIdentity.network !== result.network ||
+        currentIdentity.liteUsername !== result.liteUsername ||
+        currentIdentity.fullUsername !== result.fullUsername
       ) {
-        clearSensitive();
-        identityGeneration++;
+        if (
+          currentIdentity?.identityAccountId !== result.identityAccountId ||
+          currentIdentity.network !== result.network
+        ) {
+          clearSensitive();
+          identityGeneration++;
+        }
         username.value = "";
         usernameStatus = {
           kind: "unknown",
@@ -936,21 +981,18 @@ function installExperimentalWalletControls(
             "Refresh username checks this identity on chain. No claim is submitted.",
         };
       }
-      const sameIdentity =
-        currentIdentity?.identityAccountId === result.identityAccountId &&
-        currentIdentity.network === result.network;
-      currentIdentity =
-        sameIdentity && currentIdentity !== undefined
-          ? {
-              ...result,
-              liteUsername: result.liteUsername ?? currentIdentity.liteUsername,
-              fullUsername: result.fullUsername ?? currentIdentity.fullUsername,
-            }
-          : result;
+      currentIdentity = result;
+      displayIdentity = result;
+      if (identityUnavailable) {
+        usernameStatus = {
+          kind: "unknown",
+          title: "Username not checked",
+          detail:
+            "Refresh username checks this identity on chain. No claim is submitted.",
+        };
+      }
       identityUnavailable = false;
       walletView.setIdentity(currentIdentity);
-      network.textContent = `Network: ${result.network}`;
-      identity.textContent = `Identity account: ${result.identityAccountId}${result.publicKey !== undefined ? ` · Public key: ${result.publicKey}` : ""}`;
       if (
         usernameStatus.kind === "unclaimed" &&
         (currentIdentity.liteUsername ?? "") !== ""
@@ -965,17 +1007,13 @@ function installExperimentalWalletControls(
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {
         identityUnavailable = true;
-        if (currentIdentity === undefined) {
-          identity.textContent = "Identity account unavailable";
-        }
+        walletView.setIdentity(undefined);
         // A failed read is not evidence that the identity or its name disappeared.
-        if (usernameStatus.kind !== "failed") {
-          usernameStatus = {
-            kind: "failed",
-            title: "Identity check failed",
-            detail: `${error instanceof Error ? error.message : String(error)} Last known identity retained. Refresh username to check again.`,
-          };
-        }
+        usernameStatus = {
+          kind: "failed",
+          title: "Identity check failed",
+          detail: `${error instanceof Error ? error.message : String(error)} Last-known display is not authorized. Retry wallet verification to check again.`,
+        };
       }
     } finally {
       if (!disposed && generation === identityReadGeneration) {
@@ -1065,6 +1103,7 @@ function installExperimentalWalletControls(
         liteUsername: result.liteUsername,
         network: selectedIdentity.network,
       };
+      displayIdentity = currentIdentity;
       walletView.setIdentity(currentIdentity);
       usernameStatus =
         result.liteUsername !== undefined && result.liteUsername !== ""
@@ -1112,7 +1151,11 @@ function installExperimentalWalletControls(
     void runUsername(true);
   });
   refresh.addEventListener("click", () => {
-    void runUsername(false);
+    if (identityUnavailable && !pending && !identityLoading) {
+      void loadIdentity();
+    } else {
+      void runUsername(false);
+    }
   });
 
   const run = async (
