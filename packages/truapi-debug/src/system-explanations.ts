@@ -49,7 +49,7 @@ Warmup happens in the background and is non-blocking. If a product calls chain s
     body: `The current browser URL has been classified into one of three outcomes:
 
 • \`label\` set — a product subdomain (e.g. \`hackme3.localhost\` or \`hackme3.dot.li\`) that will be resolved next.
-• \`localhostHost\` set — a \`/localhost:PORT\` path; the host will proxy directly to that dev server without resolving any \`.dot\` name.
+• \`localhostHost\` set — a \`/localhost:PORT\` path; the host will proxy directly to that dev server without resolving any dotNS name.
 • Both null — the host URL itself (no subdomain), so the landing page is shown.
 
 \`deepPath\` captures any path / search / hash fragment that will be forwarded into the product iframe after resolution.`,
@@ -89,7 +89,7 @@ After this event, the TrUAPI bus starts producing traffic and the product is dri
 
   "resolve:started": {
     title: "Name resolution started",
-    body: `Beginning to resolve \`<label>.dot\` to its content CID. Two code paths exist:
+    body: `Beginning to resolve \`<label>.<tld>\` to its content CID. Two code paths exist:
 
 • \`smoldot\` — runs a local WASM light client in the protocol iframe, syncs Asset Hub Paseo trustlessly, reads the \`dotns\` Solidity contract's ContentHash storage slot directly, and returns the decoded CID. Takes seconds to a minute on cold start.
 • \`rpc-gateway\` — opens a WebSocket to a trusted RPC endpoint and issues a \`state_getStorage\` call against the same slot. Sub-second but relies on the gateway's honesty.`,
@@ -292,6 +292,27 @@ This **must** complete before \`document.write\` for multi-file archives — oth
     body: `The sandbox has just called \`document.open()\` + \`document.write(html)\` + \`document.close()\`, replacing its own document with the dApp's \`index.html\`. From this moment the dApp's inline scripts start parsing, its bundled JS loads (served by the SW from the staged archive), and eventually the dApp instantiates its own TrUAPI transport and starts answering the host's handshake loop.
 
 **This event is the key anchor for the "host sends 300 handshake requests" window.** The gap between the host's \`bridge:setup_ready\` and \`sandbox:document_written\` is exactly the window during which the product cannot yet respond to anything. \`totalMs\` is wall-clock from sandbox \`main()\` to this point.`,
+  },
+
+  // chain
+
+  "chain:phase": {
+    title: "A chain changed lifecycle phase",
+    body: `One of the light client's chains moved to a new phase. These are derived from smoldot's \`lifecycle_unstable_follow\` stream, which reports a phase, a live peer count and a health verdict, and are the same milestones the loading screen advances on:
+
+• \`connecting\` — the chain is dialling bootnodes and has not yet found a peer to sync from.
+• \`syncing\` — peers are found and the chain is warping or catching up. \`warpAt\` and \`warpTarget\` bound the distance when a relay has real ground to cover.
+• \`ready\` — the first finalized block landed, so storage can be read.
+• \`stalled\` — the watchdog fired. \`reason\` is smoldot's own wording.
+
+Only smoldot emits these. An \`rpc-gateway\` load runs no light client and so produces none. A phase is emitted only when it changes, so two consecutive events bound the interval the chain spent in the earlier one. That is exactly what the Resolution view draws.`,
+  },
+
+  "chain:bytes": {
+    title: "Light-client byte total",
+    body: `The light client's cumulative received byte count, sampled on a tick. Cumulative rather than a rate, so the reader owns the averaging and a dropped sample only widens one window.
+
+This counts chain traffic only. The archive download rides the same metered WebSockets in bulletin mode, so adding the sandbox's content bytes on top would double-count them.`,
   },
 
   "sandbox:failed": {

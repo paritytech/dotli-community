@@ -12,14 +12,14 @@ import {
   setNetworkOverride,
 } from "@dotli/config/network";
 
-const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO_NEXT_V2];
+const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
 
 // The gateway set drives the host's chain-support advertisement in
 // rpc-gateway mode (`isRemoteChainSupported`). The core connection callback
 // accepts a wider set because it also carries host-owned Bulletin operations.
 describe("gateway-supported chains (rpc-gateway mode)", () => {
   beforeEach(() => {
-    setNetworkOverride(NetworkName.PASEO_NEXT_V2);
+    setNetworkOverride(NetworkName.PASEO);
   });
 
   it("As a product, the host advertises relay, Asset Hub, and People", () => {

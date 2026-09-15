@@ -8,7 +8,6 @@
 
 import { loadRecentLabels, forgetRecentLabel } from "./recent-labels";
 import { BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
-import { getBackend } from "@dotli/config/mode";
 import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
 import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
 import type { DotLabelResult } from "@dotli/shared/html";
@@ -43,13 +42,22 @@ export interface LoadingPhase {
   expectedMs: number;
   /** Which set of messages narrates this phase. */
   stage: LoadingStage;
+  /**
+   * This step publishes a true percentage, so the indicator waits for it.
+   *
+   * Without this the crawl guessed its way to 84% during the first seconds
+   * of a download and then had nowhere to go, because the real figure that
+   * followed was lower and the indicator never moves backwards.
+   */
+  reportsProgress?: boolean;
 }
 let phases: LoadingPhase[] = [];
 let currentPhase = -1;
 
-// Progress bar state
+// Progress indicator state
 let progressFillEl: HTMLElement | null = null;
 let progressPctEl: HTMLElement | null = null;
+let progressBarEl: HTMLElement | null = null;
 let currentProgress = 0;
 let targetProgress = 0;
 let crawlStep = 0;
@@ -57,21 +65,128 @@ let progressInterval: ReturnType<typeof setInterval> | null = null;
 
 const CRAWL_TICK_MS = 200;
 
-function setProgress(pct: number): void {
+// Where an exhausted band creeps on to, and how long it takes. Stops short
+// of 100 so only a finished load can fill the indicator.
+/**
+ * The displayed whole number must change at least this often.
+ *
+ * Measured over ten cold loads, the bar sat at 62% for up to 41 seconds while a
+ * step waited on bytes that never came. A still number reads as a hang, so it
+ * always creeps, capped by the band the step owns.
+ */
+const PROGRESS_FLOOR_MS = 2_500;
+let lastShownAt = 0;
+let lastShown = -1;
+/** The last number reached by real progress rather than by the floor creep. */
+let lastRealShown = -1;
+
+const CREEP_CEILING = 99;
+const CREEP_MS = 10_000;
+let creepCeiling = 0;
+let creepStep = 0;
+/** True while the current step owes the indicator a real percentage. */
+let phaseReportsProgress = false;
+
+/**
+ * How long the bar may sit at one percentage before it owes an explanation.
+ *
+ * The per-chain watchdog cannot see this. A load whose content chain never
+ * finds a peer leaves every chain lifecycle quiet while the bar creeps to its
+ * ceiling and parks, measured at over a minute in one run.
+ */
+const PROGRESS_STALL_MS = 4_000;
+
+let progressStallTimer: ReturnType<typeof setTimeout> | null = null;
+let progressStallListener: ((pct: number) => void) | null = null;
+
+/**
+ * Report when the bar stops moving, and again each time it stops afresh.
+ *
+ * The listener is handed the percentage it stalled at, so the caller can say
+ * where the load got to. Replaces any previous listener.
+ */
+export function onProgressStall(listener: (pct: number) => void): void {
+  progressStallListener = listener;
+}
+
+/** Stop watching, for a load that finished or failed. */
+export function stopProgressWatch(): void {
+  if (progressStallTimer !== null) {
+    clearTimeout(progressStallTimer);
+    progressStallTimer = null;
+  }
+}
+
+function armProgressWatch(pct: number): void {
+  stopProgressWatch();
+  if (pct >= 100) {
+    return;
+  }
+  progressStallTimer = setTimeout(() => {
+    progressStallListener?.(pct);
+  }, PROGRESS_STALL_MS);
+}
+
+/**
+ * Move the bar.
+ *
+ * `cosmetic` marks the movement-floor creep, which exists so the number never
+ * stands still. It deliberately does not count as progress: if it did, it would
+ * re-arm the stall watch every couple of seconds and the warning explaining the
+ * stall could never appear.
+ */
+function setProgress(pct: number, cosmetic = false): void {
+  const shown = Math.round(pct);
+  if (shown !== lastShown) {
+    lastShown = shown;
+    lastShownAt = Date.now();
+  }
+  const moved = !cosmetic && shown !== lastRealShown;
+  if (moved) {
+    lastRealShown = shown;
+  }
   currentProgress = pct;
+  if (moved) {
+    armProgressWatch(pct);
+  }
   if (progressFillEl !== null) {
     progressFillEl.style.width = `${String(pct)}%`;
   }
   if (progressPctEl !== null) {
     progressPctEl.textContent = `${String(Math.round(pct))}%`;
   }
+  // The bar itself carries no value for a screen reader, so the wrapper does.
+  progressBarEl?.setAttribute("aria-valuenow", String(Math.round(pct)));
 }
 
 function startProgressCrawl(): void {
   stopProgressCrawl();
   progressInterval = setInterval(() => {
-    if (currentProgress < targetProgress) {
-      setProgress(Math.min(currentProgress + crawlStep, targetProgress));
+    // A step that reports a real percentage owns the indicator, so neither the
+    // crawl nor the creep may run past what it says. Both are guesses, and a
+    // download slower than the estimate would otherwise walk the bar to nearly
+    // full while the readout underneath still said 58%.
+    if (!phaseReportsProgress) {
+      if (currentProgress < targetProgress) {
+        setProgress(Math.min(currentProgress + crawlStep, targetProgress));
+        return;
+      }
+      if (currentProgress < creepCeiling) {
+        setProgress(Math.min(currentProgress + creepStep, creepCeiling));
+        return;
+      }
+    }
+    // Whatever owns the indicator, the number still has to move. Nudge it just
+    // past the next whole number, never beyond the band the current step owns.
+    if (Date.now() - lastShownAt >= PROGRESS_FLOOR_MS) {
+      const ceiling = Math.min(
+        phaseReportsProgress ? targetProgress : creepCeiling,
+        CREEP_CEILING,
+      );
+      const next = Math.min(Math.floor(currentProgress) + 1, ceiling);
+      if (next > currentProgress) {
+        setProgress(next, true);
+      }
     }
   }, CRAWL_TICK_MS);
 }
@@ -93,7 +208,7 @@ export function completeProgress(): void {
 }
 
 /**
- * Initialize the loading progress bar.
+ * Initialize the loading progress indicator.
  * Call once before resolution/fetching begins.
  */
 export function initPhases(phaseList: LoadingPhase[]): void {
@@ -103,9 +218,14 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   openingLine = true;
   currentProgress = 0;
   targetProgress = 0;
+  phaseReportsProgress = false;
+  lastShown = -1;
+  lastRealShown = -1;
+  lastShownAt = Date.now();
 
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
+  progressBarEl = document.getElementById("loading-progress");
 
   // Not on the first `advancePhase`, which lands seconds later once the
   // protocol frame is up. The markup already shows this stage's opening line,
@@ -113,41 +233,9 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   setLoadingStage("starting");
 }
 
-/**
- * Advance to a specific phase (0-indexed).
- * Jumps the progress bar to the phase's base percentage and begins
- * crawling toward its target. Updates the headline text.
- * No-ops if the phase is already active or past.
- */
-export function advancePhase(index: number): void {
-  if (index <= currentPhase || index >= phases.length) {
-    return;
-  }
-  currentPhase = index;
-
-  // Update progress bar
-  const { base, target, expectedMs } = phases[index];
-  if (base > currentProgress) {
-    setProgress(base);
-  }
-  targetProgress = target;
-  // Pace the crawl so the band is traversed over the step's typical
-  // duration: each tick advances a constant slice sized to cross from
-  // `base` to `target` in `expectedMs`. This is what makes the bar move
-  // steadily through a long sync instead of stalling near the top.
-  crawlStep =
-    ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
-  startProgressCrawl();
-
-  // The headline is the stage's, not the phase label's: the label names the
-  // step for us, the stage says it in words the visitor can act on. Adjacent
-  // phases can share one stage, and re-entering a running stage is a no-op.
-  setLoadingStage(phases[index].stage);
-}
-
 // How often the line turns over. Most of this window is the turnover
-// animation, so the finished sentence itself is only still for the last ~2.7s.
-const MESSAGE_ROTATE_MS = 6_500;
+// animation, so the finished sentence itself is only still for the last ~4s.
+const MESSAGE_ROTATE_MS = 9_000;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
 const DOMAIN_TOKEN = "{domain}";
@@ -227,8 +315,8 @@ export function setLoadingDomain(domain: string): void {
 // A fixed budget rather than a per-character delay, so a long sentence
 // animates at the same pace as a short one and always lands inside the
 // rotation interval.
-const ERASE_MS = 1_000;
-const TYPE_MS = 2_800;
+const ERASE_MS = 1_400;
+const TYPE_MS = 3_600;
 let typingFrame: number | null = null;
 let pendingMessage: string | null = null;
 
@@ -242,6 +330,11 @@ function cancelTyping(): void {
   if (typingFrame !== null) {
     cancelAnimationFrame(typingFrame);
     typingFrame = null;
+    // An interrupted fade would otherwise leave the line stranded dim.
+    const status = document.getElementById("status");
+    if (status !== null) {
+      status.style.opacity = "1";
+    }
   }
 }
 
@@ -251,10 +344,10 @@ function writeStatus(message: string): void {
     return;
   }
   // Falls back to "the name" when no domain has been set, which is the
-  // preview and local-target paths where there is no `.dot` to name.
+  // preview and local-target paths where there is no dotNS name to show.
   const next = message.replace(
     DOMAIN_TOKEN,
-    loadingDomain === "" ? "the name" : `${loadingDomain}.dot`,
+    loadingDomain === "" ? "the name" : withActiveTld(loadingDomain),
   );
   // Screen readers get the whole sentence once, from an element the typing
   // never touches.
@@ -286,11 +379,19 @@ function writeStatus(message: string): void {
         0,
         Math.ceil(previous.length * (1 - gone)),
       );
+      // Dims as it empties and brightens as the new line arrives, so the
+      // turnover reads as one settling motion rather than a text scramble.
+      // Only a shallow dip: the contrast of this block is built on solid colours
+      // precisely because opacity once sank it below AA, and 0.75 of #d4d4d4
+      // is still 7.5:1 against the page.
+      status.style.opacity = String(1 - 0.25 * gone);
     } else if (elapsedMs < ERASE_MS + TYPE_MS) {
       const shown = easeInOut((elapsedMs - ERASE_MS) / TYPE_MS);
       status.textContent = next.slice(0, Math.ceil(next.length * shown));
+      status.style.opacity = String(0.75 + 0.25 * shown);
     } else {
       status.textContent = next;
+      status.style.opacity = "1";
       typingFrame = null;
       if (pendingMessage !== null) {
         const queued = pendingMessage;
@@ -355,126 +456,133 @@ function stopStageMessages(): void {
   cancelTyping();
 }
 
-// Single-line status. Updates #status in place. Shows a slow-step
-// hint when a step exceeds its time threshold.
-
-// Per-step timeout thresholds (seconds). If a step exceeds its
-// limit, a contextual hint fades in below the status line.
-type SlowHint = string | { smoldot: string; rpc: string };
-const SLOW_THRESHOLDS: Record<string, { secs: number; hint: SlowHint }> = {
-  "Starting light client": {
-    secs: 8,
-    hint: "The smoldot light client is slow to initialize — could be a network issue",
-  },
-  "Adding Paseo relay chain": {
-    secs: 10,
-    hint: "Paseo relay chain bootstrap is stalled — smoldot may be having trouble reaching bootnodes",
-  },
-  "Connecting to Asset Hub": {
-    secs: 12,
-    hint: "Asset Hub parachain connection is taking long — the chain may be congested or peers unavailable",
-  },
-  Syncing: {
-    secs: 15,
-    hint: "Asset Hub sync is slow — smoldot is still catching up to the latest finalized block on the Paseo relay chain",
-  },
-  Resolving: {
-    secs: 10,
-    hint: {
-      smoldot: "Smoldot is still catching up on the Paseo relay chain",
-      rpc: "The RPC endpoint is slow to answer the resolver query",
-    },
-  },
-  "Connecting to peers": {
-    secs: 10,
-    hint: "Helia P2P peer discovery is slow — WebRTC relay nodes may be unreachable",
-  },
-  "Fetching content via P2P": {
-    secs: 15,
-    hint: "P2P content transfer is slow — the content may have few seeders on the Bulletin network",
-  },
-  "Fetching directory via P2P": {
-    secs: 15,
-    hint: "Directory fetch is slow — multi-file archives take longer over P2P",
-  },
-  "Initializing P2P client": {
-    secs: 8,
-    hint: "Helia startup is stalled — WASM or WebRTC initialization may be blocked",
-  },
-};
-
-function resolveHint(hint: SlowHint): string {
-  if (typeof hint === "string") {
-    return hint;
+/**
+ * Advance to a specific phase (0-indexed).
+ * Jumps the indicator to the base percentage of the phase and begins crawling
+ * toward its target. Updates the headline text.
+ * No-ops if the phase is already active or past.
+ */
+export function advancePhase(index: number): void {
+  if (index <= currentPhase || index >= phases.length) {
+    return;
   }
-  return getBackend() === "rpc-gateway" ? hint.rpc : hint.smoldot;
-}
+  currentPhase = index;
 
-function getSlowThreshold(
-  message: string,
-): { secs: number; hint: string } | null {
-  for (const [key, value] of Object.entries(SLOW_THRESHOLDS)) {
-    if (message.startsWith(key) || message.includes(key.toLowerCase())) {
-      return { secs: value.secs, hint: resolveHint(value.hint) };
-    }
+  const { base, target, expectedMs, reportsProgress } = phases[index];
+  // Each step has to earn the indicator back: the real progress of the previous step
+  // percentage says nothing about this one. A step that publishes its own
+  // figure holds the indicator at its band base until the figure arrives,
+  // rather than crawling somewhere the real number cannot then reach.
+  phaseReportsProgress = reportsProgress === true;
+  if (base > currentProgress) {
+    setProgress(base);
   }
-  return { secs: 20, hint: "This is taking longer than expected" };
-}
+  targetProgress = target;
+  // Pace the crawl so the band is traversed over the typical time of the step
+  // duration: each tick advances a constant slice sized to cross from
+  // `base` to `target` in `expectedMs`. This is what makes the bar move
+  // steadily through a long sync instead of stalling near the top.
+  crawlStep =
+    ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
+  // Headroom for a band that overruns: the space of the next band, or the ceiling
+  // for the last one. A band that reports a real percentage lends nothing,
+  // since creeping into it would put the indicator above the figure that step
+  // is about to publish.
+  const next = phases[index + 1] as LoadingPhase | undefined;
+  const lentCeiling =
+    next === undefined
+      ? CREEP_CEILING
+      : next.reportsProgress === true
+        ? next.base
+        : next.target;
+  creepCeiling = Math.min(lentCeiling, CREEP_CEILING);
+  creepStep =
+    (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) /
+    Math.max(CREEP_MS, CRAWL_TICK_MS);
+  startProgressCrawl();
 
-let slowTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearSlowWarning(): void {
-  if (slowTimer !== null) {
-    clearTimeout(slowTimer);
-    slowTimer = null;
-  }
-  const hint = document.getElementById("loading-hint");
-  if (hint !== null) {
-    const textSpan = hint.querySelector(".loading-hint-text");
-    if (textSpan !== null) {
-      textSpan.remove();
-    }
-    hint.classList.remove("visible");
-  }
+  // The headline is the stage's, not the phase label's: the label names the
+  // step for us, the stage says it in words the visitor can act on. Adjacent
+  // phases can share one stage, and re-entering a running stage is a no-op.
+  setLoadingStage(phases[index].stage);
 }
 
 /**
- * Note the step a status message describes, without putting it on screen.
+ * Pull the indicator to a real fraction of the band `stage` owns.
  *
- * The slow-step hints are keyed on the resolver's own wording, so they still
- * need every message. The headline is the phase label's instead. Painting the
- * raw prose here overwrote that label in the tick it was set, so the labels
- * never reached the screen at all.
+ * Takes the indicator over from the crawl for as long as that step has
+ * something to say. Monotonic and clamped to the band, so a late or noisy
+ * signal can never rewind it.
+ *
+ * The `stage` is checked against the running one, so a signal cannot drive a
+ * band it does not own. Without it the relay warp fraction arriving mid-sync
+ * would both move the Asset Hub band and freeze its crawl.
  */
-export function trackStatus(message: string): void {
-  clearSlowWarning();
-
-  const threshold = getSlowThreshold(message);
-  if (threshold !== null) {
-    slowTimer = setTimeout(() => {
-      const hint = document.getElementById("loading-hint");
-      if (hint !== null) {
-        const existing = hint.querySelector(".loading-hint-text");
-        if (existing !== null) {
-          existing.remove();
-        }
-        const span = document.createElement("span");
-        span.className = "loading-hint-text";
-        span.textContent = threshold.hint;
-        hint.insertBefore(span, hint.firstChild);
-        hint.classList.add("visible");
-      }
-    }, threshold.secs * 1000);
+export function nudgePhaseProgress(
+  fraction: number,
+  stage: LoadingStage,
+): void {
+  if (!Number.isFinite(fraction) || currentPhase < 0) {
+    return;
+  }
+  const phase = phases[currentPhase];
+  if (phase.stage !== stage) {
+    return;
+  }
+  const { base, target } = phase;
+  const clamped = Math.max(0, Math.min(1, fraction));
+  // Only a band that asked to be driven this way may suppress the crawl, and
+  // only until its own work is done. After that the creep carries the
+  // indicator through the tail, which nothing reports on.
+  if (phase.reportsProgress === true) {
+    phaseReportsProgress = clamped < 1;
+  }
+  const want = base + (target - base) * clamped;
+  if (want > currentProgress) {
+    setProgress(Math.min(want, target));
   }
 }
 
 /**
- * Stop the progress crawl and clear any slow warning (call when loading is done).
+ * Give the indicator back to the clock.
+ *
+ * A step that declared `reportsProgress` holds the indicator until it can say
+ * where the work is. This is how it admits it never will.
+ *
+ * Deliberately not a timeout. A timeout fired whether or not anything was
+ * happening, so a load whose content chain never found a peer still crept to
+ * 99% and sat there claiming to be nearly done.
  */
+export function releasePhaseProgress(): void {
+  phaseReportsProgress = false;
+}
+
+/** Stop everything the loading screen has running. */
 export function stopStatusTick(): void {
   stopProgressCrawl();
   stopStageMessages();
-  clearSlowWarning();
+  stopProgressWatch();
+}
+
+/**
+ * Show or clear the stall warning under the sentences.
+ *
+ * Passing null hides it. The host decides when a chain has stopped moving and
+ * what to say, this only renders it.
+ */
+export function setLoadingWarning(message: string | null): void {
+  const row = document.getElementById("loading-warning");
+  const text = document.getElementById("loading-warning-text");
+  if (row === null || text === null) {
+    return;
+  }
+  if (message === null) {
+    row.classList.remove("visible");
+    text.textContent = "";
+    return;
+  }
+  text.textContent = message;
+  row.classList.add("visible");
 }
 
 /**
@@ -483,8 +591,8 @@ export function stopStatusTick(): void {
  */
 export function dismissLoading(): void {
   completeProgress();
+  stopProgressWatch();
   stopStageMessages();
-  clearSlowWarning();
   const loading = document.querySelector<HTMLElement>("#app > .loading");
   if (loading !== null) {
     loading.style.transition = "opacity 0.3s ease";
@@ -505,6 +613,15 @@ export function dismissLoading(): void {
  * nested cross-origin frame or browser extension) could spoof the status
  * text or prematurely dismiss the overlay while content is still loading.
  */
+// One-shot subscribers for the sandbox's terminal `done` signal. The host
+// uses it to time telemetry that must not be captured before the content
+// fetch has run (the bulletin chain is only dialed during that fetch).
+const sandboxDoneCallbacks: (() => void)[] = [];
+
+export function onSandboxDone(cb: () => void): void {
+  sandboxDoneCallbacks.push(cb);
+}
+
 export function listenForSandboxStatus(): void {
   window.addEventListener("message", (event: MessageEvent) => {
     // Cheap shape check first — `message` fires for all postMessage traffic
@@ -522,66 +639,131 @@ export function listenForSandboxStatus(): void {
     if (!isSandboxOrigin(event.origin)) {
       return;
     }
-    if (typeof data.message === "string") {
-      trackStatus(data.message);
-      // The tail of the load is the sandbox unpacking the archive and
-      // painting, which otherwise hides behind download copy while the bar
-      // creeps. Only the gateway path announces it. The bitswap path has no
-      // unpack signal here yet, so it stays on the download copy until the
-      // sandbox reports done.
-      if (data.message.startsWith("Parsing content")) {
-        setLoadingStage("preparing");
-      }
-    }
+    // The progress prose the sandbox writes is written for a developer reading
+    // the console, so it is left there. The stage messages narrate this step
+    // to the user, and `done` is the part the loading screen acts on.
     if (data.done === true) {
       dismissLoading();
+      for (const cb of sandboxDoneCallbacks.splice(0)) {
+        cb();
+      }
     }
   });
 }
 
 export interface ErrorAction {
   label: string;
-  onClick: () => void;
-  // Inline SVG markup for a leading icon. Constant only, never user input.
+  /**
+   * Receives the click so a handler that opens one of the topbar popovers can
+   * stop it reaching the document-level close-outside listener, which would
+   * otherwise read the button as "outside" and shut the popover immediately.
+   */
+  onClick: (event: MouseEvent) => void;
+  /**
+   * The recommended way out. Rendered filled and pushed to the right of the
+   * row, whatever its position in the array. Defaults to the first action, so
+   * a lone button is always the primary one.
+   */
+  primary?: boolean;
+  /** Inline SVG markup for a leading icon. Constant only, never user input. */
   icon?: string;
 }
 
 /**
- * Show an error state with optional action buttons.
- *
- * `detail` is an optional paragraph below the title. Omit it for a
- * title-only screen (e.g. the generic "Domain can't be reached" with a
- * backend switch). `action` renders one button per entry; pass an `icon` for a
- * leading glyph, otherwise the label gets a trailing arrow. Pass an array to
- * offer several choices; the first keeps `#error-retry-btn`.
+ * The topbar's own Settings gear, so a button that opens that panel carries the
+ * same mark the visitor is being sent to look for. The path data matches the
+ * `#mode-button` icon in the host's index.html. Only the 12px box is widened to
+ * 15px, so it sits with the button text.
  */
-export function showError(
-  title: string,
-  detail?: string,
-  action?: ErrorAction | ErrorAction[] | (() => void),
-): void {
-  if (typeof action === "function") {
-    action = { label: "Retry", onClick: action };
+export const SETTINGS_GLYPH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+
+const WARNING_GLYPH = `<div class="error-page-glyph error-page-glyph--warning" aria-hidden="true">
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M10.3 3.2 1.8 17.5A2 2 0 0 0 3.5 20.5h17a2 2 0 0 0 1.7-3L13.7 3.2a2 2 0 0 0-3.4 0z"></path>
+    <path fill="#fff" d="M11 8.5h2v5h-2zM11 15.5h2v2h-2z"></path>
+  </svg>
+</div>`;
+
+/**
+ * A sentence, optionally with parts picked out in bold. Spelled as segments
+ * rather than markup so every piece still goes through `escapeHtml`.
+ */
+export type ErrorText = string | readonly (string | { strong: string })[];
+
+function renderErrorText(text: ErrorText): string {
+  if (typeof text === "string") {
+    return escapeHtml(text);
   }
-  const actions =
-    action === undefined ? [] : Array.isArray(action) ? action : [action];
+  return text
+    .map((part) =>
+      typeof part === "string"
+        ? escapeHtml(part)
+        : `<strong>${escapeHtml(part.strong)}</strong>`,
+    )
+    .join("");
+}
+
+export interface ErrorPage {
+  title: string;
+  /** Paragraph below the title. Omit for a title-only screen. */
+  detail?: ErrorText;
+  /** Things worth checking before retrying, listed under a "Try:" heading. */
+  tips?: readonly string[];
+  /**
+   * One button per entry. The first keeps `#error-retry-btn` regardless of
+   * which one is `primary`.
+   */
+  actions?: readonly ErrorAction[];
+  /** Leading glyph. Only the warning interstitial carries one today. */
+  glyph?: "warning";
+}
+
+/** Render a full-page error state, replacing whatever `#app` holds. */
+export function showErrorPage(page: ErrorPage): void {
+  // The markup below replaces the loading screen, so its timers have nothing
+  // left to write to.
+  stopStatusTick();
+  const { title, detail, glyph } = page;
+  const tips = page.tips ?? [];
+  const actions = page.actions ?? [];
   const idFor = (i: number): string =>
     i === 0 ? "error-retry-btn" : `error-retry-btn-${String(i)}`;
+  const declaredPrimary = actions.findIndex((a) => a.primary === true);
+  const primaryIndex = declaredPrimary === -1 ? 0 : declaredPrimary;
+  // Rendered with the primary last so reading order, DOM order and tab order
+  // all agree. The id still comes from the array position, so `#error-retry-btn`
+  // is the first action whichever one is recommended.
+  const rendered = actions
+    .map((a, i) => ({ a, i }))
+    .sort(
+      (x, y) => Number(x.i === primaryIndex) - Number(y.i === primaryIndex),
+    );
   const renderAction = (a: ErrorAction, i: number): string => {
+    const cls =
+      i === primaryIndex
+        ? "error-page-retry error-page-retry--primary"
+        : "error-page-retry";
     const leading =
-      a.icon !== undefined
-        ? `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`
-        : "";
-    const trailing =
-      a.icon === undefined ? ` <span aria-hidden="true">→</span>` : "";
-    return `<button class="error-page-retry" id="${idFor(i)}">${leading}<span class="error-page-retry-label">${escapeHtml(a.label)}</span>${trailing}</button>`;
+      a.icon === undefined
+        ? ""
+        : `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`;
+    return `<button class="${cls}" id="${idFor(i)}">${leading}<span class="error-page-retry-label">${escapeHtml(a.label)}</span></button>`;
   };
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner">
-        <h1 class="error-page-title">${escapeHtml(title)}</h1>
-        ${detail !== undefined ? `<p class="error-page-detail">${escapeHtml(detail)}</p>` : ""}
-        ${actions.map((a, i) => renderAction(a, i)).join("")}
+        ${glyph === "warning" ? WARNING_GLYPH : ""}
+        <h1 class="error-page-title" tabindex="-1">${escapeHtml(title)}</h1>
+        ${detail !== undefined ? `<p class="error-page-detail">${renderErrorText(detail)}</p>` : ""}
+        ${
+          tips.length === 0
+            ? ""
+            : `<div class="error-page-tips">
+          <p class="error-page-tips-label">Try:</p>
+          <ul class="error-page-tips-list">${tips.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+        </div>`
+        }
+        ${actions.length === 0 ? "" : `<div class="error-page-actions">${rendered.map(({ a, i }) => renderAction(a, i)).join("")}</div>`}
       </div>
     </div>
   `;
@@ -590,7 +772,36 @@ export function showError(
     document.getElementById(idFor(i))?.addEventListener("click", a.onClick);
   });
 
+  // The button that triggered this render is gone, so focus would otherwise
+  // fall to `body` and a screen reader would announce nothing. Moving it to the
+  // title both names the new screen and puts the actions next in tab order.
+  // Matters most on the failover interstitial, which replaces one error screen
+  // with another in place.
+  app.querySelector<HTMLElement>(".error-page-title")?.focus();
+
   window.dispatchEvent(new CustomEvent("dotli:product-error"));
+}
+
+/**
+ * Positional shorthand for {@link showErrorPage}, kept because most callers
+ * only ever need a title, a line of detail and a retry.
+ */
+export function showError(
+  title: string,
+  detail?: string,
+  action?: ErrorAction | ErrorAction[] | (() => void),
+  tips: readonly string[] = [],
+): void {
+  if (typeof action === "function") {
+    action = { label: "Retry", onClick: action };
+  }
+  showErrorPage({
+    title,
+    detail,
+    tips,
+    actions:
+      action === undefined ? [] : Array.isArray(action) ? action : [action],
+  });
 }
 
 /**
@@ -779,14 +990,15 @@ export function showLanding(): void {
       input.focus();
       return;
     }
-    // Recents are written after the name resolves, not here: a typo used to be
-    // persisted as a pill that reproduced the failure on every future click.
+    // Recents are written after the name resolves, not here, so a typo is not
+    // persisted as a pill that reproduces the failure on every future click.
     window.location.href = dotUrl(name);
   });
 
   input.addEventListener("input", clearNavError);
 
-  input.focus();
+  // Not focused on load: that hijacks screen reader order and pops the mobile
+  // keyboard over the recents before anything has been read.
 
   // Move the auth and theme buttons to the landing page top-right.
   const landingAuth = document.getElementById("landing-auth");
@@ -803,7 +1015,7 @@ export function showLanding(): void {
     }
   }
 
-  // Show recently visited .dot sites. The list is written on the subdomain
+  // Show recently visited dotNS sites. The list is written on the subdomain
   // that resolved, so it comes from the cross-subdomain store, not this
   // origin's localStorage.
   void loadRecentLabels().then((labels) => {

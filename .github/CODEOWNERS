@@ -1,15 +1,2 @@
 # Default
-* @BigTava @leonardocustodio @ba1uev @tallesborges @justraman @Cyr06130 @KarimJedda
-
-# Workflows and actions
-/.github @leonardocustodio @KarimJedda
-
-# Server configuration
-/Makefile @leonardocustodio @KarimJedda
-/nginx @leonardocustodio @KarimJedda
-
-# Sandbox enforcement
-/packages/sandbox-checker @valentinfernandez1 @TorstenStueber
-
-# TrUAPI debug panel
-/packages/truapi-debug @valentinfernandez1 @TorstenStueber
+* @paritytech/host-sdk-team

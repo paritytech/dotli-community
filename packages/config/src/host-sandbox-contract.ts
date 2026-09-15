@@ -21,18 +21,19 @@
 //   Required:
 //     ?cid=<IPFS content id the host resolved from the dotns label>
 //     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
-//     ?network=<"paseo-next-v1" | "paseo-next-v2">
+//     ?network=<"paseo-next-v2" | "previewnet">
 //
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">
 //     ?fullReset=<"0" | "1">
+//     ?resolutionId=<correlation id for the telemetry of this page load>
 //     ?v=<schema version integer, reserved for future breakage>
 //
 // When we add a new required param, bump SANDBOX_SCHEMA_VERSION and
 // have the validator reject unmatched versions so stale host builds
 // don't feed malformed params to fresh sandbox deploys.
 
-import { isValidNetwork, type Network } from "./network";
+import { NetworkName, isValidNetwork, type Network } from "./network";
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 
@@ -51,6 +52,8 @@ const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set([
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["0", "1"]);
 
+const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
+
 /**
  * Single source of truth for the host-to-sandbox URL contract param names.
  * Imported by the host writer (`bridge.ts`), the validator below, and the
@@ -62,6 +65,7 @@ export const SANDBOX_CONTRACT_PARAMS = {
   network: "network",
   skipArchiveCache: "skipArchiveCache",
   fullReset: "fullReset",
+  resolutionId: "resolutionId",
   v: "v",
 } as const;
 
@@ -74,6 +78,12 @@ export interface SandboxParams {
   network: Network;
   skipArchiveCache: boolean;
   fullReset: boolean;
+  /**
+   * Correlation id for this page load, absent on a host build that predates
+   * it. Telemetry only: it is deliberately not required and not version
+   * gated, because no sandbox should ever fail to boot over a trace id.
+   */
+  resolutionId: string | null;
 }
 
 export type SandboxParamsResult =
@@ -156,7 +166,11 @@ export function validateSandboxParams(
   if (!isValidNetwork(network)) {
     return {
       ok: false,
-      reason: `Unknown network "${network}". Expected "paseo-next-v1", "paseo-next-v2", or "previewnet".`,
+      reason: `Unknown network "${network}". Expected one of: ${Object.values(
+        NetworkName,
+      )
+        .map((n) => `"${n}"`)
+        .join(", ")}.`,
     };
   }
 
@@ -176,6 +190,18 @@ export function validateSandboxParams(
     };
   }
 
+  const resolutionIdRaw = search.get(SANDBOX_CONTRACT_PARAMS.resolutionId);
+  // Bounded and charset-gated rather than validated as a uuid: the host may
+  // fall back to a non-uuid id, and an odd value here must degrade to
+  // "untagged", never to a rejected boot.
+  const resolutionId =
+    resolutionIdRaw !== null &&
+    resolutionIdRaw.length > 0 &&
+    resolutionIdRaw.length <= 64 &&
+    RESOLUTION_ID_PATTERN.test(resolutionIdRaw)
+      ? resolutionIdRaw
+      : null;
+
   return {
     ok: true,
     params: {
@@ -187,6 +213,7 @@ export function validateSandboxParams(
       network,
       skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",
+      resolutionId,
     },
   };
 }

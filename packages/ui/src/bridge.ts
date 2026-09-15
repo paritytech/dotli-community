@@ -30,7 +30,7 @@ import {
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork, withActiveTld } from "@dotli/config/network";
-import { m } from "@dotli/metrics/metrics";
+import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
@@ -59,6 +59,7 @@ import {
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { registerChatConnection } from "./chat/service";
 import { showNotification } from "./notification";
+import { ERRORS } from "./errors";
 
 const noop = (): void => undefined;
 
@@ -1129,7 +1130,7 @@ export async function renderAppSubdomain(
   }
   const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
   if (parsedUrl.origin !== appOrigin) {
-    throw new Error("Refusing to render an app URL outside its sandbox origin");
+    throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
   }
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
   parsedUrl.searchParams.set(
@@ -1146,6 +1147,13 @@ export async function renderAppSubdomain(
   }
   if (fullReset) {
     parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
+  }
+  const resolutionId = getResolutionId();
+  if (resolutionId !== null) {
+    parsedUrl.searchParams.set(
+      SANDBOX_CONTRACT_PARAMS.resolutionId,
+      resolutionId,
+    );
   }
   const url = parsedUrl.toString();
 

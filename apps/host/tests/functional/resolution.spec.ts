@@ -50,6 +50,65 @@ test.describe("Resolution across chain backends", () => {
       }
     });
   }
+
+  test(`As a user opening ${DOMAIN}.dot, I am shown how many peers the light client found`, async ({
+    browser,
+  }) => {
+    // Given
+    const { context, page } = await setupTest(browser, {
+      backend: "smoldot-direct",
+    });
+
+    try {
+      // Record the counts as they reach the shell. The rendered figure can
+      // change faster than a poll can catch, so the envelope is the reliable
+      // signal and the visible readout is accepted as an alternative.
+      await page.addInitScript(() => {
+        const seen: unknown[] = [];
+        (
+          window as unknown as { __dotliPeerCounts: unknown[] }
+        ).__dotliPeerCounts = seen;
+        window.addEventListener("message", (event: MessageEvent) => {
+          const data = event.data as {
+            namespace?: string;
+            kind?: string;
+            syncKind?: string;
+            peers?: number;
+          } | null;
+          if (
+            data !== null &&
+            typeof data === "object" &&
+            data.namespace === "dotli:protocol" &&
+            data.kind === "chain-sync" &&
+            data.syncKind === "peers" &&
+            typeof data.peers === "number"
+          ) {
+            seen.push(data);
+          }
+        });
+      });
+
+      // When
+      await page.goto(BASE_URL, { waitUntil: "commit" });
+
+      // Then
+      const sawPeers = page.waitForFunction(
+        () => {
+          const seen = (window as unknown as { __dotliPeerCounts?: unknown[] })
+            .__dotliPeerCounts;
+          return seen !== undefined && seen.length > 0;
+        },
+        undefined,
+        { timeout: TIMEOUT_MS },
+      );
+      await Promise.all([
+        sawPeers,
+        waitForResolutionOutcome(page, TIMEOUT_MS, "smoldot-direct"),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 interface SmoldotDbState {
@@ -138,7 +197,10 @@ async function withWarmSession<T>(
 }
 
 test.describe("Warm start across a browser restart", () => {
-  test.setTimeout(SNAPSHOT_WINDOW_MS + TIMEOUT_MS * 3);
+  // No `test.setTimeout` here. Every wait inside is bounded on its own, so a
+  // real hang surfaces from `waitForResolutionOutcome` with the failing
+  // session named. A tighter ceiling than the config's only turns a slow CI
+  // runner into "Test timeout exceeded", which says nothing about the cause.
 
   test(`As a user returning after quitting the browser, ${WARM_DOMAIN} resumes the light client from stored state`, async () => {
     const profile = mkdtempSync(join(tmpdir(), "dotli-warm-"));

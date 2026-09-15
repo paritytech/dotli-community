@@ -10,6 +10,7 @@
 
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
+  NetworkName,
   isValidNetwork,
   type Network,
 } from "@dotli/config/network";
@@ -20,7 +21,7 @@ export const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS ?? "45000", 10);
 
 /** Network under test. Must match the first entry of the build's VITE_NETWORKS. */
 export const NETWORK: Network = (() => {
-  const raw = process.env.NETWORK ?? "paseo-next-v2";
+  const raw = process.env.NETWORK ?? NetworkName.PASEO;
   if (!isValidNetwork(raw)) {
     throw new Error(`NETWORK is not a known network: ${JSON.stringify(raw)}`);
   }
