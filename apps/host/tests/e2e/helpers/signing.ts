@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type Frame, type Locator } from "@playwright/test";
+import { clickRunButton } from "./run-test";
 
 type PageLike = Page | Frame;
 
@@ -31,7 +32,7 @@ export async function runWebSignedTest(
     return "error";
   }
   console.log(`[signed] ${testId}: clicking run`);
-  await btn.click();
+  await clickRunButton(btn);
 
   const dialogController = new AbortController();
   const dialogTask =
@@ -95,9 +96,13 @@ async function clickHostDialogs(
   const seen = new Set<string>();
 
   while (!signal.aborted && Date.now() < deadline) {
-    if (Date.now() - lastSeenAt > idleStopMs && seen.size > 0) {
-      // We've handled at least one dialog and nothing new has shown for a
-      // while, so assume the flow has moved past the modal phase.
+    if (
+      Date.now() - lastSeenAt > idleStopMs &&
+      seen.size >= buttonNames.length
+    ) {
+      // Every expected dialog has been handled and nothing new has shown for
+      // a while, so the flow has moved past the modal phase. Stopping earlier
+      // loses the Sign dialog when it trails several signing-host round trips.
       return;
     }
 
@@ -114,7 +119,10 @@ async function clickHostDialogs(
         await page.waitForTimeout(preClickDelayMs);
       }
       console.log(`[signed] dialog "${name}" — clicking`);
-      await btn.click().catch((e: Error) => {
+      // The fixture's auto-allow poller may have dismissed the dialog during
+      // the pause. Bound the click, or it waits forever for a button that is
+      // gone and never reaches the next dialog in the sequence.
+      await btn.click({ timeout: 2_000 }).catch((e: Error) => {
         console.log(`[signed] dialog "${name}" click failed: ${e.message}`);
       });
       seen.add(name);

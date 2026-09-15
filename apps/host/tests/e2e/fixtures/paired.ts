@@ -85,6 +85,14 @@ async function waitForHostPlaygroundFrame(
   );
 }
 
+/** The live host-playground frame, re-found after a device grant re-renders it. */
+export async function currentProductFrame(
+  page: Page,
+  timeoutMs = PRODUCT_IFRAME_TIMEOUT_MS,
+): Promise<Frame> {
+  return waitForHostPlaygroundFrame(page, timeoutMs);
+}
+
 /**
  * Worker-scoped fixtures: open a fresh page that inherits the
  * once-per-run signing-host pairing via `storageState` written by

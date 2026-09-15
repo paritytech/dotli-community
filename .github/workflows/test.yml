@@ -134,14 +134,24 @@ jobs:
         with:
           bun-version: "1.3.13"
 
-      # Installs the current stable prebuilt binary (release pointer
-      # `truapi-host-cli-stable` in host-rust-core). Pin with
-      # TRUAPI_HOST_VERSION=x.y.z if a release ever breaks the suite.
+      # The CLI shares @parity/truapi's version and wire codec, so it follows the
+      # root pin instead of the lagging `truapi-host-cli-stable` pointer.
       - name: Install truapi-host CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+          version="$(jq -r '.dependencies["@parity/truapi"]' package.json)"
+          curl -fsSL -o "$RUNNER_TEMP/truapi-host-installer.sh" \
+            https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh
+          if ! TRUAPI_HOST_VERSION="$version" bash "$RUNNER_TEMP/truapi-host-installer.sh"; then
+            echo "::error::No truapi-host $version binaries on the @parity/truapi@$version release. Run host-rust-core's release-cli workflow for it."
+            exit 1
+          fi
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/truapi-host" --version
+          installed="$("$HOME/.local/bin/truapi-host" --version)"
+          echo "$installed"
+          if [ "$installed" != "truapi-host $version" ]; then
+            echo "::error::Installed '$installed' but package.json pins @parity/truapi $version."
+            exit 1
+          fi
 
       - name: Build
         env:
