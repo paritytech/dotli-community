@@ -25,26 +25,60 @@ import {
   captureException,
 } from "@dotli/metrics/sentry";
 import {
-  trackStatus,
-  setLoadingDomain,
+  SETTINGS_GLYPH,
   showError,
+  showErrorPage,
   showNoContentError,
   showLanding,
   initPhases,
   advancePhase,
+  nudgePhaseProgress,
+  onProgressStall,
+  releasePhaseProgress,
+  setLoadingDomain,
+  setLoadingStage,
+  setLoadingWarning,
   stopStatusTick,
   listenForSandboxStatus,
+  onSandboxDone,
 } from "@dotli/ui/ui";
 import type { LoadingPhase } from "@dotli/ui/ui";
-import { initTopBar, wipeOriginState } from "@dotli/ui/topbar";
+import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
+import { chainRoleForKey } from "@dotli/ui/chain-roles";
+import type { ChainRole } from "@dotli/config/network";
+import { PHASE_BY_MILESTONE, startResolutionTrace } from "./resolution-trace";
+import {
+  recordChainPhase,
+  recordPeerCount,
+  recordTransfer,
+  type ChainPhase,
+} from "@dotli/ui/network-monitor";
+import {
+  describeProgressStall,
+  describeStall,
+  isCriticalChain,
+  STALL_WARNING_MS,
+  WARNING_MIN_LOAD_MS,
+  type CriticalChain,
+} from "./warnings";
+import {
+  initTopBar,
+  setChainsButtonVisible,
+  wipeOriginState,
+} from "@dotli/ui/topbar";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
   listenForSandboxBitswap,
-} from "@dotli/ui/bulletin-bitswap";
+  onContentProgress,
+} from "@dotli/content/bitswap";
 import {
   ensureProtocolFrame,
+  getSmoldotDbOutcome,
+  onProtocolChainDetail,
+  onProtocolChainSync,
+  onProtocolNetBytes,
   resetProtocolFrame,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
@@ -72,6 +106,7 @@ import type {
   ManifestResult,
   RootManifest,
 } from "@dotli/resolver/manifest";
+import type { ResolvePhase } from "@dotli/resolver/access-raw-storage";
 import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
@@ -105,8 +140,16 @@ import {
 import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
 import {
   describeError,
+  ERROR_TITLES,
   FAILOVER_BTN_LABELS,
-  REFRESH_BTN_LABEL,
+  GO_BACK_BTN_LABEL,
+  HOST_ERRORS,
+  HOST_UNAVAILABLE_DETAIL,
+  OPEN_SETTINGS_BTN_LABEL,
+  RELOAD_BTN_LABEL,
+  trustedProviderHosts,
+  trustedProviderWarning,
+  TRY_ANYWAY_BTN_LABEL,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
 
@@ -129,6 +172,13 @@ window.addEventListener("vite:preloadError", (event) => {
     },
   });
 });
+
+const errorIcon = (paths: string): string =>
+  `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+
+const REFRESH_ICON = errorIcon(
+  '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+);
 
 // Respect the user's dismissal unconditionally. Once dismissed, never
 // resurface unless the dismissal flag is cleared from localStorage.
@@ -159,7 +209,7 @@ if (!isMobileDevice()) {
 initSentry("host");
 installGlobalErrorHandlers("host");
 
-import { m } from "@dotli/metrics/metrics";
+import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 
 // Track WASM module load times via resource timing
@@ -178,7 +228,18 @@ if (m.enabled && typeof PerformanceObserver !== "undefined") {
 }
 
 const T0 = performance.now();
+// Warp progress holds one phase while the distance closes, so it is sampled
+// on this tick rather than emitted per step: a long warp would otherwise
+// crowd the debug panel ring buffer with hundreds of near-identical rows.
+const CHAIN_WARP_DEBUG_MS = 1000;
+// The byte total from the light client is posted every 500ms. Sampling every other
+// one keeps the byte series of a minute-long load well under a hundred rows while
+// still resolving the peak.
+const CHAIN_BYTES_DEBUG_MS = 1000;
+/** Ceiling for a load that never renders, so the series cannot run forever. */
+const CHAIN_BYTES_DEBUG_MAX = 300;
 const DOTLI_PRODUCT_ID_PARAM = "dotliProductId";
+const ICON_FETCH_BUDGET_MS = 10_000;
 const blockingModalCoordinator = createBlockingModalCoordinator();
 
 function parseLocalProductIdOverride(): string | undefined {
@@ -369,8 +430,16 @@ async function applyProductBranding(
       description: root.description,
       icon: root.icon,
     });
+    // The icon is cosmetic, so it gets a fraction of the default budget. At
+    // full budget a CID no connected peer holds would keep a retry loop open
+    // for minutes, competing for smoldot request slots against the content
+    // the user is actually waiting on.
+    const iconAborter = new AbortController();
+    const iconDeadline = setTimeout(() => {
+      iconAborter.abort();
+    }, ICON_FETCH_BUDGET_MS);
     try {
-      const bytes = await bitswapGet(root.icon.cid);
+      const bytes = await bitswapGet(root.icon.cid, iconAborter.signal);
       const blob = new Blob([new Uint8Array(bytes)], {
         type: `image/${root.icon.format}`,
       });
@@ -381,6 +450,8 @@ async function applyProductBranding(
       log.warn(
         `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    } finally {
+      clearTimeout(iconDeadline);
     }
   }
   if (appResult.kind === "ok" && appResult.value.kind === "app") {
@@ -777,6 +848,59 @@ async function applyUrlSettings(): Promise<void> {
   window.location.reload();
 }
 
+/**
+ * The error kind the visitor was shown a recovery screen for on the attempt
+ * immediately before this one.
+ *
+ * Unlike the `dotli:pending-reset:*` signals this one is not consumed on read:
+ * it has to outlive the reload it describes, so a failure that survives a
+ * reload can offer a stronger remedy than one seen for the first time. Cleared
+ * on every successful load, which is what keeps it meaning "this reload did not
+ * help" rather than "this tab saw that error at some point". Per tab by design.
+ * A fresh tab is a fresh visitor as far as this is concerned.
+ */
+const ERROR_SEEN_KEY = "dotli:error-seen";
+
+function errorAlreadySeen(kind: string): boolean {
+  try {
+    return sessionStorage.getItem(ERROR_SEEN_KEY) === kind;
+  } catch {
+    // sessionStorage unavailable (Safari private mode): treat every failure as
+    // a first sighting, which keeps the gentler screen rather than escalating.
+    return false;
+  }
+}
+
+function rememberError(kind: string): void {
+  try {
+    sessionStorage.setItem(ERROR_SEEN_KEY, kind);
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode. Without it every failure stays a first sighting, which is the safe default.
+  } catch {
+    /* sessionStorage unavailable: the escalation simply never triggers */
+  }
+}
+
+function forgetError(): void {
+  try {
+    sessionStorage.removeItem(ERROR_SEEN_KEY);
+    // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, in which case nothing was ever written and there is nothing to clear.
+  } catch {
+    /* sessionStorage unavailable: nothing was stored, so nothing to clear */
+  }
+}
+
+/**
+ * Open the topbar's Settings panel, the way the mobile "more" menu does.
+ *
+ * `stopPropagation` for the same reason that menu needs it: the document-level
+ * close-outside listener would see this button as outside the popover that just
+ * opened and close it again within the same click.
+ */
+function openSettings(event: MouseEvent): void {
+  event.stopPropagation();
+  document.getElementById("mode-button")?.click();
+}
+
 function switchBackendAndReload(nextBackend: Backend): void {
   setBackend(nextBackend);
   const search = new URLSearchParams(window.location.search);
@@ -850,6 +974,12 @@ async function main(): Promise<void> {
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `boot-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
+
+  // The same id Sentry groups a resolution by, so the debug panel swimlane
+  // and the trace of the same page load can be lined up against each other.
+  // Minting a second uuid for the identical concept would only invite the two
+  // to drift and force every query to join on both.
+  setResolutionId(bootFlowId);
 
   // Main-thread monitor. Polls at 50ms, and any delta > 200ms means the
   // event loop was blocked for `durationMs - 50ms`. Heartbeats land
@@ -1091,9 +1221,15 @@ async function main(): Promise<void> {
   // leaving the page in its initial loading state.
   const urlBar = document.getElementById("topbar-url");
   if (urlBar === null) {
-    const err = new Error("Required DOM node missing: #topbar-url");
+    const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
     captureException(err, { surface: "host_main_dom_invariant" });
-    showError("UI failed to initialise", err.message);
+    showError(ERROR_TITLES.HOST_UNAVAILABLE, HOST_UNAVAILABLE_DETAIL, {
+      label: RELOAD_BTN_LABEL,
+      icon: REFRESH_ICON,
+      onClick: () => {
+        window.location.reload();
+      },
+    });
     return;
   }
   urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
@@ -1121,6 +1257,19 @@ async function main(): Promise<void> {
   // peers) cap at the band top and let the sheen carry motion rather than
   // inflating the pace. Both smoldot backends share one model. See
   // `advancePhase` mapping below.
+  // Resolver status strings map onto the smoldot phase bands above.
+  // `asset-hub-connecting` is ~0ms (just createClient), so it shares the
+  // Syncing band rather than taking a slice that moves the bar for no work.
+  const PHASE_INDEX: Partial<Record<ResolvePhase, number>> = {
+    "relay-chain-adding": 1,
+    "asset-hub-connecting": 2,
+    "asset-hub-syncing": 2,
+    "asset-hub-ready": 2,
+    "resolving-content": 3,
+  };
+  // Only direct mode relays sandbox bitswap traffic through this window,
+  // so it is the only backend that can report a download percentage.
+  const countsContentBytes = chainBackend === "smoldot-direct";
   // The label names the step for us. What the visitor reads is the stage's
   // copy, which says the same thing in words they can act on.
   const smoldotPhases = (startLabel: string): LoadingPhase[] => [
@@ -1158,6 +1307,12 @@ async function main(): Promise<void> {
       target: 95,
       expectedMs: 10000,
       stage: "content",
+      // The download counts its own bytes against the total the DAG root
+      // declares, so this band is driven by that rather than by the clock.
+      // Only where something is actually counting: a band that waits for a
+      // percentage nobody will send would hold the indicator at 62 for the
+      // whole fetch.
+      reportsProgress: countsContentBytes,
     },
   ];
   if (chainBackend === "smoldot-shared-worker") {
@@ -1188,6 +1343,9 @@ async function main(): Promise<void> {
         target: 95,
         expectedMs: 10000,
         stage: "content",
+        // No `reportsProgress` here. Gateway mode pulls the archive over HTTP
+        // from the sandbox, so nothing counts its bytes through this window
+        // and there would be no percentage for the indicator to wait on.
       },
     ]);
   }
@@ -1198,7 +1356,443 @@ async function main(): Promise<void> {
   const contentFetchPhase = chainBackend === "rpc-gateway" ? 2 : 4;
   setLoadingDomain(label);
   advancePhase(0);
-  trackStatus(`Resolving ${withActiveTld(label)}`);
+
+  // Opened before any resolution work so the trace covers the whole load, and
+  // subscribed outside the backend gate: the gateway path produces no chain
+  // events at all, and a trace showing that is the point rather than a gap.
+  const trace = startResolutionTrace({
+    domain: withActiveTld(label),
+    network: getNetwork(),
+    backend: chainBackend,
+  });
+  onProtocolChainSync((event) => {
+    trace.chainSync(event);
+  });
+  onProtocolChainDetail((event) => {
+    trace.chainDetail(event);
+    if (event.dbCache !== undefined) {
+      emitDotliDebugEvent({
+        layer: "chain",
+        event: "dbcache",
+        flowId: bootFlowId,
+        timestamp: Date.now(),
+        payload: {
+          chain: chainRoleForKey(event.chain),
+          dbCache: event.dbCache,
+        },
+      });
+    }
+  });
+  onProtocolNetBytes(({ received }) => {
+    trace.bytes(received);
+  });
+  onContentProgress(({ bytesFetched, totalBytes }) => {
+    trace.content(bytesFetched, totalBytes);
+  });
+
+  // Advance the loading bar from typed smoldot lifecycle milestones instead of
+  // scraping log prose. `firstPeer` on the Asset Hub means a peer was
+  // discovered, so the sync band can start crawling. `bootstrapComplete`
+  // means the first finalized block landed, so the resolver can read
+  // storage. Health samples put a live peer count under the headline while
+  // the chain bootstraps, and stall events replace it with honest copy.
+  // Events are emitted from the protocol iframe, which owns smoldot in
+  // direct mode, and arrive through the protocol client origin- and
+  // source-gated listener. The `statusToPhase` log-text path remains as a
+  // fallback for the other backends, which forward neither.
+  if (chainBackend === "smoldot-direct") {
+    // Peers are reported per chain rather than as one figure for whichever
+    // chain is currently being waited on. A single figure had to be blanked
+    // at every handover, which put a zero on screen at exactly the moments
+    // the load looked slowest.
+    // Warn when a chain stops making progress. Every lifecycle event re-arms
+    // the timer for that chain, so a chain warns only if it sits in one state past
+    // the threshold. Peers and throughput are recorded as they arrive, so the
+    // warning can say what is happening rather than only that it is slow.
+    const livePeers = new Map<CriticalChain, number>();
+    const stallReason = new Map<CriticalChain, string | undefined>();
+    const stallTimers = new Map<CriticalChain, ReturnType<typeof setTimeout>>();
+    const warned = new Set<CriticalChain>();
+    let liveBytesPerSecond: number | null = null;
+
+    // Once earned, the warning row stays for the rest of the load and only its
+    // text updates. Clearing it on recovery made it blink in and out as
+    // conditions wavered, which read as worse trouble than the trouble itself.
+    // Nothing may show before the load is old enough to genuinely be slow, so
+    // an early condition is parked and delivered at the eligibility mark if it
+    // still stands.
+    const loadStartedAt = performance.now();
+    let warningShown = false;
+    let pendingWarning: string | null = null;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const showWarning = (message: string): void => {
+      const waitLeft =
+        WARNING_MIN_LOAD_MS - (performance.now() - loadStartedAt);
+      if (waitLeft > 0) {
+        pendingWarning = message;
+        pendingTimer ??= setTimeout(() => {
+          pendingTimer = null;
+          if (pendingWarning !== null) {
+            warningShown = true;
+            setLoadingWarning(pendingWarning);
+          }
+        }, waitLeft);
+        return;
+      }
+      warningShown = true;
+      pendingWarning = null;
+      setLoadingWarning(message);
+    };
+
+    onProgressStall(() => {
+      if (warned.size > 0) {
+        return;
+      }
+      showWarning(describeProgressStall(liveBytesPerSecond));
+    });
+
+    const armStallWatch = (
+      chain: CriticalChain,
+      state: ChainSyncKind,
+    ): void => {
+      const existing = stallTimers.get(chain);
+      if (existing !== undefined) {
+        clearTimeout(existing);
+      }
+      if (warned.delete(chain) && warned.size === 0) {
+        // The chain recovered, but hiding the row now would make it flash.
+        // Fall back to the general slow-load line, which is still true.
+        if (warningShown) {
+          showWarning(describeProgressStall(liveBytesPerSecond));
+        } else {
+          pendingWarning = null;
+        }
+      }
+      if (state === "bootstrapComplete") {
+        stallTimers.delete(chain);
+        return;
+      }
+      stallTimers.set(
+        chain,
+        setTimeout(() => {
+          const message = describeStall({
+            chain,
+            peers: livePeers.get(chain) ?? null,
+            bytesPerSecond: liveBytesPerSecond,
+            reason: stallReason.get(chain),
+          });
+          if (message === null) {
+            return;
+          }
+          warned.add(chain);
+          showWarning(message);
+        }, STALL_WARNING_MS),
+      );
+    };
+
+    // The debug panel Resolution view draws one block per phase per chain,
+    // so a transition is only worth an event when the phase actually changes.
+    // Bulletin attaches two taps, one from the warm-up connection and one from
+    // the broker's, and would otherwise contribute every block twice. Warp
+    // progress is the exception: it stays in `syncing` while the distance
+    // closes, so it is let through on a slow tick to keep the figures live.
+    const emittedPhase = new Map<ChainRole, ChainPhase>();
+    const emittedWarpAt = new Map<ChainRole, number>();
+    const lastWarpEmit = new Map<ChainRole, number>();
+    const peersByRole = new Map<ChainRole, number>();
+
+    onProtocolChainSync((event) => {
+      const role = chainRoleForKey(event.chain);
+      // The watchdog clearing names no phase of its own, and claiming `ready`
+      // would be a guess, so a recovered chain goes back to syncing until the
+      // next milestone says otherwise.
+      const phase: ChainPhase | undefined =
+        PHASE_BY_MILESTONE[event.syncKind] ??
+        (event.syncKind === "recovered" ? "syncing" : undefined);
+      if (event.syncKind === "peers" && event.peers !== undefined) {
+        // The peer count of a chain moves independently of its phase, and the relay
+        // typically finds its peers only after the last phase transition. Riding
+        // along on `phase` alone leaves the panel reporting the count frozen at
+        // that transition, which for the relay is zero.
+        const changed = peersByRole.get(role) !== event.peers;
+        peersByRole.set(role, event.peers);
+        if (changed) {
+          emitDotliDebugEvent({
+            layer: "chain",
+            event: "peers",
+            flowId: bootFlowId,
+            timestamp: Date.now(),
+            payload: { chain: role, peers: event.peers },
+          });
+        }
+      }
+      if (phase !== undefined) {
+        recordChainPhase(role, phase);
+        const now = Date.now();
+        const warpMoved =
+          phase === "syncing" &&
+          event.at !== undefined &&
+          emittedWarpAt.get(role) !== event.at &&
+          now - (lastWarpEmit.get(role) ?? 0) >= CHAIN_WARP_DEBUG_MS;
+        if (emittedPhase.get(role) !== phase || warpMoved) {
+          emittedPhase.set(role, phase);
+          if (event.at !== undefined) {
+            emittedWarpAt.set(role, event.at);
+            lastWarpEmit.set(role, now);
+          }
+          const peers = peersByRole.get(role);
+          emitDotliDebugEvent({
+            layer: "chain",
+            event: "phase",
+            flowId: bootFlowId,
+            timestamp: now,
+            payload: {
+              chain: role,
+              phase,
+              ...(peers === undefined ? {} : { peers }),
+              ...(event.at === undefined ? {} : { warpAt: event.at }),
+              ...(event.target === undefined
+                ? {}
+                : { warpTarget: event.target }),
+              ...(event.reason === undefined ? {} : { reason: event.reason }),
+            },
+          });
+        }
+      }
+      log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
+      // Health samples are excluded: they arrive every second and would keep
+      // re-arming the watchdog, so a stalled chain would never warn.
+      if (event.syncKind !== "peers" && isCriticalChain(event.chain)) {
+        if (event.syncKind === "stalled") {
+          stallReason.set(event.chain, event.reason);
+        } else {
+          stallReason.delete(event.chain);
+        }
+        armStallWatch(event.chain, event.syncKind);
+      }
+      switch (event.syncKind) {
+        case "peers":
+          if (event.peers === undefined) {
+            return;
+          }
+          // The panel lists every chain of the network, including the ones the
+          // loading screen has no stall wording for.
+          recordPeerCount(chainRoleForKey(event.chain), event.peers);
+          if (isCriticalChain(event.chain)) {
+            livePeers.set(event.chain, event.peers);
+          }
+          if (event.chain === "bulletin") {
+            if (event.peers > 0) {
+              // The download can start, so the clock is a fair fallback from
+              // here. Holding is only honest while there is no peer to fetch
+              // from: an archive served from the sandbox cache never
+              // asks this window for a block, and would otherwise sit at the
+              // band base until the app painted.
+              releasePhaseProgress();
+            }
+          }
+          return;
+        case "warpSyncProgress": {
+          // The one true percentage smoldot offers. Only relays warp, and
+          // only when they have real distance to cover.
+          const { at, target } = event;
+          if (
+            event.chain === "relay" &&
+            at !== undefined &&
+            target !== undefined &&
+            target > 0 &&
+            at <= target
+          ) {
+            nudgePhaseProgress(at / target, "relay");
+          }
+          return;
+        }
+        case "firstPeer":
+          if (event.chain === "asset-hub") {
+            advancePhase(2);
+          }
+          return;
+        case "bootstrapComplete":
+          if (event.chain === "asset-hub") {
+            advancePhase(3);
+          }
+          return;
+        case "warpSyncFinished":
+          // The last progress sample lands a little short of the target, so
+          // the band would otherwise stop just below full and stay there.
+          if (event.chain === "relay") {
+            nudgePhaseProgress(1, "relay");
+          }
+          return;
+        case "connecting":
+        case "stalled":
+        case "recovered":
+          // The per-chain peer counts already carry these: a stall is a
+          // chain sitting at zero, and recovery is the number climbing.
+          return;
+      }
+    });
+
+    // Speed is the throughput of the whole load, not of one step. The chain sync
+    // dominates the first half of a cold load and the archive download the
+    // second, so both are added up and the rate is taken over a short
+    // trailing window. Reporting only the archive left the readout at zero
+    // for the seconds the light client was working hardest.
+    // One counter, not two. The byte meter wraps the protocol frame
+    // WebSockets, and bitswap rides those same sockets, so the archive is
+    // already inside this number. Adding the content total on top counted
+    // every downloaded byte twice and reported speeds above the physical
+    // link rate.
+    let chainBytes = 0;
+    // Seeded at page start with nothing downloaded, which is true
+    // and means the first report from the protocol frame already has a second
+    // reading to be measured against. Without it the readout stayed blank
+    // until the second message from the frame.
+    const samples: { at: number; total: number }[] = [{ at: 0, total: 0 }];
+    const SPEED_WINDOW_MS = 3_000;
+    const reportSpeed = (): void => {
+      const now = performance.now();
+      samples.push({ at: now, total: chainBytes });
+      while (samples.length > 1 && now - samples[0].at > SPEED_WINDOW_MS) {
+        samples.shift();
+      }
+      const oldest = samples[0];
+      const span = now - oldest.at;
+      if (span > 0) {
+        liveBytesPerSecond = ((chainBytes - oldest.total) / span) * 1000;
+        recordTransfer({ bytesPerSecond: liveBytesPerSecond });
+      }
+    };
+    // The byte series exists to describe the resolution, so it closes once the
+    // product is on screen. Left running it posts a row a second for as long as
+    // the tab stays open, which pushes the events of the load itself out of the debug
+    // panel ring buffer. A load that never renders is bounded by the sample
+    // cap instead.
+    let lastBytesDebugAt = 0;
+    let lastBytesDebugTotal = -1;
+    let bytesDebugSamples = 0;
+    let bytesDebugOpen = true;
+    const emitBytesDebug = (received: number, at: number): void => {
+      lastBytesDebugAt = at;
+      lastBytesDebugTotal = received;
+      bytesDebugSamples++;
+      emitDotliDebugEvent({
+        layer: "chain",
+        event: "bytes",
+        flowId: bootFlowId,
+        timestamp: at,
+        payload: { received },
+      });
+    };
+    window.addEventListener(
+      "dotli:product-loaded",
+      () => {
+        if (bytesDebugOpen && chainBytes !== lastBytesDebugTotal) {
+          emitBytesDebug(chainBytes, Date.now());
+        }
+        bytesDebugOpen = false;
+      },
+      { once: true },
+    );
+    onProtocolNetBytes(({ received }) => {
+      chainBytes = received;
+      reportSpeed();
+      const now = Date.now();
+      if (
+        bytesDebugOpen &&
+        bytesDebugSamples < CHAIN_BYTES_DEBUG_MAX &&
+        received !== lastBytesDebugTotal &&
+        now - lastBytesDebugAt >= CHAIN_BYTES_DEBUG_MS
+      ) {
+        emitBytesDebug(received, now);
+      }
+    });
+
+    // Every block the sandbox needs is fetched through this window, so the
+    // download reports itself: bytes so far against the total the DAG root
+    // declares.
+    onContentProgress(({ bytesFetched, totalBytes }) => {
+      recordTransfer({ fetched: bytesFetched, total: totalBytes });
+      // The true download fraction drives the bar itself, which is where
+      // a percentage belongs. Printing the same number as text alongside it
+      // said the same thing twice.
+      if (totalBytes === null) {
+        // Bytes are arriving but the DAG root declared no total, so there is
+        // no percentage to be had. Hand the indicator back to the clock.
+        releasePhaseProgress();
+      }
+      if (totalBytes !== null && totalBytes > 0) {
+        nudgePhaseProgress(bytesFetched / totalBytes, "content");
+        // The tail of the load is the sandbox unpacking the archive and
+        // painting, which download copy would otherwise hide while the bar
+        // crept. Only blocks relayed for the sandbox are counted here, and
+        // the sandbox is mounted after the content phase begins, so this
+        // cannot fire while an earlier step is still on screen.
+        if (bytesFetched >= totalBytes) {
+          setLoadingStage("preparing");
+        }
+      }
+    });
+  }
+
+  // Read in the catch below, which covers both the warm and the cold path.
+  // Without it a warm-path failure would be counted against the cold attempt
+  // total and the cold failure rate would read high.
+  let cidCache: "hit" | "miss" | "unknown" = "unknown";
+
+  // On a CID cache hit the render never waits on the light client, and the
+  // gateway backend runs none at all, so the dimension is inapplicable on
+  // both. "n/a" keeps them out of "unknown", which is reserved for a signal
+  // that should have arrived and did not. One tag per chain: the relay and
+  // Asset Hub gate the resolve, Bulletin gates the content fetch, and their
+  // warm states vary independently.
+  const smoldotDbCacheTags = (): Record<string, string> => {
+    const inapplicable = cidCache === "hit" || chainBackend === "rpc-gateway";
+    return {
+      smoldotdb_relay_cache: inapplicable
+        ? "n/a"
+        : getSmoldotDbOutcome("relay"),
+      smoldotdb_hub_cache: inapplicable ? "n/a" : getSmoldotDbOutcome("hub"),
+      smoldotdb_bulletin_cache: inapplicable
+        ? "n/a"
+        : getSmoldotDbOutcome("bulletin"),
+    };
+  };
+
+  // The bulletin chain is only dialed during the sandbox's content fetch,
+  // which outlives the render handoff `await`. Capturing at handoff would
+  // freeze the bulletin tag at "unknown" on every cold load, so the cold
+  // success event waits for the sandbox's done signal. The timeout keeps a
+  // stalled fetch from losing the event; its tags then read as-is.
+  const captureResolveOkAfterContent = (): void => {
+    let captured = false;
+    const capture = (): void => {
+      if (!captured) {
+        captured = true;
+        captureResolveResult("ok");
+      }
+    };
+    onSandboxDone(capture);
+    setTimeout(capture, 120_000);
+  };
+
+  // The non-throwing half of the failure rate whose error half is the tagged
+  // exception in the catch below. `no_content` is its own outcome rather than
+  // an error: the name resolved, it just has nothing published on this
+  // network, so folding it into either half would misstate the rate.
+  const captureResolveResult = (outcome: "ok" | "no_content"): void => {
+    Sentry.captureMessage("dotli.resolve_result", {
+      level: "info",
+      tags: {
+        surface: "host_main_resolve",
+        outcome,
+        cid_cache: cidCache,
+        ...smoldotDbCacheTags(),
+        chain_backend: chainBackend,
+      },
+    });
+  };
 
   try {
     const cachedCid = cacheSettings.skipCidCache
@@ -1211,7 +1805,9 @@ async function main(): Promise<void> {
       timestamp: Date.now(),
       payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
     });
+    trace.cidCache(cachedCid !== null ? "hit" : "miss");
     if (cachedCid !== null) {
+      cidCache = "hit";
       m.count(S.CACHE_HIT);
       log.warn(
         `[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`,
@@ -1220,10 +1816,12 @@ async function main(): Promise<void> {
       // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
+        setChainsButtonVisible(true);
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
         await renderAppSubdomain(cachedCid, label);
       });
+      forgetError();
       void recordRecentLabel(label);
       void applyProductBranding(label, chainBackend).catch((err: unknown) => {
         log.warn(
@@ -1243,12 +1841,16 @@ async function main(): Promise<void> {
           path: "fast",
         },
       });
+      trace.nameResolved(cachedCid);
+      trace.finish("rendered");
+      captureResolveResult("ok");
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cachedCid, chainBackend);
       });
       return;
     }
+    cidCache = "miss";
     m.count(S.CACHE_MISS);
     log.warn(`[dot.li perf] CID cache MISS (${elapsed(T0)})`);
 
@@ -1304,26 +1906,19 @@ async function main(): Promise<void> {
       const { statusToPhase } = await import("@dotli/resolver/resolve");
       const onResolveProgress = (msg: string): void => {
         // Progress events arrive as opaque strings across the iframe
-        // boundary. The resolver package owns the authoritative
-        // mapping from status text to ResolvePhase, so we defer to it
-        // instead of maintaining a parallel regex here.
+        // boundary. The resolver package owns the authoritative mapping from
+        // status text to ResolvePhase, so we defer to it instead of
+        // maintaining a parallel regex here.
         const phase = statusToPhase(msg);
-        if (phase === "relay-chain-adding") {
-          advancePhase(1);
-        } else if (
-          // `asset-hub-connecting` is ~0ms (just createClient), so it shares
-          // the Syncing band rather than getting a slice that makes the bar
-          // jump for no work.
-          phase === "asset-hub-connecting" ||
-          phase === "asset-hub-syncing" ||
-          phase === "asset-hub-ready"
-        ) {
-          advancePhase(2);
-        } else if (phase === "resolving-content") {
-          advancePhase(3);
+        const mappedPhase = phase === null ? undefined : PHASE_INDEX[phase];
+        if (mappedPhase !== undefined) {
+          advancePhase(mappedPhase);
         }
         emitPhase(msg, phase ?? "progress");
-        trackStatus(msg);
+        // These strings are the resolver talking to a developer, which is how
+        // "Walking dag-pb via bitswap..." reached the headline. They stay in
+        // the debug stream and move the bar. The stage messages say the same
+        // thing to the user.
       };
       cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
       if (cid === null) {
@@ -1340,7 +1935,6 @@ async function main(): Promise<void> {
         await import("@dotli/resolver/rpc-resolve");
       const onResolveProgress = (msg: string): void => {
         emitPhase(msg, "progress");
-        trackStatus(msg);
       };
       cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
       if (cid === null) {
@@ -1370,11 +1964,15 @@ async function main(): Promise<void> {
       `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${chainBackend} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? "null"}`,
     );
 
+    trace.nameResolved(cid);
+
     if (cid === null) {
       // No pruning here: a name with no contenthash on the *selected* network
       // still resolves on another, so dropping its pill would lose good
       // entries on a network switch. The pill's remove button is the cleanup.
       showNoContentError(label);
+      trace.finish("error", "no contenthash");
+      captureResolveResult("no_content");
       performance.mark("dotli:main:end");
       return;
     }
@@ -1387,9 +1985,11 @@ async function main(): Promise<void> {
 
     setShieldState(shieldState);
 
+    setChainsButtonVisible(true);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
     await renderAppSubdomain(cid, label);
+    forgetError();
     void recordRecentLabel(label);
     void applyProductBranding(label, chainBackend).catch((err: unknown) => {
       log.warn(
@@ -1401,6 +2001,8 @@ async function main(): Promise<void> {
       outcome: "ok",
       chain_backend: chainBackend,
     });
+    trace.finish("rendered");
+    captureResolveOkAfterContent();
     performance.mark("dotli:main:end");
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
@@ -1415,6 +2017,7 @@ async function main(): Promise<void> {
       },
     });
   } catch (err) {
+    trace.finish("error", err instanceof Error ? err.message : String(err));
     performance.mark("dotli:main:end");
     // Report before rendering so monitoring always sees the root cause, even
     // if `showError()` itself throws (e.g. a DOM node is missing). The global
@@ -1428,6 +2031,8 @@ async function main(): Promise<void> {
       surface: "host_main_resolve",
       outcome: "error",
       dependency,
+      cid_cache: cidCache,
+      ...smoldotDbCacheTags(),
       chain_backend: chainBackend,
     });
     // Full cause chain to console for devs.
@@ -1447,61 +2052,132 @@ async function main(): Promise<void> {
     });
     const error = describeError(err, chainBackend !== "rpc-gateway");
     if (error.recovery === "none") {
-      showError("Domain can't be reached", error.message);
+      showError(error.title, error.message, undefined, error.tips);
       return;
     }
     if (error.recovery === "reload") {
-      showError("Domain can't be reached", error.message, {
-        label: "Reload",
-        onClick: () => {
-          window.location.reload();
+      showError(
+        error.title,
+        error.message,
+        {
+          label: RELOAD_BTN_LABEL,
+          onClick: () => {
+            window.location.reload();
+          },
         },
-      });
+        error.tips,
+      );
       return;
     }
     // Tiered failover: any smoldot becomes rpc-gateway, rpc-gateway becomes smoldot-shared-worker.
     const nextBackend =
       chainBackend === "rpc-gateway" ? "smoldot-shared-worker" : "rpc-gateway";
     const btnLabel = FAILOVER_BTN_LABELS[nextBackend];
-    const svg = (paths: string): string =>
-      `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-    const refreshIcon = svg(
-      '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
-    );
-    const switchIcon =
-      nextBackend === "rpc-gateway"
-        ? svg('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>')
-        : svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>');
-    showError("Domain can't be reached", error.message, [
-      {
-        label: REFRESH_BTN_LABEL,
-        icon: refreshIcon,
-        onClick: () => {
-          window.location.reload();
+    // A provider that timed out will time out again, so switching to the light
+    // client becomes the recommendation. A light client that failed is usually
+    // a transient peer problem, so reloading stays the recommendation there.
+    const failoverIsPrimary = chainBackend === "rpc-gateway";
+    // The protocol iframe reads this on its next boot and purges its worker
+    // caches, so the reload comes up on a fresh light client instead of the
+    // one that just lost its subscription.
+    const reloadForRecovery = (): void => {
+      if (error.resetProtocol === true) {
+        try {
+          sessionStorage.setItem("dotli:pending-reset:protocol", "1");
+          // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode. The purge is best-effort while the reload below is unconditional.
+        } catch {
+          /* sessionStorage unavailable: reload without the purge */
+        }
+      }
+      window.location.reload();
+    };
+    const commitFailover = (): void => {
+      emitDotliDebugEvent({
+        layer: "failover",
+        event: "chain_backend",
+        flowId:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `fail-${String(Date.now())}`,
+        timestamp: Date.now(),
+        payload: {
+          from: chainBackend,
+          to: nextBackend,
+          reason: err instanceof Error ? err.message : "resolution failed",
         },
-      },
-      {
-        label: btnLabel,
-        icon: switchIcon,
-        onClick: () => {
-          emitDotliDebugEvent({
-            layer: "failover",
-            event: "chain_backend",
-            flowId:
-              typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? crypto.randomUUID()
-                : `fail-${String(Date.now())}`,
-            timestamp: Date.now(),
-            payload: {
-              from: chainBackend,
-              to: nextBackend,
-              reason: err instanceof Error ? err.message : "resolution failed",
-            },
-          });
-          switchBackendAndReload(nextBackend);
-        },
-      },
-    ]);
+      });
+      switchBackendAndReload(nextBackend);
+    };
+    // Dropping to a trusted provider trades away the guarantee the light
+    // client exists for, so it is the one failover the user confirms first.
+    // Going the other way (provider to light client) only adds verification.
+    // Staying put is the safe answer, so it is the one offered as primary.
+    const showFailoverWarning = (): void => {
+      showErrorPage({
+        glyph: "warning",
+        title: "Your connection won't be verified",
+        detail: trustedProviderWarning(
+          withActiveTld(label),
+          trustedProviderHosts(),
+        ),
+        actions: [
+          { label: TRY_ANYWAY_BTN_LABEL, onClick: commitFailover },
+          {
+            label: GO_BACK_BTN_LABEL,
+            primary: true,
+            onClick: showResolutionError,
+          },
+        ],
+      });
+    };
+    // Offering a one-click drop to a trusted provider before the visitor has
+    // even reloaded sells the light client's guarantee too cheaply, so the
+    // first sighting points at the Settings panel that owns the choice instead.
+    // A second sighting of the same failure has earned the shortcut. Only this
+    // direction is gated: moving back toward the light client adds
+    // verification rather than removing it, so it needs no ceremony.
+    const gateFailover =
+      nextBackend === "rpc-gateway" && !errorAlreadySeen(error.kind);
+    function showResolutionError(): void {
+      // Only the gated direction records a sighting. Remembering a failure seen
+      // on the gateway would skip the Settings step for a visitor who later hits
+      // the same kind on the light client, where it really is their first.
+      //
+      // `unknown` is never recorded. It is the catch-all bucket, so two
+      // unrelated failures both key as `unknown` and the second would read as a
+      // repeat of the first, handing over the one-click drop to a trusted
+      // provider on what is genuinely a first sighting.
+      if (nextBackend === "rpc-gateway" && error.kind !== "unknown") {
+        rememberError(error.kind);
+      }
+      showErrorPage({
+        title: error.title,
+        detail: error.message,
+        tips: error.tips,
+        actions: [
+          {
+            label: RELOAD_BTN_LABEL,
+            primary: !failoverIsPrimary,
+            onClick: reloadForRecovery,
+          },
+          gateFailover
+            ? {
+                label: OPEN_SETTINGS_BTN_LABEL,
+                icon: SETTINGS_GLYPH,
+                onClick: openSettings,
+              }
+            : {
+                label: btnLabel,
+                primary: failoverIsPrimary,
+                onClick:
+                  nextBackend === "rpc-gateway"
+                    ? showFailoverWarning
+                    : commitFailover,
+              },
+        ],
+      });
+    }
+    showResolutionError();
   }
 }
 

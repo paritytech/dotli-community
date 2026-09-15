@@ -13,7 +13,7 @@ vi.mock("@dotli/content/ipfs", () => ({
   fetchFromIpfs: mocks.fetchFromIpfs,
 }));
 
-vi.mock("@dotli/ui/bulletin-bitswap", () => ({
+vi.mock("@dotli/content/bitswap", () => ({
   bitswapGet: mocks.bitswapGet,
 }));
 
@@ -178,4 +178,64 @@ describe("preimage host callbacks", () => {
       }
     },
   );
+
+  it("As a user, a slow preimage lookup does not stack another on every poll tick", async () => {
+    // Given a lookup that outlives several 10s poll intervals, which bitswapGet
+    // can now do while it retries a CID whose providers have not attached
+    vi.useFakeTimers();
+    try {
+      mocks.getBackend.mockReturnValue("smoldot-direct");
+      let release: (v: Uint8Array) => void = () => undefined;
+      mocks.bitswapGet.mockImplementation(
+        () =>
+          new Promise<Uint8Array>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const key = new Uint8Array(32).fill(7);
+
+      // When four poll ticks pass while the first lookup is still in flight
+      const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
+      await iterator.next();
+      await vi.advanceTimersByTimeAsync(45_000);
+
+      // Then only the first tick issued a request
+      expect(mocks.bitswapGet).toHaveBeenCalledTimes(1);
+
+      release(new Uint8Array());
+      await iterator.return?.();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("As a user, dropping a preimage subscription cancels the lookup it left running", async () => {
+    // Given a lookup that is still retrying when the product lets go
+    vi.useFakeTimers();
+    try {
+      mocks.getBackend.mockReturnValue("smoldot-direct");
+      let handed: AbortSignal | undefined;
+      mocks.bitswapGet.mockImplementation(
+        (_cid: string, signal?: AbortSignal) => {
+          handed = signal;
+          return new Promise<Uint8Array>(() => undefined);
+        },
+      );
+      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const key = new Uint8Array(32).fill(9);
+
+      // When the subscription is torn down mid-lookup
+      const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
+      await iterator.next();
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(handed?.aborted).toBe(false);
+      await iterator.return?.();
+
+      // Then the host stops fetching for a consumer that has gone
+      expect(handed?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
