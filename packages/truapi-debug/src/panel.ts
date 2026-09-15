@@ -12,6 +12,13 @@
 
 import { escapeHtml } from "@dotli/shared/html";
 import {
+  buildResolution,
+  buildResolutionContainer,
+  createResolutionRecorder,
+  renderResolution,
+  type ResolutionRecorder,
+} from "./resolution-view.ts";
+import {
   decodeChainAnnotations,
   formatChainLabel,
   type ChainAnnotations,
@@ -44,6 +51,12 @@ import {
 import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
 import { createHostInspector } from "./host-inspector.ts";
 import {
+  formatPending,
+  openCalls,
+  pendingKeyOf,
+  SLOW_AFTER_MS,
+} from "./pending.ts";
+import {
   applyTimelineSelection,
   buildTimelineContainer,
   renderSwimlanes,
@@ -51,11 +64,13 @@ import {
 } from "./timeline.ts";
 
 const DEFAULT_CAPACITY = 2000;
-const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
+/** How often the Resolution view redraws the open block of an in-flight load. */
+const RESOLUTION_TICK_MS = 500;
 const STYLE_ID = "truapi-debug-styles";
 const PANEL_ID = "truapi-debug-panel";
 const DOCK_STORAGE_KEY = "truapi-debug:dock";
 const DEBUG_SESSION_KEY = "dotli:truapi-debug";
+const PENDING_TICK_MS = 1000;
 
 type DockPosition = "bottom" | "right";
 
@@ -186,6 +201,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     view: "list",
     dock: readStoredDock(),
     runtimeSnapshot: null,
+    resolution: createResolutionRecorder(),
   };
 
   const ui = buildPanel(state, store);
@@ -215,6 +231,16 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     adjustIframeForPanel(ui.panel, state);
   };
   window.addEventListener("dotli:product-loaded", onProductLoaded);
+  const layoutObserver = new ResizeObserver(onProductLoaded);
+  layoutObserver.observe(ui.panel);
+  const onTopbarTransition = (event: TransitionEvent): void => {
+    if (event.target instanceof HTMLElement && event.target.id === "topbar") {
+      onProductLoaded();
+    }
+  };
+  window.addEventListener("resize", onProductLoaded);
+  window.addEventListener("topbar:visibility", onProductLoaded);
+  document.addEventListener("transitionend", onTopbarTransition);
 
   ui.closeBtn.addEventListener("click", () => {
     // Exit debug mode entirely: the panel is bound to debug mode, and
@@ -241,11 +267,23 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     });
   };
 
+  // A pending badge counts up with the clock rather than with traffic, and a
+  // host that has stalled is precisely one that has stopped emitting events,
+  // so the store cannot be what wakes it.
+  const pendingTick = setInterval(() => {
+    if (state.view === "list") {
+      syncPending(ui, store);
+    }
+  }, PENDING_TICK_MS);
+
   const unsubscribeStore = store.subscribe(scheduleRender);
   const unsubscribeDotli = onDotliDebugEvent((ev) => {
     if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
     } else {
+      if (!store.isPaused()) {
+        state.resolution.record(ev);
+      }
       store.insertDotli(ev);
     }
   });
@@ -254,15 +292,33 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     renderRuntime(ui, state);
   });
 
+  // The block a chain is still sitting in has to keep growing toward now, and
+  // a chain that has gone quiet emits nothing to re-render on. A collapsed
+  // panel is not on screen, so it rebuilds nothing.
+  const resolutionTick = window.setInterval(() => {
+    if (state.view === "resolution" && !state.collapsed) {
+      renderResolution(
+        ui.resolution,
+        buildResolution(state.resolution.events(), Date.now()),
+      );
+    }
+  }, RESOLUTION_TICK_MS);
+
   // Initial render + iframe adjustment.
   render(ui, state, store, { fullList: true });
   adjustIframeForPanel(ui.panel, state);
 
   return () => {
+    window.clearInterval(resolutionTick);
+    clearInterval(pendingTick);
     unsubscribeDotli();
     unsubscribePolkaVm();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
+    layoutObserver.disconnect();
+    window.removeEventListener("resize", onProductLoaded);
+    window.removeEventListener("topbar:visibility", onProductLoaded);
+    document.removeEventListener("transitionend", onTopbarTransition);
     disposeWalletControls?.();
     ui.panel.remove();
     restoreIframeLayout();
@@ -271,14 +327,15 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
 /** Adjust the currently-mounted product iframe so the panel doesn't overlay it. */
 function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+  const iframe = document.querySelector<HTMLIFrameElement>(
+    'iframe:not([aria-hidden="true"])',
+  );
   if (iframe === null) {
     return;
   }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? TOPBAR_HEIGHT : "0px";
+  const topOffset = Math.max(0, iframe.getBoundingClientRect().top);
   if (state.dock === "right") {
-    iframe.style.height = `calc(100vh - ${topOffset})`;
+    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - var(--safe-bottom, 0px))`;
     // When collapsed, the 32px header bar overlays the top-right corner
     // of the iframe rather than reserving a full-height column. Mirrors
     // how bottom-dock collapse overlays only the bottom 32px.
@@ -292,22 +349,24 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     iframe.style.width =
       "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))";
     const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
-    iframe.style.height = `calc(100vh - ${topOffset} - ${String(panelHeight)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px - var(--safe-bottom, 0px))`;
   }
 }
 
 function restoreIframeLayout(): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+  const iframe = document.querySelector<HTMLIFrameElement>(
+    'iframe:not([aria-hidden="true"])',
+  );
   if (iframe === null) {
     return;
   }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  iframe.style.height = hasTopbar ? `calc(100vh - ${TOPBAR_HEIGHT})` : "100vh";
+  const topOffset = Math.max(0, iframe.getBoundingClientRect().top);
+  iframe.style.height = `calc(100dvh - ${String(topOffset)}px - var(--safe-bottom, 0px))`;
   iframe.style.width =
     "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--host-inspector-width, 0px))";
 }
 
-type PanelView = "list" | "timeline" | "runtime";
+type PanelView = "list" | "timeline" | "resolution" | "runtime";
 
 interface PanelState {
   collapsed: boolean;
@@ -318,6 +377,9 @@ interface PanelState {
   view: PanelView;
   dock: DockPosition;
   runtimeSnapshot: PolkaVmDebugSnapshot | null;
+  /** Kept apart from the ring buffer so a busy session cannot evict the head
+   *  of the load the Resolution view is drawing. */
+  resolution: ResolutionRecorder;
 }
 
 interface PanelUI {
@@ -341,6 +403,7 @@ interface PanelUI {
   runtime: HTMLDivElement;
   list: HTMLDivElement;
   timeline: HTMLDivElement;
+  resolution: HTMLDivElement;
   detail: HTMLDivElement;
   bodySplitter: HTMLDivElement;
   tooltip: HTMLDivElement;
@@ -395,6 +458,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
         <div class="td-tabs" role="tablist">
           <button class="td-tab active" role="tab" data-view="list" type="button">List</button>
           <button class="td-tab" role="tab" data-view="timeline" type="button">Timeline</button>
+          <button class="td-tab" role="tab" data-view="resolution" type="button">Resolution</button>
           <button class="td-tab td-runtime-tab hidden" role="tab" data-view="runtime" type="button">Runtime</button>
         </div>
         <div class="td-list" role="list" tabindex="0"></div>
@@ -412,6 +476,9 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   const { container: timeline } = buildTimelineContainer();
   timeline.classList.add("hidden");
   views.appendChild(timeline);
+  const { container: resolution } = buildResolutionContainer();
+  resolution.classList.add("hidden");
+  views.appendChild(resolution);
 
   const ui: PanelUI = {
     panel,
@@ -452,10 +519,14 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       runtime: panel.querySelector(
         '.td-tab[data-view="runtime"]',
       ) as HTMLButtonElement,
+      resolution: panel.querySelector(
+        '.td-tab[data-view="resolution"]',
+      ) as HTMLButtonElement,
     },
     list: panel.querySelector(".td-list") as HTMLDivElement,
     timeline,
     runtime: panel.querySelector(".td-runtime") as HTMLDivElement,
+    resolution,
     detail: panel.querySelector(".td-detail") as HTMLDivElement,
     bodySplitter: panel.querySelector(".td-body-splitter") as HTMLDivElement,
     tooltip: panel.querySelector(".td-tooltip") as HTMLDivElement,
@@ -468,7 +539,8 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   wireListSelection(ui, state, store);
   wireTabs(ui, state, store);
   wireTimelineSelection(ui, state, store);
-  wireTimelineTooltip(ui);
+  wireHoverTooltips(ui, ui.timeline);
+  wireHoverTooltips(ui, ui.resolution);
   wireBodySplitter(ui, state);
 
   return ui;
@@ -479,35 +551,46 @@ function installExperimentalWalletControls(
   wallet: NonNullable<SetupOptions["experimentalWallet"]>,
   store: EventStore,
 ): () => void {
-  const inspector = createHostInspector(wallet, store);
+  const inspector = createHostInspector(wallet, store, ui.panel);
   const { content, overview, recovery } = inspector;
   ui.counts.after(inspector.entry);
   const status = document.createElement("p");
+  status.className = "td-wallet-status";
   status.textContent = wallet.isActive()
     ? "Experimental wallet active"
     : "Experimental wallet disconnected";
   const warning = document.createElement("p");
+  warning.className = "td-wallet-warning";
   warning.textContent =
     "Testing only — never use valuable funds or import your real wallet. " +
     "Without a recovery phrase backup, deleting this wallet or clearing site data permanently loses access. " +
     "Scripts on this and other trusted host origins can access your shared wallet keys despite storage encryption. Real transactions remain possible.";
-  overview.append(status, warning);
+  overview.append(status);
   const network = document.createElement("p");
   network.textContent = `Network: ${wallet.networkLabel()}`;
   const identity = document.createElement("p");
   identity.className = "td-wallet-identity";
   identity.textContent = "Identity: enable the test wallet to view";
   const registeredName = document.createElement("p");
-  registeredName.textContent = "Lite username: not checked";
+  registeredName.className = "td-wallet-username";
+  registeredName.setAttribute("role", "status");
+  registeredName.setAttribute("aria-live", "polite");
+  registeredName.setAttribute("aria-atomic", "true");
+  const nameState = document.createElement("strong");
+  const nameDetail = document.createElement("span");
+  const knownName = document.createElement("span");
+  knownName.className = "td-wallet-known-name";
+  registeredName.append(nameState, nameDetail, knownName);
   const usernameLabel = document.createElement("label");
   usernameLabel.textContent = "Base Lite username (no suffix)";
   const username = document.createElement("input");
   username.type = "text";
-  username.className = "td-wallet-phrase";
+  username.className = "td-input td-wallet-username-input";
   username.autocomplete = "off";
   username.autocapitalize = "off";
   username.spellcheck = false;
   username.setAttribute("aria-label", "Base Lite username to claim");
+  username.setAttribute("aria-describedby", "td-wallet-username-hint");
   usernameLabel.appendChild(username);
   const claim = document.createElement("button");
   claim.type = "button";
@@ -518,17 +601,11 @@ function installExperimentalWalletControls(
   refresh.className = "td-btn";
   refresh.textContent = "Refresh username";
   const usernameHint = document.createElement("p");
-  usernameHint.textContent =
-    "Refresh discovers names already registered to this identity. Claim submits a real registration on the selected network; nothing is registered automatically.";
-  overview.append(
-    network,
-    identity,
-    registeredName,
-    usernameLabel,
-    claim,
-    refresh,
-    usernameHint,
-  );
+  usernameHint.id = "td-wallet-username-hint";
+  usernameHint.className = "td-wallet-hint";
+  const usernameActions = document.createElement("div");
+  usernameActions.className = "hi-actions";
+  usernameActions.append(claim, refresh);
   const activate = document.createElement("button");
   activate.type = "button";
   activate.className = "td-btn";
@@ -581,7 +658,20 @@ function installExperimentalWalletControls(
   message.className = "td-wallet-message";
   message.setAttribute("role", "alert");
   message.hidden = true;
-  overview.append(activate, disconnect, inspector.productDetails);
+  const walletActions = document.createElement("div");
+  walletActions.className = "hi-actions";
+  walletActions.append(activate, disconnect);
+  overview.append(
+    walletActions,
+    warning,
+    registeredName,
+    network,
+    identity,
+    usernameLabel,
+    usernameActions,
+    usernameHint,
+    inspector.productDetails,
+  );
   const recoveryHeading = document.createElement("h3");
   recoveryHeading.textContent = "Recovery settings";
   recovery.append(recoveryHeading);
@@ -597,12 +687,125 @@ function installExperimentalWalletControls(
   content.append(message);
 
   let pending = false;
+  let activating = false;
   let disposed = false;
   const isDisposed = (): boolean => disposed;
   let sensitiveGeneration = 0;
   let currentIdentity: InspectorIdentity | undefined;
   let identityReadGeneration = 0;
-  let claimNeedsRefresh = false;
+  let identityLoading = false;
+  let identityUnavailable = false;
+  let identityGeneration = 0;
+  let usernameStatus: {
+    kind: "unknown" | "claimed" | "unclaimed" | "failed";
+    title: string;
+    detail: string;
+  } = {
+    kind: "unknown",
+    title: "Username not checked",
+    detail:
+      "Refresh username checks this identity on chain. No claim is submitted.",
+  };
+  let usernameOperation:
+    | { register: boolean; name: string; identity: InspectorIdentity }
+    | undefined;
+  const renderUsername = (): void => {
+    const operation = usernameOperation;
+    const active = wallet.isActive() && !activating;
+    const fullName = currentIdentity?.fullUsername ?? "";
+    const liteName = currentIdentity?.liteUsername ?? "";
+    const hasLiteUsername =
+      liteName !== "" || usernameStatus.kind === "claimed";
+    const showClaim =
+      active && currentIdentity !== undefined && !hasLiteUsername;
+    activate.hidden = active;
+    activate.textContent = activating
+      ? "Enabling test wallet…"
+      : "Enable / use test wallet";
+    disconnect.hidden = !active;
+    usernameLabel.hidden = !showClaim;
+    claim.hidden = !showClaim;
+    usernameActions.hidden = !active;
+    refresh.hidden = !active;
+    usernameHint.hidden = !active;
+    usernameHint.textContent = hasLiteUsername
+      ? "Refresh username verifies ownership on the selected network; no registration is submitted."
+      : "Refresh discovers names already registered to this identity. Claim submits a real registration on the selected network; nothing is registered automatically.";
+    const sameIdentity =
+      operation?.identity.identityAccountId ===
+        currentIdentity?.identityAccountId &&
+      operation?.identity.network === currentIdentity?.network;
+    registeredName.dataset.state =
+      operation !== undefined
+        ? "pending"
+        : activating || (identityLoading && currentIdentity === undefined)
+          ? "checking"
+          : usernameStatus.kind;
+    let title = usernameStatus.title;
+    let detail = usernameStatus.detail;
+    if (operation !== undefined) {
+      title = operation.register
+        ? `Claim pending: ${operation.name}`
+        : "Refreshing username…";
+      detail =
+        (sameIdentity
+          ? ""
+          : `For identity ${operation.identity.identityAccountId} on ${operation.identity.network}. The selected wallet changed; this result will not replace its identity. `) +
+        (operation.register
+          ? "Waiting for chain ownership confirmation. Closing this inspector does not cancel the claim."
+          : "Checking chain ownership only; no registration is submitted.");
+    } else if (activating) {
+      title = "Enabling test wallet…";
+      detail =
+        "Wait for activation to finish before checking or claiming a username.";
+    } else if (!active) {
+      title = "Enable the test wallet first";
+      detail =
+        "Use Enable / use test wallet above to connect, then check or claim a username.";
+    } else if (identityLoading && currentIdentity === undefined) {
+      title = "Checking wallet identity…";
+      detail = "Username ownership has not been checked on chain.";
+    } else if (usernameStatus.kind === "unknown" && liteName !== "") {
+      title = `Known Lite username: ${liteName}`;
+      detail =
+        "Loaded from wallet identity. Refresh username verifies ownership on chain.";
+    }
+    // Input changes also synchronize controls; do not re-announce unchanged
+    // live status on every keystroke.
+    if (nameState.textContent !== title) {
+      nameState.textContent = title;
+    }
+    if (nameDetail.textContent !== detail) {
+      nameDetail.textContent = detail;
+    }
+    const names = [
+      fullName !== "" ? `Full: ${fullName}` : "",
+      liteName !== "" ? `Lite: ${liteName}` : "",
+    ].filter(Boolean);
+    const lastKnown =
+      names.length === 0 ? "" : `Last known username · ${names.join(" · ")}`;
+    if (knownName.textContent !== lastKnown) {
+      knownName.textContent = lastKnown;
+    }
+    knownName.hidden = names.length === 0;
+    claim.textContent =
+      operation?.register === true ? "Claim pending…" : "Claim Lite username";
+    refresh.textContent =
+      operation?.register === false ? "Refreshing…" : "Refresh username";
+    inspector.entry.title = `${title} — ${detail}`;
+    inspector.entry.textContent =
+      operation !== undefined || activating
+        ? title
+        : !active
+          ? "Connect wallet"
+          : fullName ||
+            liteName ||
+            (usernameStatus.kind === "unclaimed"
+              ? "Wallet · unclaimed"
+              : usernameStatus.kind === "failed"
+                ? "Wallet · check failed"
+                : "Wallet · username unknown");
+  };
   const isVisible = (): boolean => !disposed && inspector.isOpen();
   const clearSensitive = (): void => {
     sensitiveGeneration++;
@@ -617,10 +820,7 @@ function installExperimentalWalletControls(
     }
     if (!inspector.isOpen()) {
       message.hidden = true;
-    } else {
-      if (pending) {
-        message.hidden = false;
-      }
+    } else if (!pending) {
       void loadIdentity();
     }
   });
@@ -635,32 +835,48 @@ function installExperimentalWalletControls(
     importButton.disabled = pending;
     remove.disabled = pending;
     input.disabled = pending;
-    username.disabled = pending || !wallet.isActive();
+    username.disabled =
+      pending || !wallet.isActive() || identityLoading || identityUnavailable;
     claim.disabled =
       pending ||
-      claimNeedsRefresh ||
       !wallet.isActive() ||
+      identityLoading ||
+      identityUnavailable ||
+      usernameStatus.kind === "claimed" ||
       currentIdentity === undefined ||
       (currentIdentity.liteUsername ?? "") !== "" ||
       username.value.trim() === "";
-    refresh.disabled = pending || !wallet.isActive();
+    refresh.disabled = pending || identityLoading || !wallet.isActive();
+    renderUsername();
   };
   syncButtons();
 
   const loadIdentity = async (): Promise<void> => {
     const generation = ++identityReadGeneration;
+    identityLoading = wallet.isActive();
     status.textContent = wallet.isActive()
       ? "Experimental wallet active"
       : "Experimental wallet disconnected";
     if (!wallet.isActive()) {
+      if (currentIdentity !== undefined) {
+        identityGeneration++;
+        clearSensitive();
+      }
       currentIdentity = undefined;
       inspector.setIdentity(undefined);
       identity.textContent =
         "Identity: connect the experimental wallet to view";
-      registeredName.textContent = "Username: no wallet connected";
+      identityUnavailable = false;
+      usernameStatus = {
+        kind: "unknown",
+        title: "Username not checked",
+        detail:
+          "Refresh username checks this identity on chain. No claim is submitted.",
+      };
       syncButtons();
       return;
     }
+    syncButtons();
     try {
       const result = await wallet.getIdentity();
       if (disposed || generation !== identityReadGeneration) {
@@ -671,27 +887,59 @@ function installExperimentalWalletControls(
         currentIdentity.network !== result.network
       ) {
         clearSensitive();
+        identityGeneration++;
+        username.value = "";
+        usernameStatus = {
+          kind: "unknown",
+          title: "Username not checked",
+          detail:
+            "Refresh username checks this identity on chain. No claim is submitted.",
+        };
       }
-      currentIdentity = result;
-      inspector.setIdentity(result);
+      const sameIdentity =
+        currentIdentity?.identityAccountId === result.identityAccountId &&
+        currentIdentity.network === result.network;
+      currentIdentity =
+        sameIdentity && currentIdentity !== undefined
+          ? {
+              ...result,
+              liteUsername: result.liteUsername ?? currentIdentity.liteUsername,
+              fullUsername: result.fullUsername ?? currentIdentity.fullUsername,
+            }
+          : result;
+      identityUnavailable = false;
+      inspector.setIdentity(currentIdentity);
       network.textContent = `Network: ${result.network}`;
       identity.textContent = `Identity account: ${result.identityAccountId}${result.publicKey !== undefined ? ` · Public key: ${result.publicKey}` : ""}`;
-      const fullUsername = result.fullUsername ?? "";
-      const liteUsername = result.liteUsername ?? "";
-      registeredName.textContent =
-        fullUsername !== ""
-          ? `Full username: ${fullUsername}${liteUsername !== "" ? ` · Lite username: ${liteUsername}` : ""}`
-          : liteUsername !== ""
-            ? `Lite username: ${liteUsername}`
-            : "No username — use Refresh to check the chain";
+      if (
+        usernameStatus.kind === "unclaimed" &&
+        (currentIdentity.liteUsername ?? "") !== ""
+      ) {
+        usernameStatus = {
+          kind: "unknown",
+          title: "Username not checked",
+          detail:
+            "Refresh username checks this identity on chain. No claim is submitted.",
+        };
+      }
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {
-        currentIdentity = undefined;
-        inspector.setIdentity(undefined);
-        identity.textContent = `Identity unavailable: ${error instanceof Error ? error.message : String(error)}`;
+        identityUnavailable = true;
+        if (currentIdentity === undefined) {
+          identity.textContent = "Identity account unavailable";
+        }
+        // A failed read is not evidence that the identity or its name disappeared.
+        if (usernameStatus.kind !== "failed") {
+          usernameStatus = {
+            kind: "failed",
+            title: "Identity check failed",
+            detail: `${error instanceof Error ? error.message : String(error)} Last known identity retained. Refresh username to check again.`,
+          };
+        }
       }
     } finally {
-      if (!disposed) {
+      if (!disposed && generation === identityReadGeneration) {
+        identityLoading = false;
         syncButtons();
       }
     }
@@ -704,14 +952,23 @@ function installExperimentalWalletControls(
   window.addEventListener("dotli:product-loaded", onIdentityChanged);
   username.addEventListener("input", syncButtons);
   const runUsername = async (register: boolean): Promise<void> => {
-    if (pending || disposed || !wallet.isActive()) {
+    if (pending || disposed || identityLoading || !wallet.isActive()) {
       return;
+    }
+    if (currentIdentity === undefined || identityUnavailable) {
+      await loadIdentity();
+      if (
+        isDisposed() ||
+        currentIdentity === undefined ||
+        identityUnavailable
+      ) {
+        return;
+      }
     }
     const baseUsername = username.value.trim();
     if (
       register &&
-      (claimNeedsRefresh ||
-        currentIdentity === undefined ||
+      (usernameStatus.kind === "claimed" ||
         (currentIdentity.liteUsername ?? "") !== "" ||
         baseUsername === "")
     ) {
@@ -721,64 +978,91 @@ function installExperimentalWalletControls(
       register &&
       !window.confirm(
         `Claim the Lite username "${baseUsername}" on ${wallet.networkLabel()}?\n\n` +
-          `Identity: ${currentIdentity?.identityAccountId ?? ""}\n\n` +
+          `Identity: ${currentIdentity.identityAccountId}\n\n` +
           "This submits a real registration. A backend response alone is not success; the wallet will wait for chain ownership confirmation.",
       )
     ) {
       return;
     }
     pending = true;
+    const selectedIdentity = currentIdentity;
+    const selectedGeneration = identityGeneration;
+    const isCurrentIdentity = (): boolean =>
+      !disposed &&
+      wallet.isActive() &&
+      wallet.networkLabel() === selectedIdentity.network &&
+      identityGeneration === selectedGeneration &&
+      currentIdentity?.identityAccountId ===
+        selectedIdentity.identityAccountId &&
+      currentIdentity.network === selectedIdentity.network;
+    usernameOperation = {
+      register,
+      name: baseUsername,
+      identity: selectedIdentity,
+    };
     clearSensitive();
     syncButtons();
-    content.setAttribute("aria-busy", "true");
-    message.hidden = false;
-    message.textContent = register
-      ? "Submitting registration and waiting for chain ownership confirmation…"
-      : "Checking registered username ownership on chain…";
+    message.hidden = true;
     try {
       const result = register
         ? await wallet.claimLiteUsername(baseUsername)
         : await wallet.refreshUsername();
-      if (isDisposed()) {
+      if (!isCurrentIdentity()) {
         return;
       }
+      if (result.identityAccountId !== selectedIdentity.identityAccountId) {
+        throw new Error(
+          "The chain result belongs to a different wallet identity; it was not applied.",
+        );
+      }
+      if (register && (result.liteUsername ?? "") === "") {
+        throw new Error(
+          "The claim returned without a chain-confirmed username.",
+        );
+      }
       currentIdentity = {
-        ...(currentIdentity?.identityAccountId === result.identityAccountId
-          ? currentIdentity
-          : {}),
-        network: wallet.networkLabel(),
+        ...currentIdentity,
         ...result,
+        liteUsername: result.liteUsername,
+        network: selectedIdentity.network,
       };
       inspector.setIdentity(currentIdentity);
-      claimNeedsRefresh = false;
-      identity.textContent = `Identity: ${result.identityAccountId}`;
-      registeredName.textContent =
+      usernameStatus =
         result.liteUsername !== undefined && result.liteUsername !== ""
-          ? `Registered Lite username: ${result.liteUsername}`
-          : "Lite username: no registration found on chain";
-      message.hidden = false;
-      message.textContent =
-        result.liteUsername !== undefined && result.liteUsername !== ""
-          ? `Chain ownership confirmed: ${result.liteUsername}. Shared metadata saved and running apps updated.`
-          : "Chain check complete: no Lite username is registered to this identity on this network.";
+          ? {
+              kind: "claimed",
+              title: `Lite username claimed: ${result.liteUsername}`,
+              detail: "Chain ownership confirmed for this identity.",
+            }
+          : {
+              kind: "unclaimed",
+              title: "Lite username unclaimed",
+              detail:
+                "Chain check confirmed no Lite username for this identity. Enter a base name to claim one.",
+            };
+      message.hidden = true;
       if ((result.liteUsername ?? "") !== "") {
         username.value = "";
       }
     } catch (error) {
-      if (!isDisposed()) {
-        if (register) {
-          claimNeedsRefresh = true;
-        }
-        message.hidden = false;
-        message.textContent = `${register ? "Claim" : "Refresh"} did not complete: ${
-          error instanceof Error ? error.message : String(error)
-        }${register ? " Use Refresh username before trying another claim." : ""}`;
-        // A claim can be on-chain even if persistence or another app's refresh
-        // fails. Re-read native state so Retry cannot accidentally claim again.
+      if (isCurrentIdentity()) {
+        usernameStatus = {
+          kind: "failed",
+          title: register
+            ? `Claim not confirmed: ${baseUsername}`
+            : "Username refresh failed",
+          detail: `${error instanceof Error ? error.message : String(error)}${
+            register
+              ? " The claim did not complete. Last known identity retained."
+              : " Last known identity retained; no registration was submitted."
+          }`,
+        };
+        // Reconcile any identity metadata updated before the callback failed.
         await loadIdentity();
       }
     } finally {
       pending = false;
+      usernameOperation = undefined;
       if (!isDisposed()) {
         content.removeAttribute("aria-busy");
         syncButtons();
@@ -853,6 +1137,7 @@ function installExperimentalWalletControls(
     ) {
       return;
     }
+    activating = operation === "activate";
     pending = true;
     syncButtons();
     content.setAttribute("aria-busy", "true");
@@ -866,6 +1151,7 @@ function installExperimentalWalletControls(
       if (operation === "exportMnemonic") {
         const mnemonic = await wallet.exportMnemonic();
         if (
+          !isDisposed() &&
           inspector.isRecoveryVisible() &&
           generation === sensitiveGeneration
         ) {
@@ -882,6 +1168,9 @@ function installExperimentalWalletControls(
       } else {
         clearSensitive();
         await wallet[operation]();
+        if (!isDisposed()) {
+          await loadIdentity();
+        }
       }
     } catch (error) {
       if (isVisible()) {
@@ -898,8 +1187,11 @@ function installExperimentalWalletControls(
       }
     } finally {
       pending = false;
-      content.removeAttribute("aria-busy");
-      syncButtons();
+      activating = false;
+      if (!isDisposed()) {
+        content.removeAttribute("aria-busy");
+        syncButtons();
+      }
     }
   };
   activate.addEventListener("click", () => {
@@ -989,6 +1281,7 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
   });
   ui.clearBtn.addEventListener("click", () => {
     store.clear();
+    state.resolution.clear();
     state.selectedSeq = null;
     // Explicitly rebuild detail: the selection is now gone and the
     // incremental-render path intentionally doesn't touch the detail
@@ -1076,14 +1369,6 @@ function applyDockPosition(
   state.expandedHeight = "";
   ui.panel.style.removeProperty("--td-left-width");
   ui.panel.style.removeProperty("--td-top-height");
-  // Right-dock sits below the host topbar so the dock toggle and session
-  // controls remain reachable. Bottom-dock pins to the viewport bottom edge.
-  if (state.dock === "right") {
-    const hasTopbar = document.getElementById("topbar") !== null;
-    ui.panel.style.top = hasTopbar ? TOPBAR_HEIGHT : "0";
-  } else {
-    ui.panel.style.top = "";
-  }
   if (state.dock === "right") {
     ui.dockBtn.innerHTML = DOCK_BOTTOM_SVG;
     ui.dockBtn.title = "Dock to bottom";
@@ -1365,6 +1650,8 @@ function setPanelView(
     return;
   }
   state.view = view;
+  // Hiding the pane under the cursor need not fire a pointer boundary event.
+  ui.tooltip.classList.remove("visible");
   for (const [candidate, btn] of Object.entries(ui.tabs) as [
     PanelView,
     HTMLButtonElement,
@@ -1374,6 +1661,8 @@ function setPanelView(
   ui.list.classList.toggle("hidden", view !== "list");
   ui.timeline.classList.toggle("hidden", view !== "timeline");
   ui.runtime.classList.toggle("hidden", view !== "runtime");
+  ui.resolution.classList.toggle("hidden", view !== "resolution");
+  ui.panel.classList.toggle("res-view", view === "resolution");
   ui.body.classList.toggle("runtime-only", view === "runtime");
   render(ui, state, store, { fullList: true });
   if (view === "runtime") {
@@ -1446,15 +1735,27 @@ function renderRuntime(ui: PanelUI, state: PanelState): void {
 }
 
 /**
- * Zero-delay hover tooltip for timeline elements. Any SVG element
- * carrying a `data-tooltip` attribute triggers the tooltip on
- * pointerover; `pointermove` updates the position, `pointerleave`
- * hides it. Bypasses the browser's native `<title>` delay so the
- * information appears the instant the cursor lands on a box.
+ * Zero-delay hover tooltip for any element under `root` carrying a
+ * `data-tooltip` attribute. `pointerover` shows it, `pointermove` updates the
+ * position, `pointerleave` hides it. Bypasses the browser-native `<title>`
+ * delay so the information appears the instant the cursor lands.
+ *
+ * Delegated from `root` rather than bound per element, so a pane that rebuilds
+ * its `innerHTML` on a timer keeps working without re-wiring.
+ *
+ * An element that also sets `data-tooltip-prose` gets a wrapped, width-capped
+ * tooltip. The default stays on one line, which is what the short timeline
+ * strings want.
  */
-function wireTimelineTooltip(ui: PanelUI): void {
-  const showAt = (text: string, clientX: number, clientY: number): void => {
+function wireHoverTooltips(ui: PanelUI, root: HTMLElement): void {
+  const showAt = (
+    text: string,
+    prose: boolean,
+    clientX: number,
+    clientY: number,
+  ): void => {
     ui.tooltip.textContent = text;
+    ui.tooltip.classList.toggle("is-prose", prose);
     ui.tooltip.classList.add("visible");
     // Position (viewport-fixed): offset 12px below-right of the cursor,
     // then clamp to the viewport so the tooltip never gets cropped.
@@ -1470,11 +1771,17 @@ function wireTimelineTooltip(ui: PanelUI): void {
       const adjusted = left - (ttRect.right - panelRight) - 6;
       ui.tooltip.style.left = `${String(Math.max(4, adjusted))}px`;
     }
+    // Flip above the cursor rather than run off the bottom. A one-line
+    // timeline tooltip almost never needs this. A wrapped prose one near the
+    // foot of a bottom-docked panel always would.
+    if (ttRect.bottom > window.innerHeight - 4) {
+      ui.tooltip.style.top = `${String(top - ttRect.height - 28)}px`;
+    }
   };
   const hide = (): void => {
     ui.tooltip.classList.remove("visible");
   };
-  ui.timeline.addEventListener("pointerover", (e) => {
+  root.addEventListener("pointerover", (e) => {
     const target = e.target as Element | null;
     const el = target?.closest("[data-tooltip]");
     if (el === null || el === undefined) {
@@ -1484,9 +1791,9 @@ function wireTimelineTooltip(ui: PanelUI): void {
     if (text === null) {
       return;
     }
-    showAt(text, e.clientX, e.clientY);
+    showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
   });
-  ui.timeline.addEventListener("pointermove", (e) => {
+  root.addEventListener("pointermove", (e) => {
     if (!ui.tooltip.classList.contains("visible")) {
       return;
     }
@@ -1501,9 +1808,10 @@ function wireTimelineTooltip(ui: PanelUI): void {
       hide();
       return;
     }
-    showAt(text, e.clientX, e.clientY);
+    showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
   });
-  ui.timeline.addEventListener("pointerleave", hide);
+  root.addEventListener("pointerleave", hide);
+  root.addEventListener("scroll", hide, { passive: true });
 }
 
 function wireTimelineSelection(
@@ -1631,6 +1939,12 @@ function render(
   renderProductChips(ui, state, store);
   if (state.view === "list") {
     renderList(ui, state, store, visible, opts.fullList ?? false);
+    syncPending(ui, store);
+  } else if (state.view === "resolution") {
+    renderResolution(
+      ui.resolution,
+      buildResolution(state.resolution.events(), Date.now()),
+    );
   } else if (state.view === "timeline") {
     // The timeline is cheap enough to always full-rebuild for now;
     // a future phase can switch to incremental geometry updates if
@@ -1861,6 +2175,32 @@ function appendNewRowsAndPrune(
   ui.list.scrollTop = wasAtBottom ? ui.list.scrollHeight : prevScrollTop;
 }
 
+/**
+ * Update every pending badge in place, and drop the ones whose reply has
+ * arrived.
+ *
+ * Touches only the badge nodes, never the rows around them, so it composes
+ * with the list's append-only fast path and leaves selection and scroll
+ * position alone.
+ */
+function syncPending(ui: PanelUI, store: EventStore): void {
+  const open = openCalls(store.list());
+  const now = Date.now();
+
+  for (const badge of ui.list.querySelectorAll<HTMLElement>(".td-pending")) {
+    const key = badge.dataset.pendingKey;
+    const startedAt = key === undefined ? undefined : open.get(key);
+    if (startedAt === undefined) {
+      badge.remove();
+      continue;
+    }
+    const waiting = now - startedAt;
+    badge.hidden = false;
+    badge.textContent = `⟳ ${formatPending(waiting)} pending`;
+    badge.classList.toggle("slow", waiting >= SLOW_AFTER_MS);
+  }
+}
+
 function renderRow(
   ev: StoredEvent,
   state: PanelState,
@@ -1892,7 +2232,7 @@ function renderRow(
       : "";
 
   if (ev.kind === "truapi") {
-    return renderTruapiRow(ev, classes, time, delta);
+    return renderTruapiRow(ev, classes, time, delta, pendingKeyOf(ev));
   }
   return renderSystemRow(ev, classes, time, delta);
 }
@@ -1902,6 +2242,7 @@ function renderTruapiRow(
   classes: string,
   time: string,
   delta: string,
+  pendingKey: string | null,
 ): string {
   const arrow =
     ev.direction === "outgoing"
@@ -1920,6 +2261,14 @@ function renderTruapiRow(
   const summary =
     chain === null ? formatPayloadSummary(ev.payload) : chainSummary(chain);
 
+  // Rendered empty and filled in by `syncPending`, which also removes it once
+  // the reply lands. Emitting it here keeps the badge inside the row the
+  // append-only list path already built, so the tick never re-renders a row.
+  const pending =
+    pendingKey === null
+      ? ""
+      : `<span class="td-pending" data-pending-key="${escapeHtml(pendingKey)}" hidden></span>`;
+
   return (
     `<div class="${classes}" data-seq="${String(ev.seq)}" data-rid="${escapeHtml(ev.requestId)}" role="listitem">` +
     `<span class="td-time">${time}</span>` +
@@ -1927,7 +2276,7 @@ function renderTruapiRow(
     product +
     ridBadge +
     `<span class="td-tag-and-summary">` +
-    `<span class="${tagClass(ev.tag)}">${escapeHtml(displayTag)}</span>${delta}` +
+    `<span class="${tagClass(ev.tag)}">${escapeHtml(displayTag)}</span>${delta}${pending}` +
     (summary !== ""
       ? `<span class="td-summary">${escapeHtml(summary)}</span>`
       : "") +

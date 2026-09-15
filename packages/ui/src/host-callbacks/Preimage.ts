@@ -9,7 +9,7 @@ import { assertBlockMatchesCid } from "@dotli/content/verify";
 import { getBackend } from "@dotli/config/mode";
 import { serializeError } from "@dotli/shared/errors";
 import { log } from "@dotli/shared/log";
-import { bitswapGet } from "../bulletin-bitswap";
+import { bitswapGet } from "@dotli/content/bitswap";
 import { toHex } from "@dotli/shared/hex";
 import { createResultStream } from "./result-stream";
 
@@ -43,8 +43,14 @@ function createPreimageLookupSubscribe(
       (push, pushError) => {
         let intervalId: ReturnType<typeof setInterval> | null = null;
         let initialTimeoutId: ReturnType<typeof setTimeout> | null = null;
+        // Clearing the timers does not reach a lookup already running, and a
+        // retrying bitswapGet can now run for minutes. Without this the
+        // product drops the subscription and the loop keeps fetching for a
+        // consumer that has gone.
+        const aborter = new AbortController();
         const stopPolling = (): void => {
           state.stopped = true;
+          aborter.abort();
           if (intervalId !== null) {
             clearInterval(intervalId);
             intervalId = null;
@@ -55,6 +61,8 @@ function createPreimageLookupSubscribe(
           }
         };
         const isPollingStopped = (): boolean => state.stopped;
+        // A lookup can outlive the poll interval while providers attach.
+        // Keep one retry budget open per subscription, not one per tick.
         let pollInFlight = false;
         const poll = async (): Promise<void> => {
           if (isPollingStopped() || pollInFlight) {
@@ -75,12 +83,17 @@ function createPreimageLookupSubscribe(
             let data: Uint8Array;
             try {
               if (backend !== "rpc-gateway") {
-                data = await bitswapGet(cidString);
+                data = await bitswapGet(cidString, aborter.signal);
               } else {
                 const result = await fetchFromIpfs(cidString);
                 data = result.data;
               }
             } catch (err) {
+              // Teardown aborts the in-flight lookup rather than reporting a
+              // backend failure for a consumer that has gone.
+              if (aborter.signal.aborted) {
+                return;
+              }
               log.warn(
                 `[${label}] preimage lookup via ${backend} failed:`,
                 err,

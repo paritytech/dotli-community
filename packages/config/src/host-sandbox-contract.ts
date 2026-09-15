@@ -28,6 +28,7 @@
 //     ?skipArchiveCache=<"0" | "1">
 //     ?fullReset=<"0" | "1">
 //     ?executableManifest=<exact UTF-8 App executable text record>
+//     ?resolutionId=<correlation id for the telemetry of this page load>
 //
 // When we add a new required param, bump SANDBOX_SCHEMA_VERSION and
 // have the validator reject unmatched versions so stale host builds
@@ -52,6 +53,8 @@ const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set([
 
 const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["0", "1"]);
 
+const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
+
 /**
  * Single source of truth for the host-to-sandbox URL contract param names.
  * Imported by the host writer (`bridge.ts`), the validator below, and the
@@ -64,6 +67,7 @@ export const SANDBOX_CONTRACT_PARAMS = {
   skipArchiveCache: "skipArchiveCache",
   fullReset: "fullReset",
   executableManifest: "executableManifest",
+  resolutionId: "resolutionId",
   v: "v",
 } as const;
 
@@ -77,6 +81,12 @@ export interface SandboxParams {
   skipArchiveCache: boolean;
   fullReset: boolean;
   executableManifest: string | null;
+  /**
+   * Correlation id for this page load, absent on a host build that predates
+   * it. Telemetry only: it is deliberately not required and not version
+   * gated, because no sandbox should ever fail to boot over a trace id.
+   */
+  resolutionId: string | null;
 }
 
 export type SandboxParamsResult =
@@ -206,6 +216,18 @@ export function validateSandboxParams(
     };
   }
 
+  const resolutionIdRaw = search.get(SANDBOX_CONTRACT_PARAMS.resolutionId);
+  // Bounded and charset-gated rather than validated as a uuid: the host may
+  // fall back to a non-uuid id, and an odd value here must degrade to
+  // "untagged", never to a rejected boot.
+  const resolutionId =
+    resolutionIdRaw !== null &&
+    resolutionIdRaw.length > 0 &&
+    resolutionIdRaw.length <= 64 &&
+    RESOLUTION_ID_PATTERN.test(resolutionIdRaw)
+      ? resolutionIdRaw
+      : null;
+
   return {
     ok: true,
     params: {
@@ -218,6 +240,7 @@ export function validateSandboxParams(
       skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",
       executableManifest,
+      resolutionId,
     },
   };
 }

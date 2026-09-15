@@ -45,7 +45,11 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
 } from "@dotli/config/host-sandbox-contract";
-import { setNetworkOverride } from "@dotli/config/network";
+import {
+  getActiveServicesConfig,
+  setNetworkOverride,
+} from "@dotli/config/network";
+import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
 import { elapsed } from "@dotli/shared/perf";
 import { log } from "@dotli/shared/log";
 import { parseIpfsResponse } from "@dotli/content/archive";
@@ -56,11 +60,12 @@ import {
   polkaVmCompatibilityError,
 } from "./polkavm-runtime";
 import { assertNoHostOwnedPaths } from "./host-owned-paths";
+import { SANDBOX_ERRORS } from "./errors";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
 
-import { m } from "@dotli/metrics/metrics";
+import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 
 const T0 = performance.now();
@@ -78,6 +83,40 @@ function showStatus(message: string): void {
 
 function notifyLoadingDone(): void {
   window.parent.postMessage({ type: "dotli:loading-status", done: true }, "*");
+}
+
+/** Total bytes of a decoded archive, which is what the dApp actually weighs. */
+function archiveBytes(files: ArchiveFiles): number {
+  return Object.values(files).reduce((sum, file) => sum + file.byteLength, 0);
+}
+
+/**
+ * Report a sandbox-origin debug event to the host debug bus.
+ *
+ * The sandbox runs on its own origin and cannot reach `emitDotliDebugEvent`,
+ * so the host relays anything shaped like this whose layer is `sandbox`. See
+ * `listenForSandboxDebugEvents` in `apps/host/src/main.ts`. Sent
+ * unconditionally: the sandbox cannot see whether the panel is open, and the
+ * host drops the message when it is not.
+ */
+function reportSandboxDebug(
+  event: string,
+  flowId: string,
+  payload: Record<string, unknown>,
+): void {
+  window.parent.postMessage(
+    {
+      type: "dotli:debug-event",
+      event: {
+        layer: "sandbox",
+        event,
+        flowId,
+        timestamp: Date.now(),
+        payload,
+      },
+    },
+    "*",
+  );
 }
 
 /**
@@ -343,7 +382,7 @@ async function registerAppServiceWorker({
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error("Service Worker not available after 10s"));
+        reject(new Error(SANDBOX_ERRORS.SW_NOT_AVAILABLE));
       }, TIMEOUTS.SW_READY);
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         clearTimeout(timeout);
@@ -683,8 +722,19 @@ async function main(): Promise<void> {
     stopApp();
     return;
   }
-  const { cid, chainBackend, network, skipArchiveCache, executableManifest } =
-    parsed.params;
+  const {
+    cid,
+    chainBackend,
+    network,
+    skipArchiveCache,
+    executableManifest,
+    resolutionId,
+  } = parsed.params;
+  // Before the setDefaults below, so a failure between here and there is still
+  // attributable to the page load that caused it.
+  if (resolutionId !== null) {
+    setResolutionId(resolutionId);
+  }
   const isGateway = chainBackend === "rpc-gateway";
 
   setNetworkOverride(network);
@@ -735,7 +785,17 @@ async function main(): Promise<void> {
   const cachedFiles = skipArchiveCache
     ? null
     : await getCachedArchive(cid, cid, chainBackend);
+  // Only when the cache was actually consulted. A skipped lookup is not a
+  // miss, and the panel reads the absence of this event as "not checked".
+  if (!skipArchiveCache) {
+    reportSandboxDebug("cache_checked", resolutionId ?? cid, {
+      cid,
+      hit: cachedFiles !== null,
+      ...(cachedFiles ? { fileCount: Object.keys(cachedFiles).length } : {}),
+    });
+  }
   if (cachedFiles !== null) {
+    m.count(S.CACHE_HIT, { surface: "sw_archive" });
     log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
     const polkavmRuntime = await runPolkaVmIfPresent(
       cachedFiles,
@@ -768,6 +828,12 @@ async function main(): Promise<void> {
     log.warn(
       `[dot.li app] writing cached content into window (${elapsed(T0)})`,
     );
+    reportSandboxDebug("document_written", resolutionId ?? cid, {
+      cid,
+      totalMs: Math.round(performance.now() - T0),
+      bytes: archiveBytes(cachedFiles),
+      fileCount: Object.keys(cachedFiles).length,
+    });
     notifyLoadingDone();
     performance.mark("dotli:app:end");
     stopApp();
@@ -781,6 +847,7 @@ async function main(): Promise<void> {
 
   let result: FetchResult;
 
+  m.count(S.CACHE_MISS, { surface: "sw_archive" });
   if (isGateway) {
     // rpc-gateway mode: HTTPS fetch from a trusted IPFS gateway.
     log.warn(
@@ -866,6 +933,15 @@ async function main(): Promise<void> {
 
   html = await maybeInjectSandboxChecker(html);
   log.warn(`[dot.li app] writing content into window (${elapsed(T0)})`);
+  reportSandboxDebug("document_written", resolutionId ?? cid, {
+    cid,
+    totalMs: Math.round(performance.now() - T0),
+    bytes:
+      result.type === "single"
+        ? result.content.byteLength
+        : archiveBytes(result.files),
+    fileCount: result.type === "single" ? 1 : Object.keys(result.files).length,
+  });
   notifyLoadingDone();
   performance.mark("dotli:app:end");
   stopApp();
@@ -882,6 +958,17 @@ async function main(): Promise<void> {
 // automatic retry, only a click path. We still guard against runaway
 // recursion if the user mashes the button and against overlapping
 // `main()` calls (two invocations would race on each other).
+/**
+ * A rejection that means "this frame is going away", not "this load failed".
+ *
+ * The sandbox bridge rejects its pending block fetches on `pagehide` so the
+ * awaiting archive walk unwinds instead of hanging. Matched on the message
+ * because the rejection crosses two module boundaries as a plain Error.
+ */
+function isTeardownAbort(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("bitswap-relay: aborted");
+}
+
 let runInFlight = false;
 let runAttempts = 0;
 const MAX_RUN_ATTEMPTS = 5;
@@ -903,6 +990,14 @@ function run(): void {
 
   void main()
     .catch((err: unknown) => {
+      // A frame torn down mid-load aborts its own fetches, so this rejection
+      // is the teardown working rather than a load that failed. Reporting it
+      // would file a Sentry error and paint an error screen every time a user
+      // switches product while content is still arriving, which buries the
+      // real failures this telemetry exists to surface.
+      if (isTeardownAbort(err)) {
+        return;
+      }
       // Surface before rendering so Sentry sees every failure. Attribute
       // strictly from the explicit `chainBackend` URL param. Tag `unknown`
       // when missing rather than guessing (the missing-param path is
@@ -922,28 +1017,43 @@ function run(): void {
         chain_backend: b ?? "unknown",
         attempt: String(runAttempts),
       });
-      const message = err instanceof Error ? err.message : String(err);
-      const compatibilityError = polkaVmCompatibilityError(message);
+      const raw = err instanceof Error ? err.message : String(err);
+      const compatibilityError = polkaVmCompatibilityError(raw);
       if (compatibilityError !== null) {
         failLoading(compatibilityError.title, compatibilityError.detail);
         return;
       }
-      failLoading(
-        "Failed to load content",
-        `${message} (via ${dependency})`,
-        () => {
-          // Restore the loading UI and re-run main
-          const app = document.getElementById("app") ?? document.body;
-          app.innerHTML = `
+      // `TypeError: Failed to fetch` is all the browser says when it could not
+      // open the connection, and it is the single most common way the gateway
+      // path fails. Passed through verbatim it reads as a bug in the app, so
+      // the one case that has a plain-language equivalent gets it.
+      //
+      // The dynamic-import failure has to be excluded explicitly: its message
+      // starts with the same four words but means a missing app chunk, not an
+      // unreachable gateway. Blaming the gateway for a rotated asset sends the
+      // visitor after the wrong thing entirely.
+      const message =
+        dependency === "ipfs-gateway" &&
+        raw.includes("Failed to fetch") &&
+        !raw.includes("dynamically imported module")
+          ? gatewayUnreachable(
+              endpointHost(
+                getActiveServicesConfig().bulletin.ipfsGateways.at(0),
+              ),
+            )
+          : `${raw} (via ${dependency})`;
+      failLoading("Failed to load content", message, () => {
+        // Restore the loading UI and re-run main
+        const app = document.getElementById("app") ?? document.body;
+        app.innerHTML = `
         <div class="loading">
           <h1>dot.li</h1>
           <div class="spinner"></div>
           <p id="status">Retrying...</p>
         </div>
       `;
-          run();
-        },
-      );
+        run();
+      });
     })
     .finally(() => {
       runInFlight = false;

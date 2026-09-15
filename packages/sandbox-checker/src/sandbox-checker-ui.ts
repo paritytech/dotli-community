@@ -99,7 +99,7 @@ export function setupViolationPanel(iframe: HTMLIFrameElement): () => void {
 
   function adjustIframe(): void {
     const panelHeight = collapsed ? 32 : panel.offsetHeight;
-    iframe.style.height = `calc(100vh - ${String(topbarOffset)}px - ${String(panelHeight)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topbarOffset)}px - ${String(panelHeight)}px)`;
   }
 
   function onMessage(event: MessageEvent): void {
@@ -152,7 +152,7 @@ export function setupViolationPanel(iframe: HTMLIFrameElement): () => void {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     panel.remove();
-    iframe.style.height = hasTopbar ? "calc(100vh - 56px)" : "100vh";
+    iframe.style.height = hasTopbar ? "calc(100dvh - 56px)" : "100dvh";
   };
 }
 

@@ -52,8 +52,11 @@ interface HostInspector {
 export function createHostInspector(
   wallet: Wallet,
   store: EventStore,
+  debugPanel: HTMLElement,
 ): HostInspector {
-  const entry = button(wallet.isActive() ? "No username" : "Connect wallet");
+  const entry = button(
+    wallet.isActive() ? "Wallet · username unknown" : "Connect wallet",
+  );
   entry.classList.add("td-wallet-entry");
   entry.setAttribute("aria-controls", "dotli-host-inspector");
   entry.setAttribute("aria-expanded", "false");
@@ -65,11 +68,14 @@ export function createHostInspector(
   content.className = "host-inspector";
   content.setAttribute("role", "dialog");
   content.setAttribute("aria-labelledby", "hi-heading");
+  content.setAttribute("aria-modal", "false");
   content.setAttribute("aria-hidden", "true");
   content.inert = true;
   const header = document.createElement("header");
+  header.className = "td-header";
   const heading = document.createElement("h2");
   heading.id = "hi-heading";
+  heading.className = "td-title";
   heading.textContent = "Host inspector";
   heading.tabIndex = -1;
   const dock = button("Dock");
@@ -77,7 +83,7 @@ export function createHostInspector(
   const close = button("Close");
   header.append(heading, dock, close);
   const tablist = document.createElement("div");
-  tablist.className = "hi-tabs";
+  tablist.className = "td-tabs hi-tabs";
   tablist.setAttribute("role", "tablist");
   tablist.setAttribute("aria-label", "Host inspector views");
   const overview = document.createElement("div");
@@ -91,6 +97,7 @@ export function createHostInspector(
   };
   for (const view of ["overview", "activity", "recovery"] as const) {
     const tab = tabs[view];
+    tab.className = "td-tab";
     tab.id = `hi-tab-${view}`;
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-controls", `hi-view-${view}`);
@@ -126,6 +133,7 @@ export function createHostInspector(
   const productDetails = document.createElement("section");
   productDetails.className = "hi-product";
   const activityControls = document.createElement("div");
+  activityControls.className = "hi-actions";
   const pause = button("Pause activity");
   const clear = button("Clear activity");
   activityControls.append(pause, clear);
@@ -171,6 +179,7 @@ export function createHostInspector(
     for (const name of ["overview", "activity", "recovery"] as const) {
       const tab = tabs[name];
       const selected = name === view;
+      tab.classList.toggle("active", selected);
       tab.setAttribute("aria-selected", String(selected));
       tab.tabIndex = selected ? 0 : -1;
       views[name].hidden = !selected;
@@ -181,18 +190,117 @@ export function createHostInspector(
     }
   }
 
+  let geometryFrame = 0;
+  let observedTopbar: HTMLElement | null = null;
+  const resizeObserver = new ResizeObserver(() => {
+    scheduleGeometry();
+  });
+  const chromeObserver = new MutationObserver(() => {
+    scheduleGeometry();
+  });
+  resizeObserver.observe(debugPanel);
+  chromeObserver.observe(debugPanel, {
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden"],
+  });
+
+  function scheduleGeometry(): void {
+    if (!disposed && geometryFrame === 0) {
+      geometryFrame = requestAnimationFrame(() => {
+        geometryFrame = 0;
+        geometry();
+      });
+    }
+  }
+
   function geometry(): void {
+    if (disposed) {
+      return;
+    }
+    const topbar =
+      document.getElementById("landing-auth") ??
+      document.getElementById("topbar");
+    if (topbar !== observedTopbar) {
+      if (observedTopbar !== null) {
+        resizeObserver.unobserve(observedTopbar);
+      }
+      observedTopbar = topbar;
+      if (topbar !== null) {
+        resizeObserver.observe(topbar);
+        chromeObserver.observe(topbar, {
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden"],
+        });
+      }
+    }
+    const top = Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0);
+    const debugTop = `${String(top)}px`;
+    if (
+      document.documentElement.style.getPropertyValue("--debug-content-top") !==
+      debugTop
+    ) {
+      document.documentElement.style.setProperty(
+        "--debug-content-top",
+        debugTop,
+      );
+    }
+    const debugRect = debugPanel.getBoundingClientRect();
+    const debugVisible = debugRect.width > 0 && debugRect.height > 0;
+    const debugRight = debugPanel.classList.contains("docked-right");
+    const debugCollapsed = debugPanel.classList.contains("collapsed");
+    const bottom =
+      debugVisible && !debugRight
+        ? Math.max(0, window.innerHeight - debugRect.top)
+        : 0;
+    const right =
+      debugVisible && debugRight && !debugCollapsed
+        ? Math.max(0, window.innerWidth - debugRect.left)
+        : 0;
+    const debugWidth = `${String(right)}px`;
+    if (
+      document.documentElement.style.getPropertyValue("--debug-panel-width") !==
+      debugWidth
+    ) {
+      document.documentElement.style.setProperty(
+        "--debug-panel-width",
+        debugWidth,
+      );
+    }
+    const inspectorTop =
+      debugVisible && debugRight && debugCollapsed
+        ? Math.max(top, debugRect.bottom)
+        : top;
+    for (const element of [surface, backdrop]) {
+      element.style.setProperty("--hi-top", `${String(inspectorTop)}px`);
+      element.style.setProperty("--hi-bottom", `${String(bottom)}px`);
+      element.style.setProperty("--hi-right", `${String(right)}px`);
+    }
     const reserved = opened && docked && desktop.matches;
     content.classList.toggle("is-docked", reserved);
-    content.setAttribute("aria-modal", String(!reserved));
     dock.hidden = !desktop.matches;
     dock.textContent = docked ? "Undock" : "Dock";
     dock.setAttribute("aria-pressed", String(docked));
     backdrop.hidden = !opened || reserved;
-    document.documentElement.style.setProperty(
-      "--host-inspector-width",
-      reserved ? `${String(content.offsetWidth)}px` : "0px",
-    );
+    const width = reserved ? `${String(content.offsetWidth)}px` : "0px";
+    if (
+      document.documentElement.style.getPropertyValue(
+        "--host-inspector-width",
+      ) !== width
+    ) {
+      document.documentElement.style.setProperty(
+        "--host-inspector-width",
+        width,
+      );
+    }
+    // Transforms do not trigger ResizeObserver. Follow only active header
+    // transitions so the inspector stays below it throughout auto-hide.
+    if (
+      topbar
+        ?.getAnimations()
+        .some((animation) => animation.playState === "running") === true
+    ) {
+      scheduleGeometry();
+    }
   }
 
   function setOpen(next: boolean): void {
@@ -231,36 +339,9 @@ export function createHostInspector(
     if (!opened || document.querySelector(".signing-modal-backdrop") !== null) {
       return;
     }
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && content.contains(document.activeElement)) {
       event.preventDefault();
       setOpen(false);
-    } else if (event.key === "Tab" && !(docked && desktop.matches)) {
-      const focusable = Array.from(
-        content.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex='0']",
-        ),
-      ).filter(
-        (element) =>
-          !element.closest("[hidden]") && element.getClientRects().length > 0,
-      );
-      const first = focusable.at(0);
-      const last = focusable.at(-1);
-      if (
-        event.shiftKey &&
-        (document.activeElement === first ||
-          document.activeElement === heading ||
-          !content.contains(document.activeElement))
-      ) {
-        event.preventDefault();
-        last?.focus();
-      } else if (
-        !event.shiftKey &&
-        (document.activeElement === last ||
-          !content.contains(document.activeElement))
-      ) {
-        event.preventDefault();
-        first?.focus();
-      }
     }
   }
 
@@ -622,6 +703,7 @@ export function createHostInspector(
     renderProduct();
     renderActivity();
     void loadProduct();
+    scheduleGeometry();
   };
   const pageHidden = (): void => {
     if (document.hidden) {
@@ -685,7 +767,8 @@ export function createHostInspector(
   });
   window.addEventListener("dotli:host-inspector-open", open);
   window.addEventListener("dotli:product-loaded", productChanged);
-  window.addEventListener("resize", geometry);
+  window.addEventListener("resize", scheduleGeometry);
+  window.addEventListener("topbar:visibility", scheduleGeometry);
   document.addEventListener("keydown", keydown);
   document.addEventListener("visibilitychange", pageHidden);
   selectView("overview");
@@ -714,8 +797,10 @@ export function createHostInspector(
         product = null;
       }
       identity = next;
+      const fullName = next?.fullUsername ?? "";
+      const liteName = next?.liteUsername ?? "";
       entry.textContent = wallet.isActive()
-        ? (next?.fullUsername ?? next?.liteUsername ?? "No username")
+        ? fullName || liteName || "Wallet · username unknown"
         : "Connect wallet";
       void loadProduct();
     },
@@ -727,13 +812,19 @@ export function createHostInspector(
       cancelAnimationFrame(renderFrame);
       window.removeEventListener("dotli:host-inspector-open", open);
       window.removeEventListener("dotli:product-loaded", productChanged);
-      window.removeEventListener("resize", geometry);
+      window.removeEventListener("resize", scheduleGeometry);
+      window.removeEventListener("topbar:visibility", scheduleGeometry);
+      resizeObserver.disconnect();
+      chromeObserver.disconnect();
+      cancelAnimationFrame(geometryFrame);
       document.removeEventListener("keydown", keydown);
       document.removeEventListener("visibilitychange", pageHidden);
       document.documentElement.style.setProperty(
         "--host-inspector-width",
         "0px",
       );
+      document.documentElement.style.removeProperty("--debug-content-top");
+      document.documentElement.style.removeProperty("--debug-panel-width");
       surface.remove();
       backdrop.remove();
       entry.remove();

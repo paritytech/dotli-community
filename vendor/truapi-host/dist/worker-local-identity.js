@@ -1,4 +1,3 @@
-import { errorMessage } from "./error.js";
 function stringField(value, field) {
     if (typeof value !== "object" || value === null || !(field in value)) {
         throw new Error(`identity backend response missing ${field}`);
@@ -101,21 +100,26 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
     if (!response.ok) {
         throw new Error(`username registration failed (${response.status}): ${responseText}`);
     }
-    let lastFailure;
-    for (let attempt = 0; attempt < 30; attempt++) {
+    // Backend acceptance is not chain confirmation. Keep observing this activation
+    // until ownership is verified or the caller disposes it; never resubmit a claim
+    // just because indexing/finality takes longer than a fixed polling window.
+    for (;;) {
         check();
+        let identity;
         try {
-            const identity = await refresh();
-            if (identity.liteUsername)
-                return identity;
-            lastFailure = undefined;
+            identity = await runtime.refreshLocalIdentity(context.activationId);
         }
-        catch (error) {
+        catch {
             check();
-            lastFailure = errorMessage(error);
-        }
-        if (attempt < 29)
             await delay(4_000, signal);
+            continue;
+        }
+        check();
+        if (identity.identityAccountId !== context.identityAccountId) {
+            throw new Error("verified identity does not match the active UID account");
+        }
+        if (identity.liteUsername)
+            return identity;
+        await delay(4_000, signal);
     }
-    throw new Error(`registration was not confirmed on Asset Hub${lastFailure ? `: ${lastFailure}` : ""}`);
 }

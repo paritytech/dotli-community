@@ -67,6 +67,8 @@
   width: fit-content;
   align-items: center;
   gap: 10px;
+  padding: 11px 14px;
+  margin-left: -14px;
   text-decoration: none;
 }
 .topbar-logo svg {
@@ -228,6 +230,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   padding: 8px 10px;
   background: transparent;
   border: none;
@@ -329,13 +332,14 @@
   }
 }
 .topbar-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
-  min-width: 36px;
-  padding: 0 10px;
+  height: 44px;
+  min-width: 50px;
+  padding: 0 15px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -465,6 +469,12 @@
   opacity: 1;
   transform: translateY(0);
   transition-delay: 0.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .verification-tooltip {
+    transform: none;
+    transition: none;
+  }
 }
 .verification-tooltip-title {
   font-size: 0.68rem;
@@ -613,14 +623,11 @@
 }
 
 /* Mode Button & Popover */
-#mode-button {
-  position: relative;
-}
 #mode-button.gateway-mode::after {
   content: "";
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 9px;
+  right: 10px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -663,7 +670,9 @@
      browser chrome shows/hides, and it already excludes the home indicator. */
   max-height: calc(var(--content-height) - 4px);
   overflow-y: auto;
-  background: rgba(20, 20, 20, 0.82);
+  /* Opaque, matching `.more-popover`. Translucency let a light product page
+     bleed through the blur, so this panel read grey beside the network one. */
+  background: rgb(34, 34, 34);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -1042,6 +1051,11 @@
   transform: translateX(12px);
   background: #0a0a0a;
 }
+@media (prefers-reduced-motion: reduce) {
+  .permissions-toggle-knob {
+    transition: none;
+  }
+}
 .mode-clear-btn {
   width: 100%;
   padding: 5px 0;
@@ -1097,14 +1111,11 @@
 }
 
 /* Permissions Button State */
-#permissions-button {
-  position: relative;
-}
 #permissions-button.has-grants::after {
   content: "";
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 9px;
+  right: 10px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1308,9 +1319,6 @@
 }
 
 /* ── Chat Panel ─────────────────────────── */
-#chat-button {
-  position: relative;
-}
 #chat-button.active {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.08);
@@ -1318,8 +1326,8 @@
 }
 .chat-unread-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 6px;
+  right: 7px;
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
@@ -1635,6 +1643,12 @@
 @keyframes chat-btn-pulse {
   50% {
     opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-custom-btn-loading {
+    animation: none;
+    opacity: 0.6;
   }
 }
 .chat-custom-btn-primary {
