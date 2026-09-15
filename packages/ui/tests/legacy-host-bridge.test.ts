@@ -45,7 +45,7 @@ describe("createWindowMessageProvider", () => {
     const targetWindow = {
       postMessage: vi.fn(),
     } as unknown as Window;
-    const targetOrigin = "https://product.app.dotli.dev";
+    const targetOrigin = "https://product.app.paseoli.dev";
     const provider = createWindowMessageProvider(targetWindow, targetOrigin);
     const listener = vi.fn();
     provider.subscribe(listener);

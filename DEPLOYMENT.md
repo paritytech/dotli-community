@@ -34,7 +34,7 @@ works for the first boot and for later top-ups.
 
 | Variable               | Required | Notes                                                                                                                                                                                               |
 | ---------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENV`                  | no       | One of `paseo`, `dev-paseo`, `dev-test`, `westend`, `dev-westend`, `dev-polkadot`. Defaults to `paseo`.                                                                                             |
+| `ENV`                  | no       | One of `paseo`, `dev-paseo`. Defaults to `paseo`.                                                                                                                                                   |
 | `ADMIN_EMAIL`          | yes      | Let's Encrypt contact email.                                                                                                                                                                        |
 | `CLOUDFLARE_API_TOKEN` | yes      | Cloudflare token with DNS edit on the zone.                                                                                                                                                         |
 | `REMOTE`               | no       | `user@host` override. When unset, the target resolves from `REMOTE_PRD` / `REMOTE_STG` (see [Configure deploy targets](#configure-deploy-targets)). Pass this to deploy a box not covered by those. |

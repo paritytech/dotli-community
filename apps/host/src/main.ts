@@ -477,7 +477,7 @@ type RenderChunk = typeof RenderModule;
  *   2. Existing `sessionStorage["dotli:truapi-debug"]`. `"1"` enables,
  *      `"0"` disables.
  *   3. Build-time `DEBUG` (from `VITE_APP_DEBUG`). On in `dev-paseo` /
- *      `dev-polkadot` / `bun run preview:debug`, off in staging / prod.
+ *      `bun run preview:debug`, off in staging / prod.
  */
 function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
   try {
