@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type Frame, type Locator } from "@playwright/test";
+import { clickRunButton } from "./run-test";
 
 type PageLike = Page | Frame;
 
@@ -31,7 +32,7 @@ export async function runWebSignedTest(
     return "error";
   }
   console.log(`[signed] ${testId}: clicking run`);
-  await btn.click();
+  await clickRunButton(btn);
 
   const dialogController = new AbortController();
   const dialogTask =

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { expect, type Page, type Frame } from "@playwright/test";
+import { expect, type Page, type Frame, type Locator } from "@playwright/test";
 
 type PageLike = Page | Frame;
 
@@ -18,6 +18,13 @@ export async function waitForPlaygroundReady(
   await expect(
     page.locator('h1:has-text("Host Playground")').first(),
   ).toBeVisible({ timeout });
+}
+
+// Centre the card first: one clipped at the frame's bottom edge is clicked on
+// the seam under the host's debug dock, which swallows the click.
+export async function clickRunButton(btn: Locator): Promise<void> {
+  await btn.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await btn.click();
 }
 
 /**
@@ -43,7 +50,7 @@ export async function runTest(
     return "error";
   }
 
-  await btn.click();
+  await clickRunButton(btn);
 
   await expect
     .poll(async () => entries.count(), { timeout: 10_000 })

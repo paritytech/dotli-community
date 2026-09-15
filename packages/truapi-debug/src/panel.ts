@@ -254,7 +254,8 @@ function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
     // that explicitly. Clearing to "" falls back to the HTML iframe
     // default of 300px and breaks the layout.
     iframe.style.width = "100%";
-    const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
+    // Measured, not the 32px rule: border-top adds a row that covered the iframe.
+    const panelHeight = panel.offsetHeight;
     iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
   }
 }

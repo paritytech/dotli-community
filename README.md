@@ -207,10 +207,13 @@ The product E2E suite can load the source checkout directly through dotli's
 localhost proxy instead of resolving the published `host-playground.dot` CID.
 By default it expects the product at `../../../host-playground` relative to
 this repository, and the `truapi-host` CLI from
-[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`. The
+CLI shares `@parity/truapi`'s version and wire codec, so install the release
+the root `package.json` pins, exactly as CI does:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh \
+  | TRUAPI_HOST_VERSION="$(jq -r '.dependencies["@parity/truapi"]' package.json)" bash
 ```
 
 ```bash
