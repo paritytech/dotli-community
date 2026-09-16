@@ -1,9 +1,9 @@
-import { CustomRendererNode as CustomRendererNodeCodec, HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, } from "@parity/truapi";
+import { HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, HostRendererActionSubscribeItem as HostRendererActionSubscribeItemCodec, ProductRendererRenderRequest as ProductRendererRenderRequestCodec, RendererNode as RendererNodeCodec, } from "@parity/truapi";
 import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import { bytesToHex } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
-import { errorMessage } from "../error.js";
+import { errorMessage, toError } from "../error.js";
 function debugLoggingEnabled(state) {
     return state.logLevel === "debug" || state.logLevel === "trace";
 }
@@ -14,8 +14,8 @@ let nextDeviceEncryptionKeyRequestId = 0;
 let nextProductSubtreePublicKeyRequestId = 0;
 let nextSessionActivationRequestId = 0;
 let nextLocalIdentityRequestId = 0;
-let nextChatActionRequestId = 0;
-let nextCustomRenderId = 0;
+let nextActionRequestId = 0;
+let nextRenderId = 0;
 function encodePermissionAuthorizationRequest(request) {
     return PermissionAuthorizationRequestCodec.enc(request);
 }
@@ -319,10 +319,11 @@ function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingSessionChatIdentityKeys, error);
     rejectAll(state.pendingDeviceEncryptionKeys, error);
     rejectAll(state.pendingProductSubtreePublicKeys, error);
-    rejectAll(state.pendingChatActions, error);
-    for (const [renderId, sink] of [...state.customRenders]) {
-        state.customRenders.delete(renderId);
-        reportRenderFailure(sink, error);
+    rejectAll(state.pendingActions, error);
+    for (const renderId of [...state.renders.keys()]) {
+        const sink = takeRender(state, renderId);
+        if (sink)
+            reportRenderFailure(sink, error);
     }
     for (const pending of state.pendingCores.values()) {
         pending.reject(error);
@@ -410,6 +411,11 @@ function teardown(state, error, fault) {
         }
     }
     state.chainConnections.clear();
+    // A worker nothing can call any more is not wanted.
+    for (const productId of [...state.wantedWorkers]) {
+        handleWorkerDemandChanged(state, productId, false);
+    }
+    state.workerDemandListeners.clear();
     if (fault) {
         state.worker.terminate();
     }
@@ -454,8 +460,10 @@ function createWebWorkerHostRuntime(worker, host, options) {
             pendingSessionChatIdentityKeys: new Map(),
             pendingProductSubtreePublicKeys: new Map(),
             pendingDeviceEncryptionKeys: new Map(),
-            pendingChatActions: new Map(),
-            customRenders: new Map(),
+            pendingActions: new Map(),
+            renders: new Map(),
+            wantedWorkers: new Set(),
+            workerDemandListeners: new Set(),
             closedError: null,
             logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
             disposed: false,
@@ -528,32 +536,39 @@ function createWebWorkerHostRuntime(worker, host, options) {
                 case "productSubtreePublicKeyResponse":
                     handleProductSubtreePublicKeyResponse(state, msg);
                     break;
+                case "workerDemandChanged":
+                    // Teardown has already reported every worker unwanted, so a level
+                    // still in flight would put one back that nothing can serve.
+                    if (!state.disposed) {
+                        handleWorkerDemandChanged(state, msg.productId, msg.wanted);
+                    }
+                    break;
                 case "publishChatActionResponse":
-                    settlePending(state.pendingChatActions, msg.requestId, msg.ok
+                case "publishRendererActionResponse":
+                    settlePending(state.pendingActions, msg.requestId, msg.ok
                         ? { ok: true, value: undefined }
                         : { ok: false, error: msg.error });
                     break;
-                case "renderCustomMessageItem": {
-                    const sink = state.customRenders.get(msg.renderId);
+                case "renderItem": {
+                    const sink = state.renders.get(msg.renderId);
                     if (!sink)
                         break;
                     // Escaping the listener would strand the render with no terminal.
                     try {
-                        sink.onUpdate(CustomRendererNodeCodec.dec(msg.node));
+                        sink.onUpdate(RendererNodeCodec.dec(msg.node));
                     }
                     catch (err) {
-                        state.customRenders.delete(msg.renderId);
+                        takeRender(state, msg.renderId);
                         state.worker.postMessage({
-                            kind: "renderCustomMessageStop",
+                            kind: "renderStop",
                             renderId: msg.renderId,
                         });
                         reportRenderFailure(sink, err);
                     }
                     break;
                 }
-                case "renderCustomMessageComplete": {
-                    const sink = state.customRenders.get(msg.renderId);
-                    state.customRenders.delete(msg.renderId);
+                case "renderComplete": {
+                    const sink = takeRender(state, msg.renderId);
                     try {
                         sink?.onComplete();
                     }
@@ -562,9 +577,8 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     }
                     break;
                 }
-                case "renderCustomMessageError": {
-                    const sink = state.customRenders.get(msg.renderId);
-                    state.customRenders.delete(msg.renderId);
+                case "renderError": {
+                    const sink = takeRender(state, msg.renderId);
                     if (sink)
                         reportRenderFailure(sink, new Error(msg.error));
                     break;
@@ -629,6 +643,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     capabilities: {
                         chat: host.chat !== undefined,
                         permissionStatus: host.permissionStatus !== undefined,
+                        pocket: host.pocket !== undefined,
                     },
                     debuggerUrl: debuggerEnablement.url,
                 });
@@ -694,8 +709,12 @@ function handleFrameError(state, coreId, error) {
     const core = state.cores.get(coreId);
     if (!core)
         return;
-    closeCoreState(core, new Error(`worker frame error: ${error}`));
+    const failure = new Error(`worker frame error: ${error}`);
+    closeCoreState(core, failure);
     state.cores.delete(coreId);
+    // Renders left registered would never settle: the worker cancels them with
+    // the core, so nothing further arrives to complete the sink.
+    failRendersForCore(state, coreId, failure);
     try {
         state.worker.postMessage({
             kind: "disposeCore",
@@ -769,6 +788,25 @@ function buildRuntime(state) {
             state.worker.postMessage({
                 kind: "notifySessionStoreChanged",
             });
+        },
+        acquireWorker(productId) {
+            postUnlessDisposed(state, { kind: "acquireWorker", productId });
+        },
+        releaseWorker(productId) {
+            postUnlessDisposed(state, { kind: "releaseWorker", productId });
+        },
+        subscribeWorkerDemand(listener) {
+            // Teardown cleared the listeners, so one added now would only be
+            // retained, never called.
+            if (state.disposed)
+                return () => { };
+            state.workerDemandListeners.add(listener);
+            for (const productId of state.wantedWorkers) {
+                deliverWorkerDemand(listener, { productId, wanted: true });
+            }
+            return () => {
+                state.workerDemandListeners.delete(listener);
+            };
         },
         activateStoredSession() {
             return sendSessionActivationRequest(state, (requestId) => ({
@@ -859,23 +897,84 @@ function buildRuntime(state) {
     };
     return runtime;
 }
+/** Post a fire-and-forget control message; a disposed runtime drops it. */
+function postUnlessDisposed(state, message) {
+    if (state.disposed)
+        return;
+    state.worker.postMessage(message);
+}
+/** Hand one change to one listener, keeping its throw off the caller. */
+function deliverWorkerDemand(listener, change) {
+    try {
+        listener(change);
+    }
+    catch (err) {
+        console.warn("[truapi worker] worker demand listener threw:", err);
+    }
+}
+/** Record one product's wanted level and fan it out to every listener. */
+function handleWorkerDemandChanged(state, productId, wanted) {
+    if (wanted)
+        state.wantedWorkers.add(productId);
+    else
+        state.wantedWorkers.delete(productId);
+    // Delivery runs over a snapshot, and skips anyone no longer subscribed when
+    // their turn comes: a listener that subscribes from inside a listener has
+    // already had this change replayed to it, and one that unsubscribes, or
+    // disposes the runtime, must hear nothing further.
+    for (const listener of [...state.workerDemandListeners]) {
+        if (!state.workerDemandListeners.has(listener))
+            continue;
+        deliverWorkerDemand(listener, { productId, wanted });
+    }
+}
 /** Deliver a render failure without letting the sink's own throw escape. */
 function reportRenderFailure(sink, cause) {
     try {
-        sink.onError(cause instanceof Error ? cause : new Error(errorMessage(cause)));
+        sink.onError?.(toError(cause));
     }
     catch (err) {
         console.warn("[truapi worker] render onError threw:", err);
     }
 }
+/**
+ * Drop one render from the ledger, returning its sink only the first time,
+ * which is what keeps a render settled exactly once.
+ */
+function takeRender(state, renderId) {
+    const entry = state.renders.get(renderId);
+    if (!entry)
+        return undefined;
+    state.renders.delete(renderId);
+    return entry;
+}
 /** Settle and drop every render belonging to one product connection. */
 function failRendersForCore(state, coreId, error) {
-    for (const [renderId, sink] of [...state.customRenders]) {
-        if (sink.coreId !== coreId)
+    for (const [renderId, entry] of [...state.renders]) {
+        if (entry.coreId !== coreId)
             continue;
-        state.customRenders.delete(renderId);
-        reportRenderFailure(sink, error);
+        const sink = takeRender(state, renderId);
+        if (sink)
+            reportRenderFailure(sink, error);
     }
+}
+/**
+ * Post one host-authored action to the worker and settle on its response.
+ * Encoding runs before registering, so a payload the codec rejects leaves no
+ * pending entry behind.
+ */
+function publishAction(state, core, kind, encode) {
+    if (state.disposed || core.disposed) {
+        return Promise.reject(new Error("product connection is closed"));
+    }
+    let action;
+    try {
+        action = encode();
+    }
+    catch (err) {
+        return Promise.reject(toError(err));
+    }
+    return sendWorkerRequest(state, state.pendingActions, () => nextActionRequestId++, undefined, (requestId) => ({ kind, coreId: core.coreId, requestId, action }));
 }
 function buildProvider(state, core, runtime) {
     const provider = {
@@ -953,45 +1052,54 @@ function buildProvider(state, core, runtime) {
             runtime.setLogLevel(level);
         },
         publishChatAction(action) {
-            if (state.disposed || core.disposed) {
-                return Promise.reject(new Error("product connection is closed"));
-            }
-            const requestId = nextChatActionRequestId++;
-            return new Promise((resolve, reject) => {
-                state.pendingChatActions.set(requestId, { resolve, reject });
-                state.worker.postMessage({
-                    kind: "publishChatAction",
-                    coreId: core.coreId,
-                    requestId,
-                    action: HostChatActionSubscribeItemCodec.enc(action),
-                });
-            });
+            return publishAction(state, core, "publishChatAction", () => HostChatActionSubscribeItemCodec.enc(action));
         },
-        renderCustomMessage(request, sink) {
+        publishRendererAction(item) {
+            return publishAction(state, core, "publishRendererAction", () => HostRendererActionSubscribeItemCodec.enc(item));
+        },
+        render(request, sink) {
             if (state.disposed || core.disposed) {
                 sink.onError?.(new Error("product connection is closed"));
                 return () => { };
             }
-            const renderId = nextCustomRenderId++;
-            state.customRenders.set(renderId, {
+            // Encode before registering, so a request the codec rejects leaves no
+            // render behind that the worker was never told about.
+            let encoded;
+            try {
+                encoded = ProductRendererRenderRequestCodec.enc(request);
+            }
+            catch (err) {
+                reportRenderFailure(sink, err);
+                return () => { };
+            }
+            const renderId = nextRenderId++;
+            // No worker reference is taken here: the core holds the one an open
+            // render is worth and reports it through `workerDemandChanged`.
+            state.renders.set(renderId, {
                 coreId: core.coreId,
-                onUpdate: sink.onUpdate,
+                onUpdate: (node) => sink.onUpdate(node),
                 onComplete: () => sink.onComplete?.(),
                 onError: (error) => sink.onError?.(error),
             });
-            state.worker.postMessage({
-                kind: "renderCustomMessageStart",
-                coreId: core.coreId,
-                renderId,
-                messageId: request.messageId,
-                messageType: request.messageType,
-                payload: request.payload,
-            });
+            try {
+                state.worker.postMessage({
+                    kind: "renderStart",
+                    coreId: core.coreId,
+                    renderId,
+                    request: encoded,
+                });
+            }
+            catch (err) {
+                const failed = takeRender(state, renderId);
+                if (failed)
+                    reportRenderFailure(failed, err);
+                return () => { };
+            }
             return () => {
-                if (!state.customRenders.delete(renderId))
+                if (!takeRender(state, renderId))
                     return;
                 state.worker.postMessage({
-                    kind: "renderCustomMessageStop",
+                    kind: "renderStop",
                     renderId,
                 });
             };

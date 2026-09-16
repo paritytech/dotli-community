@@ -21,6 +21,15 @@ export const baseConfig: PlaywrightTestConfig = {
     bypassCSP: true,
     launchOptions: {
       slowMo: process.env.SLOWMO ? Number(process.env.SLOWMO) : 0,
+      args:
+        process.env.DOTLI_WEBGPU === "1"
+          ? [
+              "--enable-unsafe-webgpu",
+              "--enable-features=Vulkan",
+              "--use-angle=swiftshader",
+              "--use-vulkan=swiftshader",
+            ]
+          : [],
     },
   },
   webServer: {

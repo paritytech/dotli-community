@@ -55,11 +55,11 @@ Warmup happens in the background and is non-blocking. If a product calls chain s
 \`deepPath\` captures any path / search / hash fragment that will be forwarded into the product iframe after resolution.`,
   },
 
-  "boot:cid_cache_checked": {
-    title: "CID cache lookup",
-    body: `Checked the persistent CID cache (\`@dotli/storage/cid-cache\`, IndexedDB) for a previously resolved \`label → cid\` mapping. A hit triggers the **fast path**: skip resolution entirely, render the cached CID, save ~1–5 seconds of boot time. A miss triggers the **slow path**: run the full resolver against the chosen chain backend.
+  "boot:installed_executable_cache_checked": {
+    title: "Installed executable cache lookup",
+    body: `Checked IndexedDB for a v1 executable previously installed under this network, modality, and label. Each entry stores the executable manifest and its resolved \`contenthash\` as one record.
 
-The cache is populated at the end of each successful slow-path resolution (\`resolve:completed\`) unless the user has explicitly disabled caching in settings.`,
+On a hit, the host re-reads \`contenthash\` before rendering. An unchanged hash reuses the cached manifest/content pair. A changed or cleared hash evicts the entire pair; the new hash is cached only after its matching manifest resolves. A miss runs the full resolver.`,
   },
 
   "boot:landing_page_shown": {
@@ -71,8 +71,8 @@ The cache is populated at the end of each successful slow-path resolution (\`res
     title: "Host boot complete",
     body: `The host has finished bringing up everything it needs for this tab. \`totalMs\` is wall-clock from the page load to this moment. The \`path\` field distinguishes how the tab got here:
 
-• \`fast\` — CID cache hit, went straight to rendering.
-• \`slow\` — full resolution ran against smoldot or the RPC gateway.
+• \`fast\` — a cached installed executable was validated against the current contenthash and reused.
+• \`slow\` — the full manifest/contenthash resolution ran against smoldot or the RPC gateway.
 • \`localhost\` — localhost proxy path (developer workflow).
 
 After this event, the TrUAPI bus starts producing traffic and the product is driving the timeline.`,

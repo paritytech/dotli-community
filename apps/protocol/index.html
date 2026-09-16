@@ -29,21 +29,6 @@
   </head>
   <body>
     <div class="status">shared protocol host</div>
-    <script>
-      // Pre-open IndexedDB during HTML parse so chain DB loads instantly
-      window.__dotliDb = new Promise(function(resolve, reject) {
-        var req = indexedDB.open("dotli", 1);
-        req.onupgradeneeded = function() {
-          var db = req.result;
-          if (!db.objectStoreNames.contains("cids"))
-            db.createObjectStore("cids", { keyPath: "label" });
-          if (!db.objectStoreNames.contains("chains"))
-            db.createObjectStore("chains", { keyPath: "chain" });
-        };
-        req.onsuccess = function() { resolve(req.result); };
-        req.onerror = function() { reject(new Error("IDB open failed")); };
-      });
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

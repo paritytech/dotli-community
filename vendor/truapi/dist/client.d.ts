@@ -4,29 +4,25 @@ export type { Subscription, TrUApiTransport };
 export declare class RequestTimeoutError extends Error {
     /** Transport-assigned request identifier. */
     readonly requestId: string;
-    /** Wire discriminant of the unanswered request. */
-    readonly discriminant: number;
-    /** Configured request deadline in milliseconds. */
+    /** Trait discriminant of the unanswered request. */
+    readonly traitId: number;
+    /** Method discriminant of the unanswered request. */
+    readonly methodId: number;
+    /** Deadline that elapsed, in milliseconds. */
     readonly timeoutMs: number;
-    constructor(requestId: string, discriminant: number, timeoutMs: number);
+    constructor(requestId: string, traitId: number, methodId: number, timeoutMs: number);
 }
 /**
- * Version overrides used when constructing a transport.
+ * Options accepted when constructing a transport.
  */
 export interface CreateTransportOptions {
-    /**
-     * SCALE codec version advertised during host handshake negotiation.
-     *
-     * @deprecated TODO(shared-core-wire): remove this override with
-     * `TrUApiTransport.codecVersion` once generated handshake requests use
-     * `TRUAPI_CODEC_VERSION` directly.
-     */
-    codecVersion?: number;
     /**
      * Maximum time to wait for a matching response before rejecting the request.
      *
      * Defaults to 120 seconds. This bounds dead hosts and missed transport
      * handshakes while leaving interactive approval flows enough time to finish.
+     * The handshake keeps its own shorter deadline, since a codec mismatch means
+     * no answer is ever coming.
      */
     requestTimeoutMs?: number;
 }

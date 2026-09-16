@@ -59,10 +59,12 @@ const packageNames = packages.map((pkg) => pkg.name);
 run(["link", ...packageNames], dotliRoot);
 
 for (const name of ["truapi", "truapi-host"]) {
-  rmSync(resolve(dotliRoot, "packages/ui/node_modules/@parity", name), {
-    force: true,
-    recursive: true,
-  });
+  for (const workspace of ["packages/ui", "apps/sandbox"]) {
+    rmSync(resolve(dotliRoot, workspace, "node_modules/@parity", name), {
+      force: true,
+      recursive: true,
+    });
+  }
 }
 
 // host-playground's published product-sdk-host currently nests an older

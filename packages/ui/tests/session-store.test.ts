@@ -167,6 +167,28 @@ describe("session-store host callbacks", () => {
     expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
   });
 
+  it("isolates cached product manifests when another product is cleared", async () => {
+    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
+      createSessionStoreAdapters();
+    const first = {
+      tag: "ProductManifest",
+      value: { productId: "first.dot" },
+    } satisfies CoreStorageKey;
+    const second = {
+      tag: "ProductManifest",
+      value: { productId: "second.dot" },
+    } satisfies CoreStorageKey;
+
+    await writeCoreStorage(first, new Uint8Array([1]));
+    await writeCoreStorage(second, new Uint8Array([2]));
+    expect(await readCoreStorage(first)).toEqual(new Uint8Array([1]));
+    expect(await readCoreStorage(second)).toEqual(new Uint8Array([2]));
+
+    await clearCoreStorage(first);
+    expect(await readCoreStorage(first)).toBeUndefined();
+    expect(await readCoreStorage(second)).toEqual(new Uint8Array([2]));
+  });
+
   it("As a dotli integrator, the host round-trips permission authorization slots from typed core keys", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage, clearCoreStorage } =

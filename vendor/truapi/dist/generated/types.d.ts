@@ -3,7 +3,10 @@ import type { HexString } from '../scale.js';
 /** A 32-byte raw account identifier used for legacy (non-product) accounts. */
 export type AccountId = HexString;
 export declare const AccountId: S.Codec<AccountId>;
-/** Payload when a user clicks an action button. */
+/**
+ * A press on a button the host draws for a `ChatMessageContent::Actions`
+ * message.
+ */
 export interface ActionTrigger {
     /**
      * Message containing the action, as returned by `Chat::post_message` in
@@ -48,12 +51,20 @@ export type AllocatableResource =
  | {
     tag: "AutoSigning";
     value?: undefined;
+}
+/**
+ * Current UTC-day Statement Store allowance whose target is the product
+ * account selected by this derivation index.
+ */
+ | {
+    tag: "ProductStatementStoreAllowance";
+    value: DerivationIndex;
 };
 export declare const AllocatableResource: S.Codec<AllocatableResource>;
 /** Outcome of allocating a single resource (RFC 0010). */
 export type AllocationOutcome = "Allocated" | "Rejected" | "NotAvailable";
 export declare const AllocationOutcome: S.Codec<AllocationOutcome>;
-/** Layout arrangement (like CSS flexbox `justify-content`). */
+/** Main-axis distribution of children. */
 export type Arrangement = "Start" | "End" | "Center" | "SpaceBetween" | "SpaceAround" | "SpaceEvenly";
 export declare const Arrangement: S.Codec<Arrangement>;
 /** Background styling. */
@@ -70,6 +81,12 @@ export declare const Background: S.Codec<Background>;
  */
 export type Balance = bigint;
 export declare const Balance: S.Codec<Balance>;
+/**
+ * How a node composites with what is behind it. The values are those common
+ * to CSS `mix-blend-mode`, SwiftUI `BlendMode` and Compose `BlendMode`.
+ */
+export type BlendingMode = "Normal" | "Multiply" | "Screen" | "Overlay" | "Darken" | "Lighten" | "ColorDodge" | "ColorBurn" | "HardLight" | "SoftLight" | "Difference" | "Exclusion" | "Hue" | "Saturation" | "Color" | "Luminosity";
+export declare const BlendingMode: S.Codec<BlendingMode>;
 /** Border styling. */
 export interface BorderStyle {
     /** Border width. */
@@ -80,27 +97,30 @@ export interface BorderStyle {
     shape?: Shape;
 }
 export declare const BorderStyle: S.Codec<BorderStyle>;
-/** Properties for a [`CustomRendererNode::Box`] container. */
+/** Properties of a `Box`. */
 export interface BoxProps {
-    /** Content alignment within the box. */
+    /** Placement of content within the box. */
     contentAlignment?: ContentAlignment;
 }
 export declare const BoxProps: S.Codec<BoxProps>;
-/** Properties for a [`CustomRendererNode::Button`]. */
+/** Properties of a `Button`. */
 export interface ButtonProps {
-    /** Button label text. */
+    /** Button label. */
     text: string;
-    /** Button style variant. */
+    /** Button emphasis. */
     variant?: ButtonVariant;
-    /** Whether the button is enabled. Absent leaves the default to the host. */
-    enabled: OptionalBool;
-    /** Whether the button shows a loading state. Absent leaves the default to the host. */
-    loading: OptionalBool;
-    /** Action identifier triggered on click. */
+    /** Whether the button accepts presses. Absent leaves the default to the host. */
+    enabled?: boolean;
+    /**
+     * Whether the button shows a loading state. A loading button accepts no
+     * presses. Absent leaves the default to the host.
+     */
+    loading?: boolean;
+    /** Action triggered on press. A button without one is inert. */
     clickAction?: string;
 }
 export declare const ButtonProps: S.Codec<ButtonProps>;
-/** Button style variants. */
+/** Button emphasis. */
 export type ButtonVariant = "Primary" | "Secondary" | "Text";
 export declare const ButtonVariant: S.Codec<ButtonVariant>;
 /**
@@ -131,7 +151,7 @@ export type ChatActionPayload =
     tag: "MessagePosted";
     value: ChatMessageContent;
 }
-/** A user triggered an action button. */
+/** A user pressed a host-drawn `Actions` button. */
  | {
     tag: "ActionTriggered";
     value: ActionTrigger;
@@ -163,7 +183,11 @@ export interface ChatCommand {
     payload: string;
 }
 export declare const ChatCommand: S.Codec<ChatCommand>;
-/** A custom message with application-defined type and binary payload. */
+/**
+ * A custom message with application-defined type and binary payload. The
+ * host draws it through `Renderer::render`, with a `ChatMessage` context
+ * carrying `message_type` and `payload` as the render payload.
+ */
 export interface ChatCustomMessage {
     /** Application-defined type key. */
     messageType: string;
@@ -356,18 +380,18 @@ export type CoinPaymentTransmissionChannel =
     };
 };
 export declare const CoinPaymentTransmissionChannel: S.Codec<CoinPaymentTransmissionChannel>;
-/** Semantic color tokens for theming. */
+/** Semantic color tokens, resolved by the host's theme. */
 export type ColorToken = "FgPrimary" | "FgSecondary" | "FgTertiary" | "BgSurfaceMain" | "BgSurfaceContainer" | "BgSurfaceNested" | "FgSuccess" | "FgError" | "FgWarning";
 export declare const ColorToken: S.Codec<ColorToken>;
-/** Properties for a [`CustomRendererNode::Column`] layout. */
+/** Properties of a `Column`. */
 export interface ColumnProps {
-    /** Horizontal alignment of children. */
+    /** Cross-axis alignment of children. */
     horizontalAlignment?: HorizontalAlignment;
-    /** Vertical arrangement of children. */
+    /** Main-axis distribution of children. */
     verticalArrangement?: Arrangement;
 }
 export declare const ColumnProps: S.Codec<ColumnProps>;
-/** 2D content alignment. */
+/** Placement of content within a `Box`. */
 export type ContentAlignment = "TopStart" | "TopCenter" | "TopEnd" | "CenterStart" | "Center" | "CenterEnd" | "BottomStart" | "BottomCenter" | "BottomEnd";
 export declare const ContentAlignment: S.Codec<ContentAlignment>;
 /** A privacy-preserving alias derived via ring VRF, bound to a specific context. */
@@ -378,86 +402,6 @@ export interface ContextualAlias {
     alias: HexString;
 }
 export declare const ContextualAlias: S.Codec<ContextualAlias>;
-/**
- * A node in the custom renderer UI tree. Component variants contain recursive
- * `children` fields.
- */
-export type CustomRendererNode = 
-/** Empty node. */
-{
-    tag: "Nil";
-    value?: undefined;
-}
-/** Raw text string. */
- | {
-    tag: "String";
-    value: {
-        text: string;
-    };
-}
-/** Generic container. */
- | {
-    tag: "Box";
-    value: {
-        modifiers: Array<Modifier>;
-        props: BoxProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Vertical layout. */
- | {
-    tag: "Column";
-    value: {
-        modifiers: Array<Modifier>;
-        props: ColumnProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Horizontal layout. */
- | {
-    tag: "Row";
-    value: {
-        modifiers: Array<Modifier>;
-        props: RowProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Flexible space. */
- | {
-    tag: "Spacer";
-    value: {
-        modifiers: Array<Modifier>;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Text display. */
- | {
-    tag: "Text";
-    value: {
-        modifiers: Array<Modifier>;
-        props: TextProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Interactive button. */
- | {
-    tag: "Button";
-    value: {
-        modifiers: Array<Modifier>;
-        props: ButtonProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Text input. */
- | {
-    tag: "TextField";
-    value: {
-        modifiers: Array<Modifier>;
-        props: TextFieldProps;
-        children: Array<CustomRendererNode>;
-    };
-};
-export declare const CustomRendererNode: S.Codec<CustomRendererNode>;
 /**
  * Account selector within a product subtree. Encodes as
  * `Either<u32, [u8; 32]>` on the wire (`Index` = left, `Raw` = right).
@@ -479,21 +423,27 @@ export type DerivationIndex =
     value: HexString;
 };
 export declare const DerivationIndex: S.Codec<DerivationIndex>;
-/**
- * CSS-like dimensions: (top, end, bottom, start).
- * Bottom defaults to top, start defaults to end when `None`.
- */
+/** Edge dimensions. `bottom` defaults to `top` and `start` to `end` when absent. */
 export interface Dimensions {
-    /** Top dimension. */
+    /** Top edge. */
     top: Size;
-    /** End dimension. */
+    /** End edge. */
     end: Size;
-    /** Bottom dimension. Defaults to top when absent. */
+    /** Bottom edge; defaults to `top`. */
     bottom?: Size;
-    /** Start dimension. Defaults to end when absent. */
+    /** Start edge; defaults to `end`. */
     start?: Size;
 }
 export declare const Dimensions: S.Codec<Dimensions>;
+/** A visual effect. Each variant names one effect and carries its parameters. */
+export type Effect = "Rainbow";
+export declare const Effect: S.Codec<Effect>;
+/** Properties of an `Effect`. */
+export interface EffectProps {
+    /** The effect applied to the children. */
+    effect: Effect;
+}
+export declare const EffectProps: S.Codec<EffectProps>;
 /**
  * Generic error payload carrying a human-readable reason string. Used by many
  * methods as a catch-all error type.
@@ -506,7 +456,7 @@ export declare const GenericError: S.Codec<GenericError>;
 /** A 32-byte chain genesis hash used to identify the target chain. */
 export type GenesisHash = HexString;
 export declare const GenesisHash: S.Codec<GenesisHash>;
-/** Horizontal alignment options. */
+/** Cross-axis alignment of `Column` children. */
 export type HorizontalAlignment = "Start" | "Center" | "End";
 export declare const HorizontalAlignment: S.Codec<HorizontalAlignment>;
 /** Versioned envelope for [`HostAccountConnectionStatusSubscribeItem`]. */
@@ -1258,7 +1208,7 @@ export type VersionedHostLocalStorageClearError =
 /** Version 1 payload. */
 {
     tag: "V1";
-    value: HostLocalStorageReadError;
+    value: V01HostLocalStorageReadError;
 };
 export declare const VersionedHostLocalStorageClearError: S.Codec<VersionedHostLocalStorageClearError>;
 /** Versioned envelope for [`HostLocalStorageClearRequest`]. */
@@ -1279,25 +1229,25 @@ export type VersionedHostLocalStorageClearResponse =
 export declare const VersionedHostLocalStorageClearResponse: S.Codec<VersionedHostLocalStorageClearResponse>;
 /** Versioned envelope for [`HostLocalStorageReadError`]. */
 export type VersionedHostLocalStorageReadError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostLocalStorageReadError;
 };
 export declare const VersionedHostLocalStorageReadError: S.Codec<VersionedHostLocalStorageReadError>;
 /** Versioned envelope for [`HostLocalStorageReadRequest`]. */
 export type VersionedHostLocalStorageReadRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostLocalStorageReadRequest;
 };
 export declare const VersionedHostLocalStorageReadRequest: S.Codec<VersionedHostLocalStorageReadRequest>;
 /** Versioned envelope for [`HostLocalStorageReadResponse`]. */
 export type VersionedHostLocalStorageReadResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostLocalStorageReadResponse;
 };
 export declare const VersionedHostLocalStorageReadResponse: S.Codec<VersionedHostLocalStorageReadResponse>;
@@ -1306,7 +1256,7 @@ export type VersionedHostLocalStorageWriteError =
 /** Version 1 payload. */
 {
     tag: "V1";
-    value: HostLocalStorageReadError;
+    value: V01HostLocalStorageReadError;
 };
 export declare const VersionedHostLocalStorageWriteError: S.Codec<VersionedHostLocalStorageWriteError>;
 /** Versioned envelope for [`HostLocalStorageWriteRequest`]. */
@@ -1456,6 +1406,83 @@ export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPay
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
+/** Versioned envelope for [`HostPocketListSubscribeItem`]. */
+export type VersionedHostPocketListSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketListSubscribeItem;
+};
+export declare const VersionedHostPocketListSubscribeItem: S.Codec<VersionedHostPocketListSubscribeItem>;
+/** Versioned envelope for [`HostPocketRemoveCardError`]. */
+export type VersionedHostPocketRemoveCardError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardError;
+};
+export declare const VersionedHostPocketRemoveCardError: S.Codec<VersionedHostPocketRemoveCardError>;
+/** Versioned envelope for [`HostPocketRemoveCardRequest`]. */
+export type VersionedHostPocketRemoveCardRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardRequest;
+};
+export declare const VersionedHostPocketRemoveCardRequest: S.Codec<VersionedHostPocketRemoveCardRequest>;
+/** Versioned envelope for [`HostPocketRemoveCardResponse`]. */
+export type VersionedHostPocketRemoveCardResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPocketRemoveCardResponse: S.Codec<VersionedHostPocketRemoveCardResponse>;
+/**
+ * Cipher suite used by product-device Chat identity-route operations.
+ *
+ * Legacy v2 preserves current mobile interoperability. Context-bound v1
+ * authenticates the product/network, both account roles, route, and direction.
+ */
+export type HostProductDeviceChatCipherSuite = 
+/** Existing Chat v2 CryptoKit-compatible empty-context HKDF and AEAD. */
+{
+    tag: "LegacyV2";
+    value?: undefined;
+}
+/** Domain-separated encryption for peers that explicitly support it. */
+ | {
+    tag: "ContextBoundV1";
+    value: {
+        peerAccountId: HexString;
+        channelId: HexString;
+    };
+};
+export declare const HostProductDeviceChatCipherSuite: S.Codec<HostProductDeviceChatCipherSuite>;
+/** Versioned envelope for [`HostProductDeviceChatError`]. */
+export type VersionedHostProductDeviceChatError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProductDeviceChatError;
+};
+export declare const VersionedHostProductDeviceChatError: S.Codec<VersionedHostProductDeviceChatError>;
+/** Versioned envelope for [`HostProductDeviceChatRequest`]. */
+export type VersionedHostProductDeviceChatRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProductDeviceChatRequest;
+};
+export declare const VersionedHostProductDeviceChatRequest: S.Codec<VersionedHostProductDeviceChatRequest>;
+/** Versioned envelope for [`HostProductDeviceChatResponse`]. */
+export type VersionedHostProductDeviceChatResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProductDeviceChatResponse;
+};
+export declare const VersionedHostProductDeviceChatResponse: S.Codec<VersionedHostProductDeviceChatResponse>;
 /** Versioned envelope for [`HostPushNotificationCancelError`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -1504,6 +1531,14 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export declare const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [`HostRendererActionSubscribeItem`]. */
+export type VersionedHostRendererActionSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRendererActionSubscribeItem;
+};
+export declare const VersionedHostRendererActionSubscribeItem: S.Codec<VersionedHostRendererActionSubscribeItem>;
 /** Versioned envelope for [`HostRequestLoginError`]. */
 export type VersionedHostRequestLoginError = 
 /** Version 1 payload. */
@@ -1693,6 +1728,33 @@ export type VersionedHostThemeSubscribeItem =
     value: HostThemeSubscribeItem;
 };
 export declare const VersionedHostThemeSubscribeItem: S.Codec<VersionedHostThemeSubscribeItem>;
+/** How an image meets the box its modifiers size. */
+export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";
+export declare const ImageFit: S.Codec<ImageFit>;
+/** Properties of an `Image`. */
+export interface ImageProps {
+    /** Where the image bytes come from. */
+    source: ImageSource;
+    /** Defaults to `Fill`. */
+    fit?: ImageFit;
+}
+export declare const ImageProps: S.Codec<ImageProps>;
+/** Where image bytes come from. The host fetches them; the tree carries no URL. */
+export type ImageSource = 
+/** A Bulletin chain blob, addressed by its CID. */
+{
+    tag: "Bulletin";
+    value: string;
+}
+/**
+ * A file inside the product's executable archive, as a path relative to
+ * the archive root.
+ */
+ | {
+    tag: "Archive";
+    value: string;
+};
+export declare const ImageSource: S.Codec<ImageSource>;
 /**
  * A user-imported (legacy) account: public key plus an optional user-chosen
  * display name.
@@ -1726,7 +1788,7 @@ export interface LegacyAccountTxPayload {
     txExtVersion: number;
 }
 export declare const LegacyAccountTxPayload: S.Codec<LegacyAccountTxPayload>;
-/** Layout and styling modifiers applied to custom renderer components. */
+/** Layout and styling applied to one node. */
 export type Modifier = 
 /** Outer spacing. */
 {
@@ -1743,7 +1805,7 @@ export type Modifier =
     tag: "Background";
     value: Background;
 }
-/** Border style. */
+/** Border. */
  | {
     tag: "Border";
     value: BorderStyle;
@@ -1751,44 +1813,42 @@ export type Modifier =
 /** Fixed height. */
  | {
     tag: "Height";
-    value: {
-        height: Size;
-    };
+    value: Size;
 }
 /** Fixed width. */
  | {
     tag: "Width";
-    value: {
-        width: Size;
-    };
+    value: Size;
 }
 /** Minimum width. */
  | {
     tag: "MinWidth";
-    value: {
-        width: Size;
-    };
+    value: Size;
 }
 /** Minimum height. */
  | {
     tag: "MinHeight";
-    value: {
-        height: Size;
-    };
+    value: Size;
 }
-/** Fill available width. */
+/** Fill the available width. */
  | {
     tag: "FillWidth";
-    value: {
-        enabled: boolean;
-    };
+    value: boolean;
 }
-/** Fill available height. */
+/** Fill the available height. */
  | {
     tag: "FillHeight";
-    value: {
-        enabled: boolean;
-    };
+    value: boolean;
+}
+/** 0 is transparent, 255 is opaque. */
+ | {
+    tag: "Opacity";
+    value: number;
+}
+/** Compositing mode against what is behind the node. */
+ | {
+    tag: "BlendingMode";
+    value: BlendingMode;
 };
 export declare const Modifier: S.Codec<Modifier>;
 /** Opaque identifier for a push notification, unique per product. */
@@ -1809,9 +1869,6 @@ export type OperationStartedResult =
     value?: undefined;
 };
 export declare const OperationStartedResult: S.Codec<OperationStartedResult>;
-/** An optional boolean with the compact SCALE encoding used by renderer props. */
-export type OptionalBool = boolean | undefined;
-export declare const OptionalBool: S.Codec<OptionalBool>;
 /**
  * Source for a payment top-up operation.
  *
@@ -1848,6 +1905,14 @@ export type PaymentTopUpSource =
     };
 };
 export declare const PaymentTopUpSource: S.Codec<PaymentTopUpSource>;
+/** One of the calling product's Pocket cards. */
+export interface PocketCard {
+    /** Card label declared by the product, unique within the product. */
+    cardId: string;
+    /** Placed by the host itself; removable by neither the user nor the product. */
+    privileged: boolean;
+}
+export declare const PocketCard: S.Codec<PocketCard>;
 /** Preimage submission error. */
 export type PreimageSubmitError = 
 /** Catch-all. */
@@ -1895,22 +1960,6 @@ export interface ProductAccountTxPayload {
     txExtVersion: number;
 }
 export declare const ProductAccountTxPayload: S.Codec<ProductAccountTxPayload>;
-/** Versioned envelope for [`ProductChatCustomMessageRenderItem`]. */
-export type VersionedProductChatCustomMessageRenderItem = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: CustomRendererNode;
-};
-export declare const VersionedProductChatCustomMessageRenderItem: S.Codec<VersionedProductChatCustomMessageRenderItem>;
-/** Versioned envelope for [`ProductChatCustomMessageRenderRequest`]. */
-export type VersionedProductChatCustomMessageRenderRequest = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: ProductChatCustomMessageRenderRequest;
-};
-export declare const VersionedProductChatCustomMessageRenderRequest: S.Codec<VersionedProductChatCustomMessageRenderRequest>;
 /**
  * A product-scoped proof context: a product and a context within it.
  *
@@ -1928,6 +1977,22 @@ export interface ProductProofContext {
     suffix: DerivationIndex;
 }
 export declare const ProductProofContext: S.Codec<ProductProofContext>;
+/** Versioned envelope for [`ProductRendererRenderItem`]. */
+export type VersionedProductRendererRenderItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: RendererNode;
+};
+export declare const VersionedProductRendererRenderItem: S.Codec<VersionedProductRendererRenderItem>;
+/** Versioned envelope for [`ProductRendererRenderRequest`]. */
+export type VersionedProductRendererRenderRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: ProductRendererRenderRequest;
+};
+export declare const VersionedProductRendererRenderRequest: S.Codec<VersionedProductRendererRenderRequest>;
 /** Raw data to sign -- either binary bytes or a string message. */
 export type RawPayload = 
 /** Raw binary data to sign. */
@@ -2490,6 +2555,126 @@ export type VersionedRemoteStatementStoreSubscribeRequest =
     value: RemoteStatementStoreSubscribeRequest;
 };
 export declare const VersionedRemoteStatementStoreSubscribeRequest: S.Codec<VersionedRemoteStatementStoreSubscribeRequest>;
+/** Where a product-rendered body lives, and the id that names it there. */
+export type RenderContext = 
+/** A message in a chat room. */
+{
+    tag: "ChatMessage";
+    value: {
+        roomId: string;
+        messageId: string;
+        messageType: string;
+    };
+}
+/** A candidate answered to an input query. */
+ | {
+    tag: "InputWidget";
+    value: {
+        candidateId: string;
+    };
+}
+/** A card face in the host's Pocket collection. */
+ | {
+    tag: "PocketCard";
+    value: {
+        cardId: string;
+    };
+};
+export declare const RenderContext: S.Codec<RenderContext>;
+/**
+ * A node in a product-rendered tree. Container variants recurse through
+ * `children`.
+ */
+export type RendererNode = 
+/** Draws nothing. */
+{
+    tag: "Nil";
+    value?: undefined;
+}
+/** A text run. */
+ | {
+    tag: "String";
+    value: {
+        text: string;
+    };
+}
+/** Generic container. */
+ | {
+    tag: "Box";
+    value: {
+        modifiers: Array<Modifier>;
+        props: BoxProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Vertical layout. */
+ | {
+    tag: "Column";
+    value: {
+        modifiers: Array<Modifier>;
+        props: ColumnProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Horizontal layout. */
+ | {
+    tag: "Row";
+    value: {
+        modifiers: Array<Modifier>;
+        props: RowProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Flexible space. */
+ | {
+    tag: "Spacer";
+    value: {
+        modifiers: Array<Modifier>;
+    };
+}
+/** Styled text. */
+ | {
+    tag: "Text";
+    value: {
+        modifiers: Array<Modifier>;
+        props: TextProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Interactive button. */
+ | {
+    tag: "Button";
+    value: {
+        modifiers: Array<Modifier>;
+        props: ButtonProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Single-line text input. */
+ | {
+    tag: "TextField";
+    value: {
+        modifiers: Array<Modifier>;
+        props: TextFieldProps;
+    };
+}
+/** Image, sized by modifiers. */
+ | {
+    tag: "Image";
+    value: {
+        modifiers: Array<Modifier>;
+        props: ImageProps;
+    };
+}
+/** Applies its effect to its children. */
+ | {
+    tag: "Effect";
+    value: {
+        props: EffectProps;
+        children: Array<RendererNode>;
+    };
+};
+export declare const RendererNode: S.Codec<RendererNode>;
 /** Error from [`crate::api::ResourceAllocation::request`]. */
 export type ResourceAllocationError = 
 /** Catch-all. */
@@ -2530,11 +2715,11 @@ export declare const RingVrfKeyDisclosure: S.Codec<RingVrfKeyDisclosure>;
 /** Ring-VRF member public key. */
 export type RingVrfPublicKey = HexString;
 export declare const RingVrfPublicKey: S.Codec<RingVrfPublicKey>;
-/** Properties for a [`CustomRendererNode::Row`] layout. */
+/** Properties of a `Row`. */
 export interface RowProps {
-    /** Vertical alignment of children. */
+    /** Cross-axis alignment of children. */
     verticalAlignment?: VerticalAlignment;
-    /** Horizontal arrangement of children. */
+    /** Main-axis distribution of children. */
     horizontalArrangement?: Arrangement;
 }
 export declare const RowProps: S.Codec<RowProps>;
@@ -2577,18 +2762,21 @@ export type RuntimeType =
     };
 };
 export declare const RuntimeType: S.Codec<RuntimeType>;
-/** Shape for borders and backgrounds. */
+/** Outline of a background or border. */
 export type Shape = 
-/** Border radius value. */
+/** Rounded corners with the given radius. */
 {
     tag: "Rounded";
-    value: {
-        radius: Size;
-    };
+    value: Size;
 }
 /** Circular shape. */
  | {
     tag: "Circle";
+    value?: undefined;
+}
+/** Square corners. */
+ | {
+    tag: "Square";
     value?: undefined;
 };
 export declare const Shape: S.Codec<Shape>;
@@ -2608,12 +2796,7 @@ export interface SignedStatement {
     data?: HexString;
 }
 export declare const SignedStatement: S.Codec<SignedStatement>;
-/**
- * A size/dimension value (logical pixels) used across the custom renderer.
- *
- * Encoded as a SCALE `Compact<u64>`: the common small values cost a single
- * byte on the wire instead of eight.
- */
+/** A size in logical pixels, SCALE-encoded as `Compact<u64>`. */
 export type Size = number | bigint;
 export declare const Size: S.Codec<Size>;
 /** A statement with optional proof and metadata. */
@@ -2691,21 +2874,24 @@ export interface StorageResultItem {
     closestDescendantMerkleValue?: HexString;
 }
 export declare const StorageResultItem: S.Codec<StorageResultItem>;
-/** Properties for a [`CustomRendererNode::TextField`]. */
+/** Properties of a `TextField`. */
 export interface TextFieldProps {
-    /** Current text value. */
+    /** Current value. */
     text: string;
-    /** Placeholder text. */
+    /** Shown when the value is empty. */
     placeholder?: string;
     /** Field label. */
     label?: string;
-    /** Whether the field is enabled. Absent leaves the default to the host. */
-    enabled: OptionalBool;
-    /** Action identifier triggered when the value changes. */
+    /** Whether the field accepts input. Absent leaves the default to the host. */
+    enabled?: boolean;
+    /**
+     * Action triggered on every value change. The action carries the new
+     * value as UTF-8 bytes, with no length prefix.
+     */
     valueChangeAction?: string;
 }
 export declare const TextFieldProps: S.Codec<TextFieldProps>;
-/** Properties for a [`CustomRendererNode::Text`] display. */
+/** Properties of a `Text`. */
 export interface TextProps {
     /** Typography preset. */
     style?: TypographyStyle;
@@ -2742,7 +2928,7 @@ export interface TxPayloadExtension {
     additionalSigned: HexString;
 }
 export declare const TxPayloadExtension: S.Codec<TxPayloadExtension>;
-/** Text typography presets. */
+/** Typography presets, resolved by the host's design system. */
 export type TypographyStyle = "HeadlineLarge" | "TitleMediumRegular" | "BodyLargeRegular" | "BodyMediumRegular" | "BodySmallRegular";
 export declare const TypographyStyle: S.Codec<TypographyStyle>;
 /** User's authentication state. */
@@ -3430,7 +3616,7 @@ export interface HostLocalStorageClearRequest {
 }
 export declare const HostLocalStorageClearRequest: S.Codec<HostLocalStorageClearRequest>;
 /** Local storage operation error. */
-export type HostLocalStorageReadError = 
+export type V01HostLocalStorageReadError = 
 /** Storage quota exceeded. */
 {
     tag: "Full";
@@ -3443,13 +3629,13 @@ export type HostLocalStorageReadError =
         reason: string;
     };
 };
-export declare const HostLocalStorageReadError: S.Codec<HostLocalStorageReadError>;
+export declare const V01HostLocalStorageReadError: S.Codec<V01HostLocalStorageReadError>;
 /** Request to read a local storage value. */
-export interface HostLocalStorageReadRequest {
+export interface V01HostLocalStorageReadRequest {
     /** Storage key to read. */
     key: string;
 }
-export declare const HostLocalStorageReadRequest: S.Codec<HostLocalStorageReadRequest>;
+export declare const V01HostLocalStorageReadRequest: S.Codec<V01HostLocalStorageReadRequest>;
 /** Response containing an optional local storage value. */
 export interface HostLocalStorageReadResponse {
     /** Stored value, if present. */
@@ -3684,6 +3870,176 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export declare const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest>;
+/** The calling product's cards: the whole set on subscribe and after every change. */
+export interface HostPocketListSubscribeItem {
+    /** Cards currently in Pocket for the calling product. */
+    cards: Array<PocketCard>;
+}
+export declare const HostPocketListSubscribeItem: S.Codec<HostPocketListSubscribeItem>;
+/** Card removal failure. */
+export type HostPocketRemoveCardError = 
+/** The card is privileged and stays in Pocket. */
+{
+    tag: "Privileged";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostPocketRemoveCardError: S.Codec<HostPocketRemoveCardError>;
+/** Request to remove one of the calling product's cards. */
+export interface HostPocketRemoveCardRequest {
+    /** Card to remove. A card that is not present is already removed. */
+    cardId: string;
+}
+export declare const HostPocketRemoveCardRequest: S.Codec<HostPocketRemoveCardRequest>;
+/** Product-device Chat v2 identity failure. */
+export type HostProductDeviceChatError = 
+/** No account-authority session is connected. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The user or Host rejected the operation. */
+ | {
+    tag: "Rejected";
+    value?: undefined;
+}
+/** The peer X25519 public key is invalid. */
+ | {
+    tag: "InvalidPeerKey";
+    value?: undefined;
+}
+/** The ciphertext failed structural or authentication checks. */
+ | {
+    tag: "InvalidCiphertext";
+    value?: undefined;
+}
+/** The Host could not complete the operation. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProductDeviceChatError: S.Codec<HostProductDeviceChatError>;
+/**
+ * Product-device Chat v2 identity operation.
+ *
+ * The wallet Chat identity secret and derived shared key remain host-private.
+ */
+export type HostProductDeviceChatRequest = 
+/** Resolve the product account as a Chat device and bind it to the wallet identity. */
+{
+    tag: "Bind";
+    value: {
+        productAccountId: ProductAccountId;
+        peerIdentityAccountId: HexString;
+        peerChatPublicKey: HexString;
+    };
+}
+/** Seal identity-route plaintext for the peer with a host-generated nonce. */
+ | {
+    tag: "Seal";
+    value: {
+        productAccountId: ProductAccountId;
+        peerChatPublicKey: HexString;
+        cipherSuite: HostProductDeviceChatCipherSuite;
+        plaintext: HexString;
+    };
+}
+/** Open an identity-route combined nonce/ciphertext/tag value. */
+ | {
+    tag: "Open";
+    value: {
+        productAccountId: ProductAccountId;
+        peerChatPublicKey: HexString;
+        cipherSuite: HostProductDeviceChatCipherSuite;
+        combinedCiphertext: HexString;
+    };
+}
+/** Sign the canonical Chat first-contact proof payload without wallet-message framing. */
+ | {
+    tag: "SignRequestProof";
+    value: {
+        productAccountId: ProductAccountId;
+        payload: HexString;
+    };
+}
+/** Read the authorized wallet's public Chat identity for incoming requests. */
+ | {
+    tag: "Identity";
+    value: {
+        productAccountId: ProductAccountId;
+    };
+}
+/** Verify a peer's identity-to-device binding without exposing shared keys. */
+ | {
+    tag: "VerifyPeerDevice";
+    value: {
+        productAccountId: ProductAccountId;
+        peerIdentityAccountId: HexString;
+        peerChatPublicKey: HexString;
+        peerDeviceAccountId: HexString;
+        proof: HexString;
+    };
+};
+export declare const HostProductDeviceChatRequest: S.Codec<HostProductDeviceChatRequest>;
+/** Result of a product-device Chat v2 identity operation. */
+export type HostProductDeviceChatResponse = 
+/** Wallet identity binding and deterministic peer routes. */
+{
+    tag: "IdentityBinding";
+    value: {
+        identityAccountId: HexString;
+        proof: HexString;
+        walletOwnSessionId: HexString;
+        peerOwnSessionId: HexString;
+        walletOutgoingChannelId: HexString;
+        walletIncomingChannelId: HexString;
+    };
+}
+/** Sealed identity-route payload. */
+ | {
+    tag: "Sealed";
+    value: {
+        combinedCiphertext: HexString;
+    };
+}
+/** Opened identity-route payload. */
+ | {
+    tag: "Opened";
+    value: {
+        plaintext: HexString;
+    };
+}
+/** Raw sr25519 signature over a canonical Chat request proof payload. */
+ | {
+    tag: "RequestProofSigned";
+    value: {
+        signature: HexString;
+    };
+}
+/** Public Chat identity of the authorized wallet. */
+ | {
+    tag: "Identity";
+    value: {
+        identityAccountId: HexString;
+        chatPublicKey: HexString;
+    };
+}
+/** Result of verifying a peer identity-to-device binding. */
+ | {
+    tag: "PeerDeviceVerified";
+    value: {
+        valid: boolean;
+    };
+};
+export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [`HostPushNotificationResponse`]. */
@@ -3732,6 +4088,20 @@ export interface HostPushNotificationResponse {
     id: NotificationId;
 }
 export declare const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>;
+/** An action triggered inside a product-rendered body. */
+export interface HostRendererActionSubscribeItem {
+    /** Where the body lives. */
+    context: RenderContext;
+    /** Which action was triggered, as named in the renderer tree. */
+    actionId: string;
+    /**
+     * Data the node attached to the action. A `Button` press carries an
+     * empty payload; a `TextField` value change carries the UTF-8 bytes of
+     * the new value, with no length prefix.
+     */
+    payload: HexString;
+}
+export declare const HostRendererActionSubscribeItem: S.Codec<HostRendererActionSubscribeItem>;
 /** Login request error. */
 export type HostRequestLoginError = 
 /** Catch-all. */
@@ -3843,16 +4213,14 @@ export interface HostThemeSubscribeItem {
     variant: ThemeVariant;
 }
 export declare const HostThemeSubscribeItem: S.Codec<HostThemeSubscribeItem>;
-/** Render work sent by the host when a native custom-message cell appears. */
-export interface ProductChatCustomMessageRenderRequest {
-    /** Stable identifier used to correlate triggered actions. */
-    messageId: string;
-    /** Product-defined discriminator used to select a renderer. */
-    messageType: string;
-    /** Stored product-defined message payload. */
+/** A body the host needs drawn. */
+export interface ProductRendererRenderRequest {
+    /** Where the body lives. */
+    context: RenderContext;
+    /** Product-defined payload, opaque to the host. */
     payload: HexString;
 }
-export declare const ProductChatCustomMessageRenderRequest: S.Codec<ProductChatCustomMessageRenderRequest>;
+export declare const ProductRendererRenderRequest: S.Codec<ProductRendererRenderRequest>;
 /** Request to fetch the body of a pinned block. */
 export interface RemoteChainHeadBodyRequest {
     /** Chain genesis hash. */
@@ -4230,7 +4598,53 @@ export type RemoteStatementStoreSubscribeRequest =
     value: Array<Topic>;
 };
 export declare const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreSubscribeRequest>;
-/** Vertical alignment options. */
+/** Local storage read failure. */
+export type HostLocalStorageReadError = 
+/** Storage quota exceeded. */
+{
+    tag: "Full";
+    value?: undefined;
+}
+/**
+ * The addressed storage belongs to another product that has not granted
+ * this caller the `storage` scope.
+ *
+ * One variant answers every reason: the product does not resolve, it
+ * published no manifest, or its manifest grants this caller nothing.
+ * Distinguishing them would make the call a probe for which products exist
+ * and which hold data.
+ */
+ | {
+    tag: "AccessNotGranted";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostLocalStorageReadError: S.Codec<HostLocalStorageReadError>;
+/**
+ * Request to read a local storage value.
+ *
+ * Storage is private by default: `product: None` addresses the caller's own
+ * storage, which is what every v0.1 read resolved to. Naming another product
+ * reads that product's storage instead, and succeeds only if that product's
+ * manifest grants this caller the `storage` scope.
+ */
+export interface HostLocalStorageReadRequest {
+    /**
+     * Product whose storage is read. `None`, or the caller's own id, means the
+     * caller, and consults no grant.
+     */
+    product?: string;
+    /** Storage key to read. */
+    key: string;
+}
+export declare const HostLocalStorageReadRequest: S.Codec<HostLocalStorageReadRequest>;
+/** Cross-axis alignment of `Row` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export declare const VerticalAlignment: S.Codec<VerticalAlignment>;
 /** An sr25519 (schnorrkel) VRF signature: the VRF pre-output and its proof. */

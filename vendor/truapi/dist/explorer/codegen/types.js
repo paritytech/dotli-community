@@ -11,7 +11,7 @@ export const types = [
         name: "ActionTrigger",
         category: "chat",
         definition: "export interface ActionTrigger {\n  messageId: string;\n  actionId: string;\n  payload?: HexString;\n}",
-        description: "Payload when a user clicks an action button.",
+        description: "A press on a button the host draws for a `ChatMessageContent::Actions`\nmessage.",
         fields: [
             {
                 name: "message_id",
@@ -34,7 +34,7 @@ export const types = [
         id: "allocatable-resource",
         name: "AllocatableResource",
         category: "resource_allocation",
-        definition: 'export type AllocatableResource =\n  | { tag: "StatementStoreAllowance"; value?: undefined }\n  | { tag: "BulletinAllowance"; value?: undefined }\n  | { tag: "SmartContractAllowance"; value: DerivationIndex }\n  | { tag: "AutoSigning"; value?: undefined }\n;',
+        definition: 'export type AllocatableResource =\n  | { tag: "StatementStoreAllowance"; value?: undefined }\n  | { tag: "BulletinAllowance"; value?: undefined }\n  | { tag: "SmartContractAllowance"; value: DerivationIndex }\n  | { tag: "AutoSigning"; value?: undefined }\n  | { tag: "ProductStatementStoreAllowance"; value: DerivationIndex }\n;',
         description: "A resource the host can pre-allocate on behalf of the product (RFC 0010).\n\nFor the slot-table allowances (`StatementStoreAllowance`,\n`BulletinAllowance`, `SmartContractAllowance`), pre-allocation is\nopportunistic and the host may also fulfil the allowance implicitly on the\nfirst submission. `AutoSigning` must be requested explicitly through this\ncall.",
         variants: [
             {
@@ -56,6 +56,11 @@ export const types = [
                 name: "AutoSigning",
                 type: '{ tag: "AutoSigning"; value?: undefined }',
                 description: "Permission to sign on the product's behalf without per-call user prompts.",
+            },
+            {
+                name: "ProductStatementStoreAllowance",
+                type: '{ tag: "ProductStatementStoreAllowance"; value: DerivationIndex }',
+                description: "Current UTC-day Statement Store allowance whose target is the product\naccount selected by this derivation index.",
             },
         ],
     },
@@ -86,9 +91,9 @@ export const types = [
     {
         id: "arrangement",
         name: "Arrangement",
-        category: "chat",
+        category: "renderer",
         definition: 'export type Arrangement = "Start" | "End" | "Center" | "SpaceBetween" | "SpaceAround" | "SpaceEvenly";',
-        description: "Layout arrangement (like CSS flexbox `justify-content`).",
+        description: "Main-axis distribution of children.",
         variants: [
             {
                 name: "Start",
@@ -125,7 +130,7 @@ export const types = [
     {
         id: "background",
         name: "Background",
-        category: "chat",
+        category: "renderer",
         definition: "export interface Background {\n  color: ColorToken;\n  shape?: Shape;\n}",
         description: "Background styling.",
         fields: [
@@ -149,9 +154,98 @@ export const types = [
         description: "Balance amount for payment operations. Interpreted according to the host's\nsingle fixed payment asset (e.g. pUSD).",
     },
     {
+        id: "blending-mode",
+        name: "BlendingMode",
+        category: "renderer",
+        definition: 'export type BlendingMode = "Normal" | "Multiply" | "Screen" | "Overlay" | "Darken" | "Lighten" | "ColorDodge" | "ColorBurn" | "HardLight" | "SoftLight" | "Difference" | "Exclusion" | "Hue" | "Saturation" | "Color" | "Luminosity";',
+        description: "How a node composites with what is behind it. The values are those common\nto CSS `mix-blend-mode`, SwiftUI `BlendMode` and Compose `BlendMode`.",
+        variants: [
+            {
+                name: "Normal",
+                type: '{ tag: "Normal"; value?: undefined }',
+                description: "Source over destination.",
+            },
+            {
+                name: "Multiply",
+                type: '{ tag: "Multiply"; value?: undefined }',
+                description: "Multiplies source and destination.",
+            },
+            {
+                name: "Screen",
+                type: '{ tag: "Screen"; value?: undefined }',
+                description: "Inverse multiply.",
+            },
+            {
+                name: "Overlay",
+                type: '{ tag: "Overlay"; value?: undefined }',
+                description: "Multiply or screen depending on the destination.",
+            },
+            {
+                name: "Darken",
+                type: '{ tag: "Darken"; value?: undefined }',
+                description: "Darker of source and destination.",
+            },
+            {
+                name: "Lighten",
+                type: '{ tag: "Lighten"; value?: undefined }',
+                description: "Lighter of source and destination.",
+            },
+            {
+                name: "ColorDodge",
+                type: '{ tag: "ColorDodge"; value?: undefined }',
+                description: "Brightens the destination to reflect the source.",
+            },
+            {
+                name: "ColorBurn",
+                type: '{ tag: "ColorBurn"; value?: undefined }',
+                description: "Darkens the destination to reflect the source.",
+            },
+            {
+                name: "HardLight",
+                type: '{ tag: "HardLight"; value?: undefined }',
+                description: "Multiply or screen depending on the source.",
+            },
+            {
+                name: "SoftLight",
+                type: '{ tag: "SoftLight"; value?: undefined }',
+                description: "Darken or lighten depending on the source.",
+            },
+            {
+                name: "Difference",
+                type: '{ tag: "Difference"; value?: undefined }',
+                description: "Absolute difference.",
+            },
+            {
+                name: "Exclusion",
+                type: '{ tag: "Exclusion"; value?: undefined }',
+                description: "Difference with lower contrast.",
+            },
+            {
+                name: "Hue",
+                type: '{ tag: "Hue"; value?: undefined }',
+                description: "Source hue with destination saturation and luminosity.",
+            },
+            {
+                name: "Saturation",
+                type: '{ tag: "Saturation"; value?: undefined }',
+                description: "Source saturation with destination hue and luminosity.",
+            },
+            {
+                name: "Color",
+                type: '{ tag: "Color"; value?: undefined }',
+                description: "Source hue and saturation with destination luminosity.",
+            },
+            {
+                name: "Luminosity",
+                type: '{ tag: "Luminosity"; value?: undefined }',
+                description: "Source luminosity with destination hue and saturation.",
+            },
+        ],
+    },
+    {
         id: "border-style",
         name: "BorderStyle",
-        category: "chat",
+        category: "renderer",
         definition: "export interface BorderStyle {\n  width: Size;\n  color: ColorToken;\n  shape?: Shape;\n}",
         description: "Border styling.",
         fields: [
@@ -175,57 +269,57 @@ export const types = [
     {
         id: "box-props",
         name: "BoxProps",
-        category: "chat",
+        category: "renderer",
         definition: "export interface BoxProps {\n  contentAlignment?: ContentAlignment;\n}",
-        description: "Properties for a [`CustomRendererNode::Box`] container.",
+        description: "Properties of a `Box`.",
         fields: [
             {
                 name: "content_alignment",
                 type: "ContentAlignment | undefined",
-                description: "Content alignment within the box.",
+                description: "Placement of content within the box.",
             },
         ],
     },
     {
         id: "button-props",
         name: "ButtonProps",
-        category: "chat",
-        definition: "export interface ButtonProps {\n  text: string;\n  variant?: ButtonVariant;\n  enabled: OptionalBool;\n  loading: OptionalBool;\n  clickAction?: string;\n}",
-        description: "Properties for a [`CustomRendererNode::Button`].",
+        category: "renderer",
+        definition: "export interface ButtonProps {\n  text: string;\n  variant?: ButtonVariant;\n  enabled?: boolean;\n  loading?: boolean;\n  clickAction?: string;\n}",
+        description: "Properties of a `Button`.",
         fields: [
             {
                 name: "text",
                 type: "string",
-                description: "Button label text.",
+                description: "Button label.",
             },
             {
                 name: "variant",
                 type: "ButtonVariant | undefined",
-                description: "Button style variant.",
+                description: "Button emphasis.",
             },
             {
                 name: "enabled",
-                type: "OptionalBool",
-                description: "Whether the button is enabled. Absent leaves the default to the host.",
+                type: "boolean | undefined",
+                description: "Whether the button accepts presses. Absent leaves the default to the host.",
             },
             {
                 name: "loading",
-                type: "OptionalBool",
-                description: "Whether the button shows a loading state. Absent leaves the default to the host.",
+                type: "boolean | undefined",
+                description: "Whether the button shows a loading state. A loading button accepts no\npresses. Absent leaves the default to the host.",
             },
             {
                 name: "click_action",
                 type: "string | undefined",
-                description: "Action identifier triggered on click.",
+                description: "Action triggered on press. A button without one is inert.",
             },
         ],
     },
     {
         id: "button-variant",
         name: "ButtonVariant",
-        category: "chat",
+        category: "renderer",
         definition: 'export type ButtonVariant = "Primary" | "Secondary" | "Text";',
-        description: "Button style variants.",
+        description: "Button emphasis.",
         variants: [
             {
                 name: "Primary",
@@ -333,7 +427,7 @@ export const types = [
             {
                 name: "ActionTriggered",
                 type: '{ tag: "ActionTriggered"; value: ActionTrigger }',
-                description: "A user triggered an action button.",
+                description: "A user pressed a host-drawn `Actions` button.",
             },
             {
                 name: "Command",
@@ -409,7 +503,7 @@ export const types = [
         name: "ChatCustomMessage",
         category: "chat",
         definition: "export interface ChatCustomMessage {\n  messageType: string;\n  payload: HexString;\n}",
-        description: "A custom message with application-defined type and binary payload.",
+        description: "A custom message with application-defined type and binary payload. The\nhost draws it through `Renderer::render`, with a `ChatMessage` context\ncarrying `message_type` and `payload` as the render payload.",
         fields: [
             {
                 name: "message_type",
@@ -833,24 +927,24 @@ export const types = [
     {
         id: "color-token",
         name: "ColorToken",
-        category: "chat",
+        category: "renderer",
         definition: 'export type ColorToken = "FgPrimary" | "FgSecondary" | "FgTertiary" | "BgSurfaceMain" | "BgSurfaceContainer" | "BgSurfaceNested" | "FgSuccess" | "FgError" | "FgWarning";',
-        description: "Semantic color tokens for theming.",
+        description: "Semantic color tokens, resolved by the host's theme.",
         variants: [
             {
                 name: "FgPrimary",
                 type: '{ tag: "FgPrimary"; value?: undefined }',
-                description: "Primary foreground (text) color.",
+                description: "Primary foreground.",
             },
             {
                 name: "FgSecondary",
                 type: '{ tag: "FgSecondary"; value?: undefined }',
-                description: "Secondary foreground color.",
+                description: "Secondary foreground.",
             },
             {
                 name: "FgTertiary",
                 type: '{ tag: "FgTertiary"; value?: undefined }',
-                description: "Tertiary foreground color.",
+                description: "Tertiary foreground.",
             },
             {
                 name: "BgSurfaceMain",
@@ -870,45 +964,45 @@ export const types = [
             {
                 name: "FgSuccess",
                 type: '{ tag: "FgSuccess"; value?: undefined }',
-                description: "Foreground color for success states.",
+                description: "Foreground for success states.",
             },
             {
                 name: "FgError",
                 type: '{ tag: "FgError"; value?: undefined }',
-                description: "Foreground color for error states.",
+                description: "Foreground for error states.",
             },
             {
                 name: "FgWarning",
                 type: '{ tag: "FgWarning"; value?: undefined }',
-                description: "Foreground color for warning states.",
+                description: "Foreground for warning states.",
             },
         ],
     },
     {
         id: "column-props",
         name: "ColumnProps",
-        category: "chat",
+        category: "renderer",
         definition: "export interface ColumnProps {\n  horizontalAlignment?: HorizontalAlignment;\n  verticalArrangement?: Arrangement;\n}",
-        description: "Properties for a [`CustomRendererNode::Column`] layout.",
+        description: "Properties of a `Column`.",
         fields: [
             {
                 name: "horizontal_alignment",
                 type: "HorizontalAlignment | undefined",
-                description: "Horizontal alignment of children.",
+                description: "Cross-axis alignment of children.",
             },
             {
                 name: "vertical_arrangement",
                 type: "Arrangement | undefined",
-                description: "Vertical arrangement of children.",
+                description: "Main-axis distribution of children.",
             },
         ],
     },
     {
         id: "content-alignment",
         name: "ContentAlignment",
-        category: "chat",
+        category: "renderer",
         definition: 'export type ContentAlignment = "TopStart" | "TopCenter" | "TopEnd" | "CenterStart" | "Center" | "CenterEnd" | "BottomStart" | "BottomCenter" | "BottomEnd";',
-        description: "2D content alignment.",
+        description: "Placement of content within a `Box`.",
         variants: [
             {
                 name: "TopStart",
@@ -977,60 +1071,6 @@ export const types = [
         ],
     },
     {
-        id: "custom-renderer-node",
-        name: "CustomRendererNode",
-        category: "chat",
-        definition: 'export type CustomRendererNode =\n  | { tag: "Nil"; value?: undefined }\n  | { tag: "String"; value: { text: string } }\n  | { tag: "Box"; value: { modifiers: Array<Modifier>; props: BoxProps; children: Array<CustomRendererNode> } }\n  | { tag: "Column"; value: { modifiers: Array<Modifier>; props: ColumnProps; children: Array<CustomRendererNode> } }\n  | { tag: "Row"; value: { modifiers: Array<Modifier>; props: RowProps; children: Array<CustomRendererNode> } }\n  | { tag: "Spacer"; value: { modifiers: Array<Modifier>; children: Array<CustomRendererNode> } }\n  | { tag: "Text"; value: { modifiers: Array<Modifier>; props: TextProps; children: Array<CustomRendererNode> } }\n  | { tag: "Button"; value: { modifiers: Array<Modifier>; props: ButtonProps; children: Array<CustomRendererNode> } }\n  | { tag: "TextField"; value: { modifiers: Array<Modifier>; props: TextFieldProps; children: Array<CustomRendererNode> } }\n;',
-        description: "A node in the custom renderer UI tree. Component variants contain recursive\n`children` fields.",
-        variants: [
-            {
-                name: "Nil",
-                type: '{ tag: "Nil"; value?: undefined }',
-                description: "Empty node.",
-            },
-            {
-                name: "String",
-                type: '{ tag: "String"; value: { text: string } }',
-                description: "Raw text string.",
-            },
-            {
-                name: "Box",
-                type: '{ tag: "Box"; value: { modifiers: Array<Modifier>; props: BoxProps; children: Array<CustomRendererNode> } }',
-                description: "Generic container.",
-            },
-            {
-                name: "Column",
-                type: '{ tag: "Column"; value: { modifiers: Array<Modifier>; props: ColumnProps; children: Array<CustomRendererNode> } }',
-                description: "Vertical layout.",
-            },
-            {
-                name: "Row",
-                type: '{ tag: "Row"; value: { modifiers: Array<Modifier>; props: RowProps; children: Array<CustomRendererNode> } }',
-                description: "Horizontal layout.",
-            },
-            {
-                name: "Spacer",
-                type: '{ tag: "Spacer"; value: { modifiers: Array<Modifier>; children: Array<CustomRendererNode> } }',
-                description: "Flexible space.",
-            },
-            {
-                name: "Text",
-                type: '{ tag: "Text"; value: { modifiers: Array<Modifier>; props: TextProps; children: Array<CustomRendererNode> } }',
-                description: "Text display.",
-            },
-            {
-                name: "Button",
-                type: '{ tag: "Button"; value: { modifiers: Array<Modifier>; props: ButtonProps; children: Array<CustomRendererNode> } }',
-                description: "Interactive button.",
-            },
-            {
-                name: "TextField",
-                type: '{ tag: "TextField"; value: { modifiers: Array<Modifier>; props: TextFieldProps; children: Array<CustomRendererNode> } }',
-                description: "Text input.",
-            },
-        ],
-    },
-    {
         id: "derivation-index",
         name: "DerivationIndex",
         category: "account",
@@ -1052,29 +1092,57 @@ export const types = [
     {
         id: "dimensions",
         name: "Dimensions",
-        category: "chat",
+        category: "renderer",
         definition: "export interface Dimensions {\n  top: Size;\n  end: Size;\n  bottom?: Size;\n  start?: Size;\n}",
-        description: "CSS-like dimensions: (top, end, bottom, start).\nBottom defaults to top, start defaults to end when `None`.",
+        description: "Edge dimensions. `bottom` defaults to `top` and `start` to `end` when absent.",
         fields: [
             {
                 name: "top",
                 type: "Size",
-                description: "Top dimension.",
+                description: "Top edge.",
             },
             {
                 name: "end",
                 type: "Size",
-                description: "End dimension.",
+                description: "End edge.",
             },
             {
                 name: "bottom",
                 type: "Size | undefined",
-                description: "Bottom dimension. Defaults to top when absent.",
+                description: "Bottom edge; defaults to `top`.",
             },
             {
                 name: "start",
                 type: "Size | undefined",
-                description: "Start dimension. Defaults to end when absent.",
+                description: "Start edge; defaults to `end`.",
+            },
+        ],
+    },
+    {
+        id: "effect",
+        name: "Effect",
+        category: "renderer",
+        definition: 'export type Effect = "Rainbow";',
+        description: "A visual effect. Each variant names one effect and carries its parameters.",
+        variants: [
+            {
+                name: "Rainbow",
+                type: '{ tag: "Rainbow"; value?: undefined }',
+                description: "Animated rainbow tint over the children.",
+            },
+        ],
+    },
+    {
+        id: "effect-props",
+        name: "EffectProps",
+        category: "renderer",
+        definition: "export interface EffectProps {\n  effect: Effect;\n}",
+        description: "Properties of an `Effect`.",
+        fields: [
+            {
+                name: "effect",
+                type: "Effect",
+                description: "The effect applied to the children.",
             },
         ],
     },
@@ -1102,9 +1170,9 @@ export const types = [
     {
         id: "horizontal-alignment",
         name: "HorizontalAlignment",
-        category: "chat",
+        category: "renderer",
         definition: 'export type HorizontalAlignment = "Start" | "Center" | "End";',
-        description: "Horizontal alignment options.",
+        description: "Cross-axis alignment of `Column` children.",
         variants: [
             {
                 name: "Start",
@@ -2332,13 +2400,18 @@ export const types = [
         id: "host-local-storage-read-error",
         name: "HostLocalStorageReadError",
         category: "local_storage",
-        definition: 'export type HostLocalStorageReadError =\n  | { tag: "Full"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
-        description: "Local storage operation error.",
+        definition: 'export type HostLocalStorageReadError =\n  | { tag: "Full"; value?: undefined }\n  | { tag: "AccessNotGranted"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Local storage read failure.",
         variants: [
             {
                 name: "Full",
                 type: '{ tag: "Full"; value?: undefined }',
                 description: "Storage quota exceeded.",
+            },
+            {
+                name: "AccessNotGranted",
+                type: '{ tag: "AccessNotGranted"; value?: undefined }',
+                description: "The addressed storage belongs to another product that has not granted\nthis caller the `storage` scope.\n\nOne variant answers every reason: the product does not resolve, it\npublished no manifest, or its manifest grants this caller nothing.\nDistinguishing them would make the call a probe for which products exist\nand which hold data.",
             },
             {
                 name: "Unknown",
@@ -2351,9 +2424,14 @@ export const types = [
         id: "host-local-storage-read-request",
         name: "HostLocalStorageReadRequest",
         category: "local_storage",
-        definition: "export interface HostLocalStorageReadRequest {\n  key: string;\n}",
-        description: "Request to read a local storage value.",
+        definition: "export interface HostLocalStorageReadRequest {\n  product?: string;\n  key: string;\n}",
+        description: "Request to read a local storage value.\n\nStorage is private by default: `product: None` addresses the caller's own\nstorage, which is what every v0.1 read resolved to. Naming another product\nreads that product's storage instead, and succeeds only if that product's\nmanifest grants this caller the `storage` scope.",
         fields: [
+            {
+                name: "product",
+                type: "string | undefined",
+                description: "Product whose storage is read. `None`, or the caller's own id, means the\ncaller, and consults no grant.",
+            },
             {
                 name: "key",
                 type: "string",
@@ -2700,6 +2778,184 @@ export const types = [
         ],
     },
     {
+        id: "host-pocket-list-subscribe-item",
+        name: "HostPocketListSubscribeItem",
+        category: "pocket",
+        definition: "export interface HostPocketListSubscribeItem {\n  cards: Array<PocketCard>;\n}",
+        description: "The calling product's cards: the whole set on subscribe and after every change.",
+        fields: [
+            {
+                name: "cards",
+                type: "Array<PocketCard>",
+                description: "Cards currently in Pocket for the calling product.",
+            },
+        ],
+    },
+    {
+        id: "host-pocket-remove-card-error",
+        name: "HostPocketRemoveCardError",
+        category: "pocket",
+        definition: 'export type HostPocketRemoveCardError =\n  | { tag: "Privileged"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Card removal failure.",
+        variants: [
+            {
+                name: "Privileged",
+                type: '{ tag: "Privileged"; value?: undefined }',
+                description: "The card is privileged and stays in Pocket.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-pocket-remove-card-request",
+        name: "HostPocketRemoveCardRequest",
+        category: "pocket",
+        definition: "export interface HostPocketRemoveCardRequest {\n  cardId: string;\n}",
+        description: "Request to remove one of the calling product's cards.",
+        fields: [
+            {
+                name: "card_id",
+                type: "string",
+                description: "Card to remove. A card that is not present is already removed.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-cipher-suite",
+        name: "HostProductDeviceChatCipherSuite",
+        category: "account",
+        definition: 'export type HostProductDeviceChatCipherSuite =\n  | { tag: "LegacyV2"; value?: undefined }\n  | { tag: "ContextBoundV1"; value: { peerAccountId: HexString; channelId: HexString } }\n;',
+        description: "Cipher suite used by product-device Chat identity-route operations.\n\nLegacy v2 preserves current mobile interoperability. Context-bound v1\nauthenticates the product/network, both account roles, route, and direction.",
+        variants: [
+            {
+                name: "LegacyV2",
+                type: '{ tag: "LegacyV2"; value?: undefined }',
+                description: "Existing Chat v2 CryptoKit-compatible empty-context HKDF and AEAD.",
+            },
+            {
+                name: "ContextBoundV1",
+                type: '{ tag: "ContextBoundV1"; value: { peerAccountId: HexString; channelId: HexString } }',
+                description: "Domain-separated encryption for peers that explicitly support it.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-error",
+        name: "HostProductDeviceChatError",
+        category: "account",
+        definition: 'export type HostProductDeviceChatError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "InvalidPeerKey"; value?: undefined }\n  | { tag: "InvalidCiphertext"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Product-device Chat v2 identity failure.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No account-authority session is connected.",
+            },
+            {
+                name: "Rejected",
+                type: '{ tag: "Rejected"; value?: undefined }',
+                description: "The user or Host rejected the operation.",
+            },
+            {
+                name: "InvalidPeerKey",
+                type: '{ tag: "InvalidPeerKey"; value?: undefined }',
+                description: "The peer X25519 public key is invalid.",
+            },
+            {
+                name: "InvalidCiphertext",
+                type: '{ tag: "InvalidCiphertext"; value?: undefined }',
+                description: "The ciphertext failed structural or authentication checks.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "The Host could not complete the operation.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-request",
+        name: "HostProductDeviceChatRequest",
+        category: "account",
+        definition: 'export type HostProductDeviceChatRequest =\n  | { tag: "Bind"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString } }\n  | { tag: "Seal"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; plaintext: HexString } }\n  | { tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }\n  | { tag: "SignRequestProof"; value: { productAccountId: ProductAccountId; payload: HexString } }\n  | { tag: "Identity"; value: { productAccountId: ProductAccountId } }\n  | { tag: "VerifyPeerDevice"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString; peerDeviceAccountId: HexString; proof: HexString } }\n;',
+        description: "Product-device Chat v2 identity operation.\n\nThe wallet Chat identity secret and derived shared key remain host-private.",
+        variants: [
+            {
+                name: "Bind",
+                type: '{ tag: "Bind"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString } }',
+                description: "Resolve the product account as a Chat device and bind it to the wallet identity.",
+            },
+            {
+                name: "Seal",
+                type: '{ tag: "Seal"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; plaintext: HexString } }',
+                description: "Seal identity-route plaintext for the peer with a host-generated nonce.",
+            },
+            {
+                name: "Open",
+                type: '{ tag: "Open"; value: { productAccountId: ProductAccountId; peerChatPublicKey: HexString; cipherSuite: HostProductDeviceChatCipherSuite; combinedCiphertext: HexString } }',
+                description: "Open an identity-route combined nonce/ciphertext/tag value.",
+            },
+            {
+                name: "SignRequestProof",
+                type: '{ tag: "SignRequestProof"; value: { productAccountId: ProductAccountId; payload: HexString } }',
+                description: "Sign the canonical Chat first-contact proof payload without wallet-message framing.",
+            },
+            {
+                name: "Identity",
+                type: '{ tag: "Identity"; value: { productAccountId: ProductAccountId } }',
+                description: "Read the authorized wallet's public Chat identity for incoming requests.",
+            },
+            {
+                name: "VerifyPeerDevice",
+                type: '{ tag: "VerifyPeerDevice"; value: { productAccountId: ProductAccountId; peerIdentityAccountId: HexString; peerChatPublicKey: HexString; peerDeviceAccountId: HexString; proof: HexString } }',
+                description: "Verify a peer's identity-to-device binding without exposing shared keys.",
+            },
+        ],
+    },
+    {
+        id: "host-product-device-chat-response",
+        name: "HostProductDeviceChatResponse",
+        category: "account",
+        definition: 'export type HostProductDeviceChatResponse =\n  | { tag: "IdentityBinding"; value: { identityAccountId: HexString; proof: HexString; walletOwnSessionId: HexString; peerOwnSessionId: HexString; walletOutgoingChannelId: HexString; walletIncomingChannelId: HexString } }\n  | { tag: "Sealed"; value: { combinedCiphertext: HexString } }\n  | { tag: "Opened"; value: { plaintext: HexString } }\n  | { tag: "RequestProofSigned"; value: { signature: HexString } }\n  | { tag: "Identity"; value: { identityAccountId: HexString; chatPublicKey: HexString } }\n  | { tag: "PeerDeviceVerified"; value: { valid: boolean } }\n;',
+        description: "Result of a product-device Chat v2 identity operation.",
+        variants: [
+            {
+                name: "IdentityBinding",
+                type: '{ tag: "IdentityBinding"; value: { identityAccountId: HexString; proof: HexString; walletOwnSessionId: HexString; peerOwnSessionId: HexString; walletOutgoingChannelId: HexString; walletIncomingChannelId: HexString } }',
+                description: "Wallet identity binding and deterministic peer routes.",
+            },
+            {
+                name: "Sealed",
+                type: '{ tag: "Sealed"; value: { combinedCiphertext: HexString } }',
+                description: "Sealed identity-route payload.",
+            },
+            {
+                name: "Opened",
+                type: '{ tag: "Opened"; value: { plaintext: HexString } }',
+                description: "Opened identity-route payload.",
+            },
+            {
+                name: "RequestProofSigned",
+                type: '{ tag: "RequestProofSigned"; value: { signature: HexString } }',
+                description: "Raw sr25519 signature over a canonical Chat request proof payload.",
+            },
+            {
+                name: "Identity",
+                type: '{ tag: "Identity"; value: { identityAccountId: HexString; chatPublicKey: HexString } }',
+                description: "Public Chat identity of the authorized wallet.",
+            },
+            {
+                name: "PeerDeviceVerified",
+                type: '{ tag: "PeerDeviceVerified"; value: { valid: boolean } }',
+                description: "Result of verifying a peer identity-to-device binding.",
+            },
+        ],
+    },
+    {
         id: "host-push-notification-cancel-request",
         name: "HostPushNotificationCancelRequest",
         category: "notifications",
@@ -2767,6 +3023,30 @@ export const types = [
                 name: "id",
                 type: "NotificationId",
                 description: "Host-assigned notification identifier.",
+            },
+        ],
+    },
+    {
+        id: "host-renderer-action-subscribe-item",
+        name: "HostRendererActionSubscribeItem",
+        category: "renderer",
+        definition: "export interface HostRendererActionSubscribeItem {\n  context: RenderContext;\n  actionId: string;\n  payload: HexString;\n}",
+        description: "An action triggered inside a product-rendered body.",
+        fields: [
+            {
+                name: "context",
+                type: "RenderContext",
+                description: "Where the body lives.",
+            },
+            {
+                name: "action_id",
+                type: "string",
+                description: "Which action was triggered, as named in the renderer tree.",
+            },
+            {
+                name: "payload",
+                type: "HexString",
+                description: "Data the node attached to the action. A `Button` press carries an\nempty payload; a `TextField` value change carries the UTF-8 bytes of\nthe new value, with no length prefix.",
             },
         ],
     },
@@ -3078,6 +3358,78 @@ export const types = [
         ],
     },
     {
+        id: "image-fit",
+        name: "ImageFit",
+        category: "renderer",
+        definition: 'export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";',
+        description: "How an image meets the box its modifiers size.",
+        variants: [
+            {
+                name: "None",
+                type: '{ tag: "None"; value?: undefined }',
+                description: "The image is not resized.",
+            },
+            {
+                name: "Fill",
+                type: '{ tag: "Fill"; value?: undefined }',
+                description: "Resized to fill the container without preserving the aspect ratio.",
+            },
+            {
+                name: "Cover",
+                type: '{ tag: "Cover"; value?: undefined }',
+                description: "Preserves the aspect ratio and fills the container, cutting overflow.",
+            },
+            {
+                name: "Contain",
+                type: '{ tag: "Contain"; value?: undefined }',
+                description: "Preserves the aspect ratio and fits inside the container, leaving empty\nspace if needed.",
+            },
+            {
+                name: "ScaleDown",
+                type: '{ tag: "ScaleDown"; value?: undefined }',
+                description: "Whichever of `None` or `Contain` yields the smaller image.",
+            },
+        ],
+    },
+    {
+        id: "image-props",
+        name: "ImageProps",
+        category: "renderer",
+        definition: "export interface ImageProps {\n  source: ImageSource;\n  fit?: ImageFit;\n}",
+        description: "Properties of an `Image`.",
+        fields: [
+            {
+                name: "source",
+                type: "ImageSource",
+                description: "Where the image bytes come from.",
+            },
+            {
+                name: "fit",
+                type: "ImageFit | undefined",
+                description: "Defaults to `Fill`.",
+            },
+        ],
+    },
+    {
+        id: "image-source",
+        name: "ImageSource",
+        category: "renderer",
+        definition: 'export type ImageSource =\n  | { tag: "Bulletin"; value: string }\n  | { tag: "Archive"; value: string }\n;',
+        description: "Where image bytes come from. The host fetches them; the tree carries no URL.",
+        variants: [
+            {
+                name: "Bulletin",
+                type: '{ tag: "Bulletin"; value: string }',
+                description: "A Bulletin chain blob, addressed by its CID.",
+            },
+            {
+                name: "Archive",
+                type: '{ tag: "Archive"; value: string }',
+                description: "A file inside the product's executable archive, as a path relative to\nthe archive root.",
+            },
+        ],
+    },
+    {
         id: "legacy-account",
         name: "LegacyAccount",
         category: "account",
@@ -3133,9 +3485,9 @@ export const types = [
     {
         id: "modifier",
         name: "Modifier",
-        category: "chat",
-        definition: 'export type Modifier =\n  | { tag: "Margin"; value: Dimensions }\n  | { tag: "Padding"; value: Dimensions }\n  | { tag: "Background"; value: Background }\n  | { tag: "Border"; value: BorderStyle }\n  | { tag: "Height"; value: { height: Size } }\n  | { tag: "Width"; value: { width: Size } }\n  | { tag: "MinWidth"; value: { width: Size } }\n  | { tag: "MinHeight"; value: { height: Size } }\n  | { tag: "FillWidth"; value: { enabled: boolean } }\n  | { tag: "FillHeight"; value: { enabled: boolean } }\n;',
-        description: "Layout and styling modifiers applied to custom renderer components.",
+        category: "renderer",
+        definition: 'export type Modifier =\n  | { tag: "Margin"; value: Dimensions }\n  | { tag: "Padding"; value: Dimensions }\n  | { tag: "Background"; value: Background }\n  | { tag: "Border"; value: BorderStyle }\n  | { tag: "Height"; value: Size }\n  | { tag: "Width"; value: Size }\n  | { tag: "MinWidth"; value: Size }\n  | { tag: "MinHeight"; value: Size }\n  | { tag: "FillWidth"; value: boolean }\n  | { tag: "FillHeight"; value: boolean }\n  | { tag: "Opacity"; value: number }\n  | { tag: "BlendingMode"; value: BlendingMode }\n;',
+        description: "Layout and styling applied to one node.",
         variants: [
             {
                 name: "Margin",
@@ -3155,37 +3507,47 @@ export const types = [
             {
                 name: "Border",
                 type: '{ tag: "Border"; value: BorderStyle }',
-                description: "Border style.",
+                description: "Border.",
             },
             {
                 name: "Height",
-                type: '{ tag: "Height"; value: { height: Size } }',
+                type: '{ tag: "Height"; value: Size }',
                 description: "Fixed height.",
             },
             {
                 name: "Width",
-                type: '{ tag: "Width"; value: { width: Size } }',
+                type: '{ tag: "Width"; value: Size }',
                 description: "Fixed width.",
             },
             {
                 name: "MinWidth",
-                type: '{ tag: "MinWidth"; value: { width: Size } }',
+                type: '{ tag: "MinWidth"; value: Size }',
                 description: "Minimum width.",
             },
             {
                 name: "MinHeight",
-                type: '{ tag: "MinHeight"; value: { height: Size } }',
+                type: '{ tag: "MinHeight"; value: Size }',
                 description: "Minimum height.",
             },
             {
                 name: "FillWidth",
-                type: '{ tag: "FillWidth"; value: { enabled: boolean } }',
-                description: "Fill available width.",
+                type: '{ tag: "FillWidth"; value: boolean }',
+                description: "Fill the available width.",
             },
             {
                 name: "FillHeight",
-                type: '{ tag: "FillHeight"; value: { enabled: boolean } }',
-                description: "Fill available height.",
+                type: '{ tag: "FillHeight"; value: boolean }',
+                description: "Fill the available height.",
+            },
+            {
+                name: "Opacity",
+                type: '{ tag: "Opacity"; value: number }',
+                description: "0 is transparent, 255 is opaque.",
+            },
+            {
+                name: "BlendingMode",
+                type: '{ tag: "BlendingMode"; value: BlendingMode }',
+                description: "Compositing mode against what is behind the node.",
             },
         ],
     },
@@ -3216,13 +3578,6 @@ export const types = [
         ],
     },
     {
-        id: "optional-bool",
-        name: "OptionalBool",
-        category: "chat",
-        definition: "export type OptionalBool = boolean | undefined;",
-        description: "An optional boolean with the compact SCALE encoding used by renderer props.",
-    },
-    {
         id: "payment-top-up-source",
         name: "PaymentTopUpSource",
         category: "payment",
@@ -3243,6 +3598,25 @@ export const types = [
                 name: "Coins",
                 type: '{ tag: "Coins"; value: { sr25519SecretKeys: Array<HexString> } }',
                 description: "Fund directly from coin secret keys. Each key is an sr25519 secret\ncontrolling a single coin.",
+            },
+        ],
+    },
+    {
+        id: "pocket-card",
+        name: "PocketCard",
+        category: "pocket",
+        definition: "export interface PocketCard {\n  cardId: string;\n  privileged: boolean;\n}",
+        description: "One of the calling product's Pocket cards.",
+        fields: [
+            {
+                name: "card_id",
+                type: "string",
+                description: "Card label declared by the product, unique within the product.",
+            },
+            {
+                name: "privileged",
+                type: "boolean",
+                description: "Placed by the host itself; removable by neither the user nor the product.",
             },
         ],
     },
@@ -3328,30 +3702,6 @@ export const types = [
         ],
     },
     {
-        id: "product-chat-custom-message-render-request",
-        name: "ProductChatCustomMessageRenderRequest",
-        category: "chat",
-        definition: "export interface ProductChatCustomMessageRenderRequest {\n  messageId: string;\n  messageType: string;\n  payload: HexString;\n}",
-        description: "Render work sent by the host when a native custom-message cell appears.",
-        fields: [
-            {
-                name: "message_id",
-                type: "string",
-                description: "Stable identifier used to correlate triggered actions.",
-            },
-            {
-                name: "message_type",
-                type: "string",
-                description: "Product-defined discriminator used to select a renderer.",
-            },
-            {
-                name: "payload",
-                type: "HexString",
-                description: "Stored product-defined message payload.",
-            },
-        ],
-    },
-    {
         id: "product-proof-context",
         name: "ProductProofContext",
         category: "account",
@@ -3367,6 +3717,25 @@ export const types = [
                 name: "suffix",
                 type: "DerivationIndex",
                 description: "Selector distinguishing contexts within the product; expands to the\nsame 32-byte derivation index as [`ProductAccountId::derivation_index`].",
+            },
+        ],
+    },
+    {
+        id: "product-renderer-render-request",
+        name: "ProductRendererRenderRequest",
+        category: "renderer",
+        definition: "export interface ProductRendererRenderRequest {\n  context: RenderContext;\n  payload: HexString;\n}",
+        description: "A body the host needs drawn.",
+        fields: [
+            {
+                name: "context",
+                type: "RenderContext",
+                description: "Where the body lives.",
+            },
+            {
+                name: "payload",
+                type: "HexString",
+                description: "Product-defined payload, opaque to the host.",
             },
         ],
     },
@@ -4124,6 +4493,94 @@ export const types = [
         ],
     },
     {
+        id: "render-context",
+        name: "RenderContext",
+        category: "renderer",
+        definition: 'export type RenderContext =\n  | { tag: "ChatMessage"; value: { roomId: string; messageId: string; messageType: string } }\n  | { tag: "InputWidget"; value: { candidateId: string } }\n  | { tag: "PocketCard"; value: { cardId: string } }\n;',
+        description: "Where a product-rendered body lives, and the id that names it there.",
+        variants: [
+            {
+                name: "ChatMessage",
+                type: '{ tag: "ChatMessage"; value: { roomId: string; messageId: string; messageType: string } }',
+                description: "A message in a chat room.",
+            },
+            {
+                name: "InputWidget",
+                type: '{ tag: "InputWidget"; value: { candidateId: string } }',
+                description: "A candidate answered to an input query.",
+            },
+            {
+                name: "PocketCard",
+                type: '{ tag: "PocketCard"; value: { cardId: string } }',
+                description: "A card face in the host's Pocket collection.",
+            },
+        ],
+    },
+    {
+        id: "renderer-node",
+        name: "RendererNode",
+        category: "renderer",
+        definition: 'export type RendererNode =\n  | { tag: "Nil"; value?: undefined }\n  | { tag: "String"; value: { text: string } }\n  | { tag: "Box"; value: { modifiers: Array<Modifier>; props: BoxProps; children: Array<RendererNode> } }\n  | { tag: "Column"; value: { modifiers: Array<Modifier>; props: ColumnProps; children: Array<RendererNode> } }\n  | { tag: "Row"; value: { modifiers: Array<Modifier>; props: RowProps; children: Array<RendererNode> } }\n  | { tag: "Spacer"; value: { modifiers: Array<Modifier> } }\n  | { tag: "Text"; value: { modifiers: Array<Modifier>; props: TextProps; children: Array<RendererNode> } }\n  | { tag: "Button"; value: { modifiers: Array<Modifier>; props: ButtonProps; children: Array<RendererNode> } }\n  | { tag: "TextField"; value: { modifiers: Array<Modifier>; props: TextFieldProps } }\n  | { tag: "Image"; value: { modifiers: Array<Modifier>; props: ImageProps } }\n  | { tag: "Effect"; value: { props: EffectProps; children: Array<RendererNode> } }\n;',
+        description: "A node in a product-rendered tree. Container variants recurse through\n`children`.",
+        variants: [
+            {
+                name: "Nil",
+                type: '{ tag: "Nil"; value?: undefined }',
+                description: "Draws nothing.",
+            },
+            {
+                name: "String",
+                type: '{ tag: "String"; value: { text: string } }',
+                description: "A text run.",
+            },
+            {
+                name: "Box",
+                type: '{ tag: "Box"; value: { modifiers: Array<Modifier>; props: BoxProps; children: Array<RendererNode> } }',
+                description: "Generic container.",
+            },
+            {
+                name: "Column",
+                type: '{ tag: "Column"; value: { modifiers: Array<Modifier>; props: ColumnProps; children: Array<RendererNode> } }',
+                description: "Vertical layout.",
+            },
+            {
+                name: "Row",
+                type: '{ tag: "Row"; value: { modifiers: Array<Modifier>; props: RowProps; children: Array<RendererNode> } }',
+                description: "Horizontal layout.",
+            },
+            {
+                name: "Spacer",
+                type: '{ tag: "Spacer"; value: { modifiers: Array<Modifier> } }',
+                description: "Flexible space.",
+            },
+            {
+                name: "Text",
+                type: '{ tag: "Text"; value: { modifiers: Array<Modifier>; props: TextProps; children: Array<RendererNode> } }',
+                description: "Styled text.",
+            },
+            {
+                name: "Button",
+                type: '{ tag: "Button"; value: { modifiers: Array<Modifier>; props: ButtonProps; children: Array<RendererNode> } }',
+                description: "Interactive button.",
+            },
+            {
+                name: "TextField",
+                type: '{ tag: "TextField"; value: { modifiers: Array<Modifier>; props: TextFieldProps } }',
+                description: "Single-line text input.",
+            },
+            {
+                name: "Image",
+                type: '{ tag: "Image"; value: { modifiers: Array<Modifier>; props: ImageProps } }',
+                description: "Image, sized by modifiers.",
+            },
+            {
+                name: "Effect",
+                type: '{ tag: "Effect"; value: { props: EffectProps; children: Array<RendererNode> } }',
+                description: "Applies its effect to its children.",
+            },
+        ],
+    },
+    {
         id: "resource-allocation-error",
         name: "ResourceAllocationError",
         category: "resource_allocation",
@@ -4204,19 +4661,19 @@ export const types = [
     {
         id: "row-props",
         name: "RowProps",
-        category: "chat",
+        category: "renderer",
         definition: "export interface RowProps {\n  verticalAlignment?: VerticalAlignment;\n  horizontalArrangement?: Arrangement;\n}",
-        description: "Properties for a [`CustomRendererNode::Row`] layout.",
+        description: "Properties of a `Row`.",
         fields: [
             {
                 name: "vertical_alignment",
                 type: "VerticalAlignment | undefined",
-                description: "Vertical alignment of children.",
+                description: "Cross-axis alignment of children.",
             },
             {
                 name: "horizontal_arrangement",
                 type: "Arrangement | undefined",
-                description: "Horizontal arrangement of children.",
+                description: "Main-axis distribution of children.",
             },
         ],
     },
@@ -4300,19 +4757,24 @@ export const types = [
     {
         id: "shape",
         name: "Shape",
-        category: "chat",
-        definition: 'export type Shape =\n  | { tag: "Rounded"; value: { radius: Size } }\n  | { tag: "Circle"; value?: undefined }\n;',
-        description: "Shape for borders and backgrounds.",
+        category: "renderer",
+        definition: 'export type Shape =\n  | { tag: "Rounded"; value: Size }\n  | { tag: "Circle"; value?: undefined }\n  | { tag: "Square"; value?: undefined }\n;',
+        description: "Outline of a background or border.",
         variants: [
             {
                 name: "Rounded",
-                type: '{ tag: "Rounded"; value: { radius: Size } }',
-                description: "Border radius value.",
+                type: '{ tag: "Rounded"; value: Size }',
+                description: "Rounded corners with the given radius.",
             },
             {
                 name: "Circle",
                 type: '{ tag: "Circle"; value?: undefined }',
                 description: "Circular shape.",
+            },
+            {
+                name: "Square",
+                type: '{ tag: "Square"; value?: undefined }',
+                description: "Square corners.",
             },
         ],
     },
@@ -4358,9 +4820,9 @@ export const types = [
     {
         id: "size",
         name: "Size",
-        category: "chat",
+        category: "renderer",
         definition: "export type Size = number | bigint;",
-        description: "A size/dimension value (logical pixels) used across the custom renderer.\n\nEncoded as a SCALE `Compact<u64>`: the common small values cost a single\nbyte on the wire instead of eight.",
+        description: "A size in logical pixels, SCALE-encoded as `Compact<u64>`.",
     },
     {
         id: "statement",
@@ -4515,19 +4977,19 @@ export const types = [
     {
         id: "text-field-props",
         name: "TextFieldProps",
-        category: "chat",
-        definition: "export interface TextFieldProps {\n  text: string;\n  placeholder?: string;\n  label?: string;\n  enabled: OptionalBool;\n  valueChangeAction?: string;\n}",
-        description: "Properties for a [`CustomRendererNode::TextField`].",
+        category: "renderer",
+        definition: "export interface TextFieldProps {\n  text: string;\n  placeholder?: string;\n  label?: string;\n  enabled?: boolean;\n  valueChangeAction?: string;\n}",
+        description: "Properties of a `TextField`.",
         fields: [
             {
                 name: "text",
                 type: "string",
-                description: "Current text value.",
+                description: "Current value.",
             },
             {
                 name: "placeholder",
                 type: "string | undefined",
-                description: "Placeholder text.",
+                description: "Shown when the value is empty.",
             },
             {
                 name: "label",
@@ -4536,22 +4998,22 @@ export const types = [
             },
             {
                 name: "enabled",
-                type: "OptionalBool",
-                description: "Whether the field is enabled. Absent leaves the default to the host.",
+                type: "boolean | undefined",
+                description: "Whether the field accepts input. Absent leaves the default to the host.",
             },
             {
                 name: "value_change_action",
                 type: "string | undefined",
-                description: "Action identifier triggered when the value changes.",
+                description: "Action triggered on every value change. The action carries the new\nvalue as UTF-8 bytes, with no length prefix.",
             },
         ],
     },
     {
         id: "text-props",
         name: "TextProps",
-        category: "chat",
+        category: "renderer",
         definition: "export interface TextProps {\n  style?: TypographyStyle;\n  color?: ColorToken;\n}",
-        description: "Properties for a [`CustomRendererNode::Text`] display.",
+        description: "Properties of a `Text`.",
         fields: [
             {
                 name: "style",
@@ -4637,9 +5099,9 @@ export const types = [
     {
         id: "typography-style",
         name: "TypographyStyle",
-        category: "chat",
+        category: "renderer",
         definition: 'export type TypographyStyle = "HeadlineLarge" | "TitleMediumRegular" | "BodyLargeRegular" | "BodyMediumRegular" | "BodySmallRegular";',
-        description: "Text typography presets.",
+        description: "Typography presets, resolved by the host's design system.",
         variants: [
             {
                 name: "HeadlineLarge",
@@ -4669,11 +5131,44 @@ export const types = [
         ],
     },
     {
+        id: "v-01-host-local-storage-read-error",
+        name: "V01HostLocalStorageReadError",
+        category: "local_storage",
+        definition: 'export type V01HostLocalStorageReadError =\n  | { tag: "Full"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Local storage operation error.",
+        variants: [
+            {
+                name: "Full",
+                type: '{ tag: "Full"; value?: undefined }',
+                description: "Storage quota exceeded.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "v-01-host-local-storage-read-request",
+        name: "V01HostLocalStorageReadRequest",
+        category: "local_storage",
+        definition: "export interface V01HostLocalStorageReadRequest {\n  key: string;\n}",
+        description: "Request to read a local storage value.",
+        fields: [
+            {
+                name: "key",
+                type: "string",
+                description: "Storage key to read.",
+            },
+        ],
+    },
+    {
         id: "vertical-alignment",
         name: "VerticalAlignment",
-        category: "chat",
+        category: "renderer",
         definition: 'export type VerticalAlignment = "Top" | "Center" | "Bottom";',
-        description: "Vertical alignment options.",
+        description: "Cross-axis alignment of `Row` children.",
         variants: [
             {
                 name: "Top",

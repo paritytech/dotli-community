@@ -1,408 +1,287 @@
 import { describe, expect, it } from "vitest";
 import {
-  HostRequestResourceAllocationResponse,
-  VersionedHostRequestResourceAllocationError,
+  GenericError,
   VersionedHostRequestResourceAllocationRequest,
-  RemoteChainHeadHeaderResponse,
+  VersionedHostRequestResourceAllocationResponse,
+  VersionedHostRequestResourceAllocationError,
+  VersionedRemoteChainHeadBodyResponse,
+  VersionedRemoteChainHeadBodyError,
   VersionedRemoteChainHeadFollowRequest,
-  VersionedRemoteChainHeadHeaderError,
   VersionedRemoteChainHeadHeaderRequest,
+  VersionedRemoteChainHeadHeaderResponse,
+  VersionedRemoteChainHeadHeaderError,
+  VersionedRemoteChainHeadUnpinResponse,
   VersionedRemoteChainHeadUnpinError,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
+  MESSAGE_TYPE_INTERRUPT,
+  MESSAGE_TYPE_STOP,
+  type MethodIds,
 } from "@parity/truapi";
-import {
-  CallError,
-  indexedTaggedUnion,
-  Result,
-  _void,
-} from "@parity/truapi/scale";
-import * as WIRE_TABLE from "@parity/truapi/wire-table";
-import {
-  CHAIN_FOLLOW_HEAD_SUBSCRIBE,
-  CHAIN_GET_HEAD_HEADER,
-  CHAIN_UNPIN_HEAD,
-  LOCAL_STORAGE_READ,
-  SYSTEM_HANDSHAKE,
-} from "@parity/truapi/wire-table";
-import { describeWireFrame, __testing } from "@dotli/ui/debug-wire-describe";
+import { CallError, Result, _void } from "@parity/truapi/scale";
+import * as W from "@parity/truapi/wire-table";
+import { describeWireFrame } from "@dotli/ui/debug-wire-describe";
+import { decodeChainAnnotations } from "@dotli/truapi-debug/chain-decode";
 import { blockHash, genesisHash } from "./support.ts";
 
-function payloadBytes(
-  codec: { enc: (v: never) => Uint8Array },
-  value: unknown,
-): Uint8Array {
-  return codec.enc(value as never);
+function describeFrame(ids: MethodIds, messageType: number, value: Uint8Array) {
+  return describeWireFrame({
+    traitId: ids.trait,
+    methodId: ids.method,
+    messageType,
+    value,
+  });
 }
 
+const allocationResponseCodec = Result(
+  VersionedHostRequestResourceAllocationResponse,
+  CallError(VersionedHostRequestResourceAllocationError),
+);
+const headerResponseCodec = Result(
+  VersionedRemoteChainHeadHeaderResponse,
+  CallError(VersionedRemoteChainHeadHeaderError),
+);
+
 describe("describeWireFrame", () => {
-  it("preserves batched resource outcomes in request order", () => {
+  it("preserves batched resource selectors and outcomes in request order", () => {
     const resources = [
       { tag: "StatementStoreAllowance", value: undefined },
       { tag: "BulletinAllowance", value: undefined },
-    ];
-    const request = payloadBytes(
-      VersionedHostRequestResourceAllocationRequest,
-      {
-        tag: "V1",
-        value: { resources },
-      },
-    );
-    const response = payloadBytes(
-      indexedTaggedUnion({
-        V1: [
-          0,
-          Result(
-            HostRequestResourceAllocationResponse,
-            CallError(VersionedHostRequestResourceAllocationError),
-          ),
-        ],
-      }),
-      {
-        tag: "V1",
-        value: {
-          success: true,
-          value: { outcomes: ["Rejected", "Allocated"] },
-        },
-      },
-    );
+    ] as const;
+    const request = VersionedHostRequestResourceAllocationRequest.enc({
+      tag: "V1",
+      value: { resources: [...resources] },
+    });
+    const response = allocationResponseCodec.enc({
+      success: true,
+      value: { tag: "V1", value: { outcomes: ["Rejected", "Allocated"] } },
+    });
     expect(
-      describeWireFrame(WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request, request)
-        .value,
+      describeFrame(
+        W.RESOURCE_ALLOCATION_REQUEST,
+        MESSAGE_TYPE_REQUEST,
+        request,
+      ).value,
     ).toEqual({ resources });
     expect(
-      describeWireFrame(
-        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response,
+      describeFrame(
+        W.RESOURCE_ALLOCATION_REQUEST,
+        MESSAGE_TYPE_RESPONSE,
         response,
       ).value,
     ).toEqual({ outcomes: ["Rejected", "Allocated"] });
   });
 
-  it("redacts malformed allocation data instead of retaining unexpected payloads", () => {
-    const request = payloadBytes(
-      VersionedHostRequestResourceAllocationRequest,
-      {
+  it("redacts malformed allocation data, unknown legs and private failure reasons", () => {
+    const request = VersionedHostRequestResourceAllocationRequest.enc({
+      tag: "V1",
+      value: {
+        resources: [{ tag: "StatementStoreAllowance", value: undefined }],
+      },
+    });
+    const privateBytes = new TextEncoder().encode("not-for-the-activity-log");
+    const trailing = new Uint8Array([...request, ...privateBytes]);
+    const malformed = new Uint8Array([255, ...privateBytes]);
+    expect(
+      describeFrame(
+        W.RESOURCE_ALLOCATION_REQUEST,
+        MESSAGE_TYPE_REQUEST,
+        trailing,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: trailing.length });
+    expect(
+      describeFrame(
+        W.RESOURCE_ALLOCATION_REQUEST,
+        MESSAGE_TYPE_RESPONSE,
+        malformed,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: malformed.length });
+    expect(
+      describeFrame(
+        W.RESOURCE_ALLOCATION_REQUEST,
+        MESSAGE_TYPE_INTERRUPT,
+        privateBytes,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: privateBytes.length });
+    const failure = allocationResponseCodec.enc({
+      success: false,
+      value: { tag: "HostFailure", value: { reason: "private reason" } },
+    });
+    expect(
+      describeFrame(
+        W.RESOURCE_ALLOCATION_REQUEST,
+        MESSAGE_TYPE_RESPONSE,
+        failure,
+      ).value,
+    ).toEqual({ failed: true });
+  });
+
+  it("keeps chain start and follow request correlation consumable by the panel", () => {
+    const start = describeFrame(
+      W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_REQUEST,
+      VersionedRemoteChainHeadFollowRequest.enc({
         tag: "V1",
+        value: { genesisHash, withRuntime: true },
+      }),
+    );
+    expect(decodeChainAnnotations(start.tag, start.value)).toEqual({
+      kind: "follow-start",
+      genesisHash,
+    });
+    const request = describeFrame(
+      W.CHAIN_GET_HEAD_HEADER,
+      MESSAGE_TYPE_REQUEST,
+      VersionedRemoteChainHeadHeaderRequest.enc({
+        tag: "V1",
+        value: { genesisHash, followSubscriptionId: "p:1", hash: blockHash },
+      }),
+    );
+    expect(decodeChainAnnotations(request.tag, request.value)).toEqual({
+      kind: "head-header-request",
+      genesisHash,
+      followSubscriptionId: "p:1",
+      blockHash,
+    });
+  });
+
+  it("decodes codec-2 Ok and Err payloads into panel response outcomes", () => {
+    const ok = describeFrame(
+      W.CHAIN_GET_HEAD_HEADER,
+      MESSAGE_TYPE_RESPONSE,
+      headerResponseCodec.enc({
+        success: true,
+        value: { tag: "V1", value: { header: blockHash } },
+      }),
+    );
+    expect(ok.value).toEqual({ success: true, value: { header: blockHash } });
+    expect(decodeChainAnnotations(ok.tag, ok.value)).toEqual({
+      kind: "head-header-response",
+      outcome: "ok",
+    });
+    const failure = describeFrame(
+      W.CHAIN_GET_HEAD_HEADER,
+      MESSAGE_TYPE_RESPONSE,
+      headerResponseCodec.enc({
+        success: false,
         value: {
-          resources: [{ tag: "StatementStoreAllowance", value: undefined }],
+          tag: "Domain",
+          value: { tag: "V1", value: { reason: "unknown block" } },
         },
+      }),
+    );
+    expect(decodeChainAnnotations(failure.tag, failure.value)).toEqual({
+      kind: "head-header-response",
+      outcome: "error",
+      errorMessage: "unknown block",
+    });
+    const unpin = describeFrame(
+      W.CHAIN_UNPIN_HEAD,
+      MESSAGE_TYPE_RESPONSE,
+      Result(
+        VersionedRemoteChainHeadUnpinResponse,
+        CallError(VersionedRemoteChainHeadUnpinError),
+      ).enc({ success: true, value: { tag: "V1", value: undefined } }),
+    );
+    expect(decodeChainAnnotations(unpin.tag, unpin.value)).toEqual({
+      kind: "head-unpin-response",
+      outcome: "ok",
+    });
+  });
+  it("retains operation IDs from versioned Ok values for follow-event correlation", () => {
+    const response = describeFrame(
+      W.CHAIN_GET_HEAD_BODY,
+      MESSAGE_TYPE_RESPONSE,
+      Result(
+        VersionedRemoteChainHeadBodyResponse,
+        CallError(VersionedRemoteChainHeadBodyError),
+      ).enc({
+        success: true,
+        value: {
+          tag: "V1",
+          value: {
+            operation: {
+              tag: "Started",
+              value: { operationId: "operation-7" },
+            },
+          },
+        },
+      }),
+    );
+    expect(decodeChainAnnotations(response.tag, response.value)).toEqual({
+      kind: "head-body-response",
+      outcome: "started",
+      operationId: "operation-7",
+    });
+  });
+
+  it("classifies and decodes typed subscription interrupts separately from stop", () => {
+    const reason = {
+      success: false,
+      value: { tag: "HostFailure", value: { reason: "chain unavailable" } },
+    } as const;
+    const interrupt = describeFrame(
+      W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_INTERRUPT,
+      Result(_void, CallError(GenericError)).enc(reason),
+    );
+    expect(interrupt).toEqual({
+      tag: "remote_chain_head_follow_interrupt",
+      value: reason,
+    });
+    const stop = describeFrame(
+      W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_STOP,
+      new Uint8Array(),
+    );
+    expect(stop).toEqual({
+      tag: "remote_chain_head_follow_stop",
+      value: undefined,
+    });
+  });
+
+  it("does not confuse equal method IDs in different traits or request/subscription legs", () => {
+    const bytes = new Uint8Array([255]);
+    const handshake = describeFrame(
+      W.SYSTEM_HANDSHAKE,
+      MESSAGE_TYPE_REQUEST,
+      bytes,
+    );
+    const follow = describeFrame(
+      W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_REQUEST,
+      bytes,
+    );
+    expect(handshake.tag).toBe("system_handshake_request");
+    expect(follow.tag).toBe("remote_chain_head_follow_start");
+    expect(decodeChainAnnotations(follow.tag, follow.value)).toBeNull();
+    const unknown = describeWireFrame({
+      traitId: 250,
+      methodId: 1,
+      messageType: 0,
+      value: bytes,
+    });
+    expect(unknown).toEqual({
+      tag: "wire_250_1_0",
+      value: {
+        wireId: 64001,
+        traitId: 250,
+        methodId: 1,
+        messageType: 0,
+        bytes,
       },
-    );
-    const privatePayload = new TextEncoder().encode("not-for-the-activity-log");
-    const trailingPayload = new Uint8Array([...request, ...privatePayload]);
-    const malformedResponse = new Uint8Array([255, ...privatePayload]);
-    expect(
-      describeWireFrame(
-        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request,
-        trailingPayload,
-      ).value,
-    ).toEqual({ redacted: true, byteLength: trailingPayload.length });
-    expect(
-      describeWireFrame(
-        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response,
-        malformedResponse,
-      ).value,
-    ).toEqual({ redacted: true, byteLength: malformedResponse.length });
-  });
-
-  it("As a dotli integrator, the host tags chain frames with the panel's legacy names and decodes their payloads", () => {
-    // Given
-    const bytes = payloadBytes(VersionedRemoteChainHeadFollowRequest, {
-      tag: "V1",
-      value: { genesisHash, withRuntime: true },
-    });
-
-    // When
-    const described = describeWireFrame(
-      CHAIN_FOLLOW_HEAD_SUBSCRIBE.start,
-      bytes,
-    );
-
-    // Then
-    expect(described.tag).toBe("remote_chain_head_follow_start");
-    expect(described.value).toEqual({
-      tag: "V1",
-      value: { genesisHash, withRuntime: true },
     });
   });
 
-  it("As a dotli integrator, the host decodes chain request payloads with correlation fields intact", () => {
-    // Given
-    const bytes = payloadBytes(VersionedRemoteChainHeadHeaderRequest, {
-      tag: "V1",
-      value: { genesisHash, followSubscriptionId: "follow_0", hash: blockHash },
-    });
-
-    // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.request, bytes);
-
-    // Then
-    expect(described.tag).toBe("remote_chain_head_header_request");
-    expect(
-      (described.value as { value: { followSubscriptionId: string } }).value
-        .followSubscriptionId,
-    ).toBe("follow_0");
-  });
-
-  it("As a dotli integrator, the host names non-chain frames from the wire table without decoding them", () => {
-    // Given: a system handshake frame (not in the codec registry).
-    const bytes = new Uint8Array([1, 2, 3]);
-
-    // When
-    const described = describeWireFrame(SYSTEM_HANDSHAKE.request, bytes);
-
-    // Then: mechanical name, raw payload preserved for the detail pane.
-    expect(described.tag).toBe("system_handshake_request");
-    expect(described.value).toEqual({
-      wireId: SYSTEM_HANDSHAKE.request,
-      bytes,
-    });
-  });
-
-  it("As a dotli integrator, the host redacts sensitive families to metadata only", () => {
-    // Given
+  it("never exposes sensitive family bytes, including unknown message legs", () => {
     const bytes = new Uint8Array(48);
-
-    // When
-    const described = describeWireFrame(LOCAL_STORAGE_READ.request, bytes);
-
-    // Then: named, but neither decoded value nor raw bytes escape the tap.
-    expect(described.tag).toBe("local_storage_read_request");
-    expect(described.value).toEqual({ redacted: true, byteLength: 48 });
-  });
-
-  it("As a dotli integrator, the host falls back to wire_<id> for unknown discriminants", () => {
-    // Given
-    const bytes = new Uint8Array([9]);
-
-    // When
-    const described = describeWireFrame(60_000, bytes);
-
-    // Then
-    expect(described.tag).toBe("wire_60000");
-    expect(described.value).toEqual({ wireId: 60_000, bytes });
-  });
-
-  it("As a dotli integrator, the host degrades to raw bytes when a registered codec fails to decode", () => {
-    // Given: garbage bytes on a chain discriminant.
-    const bytes = new Uint8Array([0xff, 0xff, 0xff]);
-
-    // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.request, bytes);
-
-    // Then: the tag still resolves and the payload keeps the raw form instead of throwing.
-    expect(described.tag).toBe("remote_chain_head_header_request");
-    expect(described.value).toEqual({
-      wireId: CHAIN_GET_HEAD_HEADER.request,
-      bytes,
-    });
-  });
-
-  it("As a dotli integrator, the host decodes a real chainHead.header Ok response using the generated client's wire composition", () => {
-    // Given: the exact composition `ChainClient#getHeadHeader` decodes with,
-    // an indexed V1 envelope around Result(<bare response>, CallError(<error>)).
-    // A bare `VersionedRemoteChainHeadHeaderResponse` codec (the old, wrong
-    // registration) would silently decode this into garbage.
-    const codec = indexedTaggedUnion({
-      V1: [
-        0,
-        Result(
-          RemoteChainHeadHeaderResponse,
-          CallError(VersionedRemoteChainHeadHeaderError),
-        ),
-      ],
-    });
-    const bytes = payloadBytes(codec, {
-      tag: "V1",
-      value: { success: true, value: { header: blockHash } },
-    });
-
-    // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.response, bytes);
-
-    // Then
-    expect(described.tag).toBe("remote_chain_head_header_response");
-    expect(described.value).toEqual({
-      tag: "V1",
-      value: { success: true, value: { header: blockHash } },
-    });
-  });
-
-  it("As a dotli integrator, the host decodes a real chainHead.header Err response using the generated client's wire composition", () => {
-    // Given: a Domain error carrying the method's own versioned GenericError.
-    const codec = indexedTaggedUnion({
-      V1: [
-        0,
-        Result(
-          RemoteChainHeadHeaderResponse,
-          CallError(VersionedRemoteChainHeadHeaderError),
-        ),
-      ],
-    });
-    const bytes = payloadBytes(codec, {
-      tag: "V1",
-      value: {
-        success: false,
-        value: {
-          tag: "Domain",
-          value: { tag: "V1", value: { reason: "unknown block" } },
-        },
-      },
-    });
-
-    // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.response, bytes);
-
-    // Then
-    expect(described.tag).toBe("remote_chain_head_header_response");
-    expect(described.value).toEqual({
-      tag: "V1",
-      value: {
-        success: false,
-        value: {
-          tag: "Domain",
-          value: { tag: "V1", value: { reason: "unknown block" } },
-        },
-      },
-    });
-  });
-
-  it("As a dotli integrator, the host decodes a real chainHead.unpin (void) Ok response using the generated client's wire composition", () => {
-    // Given: `ChainClient#unpinHead` decodes with Result(_void, CallError(...)).
-    const codec = indexedTaggedUnion({
-      V1: [0, Result(_void, CallError(VersionedRemoteChainHeadUnpinError))],
-    });
-    const bytes = payloadBytes(codec, {
-      tag: "V1",
-      value: { success: true, value: undefined },
-    });
-
-    // When
-    const described = describeWireFrame(CHAIN_UNPIN_HEAD.response, bytes);
-
-    // Then
-    expect(described.tag).toBe("remote_chain_head_unpin_response");
-    expect(described.value).toEqual({
-      tag: "V1",
-      value: { success: true, value: undefined },
-    });
-  });
-
-  it("As a dotli integrator, the host tags chainHead.follow stop/interrupt frames into the chain swimlane without decoding them", () => {
-    // Given: control frames with no payload worth decoding.
-    const stopBytes = new Uint8Array([1, 2, 3]);
-    const interruptBytes = new Uint8Array([4, 5, 6]);
-
-    // When
-    const stop = describeWireFrame(CHAIN_FOLLOW_HEAD_SUBSCRIBE.stop, stopBytes);
-    const interrupt = describeWireFrame(
-      CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt,
-      interruptBytes,
-    );
-
-    // Then: legacy `remote_chain_*` tags so the swimlane layout keys on them,
-    // raw bytes preserved since there's no codec for these.
-    expect(stop.tag).toBe("remote_chain_head_follow_stop");
-    expect(stop.value).toEqual({
-      wireId: CHAIN_FOLLOW_HEAD_SUBSCRIBE.stop,
-      bytes: stopBytes,
-    });
-    expect(interrupt.tag).toBe("remote_chain_head_follow_interrupt");
-    expect(interrupt.value).toEqual({
-      wireId: CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt,
-      bytes: interruptBytes,
-    });
-  });
-});
-
-// The linkage table (`CHAIN_LINKAGE`) is the one hand-maintained fact
-// bridging a wire-table entry to its generated codec family. Everything
-// else is derived. These tests fail the moment that derivation stops
-// matching the installed `@parity/truapi`: a new codegen chain method with
-// no linkage row, a renamed codec export, or a stem typo that would
-// silently shift the panel's tag vocabulary.
-describe("chain-family drift guard", () => {
-  it("As a dotli integrator, the host's linkage table covers every CHAIN_* wire-table export", () => {
-    // Given: every chain wire-table export the installed `@parity/truapi` defines.
-    const chainWireTableKeys = Object.keys(WIRE_TABLE).filter((key) =>
-      key.startsWith("CHAIN_"),
-    );
-
-    // When
-    const linkedKeys = __testing.CHAIN_LINKAGE.map((row) => row.wireTableKey);
-
-    // Then: codegen adding a chain method with no linkage row fails here,
-    // forcing a linkage row (and a redaction decision) before it ships.
-    expect(new Set(linkedKeys)).toEqual(new Set(chainWireTableKeys));
-    expect(linkedKeys).toHaveLength(chainWireTableKeys.length);
-  });
-
-  it.each(__testing.CHAIN_LINKAGE)(
-    "As a dotli integrator, the host resolves every codec export linkage row $stem needs for its shape",
-    ({ wireTableKey, stem }) => {
-      // Given: the shape (subscription vs call) the wire table declares for
-      // this row, read through the same discriminant production uses.
-      const roles = WIRE_TABLE[wireTableKey] as Parameters<
-        typeof __testing.isSubscriptionRoles
-      >[0];
-
-      // When / Then: a codegen rename of any expected export fails here
-      // instead of silently mis-decoding or falling back to raw bytes.
-      if (__testing.isSubscriptionRoles(roles)) {
-        expect(
-          __testing.resolveCodec(`VersionedRemoteChain${stem}Request`),
-        ).toBeDefined();
-        expect(
-          __testing.resolveCodec(`VersionedRemoteChain${stem}Item`),
-        ).toBeDefined();
-      } else {
-        expect(
-          __testing.resolveCodec(`VersionedRemoteChain${stem}Request`),
-        ).toBeDefined();
-        expect(
-          __testing.resolveCodec(`VersionedRemoteChain${stem}Error`),
-        ).toBeDefined();
-        if (!__testing.VOID_RESPONSE_STEMS.has(stem)) {
-          expect(
-            __testing.resolveCodec(`RemoteChain${stem}Response`),
-          ).toBeDefined();
-        }
-      }
-    },
-  );
-
-  it("As a dotli integrator, the host derives the exact legacy tag vocabulary the panel's swimlane keys on", () => {
-    // Given: the tag root every linkage row's stem derives (a stem typo here
-    // would silently shift which swimlane a chain's frames land in), plus
-    // the two `chainHead_follow` control tags that are full tags on their own.
-    const derivedTagRoots = __testing.CHAIN_LINKAGE.map(
-      ({ stem }) => `remote_chain_${__testing.snakeCase(stem)}`,
-    );
-    const controlOnlyTags = [
-      "remote_chain_head_follow_stop",
-      "remote_chain_head_follow_interrupt",
-    ];
-
-    // When
-    const derived = [...derivedTagRoots, ...controlOnlyTags];
-
-    // Then: pins the exact current 16-entry legacy vocabulary as a literal
-    // snapshot, so it can't drift silently.
-    expect(derived).toEqual([
-      "remote_chain_head_follow",
-      "remote_chain_head_header",
-      "remote_chain_head_body",
-      "remote_chain_head_storage",
-      "remote_chain_head_call",
-      "remote_chain_head_unpin",
-      "remote_chain_head_continue",
-      "remote_chain_head_stop_operation",
-      "remote_chain_spec_genesis_hash",
-      "remote_chain_spec_chain_name",
-      "remote_chain_spec_properties",
-      "remote_chain_info",
-      "remote_chain_transaction_broadcast",
-      "remote_chain_transaction_stop",
-      "remote_chain_head_follow_stop",
-      "remote_chain_head_follow_interrupt",
-    ]);
+    for (const messageType of [MESSAGE_TYPE_REQUEST, 255]) {
+      const value = describeFrame(
+        W.LOCAL_STORAGE_READ,
+        messageType,
+        bytes,
+      ).value;
+      expect(value).toEqual({ redacted: true, byteLength: 48 });
+    }
   });
 });

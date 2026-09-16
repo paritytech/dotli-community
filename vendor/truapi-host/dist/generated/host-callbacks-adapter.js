@@ -4,7 +4,7 @@
 // callback surface the WASM core invokes. Codec-backed wire and
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, RemotePermissionRequest, RemotePermissionResponse, } from "@parity/truapi";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, RemotePermissionRequest, RemotePermissionResponse, } from "@parity/truapi";
 import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 /** Adapt typed host callbacks into the raw SCALE callback surface the
@@ -12,6 +12,7 @@ import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
     const permissionStatus = callbacks.permissionStatus;
+    const pocket = callbacks.pocket;
     return {
         authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
         chainConnect: chainConnectAdapter(callbacks.chain),
@@ -39,6 +40,12 @@ export function createWasmRawCallbacks(callbacks) {
             : {}),
         devicePermission: async (request) => HostDevicePermissionResponse.enc(await callbacks.permissions.devicePermission(HostDevicePermissionRequest.dec(request))),
         remotePermission: async (request) => RemotePermissionResponse.enc(await callbacks.permissions.remotePermission(RemotePermissionRequest.dec(request))),
+        ...(pocket
+            ? {
+                subscribePocketCards: (product, sendItem, sendError) => driveResultStream(pocket.subscribePocketCards(ProductContext.dec(product)), (item) => sendItem(HostPocketListSubscribeItem.enc(item)), sendError),
+                removePocketCard: async (product, request) => await pocket.removePocketCard(ProductContext.dec(product), HostPocketRemoveCardRequest.dec(request)),
+            }
+            : {}),
         lookupPreimage: (key, sendItem, sendError) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem, sendError),
         read: async (key) => await callbacks.productStorage.read(key),
         write: async (key, value) => await callbacks.productStorage.write(key, value),

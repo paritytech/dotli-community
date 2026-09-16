@@ -6,3 +6,7 @@ export function errorMessage(err) {
         return err;
     return JSON.stringify(err) ?? String(err);
 }
+/** Coerce an unknown thrown value into an `Error`, keeping one it already is. */
+export function toError(err) {
+    return err instanceof Error ? err : new Error(errorMessage(err));
+}

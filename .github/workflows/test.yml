@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify PolkaVM runtime assets
+        run: bun run check:polkavm-runtime
+
       - name: Run tests
         run: bunx --bun turbo run test
 
@@ -69,14 +72,26 @@ jobs:
         working-directory: apps/host
         env:
           VITE_METRICS: "true"
-        run: bunx --bun playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts || true
+        run: bun run test:functional || true
 
       - name: Apply functional threshold
         working-directory: apps/host
         run: |
-          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]?] | length' tests/functional/results.json)
+          TOTAL=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
           if [ "$TOTAL" -lt 11 ]; then
-            echo "::error::expected at least 11 tests, got $TOTAL."
+            echo "::error::expected at least 11 executed tests, got $TOTAL."
+            exit 1
+          fi
+          RUNTIME_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          RUNTIME_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select((.file == "polkavm.spec.ts" or .file == "chinpokomon.spec.ts") and .ok == false)] | length' tests/functional/results.json)
+          echo "Executed PolkaVM functional specs: $RUNTIME_EXECUTED"
+          echo "PolkaVM functional failures: $RUNTIME_FAILED"
+          if [ "$RUNTIME_EXECUTED" -lt 4 ]; then
+            echo "::error::expected at least 4 executed PolkaVM functional specs, got $RUNTIME_EXECUTED."
+            exit 1
+          fi
+          if [ "$RUNTIME_FAILED" -gt 0 ]; then
+            echo "::error::PolkaVM functional specs must have 0 failures"
             exit 1
           fi
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
@@ -114,9 +129,9 @@ jobs:
     name: E2E
     runs-on: ubuntu-latest
     needs: unit
-    # Headroom over Playwright's globalTimeout (30 min) so a stuck run is
-    # cut off by Playwright with diagnostics, not by GHA mid-stream.
-    timeout-minutes: 35
+    # Allow source-build time plus headroom over Playwright's globalTimeout
+    # (30 min), so a stuck test run is cut off with Playwright diagnostics.
+    timeout-minutes: 60
     if: ${{ github.event.sender.type != 'Bot' }}
     env:
       # Must match the host's `defaultNetwork()` in
@@ -134,14 +149,59 @@ jobs:
         with:
           bun-version: "1.3.13"
 
-      # Installs the current stable prebuilt binary (release pointer
-      # `truapi-host-cli-stable` in host-rust-core). Pin with
-      # TRUAPI_HOST_VERSION=x.y.z if a release ever breaks the suite.
-      - name: Install truapi-host CLI
+      # Build from the same immutable source as this branch's vendored SDK.
+      # Released CLI versions can lag behind the protocol used by the client.
+      - name: Resolve signing-host source
+        id: signing-host-source
         run: |
-          curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/truapi-host" --version
+          set -euo pipefail
+          revision="$(jq -er '.upstreamRevision | select(type == "string") | select(test("^[0-9a-f]{40}$"))' vendor/truapi-host.lock.json)"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "Signing-host source: https://github.com/paritytech/host-rust-core/commit/$revision"
+
+      - name: Checkout signing-host source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: paritytech/host-rust-core
+          ref: ${{ steps.signing-host-source.outputs.revision }}
+          path: .signing-host-src
+          persist-credentials: false
+
+      # Match host-rust-core's codegen toolchains; generated Rust is not tracked.
+      - name: Setup nightly Rust for codegen
+        uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
+        with:
+          toolchain: nightly
+          components: rustfmt
+
+      - name: Setup stable Rust
+        uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache signing-host Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          workspaces: .signing-host-src -> target
+          save-if: ${{ github.event_name == 'push' }}
+
+      - name: Setup Node for codegen
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Generate signing-host sources
+        working-directory: .signing-host-src
+        run: |
+          npm ci --ignore-scripts
+          TRUAPI_SKIP_PACKAGE_BUILD=1 ./scripts/codegen.sh
+
+      - name: Build truapi-host CLI
+        working-directory: .signing-host-src
+        run: |
+          cargo build --locked -p truapi-host-cli --bin truapi-host
+          echo "SIGNING_HOST_BIN=$PWD/target/debug/truapi-host" >> "$GITHUB_ENV"
+          ./target/debug/truapi-host --version
 
       - name: Build
         env:

@@ -1,6 +1,7 @@
 import type {
   AccountAccessReview,
   AccountAliasReview,
+  ChatAuthorityReview,
   CreateProofReview,
   CreateTransactionReview,
   IdentityDisclosureReview,
@@ -22,6 +23,7 @@ import type {
   RawPayload,
   RingLocationJunction,
 } from "@parity/truapi";
+import { hexToBytes } from "@parity/truapi/scale";
 import { showPreimageSubmitModal } from "../preimage-modal";
 import { ERRORS } from "../errors";
 import {
@@ -41,6 +43,7 @@ interface ConfirmationField {
   label: string;
   value: string;
   mono?: boolean;
+  alert?: boolean;
 }
 
 type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
@@ -134,6 +137,9 @@ function showConfirmationModal(
 function createField(field: ConfirmationField): HTMLDivElement {
   const group = document.createElement("div");
   group.className = "signing-field";
+  if (field.alert === true) {
+    group.setAttribute("role", "alert");
+  }
 
   const label = document.createElement("div");
   label.className = "signing-field-label";
@@ -181,6 +187,8 @@ function confirmationDisplay(
     case "IdentityDisclosure":
     case "ProductSubtree":
       return { fields: createRequestingProductFields(review.value) };
+    case "ChatAuthority":
+      return { fields: createChatAuthorityFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -190,10 +198,20 @@ function truncateHex(value: string): string {
   return value.length > 80 ? `${value.slice(0, 80)}...` : value;
 }
 
-function formatRawPayload(payload: RawPayload): string {
-  return truncateHex(
-    payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload,
-  );
+function formatRawPayload(payload: RawPayload, watermarked: boolean): string {
+  const value =
+    payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload;
+  const raw =
+    payload.tag === "Bytes" ||
+    (value.startsWith("0x") && value.length % 2 === 0)
+      ? hexToBytes(value)
+      : new TextEncoder().encode(value);
+  const hex = formatBytes(raw);
+  const prefix = "3c42797465733e";
+  const suffix = "3c2f42797465733e";
+  return watermarked && !(hex.startsWith(`0x${prefix}`) && hex.endsWith(suffix))
+    ? `0x${prefix}${hex.slice(2)}${suffix}`
+    : hex;
 }
 
 function formatDerivationIndex(index: DerivationIndex): string {
@@ -237,27 +255,33 @@ function createSignRawFields(
   label: string,
   review: SignRawReview,
 ): ConfirmationField[] {
-  if (review.tag === "Product") {
-    return [
-      { label: "App", value: label },
-      { label: "Signer", value: formatProductAccount(review.value.account) },
-      {
-        label: "Message",
-        value: formatRawPayload(review.value.payload),
-        mono: true,
-      },
-    ];
-  }
-
-  return [
+  const { request, watermarked } = review.value;
+  const signer =
+    review.tag === "Product"
+      ? formatProductAccount(review.value.request.account)
+      : review.value.request.signer;
+  const fields: ConfirmationField[] = [
     { label: "App", value: label },
-    { label: "Signer", value: review.value.signer },
+    { label: "Signer", value: signer },
     {
-      label: "Message",
-      value: formatRawPayload(review.value.payload),
+      label: "Signing mode",
+      value: watermarked ? "Watermarked message" : "Unwatermarked payload",
+    },
+    {
+      label: "Bytes to sign",
+      value: formatRawPayload(request.payload, watermarked),
       mono: true,
     },
   ];
+  if (!watermarked) {
+    fields.unshift({
+      label: "Warning",
+      value:
+        "Unwatermarked signing can authorize transactions. No message-protection wrapper will be added.",
+      alert: true,
+    });
+  }
+  return fields;
 }
 
 function createTransactionFields(
@@ -352,6 +376,19 @@ function createRequestingProductFields(
   return [{ label: "Requesting product", value: review.productId }];
 }
 
+function createChatAuthorityFields(
+  review: ChatAuthorityReview,
+): ConfirmationField[] {
+  return [
+    { label: "Requesting product", value: review.productId },
+    {
+      label: "Permission",
+      value:
+        "Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
+    },
+  ];
+}
+
 function formatResource(resource: AllocatableResource): string {
   return resource.tag === "SmartContractAllowance"
     ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
@@ -374,7 +411,9 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
     case "SignPayload":
       return { title: "Sign Transaction", action: "Sign" };
     case "SignRaw":
-      return { title: "Sign Message", action: "Sign" };
+      return review.value.value.watermarked
+        ? { title: "Sign Message", action: "Sign" }
+        : { title: "Sign Unwatermarked Payload", action: "Sign Unwatermarked" };
     case "StatementStoreProductSign":
       return { title: "Sign Statement", action: "Sign" };
     case "SignVrf":
@@ -402,6 +441,12 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
     case "IdentityDisclosure":
       return {
         title: "Identity Disclosure",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
+    case "ChatAuthority":
+      return {
+        title: "Chat Identity Authority",
         action: "Allow",
         cancelAction: "Deny",
       };

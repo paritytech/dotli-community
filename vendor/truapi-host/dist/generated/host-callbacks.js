@@ -20,13 +20,17 @@ export const AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.st
  */
 export const AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
 /**
+ * Review shown before a product binds or uses wallet-held Chat identity authority.
+ */
+export const ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }) }));
+export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }) }));
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
  */
@@ -66,7 +70,7 @@ export const LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "O
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }) }));
+export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void }));
 /**
  * Authorization status for a permission request.
  *
@@ -117,8 +121,10 @@ export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identit
 export const SignPayloadReview = S.lazy(() => S.TaggedUnion({ Product: HostSignPayloadRequest, LegacyAccount: HostSignPayloadWithLegacyAccountRequest }));
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
+ * Hosts must display the payload according to `watermarked` and warn that
+ * unwatermarked signatures can authorize transactions.
  */
-export const SignRawReview = S.lazy(() => S.TaggedUnion({ Product: HostSignRawRequest, LegacyAccount: HostSignRawWithLegacyAccountRequest }));
+export const SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ request: HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
 /**
  * Review shown before signing an RFC-0023 VRF transcript.
  */
@@ -133,4 +139,4 @@ export const StatementStoreProductSignReview = S.lazy(() => S.Struct({ account: 
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview }));
+export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview }));

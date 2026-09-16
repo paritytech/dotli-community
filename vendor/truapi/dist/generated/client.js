@@ -5,21 +5,43 @@ import { SubscriptionError } from '../transport.js';
 import * as T from './types.js';
 import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
-export const TRUAPI_VERSION = 1;
-export const TRUAPI_CODEC_VERSION = 1;
-export const TRUAPI_WIRE_SCHEMA_HASH = "43581e5572c0315a";
+export const TRUAPI_VERSION = 2;
+export const TRUAPI_CODEC_VERSION = 2;
+export const TRUAPI_WIRE_SCHEMA_HASH = "4d76f9685fe126db";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
     const cause = error instanceof Error ? error : new Error(String(error));
     return new SubscriptionError(cause.message, { cause });
 }
-// `_interrupt` payload sent when a host-initiated request arrives with no
-// registered handler: SCALE `Result::Err` discriminant, declining the start.
-const HOST_INITIATED_DECLINE_PAYLOAD = new Uint8Array([0]);
-// Items buffered per host-initiated stream while the product's handler
-// observable has no subscriber yet.
+// Interrupt payload sent (with messageType Interrupt) when a
+// host-initiated start arrives the product cannot serve, declining
+// it: Err(CallError::HostFailure with reason "unavailable").
+// HostFailure's payload doesn't depend on the method's own domain
+// error type, so this fixed frame is valid for every method
+// regardless of what D in CallError<D> decodes to.
+const HOST_INITIATED_DECLINE_PAYLOAD = new Uint8Array([
+    1, 4, 44, 117, 110, 97, 118, 97, 105, 108, 97, 98, 108, 101,
+]);
+// Items buffered per host-initiated stream while the product has no
+// handler installed yet.
 const HOST_INITIATED_BUFFER_CAPACITY = 64;
+// The Interrupt leg carries Result<(), CallError<Err>>: Ok(()) ends
+// the stream normally, Err(reason) ends it with the method's own
+// interrupt value.
+function interruptDecoder(reason) {
+    const codec = S.Result(S._void, reason);
+    return (payload) => {
+        const decoded = codec.dec(payload);
+        return decoded.success ? undefined : decoded.value;
+    };
+}
+function interruptEncoder(reason) {
+    const codec = S.Result(S._void, reason);
+    return (value) => codec.enc(value === undefined
+        ? { success: true, value: undefined }
+        : { success: false, value });
+}
 // ES Observable interop key (rxjs reads Symbol.observable, falling
 // back to "@@observable" on platforms without the well-known symbol).
 const OBSERVABLE_INTEROP = (typeof Symbol === "function" && Symbol.observable) ||
@@ -73,6 +95,12 @@ function createObservable({ transport, ids, payload, decodeItem, decodeInterrupt
                             fail(error, false);
                             return;
                         }
+                        if (reason === undefined) {
+                            closed = true;
+                            stopForwarding();
+                            observer.complete?.();
+                            return;
+                        }
                         fail(new SubscriptionError("Subscription interrupted", { reason }), false);
                         return;
                     }
@@ -123,8 +151,9 @@ export class AccountClient {
         return createObservable({
             transport: this.transport,
             ids: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
-            payload: S.indexedTaggedUnion({ V1: [0, S._void] }).enc({ tag: "V1", value: undefined }),
+            payload: new Uint8Array(),
             decodeItem: (payload) => T.VersionedHostAccountConnectionStatusSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
     /** Retrieve a product-scoped account. */
@@ -132,7 +161,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_GET_ACCOUNT,
             payload: T.VersionedHostAccountGetRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostAccountGetResponse, S.CallError(T.VersionedHostAccountGetError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountGetResponse, S.CallError(T.VersionedHostAccountGetError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Retrieve the contextual alias for a context and ring. */
@@ -140,7 +172,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_GET_ACCOUNT_ALIAS,
             payload: T.VersionedHostAccountGetAliasRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.ContextualAlias, S.CallError(T.VersionedHostAccountGetAliasError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountGetAliasResponse, S.CallError(T.VersionedHostAccountGetAliasError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Generate a ring VRF proof with an explicitly registered member key. */
@@ -148,7 +183,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_CREATE_ACCOUNT_PROOF,
             payload: T.VersionedHostAccountCreateProofRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostAccountCreateProofResponse, S.CallError(T.VersionedHostAccountCreateProofError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountCreateProofResponse, S.CallError(T.VersionedHostAccountCreateProofError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -163,7 +201,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_SIGN_VRF,
             payload: T.VersionedHostAccountSignVrfRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.VrfSignature, S.CallError(T.VersionedHostAccountSignVrfError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountSignVrfResponse, S.CallError(T.VersionedHostAccountSignVrfError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Register a ring-VRF key owned by the calling product. */
@@ -171,7 +212,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_REGISTER_RING_VRF_KEY,
             payload: T.VersionedHostAccountRegisterRingVrfKeyRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RingVrfPublicKey, S.CallError(T.VersionedHostAccountRegisterRingVrfKeyError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountRegisterRingVrfKeyResponse, S.CallError(T.VersionedHostAccountRegisterRingVrfKeyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** List registered ring-VRF keys owned by a product. */
@@ -179,7 +223,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_LIST_RING_VRF_KEYS,
             payload: T.VersionedHostAccountListRingVrfKeysRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S.Vector(T.RegisteredRingVrfKey), S.CallError(T.VersionedHostAccountListRingVrfKeysError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountListRingVrfKeysResponse, S.CallError(T.VersionedHostAccountListRingVrfKeysError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Sign bytes directly with a registered ring-VRF member key. */
@@ -187,7 +234,24 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_RING_VRF_SIGN,
             payload: T.VersionedHostAccountRingVrfSignRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S.Hex(), S.CallError(T.VersionedHostAccountRingVrfSignError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostAccountRingVrfSignResponse, S.CallError(T.VersionedHostAccountRingVrfSignError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Bind a product account as a Chat v2 device, or seal/open identity-route
+     * payloads without exposing the wallet Chat identity secret.
+     */
+    deviceChat(request) {
+        return this.transport.request({
+            ids: W.ACCOUNT_PRODUCT_DEVICE_CHAT,
+            payload: T.VersionedHostProductDeviceChatRequest.enc({ tag: "V1", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProductDeviceChatResponse, S.CallError(T.VersionedHostProductDeviceChatError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -199,7 +263,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_GET_LEGACY_ACCOUNTS,
             payload: T.VersionedHostGetLegacyAccountsRequest.enc({ tag: "V1", value: undefined }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostGetLegacyAccountsResponse, S.CallError(T.VersionedHostGetLegacyAccountsError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostGetLegacyAccountsResponse, S.CallError(T.VersionedHostGetLegacyAccountsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Fetch the user's primary identity. */
@@ -207,7 +274,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_GET_USER_ID,
             payload: T.VersionedHostGetUserIdRequest.enc({ tag: "V1", value: undefined }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostGetUserIdResponse, S.CallError(T.VersionedHostGetUserIdError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostGetUserIdResponse, S.CallError(T.VersionedHostGetUserIdError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -220,7 +290,10 @@ export class AccountClient {
         return this.transport.request({
             ids: W.ACCOUNT_REQUEST_LOGIN,
             payload: T.VersionedHostRequestLoginRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostRequestLoginResponse, S.CallError(T.VersionedHostRequestLoginError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostRequestLoginResponse, S.CallError(T.VersionedHostRequestLoginError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -237,6 +310,7 @@ export class ChainClient {
             ids: W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
             payload: T.VersionedRemoteChainHeadFollowRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemoteChainHeadFollowItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
     /** Fetch a block header. */
@@ -244,7 +318,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_HEAD_HEADER,
             payload: T.VersionedRemoteChainHeadHeaderRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainHeadHeaderResponse, S.CallError(T.VersionedRemoteChainHeadHeaderError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadHeaderResponse, S.CallError(T.VersionedRemoteChainHeadHeaderError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Fetch a block body. */
@@ -252,7 +329,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_HEAD_BODY,
             payload: T.VersionedRemoteChainHeadBodyRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainHeadBodyResponse, S.CallError(T.VersionedRemoteChainHeadBodyError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadBodyResponse, S.CallError(T.VersionedRemoteChainHeadBodyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Query runtime storage at a specific block. */
@@ -260,7 +340,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_HEAD_STORAGE,
             payload: T.VersionedRemoteChainHeadStorageRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainHeadStorageResponse, S.CallError(T.VersionedRemoteChainHeadStorageError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadStorageResponse, S.CallError(T.VersionedRemoteChainHeadStorageError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Invoke a runtime call at a specific block. */
@@ -268,7 +351,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_CALL_HEAD,
             payload: T.VersionedRemoteChainHeadCallRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainHeadCallResponse, S.CallError(T.VersionedRemoteChainHeadCallError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadCallResponse, S.CallError(T.VersionedRemoteChainHeadCallError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Release pinned blocks. */
@@ -276,7 +362,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_UNPIN_HEAD,
             payload: T.VersionedRemoteChainHeadUnpinRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedRemoteChainHeadUnpinError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadUnpinResponse, S.CallError(T.VersionedRemoteChainHeadUnpinError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Continue a paused chain-head operation. */
@@ -284,7 +373,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_CONTINUE_HEAD,
             payload: T.VersionedRemoteChainHeadContinueRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedRemoteChainHeadContinueError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadContinueResponse, S.CallError(T.VersionedRemoteChainHeadContinueError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Stop a chain-head operation. */
@@ -292,7 +384,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_STOP_HEAD_OPERATION,
             payload: T.VersionedRemoteChainHeadStopOperationRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedRemoteChainHeadStopOperationError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainHeadStopOperationResponse, S.CallError(T.VersionedRemoteChainHeadStopOperationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Fetch the canonical genesis hash for a chain. */
@@ -300,7 +395,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_SPEC_GENESIS_HASH,
             payload: T.VersionedRemoteChainSpecGenesisHashRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainSpecGenesisHashResponse, S.CallError(T.VersionedRemoteChainSpecGenesisHashError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainSpecGenesisHashResponse, S.CallError(T.VersionedRemoteChainSpecGenesisHashError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Fetch the display name of a chain. */
@@ -308,7 +406,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_SPEC_CHAIN_NAME,
             payload: T.VersionedRemoteChainSpecChainNameRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainSpecChainNameResponse, S.CallError(T.VersionedRemoteChainSpecChainNameError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainSpecChainNameResponse, S.CallError(T.VersionedRemoteChainSpecChainNameError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Fetch the JSON-encoded properties of a chain. */
@@ -316,7 +417,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_SPEC_PROPERTIES,
             payload: T.VersionedRemoteChainSpecPropertiesRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainSpecPropertiesResponse, S.CallError(T.VersionedRemoteChainSpecPropertiesError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainSpecPropertiesResponse, S.CallError(T.VersionedRemoteChainSpecPropertiesError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Broadcast a signed transaction. */
@@ -324,7 +428,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_BROADCAST_TRANSACTION,
             payload: T.VersionedRemoteChainTransactionBroadcastRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainTransactionBroadcastResponse, S.CallError(T.VersionedRemoteChainTransactionBroadcastError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainTransactionBroadcastResponse, S.CallError(T.VersionedRemoteChainTransactionBroadcastError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Stop a transaction broadcast. */
@@ -332,7 +439,10 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_STOP_TRANSACTION,
             payload: T.VersionedRemoteChainTransactionStopRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedRemoteChainTransactionStopError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainTransactionStopResponse, S.CallError(T.VersionedRemoteChainTransactionStopError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -343,30 +453,28 @@ export class ChainClient {
         return this.transport.request({
             ids: W.CHAIN_GET_CHAIN_INFO,
             payload: T.VersionedRemoteChainInfoRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteChainInfoResponse, S.CallError(T.VersionedRemoteChainInfoError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteChainInfoResponse, S.CallError(T.VersionedRemoteChainInfoError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
 /** Chat room, bot, and message APIs. */
 export class ChatClient {
     transport;
-    customMessageRenderRegistration;
     constructor(transport) {
         this.transport = transport;
-        this.customMessageRenderRegistration = transport.registerHostInitiatedSubscription({
-            ids: W.CHAT_CUSTOM_MESSAGE_RENDER,
-            decodeRequest: (payload) => T.VersionedProductChatCustomMessageRenderRequest.dec(payload).value,
-            encodeItem: (item) => T.VersionedProductChatCustomMessageRenderItem.enc({ tag: "V1", value: item }),
-            interruptPayload: HOST_INITIATED_DECLINE_PAYLOAD,
-            bufferCapacity: HOST_INITIATED_BUFFER_CAPACITY,
-        });
     }
     /** Create a chat room. */
     createRoom(request) {
         return this.transport.request({
             ids: W.CHAT_CREATE_ROOM,
             payload: T.VersionedHostChatCreateRoomRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostChatCreateRoomResponse, S.CallError(T.VersionedHostChatCreateRoomError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostChatCreateRoomResponse, S.CallError(T.VersionedHostChatCreateRoomError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Register a chat bot. */
@@ -374,7 +482,10 @@ export class ChatClient {
         return this.transport.request({
             ids: W.CHAT_REGISTER_BOT,
             payload: T.VersionedHostChatRegisterBotRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostChatRegisterBotResponse, S.CallError(T.VersionedHostChatRegisterBotError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostChatRegisterBotResponse, S.CallError(T.VersionedHostChatRegisterBotError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Subscribe to the list of chat rooms. */
@@ -382,8 +493,9 @@ export class ChatClient {
         return createObservable({
             transport: this.transport,
             ids: W.CHAT_LIST_SUBSCRIBE,
-            payload: S.indexedTaggedUnion({ V1: [0, S._void] }).enc({ tag: "V1", value: undefined }),
+            payload: new Uint8Array(),
             decodeItem: (payload) => T.VersionedHostChatListSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
     /**
@@ -405,7 +517,10 @@ export class ChatClient {
         return this.transport.request({
             ids: W.CHAT_POST_MESSAGE,
             payload: T.VersionedHostChatPostMessageRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostChatPostMessageResponse, S.CallError(T.VersionedHostChatPostMessageError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostChatPostMessageResponse, S.CallError(T.VersionedHostChatPostMessageError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Subscribe to received chat actions. */
@@ -413,13 +528,10 @@ export class ChatClient {
         return createObservable({
             transport: this.transport,
             ids: W.CHAT_ACTION_SUBSCRIBE,
-            payload: S.indexedTaggedUnion({ V1: [0, S._void] }).enc({ tag: "V1", value: undefined }),
+            payload: new Uint8Array(),
             decodeItem: (payload) => T.VersionedHostChatActionSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
-    }
-    /** Streams renderer trees for one stored custom message. */
-    onCustomMessageRender(handler) {
-        return this.customMessageRenderRegistration.setHandler(handler);
     }
 }
 /**
@@ -439,7 +551,10 @@ export class CoinPaymentClient {
         return this.transport.request({
             ids: W.COIN_PAYMENT_CREATE_PURSE,
             payload: T.VersionedHostCoinPaymentCreatePurseRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostCoinPaymentCreatePurseResponse, S.CallError(T.VersionedHostCoinPaymentCreatePurseError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCoinPaymentCreatePurseResponse, S.CallError(T.VersionedHostCoinPaymentCreatePurseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Query product-visible purse metadata and balance. */
@@ -447,7 +562,10 @@ export class CoinPaymentClient {
         return this.transport.request({
             ids: W.COIN_PAYMENT_QUERY_PURSE,
             payload: T.VersionedHostCoinPaymentQueryPurseRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostCoinPaymentQueryPurseResponse, S.CallError(T.VersionedHostCoinPaymentQueryPurseError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCoinPaymentQueryPurseResponse, S.CallError(T.VersionedHostCoinPaymentQueryPurseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Transfer balance between local purses. */
@@ -457,7 +575,7 @@ export class CoinPaymentClient {
             ids: W.COIN_PAYMENT_REBALANCE_PURSE,
             payload: T.VersionedHostCoinPaymentRebalancePurseRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentRebalancePurseItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostCoinPaymentRebalancePurseError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostCoinPaymentRebalancePurseError)),
         });
     }
     /** Delete a purse after draining its balance into another local purse. */
@@ -467,7 +585,7 @@ export class CoinPaymentClient {
             ids: W.COIN_PAYMENT_DELETE_PURSE,
             payload: T.VersionedHostCoinPaymentDeletePurseRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentDeletePurseItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostCoinPaymentDeletePurseError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostCoinPaymentDeletePurseError)),
         });
     }
     /** Create a receivable public key for depositing into a purse. */
@@ -475,7 +593,10 @@ export class CoinPaymentClient {
         return this.transport.request({
             ids: W.COIN_PAYMENT_CREATE_RECEIVABLE,
             payload: T.VersionedHostCoinPaymentCreateReceivableRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostCoinPaymentCreateReceivableResponse, S.CallError(T.VersionedHostCoinPaymentCreateReceivableError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCoinPaymentCreateReceivableResponse, S.CallError(T.VersionedHostCoinPaymentCreateReceivableError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Create a cheque paying from a local purse to a receivable. */
@@ -483,7 +604,10 @@ export class CoinPaymentClient {
         return this.transport.request({
             ids: W.COIN_PAYMENT_CREATE_CHEQUE,
             payload: T.VersionedHostCoinPaymentCreateChequeRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostCoinPaymentCreateChequeResponse, S.CallError(T.VersionedHostCoinPaymentCreateChequeError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCoinPaymentCreateChequeResponse, S.CallError(T.VersionedHostCoinPaymentCreateChequeError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Claim coins from a cheque into the receivable's purse. */
@@ -493,7 +617,7 @@ export class CoinPaymentClient {
             ids: W.COIN_PAYMENT_DEPOSIT,
             payload: T.VersionedHostCoinPaymentDepositRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentDepositItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostCoinPaymentDepositError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostCoinPaymentDepositError)),
         });
     }
     /** Attempt to return coins associated with a receivable. */
@@ -503,7 +627,7 @@ export class CoinPaymentClient {
             ids: W.COIN_PAYMENT_REFUND,
             payload: T.VersionedHostCoinPaymentRefundRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentRefundItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostCoinPaymentRefundError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostCoinPaymentRefundError)),
         });
     }
     /** Listen for a cheque delivered through a standard transmission channel. */
@@ -513,7 +637,7 @@ export class CoinPaymentClient {
             ids: W.COIN_PAYMENT_LISTEN_FOR_PAYMENT,
             payload: T.VersionedHostCoinPaymentListenForRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentListenForItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostCoinPaymentListenForError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostCoinPaymentListenForError)),
         });
     }
 }
@@ -528,7 +652,10 @@ export class EntropyClient {
         return this.transport.request({
             ids: W.ENTROPY_DERIVE,
             payload: T.VersionedHostDeriveEntropyRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostDeriveEntropyResponse, S.CallError(T.VersionedHostDeriveEntropyError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostDeriveEntropyResponse, S.CallError(T.VersionedHostDeriveEntropyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -542,8 +669,11 @@ export class LocalStorageClient {
     read(request) {
         return this.transport.request({
             ids: W.LOCAL_STORAGE_READ,
-            payload: T.VersionedHostLocalStorageReadRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostLocalStorageReadResponse, S.CallError(T.VersionedHostLocalStorageReadError))] }).dec(payload).value,
+            payload: T.VersionedHostLocalStorageReadRequest.enc({ tag: "V2", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostLocalStorageReadResponse, S.CallError(T.VersionedHostLocalStorageReadError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Write a value to a key. */
@@ -551,7 +681,10 @@ export class LocalStorageClient {
         return this.transport.request({
             ids: W.LOCAL_STORAGE_WRITE,
             payload: T.VersionedHostLocalStorageWriteRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedHostLocalStorageWriteError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostLocalStorageWriteResponse, S.CallError(T.VersionedHostLocalStorageWriteError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Clear a value by key. */
@@ -559,7 +692,10 @@ export class LocalStorageClient {
         return this.transport.request({
             ids: W.LOCAL_STORAGE_CLEAR,
             payload: T.VersionedHostLocalStorageClearRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedHostLocalStorageClearError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostLocalStorageClearResponse, S.CallError(T.VersionedHostLocalStorageClearError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -574,8 +710,9 @@ export class LocaleClient {
         return createObservable({
             transport: this.transport,
             ids: W.LOCALE_SUBSCRIBE,
-            payload: S.indexedTaggedUnion({ V1: [0, S._void] }).enc({ tag: "V1", value: undefined }),
+            payload: new Uint8Array(),
             decodeItem: (payload) => T.VersionedHostLocaleSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
 }
@@ -600,7 +737,10 @@ export class NotificationsClient {
         return this.transport.request({
             ids: W.NOTIFICATIONS_SEND_PUSH_NOTIFICATION,
             payload: T.VersionedHostPushNotificationRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostPushNotificationResponse, S.CallError(T.VersionedHostPushNotificationError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPushNotificationResponse, S.CallError(T.VersionedHostPushNotificationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -615,7 +755,10 @@ export class NotificationsClient {
         return this.transport.request({
             ids: W.NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION,
             payload: T.VersionedHostPushNotificationCancelRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedHostPushNotificationCancelError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -632,7 +775,7 @@ export class PaymentClient {
             ids: W.PAYMENT_BALANCE_SUBSCRIBE,
             payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostPaymentBalanceSubscribeItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostPaymentBalanceSubscribeError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentBalanceSubscribeError)),
         });
     }
     /** Request a payment from the user. */
@@ -640,7 +783,10 @@ export class PaymentClient {
         return this.transport.request({
             ids: W.PAYMENT_REQUEST,
             payload: T.VersionedHostPaymentRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostPaymentResponse, S.CallError(T.VersionedHostPaymentError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPaymentResponse, S.CallError(T.VersionedHostPaymentError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Subscribe to payment lifecycle updates for a specific payment. */
@@ -650,7 +796,7 @@ export class PaymentClient {
             ids: W.PAYMENT_STATUS_SUBSCRIBE,
             payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostPaymentStatusSubscribeItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedHostPaymentStatusSubscribeError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPaymentStatusSubscribeError)),
         });
     }
     /** Top up the user's payment balance. */
@@ -658,7 +804,10 @@ export class PaymentClient {
         return this.transport.request({
             ids: W.PAYMENT_TOP_UP,
             payload: T.VersionedHostPaymentTopUpRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedHostPaymentTopUpError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPaymentTopUpResponse, S.CallError(T.VersionedHostPaymentTopUpError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -673,7 +822,10 @@ export class PermissionsClient {
         return this.transport.request({
             ids: W.PERMISSIONS_REQUEST_DEVICE_PERMISSION,
             payload: T.VersionedHostDevicePermissionRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostDevicePermissionResponse, S.CallError(T.VersionedHostDevicePermissionError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostDevicePermissionResponse, S.CallError(T.VersionedHostDevicePermissionError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Request a remote-operation permission. */
@@ -681,7 +833,52 @@ export class PermissionsClient {
         return this.transport.request({
             ids: W.PERMISSIONS_REQUEST_REMOTE_PERMISSION,
             payload: T.VersionedRemotePermissionRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemotePermissionResponse, S.CallError(T.VersionedRemotePermissionError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemotePermissionResponse, S.CallError(T.VersionedRemotePermissionError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export class PocketClient {
+    transport;
+    constructor(transport) {
+        this.transport = transport;
+    }
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe() {
+        return createObservable({
+            transport: this.transport,
+            ids: W.POCKET_LIST_SUBSCRIBE,
+            payload: new Uint8Array(),
+            decodeItem: (payload) => T.VersionedHostPocketListSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+        });
+    }
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with `Privileged`.
+     */
+    removeCard(request) {
+        return this.transport.request({
+            ids: W.POCKET_REMOVE_CARD,
+            payload: T.VersionedHostPocketRemoveCardRequest.enc({ tag: "V1", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPocketRemoveCardResponse, S.CallError(T.VersionedHostPocketRemoveCardError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -698,6 +895,7 @@ export class PreimageClient {
             ids: W.PREIMAGE_LOOKUP_SUBSCRIBE,
             payload: T.VersionedRemotePreimageLookupSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemotePreimageLookupSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
     /** Submit a preimage. Returns the preimage key (hash) on success. */
@@ -705,7 +903,44 @@ export class PreimageClient {
         return this.transport.request({
             ids: W.PREIMAGE_SUBMIT,
             payload: T.VersionedRemotePreimageSubmitRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S.Hex(), S.CallError(T.VersionedRemotePreimageSubmitError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemotePreimageSubmitResponse, S.CallError(T.VersionedRemotePreimageSubmitError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/** Product-rendered bodies and the actions triggered inside them. */
+export class RendererClient {
+    transport;
+    renderRegistration;
+    constructor(transport) {
+        this.transport = transport;
+        this.renderRegistration = transport.registerHostInitiatedSubscription({
+            ids: W.RENDERER_RENDER,
+            decodeRequest: (payload) => T.VersionedProductRendererRenderRequest.dec(payload).value,
+            encodeItem: (item) => T.VersionedProductRendererRenderItem.enc({ tag: "V1", value: item }),
+            encodeInterrupt: interruptEncoder(S.CallError(T.GenericError)),
+            declinePayload: HOST_INITIATED_DECLINE_PAYLOAD,
+            bufferCapacity: HOST_INITIATED_BUFFER_CAPACITY,
+        });
+    }
+    /**
+     * Streams renderer trees for one product-rendered body. Each item
+     * replaces the previous tree. The stream stays open while the body is
+     * displayed so the product can redraw in place.
+     */
+    onRender(handler) {
+        return this.renderRegistration.setHandler(handler);
+    }
+    /** Subscribe to actions triggered inside this product's rendered bodies. */
+    actionSubscribe() {
+        return createObservable({
+            transport: this.transport,
+            ids: W.RENDERER_ACTION_SUBSCRIBE,
+            payload: new Uint8Array(),
+            decodeItem: (payload) => T.VersionedHostRendererActionSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
 }
@@ -720,7 +955,10 @@ export class ResourceAllocationClient {
         return this.transport.request({
             ids: W.RESOURCE_ALLOCATION_REQUEST,
             payload: T.VersionedHostRequestResourceAllocationRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostRequestResourceAllocationResponse, S.CallError(T.VersionedHostRequestResourceAllocationError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostRequestResourceAllocationResponse, S.CallError(T.VersionedHostRequestResourceAllocationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -742,7 +980,10 @@ export class SigningClient {
         return this.transport.request({
             ids: W.SIGNING_CREATE_TRANSACTION,
             payload: T.VersionedHostCreateTransactionRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostCreateTransactionResponse, S.CallError(T.VersionedHostCreateTransactionError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCreateTransactionResponse, S.CallError(T.VersionedHostCreateTransactionError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -756,7 +997,10 @@ export class SigningClient {
         return this.transport.request({
             ids: W.SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostCreateTransactionWithLegacyAccountResponse, S.CallError(T.VersionedHostCreateTransactionWithLegacyAccountError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostCreateTransactionWithLegacyAccountResponse, S.CallError(T.VersionedHostCreateTransactionWithLegacyAccountError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Sign raw bytes with a non-product account. */
@@ -764,7 +1008,10 @@ export class SigningClient {
         return this.transport.request({
             ids: W.SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostSignPayloadResponse, S.CallError(T.VersionedHostSignRawWithLegacyAccountError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostSignRawWithLegacyAccountResponse, S.CallError(T.VersionedHostSignRawWithLegacyAccountError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Sign an extrinsic payload with a non-product account. */
@@ -772,7 +1019,10 @@ export class SigningClient {
         return this.transport.request({
             ids: W.SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostSignPayloadResponse, S.CallError(T.VersionedHostSignPayloadWithLegacyAccountError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostSignPayloadWithLegacyAccountResponse, S.CallError(T.VersionedHostSignPayloadWithLegacyAccountError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Sign raw bytes or a message. */
@@ -780,7 +1030,10 @@ export class SigningClient {
         return this.transport.request({
             ids: W.SIGNING_SIGN_RAW,
             payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostSignPayloadResponse, S.CallError(T.VersionedHostSignRawError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostSignRawResponse, S.CallError(T.VersionedHostSignRawError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Sign an extrinsic payload. */
@@ -788,7 +1041,52 @@ export class SigningClient {
         return this.transport.request({
             ids: W.SIGNING_SIGN_PAYLOAD,
             payload: T.VersionedHostSignPayloadRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostSignPayloadResponse, S.CallError(T.VersionedHostSignPayloadError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostSignPayloadResponse, S.CallError(T.VersionedHostSignPayloadError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     */
+    signRawUnwatermarkedDeprecated(request) {
+        return this.transport.request({
+            ids: W.SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
+            payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostSignRawResponse, S.CallError(T.VersionedHostSignRawError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     */
+    signRawUnwatermarkedDeprecatedWithLegacyAccount(request) {
+        return this.transport.request({
+            ids: W.SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
+            payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostSignRawWithLegacyAccountResponse, S.CallError(T.VersionedHostSignRawWithLegacyAccountError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -805,7 +1103,7 @@ export class StatementStoreClient {
             ids: W.STATEMENT_STORE_SUBSCRIBE,
             payload: T.VersionedRemoteStatementStoreSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemoteStatementStoreSubscribeItem.dec(payload).value,
-            decodeInterrupt: (payload) => S.indexedTaggedUnion({ V1: [0, S.CallError(T.VersionedRemoteStatementStoreSubscribeError)] }).dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedRemoteStatementStoreSubscribeError)),
         });
     }
     /**
@@ -820,7 +1118,10 @@ export class StatementStoreClient {
         return this.transport.request({
             ids: W.STATEMENT_STORE_CREATE_PROOF,
             payload: T.VersionedRemoteStatementStoreCreateProofRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteStatementStoreCreateProofResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteStatementStoreCreateProofResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -831,7 +1132,10 @@ export class StatementStoreClient {
         return this.transport.request({
             ids: W.STATEMENT_STORE_CREATE_PROOF_AUTHORIZED,
             payload: T.VersionedRemoteStatementStoreCreateProofAuthorizedRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.RemoteStatementStoreCreateProofResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofAuthorizedError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedRemoteStatementStoreCreateProofAuthorizedResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofAuthorizedError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -843,7 +1147,10 @@ export class StatementStoreClient {
         return this.transport.request({
             ids: W.STATEMENT_STORE_SUBMIT,
             payload: T.VersionedRemoteStatementStoreSubmitRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedRemoteStatementStoreSubmitError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(S._void, S.CallError(T.VersionedRemoteStatementStoreSubmitError)).dec(payload);
+                return result;
+            },
         });
     }
 }
@@ -860,8 +1167,11 @@ export class SystemClient {
     handshake() {
         return this.transport.request({
             ids: W.SYSTEM_HANDSHAKE,
-            payload: T.VersionedHostHandshakeRequest.enc({ tag: "V1", value: { codecVersion: this.transport.codecVersion } }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedHostHandshakeError))] }).dec(payload).value,
+            payload: T.VersionedHostHandshakeRequest.enc({ tag: "V1", value: { codecVersion: TRUAPI_CODEC_VERSION } }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostHandshakeResponse, S.CallError(T.VersionedHostHandshakeError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Query whether the host supports a specific feature. */
@@ -869,7 +1179,10 @@ export class SystemClient {
         return this.transport.request({
             ids: W.SYSTEM_FEATURE_SUPPORTED,
             payload: T.VersionedHostFeatureSupportedRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostFeatureSupportedResponse, S.CallError(T.VersionedHostFeatureSupportedError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostFeatureSupportedResponse, S.CallError(T.VersionedHostFeatureSupportedError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -886,7 +1199,10 @@ export class SystemClient {
         return this.transport.request({
             ids: W.SYSTEM_NAVIGATE_TO,
             payload: T.VersionedHostNavigateToRequest.enc({ tag: "V1", value: request }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(S._void, S.CallError(T.VersionedHostNavigateToError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNavigateToResponse, S.CallError(T.VersionedHostNavigateToError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /**
@@ -901,7 +1217,10 @@ export class SystemClient {
         return this.transport.request({
             ids: W.SYSTEM_HOST_INFO,
             payload: T.VersionedHostInfoRequest.enc({ tag: "V1", value: undefined }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostInfo, S.CallError(T.VersionedHostInfoError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostInfoResponse, S.CallError(T.VersionedHostInfoError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
     /** Return the product context bound to the current host runtime. */
@@ -909,7 +1228,10 @@ export class SystemClient {
         return this.transport.request({
             ids: W.SYSTEM_GET_PRODUCT_CONTEXT,
             payload: T.VersionedHostGetProductContextRequest.enc({ tag: "V1", value: undefined }),
-            decodeResponse: (payload) => S.indexedTaggedUnion({ V1: [0, S.Result(T.HostGetProductContextResponse, S.CallError(T.VersionedHostGetProductContextError))] }).dec(payload).value,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostGetProductContextResponse, S.CallError(T.VersionedHostGetProductContextError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -924,37 +1246,33 @@ export class ThemeClient {
         return createObservable({
             transport: this.transport,
             ids: W.THEME_SUBSCRIBE,
-            payload: S.indexedTaggedUnion({ V1: [0, S._void] }).enc({ tag: "V1", value: undefined }),
+            payload: new Uint8Array(),
             decodeItem: (payload) => T.VersionedHostThemeSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
         });
     }
-}
-function withGeneratedCodecVersion(transport) {
-    return {
-        ...transport,
-        codecVersion: transport.codecVersion ?? TRUAPI_CODEC_VERSION,
-    };
 }
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
 export function createClient(transport) {
-    const transportWithCodecVersion = withGeneratedCodecVersion(transport);
     return {
-        account: new AccountClient(transportWithCodecVersion),
-        chain: new ChainClient(transportWithCodecVersion),
-        chat: new ChatClient(transportWithCodecVersion),
-        coinPayment: new CoinPaymentClient(transportWithCodecVersion),
-        entropy: new EntropyClient(transportWithCodecVersion),
-        localStorage: new LocalStorageClient(transportWithCodecVersion),
-        locale: new LocaleClient(transportWithCodecVersion),
-        notifications: new NotificationsClient(transportWithCodecVersion),
-        payment: new PaymentClient(transportWithCodecVersion),
-        permissions: new PermissionsClient(transportWithCodecVersion),
-        preimage: new PreimageClient(transportWithCodecVersion),
-        resourceAllocation: new ResourceAllocationClient(transportWithCodecVersion),
-        signing: new SigningClient(transportWithCodecVersion),
-        statementStore: new StatementStoreClient(transportWithCodecVersion),
-        system: new SystemClient(transportWithCodecVersion),
-        theme: new ThemeClient(transportWithCodecVersion),
+        account: new AccountClient(transport),
+        chain: new ChainClient(transport),
+        chat: new ChatClient(transport),
+        coinPayment: new CoinPaymentClient(transport),
+        entropy: new EntropyClient(transport),
+        localStorage: new LocalStorageClient(transport),
+        locale: new LocaleClient(transport),
+        notifications: new NotificationsClient(transport),
+        payment: new PaymentClient(transport),
+        permissions: new PermissionsClient(transport),
+        pocket: new PocketClient(transport),
+        preimage: new PreimageClient(transport),
+        renderer: new RendererClient(transport),
+        resourceAllocation: new ResourceAllocationClient(transport),
+        signing: new SigningClient(transport),
+        statementStore: new StatementStoreClient(transport),
+        system: new SystemClient(transport),
+        theme: new ThemeClient(transport),
     };
 }

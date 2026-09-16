@@ -1,8 +1,14 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 import { labelToProductId } from "@dotli/ui/runtime-config";
 import { setChatCapability } from "@dotli/shared/chat-capability";
-import type { HostChatActionSubscribeItem } from "@parity/truapi";
+import type {
+  HostChatActionSubscribeItem,
+  HostRendererActionSubscribeItem,
+  ProductRendererRenderRequest,
+} from "@parity/truapi";
+import type { RenderSink } from "@parity/truapi-host";
 
 // The panel and service keep module-level state (listeners, connection
 // registry), so each test loads a fresh module instance via resetModules.
@@ -232,7 +238,11 @@ describe("chat panel", () => {
       publish: async (action) => {
         published.push(action);
       },
-      renderCustomMessage: () => () => undefined,
+      publishRendererAction: async () => undefined,
+      loadRendererImage: async () => {
+        throw new Error("No image in this conversation");
+      },
+      render: () => () => undefined,
     });
 
     await service.productCreateRoom(productId, {
@@ -380,6 +390,74 @@ describe("chat panel", () => {
     expect(reordered).toEqual(["Echo Bot", "First", "Second", "Idle"]);
   });
 
+  it("subscribes only while visible and rejects callbacks from disposed renders", async () => {
+    const { service } = await loadChatModules();
+    // Re-import after loadChatModules resets the service's connection registry.
+    const { mountCustomMessage } =
+      await import("@dotli/ui/chat/custom-message");
+    let visibility!: (entries: { isIntersecting: boolean }[]) => void;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: typeof visibility) {
+          visibility = callback;
+        }
+        observe(): void {
+          return;
+        }
+        disconnect = disconnect;
+      },
+    );
+    const sinks: RenderSink[] = [];
+    const disposers: Mock[] = [];
+    const unregister = service.registerChatConnection("visibility-product", {
+      publish: async () => undefined,
+      publishRendererAction: async () => undefined,
+      loadRendererImage: async () => {
+        throw new Error("No images in this tree");
+      },
+      render: (_request, sink) => {
+        const dispose = vi.fn();
+        sinks.push(sink);
+        disposers.push(dispose);
+        return dispose;
+      },
+    });
+    const container = document.createElement("div");
+    const dispose = mountCustomMessage(container, {
+      productId: "visibility-product",
+      roomId: "room",
+      messageId: "message",
+      messageType: "body",
+      payload: "0x",
+    });
+    try {
+      expect(sinks).toEqual([]);
+      visibility([{ isIntersecting: true }]);
+      sinks[0].onUpdate({ tag: "String", value: { text: "first" } });
+      expect(container.textContent).toBe("first");
+      visibility([{ isIntersecting: false }]);
+      expect(disposers[0]).toHaveBeenCalledOnce();
+      visibility([{ isIntersecting: true }]);
+      sinks[1].onUpdate({ tag: "String", value: { text: "second" } });
+      sinks[0].onUpdate({ tag: "String", value: { text: "stale" } });
+      sinks[0].onError?.(new Error("old stream failed"));
+      expect(container.textContent).toBe("second");
+      sinks[1].onComplete?.();
+      expect(container.textContent).toBe("second");
+      dispose();
+      expect(disposers[1]).toHaveBeenCalledOnce();
+      expect(disconnect).toHaveBeenCalledOnce();
+      visibility([{ isIntersecting: true }]);
+      expect(sinks).toHaveLength(2);
+    } finally {
+      dispose();
+      unregister();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("As a user, custom messages render live trees and taps reach the product", async () => {
     // No IntersectionObserver in this environment: the mount falls back to
     // subscribing immediately, which is exactly what the test needs.
@@ -391,23 +469,23 @@ describe("chat panel", () => {
       const productId = labelToProductId("chatty-custom");
 
       const published: HostChatActionSubscribeItem[] = [];
+      const rendererActions: HostRendererActionSubscribeItem[] = [];
       const renders: {
-        request: {
-          messageId: string;
-          messageType: string;
-          payload: Uint8Array;
-        };
-        sink: {
-          onUpdate(node: unknown): void;
-          onError?(error: Error): void;
-        };
+        request: ProductRendererRenderRequest;
+        sink: RenderSink;
       }[] = [];
       const disposeRender = vi.fn();
       service.registerChatConnection(productId, {
         publish: async (action) => {
           published.push(action);
         },
-        renderCustomMessage: (request, sink) => {
+        publishRendererAction: async (action) => {
+          rendererActions.push(action);
+        },
+        loadRendererImage: async () => {
+          throw new Error("No image in this conversation");
+        },
+        render: (request, sink) => {
           renders.push({ request, sink });
           return disposeRender;
         },
@@ -430,9 +508,11 @@ describe("chat panel", () => {
 
       // The cell subscribed with the stored message identity and payload.
       expect(renders).toHaveLength(1);
-      expect(renders[0].request.messageId).toBe(messageId);
-      expect(renders[0].request.messageType).toBe("poll");
-      expect(renders[0].request.payload).toEqual(new Uint8Array([1, 2]));
+      expect(renders[0].request.context).toEqual({
+        tag: "ChatMessage",
+        value: { roomId: "main", messageId, messageType: "poll" },
+      });
+      expect(renders[0].request.payload).toBe("0x0102");
       expect(byId("chat-panel-messages").textContent).toContain("Loading…");
 
       // The product streams a tree; the cell replaces its content.
@@ -468,18 +548,20 @@ describe("chat panel", () => {
       });
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
-      // Tapping the rendered button publishes an ActionTriggered action.
+      // Product-rendered controls publish Renderer actions, never Chat actions.
       document.querySelector<HTMLButtonElement>(".chat-custom-btn")?.click();
-      await settle(() => published.length === 1);
-      expect(published).toHaveLength(1);
-      expect(published[0]).toMatchObject({
-        roomId: "main",
-        peer: "user",
-        payload: {
-          tag: "ActionTriggered",
-          value: { messageId, actionId: "pick:a" },
+      await settle(() => rendererActions.length === 1);
+      expect(published).toEqual([]);
+      expect(rendererActions).toEqual([
+        {
+          context: {
+            tag: "ChatMessage",
+            value: { roomId: "main", messageId, messageType: "poll" },
+          },
+          actionId: "pick:a",
+          payload: "0x",
         },
-      });
+      ]);
 
       // A failed render must not leave a partial tree standing.
       renders[0].sink.onError?.(new Error("render refused"));
