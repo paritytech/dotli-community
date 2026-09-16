@@ -284,12 +284,27 @@
   box-sizing: border-box;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
   overflow-wrap: anywhere;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  scrollbar-color: #525252 #141414;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
+  touch-action: pan-y;
   padding: 12px;
   line-height: 1.45;
+}
+.td-wallet-view::-webkit-scrollbar {
+  width: 10px;
+}
+.td-wallet-view::-webkit-scrollbar-track {
+  background: #141414;
+}
+.td-wallet-view::-webkit-scrollbar-thumb {
+  border: 2px solid #141414;
+  border-radius: 999px;
+  background: #525252;
 }
 .td-wallet-view h3 {
   margin: 4px 0 0;
