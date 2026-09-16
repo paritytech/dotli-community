@@ -408,15 +408,32 @@
 }
 
 /* Verification Shield */
-.verification-shield {
-  display: block;
+.verification-shield-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
+  margin: 0 -15px;
+}
+.verification-shield {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
   color: rgba(255, 255, 255, 0.32);
+  cursor: pointer;
   transition: color 0.3s ease;
 }
-.verification-shield.validating {
+.verification-shield:focus-visible {
+  outline-offset: -6px;
+}
+.verification-shield.trusted {
   color: #ff8c00;
 }
 .verification-shield.verified {
@@ -425,22 +442,20 @@
 .verification-shield.stale {
   color: #f87171;
 }
+.verification-shield-icon {
+  display: none;
+  width: 14px;
+  height: 14px;
+}
+.verification-shield:not(.trusted) .verification-shield-icon.is-verified,
+.verification-shield.trusted .verification-shield-icon.is-trusted {
+  display: block;
+}
 
-/* Shield tooltip: hovering the verification shield (or the URL pill in
-   general) surfaces a quick explainer for the green/amber states. */
-.verification-shield-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-.verification-shield-wrap .verification-shield {
-  cursor: help;
-}
 .verification-tooltip {
   position: absolute;
-  top: calc(100% + 12px);
-  left: -6px;
+  top: calc(100% + 6px);
+  left: 9px;
   width: 268px;
   padding: 12px 14px;
   background: rgba(28, 28, 28, 0.96);
@@ -453,22 +468,33 @@
   text-align: left;
   z-index: 1600;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transform: translateY(4px);
   transition:
-    opacity 0.15s ease-out 0.05s,
-    transform 0.15s ease-out 0.05s;
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out,
+    visibility 0s linear 0.15s;
 }
 @supports (backdrop-filter: blur(1px)) {
   .verification-tooltip {
     backdrop-filter: blur(24px) saturate(180%);
   }
 }
-.verification-shield-wrap:hover .verification-tooltip,
-.verification-shield-wrap:focus-within .verification-tooltip {
+@media (hover: hover) {
+  .verification-shield-wrap:hover .verification-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition-delay: 0.2s;
+  }
+}
+.verification-tooltip.open {
   opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
   transform: translateY(0);
-  transition-delay: 0.2s;
+  transition-delay: 0s;
 }
 @media (prefers-reduced-motion: reduce) {
   .verification-tooltip {
@@ -487,35 +513,57 @@
 }
 .verification-tooltip-row {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto 1fr;
   align-items: start;
   column-gap: 8px;
   font-size: 0.74rem;
   line-height: 1.45;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .verification-tooltip-row:last-child {
   margin-bottom: 0;
+}
+.verification-tooltip-icon {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+.verification-tooltip-icon.is-verified {
+  color: #4ade80;
+}
+.verification-tooltip-icon.is-trusted {
+  color: #ff8c00;
+}
+.verification-tooltip-text {
+  display: block;
+  min-width: 0;
+}
+.verification-tooltip-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .verification-tooltip-row strong,
 .verification-tooltip-label {
   color: rgba(255, 255, 255, 0.95);
   font-weight: 600;
 }
-.verification-tooltip-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-top: 5px;
+.verification-tooltip-current {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.58rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.verification-tooltip-dot.is-verified {
-  background: #4ade80;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.45);
+.verification-tooltip-row:not(.is-current) .verification-tooltip-current {
+  display: none;
 }
-.verification-tooltip-dot.is-trusted {
-  background: #ff8c00;
-  box-shadow: 0 0 6px rgba(255, 140, 0, 0.45);
+.verification-tooltip-desc {
+  display: block;
 }
 
 /* User Badge */

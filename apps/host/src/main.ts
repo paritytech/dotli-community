@@ -67,6 +67,12 @@ import {
   wipeOriginState,
 } from "@dotli/ui/topbar";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
+import {
+  bindVerificationShield,
+  setVerificationShieldState,
+  verificationShieldMarkup,
+  type ShieldState,
+} from "@dotli/ui/verification-shield";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   bitswapGet,
@@ -342,12 +348,8 @@ function parseDotLabel(): string | null {
   return null;
 }
 
-/**
- * Set the verification shield state in the URL pill.
- *
- *   "verified": green, P2P mode, data independently verified by light client.
- *   "validating": yellow, gateway mode, data from trusted source.
- */
+// Set once the shield has settled on its final state for this load. Login
+// arms the topbar auto-hide only after that point.
 let shieldVerified = false;
 
 // Wire auth-state changes to topbar auto-hide. Login starts the hide timer
@@ -363,19 +365,9 @@ function bindTopbarAutoHide(): void {
   });
 }
 
-function setShieldState(state: "validating" | "verified"): void {
-  const shield = document.getElementById("verification-shield");
-  if (shield !== null) {
-    shield.classList.remove("validating", "verified");
-    shield.classList.add(state);
-    shield.setAttribute(
-      "title",
-      state === "verified"
-        ? "Verified via light client"
-        : "Loaded from trusted source",
-    );
-  }
-
+/** Paint the URL pill shield for `state` and start the topbar auto-hide. */
+function setShieldState(state: ShieldState): void {
+  setVerificationShieldState(state);
   shieldVerified = true;
   armTopbarAutoHide();
 }
@@ -1204,7 +1196,8 @@ async function main(): Promise<void> {
     });
     return;
   }
-  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill"><span class="verification-shield-wrap"><svg id="verification-shield" class="verification-shield" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-describedby="verification-tooltip"><path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z"/></svg><span class="verification-tooltip" id="verification-tooltip" role="tooltip"><span class="verification-tooltip-title">How was this site loaded?</span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-verified" aria-hidden="true"></span><strong class="verification-tooltip-label">Verified</strong><span class="verification-tooltip-desc">More secure, checked by your light client.</span></span><span class="verification-tooltip-row"><span class="verification-tooltip-dot is-trusted" aria-hidden="true"></span><strong class="verification-tooltip-label">Trusted</strong><span class="verification-tooltip-desc">Served by an external RPC provider.</span></span></span></span><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
+  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill">${verificationShieldMarkup()}<span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
+  bindVerificationShield();
 
   // Listen for status messages from the sandbox iframe so the loading
   // UI continues seamlessly from resolution into content fetching.
@@ -1217,9 +1210,9 @@ async function main(): Promise<void> {
   // smoldot per page.
   listenForSandboxBitswap();
 
-  const shieldState: "verified" | "validating" = isVerifiedSession(chainBackend)
+  const shieldState: ShieldState = isVerifiedSession(chainBackend)
     ? "verified"
-    : "validating";
+    : "trusted";
 
   // Bands reflect where load time actually goes (measured per displayed step):
   // the Asset Hub connect+sync and the post-resolve content fetch are the two
