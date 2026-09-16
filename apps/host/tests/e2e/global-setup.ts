@@ -119,17 +119,23 @@ function randomLiteUsernamePrefix(): string {
   return `dotlitest${suffix}`;
 }
 
-const signingHostConfig: SigningHostConfig = {
-  binary: SIGNING_HOST_BIN,
-  basePath: SIGNING_HOST_BASE_PATH,
-  network: NETWORK,
-  productId: PRODUCT_ID,
-  // With an explicit mnemonic the CLI signs as that account directly and
-  // rejects auto-account naming flags.
-  liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
-    ? undefined
-    : randomLiteUsernamePrefix(),
-};
+// Built per pair attempt, not once: a failed attempt can leave its name
+// registered but unattested, and the CLI creates a fresh account rather than
+// reusing one it has not attested. Sharing one name across attempts would make
+// every retry ask for a name the first attempt already claimed.
+function signingHostConfig(): SigningHostConfig {
+  return {
+    binary: SIGNING_HOST_BIN,
+    basePath: SIGNING_HOST_BASE_PATH,
+    network: NETWORK,
+    productId: PRODUCT_ID,
+    // With an explicit mnemonic the CLI signs as that account directly and
+    // rejects auto-account naming flags.
+    liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
+      ? undefined
+      : randomLiteUsernamePrefix(),
+  };
+}
 
 // Thrown when the CLI process dies before login; elapsedMs distinguishes
 // instant deterministic failures from chain-side ones.
@@ -298,7 +304,7 @@ async function pairOnce(
 
     const deeplink = await extractQrPayload(page, "#auth-modal-qr canvas");
     const pairStart = Date.now();
-    signingHost = startSigningHostPair(signingHostConfig, deeplink);
+    signingHost = startSigningHostPair(signingHostConfig(), deeplink);
 
     await waitForSignedIn(page, signingHost, badgeTimeoutMs, pairStart);
     console.log(`[globalSetup] signed in after ${Date.now() - pairStart}ms.`);
