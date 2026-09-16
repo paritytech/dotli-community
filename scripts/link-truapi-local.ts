@@ -14,14 +14,14 @@ const truapiRoot = resolve(
   process.env.TRUAPI_REPO ?? resolve(dotliRoot, "../.."),
 );
 // CI keeps dotli's installed SDK untouched and only links the product fixture
-// to the immutable distribution already checked into this repository.
+// to the installed dependency graph of the immutable vendored distribution.
 const productVendorOnly = process.argv.includes("--product-vendor");
 
 const packages = [
   {
     name: "@parity/truapi",
     path: productVendorOnly
-      ? resolve(dotliRoot, "vendor/truapi")
+      ? resolve(dotliRoot, "node_modules/@parity/truapi")
       : resolve(truapiRoot, "js/packages/truapi"),
   },
   {

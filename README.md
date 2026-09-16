@@ -270,7 +270,7 @@ Local development uses wildcard subdomains:
 The product E2E suite loads the source checkout through dotli's localhost
 proxy. CI pins [host-playground](https://github.com/paritytech/host-playground)
 to `63ba2274648c39ed2431b7548dcd93d50862ea9e`, installs its frozen dependency
-lock, and links its TrUAPI consumers to this repository's `vendor/truapi` with
+lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
 `bun scripts/link-truapi-local.ts --product-vendor`. This runs the existing
 product behavior checks against the pinned SDK rather than the independently
 deployed `host-playground.dot`, whose older client uses an incompatible wire
@@ -311,8 +311,14 @@ Override either checkout or server when needed:
 ```bash
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
+SIGNING_HOST_NETWORK=paseo-next-v2 \
+NEXT_PUBLIC_NETWORK_GENESIS_HASH=0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a \
 bun run test:e2e:local
 ```
+
+The product's `NEXT_PUBLIC_NETWORK_GENESIS_HASH` must select the same Asset Hub
+as the host and `SIGNING_HOST_NETWORK`; the fixture otherwise defaults to
+Previewnet and its chain queries are rejected by a Paseo host.
 
 The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same
 flow through either light-client backend:

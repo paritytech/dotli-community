@@ -138,6 +138,8 @@ jobs:
       # `packages/config/src/network.ts`. Setting explicitly so a host
       # network bump can't silently leave the CLI on the wrong chain.
       SIGNING_HOST_NETWORK: paseo-next-v2
+      # The product must query the same Asset Hub as the host and signing CLI.
+      NEXT_PUBLIC_NETWORK_GENESIS_HASH: "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a"
       # The CLI self-updates by default; keep CI runs deterministic.
       TRUAPI_HOST_NO_UPDATE: "1"
       E2E_PRODUCT_REPO: ${{ github.workspace }}/.build/e2e-host-playground
