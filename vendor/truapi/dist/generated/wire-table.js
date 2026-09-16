@@ -384,3 +384,13 @@ export const RENDERER_ACTION_SUBSCRIBE = {
     method: 1,
     kind: "subscription",
 };
+export const POCKET_LIST_SUBSCRIBE = {
+    trait: 18,
+    method: 0,
+    kind: "subscription",
+};
+export const POCKET_REMOVE_CARD = {
+    trait: 18,
+    method: 1,
+    kind: "request",
+};

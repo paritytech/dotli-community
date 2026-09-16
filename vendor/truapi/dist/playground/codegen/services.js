@@ -601,6 +601,31 @@ export const services = [
         ],
     },
     {
+        name: "Pocket",
+        requiredExecution: "Worker",
+        methods: [
+            {
+                name: "list_subscribe",
+                type: "subscription",
+                signature: "listSubscribe(): ObservableLike<HostPocketListSubscribeItem, S.CallErrorValue<GenericError>>",
+                docUrl: "api/pocket/trait.Pocket.html#method.list_subscribe",
+                description: "Subscribe to the calling product's cards.\n\nEmits the whole set on subscribe and again after every change.",
+                exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst item = await firstValueFrom(\n  from(truapi.pocket.listSubscribe()),\n);\nconsole.log("cards:", item.cards);',
+                responseType: "host-pocket-list-subscribe-item",
+            },
+            {
+                name: "remove_card",
+                type: "unary",
+                signature: "removeCard(request: HostPocketRemoveCardRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostPocketRemoveCardError>>>",
+                docUrl: "api/pocket/trait.Pocket.html#method.remove_card",
+                description: "Remove one of the calling product's cards.\n\nRemoving a card that is not present succeeds. A privileged card is\nrefused with `Privileged`.",
+                requestDescription: "HostPocketRemoveCardRequest",
+                exampleSource: 'const result = await truapi.pocket.removeCard({ cardId: "loyalty" });\nassert(result.isOk(), "removeCard failed:", result);\nconsole.log("card removed");',
+                requestType: "host-pocket-remove-card-request",
+            },
+        ],
+    },
+    {
         name: "Preimage",
         methods: [
             {

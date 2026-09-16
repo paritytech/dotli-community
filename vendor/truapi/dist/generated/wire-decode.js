@@ -340,4 +340,14 @@ export const WIRE_DECODE_TABLE = {
         2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
         3: () => undefined,
     },
+    [W.POCKET_LIST_SUBSCRIBE.trait * 256 + W.POCKET_LIST_SUBSCRIBE.method]: {
+        0: () => undefined,
+        1: (payload) => T.VersionedHostPocketListSubscribeItem.dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        3: () => undefined,
+    },
+    [W.POCKET_REMOVE_CARD.trait * 256 + W.POCKET_REMOVE_CARD.method]: {
+        0: (payload) => T.VersionedHostPocketRemoveCardRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostPocketRemoveCardResponse, S.CallError(T.VersionedHostPocketRemoveCardError)).dec(payload),
+    },
 };

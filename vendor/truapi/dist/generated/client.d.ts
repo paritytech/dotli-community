@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 2;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "e883e2c0b9857933";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "220fc120f49c7dd1";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
@@ -235,6 +235,29 @@ export declare class PermissionsClient {
     /** Request a remote-operation permission. */
     requestRemotePermission(request: T.RemotePermissionRequest): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
 }
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export declare class PocketClient {
+    private readonly transport;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with `Privileged`.
+     */
+    removeCard(request: T.HostPocketRemoveCardRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
+}
 /** Preimage lookup and submission methods. */
 export declare class PreimageClient {
     private readonly transport;
@@ -404,6 +427,7 @@ export interface TrUApiClient {
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;
+    readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
     readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;

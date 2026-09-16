@@ -171,6 +171,10 @@ export const VersionedHostPaymentTopUpError = S.lazy(() => S.indexedTaggedUnion(
 export const VersionedHostPaymentTopUpRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPaymentTopUpRequest] }));
 export const VersionedHostPaymentTopUpResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const HostPlatform = S.lazy(() => S.Status("Web", "Android", "Ios", "Desktop", "Cli", "Unknown"));
+export const VersionedHostPocketListSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPocketListSubscribeItem] }));
+export const VersionedHostPocketRemoveCardError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPocketRemoveCardError] }));
+export const VersionedHostPocketRemoveCardRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPocketRemoveCardRequest] }));
+export const VersionedHostPocketRemoveCardResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const VersionedHostPushNotificationCancelError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostPushNotificationCancelRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPushNotificationCancelRequest] }));
 export const VersionedHostPushNotificationCancelResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -207,6 +211,7 @@ export const Modifier = S.lazy(() => S.TaggedUnion({ Margin: Dimensions, Padding
 export const NotificationId = S.lazy(() => S.u32);
 export const OperationStartedResult = S.lazy(() => S.TaggedUnion({ Started: S.Struct({ operationId: S.str }), LimitReached: S._void }));
 export const PaymentTopUpSource = S.lazy(() => S.TaggedUnion({ ProductAccount: S.Struct({ derivationIndex: DerivationIndex }), PrivateKey: S.Struct({ sr25519SecretKey: S.Hex(64) }), Coins: S.Struct({ sr25519SecretKeys: S.Vector(S.Hex(64)) }) }));
+export const PocketCard = S.lazy(() => S.Struct({ cardId: S.str, privileged: S.bool }));
 export const PreimageSubmitError = S.lazy(() => S.TaggedUnion({ Unknown: S.Struct({ reason: S.str }) }));
 export const ProductAccount = S.lazy(() => S.Struct({ publicKey: S.Hex() }));
 export const ProductAccountId = S.lazy(() => S.Struct({ dotNsIdentifier: S.str, derivationIndex: DerivationIndex }));
@@ -380,6 +385,9 @@ export const HostPaymentStatusSubscribeItem = S.lazy(() => S.TaggedUnion({ Proce
 export const HostPaymentStatusSubscribeRequest = S.lazy(() => S.Struct({ paymentId: S.str }));
 export const HostPaymentTopUpError = S.lazy(() => S.TaggedUnion({ InsufficientFunds: S._void, InvalidSource: S._void, PartialPayment: S.Struct({ credited: Balance }), Unknown: S.Struct({ reason: S.str }) }));
 export const HostPaymentTopUpRequest = S.lazy(() => S.Struct({ into: S.Option(CoinPaymentPurseId), amount: Balance, source: PaymentTopUpSource }));
+export const HostPocketListSubscribeItem = S.lazy(() => S.Struct({ cards: S.Vector(PocketCard) }));
+export const HostPocketRemoveCardError = S.lazy(() => S.TaggedUnion({ Privileged: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostPocketRemoveCardRequest = S.lazy(() => S.Struct({ cardId: S.str }));
 export const HostPushNotificationCancelRequest = S.lazy(() => S.Struct({ id: NotificationId }));
 export const HostPushNotificationError = S.lazy(() => S.TaggedUnion({ ScheduleLimitReached: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPushNotificationRequest = S.lazy(() => S.Struct({ text: S.str, deeplink: S.Option(S.str), scheduledAt: S.Option(S.u64) }));

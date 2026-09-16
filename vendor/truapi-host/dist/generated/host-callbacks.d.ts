@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, Bytes32, ChainIdentifier, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -1049,6 +1049,25 @@ export interface Permissions {
     remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
 }
 /**
+ * Host-implemented adapter through which product Pocket calls reach the
+ * host's card collection. Optional: a host that omits it leaves Pocket
+ * requests answered `Unsupported`. See `OptionalPlatform`.
+ *
+ * The host owns the collection: it decides which cards are privileged and
+ * keeps each card's newest face. A face does not cross this boundary.
+ */
+export interface PocketPlatform {
+    /**
+     * Emit the calling product's current cards and every later replacement.
+     */
+    subscribePocketCards(product: ProductContext): AsyncIterable<Result<HostPocketListSubscribeItem, GenericError>>;
+    /**
+     * Remove one of the calling product's cards. Removing an absent card
+     * succeeds; a privileged card is refused with `Privileged`.
+     */
+    removePocketCard(product: ProductContext, request: HostPocketRemoveCardRequest): Promise<void>;
+}
+/**
  * Host preimage backend. The core builds, signs, and submits the Bulletin
  * `TransactionStorage.store` transaction itself; the host only owns preimage
  * content retrieval (P2P/IPFS lookup).
@@ -1128,6 +1147,7 @@ export interface HostCallbacks {
     preimage: PreimageHost;
     chat?: ChatPlatform;
     permissionStatus?: PermissionStatusHost;
+    pocket?: PocketPlatform;
 }
 export interface RequiredHostCallbacks {
     navigation: Required<Navigation>;
@@ -1144,4 +1164,5 @@ export interface RequiredHostCallbacks {
     preimage: Required<PreimageHost>;
     chat?: Required<ChatPlatform>;
     permissionStatus?: Required<PermissionStatusHost>;
+    pocket?: Required<PocketPlatform>;
 }

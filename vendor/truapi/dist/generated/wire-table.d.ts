@@ -373,3 +373,13 @@ export declare const RENDERER_ACTION_SUBSCRIBE: {
     readonly method: 1;
     readonly kind: "subscription";
 };
+export declare const POCKET_LIST_SUBSCRIBE: {
+    readonly trait: 18;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const POCKET_REMOVE_CARD: {
+    readonly trait: 18;
+    readonly method: 1;
+    readonly kind: "request";
+};
