@@ -106,6 +106,19 @@ const CLI_USAGE_EXIT_CODE = 2;
 // identity backend is down" apart from "dot.li tests asserted false".
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
+// The CLI registers this prefix verbatim as the lite username, and a name can
+// only be claimed once, so a fixed value burns on the first run and every later
+// run fails as taken. Six lowercase letters give a ~3·10^8 namespace. Lowercase
+// ASCII only: the CLI rejects digits and separators.
+function randomLiteUsernamePrefix(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  let suffix = "";
+  for (let i = 0; i < 6; i++) {
+    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return `dotlitest${suffix}`;
+}
+
 const signingHostConfig: SigningHostConfig = {
   binary: SIGNING_HOST_BIN,
   basePath: SIGNING_HOST_BASE_PATH,
@@ -115,7 +128,7 @@ const signingHostConfig: SigningHostConfig = {
   // rejects auto-account naming flags.
   liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
     ? undefined
-    : "dotlitest",
+    : randomLiteUsernamePrefix(),
 };
 
 // Thrown when the CLI process dies before login; elapsedMs distinguishes
