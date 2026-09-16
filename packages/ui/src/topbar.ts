@@ -37,6 +37,7 @@ import {
   setBackend,
   isSharedWorkerAvailable,
   isVerifiedSession,
+  BACKEND_LABELS,
   type Backend,
   type CacheSettings,
 } from "@dotli/config/mode";
@@ -1331,6 +1332,11 @@ function formatSize(bytes: number): string {
 }
 
 function formatRate(bytesPerSecond: number): string {
+  // Below half a kilobyte the kB rounding reads "0 kB/s", which says the
+  // opposite of what is happening: bytes are moving, just barely.
+  if (bytesPerSecond < 1024) {
+    return `${String(Math.round(bytesPerSecond))} B/s`;
+  }
   return bytesPerSecond < 1_048_576
     ? `${String(Math.round(bytesPerSecond / 1024))} kB/s`
     : `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
@@ -2059,17 +2065,17 @@ function renderModePopover(): void {
   const chainChoices: [Backend, string, string][] = [
     [
       "smoldot-direct",
-      "Light Client Per-Tab",
+      BACKEND_LABELS["smoldot-direct"],
       "Verified in your browser, separate per tab (recommended)",
     ],
     [
       "smoldot-shared-worker",
-      "Light Client Shared",
+      BACKEND_LABELS["smoldot-shared-worker"],
       "Verified in your browser, shared across tabs",
     ],
     [
       "rpc-gateway",
-      "Trusted Providers",
+      BACKEND_LABELS["rpc-gateway"],
       "Fetched from trusted servers, fastest but less private",
     ],
   ];
@@ -2716,14 +2722,7 @@ function buildBaseDiagnosticsRows(): [label: string, value: string][] {
 }
 
 function backendLabel(b: Backend): string {
-  switch (b) {
-    case "smoldot-shared-worker":
-      return "Light Client Shared";
-    case "smoldot-direct":
-      return "Light Client Per-Tab";
-    case "rpc-gateway":
-      return "Trusted Providers";
-  }
+  return BACKEND_LABELS[b];
 }
 
 /** Gather the smoldot readouts a diagnostic report quotes. */
