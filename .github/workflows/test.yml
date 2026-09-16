@@ -122,9 +122,9 @@ jobs:
             exit 1
           fi
 
-  # E2E run of host-playground product tests against the local preview server,
-  # with pairing and signing handled headlessly by the truapi-host CLI from
-  # paritytech/host-rust-core (no Android emulator, no Maestro).
+  # E2E run of the pinned host-playground source against the local preview
+  # server. The product client and signing CLI use the same SDK as dotli;
+  # the independently deployed host-playground.dot can use an older wire codec.
   e2e-product:
     name: E2E
     runs-on: ubuntu-latest
@@ -140,6 +140,8 @@ jobs:
       SIGNING_HOST_NETWORK: paseo-next-v2
       # The CLI self-updates by default; keep CI runs deterministic.
       TRUAPI_HOST_NO_UPDATE: "1"
+      E2E_PRODUCT_REPO: ${{ github.workspace }}/.build/e2e-host-playground
+      E2E_PRODUCT_URL: http://localhost:5199
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -190,6 +192,24 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Checkout product fixture source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: paritytech/host-playground
+          ref: 63ba2274648c39ed2431b7548dcd93d50862ea9e
+          path: .build/e2e-host-playground
+          persist-credentials: false
+
+      - name: Install product fixture dependencies
+        working-directory: .build/e2e-host-playground
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile
+
+      - name: Link product fixture to the pinned SDK
+        run: bun scripts/link-truapi-local.ts --product-vendor
+
       - name: Generate signing-host sources
         working-directory: .signing-host-src
         run: |
@@ -210,6 +230,8 @@ jobs:
           # protocol/app iframes, so every test times out. deploy.yml supplies
           # this from repo vars; the test build needs its own value.
           VITE_NETWORKS: paseo-next-v2,previewnet
+          # The fixture is served through dotli's existing loopback-only proxy.
+          VITE_APP_DEBUG: "true"
         run: bunx --bun turbo run build
 
       # Exit code 99 from playwright = pairing/signing infrastructure down
