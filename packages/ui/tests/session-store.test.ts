@@ -40,16 +40,21 @@ const sharedAuth = vi.hoisted(() => ({
     (change: { siteId: string; key: string; value: string | null }) => void
   >(),
   walletListeners: new Set<(state: SharedWalletState) => void>(),
+  walletError: undefined as Error | undefined,
 }));
 
 vi.mock("@dotli/protocol/client", () => ({
   requestSharedWallet: async (
     _siteId: string,
     operation: SharedWalletOperation,
-  ) =>
-    handleWalletOperation(operation, (state) => {
+  ) => {
+    if (sharedAuth.walletError !== undefined) {
+      throw sharedAuth.walletError;
+    }
+    return handleWalletOperation(operation, (state) => {
       for (const listener of sharedAuth.walletListeners) listener(state);
-    }),
+    });
+  },
   subscribeSharedWallet: (listener: (state: SharedWalletState) => void) => {
     sharedAuth.walletListeners.add(listener);
     return () => sharedAuth.walletListeners.delete(listener);
@@ -121,6 +126,7 @@ describe("session-store host callbacks", () => {
     localStorage.clear();
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
+    sharedAuth.walletError = undefined;
     vi.restoreAllMocks();
     Object.defineProperty(navigator, "locks", {
       configurable: true,
@@ -140,6 +146,27 @@ describe("session-store host callbacks", () => {
         },
       },
     });
+  });
+
+  it("does not report restoration failure before a wallet is configured", async () => {
+    // Given
+    buildFlags.debug = true;
+    sharedAuth.walletError = new Error("shared wallet unavailable");
+
+    // When / Then
+    await expect(emitPersistedSessionUiState()).resolves.toBeUndefined();
+  });
+
+  it("preserves restoration failures for a configured wallet", async () => {
+    // Given
+    buildFlags.debug = true;
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    sharedAuth.walletError = new Error("shared wallet unavailable");
+
+    // When / Then
+    await expect(emitPersistedSessionUiState()).rejects.toThrow(
+      "shared wallet unavailable",
+    );
   });
 
   it("As a dotli integrator, the host round-trips the host core session blob", async () => {

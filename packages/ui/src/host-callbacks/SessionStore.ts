@@ -356,7 +356,28 @@ async function readUiStateCache(): Promise<TruapiSessionUiState | null> {
  * without a cached state it degrades to a bare `connected: true`.
  */
 export async function emitPersistedSessionUiState(): Promise<void> {
-  await initializeLocalWalletState();
+  try {
+    await initializeLocalWalletState();
+  } catch (error) {
+    const walletWasConfigured = (() => {
+      try {
+        return (
+          localStorage.getItem(LOCAL_WALLET_ENABLED_KEY) === "1" ||
+          localStorage.getItem(LOCAL_WALLET_REVISION_KEY) !== null
+        );
+      } catch {
+        // If storage itself is unavailable, we cannot safely claim there was
+        // no wallet to restore.
+        return true;
+      }
+    })();
+    if (
+      walletWasConfigured ||
+      (error instanceof Error && error.name === "WalletConflictError")
+    ) {
+      throw error;
+    }
+  }
   // Only the persistent signing owner can publish experimental identity.
   // Disk metadata and secret availability are not native session proof.
   if (isExperimentalWalletActive()) {
