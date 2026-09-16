@@ -705,13 +705,13 @@ function installExperimentalWalletControls(
   walletActions.append(activate, disconnect);
   overview.append(
     walletActions,
-    warning,
     registeredName,
     network,
     identity,
     usernameLabel,
     usernameActions,
     usernameHint,
+    warning,
     walletView.productDetails,
   );
   const recoveryHeading = document.createElement("h3");
