@@ -22,7 +22,7 @@ SITE_fyi-paseo     := paseo.fyi
 REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
-REMOTE_FOR_fyi-paseo   := $(REMOTE_STG)
+REMOTE_FOR_fyi-paseo     := $(REMOTE_STG)
 
 # env tag → web root on the remote (rendered into the `root` directive)
 DEPLOY_PATH_polkadot      := /var/www/dotli
