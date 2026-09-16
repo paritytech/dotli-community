@@ -213,8 +213,13 @@ function selectThemePref(pref: ThemePref): void {
   applyThemePref(pref);
   syncThemePopoverChecked(pref);
   if (themeButton !== null) {
-    themeButton.title = THEME_TITLE[pref];
+    setThemeButtonLabel(themeButton, pref);
   }
+}
+
+function setThemeButtonLabel(btn: HTMLElement, pref: ThemePref): void {
+  btn.title = THEME_TITLE[pref];
+  btn.setAttribute("aria-label", THEME_TITLE[pref]);
 }
 
 function initThemeToggle(): void {
@@ -235,7 +240,7 @@ function initThemeToggle(): void {
   }
   const btn = themeButton;
   const popover = themePopover;
-  btn.title = THEME_TITLE[getStoredThemePref()];
+  setThemeButtonLabel(btn, getStoredThemePref());
   syncThemePopoverChecked(getStoredThemePref());
 
   btn.addEventListener("click", () => {

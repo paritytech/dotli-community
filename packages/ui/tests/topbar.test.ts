@@ -1250,6 +1250,8 @@ describe("topbar theme toggle", () => {
     expect(themeOption("dark")?.getAttribute("aria-checked")).toBe("false");
     expect(themeOption("system")?.getAttribute("aria-checked")).toBe("false");
     expect(document.activeElement).toBe(themeOption("light"));
+    expect(btn?.title).toBe("Theme: Light");
+    expect(btn?.getAttribute("aria-label")).toBe("Theme: Light");
   });
 
   it("As a dotli user, I select Dark from the theme menu and it applies and persists", async () => {
@@ -1270,6 +1272,8 @@ describe("topbar theme toggle", () => {
     expect(popover?.classList.contains("open")).toBe(false);
     expect(btn?.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(btn);
+    expect(btn?.title).toBe("Theme: Dark");
+    expect(btn?.getAttribute("aria-label")).toBe("Theme: Dark");
   });
 
   it("As a dotli user, I select System from the theme menu and the theme resolves from the OS", async () => {
