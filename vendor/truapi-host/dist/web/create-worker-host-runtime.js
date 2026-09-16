@@ -643,6 +643,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     capabilities: {
                         chat: host.chat !== undefined,
                         permissionStatus: host.permissionStatus !== undefined,
+                        pocket: host.pocket !== undefined,
                     },
                     debuggerUrl: debuggerEnablement.url,
                 });

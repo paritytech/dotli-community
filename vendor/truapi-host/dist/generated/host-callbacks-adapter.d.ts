@@ -25,6 +25,8 @@ export interface RawCallbacks {
     devicePermissionStatus?(request: Uint8Array): Promise<Uint8Array>;
     devicePermission(request: Uint8Array): Promise<Uint8Array>;
     remotePermission(request: Uint8Array): Promise<Uint8Array>;
+    subscribePocketCards?(product: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    removePocketCard?(product: Uint8Array, request: Uint8Array): Promise<void>;
     lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     read(key: string): Promise<Uint8Array | null | undefined>;
     write(key: string, value: Uint8Array): Promise<void>;

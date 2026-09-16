@@ -1406,6 +1406,38 @@ export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPay
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
+/** Versioned envelope for [`HostPocketListSubscribeItem`]. */
+export type VersionedHostPocketListSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketListSubscribeItem;
+};
+export declare const VersionedHostPocketListSubscribeItem: S.Codec<VersionedHostPocketListSubscribeItem>;
+/** Versioned envelope for [`HostPocketRemoveCardError`]. */
+export type VersionedHostPocketRemoveCardError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardError;
+};
+export declare const VersionedHostPocketRemoveCardError: S.Codec<VersionedHostPocketRemoveCardError>;
+/** Versioned envelope for [`HostPocketRemoveCardRequest`]. */
+export type VersionedHostPocketRemoveCardRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardRequest;
+};
+export declare const VersionedHostPocketRemoveCardRequest: S.Codec<VersionedHostPocketRemoveCardRequest>;
+/** Versioned envelope for [`HostPocketRemoveCardResponse`]. */
+export type VersionedHostPocketRemoveCardResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPocketRemoveCardResponse: S.Codec<VersionedHostPocketRemoveCardResponse>;
 /**
  * Cipher suite used by product-device Chat identity-route operations.
  *
@@ -1873,6 +1905,14 @@ export type PaymentTopUpSource =
     };
 };
 export declare const PaymentTopUpSource: S.Codec<PaymentTopUpSource>;
+/** One of the calling product's Pocket cards. */
+export interface PocketCard {
+    /** Card label declared by the product, unique within the product. */
+    cardId: string;
+    /** Placed by the host itself; removable by neither the user nor the product. */
+    privileged: boolean;
+}
+export declare const PocketCard: S.Codec<PocketCard>;
 /** Preimage submission error. */
 export type PreimageSubmitError = 
 /** Catch-all. */
@@ -3830,6 +3870,33 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export declare const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest>;
+/** The calling product's cards: the whole set on subscribe and after every change. */
+export interface HostPocketListSubscribeItem {
+    /** Cards currently in Pocket for the calling product. */
+    cards: Array<PocketCard>;
+}
+export declare const HostPocketListSubscribeItem: S.Codec<HostPocketListSubscribeItem>;
+/** Card removal failure. */
+export type HostPocketRemoveCardError = 
+/** The card is privileged and stays in Pocket. */
+{
+    tag: "Privileged";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostPocketRemoveCardError: S.Codec<HostPocketRemoveCardError>;
+/** Request to remove one of the calling product's cards. */
+export interface HostPocketRemoveCardRequest {
+    /** Card to remove. A card that is not present is already removed. */
+    cardId: string;
+}
+export declare const HostPocketRemoveCardRequest: S.Codec<HostPocketRemoveCardRequest>;
 /** Product-device Chat v2 identity failure. */
 export type HostProductDeviceChatError = 
 /** No account-authority session is connected. */

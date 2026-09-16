@@ -20,6 +20,7 @@ export const CALLBACK_NAMES = [
     "devicePermissionStatus",
     "devicePermission",
     "remotePermission",
+    "removePocketCard",
     "read",
     "write",
     "clear",
@@ -28,6 +29,7 @@ export const CALLBACK_NAMES = [
 export const SUBSCRIPTION_NAMES = [
     "subscribeChatRooms",
     "subscribeLocale",
+    "subscribePocketCards",
     "lookupPreimage",
     "subscribeTheme",
 ];
@@ -70,6 +72,12 @@ function permissionStatusRawCallbacks(bridge) {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
     };
 }
+function pocketRawCallbacks(bridge) {
+    return {
+        subscribePocketCards: (product, sendItem, sendError) => bridge.startSubscription("subscribePocketCards", product, sendItem, sendError),
+        removePocketCard: (product, request) => bridge.callbackRequest("removePocketCard", [product, request]),
+    };
+}
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
     const callbacks = {
         ...rawCallbacks(bridge),
@@ -80,6 +88,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, chatRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
+    if (capabilities.pocket)
+        Object.assign(callbacks, pocketRawCallbacks(bridge));
     return callbacks;
 }
 export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
@@ -92,6 +102,12 @@ export function startRawSubscription(callbacks, name, payload, sendItem, sendErr
             return callbacks.subscribeChatRooms?.(payload, sendItem, sendError);
         case "subscribeLocale":
             return callbacks.subscribeLocale(sendItem, sendError);
+        case "subscribePocketCards":
+            if (payload === null) {
+                console.warn(`[truapi worker] ${name} requires payload`);
+                return undefined;
+            }
+            return callbacks.subscribePocketCards?.(payload, sendItem, sendError);
         case "lookupPreimage":
             if (payload === null) {
                 console.warn(`[truapi worker] ${name} requires payload`);

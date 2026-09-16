@@ -2778,6 +2778,53 @@ export const types = [
         ],
     },
     {
+        id: "host-pocket-list-subscribe-item",
+        name: "HostPocketListSubscribeItem",
+        category: "pocket",
+        definition: "export interface HostPocketListSubscribeItem {\n  cards: Array<PocketCard>;\n}",
+        description: "The calling product's cards: the whole set on subscribe and after every change.",
+        fields: [
+            {
+                name: "cards",
+                type: "Array<PocketCard>",
+                description: "Cards currently in Pocket for the calling product.",
+            },
+        ],
+    },
+    {
+        id: "host-pocket-remove-card-error",
+        name: "HostPocketRemoveCardError",
+        category: "pocket",
+        definition: 'export type HostPocketRemoveCardError =\n  | { tag: "Privileged"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Card removal failure.",
+        variants: [
+            {
+                name: "Privileged",
+                type: '{ tag: "Privileged"; value?: undefined }',
+                description: "The card is privileged and stays in Pocket.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-pocket-remove-card-request",
+        name: "HostPocketRemoveCardRequest",
+        category: "pocket",
+        definition: "export interface HostPocketRemoveCardRequest {\n  cardId: string;\n}",
+        description: "Request to remove one of the calling product's cards.",
+        fields: [
+            {
+                name: "card_id",
+                type: "string",
+                description: "Card to remove. A card that is not present is already removed.",
+            },
+        ],
+    },
+    {
         id: "host-product-device-chat-cipher-suite",
         name: "HostProductDeviceChatCipherSuite",
         category: "account",
@@ -3551,6 +3598,25 @@ export const types = [
                 name: "Coins",
                 type: '{ tag: "Coins"; value: { sr25519SecretKeys: Array<HexString> } }',
                 description: "Fund directly from coin secret keys. Each key is an sr25519 secret\ncontrolling a single coin.",
+            },
+        ],
+    },
+    {
+        id: "pocket-card",
+        name: "PocketCard",
+        category: "pocket",
+        definition: "export interface PocketCard {\n  cardId: string;\n  privileged: boolean;\n}",
+        description: "One of the calling product's Pocket cards.",
+        fields: [
+            {
+                name: "card_id",
+                type: "string",
+                description: "Card label declared by the product, unique within the product.",
+            },
+            {
+                name: "privileged",
+                type: "boolean",
+                description: "Placed by the host itself; removable by neither the user nor the product.",
             },
         ],
     },

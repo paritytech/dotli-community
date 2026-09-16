@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 2;
-export const TRUAPI_WIRE_SCHEMA_HASH = "2a2713140f9fb3e1";
+export const TRUAPI_WIRE_SCHEMA_HASH = "4d76f9685fe126db";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -840,6 +840,48 @@ export class PermissionsClient {
         });
     }
 }
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export class PocketClient {
+    transport;
+    constructor(transport) {
+        this.transport = transport;
+    }
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe() {
+        return createObservable({
+            transport: this.transport,
+            ids: W.POCKET_LIST_SUBSCRIBE,
+            payload: new Uint8Array(),
+            decodeItem: (payload) => T.VersionedHostPocketListSubscribeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+        });
+    }
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with `Privileged`.
+     */
+    removeCard(request) {
+        return this.transport.request({
+            ids: W.POCKET_REMOVE_CARD,
+            payload: T.VersionedHostPocketRemoveCardRequest.enc({ tag: "V1", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPocketRemoveCardResponse, S.CallError(T.VersionedHostPocketRemoveCardError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
 /** Preimage lookup and submission methods. */
 export class PreimageClient {
     transport;
@@ -1224,6 +1266,7 @@ export function createClient(transport) {
         notifications: new NotificationsClient(transport),
         payment: new PaymentClient(transport),
         permissions: new PermissionsClient(transport),
+        pocket: new PocketClient(transport),
         preimage: new PreimageClient(transport),
         renderer: new RendererClient(transport),
         resourceAllocation: new ResourceAllocationClient(transport),

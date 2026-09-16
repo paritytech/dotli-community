@@ -1937,6 +1937,38 @@ export const VersionedHostPaymentTopUpResponse: Codec<VersionedHostPaymentTopUpR
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export const HostPlatform: Codec<HostPlatform>;
+/** Versioned envelope for [\`HostPocketListSubscribeItem\`]. */
+export type VersionedHostPocketListSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketListSubscribeItem;
+};
+export const VersionedHostPocketListSubscribeItem: Codec<VersionedHostPocketListSubscribeItem>;
+/** Versioned envelope for [\`HostPocketRemoveCardError\`]. */
+export type VersionedHostPocketRemoveCardError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardError;
+};
+export const VersionedHostPocketRemoveCardError: Codec<VersionedHostPocketRemoveCardError>;
+/** Versioned envelope for [\`HostPocketRemoveCardRequest\`]. */
+export type VersionedHostPocketRemoveCardRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardRequest;
+};
+export const VersionedHostPocketRemoveCardRequest: Codec<VersionedHostPocketRemoveCardRequest>;
+/** Versioned envelope for [\`HostPocketRemoveCardResponse\`]. */
+export type VersionedHostPocketRemoveCardResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostPocketRemoveCardResponse: Codec<VersionedHostPocketRemoveCardResponse>;
 /**
  * Cipher suite used by product-device Chat identity-route operations.
  *
@@ -2404,6 +2436,14 @@ export type PaymentTopUpSource =
     };
 };
 export const PaymentTopUpSource: Codec<PaymentTopUpSource>;
+/** One of the calling product's Pocket cards. */
+export interface PocketCard {
+    /** Card label declared by the product, unique within the product. */
+    cardId: string;
+    /** Placed by the host itself; removable by neither the user nor the product. */
+    privileged: boolean;
+}
+export const PocketCard: Codec<PocketCard>;
 /** Preimage submission error. */
 export type PreimageSubmitError = 
 /** Catch-all. */
@@ -4361,6 +4401,33 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export const HostPaymentTopUpRequest: Codec<HostPaymentTopUpRequest>;
+/** The calling product's cards: the whole set on subscribe and after every change. */
+export interface HostPocketListSubscribeItem {
+    /** Cards currently in Pocket for the calling product. */
+    cards: Array<PocketCard>;
+}
+export const HostPocketListSubscribeItem: Codec<HostPocketListSubscribeItem>;
+/** Card removal failure. */
+export type HostPocketRemoveCardError = 
+/** The card is privileged and stays in Pocket. */
+{
+    tag: "Privileged";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostPocketRemoveCardError: Codec<HostPocketRemoveCardError>;
+/** Request to remove one of the calling product's cards. */
+export interface HostPocketRemoveCardRequest {
+    /** Card to remove. A card that is not present is already removed. */
+    cardId: string;
+}
+export const HostPocketRemoveCardRequest: Codec<HostPocketRemoveCardRequest>;
 /** Product-device Chat v2 identity failure. */
 export type HostProductDeviceChatError = 
 /** No account-authority session is connected. */
@@ -5304,6 +5371,10 @@ export import VersionedHostPaymentTopUpError = T.VersionedHostPaymentTopUpError;
 export import VersionedHostPaymentTopUpRequest = T.VersionedHostPaymentTopUpRequest;
 export import VersionedHostPaymentTopUpResponse = T.VersionedHostPaymentTopUpResponse;
 export import HostPlatform = T.HostPlatform;
+export import VersionedHostPocketListSubscribeItem = T.VersionedHostPocketListSubscribeItem;
+export import VersionedHostPocketRemoveCardError = T.VersionedHostPocketRemoveCardError;
+export import VersionedHostPocketRemoveCardRequest = T.VersionedHostPocketRemoveCardRequest;
+export import VersionedHostPocketRemoveCardResponse = T.VersionedHostPocketRemoveCardResponse;
 export import HostProductDeviceChatCipherSuite = T.HostProductDeviceChatCipherSuite;
 export import VersionedHostProductDeviceChatError = T.VersionedHostProductDeviceChatError;
 export import VersionedHostProductDeviceChatRequest = T.VersionedHostProductDeviceChatRequest;
@@ -5344,6 +5415,7 @@ export import Modifier = T.Modifier;
 export import NotificationId = T.NotificationId;
 export import OperationStartedResult = T.OperationStartedResult;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
+export import PocketCard = T.PocketCard;
 export import PreimageSubmitError = T.PreimageSubmitError;
 export import ProductAccount = T.ProductAccount;
 export import ProductAccountId = T.ProductAccountId;
@@ -5517,6 +5589,9 @@ export import HostPaymentStatusSubscribeItem = T.HostPaymentStatusSubscribeItem;
 export import HostPaymentStatusSubscribeRequest = T.HostPaymentStatusSubscribeRequest;
 export import HostPaymentTopUpError = T.HostPaymentTopUpError;
 export import HostPaymentTopUpRequest = T.HostPaymentTopUpRequest;
+export import HostPocketListSubscribeItem = T.HostPocketListSubscribeItem;
+export import HostPocketRemoveCardError = T.HostPocketRemoveCardError;
+export import HostPocketRemoveCardRequest = T.HostPocketRemoveCardRequest;
 export import HostProductDeviceChatError = T.HostProductDeviceChatError;
 export import HostProductDeviceChatRequest = T.HostProductDeviceChatRequest;
 export import HostProductDeviceChatResponse = T.HostProductDeviceChatResponse;
@@ -5817,7 +5892,7 @@ export { ResultAsync, SubscriptionError };
 export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 2;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "2a2713140f9fb3e1";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "4d76f9685fe126db";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
@@ -6049,6 +6124,29 @@ export declare class PermissionsClient {
     /** Request a remote-operation permission. */
     requestRemotePermission(request: T.RemotePermissionRequest): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
 }
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export declare class PocketClient {
+    private readonly transport;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with \`Privileged\`.
+     */
+    removeCard(request: T.HostPocketRemoveCardRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
+}
 /** Preimage lookup and submission methods. */
 export declare class PreimageClient {
     private readonly transport;
@@ -6218,6 +6316,7 @@ export interface TrUApiClient {
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;
+    readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
     readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
@@ -6622,6 +6721,16 @@ export declare const RENDERER_ACTION_SUBSCRIBE: {
     readonly trait: 17;
     readonly method: 1;
     readonly kind: "subscription";
+};
+export declare const POCKET_LIST_SUBSCRIBE: {
+    readonly trait: 18;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const POCKET_REMOVE_CARD: {
+    readonly trait: 18;
+    readonly method: 1;
+    readonly kind: "request";
 };
 
 
