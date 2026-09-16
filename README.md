@@ -267,13 +267,20 @@ Local development uses wildcard subdomains:
 
 ### Running the host-playground E2E locally
 
-The product E2E suite can load the source checkout directly through dotli's
-localhost proxy instead of resolving the published `host-playground.dot` CID.
-By default it expects the product at `../../../host-playground` relative to
-this repository. The signing host must match `upstreamRevision` in this
-branch's `vendor/truapi-host.lock.json`, not the latest released CLI. CI checks
-out that exact [host-rust-core](https://github.com/paritytech/host-rust-core)
-commit, generates its sources, and builds `truapi-host` locally.
+The product E2E suite loads the source checkout through dotli's localhost
+proxy. CI pins [host-playground](https://github.com/paritytech/host-playground)
+to `63ba2274648c39ed2431b7548dcd93d50862ea9e`, installs its frozen dependency
+lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
+`bun scripts/link-truapi-local.ts --product-vendor`. This runs the existing
+product behavior checks against the pinned SDK rather than the independently
+deployed `host-playground.dot`, whose older client uses an incompatible wire
+codec. The product still calls the real host; no SDK responses are mocked.
+
+Local runs expect the product at `../../../host-playground` relative to this
+repository by default. The signing host must match `upstreamRevision` in
+`vendor/truapi-host.lock.json`, not the latest released CLI. CI checks out that
+exact [host-rust-core](https://github.com/paritytech/host-rust-core) commit,
+generates its sources, and builds `truapi-host` locally.
 
 To build the matching binary in a fresh sibling checkout, install Rust stable,
 Rust nightly with `rustfmt`, and Node.js 22/npm, then run from this repository:
@@ -304,8 +311,14 @@ Override either checkout or server when needed:
 ```bash
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
+SIGNING_HOST_NETWORK=paseo-next-v2 \
+NEXT_PUBLIC_NETWORK_GENESIS_HASH=0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a \
 bun run test:e2e:local
 ```
+
+The product's `NEXT_PUBLIC_NETWORK_GENESIS_HASH` must select the same Asset Hub
+as the host and `SIGNING_HOST_NETWORK`; the fixture otherwise defaults to
+Previewnet and its chain queries are rejected by a Paseo host.
 
 The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same
 flow through either light-client backend:
