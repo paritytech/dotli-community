@@ -29,7 +29,7 @@ function installTopbarDom(): void {
     <div class="user-popover" id="user-popover"></div>
     <div class="mode-popover" id="mode-popover"></div>
     <div class="permissions-popover" id="permissions-popover"></div>
-    <div class="auth-modal-backdrop" id="auth-modal-backdrop"></div>
+    <dialog class="auth-modal-dialog" id="auth-modal-dialog"></dialog>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
     </div>
@@ -151,6 +151,28 @@ describe("topbar auto-hide reveal", () => {
 
     // When the popover closes, the bar hides again
     document.getElementById("mode-popover")?.classList.remove("open");
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it("As a keyboard user, the bar stays up while the pairing dialog is open", async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    const dialog =
+      document.querySelector<HTMLDialogElement>("#auth-modal-dialog");
+
+    // When
+    dialog?.showModal();
+    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When the dialog closes, the bar hides again
+    dialog?.close();
     vi.advanceTimersByTime(HIDE_DELAY_MS);
 
     // Then

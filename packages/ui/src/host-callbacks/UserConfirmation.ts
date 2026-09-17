@@ -23,6 +23,7 @@ import type {
   RingLocationJunction,
 } from "@parity/truapi";
 import { showPreimageSubmitModal } from "../preimage-modal";
+import { openModalDialog } from "../modal-dialog";
 import { ERRORS } from "../errors";
 import {
   blockingModalAbortError,
@@ -58,9 +59,6 @@ function showConfirmationModal(
   throwIfAborted(signal);
   return new Promise((resolve, reject) => {
     const display = confirmationDisplay(label, review);
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
-
     const modal = document.createElement("div");
     modal.className = "signing-modal";
 
@@ -91,13 +89,11 @@ function showConfirmationModal(
     footer.appendChild(allowBtn);
 
     modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
 
     let settled = false;
     const cleanup = (): void => {
       signal.removeEventListener("abort", onAbort);
-      backdrop.remove();
+      dialog.close();
     };
     const finish = (decision: ConfirmationDecision): void => {
       if (settled) {
@@ -116,6 +112,21 @@ function showConfirmationModal(
       reject(blockingModalAbortError(signal.reason));
     };
 
+    // Escape and backdrop clicks dismiss; only the button accepts.
+    const dialog = openModalDialog(modal, {
+      dialogClass: "signing-dialog",
+      title: heading,
+      description: fields,
+      // Land on the safe action so a stray Enter cannot sign.
+      initialFocus: cancelBtn,
+      onCancel: () => {
+        finish("dismissed");
+      },
+      onBackdropClick: () => {
+        finish("dismissed");
+      },
+    });
+
     signal.addEventListener("abort", onAbort, { once: true });
 
     cancelBtn.addEventListener("click", () => {
@@ -123,11 +134,6 @@ function showConfirmationModal(
     });
     allowBtn.addEventListener("click", () => {
       finish("accepted");
-    });
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        finish("dismissed");
-      }
     });
   });
 }
