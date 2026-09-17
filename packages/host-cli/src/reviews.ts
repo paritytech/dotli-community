@@ -24,10 +24,20 @@ export interface ConfirmRequest {
   /** Typed metadata the host knows on its own authority. */
   details: string[];
   /**
-   * Whether the paired wallet will show the authoritative content before
-   * signing. When true, presenters should tell the user to check the phone.
+   * Whether the paired wallet is the authoritative surface for this action.
+   * When true, presenters tell the user to complete it on the phone. The
+   * default phrasing is signing-specific ("nothing is signed until you
+   * approve it there"); reviews that are NOT signing operations should set
+   * {@link ConfirmRequest.phoneNote} so the prompt does not claim otherwise.
    */
   phoneVerifies: boolean;
+  /**
+   * Overrides the default signing-specific "defer to the phone" line. Set it
+   * for authority or read requests (e.g. resolving account keys), where
+   * "nothing is signed" is true but misleading — it implies a signing prompt
+   * that never appears.
+   */
+  phoneNote?: string;
 }
 
 function chainName(
@@ -143,11 +153,16 @@ export function describeReview(
       };
     case "ProductSubtree":
       // Resolves the product's own account subtree over SSO. The answer is a
-      // public key; addresses derived from it appear on later reviews.
+      // public key; addresses derived from it appear on later reviews. It is
+      // a read-authority request, NOT signing, so the note must not claim a
+      // signing prompt is coming.
       return {
-        title: "Resolve a product's account keys",
+        title: "Let this app resolve its account address",
         details: [`product: ${review.value.productId}`],
         phoneVerifies: true,
+        phoneNote:
+          "Approve on your phone to let this app read its account keys. " +
+          "The phone only shows a request when the product id matches its network.",
       };
     case "PreimageSubmit":
       return {

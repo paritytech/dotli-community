@@ -110,6 +110,35 @@ describe("createTerminalPresenter prompt routing", () => {
     presenter.dispose();
   });
 
+  it("As a user approving a batch, each prompt tells me how many approvals wait behind it", async () => {
+    // Given
+    const out = sink();
+    // openTty is called once per prompt, so hand out a fresh terminal whose
+    // keyboard answers by itself.
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      openTty: () => {
+        const tty = fakeTty();
+        setTimeout(() => tty.type("y\n"), 5);
+        return tty.streams;
+      },
+    });
+
+    // When
+    const decisions = [
+      presenter.confirm(REQUEST),
+      presenter.confirm(REQUEST),
+      presenter.confirm(REQUEST),
+    ];
+
+    // Then
+    expect(await Promise.all(decisions)).toEqual([true, true, true]);
+    expect(out.text()).toContain("(2 more approvals waiting behind this one)");
+    expect(out.text()).toContain("(1 more approval waiting behind this one)");
+    presenter.dispose();
+  });
+
   it("As a CI process with piped stdin, prompts deny automatically", async () => {
     // Given
     const out = sink();

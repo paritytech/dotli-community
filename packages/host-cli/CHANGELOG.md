@@ -31,6 +31,8 @@ Initial release: a terminal host for `@parity/truapi-host` 0.10.1.
 - Prompt routing for embedded contexts: `input: "tty"` asks on the
   controlling terminal when the standard streams belong to a parent process
   (git remote helpers), and denies when no terminal exists.
+- Batch context on prompts: when confirms queue up (bulk Bulletin writes),
+  each prompt states how many approvals wait behind it.
 - Owner-only (0600) JSON file storage for core and product state; product
   storage cleared on logout and on identity change.
 - Chain-connection pool keyed by genesis hash: per-lease request-id

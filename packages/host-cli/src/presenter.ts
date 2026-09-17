@@ -63,6 +63,11 @@ export function createTerminalPresenter(
   // Confirm prompts share one stdin. Serialize them so two overlapping
   // reviews can never interleave their answers.
   let promptChain: Promise<void> = Promise.resolve();
+  // Confirms currently entered and not yet answered. Batch submissions fire
+  // many identical reviews at once (bulk Bulletin writes are the primary
+  // case); telling the user how many are queued behind the current prompt is
+  // the only batch context the host has.
+  let pendingConfirms = 0;
 
   const clearProgress = (): void => {
     if (progressTimer !== null) {
@@ -145,6 +150,7 @@ export function createTerminalPresenter(
     },
 
     confirm(request) {
+      pendingConfirms += 1;
       const decision = promptChain.then(async () => {
         if (disposed) {
           return false;
@@ -155,7 +161,19 @@ export function createTerminalPresenter(
           `▸ ${request.title}`,
           ...request.details.map((detail) => `    ${detail}`),
         ];
-        if (request.phoneVerifies) {
+        const waiting = pendingConfirms - 1;
+        if (waiting > 0) {
+          lines.push(
+            `    (${String(waiting)} more approval${waiting === 1 ? "" : "s"} waiting behind this one)`,
+          );
+        }
+        if (request.phoneNote !== undefined) {
+          for (const line of request.phoneNote.match(/.{1,68}(\s|$)/g) ?? [
+            request.phoneNote,
+          ]) {
+            lines.push(`    ${line.trimEnd()}`);
+          }
+        } else if (request.phoneVerifies) {
           lines.push(
             "    Verify the full details in the Polkadot app on your phone.",
             "    Nothing is signed until you approve it there.",
@@ -197,7 +215,12 @@ export function createTerminalPresenter(
           rl.close();
         }
       });
-      promptChain = decision.then(
+      // Decrement before the next queued prompt renders: `finally` is
+      // registered ahead of the chain link below, so it settles first.
+      const settled = decision.finally(() => {
+        pendingConfirms -= 1;
+      });
+      promptChain = settled.then(
         () => {},
         () => {},
       );
