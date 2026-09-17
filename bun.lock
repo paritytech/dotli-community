@@ -5,7 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
-        "@parity/truapi": "0.16.0",
+        "@parity/truapi": "0.17.0",
       },
       "devDependencies": {
         "prettier": "3.8.4",
@@ -301,8 +301,8 @@
         "@dotli/storage": "workspace:*",
         "@dotli/truapi-debug": "workspace:*",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi": "0.16.0",
-        "@parity/truapi-host": "0.16.0",
+        "@parity/truapi": "0.17.0",
+        "@parity/truapi-host": "0.17.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
@@ -667,9 +667,9 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.148.0", "", {}, "sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A=="],
 
-    "@parity/truapi": ["@parity/truapi@0.16.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-eydaI/BZFFV3VutlVC7UkgPXpsCNRS8v82bAo77KUG+t4Q9dAyP4cpSLcReKXRuyjljnDBwhkNi4rVGeMIOosw=="],
+    "@parity/truapi": ["@parity/truapi@0.17.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-IwJqcTyNSBrigGZjGhco7OqKg6V+wXnXzf/FxngGdEU9jcwzomku7D+9a/CUVYWnolz4pmwb4E8NgYoY/b+nxg=="],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.16.0", "", { "dependencies": { "@parity/truapi": "^0.16.0" } }, "sha512-1+wUjJCduN0xzqFIvwsnRIck7kr6pT81hMq9tpcoNLlutMeh0E9h5eBXUnaqoHabYkG63xSVG0USHCTSiaAqnw=="],
+    "@parity/truapi-host": ["@parity/truapi-host@0.17.0", "", { "dependencies": { "@parity/truapi": "^0.17.0" } }, "sha512-z7J4dIpofwlFuApIq4xz1QBs7UYrdvlaraaL8c7RJrobAZcfS8Ge9r2XBhMHgzroJkbSz/CQwhv7PlZ+sZv1YA=="],
 
     "@parity/truapi-provider": ["@parity/truapi-provider@0.1.1-dev-20260911.0", "", {}, "sha512-VzBjZMQrgGa07cEDDGWV1Ocz8VMGMrbUL9+kcrz4Q9xvHdUzGdg1+QdVY8JLPVhmqaagG8hTQ9aoWjVaTFlLIQ=="],
 
