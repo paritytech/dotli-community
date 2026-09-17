@@ -5,7 +5,7 @@ export const services = [
             {
                 name: "connection_status_subscribe",
                 type: "subscription",
-                signature: "connectionStatusSubscribe(): ObservableLike<HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "connectionStatusSubscribe(): ObservableLike<HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<VersionedHostAccountConnectionStatusSubscribeError>>",
                 docUrl: "api/account/trait.Account.html#method.connection_status_subscribe",
                 description: "Subscribe to account connection status changes.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst status = await firstValueFrom(\n  from(truapi.account.connectionStatusSubscribe()),\n);\nconsole.log("connection status:", status);',
@@ -123,7 +123,7 @@ export const services = [
             {
                 name: "follow_head_subscribe",
                 type: "subscription",
-                signature: "followHeadSubscribe(request: RemoteChainHeadFollowRequest): ObservableLike<RemoteChainHeadFollowItem, S.CallErrorValue<GenericError>>",
+                signature: "followHeadSubscribe(request: RemoteChainHeadFollowRequest): ObservableLike<RemoteChainHeadFollowItem, S.CallErrorValue<VersionedRemoteChainHeadFollowError>>",
                 docUrl: "api/chain/trait.Chain.html#method.follow_head_subscribe",
                 description: "Follow the chain head and receive block events.",
                 requestDescription: "RemoteChainHeadFollowRequest",
@@ -301,7 +301,7 @@ export const services = [
             {
                 name: "list_subscribe",
                 type: "subscription",
-                signature: "listSubscribe(): ObservableLike<HostChatListSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "listSubscribe(): ObservableLike<HostChatListSubscribeItem, S.CallErrorValue<VersionedHostChatListSubscribeError>>",
                 docUrl: "api/chat/trait.Chat.html#method.list_subscribe",
                 description: "Subscribe to the list of chat rooms.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst item = await firstValueFrom(\n  from(truapi.chat.listSubscribe()),\n);\nconsole.log("room list received:", item);',
@@ -321,7 +321,7 @@ export const services = [
             {
                 name: "action_subscribe",
                 type: "subscription",
-                signature: "actionSubscribe(): ObservableLike<HostChatActionSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "actionSubscribe(): ObservableLike<HostChatActionSubscribeItem, S.CallErrorValue<VersionedHostChatActionSubscribeError>>",
                 docUrl: "api/chat/trait.Chat.html#method.action_subscribe",
                 description: "Subscribe to received chat actions.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst item = await firstValueFrom(\n  from(truapi.chat.actionSubscribe()),\n);\nconsole.log("action received:", item);',
@@ -491,7 +491,7 @@ export const services = [
             {
                 name: "subscribe",
                 type: "subscription",
-                signature: "subscribe(): ObservableLike<HostLocaleSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "subscribe(): ObservableLike<HostLocaleSubscribeItem, S.CallErrorValue<VersionedHostLocaleSubscribeError>>",
                 docUrl: "api/locale/trait.Locale.html#method.subscribe",
                 description: "Subscribe to the host's selected locale.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst locale = await firstValueFrom(\n  from(truapi.locale.subscribe()),\n);\nconsole.log("locale received:", locale.languageTag);',
@@ -607,7 +607,7 @@ export const services = [
             {
                 name: "list_subscribe",
                 type: "subscription",
-                signature: "listSubscribe(): ObservableLike<HostPocketListSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "listSubscribe(): ObservableLike<HostPocketListSubscribeItem, S.CallErrorValue<VersionedHostPocketListSubscribeError>>",
                 docUrl: "api/pocket/trait.Pocket.html#method.list_subscribe",
                 description: "Subscribe to the calling product's cards.\n\nEmits the whole set on subscribe and again after every change.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst item = await firstValueFrom(\n  from(truapi.pocket.listSubscribe()),\n);\nconsole.log("cards:", item.cards);',
@@ -631,7 +631,7 @@ export const services = [
             {
                 name: "lookup_subscribe",
                 type: "subscription",
-                signature: "lookupSubscribe(request: RemotePreimageLookupSubscribeRequest): ObservableLike<RemotePreimageLookupSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "lookupSubscribe(request: RemotePreimageLookupSubscribeRequest): ObservableLike<RemotePreimageLookupSubscribeItem, S.CallErrorValue<VersionedRemotePreimageLookupSubscribeError>>",
                 docUrl: "api/preimage/trait.Preimage.html#method.lookup_subscribe",
                 description: "Subscribe to preimage lookups for a given key.",
                 requestDescription: "RemotePreimageLookupSubscribeRequest",
@@ -657,7 +657,7 @@ export const services = [
             {
                 name: "render",
                 type: "subscription",
-                signature: "render(request: ProductRendererRenderRequest): ObservableLike<RendererNode, S.CallErrorValue<GenericError>>",
+                signature: "render(request: ProductRendererRenderRequest): ObservableLike<RendererNode, S.CallErrorValue<VersionedProductRendererRenderError>>",
                 docUrl: "api/renderer/trait.Renderer.html#method.render",
                 hostInitiated: true,
                 description: "Streams renderer trees for one product-rendered body. Each item\nreplaces the previous tree. The stream stays open while the body is\ndisplayed so the product can redraw in place.",
@@ -669,7 +669,7 @@ export const services = [
             {
                 name: "action_subscribe",
                 type: "subscription",
-                signature: "actionSubscribe(): ObservableLike<HostRendererActionSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "actionSubscribe(): ObservableLike<HostRendererActionSubscribeItem, S.CallErrorValue<VersionedHostRendererActionSubscribeError>>",
                 docUrl: "api/renderer/trait.Renderer.html#method.action_subscribe",
                 description: "Subscribe to actions triggered inside this product's rendered bodies.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst action = await firstValueFrom(\n  from(truapi.renderer.actionSubscribe()),\n);\nconsole.log("action received:", action.context, action.actionId);',
@@ -894,7 +894,7 @@ export const services = [
             {
                 name: "subscribe",
                 type: "subscription",
-                signature: "subscribe(): ObservableLike<HostThemeSubscribeItem, S.CallErrorValue<GenericError>>",
+                signature: "subscribe(): ObservableLike<HostThemeSubscribeItem, S.CallErrorValue<VersionedHostThemeSubscribeError>>",
                 docUrl: "api/theme/trait.Theme.html#method.subscribe",
                 description: "Subscribe to host theme changes.",
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst theme = await firstValueFrom(\n  from(truapi.theme.subscribe()),\n);\nconsole.log("theme received:", theme);',

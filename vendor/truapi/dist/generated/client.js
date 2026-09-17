@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 2;
-export const TRUAPI_WIRE_SCHEMA_HASH = "220fc120f49c7dd1";
+export const TRUAPI_WIRE_SCHEMA_HASH = "50637d83426acd22";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -151,9 +151,9 @@ export class AccountClient {
         return createObservable({
             transport: this.transport,
             ids: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostAccountConnectionStatusSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostAccountConnectionStatusSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostAccountConnectionStatusSubscribeError)),
         });
     }
     /** Retrieve a product-scoped account. */
@@ -296,7 +296,7 @@ export class ChainClient {
             ids: W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
             payload: T.VersionedRemoteChainHeadFollowRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemoteChainHeadFollowItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedRemoteChainHeadFollowError)),
         });
     }
     /** Fetch a block header. */
@@ -479,9 +479,9 @@ export class ChatClient {
         return createObservable({
             transport: this.transport,
             ids: W.CHAT_LIST_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostChatListSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostChatListSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostChatListSubscribeError)),
         });
     }
     /**
@@ -514,9 +514,9 @@ export class ChatClient {
         return createObservable({
             transport: this.transport,
             ids: W.CHAT_ACTION_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostChatActionSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostChatActionSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostChatActionSubscribeError)),
         });
     }
 }
@@ -696,9 +696,9 @@ export class LocaleClient {
         return createObservable({
             transport: this.transport,
             ids: W.LOCALE_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostLocaleSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostLocaleSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostLocaleSubscribeError)),
         });
     }
 }
@@ -846,9 +846,9 @@ export class PocketClient {
         return createObservable({
             transport: this.transport,
             ids: W.POCKET_LIST_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostPocketListSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostPocketListSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostPocketListSubscribeError)),
         });
     }
     /**
@@ -881,7 +881,7 @@ export class PreimageClient {
             ids: W.PREIMAGE_LOOKUP_SUBSCRIBE,
             payload: T.VersionedRemotePreimageLookupSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemotePreimageLookupSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedRemotePreimageLookupSubscribeError)),
         });
     }
     /** Submit a preimage. Returns the preimage key (hash) on success. */
@@ -906,7 +906,7 @@ export class RendererClient {
             ids: W.RENDERER_RENDER,
             decodeRequest: (payload) => T.VersionedProductRendererRenderRequest.dec(payload).value,
             encodeItem: (item) => T.VersionedProductRendererRenderItem.enc({ tag: "V1", value: item }),
-            encodeInterrupt: interruptEncoder(S.CallError(T.GenericError)),
+            encodeInterrupt: interruptEncoder(S.CallError(T.VersionedProductRendererRenderError)),
             declinePayload: HOST_INITIATED_DECLINE_PAYLOAD,
             bufferCapacity: HOST_INITIATED_BUFFER_CAPACITY,
         });
@@ -924,9 +924,9 @@ export class RendererClient {
         return createObservable({
             transport: this.transport,
             ids: W.RENDERER_ACTION_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostRendererActionSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostRendererActionSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostRendererActionSubscribeError)),
         });
     }
 }
@@ -1134,8 +1134,8 @@ export class StatementStoreClient {
             ids: W.STATEMENT_STORE_SUBMIT,
             payload: T.VersionedRemoteStatementStoreSubmitRequest.enc({ tag: "V1", value: request }),
             decodeResponse: (payload) => {
-                const result = S.Result(S._void, S.CallError(T.VersionedRemoteStatementStoreSubmitError)).dec(payload);
-                return result;
+                const result = S.Result(T.VersionedRemoteStatementStoreSubmitResponse, S.CallError(T.VersionedRemoteStatementStoreSubmitError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
             },
         });
     }
@@ -1232,9 +1232,9 @@ export class ThemeClient {
         return createObservable({
             transport: this.transport,
             ids: W.THEME_SUBSCRIBE,
-            payload: new Uint8Array(),
+            payload: T.VersionedHostThemeSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostThemeSubscribeItem.dec(payload).value,
-            decodeInterrupt: interruptDecoder(S.CallError(T.GenericError)),
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostThemeSubscribeError)),
         });
     }
 }

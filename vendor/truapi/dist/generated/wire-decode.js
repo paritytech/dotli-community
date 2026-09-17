@@ -27,9 +27,9 @@ export const WIRE_DECODE_TABLE = {
         1: (payload) => S.Result(T.VersionedHostGetProductContextResponse, S.CallError(T.VersionedHostGetProductContextError)).dec(payload),
     },
     [W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.trait * 256 + W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostAccountConnectionStatusSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostAccountConnectionStatusSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostAccountConnectionStatusSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.ACCOUNT_GET_ACCOUNT.trait * 256 + W.ACCOUNT_GET_ACCOUNT.method]: {
@@ -75,7 +75,7 @@ export const WIRE_DECODE_TABLE = {
     [W.CHAIN_FOLLOW_HEAD_SUBSCRIBE.trait * 256 + W.CHAIN_FOLLOW_HEAD_SUBSCRIBE.method]: {
         0: (payload) => T.VersionedRemoteChainHeadFollowRequest.dec(payload),
         1: (payload) => T.VersionedRemoteChainHeadFollowItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedRemoteChainHeadFollowError)).dec(payload),
         3: () => undefined,
     },
     [W.CHAIN_GET_HEAD_HEADER.trait * 256 + W.CHAIN_GET_HEAD_HEADER.method]: {
@@ -139,9 +139,9 @@ export const WIRE_DECODE_TABLE = {
         1: (payload) => S.Result(T.VersionedHostChatRegisterBotResponse, S.CallError(T.VersionedHostChatRegisterBotError)).dec(payload),
     },
     [W.CHAT_LIST_SUBSCRIBE.trait * 256 + W.CHAT_LIST_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostChatListSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostChatListSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostChatListSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.CHAT_POST_MESSAGE.trait * 256 + W.CHAT_POST_MESSAGE.method]: {
@@ -149,9 +149,9 @@ export const WIRE_DECODE_TABLE = {
         1: (payload) => S.Result(T.VersionedHostChatPostMessageResponse, S.CallError(T.VersionedHostChatPostMessageError)).dec(payload),
     },
     [W.CHAT_ACTION_SUBSCRIBE.trait * 256 + W.CHAT_ACTION_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostChatActionSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostChatActionSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostChatActionSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.COIN_PAYMENT_CREATE_PURSE.trait * 256 + W.COIN_PAYMENT_CREATE_PURSE.method]: {
@@ -255,7 +255,7 @@ export const WIRE_DECODE_TABLE = {
     [W.PREIMAGE_LOOKUP_SUBSCRIBE.trait * 256 + W.PREIMAGE_LOOKUP_SUBSCRIBE.method]: {
         0: (payload) => T.VersionedRemotePreimageLookupSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedRemotePreimageLookupSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedRemotePreimageLookupSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.PREIMAGE_SUBMIT.trait * 256 + W.PREIMAGE_SUBMIT.method]: {
@@ -310,40 +310,40 @@ export const WIRE_DECODE_TABLE = {
     },
     [W.STATEMENT_STORE_SUBMIT.trait * 256 + W.STATEMENT_STORE_SUBMIT.method]: {
         0: (payload) => T.VersionedRemoteStatementStoreSubmitRequest.dec(payload),
-        1: (payload) => S.Result(S._void, S.CallError(T.VersionedRemoteStatementStoreSubmitError)).dec(payload),
+        1: (payload) => S.Result(T.VersionedRemoteStatementStoreSubmitResponse, S.CallError(T.VersionedRemoteStatementStoreSubmitError)).dec(payload),
     },
     [W.STATEMENT_STORE_CREATE_PROOF_AUTHORIZED.trait * 256 + W.STATEMENT_STORE_CREATE_PROOF_AUTHORIZED.method]: {
         0: (payload) => T.VersionedRemoteStatementStoreCreateProofAuthorizedRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedRemoteStatementStoreCreateProofAuthorizedResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofAuthorizedError)).dec(payload),
     },
     [W.THEME_SUBSCRIBE.trait * 256 + W.THEME_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostThemeSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostThemeSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostThemeSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.LOCALE_SUBSCRIBE.trait * 256 + W.LOCALE_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostLocaleSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostLocaleSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostLocaleSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.RENDERER_RENDER.trait * 256 + W.RENDERER_RENDER.method]: {
         0: (payload) => T.VersionedProductRendererRenderRequest.dec(payload),
         1: (payload) => T.VersionedProductRendererRenderItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedProductRendererRenderError)).dec(payload),
         3: () => undefined,
     },
     [W.RENDERER_ACTION_SUBSCRIBE.trait * 256 + W.RENDERER_ACTION_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostRendererActionSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostRendererActionSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostRendererActionSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.POCKET_LIST_SUBSCRIBE.trait * 256 + W.POCKET_LIST_SUBSCRIBE.method]: {
-        0: () => undefined,
+        0: (payload) => T.VersionedHostPocketListSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostPocketListSubscribeItem.dec(payload),
-        2: (payload) => S.Result(S._void, S.CallError(T.GenericError)).dec(payload),
+        2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostPocketListSubscribeError)).dec(payload),
         3: () => undefined,
     },
     [W.POCKET_REMOVE_CARD.trait * 256 + W.POCKET_REMOVE_CARD.method]: {
