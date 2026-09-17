@@ -49,6 +49,7 @@ import type { TrUApiProductProvider } from "@parity/truapi-host";
 import type { AuthState, PairingHostAdmin } from "@parity/truapi-host";
 import type {
   LocalIdentity,
+  LocalIdentityProgress,
   WorkerPairingHostRuntime,
   WorkerSigningHostRuntime,
 } from "@parity/truapi-host/web";
@@ -233,6 +234,7 @@ async function activeLocalWallet(): Promise<LiveLocalWallet> {
 
 async function updateLocalIdentity(
   baseUsername?: string,
+  onProgress?: (progress: LocalIdentityProgress) => void,
 ): Promise<LocalIdentity> {
   if (localIdentityOperationPending) {
     throw new Error("A username operation is already pending.");
@@ -258,6 +260,16 @@ async function updateLocalIdentity(
                 getActiveServicesConfig().identityBackendBaseUrl,
                 window.location.origin,
               ).href,
+              onProgress === undefined
+                ? undefined
+                : (progress) => {
+                    if (
+                      isCurrentLocalWallet(wallet.binding) &&
+                      liveLocalWallets.has(wallet.runtime)
+                    ) {
+                      onProgress(progress);
+                    }
+                  },
             );
       if (
         identity.identityAccountId !== wallet.binding.identityAccountId ||
@@ -340,7 +352,7 @@ async function updateLocalIdentity(
       }
       if (persistenceError !== undefined) {
         throw new Error(
-          `Chain confirmed ${identity.liteUsername ?? "no registered Lite username"}, but saving shared metadata failed. Use Refresh username to retry; do not submit another claim.`,
+          `Chain confirmed ${identity.liteUsername ?? "no registered Lite username"}, but saving shared metadata failed. Use Check username to retry; do not submit another claim.`,
         );
       }
       return identity;
@@ -675,14 +687,17 @@ export const experimentalWalletControls = {
   refreshUsername(): Promise<LocalIdentity> {
     return updateLocalIdentity();
   },
-  claimLiteUsername(baseUsername: string): Promise<LocalIdentity> {
+  claimLiteUsername(
+    baseUsername: string,
+    onProgress?: (progress: LocalIdentityProgress) => void,
+  ): Promise<LocalIdentity> {
     const username = baseUsername.trim();
     if (username === "" || username.includes(".")) {
       return Promise.reject(
         new Error("Enter a base username only, without a network suffix."),
       );
     }
-    return updateLocalIdentity(username);
+    return updateLocalIdentity(username, onProgress);
   },
   async activate(): Promise<void> {
     if (!DEBUG) {
@@ -772,7 +787,7 @@ function ensureStoredSessionForwarder(): void {
     }).catch((error: unknown) => {
       log.warn("[dot.li] shared test-wallet username refresh failed:", error);
       showNotification({
-        text: "A shared test-wallet username changed, but this app could not refresh it. Use Wallet tab → Refresh username.",
+        text: "A shared test-wallet username changed, but this app could not refresh it. Use Wallet tab → Check username.",
         label: "Test wallet",
         browserNotification: false,
       });

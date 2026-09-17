@@ -526,7 +526,11 @@ function handleLocalIdentity(requestId, registration) {
     identityAbort = controller;
     const operation = (async () => {
         try {
-            const identity = await resolveLocalIdentity(rt, controller.signal, registration);
+            const identity = await resolveLocalIdentity(rt, controller.signal, registration, (progress) => {
+                if (controller.signal.aborted || identityAbort !== controller)
+                    return;
+                postToMain({ kind: "localIdentityProgress", requestId, progress });
+            });
             controller.signal.throwIfAborted();
             postToMain({
                 kind: "localIdentityResponse",

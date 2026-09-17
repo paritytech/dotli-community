@@ -315,11 +315,22 @@
   border-top: 1px solid #1f1f1f;
   padding-top: 12px;
 }
-.td-wallet-recovery summary {
+.td-wallet-recovery summary,
+.td-wallet-details summary {
   cursor: pointer;
 }
 .td-wallet-recovery-content {
   padding-top: 12px;
+}
+.td-wallet-details > p {
+  padding-top: 8px;
+}
+.td-wallet-error {
+  color: #d4b77f;
+}
+.td-wallet-elapsed {
+  color: #a3a3a3;
+  font-variant-numeric: tabular-nums;
 }
 .td-wallet-actions {
   display: flex;
@@ -334,6 +345,11 @@
 .td-wallet-view .td-btn {
   white-space: normal;
   text-align: start;
+}
+.td-wallet-view .td-wallet-primary {
+  border-color: #737373;
+  background: #303030;
+  color: #fafafa;
 }
 .td-wallet-recovery-content > .td-btn {
   align-self: flex-start;
@@ -385,6 +401,9 @@
 .td-wallet-username[data-state="pending"],
 .td-wallet-username[data-state="checking"] {
   border-left-color: #38bdf8;
+}
+.td-wallet-username[data-stage="retrying"] {
+  border-left-color: #fbbf24;
 }
 .td-wallet-username[data-state="claimed"] {
   border-left-color: #4ade80;

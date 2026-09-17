@@ -356,13 +356,13 @@ function sendSessionActivationRequest(state, buildMessage) {
     }
     return sendWorkerRequest(state, state.pendingSessionActivations, () => ++nextSessionActivationRequestId, undefined, buildMessage);
 }
-function sendLocalIdentityRequest(state, buildMessage) {
+function sendLocalIdentityRequest(state, buildMessage, onProgress) {
     if (state.disposed) {
         return Promise.reject(state.closedError ?? new Error("runtime disposed"));
     }
     const { promise, resolve, reject } = Promise.withResolvers();
     const requestId = ++nextLocalIdentityRequestId;
-    state.pendingLocalIdentities.set(requestId, { resolve, reject });
+    state.pendingLocalIdentities.set(requestId, { resolve, reject, onProgress });
     try {
         state.worker.postMessage(buildMessage(requestId));
     }
@@ -504,6 +504,18 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     break;
                 case "sessionActivationResponse":
                     handleSessionActivationResponse(state, msg);
+                    break;
+                case "localIdentityProgress":
+                    if (state.disposed)
+                        break;
+                    try {
+                        state.pendingLocalIdentities
+                            .get(msg.requestId)
+                            ?.onProgress?.(msg.progress);
+                    }
+                    catch {
+                        // UI observers cannot fail or settle an identity operation.
+                    }
                     break;
                 case "localIdentityResponse":
                     settlePending(state.pendingLocalIdentities, msg.requestId, msg.ok
@@ -810,13 +822,13 @@ function buildRuntime(state) {
                 requestId,
             }));
         },
-        registerLocalLiteUsername(baseUsername, identityBackendBaseUrl) {
+        registerLocalLiteUsername(baseUsername, identityBackendBaseUrl, onProgress) {
             return sendLocalIdentityRequest(state, (requestId) => ({
                 kind: "registerLocalLiteUsername",
                 requestId,
                 baseUsername,
                 identityBackendBaseUrl,
-            }));
+            }), onProgress);
         },
         getPermissionAuthorizationStatus(productId, request) {
             return sendWorkerRequest(state, state.pendingPermissionAuthorizationStatuses, () => ++nextPermissionAuthorizationRequestId, "NotDetermined", (requestId) => ({

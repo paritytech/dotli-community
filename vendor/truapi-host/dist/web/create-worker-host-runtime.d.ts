@@ -1,5 +1,5 @@
 import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider } from "../index.js";
-import type { LocalIdentity } from "../worker-protocol.js";
+import type { LocalIdentity, LocalIdentityProgress } from "../worker-protocol.js";
 export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "executionKind">;
 export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
     /** Bare dotNS network suffix (`dot`, `paseo`, or `testnet`). */
@@ -57,7 +57,7 @@ export interface WorkerSigningHostRuntime extends Omit<WorkerPairingHostRuntime,
     /** Read dotNS ownership and install verified metadata into the native session. */
     refreshLocalIdentity(): Promise<LocalIdentity>;
     /** Complete native UID auth/proofs and wait for on-chain ownership confirmation. */
-    registerLocalLiteUsername(baseUsername: string, identityBackendBaseUrl: string): Promise<LocalIdentity>;
+    registerLocalLiteUsername(baseUsername: string, identityBackendBaseUrl: string, onProgress?: (progress: LocalIdentityProgress) => void): Promise<LocalIdentity>;
 }
 interface CreateWebWorkerHostRuntimeOptions {
     logLevel?: LogLevel;
