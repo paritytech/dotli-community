@@ -115,6 +115,17 @@ export const services = [
                 exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst result = await truapi.account.ringVrfSign({\n  keyHandle: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n  message: "0x48656c6c6f",\n});\nassert(result.isOk(), "ringVrfSign failed:", result);\nconsole.log("ring VRF signature:", result.value);',
                 requestType: "host-account-ring-vrf-sign-request",
             },
+            {
+                name: "product_device_chat",
+                type: "unary",
+                signature: "deviceChat(request: HostProductDeviceChatRequest): Promise<Result<HostProductDeviceChatResponse, S.CallErrorValue<VersionedHostProductDeviceChatError>>>",
+                docUrl: "api/account/trait.Account.html#method.product_device_chat",
+                description: "Bind a product account as a Chat v2 device, or seal/open identity-route\npayloads without exposing the wallet Chat identity secret.",
+                requestDescription: "HostProductDeviceChatRequest",
+                exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst result = await truapi.account.deviceChat({\n  tag: "Bind",\n  value: {\n    productAccountId: {\n      dotNsIdentifier: productContext.value.productId,\n      derivationIndex: { tag: "Index", value: 0 },\n    },\n    peerIdentityAccountId:\n      "0x5555555555555555555555555555555555555555555555555555555555555555",\n    peerChatPublicKey:\n      "0x0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20",\n  },\n});\nassert(result.isOk(), "deviceChat failed:", result);\nconsole.log("Chat identity binding:", result.value);',
+                requestType: "host-product-device-chat-request",
+                responseType: "host-product-device-chat-response",
+            },
         ],
     },
     {
