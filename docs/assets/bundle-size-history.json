@@ -1,0 +1,405 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "week": "2026-W32",
+      "date": "2026-08-04T13:57:37.000Z",
+      "sha": "584af2d",
+      "total": {
+        "raw": 14999260,
+        "br": 8362997,
+        "gz": 9153205
+      },
+      "apps": {
+        "host": {
+          "raw": 14813254,
+          "br": 8313415,
+          "gz": 9096175
+        },
+        "sandbox": {
+          "raw": 186006,
+          "br": 49582,
+          "gz": 57030
+        }
+      }
+    },
+    {
+      "week": "2026-W33",
+      "date": "2026-08-14T15:35:19.000Z",
+      "sha": "29ef38b",
+      "total": {
+        "raw": 20837976,
+        "br": 13422518,
+        "gz": 14273873
+      },
+      "apps": {
+        "host": {
+          "raw": 20648730,
+          "br": 13372158,
+          "gz": 14215987
+        },
+        "sandbox": {
+          "raw": 189246,
+          "br": 50360,
+          "gz": 57886
+        }
+      }
+    },
+    {
+      "week": "2026-W34",
+      "date": "2026-08-23T09:35:04.000Z",
+      "sha": "ab652eb",
+      "total": {
+        "raw": 20327143,
+        "br": 13341984,
+        "gz": 14181512
+      },
+      "apps": {
+        "host": {
+          "raw": 20137828,
+          "br": 13291479,
+          "gz": 14123508
+        },
+        "sandbox": {
+          "raw": 189315,
+          "br": 50505,
+          "gz": 58004
+        }
+      }
+    },
+    {
+      "week": "2026-W35",
+      "date": "2026-08-28T09:16:07.000Z",
+      "sha": "ffe2cc2",
+      "total": {
+        "raw": 28071673,
+        "br": 18938977,
+        "gz": 20070901
+      },
+      "apps": {
+        "host": {
+          "raw": 27874228,
+          "br": 18887350,
+          "gz": 20011443
+        },
+        "sandbox": {
+          "raw": 197445,
+          "br": 51627,
+          "gz": 59458
+        }
+      }
+    },
+    {
+      "week": "2026-W36",
+      "date": "2026-09-04T09:53:32.000Z",
+      "sha": "6afeaaa",
+      "total": {
+        "raw": 28154118,
+        "br": 18950504,
+        "gz": 20097901
+      },
+      "apps": {
+        "host": {
+          "raw": 27953280,
+          "br": 18898083,
+          "gz": 20037561
+        },
+        "sandbox": {
+          "raw": 200838,
+          "br": 52421,
+          "gz": 60340
+        }
+      }
+    }
+  ],
+  "latest": {
+    "sha": "6afeaaa",
+    "files": {
+      "host/.well-known/apple-app-site-association": {
+        "raw": 505,
+        "br": 505,
+        "gz": 505
+      },
+      "host/.well-known/assetlinks.json": {
+        "raw": 2171,
+        "br": 343,
+        "gz": 427
+      },
+      "host/assets/_md.js": {
+        "raw": 6434,
+        "br": 2641,
+        "gz": 2889
+      },
+      "host/assets/blake2.js": {
+        "raw": 11996,
+        "br": 4223,
+        "gz": 4819
+      },
+      "host/assets/bridge.js": {
+        "raw": 127956,
+        "br": 30707,
+        "gz": 36838
+      },
+      "host/assets/browser.js": {
+        "raw": 23475,
+        "br": 7739,
+        "gz": 8781
+      },
+      "host/assets/client.js": {
+        "raw": 10469,
+        "br": 3395,
+        "gz": 3833
+      },
+      "host/assets/dotli-debug-bus.js": {
+        "raw": 708,
+        "br": 708,
+        "gz": 708
+      },
+      "host/assets/get-sync-provider.js": {
+        "raw": 2791,
+        "br": 1106,
+        "gz": 1196
+      },
+      "host/assets/hex.js": {
+        "raw": 160,
+        "br": 160,
+        "gz": 160
+      },
+      "host/assets/index.js": {
+        "raw": 161614,
+        "br": 42389,
+        "gz": 50874
+      },
+      "host/assets/index.css": {
+        "raw": 56385,
+        "br": 8814,
+        "gz": 10075
+      },
+      "host/assets/manifest.js": {
+        "raw": 23835,
+        "br": 7581,
+        "gz": 8346
+      },
+      "host/assets/network.js": {
+        "raw": 6421,
+        "br": 2210,
+        "gz": 2554
+      },
+      "host/assets/panel.js": {
+        "raw": 78096,
+        "br": 21092,
+        "gz": 23788
+      },
+      "host/assets/paseo.smol-DboPaEh1.json": {
+        "raw": 1931924,
+        "br": 964257,
+        "gz": 1100725
+      },
+      "host/assets/paseo-people-next.smol.json": {
+        "raw": 3524089,
+        "br": 1758516,
+        "gz": 2008579
+      },
+      "host/assets/paseo.smol.json": {
+        "raw": 25818,
+        "br": 5701,
+        "gz": 7350
+      },
+      "host/assets/previewnet.smol.json": {
+        "raw": 65187,
+        "br": 7788,
+        "gz": 13733
+      },
+      "host/assets/proofs.js": {
+        "raw": 29986,
+        "br": 8784,
+        "gz": 9695
+      },
+      "host/assets/resolve.js": {
+        "raw": 158,
+        "br": 158,
+        "gz": 158
+      },
+      "host/assets/rolldown-runtime.js": {
+        "raw": 716,
+        "br": 716,
+        "gz": 716
+      },
+      "host/assets/rpc-resolve.js": {
+        "raw": 2732,
+        "br": 1165,
+        "gz": 1317
+      },
+      "host/assets/scale-ts.js": {
+        "raw": 4931,
+        "br": 2016,
+        "gz": 2222
+      },
+      "host/assets/smoldot.js": {
+        "raw": 3197906,
+        "br": 2378533,
+        "gz": 2455230
+      },
+      "host/assets/smoldot_worker.js": {
+        "raw": 3166955,
+        "br": 2369586,
+        "gz": 2444002
+      },
+      "host/assets/spans.js": {
+        "raw": 2497,
+        "br": 1060,
+        "gz": 1212
+      },
+      "host/assets/src.js": {
+        "raw": 86252,
+        "br": 27095,
+        "gz": 30264
+      },
+      "host/assets/styles.css": {
+        "raw": 15713,
+        "br": 3361,
+        "gz": 3946
+      },
+      "host/assets/substrate-client.js": {
+        "raw": 5953,
+        "br": 2272,
+        "gz": 2537
+      },
+      "host/assets/truapi_server_bg.wasm": {
+        "raw": 7549889,
+        "br": 5545081,
+        "gz": 5825394
+      },
+      "host/assets/twoX.js": {
+        "raw": 2858,
+        "br": 1022,
+        "gz": 1152
+      },
+      "host/assets/utils.js": {
+        "raw": 3618,
+        "br": 1416,
+        "gz": 1553
+      },
+      "host/assets/wasm/web/README.md": {
+        "raw": 13739,
+        "br": 13739,
+        "gz": 13739
+      },
+      "host/assets/wasm/web/package.json": {
+        "raw": 371,
+        "br": 371,
+        "gz": 371
+      },
+      "host/assets/wasm/web/truapi_server.d.ts": {
+        "raw": 12894,
+        "br": 12894,
+        "gz": 12894
+      },
+      "host/assets/wasm/web/truapi_server.js": {
+        "raw": 50901,
+        "br": 8121,
+        "gz": 9480
+      },
+      "host/assets/wasm/web/truapi_server_bg.wasm": {
+        "raw": 7549889,
+        "br": 5545081,
+        "gz": 5825394
+      },
+      "host/assets/wasm/web/truapi_server_bg.wasm.d.ts": {
+        "raw": 4113,
+        "br": 4113,
+        "gz": 4113
+      },
+      "host/assets/web.js": {
+        "raw": 18681,
+        "br": 4674,
+        "gz": 5238
+      },
+      "host/assets/worker-runtime.js": {
+        "raw": 106,
+        "br": 106,
+        "gz": 106
+      },
+      "host/assets/ws.js": {
+        "raw": 23634,
+        "br": 7725,
+        "gz": 8507
+      },
+      "host/dotli.png": {
+        "raw": 11752,
+        "br": 11752,
+        "gz": 11752
+      },
+      "host/favicon.svg": {
+        "raw": 1792,
+        "br": 1792,
+        "gz": 1792
+      },
+      "host/host-sw.js": {
+        "raw": 3218,
+        "br": 1225,
+        "gz": 1403
+      },
+      "host/icon-192.png": {
+        "raw": 12768,
+        "br": 12768,
+        "gz": 12768
+      },
+      "host/icon-512.png": {
+        "raw": 43821,
+        "br": 43821,
+        "gz": 43821
+      },
+      "host/index.html": {
+        "raw": 30218,
+        "br": 5621,
+        "gz": 6942
+      },
+      "host/manifest.webmanifest": {
+        "raw": 441,
+        "br": 441,
+        "gz": 441
+      },
+      "host/workbox.js": {
+        "raw": 15116,
+        "br": 4695,
+        "gz": 5233
+      },
+      "sandbox/app-sw.js": {
+        "raw": 10149,
+        "br": 3301,
+        "gz": 3725
+      },
+      "sandbox/assets/bitswap-bridge.js": {
+        "raw": 840,
+        "br": 840,
+        "gz": 840
+      },
+      "sandbox/assets/fetch.js": {
+        "raw": 3525,
+        "br": 1239,
+        "gz": 1425
+      },
+      "sandbox/assets/index.js": {
+        "raw": 126417,
+        "br": 35852,
+        "gz": 41698
+      },
+      "sandbox/assets/index.css": {
+        "raw": 56385,
+        "br": 8814,
+        "gz": 10075
+      },
+      "sandbox/favicon.svg": {
+        "raw": 1792,
+        "br": 1792,
+        "gz": 1792
+      },
+      "sandbox/index.html": {
+        "raw": 1730,
+        "br": 583,
+        "gz": 785
+      }
+    }
+  }
+}
