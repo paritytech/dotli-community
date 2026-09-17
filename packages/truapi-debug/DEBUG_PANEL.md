@@ -213,6 +213,14 @@ There is no separate wallet overlay, activity viewer, or docking control. On tou
 devices, the Lite username input uses 16px text to avoid focus-triggered zoom
 without disabling pinch zoom.
 
+The overview keeps the current username, network, and primary actions visible.
+Account identifiers are under **Account details**; recovery and detailed custody
+warnings stay in **Recovery**. A short test-wallet warning remains visible.
+Claims show actual SDK stages (checking, authentication, submission, and chain
+confirmation) with elapsed time. Failed confirmation reads show an automatic
+retry state with expandable technical details, without resubmitting the claim.
+Only verified ownership completes a claim; backend acceptance does not.
+
 Wallet identity is owned by a persistent native host session and is available
 before any product loads. Product replacement does not clear its username or
 cancel a pending claim. Current-product details refresh independently.

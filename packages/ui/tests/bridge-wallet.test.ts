@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState, RequiredHostCallbacks } from "@parity/truapi-host";
-import type { LocalIdentity } from "@parity/truapi-host/web";
+import type {
+  LocalIdentity,
+  LocalIdentityProgress,
+} from "@parity/truapi-host/web";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
 import type * as BridgeModule from "@dotli/ui/bridge";
 import type * as ModalQueueModule from "@dotli/ui/blocking-modal-queue";
@@ -123,11 +126,17 @@ vi.mock("@parity/truapi-host/web", () => ({
         publish(wallet.username);
         return identity();
       },
-      registerLocalLiteUsername: async (name: string) => {
+      registerLocalLiteUsername: async (
+        name: string,
+        _backend: string,
+        onProgress?: (progress: LocalIdentityProgress) => void,
+      ) => {
         assertLive();
         wallet.claimStarted = true;
+        onProgress?.({ stage: "checking" });
         await wallet.claimGate;
         assertLive();
+        onProgress?.({ stage: "confirming" });
         wallet.username = `${name}.westend`;
         publish(wallet.username);
         return identity();
@@ -438,13 +447,17 @@ describe("host-owned experimental identity", () => {
     await controls.getIdentity();
     const gate = deferred<void>();
     wallet.claimGate = gate.promise;
-    const claim = controls.claimLiteUsername("alice");
+    const progress = vi.fn();
+    const claim = controls.claimLiteUsername("alice", progress);
     await vi.waitFor(() => expect(wallet.claimStarted).toBe(true));
+    expect(progress).toHaveBeenLastCalledWith({ stage: "checking" });
     wallet.revision = "replacement";
     const before = auth.slice();
+    progress.mockClear();
     gate.resolve();
     await expect(claim).rejects.toThrow("Test wallet changed");
     expect(auth).toEqual(before);
+    expect(progress).not.toHaveBeenCalled();
     await expect(controls.getIdentity()).rejects.toThrow(
       "wallet or network changed",
     );
