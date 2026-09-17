@@ -858,23 +858,7 @@ function installExperimentalWalletControls(
         : identityUnavailable
           ? "Retry wallet verification"
           : "Refresh username";
-    walletView.entry.title = `${title} — ${detail}`;
-    walletView.entry.textContent =
-      operation !== undefined || activating
-        ? title
-        : !active
-          ? "Connect wallet"
-          : identityLoading
-            ? `${fullName || liteName || "Wallet"} · verifying…`
-            : identityUnavailable
-              ? `${fullName || liteName || "Wallet"} · verification failed`
-              : fullName ||
-                liteName ||
-                (usernameStatus.kind === "unclaimed"
-                  ? "Wallet · unclaimed"
-                  : usernameStatus.kind === "failed"
-                    ? "Wallet · check failed"
-                    : "Wallet · username unknown");
+    walletView.setUsername(fullName || liteName);
   };
   const isVisible = (): boolean => !disposed && walletView.isOpen();
   const clearSensitive = (): void => {
