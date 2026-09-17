@@ -274,11 +274,21 @@
   margin-left: auto;
 }
 .td-wallet-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
   flex-shrink: 0;
   max-width: min(180px, 40%);
   overflow: hidden;
+}
+.td-wallet-entry-name {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.td-wallet-entry-icon {
+  display: flex;
 }
 .td-wallet-view {
   box-sizing: border-box;
@@ -418,6 +428,10 @@
   margin-top: 4px;
 }
 @media (pointer: coarse) {
+  .td-wallet-view .td-wallet-username-input {
+    /* iOS zooms focused inputs whose text is smaller than 16px. */
+    font-size: 16px;
+  }
   .td-wallet-view .td-btn,
   .td-wallet-view .td-input {
     min-height: 36px;
