@@ -169,16 +169,3 @@ It requires successful HTTP status and a JSON object containing a 32-byte hex
 with status 200 fails. No authentication challenge, token, or username is
 created by the smoke check. Unset `DEPLOY_NGINX` to return to dist-only CI;
 this does not remove an already installed proxy.
-
-## Deploy a retained feature branch
-
-The deployment workflow can deploy a branch to `westendli.dev` without opening
-or merging a pull request:
-
-```sh
-gh workflow run deploy.yml --ref feat/chat-v2-host-runtime
-```
-
-Manual dispatch deploys the selected branch commit only to `westendli.dev`.
-It runs the same quality gate, protected-environment approval, production build,
-and published-product smoke checks as a labeled PR deployment.

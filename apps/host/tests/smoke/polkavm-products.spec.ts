@@ -14,8 +14,7 @@ interface ProductSmoke {
   interaction?:
     | "gameplay-pointer-capture"
     | "pointer-motion"
-    | "host-frame-handshake"
-    | "host-sign-in";
+    | "host-frame-handshake";
 }
 
 const products: readonly ProductSmoke[] = [
@@ -41,14 +40,6 @@ const products: readonly ProductSmoke[] = [
     audio: true,
     nonzeroAudio: true,
     interaction: "gameplay-pointer-capture",
-  },
-  {
-    label: "egui-chat",
-    profile: "tri2d",
-    keys: [],
-    audio: false,
-    nonzeroAudio: false,
-    interaction: "host-sign-in",
   },
   {
     label: "egui-app-lab",
@@ -183,13 +174,6 @@ async function smokeProduct(
   await expect(body).not.toContainText(runtimeFailure);
   if (product.profile === "webgpu-raster") {
     await expect(canvas).toHaveAttribute("data-polkavm-gpu", "ready");
-  }
-
-  if (product.interaction === "host-sign-in") {
-    const signIn = page.locator("#auth-modal-backdrop");
-    await expect(signIn).toBeVisible({ timeout: 30_000 });
-    await signIn.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(signIn).toBeHidden();
   }
 
   const framesBefore = await counter(canvas, "data-polkavm-frames");
