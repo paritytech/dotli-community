@@ -43,6 +43,7 @@ export interface WalletView {
   setVisible(visible: boolean): void;
   isRecoveryVisible(): boolean;
   onVisibilityChange(callback: () => void): void;
+  setUsername(username: string): void;
   setIdentity(identity: Identity | undefined): void;
   dispose(): void;
 }
@@ -52,14 +53,19 @@ export function createWalletView(
   wallet: Wallet,
   store: EventStore,
 ): WalletView {
-  const entry = button(
-    wallet.isActive() ? "Wallet · verifying…" : "Connect wallet",
-  );
-  entry.classList.add("td-wallet-entry");
+  const entry = button("");
+  entry.classList.add("td-btn-icon", "td-wallet-entry");
+  entry.title = "Open wallet";
+  entry.setAttribute("aria-label", entry.title);
+  const entryIcon = document.createElement("span");
+  entryIcon.className = "td-wallet-entry-icon";
+  entryIcon.setAttribute("aria-hidden", "true");
+  entryIcon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a2 2 0 0 1-2-2V6"/><path d="M20 12h-4a2 2 0 0 0 0 4h4"/></svg>`;
+  const entryName = document.createElement("span");
+  entryName.className = "td-wallet-entry-name";
+  entry.append(entryIcon, entryName);
   entry.setAttribute("aria-controls", "td-wallet-view");
   entry.setAttribute("aria-expanded", "false");
-  entry.setAttribute("aria-live", "polite");
-  entry.setAttribute("aria-atomic", "true");
   const content = document.createElement("section");
   content.id = "td-wallet-view";
   content.className = "td-wallet-view hidden";
@@ -474,6 +480,16 @@ export function createWalletView(
       opened && recoveryDetails.open && !document.hidden && !disposed,
     onVisibilityChange(callback: () => void): void {
       onVisibilityChange = callback;
+    },
+    setUsername(username: string): void {
+      if (entryName.textContent === username) {
+        return;
+      }
+      entryName.textContent = username;
+      entryIcon.hidden = username !== "";
+      entry.title =
+        username === "" ? "Open wallet" : `Open wallet: ${username}`;
+      entry.setAttribute("aria-label", entry.title);
     },
     setIdentity(next: Identity | undefined): void {
       if (

@@ -57,6 +57,46 @@ afterEach(() => {
 });
 
 describe("wallet failure presentation", () => {
+  it("keeps the entry stable across status changes and displays only a known username", async () => {
+    const identity = Promise.withResolvers<InspectorIdentity>();
+    const refresh = Promise.withResolvers<InspectorIdentity>();
+    wallet.getCachedIdentity = () => undefined;
+    wallet.getIdentity = () => identity.promise;
+    wallet.refreshUsername = () => refresh.promise;
+    dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
+    const entry =
+      document.querySelector<HTMLButtonElement>(".td-wallet-entry")!;
+    const iconLabel = entry.getAttribute("aria-label");
+    expect(entry.textContent).toBe("");
+
+    identity.resolve({ ...cached, liteUsername: undefined });
+    await vi.waitFor(() => {
+      expect(button("Refresh username").disabled).toBe(false);
+    });
+    entry.click();
+    expect(entry.getAttribute("aria-expanded")).toBe("true");
+    button("Refresh username").click();
+    expect(entry.textContent).toBe("");
+    expect(entry.getAttribute("aria-label")).toBe(iconLabel);
+
+    refresh.resolve(cached);
+    await vi.waitFor(() => {
+      expect(entry.textContent).toBe(cached.liteUsername);
+    });
+    const namedLabel = entry.getAttribute("aria-label");
+    expect(namedLabel).toContain(cached.liteUsername);
+    dispatchAuthState({
+      tag: "WalletUnavailable",
+      reason: "Native worker stopped",
+    });
+    expect(entry.textContent).toBe(cached.liteUsername);
+    expect(entry.getAttribute("aria-label")).toBe(namedLabel);
+    expect(button("Claim Lite username").disabled).toBe(true);
+    expect(
+      document.querySelector(".td-wallet-username")?.textContent,
+    ).toContain("Native worker stopped");
+  });
+
   it("retains cached display without retrying native startup until explicitly requested", async () => {
     const pending = Promise.withResolvers<InspectorIdentity>();
     const getIdentity = vi.fn(() => pending.promise);

@@ -205,9 +205,13 @@ diagnostics overlay over product content.
 
 In builds compiled with `VITE_APP_DEBUG=true`, Wallet contains activation,
 username claims and refresh, current-product accounts and permissions, and a
-collapsed Recovery section. The persistent header badge expands the pane and
-selects Wallet; the active account badge uses the same `dotli:wallet-open` event.
-There is no separate wallet overlay, activity viewer, or docking control.
+collapsed Recovery section. The compact header button shows a wallet icon or a
+known full/Lite username and expands the pane to select Wallet. Its label does not
+change for verification, pending claims, or failures; those details stay in the
+Wallet tab. The active account badge uses the same `dotli:wallet-open` event.
+There is no separate wallet overlay, activity viewer, or docking control. On touch
+devices, the Lite username input uses 16px text to avoid focus-triggered zoom
+without disabling pinch zoom.
 
 Wallet identity is owned by a persistent native host session and is available
 before any product loads. Product replacement does not clear its username or
@@ -216,8 +220,9 @@ Switching away from Wallet or collapsing the pane clears sensitive Recovery
 fields without cancelling username monitoring. Closing the debug pane exits
 debug mode and reloads the page, ending that page's native session.
 
-On a full page reload, previously reported identity metadata appears immediately
-as **verifying**, scoped to this origin's wallet revision and network. Display
+On a full page reload, previously reported identity metadata appears immediately.
+The Wallet tab marks it **verifying**, scoped to the wallet revision and network;
+the header button retains only the known username. Display
 restoration is separate from native authentication: cached names cannot authorize
 claims or product permissions. Native verification replaces the display, while a
 failed check retains last-known metadata and offers a manual verification retry.
