@@ -1,3 +1,4 @@
+import { errorMessage } from "./error.js";
 function stringField(value, field) {
     if (typeof value !== "object" || value === null || !(field in value)) {
         throw new Error(`identity backend response missing ${field}`);
@@ -23,7 +24,7 @@ function delay(milliseconds, signal) {
     return promise;
 }
 /** HTTP stays in the worker; all secret material and proof construction stay native. */
-export async function resolveLocalIdentity(runtime, signal, registration) {
+export async function resolveLocalIdentity(runtime, signal, registration, onProgress) {
     const context = runtime.localIdentityContext();
     const check = () => {
         signal.throwIfAborted();
@@ -40,6 +41,15 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
         }
         return identity;
     };
+    const reportProgress = (progress) => {
+        try {
+            onProgress?.(progress);
+        }
+        catch {
+            // Observers must not interrupt authentication, submission, or polling.
+        }
+    };
+    reportProgress({ stage: "checking" });
     const existing = await refresh();
     if (!registration || existing.liteUsername)
         return existing;
@@ -67,6 +77,7 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
         return JSON.parse(text);
     };
     const headers = { "Content-Type": "application/json" };
+    reportProgress({ stage: "authenticating" });
     const attester = stringField(await json("/attester", { method: "GET" }), "attester");
     const verifierHex = attester.replace(/^0x/, "");
     if (!/^[0-9a-fA-F]{64}$/.test(verifierHex)) {
@@ -90,6 +101,7 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
     check();
     const body = await runtime.localLiteRegistrationBody(context.activationId, registration.baseUsername, verifier);
     check();
+    reportProgress({ stage: "submitting" });
     const response = await request("/usernames", {
         method: "POST",
         headers: { ...headers, Authorization: `Bearer ${token}` },
@@ -100,6 +112,7 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
     if (!response.ok) {
         throw new Error(`username registration failed (${response.status}): ${responseText}`);
     }
+    reportProgress({ stage: "confirming" });
     // Backend acceptance is not chain confirmation. Keep observing this activation
     // until ownership is verified or the caller disposes it; never resubmit a claim
     // just because indexing/finality takes longer than a fixed polling window.
@@ -109,8 +122,16 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
         try {
             identity = await runtime.refreshLocalIdentity(context.activationId);
         }
-        catch {
+        catch (error) {
             check();
+            let message = "Chain read failed";
+            try {
+                message = errorMessage(error);
+            }
+            catch {
+                // An unprintable thrown value must not stop confirmation polling.
+            }
+            reportProgress({ stage: "retrying", error: message });
             await delay(4_000, signal);
             continue;
         }
@@ -118,6 +139,7 @@ export async function resolveLocalIdentity(runtime, signal, registration) {
         if (identity.identityAccountId !== context.identityAccountId) {
             throw new Error("verified identity does not match the active UID account");
         }
+        reportProgress({ stage: "confirming" });
         if (identity.liteUsername)
             return identity;
         await delay(4_000, signal);
