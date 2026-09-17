@@ -8,13 +8,13 @@ export { ResultAsync, SubscriptionError };
 export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 2;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "4d76f9685fe126db";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "c587cc31e1b00844";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to account connection status changes. */
-    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
     /** Retrieve a product-scoped account. */
     getAccount(request: T.HostAccountGetRequest): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
     /** Retrieve the contextual alias for a context and ring. */
@@ -64,7 +64,7 @@ export declare class ChainClient {
     /** Follow the chain head and receive block events. */
     followHeadSubscribe({ request }: {
         request: T.RemoteChainHeadFollowRequest;
-    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.GenericError>>;
+    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
     /** Fetch a block header. */
     getHeadHeader(request: T.RemoteChainHeadHeaderRequest): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
     /** Fetch a block body. */
@@ -104,7 +104,7 @@ export declare class ChatClient {
     /** Register a chat bot. */
     registerBot(request: T.HostChatRegisterBotRequest): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
     /** Subscribe to the list of chat rooms. */
-    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
     /**
      * Post a message to a chat room.
      *
@@ -122,7 +122,7 @@ export declare class ChatClient {
      */
     postMessage(request: T.HostChatPostMessageRequest): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
-    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
 }
 /**
  * CoinPayment operations.
@@ -186,7 +186,7 @@ export declare class LocaleClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
-    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
@@ -254,7 +254,7 @@ export declare class PocketClient {
      *
      * Emits the whole set on subscribe and again after every change.
      */
-    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.VersionedHostPocketListSubscribeError>>;
     /**
      * Remove one of the calling product's cards.
      *
@@ -270,7 +270,7 @@ export declare class PreimageClient {
     /** Subscribe to preimage lookups for a given key. */
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
-    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
     /** Submit a preimage. Returns the preimage key (hash) on success. */
     submit(request: HexString): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
@@ -284,11 +284,11 @@ export declare class RendererClient {
      * replaces the previous tree. The stream stays open while the body is
      * displayed so the product can redraw in place.
      */
-    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.GenericError>>): {
+    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.VersionedProductRendererRenderError>>): {
         unsubscribe(): void;
     };
     /** Subscribe to actions triggered inside this product's rendered bodies. */
-    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.VersionedHostRendererActionSubscribeError>>;
 }
 /** Resource pre-allocation (allowance management). */
 export declare class ResourceAllocationClient {
@@ -419,7 +419,7 @@ export declare class ThemeClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to host theme changes. */
-    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
 }
 export interface TrUApiClient {
     readonly account: AccountClient;

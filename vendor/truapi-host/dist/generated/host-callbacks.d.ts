@@ -1,5 +1,5 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
 import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
@@ -358,6 +358,15 @@ export type PermissionAuthorizationRequest =
  | {
     tag: "ChatAuthority";
     value?: undefined;
+}
+/**
+ * Product-scoped permission to ensure Statement Store quota, not increase it.
+ */
+ | {
+    tag: "StatementStoreAllowance";
+    value: {
+        derivationIndex?: DerivationIndex;
+    };
 };
 /**
  * Authorization status for a permission request.

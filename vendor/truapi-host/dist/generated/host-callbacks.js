@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -70,7 +70,7 @@ export const LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "O
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void }));
+export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }) }));
 /**
  * Authorization status for a permission request.
  *

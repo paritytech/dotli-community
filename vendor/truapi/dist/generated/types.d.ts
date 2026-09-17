@@ -459,6 +459,14 @@ export declare const GenesisHash: S.Codec<GenesisHash>;
 /** Cross-axis alignment of `Column` children. */
 export type HorizontalAlignment = "Start" | "Center" | "End";
 export declare const HorizontalAlignment: S.Codec<HorizontalAlignment>;
+/** Versioned envelope for [`HostAccountConnectionStatusSubscribeError`]. */
+export type VersionedHostAccountConnectionStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostAccountConnectionStatusSubscribeError: S.Codec<VersionedHostAccountConnectionStatusSubscribeError>;
 /** Versioned envelope for [`HostAccountConnectionStatusSubscribeItem`]. */
 export type VersionedHostAccountConnectionStatusSubscribeItem = 
 /** Version 1 payload. */
@@ -467,6 +475,14 @@ export type VersionedHostAccountConnectionStatusSubscribeItem =
     value: HostAccountConnectionStatusSubscribeItem;
 };
 export declare const VersionedHostAccountConnectionStatusSubscribeItem: S.Codec<VersionedHostAccountConnectionStatusSubscribeItem>;
+/** Versioned envelope for [`HostAccountConnectionStatusSubscribeRequest`]. */
+export type VersionedHostAccountConnectionStatusSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostAccountConnectionStatusSubscribeRequest: S.Codec<VersionedHostAccountConnectionStatusSubscribeRequest>;
 /** Versioned envelope for [`HostAccountCreateProofError`]. */
 export type VersionedHostAccountCreateProofError = 
 /** Version 1 payload. */
@@ -635,6 +651,14 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export declare const VersionedHostAccountSignVrfResponse: S.Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [`HostChatActionSubscribeError`]. */
+export type VersionedHostChatActionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostChatActionSubscribeError: S.Codec<VersionedHostChatActionSubscribeError>;
 /** Versioned envelope for [`HostChatActionSubscribeItem`]. */
 export type VersionedHostChatActionSubscribeItem = 
 /** Version 1 payload. */
@@ -643,6 +667,14 @@ export type VersionedHostChatActionSubscribeItem =
     value: HostChatActionSubscribeItem;
 };
 export declare const VersionedHostChatActionSubscribeItem: S.Codec<VersionedHostChatActionSubscribeItem>;
+/** Versioned envelope for [`HostChatActionSubscribeRequest`]. */
+export type VersionedHostChatActionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostChatActionSubscribeRequest: S.Codec<VersionedHostChatActionSubscribeRequest>;
 /** Versioned envelope for [`HostChatCreateRoomError`]. */
 export type VersionedHostChatCreateRoomError = 
 /** Version 1 payload. */
@@ -667,6 +699,14 @@ export type VersionedHostChatCreateRoomResponse =
     value: HostChatCreateRoomResponse;
 };
 export declare const VersionedHostChatCreateRoomResponse: S.Codec<VersionedHostChatCreateRoomResponse>;
+/** Versioned envelope for [`HostChatListSubscribeError`]. */
+export type VersionedHostChatListSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostChatListSubscribeError: S.Codec<VersionedHostChatListSubscribeError>;
 /** Versioned envelope for [`HostChatListSubscribeItem`]. */
 export type VersionedHostChatListSubscribeItem = 
 /** Version 1 payload. */
@@ -675,6 +715,14 @@ export type VersionedHostChatListSubscribeItem =
     value: HostChatListSubscribeItem;
 };
 export declare const VersionedHostChatListSubscribeItem: S.Codec<VersionedHostChatListSubscribeItem>;
+/** Versioned envelope for [`HostChatListSubscribeRequest`]. */
+export type VersionedHostChatListSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostChatListSubscribeRequest: S.Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [`HostChatPostMessageError`]. */
 export type VersionedHostChatPostMessageError = 
 /** Version 1 payload. */
@@ -1275,6 +1323,14 @@ export type VersionedHostLocalStorageWriteResponse =
     value?: undefined;
 };
 export declare const VersionedHostLocalStorageWriteResponse: S.Codec<VersionedHostLocalStorageWriteResponse>;
+/** Versioned envelope for [`HostLocaleSubscribeError`]. */
+export type VersionedHostLocaleSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostLocaleSubscribeError: S.Codec<VersionedHostLocaleSubscribeError>;
 /** Versioned envelope for [`HostLocaleSubscribeItem`]. */
 export type VersionedHostLocaleSubscribeItem = 
 /** Version 1 payload. */
@@ -1283,6 +1339,14 @@ export type VersionedHostLocaleSubscribeItem =
     value: HostLocaleSubscribeItem;
 };
 export declare const VersionedHostLocaleSubscribeItem: S.Codec<VersionedHostLocaleSubscribeItem>;
+/** Versioned envelope for [`HostLocaleSubscribeRequest`]. */
+export type VersionedHostLocaleSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostLocaleSubscribeRequest: S.Codec<VersionedHostLocaleSubscribeRequest>;
 /** Versioned envelope for [`HostNavigateToError`]. */
 export type VersionedHostNavigateToError = 
 /** Version 1 payload. */
@@ -1406,6 +1470,14 @@ export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPay
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
+/** Versioned envelope for [`HostPocketListSubscribeError`]. */
+export type VersionedHostPocketListSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostPocketListSubscribeError: S.Codec<VersionedHostPocketListSubscribeError>;
 /** Versioned envelope for [`HostPocketListSubscribeItem`]. */
 export type VersionedHostPocketListSubscribeItem = 
 /** Version 1 payload. */
@@ -1414,6 +1486,14 @@ export type VersionedHostPocketListSubscribeItem =
     value: HostPocketListSubscribeItem;
 };
 export declare const VersionedHostPocketListSubscribeItem: S.Codec<VersionedHostPocketListSubscribeItem>;
+/** Versioned envelope for [`HostPocketListSubscribeRequest`]. */
+export type VersionedHostPocketListSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPocketListSubscribeRequest: S.Codec<VersionedHostPocketListSubscribeRequest>;
 /** Versioned envelope for [`HostPocketRemoveCardError`]. */
 export type VersionedHostPocketRemoveCardError = 
 /** Version 1 payload. */
@@ -1531,6 +1611,14 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export declare const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [`HostRendererActionSubscribeError`]. */
+export type VersionedHostRendererActionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostRendererActionSubscribeError: S.Codec<VersionedHostRendererActionSubscribeError>;
 /** Versioned envelope for [`HostRendererActionSubscribeItem`]. */
 export type VersionedHostRendererActionSubscribeItem = 
 /** Version 1 payload. */
@@ -1539,6 +1627,14 @@ export type VersionedHostRendererActionSubscribeItem =
     value: HostRendererActionSubscribeItem;
 };
 export declare const VersionedHostRendererActionSubscribeItem: S.Codec<VersionedHostRendererActionSubscribeItem>;
+/** Versioned envelope for [`HostRendererActionSubscribeRequest`]. */
+export type VersionedHostRendererActionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostRendererActionSubscribeRequest: S.Codec<VersionedHostRendererActionSubscribeRequest>;
 /** Versioned envelope for [`HostRequestLoginError`]. */
 export type VersionedHostRequestLoginError = 
 /** Version 1 payload. */
@@ -1720,6 +1816,14 @@ export type VersionedHostSignRawWithLegacyAccountResponse =
     value: HostSignPayloadResponse;
 };
 export declare const VersionedHostSignRawWithLegacyAccountResponse: S.Codec<VersionedHostSignRawWithLegacyAccountResponse>;
+/** Versioned envelope for [`HostThemeSubscribeError`]. */
+export type VersionedHostThemeSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostThemeSubscribeError: S.Codec<VersionedHostThemeSubscribeError>;
 /** Versioned envelope for [`HostThemeSubscribeItem`]. */
 export type VersionedHostThemeSubscribeItem = 
 /** Version 1 payload. */
@@ -1728,6 +1832,14 @@ export type VersionedHostThemeSubscribeItem =
     value: HostThemeSubscribeItem;
 };
 export declare const VersionedHostThemeSubscribeItem: S.Codec<VersionedHostThemeSubscribeItem>;
+/** Versioned envelope for [`HostThemeSubscribeRequest`]. */
+export type VersionedHostThemeSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostThemeSubscribeRequest: S.Codec<VersionedHostThemeSubscribeRequest>;
 /** How an image meets the box its modifiers size. */
 export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";
 export declare const ImageFit: S.Codec<ImageFit>;
@@ -1977,6 +2089,14 @@ export interface ProductProofContext {
     suffix: DerivationIndex;
 }
 export declare const ProductProofContext: S.Codec<ProductProofContext>;
+/** Versioned envelope for [`ProductRendererRenderError`]. */
+export type VersionedProductRendererRenderError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedProductRendererRenderError: S.Codec<VersionedProductRendererRenderError>;
 /** Versioned envelope for [`ProductRendererRenderItem`]. */
 export type VersionedProductRendererRenderItem = 
 /** Version 1 payload. */
@@ -2092,6 +2212,14 @@ export type VersionedRemoteChainHeadContinueResponse =
     value?: undefined;
 };
 export declare const VersionedRemoteChainHeadContinueResponse: S.Codec<VersionedRemoteChainHeadContinueResponse>;
+/** Versioned envelope for [`RemoteChainHeadFollowError`]. */
+export type VersionedRemoteChainHeadFollowError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedRemoteChainHeadFollowError: S.Codec<VersionedRemoteChainHeadFollowError>;
 /** Versioned envelope for [`RemoteChainHeadFollowItem`]. */
 export type VersionedRemoteChainHeadFollowItem = 
 /** Version 1 payload. */
@@ -2427,6 +2555,14 @@ export type VersionedRemotePermissionResponse =
     value: RemotePermissionResponse;
 };
 export declare const VersionedRemotePermissionResponse: S.Codec<VersionedRemotePermissionResponse>;
+/** Versioned envelope for [`RemotePreimageLookupSubscribeError`]. */
+export type VersionedRemotePreimageLookupSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedRemotePreimageLookupSubscribeError: S.Codec<VersionedRemotePreimageLookupSubscribeError>;
 /** Versioned envelope for [`RemotePreimageLookupSubscribeItem`]. */
 export type VersionedRemotePreimageLookupSubscribeItem = 
 /** Version 1 payload. */
@@ -2531,6 +2667,14 @@ export type VersionedRemoteStatementStoreSubmitRequest =
     value: SignedStatement;
 };
 export declare const VersionedRemoteStatementStoreSubmitRequest: S.Codec<VersionedRemoteStatementStoreSubmitRequest>;
+/** Versioned envelope for [`RemoteStatementStoreSubmitResponse`]. */
+export type VersionedRemoteStatementStoreSubmitResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedRemoteStatementStoreSubmitResponse: S.Codec<VersionedRemoteStatementStoreSubmitResponse>;
 /** Versioned envelope for [`RemoteStatementStoreSubscribeError`]. */
 export type VersionedRemoteStatementStoreSubscribeError = 
 /** Version 1 payload. */

@@ -990,6 +990,14 @@ export const GenesisHash: Codec<GenesisHash>;
 /** Cross-axis alignment of \`Column\` children. */
 export type HorizontalAlignment = "Start" | "Center" | "End";
 export const HorizontalAlignment: Codec<HorizontalAlignment>;
+/** Versioned envelope for [\`HostAccountConnectionStatusSubscribeError\`]. */
+export type VersionedHostAccountConnectionStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostAccountConnectionStatusSubscribeError: Codec<VersionedHostAccountConnectionStatusSubscribeError>;
 /** Versioned envelope for [\`HostAccountConnectionStatusSubscribeItem\`]. */
 export type VersionedHostAccountConnectionStatusSubscribeItem = 
 /** Version 1 payload. */
@@ -998,6 +1006,14 @@ export type VersionedHostAccountConnectionStatusSubscribeItem =
     value: HostAccountConnectionStatusSubscribeItem;
 };
 export const VersionedHostAccountConnectionStatusSubscribeItem: Codec<VersionedHostAccountConnectionStatusSubscribeItem>;
+/** Versioned envelope for [\`HostAccountConnectionStatusSubscribeRequest\`]. */
+export type VersionedHostAccountConnectionStatusSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostAccountConnectionStatusSubscribeRequest: Codec<VersionedHostAccountConnectionStatusSubscribeRequest>;
 /** Versioned envelope for [\`HostAccountCreateProofError\`]. */
 export type VersionedHostAccountCreateProofError = 
 /** Version 1 payload. */
@@ -1166,6 +1182,14 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export const VersionedHostAccountSignVrfResponse: Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [\`HostChatActionSubscribeError\`]. */
+export type VersionedHostChatActionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostChatActionSubscribeError: Codec<VersionedHostChatActionSubscribeError>;
 /** Versioned envelope for [\`HostChatActionSubscribeItem\`]. */
 export type VersionedHostChatActionSubscribeItem = 
 /** Version 1 payload. */
@@ -1174,6 +1198,14 @@ export type VersionedHostChatActionSubscribeItem =
     value: HostChatActionSubscribeItem;
 };
 export const VersionedHostChatActionSubscribeItem: Codec<VersionedHostChatActionSubscribeItem>;
+/** Versioned envelope for [\`HostChatActionSubscribeRequest\`]. */
+export type VersionedHostChatActionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostChatActionSubscribeRequest: Codec<VersionedHostChatActionSubscribeRequest>;
 /** Versioned envelope for [\`HostChatCreateRoomError\`]. */
 export type VersionedHostChatCreateRoomError = 
 /** Version 1 payload. */
@@ -1198,6 +1230,14 @@ export type VersionedHostChatCreateRoomResponse =
     value: HostChatCreateRoomResponse;
 };
 export const VersionedHostChatCreateRoomResponse: Codec<VersionedHostChatCreateRoomResponse>;
+/** Versioned envelope for [\`HostChatListSubscribeError\`]. */
+export type VersionedHostChatListSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostChatListSubscribeError: Codec<VersionedHostChatListSubscribeError>;
 /** Versioned envelope for [\`HostChatListSubscribeItem\`]. */
 export type VersionedHostChatListSubscribeItem = 
 /** Version 1 payload. */
@@ -1206,6 +1246,14 @@ export type VersionedHostChatListSubscribeItem =
     value: HostChatListSubscribeItem;
 };
 export const VersionedHostChatListSubscribeItem: Codec<VersionedHostChatListSubscribeItem>;
+/** Versioned envelope for [\`HostChatListSubscribeRequest\`]. */
+export type VersionedHostChatListSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostChatListSubscribeRequest: Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [\`HostChatPostMessageError\`]. */
 export type VersionedHostChatPostMessageError = 
 /** Version 1 payload. */
@@ -1806,6 +1854,14 @@ export type VersionedHostLocalStorageWriteResponse =
     value?: undefined;
 };
 export const VersionedHostLocalStorageWriteResponse: Codec<VersionedHostLocalStorageWriteResponse>;
+/** Versioned envelope for [\`HostLocaleSubscribeError\`]. */
+export type VersionedHostLocaleSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostLocaleSubscribeError: Codec<VersionedHostLocaleSubscribeError>;
 /** Versioned envelope for [\`HostLocaleSubscribeItem\`]. */
 export type VersionedHostLocaleSubscribeItem = 
 /** Version 1 payload. */
@@ -1814,6 +1870,14 @@ export type VersionedHostLocaleSubscribeItem =
     value: HostLocaleSubscribeItem;
 };
 export const VersionedHostLocaleSubscribeItem: Codec<VersionedHostLocaleSubscribeItem>;
+/** Versioned envelope for [\`HostLocaleSubscribeRequest\`]. */
+export type VersionedHostLocaleSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostLocaleSubscribeRequest: Codec<VersionedHostLocaleSubscribeRequest>;
 /** Versioned envelope for [\`HostNavigateToError\`]. */
 export type VersionedHostNavigateToError = 
 /** Version 1 payload. */
@@ -1937,6 +2001,14 @@ export const VersionedHostPaymentTopUpResponse: Codec<VersionedHostPaymentTopUpR
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export const HostPlatform: Codec<HostPlatform>;
+/** Versioned envelope for [\`HostPocketListSubscribeError\`]. */
+export type VersionedHostPocketListSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostPocketListSubscribeError: Codec<VersionedHostPocketListSubscribeError>;
 /** Versioned envelope for [\`HostPocketListSubscribeItem\`]. */
 export type VersionedHostPocketListSubscribeItem = 
 /** Version 1 payload. */
@@ -1945,6 +2017,14 @@ export type VersionedHostPocketListSubscribeItem =
     value: HostPocketListSubscribeItem;
 };
 export const VersionedHostPocketListSubscribeItem: Codec<VersionedHostPocketListSubscribeItem>;
+/** Versioned envelope for [\`HostPocketListSubscribeRequest\`]. */
+export type VersionedHostPocketListSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostPocketListSubscribeRequest: Codec<VersionedHostPocketListSubscribeRequest>;
 /** Versioned envelope for [\`HostPocketRemoveCardError\`]. */
 export type VersionedHostPocketRemoveCardError = 
 /** Version 1 payload. */
@@ -2062,6 +2142,14 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export const VersionedHostPushNotificationResponse: Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [\`HostRendererActionSubscribeError\`]. */
+export type VersionedHostRendererActionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostRendererActionSubscribeError: Codec<VersionedHostRendererActionSubscribeError>;
 /** Versioned envelope for [\`HostRendererActionSubscribeItem\`]. */
 export type VersionedHostRendererActionSubscribeItem = 
 /** Version 1 payload. */
@@ -2070,6 +2158,14 @@ export type VersionedHostRendererActionSubscribeItem =
     value: HostRendererActionSubscribeItem;
 };
 export const VersionedHostRendererActionSubscribeItem: Codec<VersionedHostRendererActionSubscribeItem>;
+/** Versioned envelope for [\`HostRendererActionSubscribeRequest\`]. */
+export type VersionedHostRendererActionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostRendererActionSubscribeRequest: Codec<VersionedHostRendererActionSubscribeRequest>;
 /** Versioned envelope for [\`HostRequestLoginError\`]. */
 export type VersionedHostRequestLoginError = 
 /** Version 1 payload. */
@@ -2251,6 +2347,14 @@ export type VersionedHostSignRawWithLegacyAccountResponse =
     value: HostSignPayloadResponse;
 };
 export const VersionedHostSignRawWithLegacyAccountResponse: Codec<VersionedHostSignRawWithLegacyAccountResponse>;
+/** Versioned envelope for [\`HostThemeSubscribeError\`]. */
+export type VersionedHostThemeSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostThemeSubscribeError: Codec<VersionedHostThemeSubscribeError>;
 /** Versioned envelope for [\`HostThemeSubscribeItem\`]. */
 export type VersionedHostThemeSubscribeItem = 
 /** Version 1 payload. */
@@ -2259,6 +2363,14 @@ export type VersionedHostThemeSubscribeItem =
     value: HostThemeSubscribeItem;
 };
 export const VersionedHostThemeSubscribeItem: Codec<VersionedHostThemeSubscribeItem>;
+/** Versioned envelope for [\`HostThemeSubscribeRequest\`]. */
+export type VersionedHostThemeSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostThemeSubscribeRequest: Codec<VersionedHostThemeSubscribeRequest>;
 /** How an image meets the box its modifiers size. */
 export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";
 export const ImageFit: Codec<ImageFit>;
@@ -2508,6 +2620,14 @@ export interface ProductProofContext {
     suffix: DerivationIndex;
 }
 export const ProductProofContext: Codec<ProductProofContext>;
+/** Versioned envelope for [\`ProductRendererRenderError\`]. */
+export type VersionedProductRendererRenderError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedProductRendererRenderError: Codec<VersionedProductRendererRenderError>;
 /** Versioned envelope for [\`ProductRendererRenderItem\`]. */
 export type VersionedProductRendererRenderItem = 
 /** Version 1 payload. */
@@ -2623,6 +2743,14 @@ export type VersionedRemoteChainHeadContinueResponse =
     value?: undefined;
 };
 export const VersionedRemoteChainHeadContinueResponse: Codec<VersionedRemoteChainHeadContinueResponse>;
+/** Versioned envelope for [\`RemoteChainHeadFollowError\`]. */
+export type VersionedRemoteChainHeadFollowError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedRemoteChainHeadFollowError: Codec<VersionedRemoteChainHeadFollowError>;
 /** Versioned envelope for [\`RemoteChainHeadFollowItem\`]. */
 export type VersionedRemoteChainHeadFollowItem = 
 /** Version 1 payload. */
@@ -2958,6 +3086,14 @@ export type VersionedRemotePermissionResponse =
     value: RemotePermissionResponse;
 };
 export const VersionedRemotePermissionResponse: Codec<VersionedRemotePermissionResponse>;
+/** Versioned envelope for [\`RemotePreimageLookupSubscribeError\`]. */
+export type VersionedRemotePreimageLookupSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedRemotePreimageLookupSubscribeError: Codec<VersionedRemotePreimageLookupSubscribeError>;
 /** Versioned envelope for [\`RemotePreimageLookupSubscribeItem\`]. */
 export type VersionedRemotePreimageLookupSubscribeItem = 
 /** Version 1 payload. */
@@ -3062,6 +3198,14 @@ export type VersionedRemoteStatementStoreSubmitRequest =
     value: SignedStatement;
 };
 export const VersionedRemoteStatementStoreSubmitRequest: Codec<VersionedRemoteStatementStoreSubmitRequest>;
+/** Versioned envelope for [\`RemoteStatementStoreSubmitResponse\`]. */
+export type VersionedRemoteStatementStoreSubmitResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedRemoteStatementStoreSubmitResponse: Codec<VersionedRemoteStatementStoreSubmitResponse>;
 /** Versioned envelope for [\`RemoteStatementStoreSubscribeError\`]. */
 export type VersionedRemoteStatementStoreSubscribeError = 
 /** Version 1 payload. */
@@ -5254,7 +5398,9 @@ export import EffectProps = T.EffectProps;
 export import GenericError = T.GenericError;
 export import GenesisHash = T.GenesisHash;
 export import HorizontalAlignment = T.HorizontalAlignment;
+export import VersionedHostAccountConnectionStatusSubscribeError = T.VersionedHostAccountConnectionStatusSubscribeError;
 export import VersionedHostAccountConnectionStatusSubscribeItem = T.VersionedHostAccountConnectionStatusSubscribeItem;
+export import VersionedHostAccountConnectionStatusSubscribeRequest = T.VersionedHostAccountConnectionStatusSubscribeRequest;
 export import VersionedHostAccountCreateProofError = T.VersionedHostAccountCreateProofError;
 export import VersionedHostAccountCreateProofRequest = T.VersionedHostAccountCreateProofRequest;
 export import VersionedHostAccountCreateProofResponse = T.VersionedHostAccountCreateProofResponse;
@@ -5276,11 +5422,15 @@ export import VersionedHostAccountRingVrfSignResponse = T.VersionedHostAccountRi
 export import VersionedHostAccountSignVrfError = T.VersionedHostAccountSignVrfError;
 export import VersionedHostAccountSignVrfRequest = T.VersionedHostAccountSignVrfRequest;
 export import VersionedHostAccountSignVrfResponse = T.VersionedHostAccountSignVrfResponse;
+export import VersionedHostChatActionSubscribeError = T.VersionedHostChatActionSubscribeError;
 export import VersionedHostChatActionSubscribeItem = T.VersionedHostChatActionSubscribeItem;
+export import VersionedHostChatActionSubscribeRequest = T.VersionedHostChatActionSubscribeRequest;
 export import VersionedHostChatCreateRoomError = T.VersionedHostChatCreateRoomError;
 export import VersionedHostChatCreateRoomRequest = T.VersionedHostChatCreateRoomRequest;
 export import VersionedHostChatCreateRoomResponse = T.VersionedHostChatCreateRoomResponse;
+export import VersionedHostChatListSubscribeError = T.VersionedHostChatListSubscribeError;
 export import VersionedHostChatListSubscribeItem = T.VersionedHostChatListSubscribeItem;
+export import VersionedHostChatListSubscribeRequest = T.VersionedHostChatListSubscribeRequest;
 export import VersionedHostChatPostMessageError = T.VersionedHostChatPostMessageError;
 export import VersionedHostChatPostMessageRequest = T.VersionedHostChatPostMessageRequest;
 export import VersionedHostChatPostMessageResponse = T.VersionedHostChatPostMessageResponse;
@@ -5354,7 +5504,9 @@ export import VersionedHostLocalStorageReadResponse = T.VersionedHostLocalStorag
 export import VersionedHostLocalStorageWriteError = T.VersionedHostLocalStorageWriteError;
 export import VersionedHostLocalStorageWriteRequest = T.VersionedHostLocalStorageWriteRequest;
 export import VersionedHostLocalStorageWriteResponse = T.VersionedHostLocalStorageWriteResponse;
+export import VersionedHostLocaleSubscribeError = T.VersionedHostLocaleSubscribeError;
 export import VersionedHostLocaleSubscribeItem = T.VersionedHostLocaleSubscribeItem;
+export import VersionedHostLocaleSubscribeRequest = T.VersionedHostLocaleSubscribeRequest;
 export import VersionedHostNavigateToError = T.VersionedHostNavigateToError;
 export import VersionedHostNavigateToRequest = T.VersionedHostNavigateToRequest;
 export import VersionedHostNavigateToResponse = T.VersionedHostNavigateToResponse;
@@ -5371,7 +5523,9 @@ export import VersionedHostPaymentTopUpError = T.VersionedHostPaymentTopUpError;
 export import VersionedHostPaymentTopUpRequest = T.VersionedHostPaymentTopUpRequest;
 export import VersionedHostPaymentTopUpResponse = T.VersionedHostPaymentTopUpResponse;
 export import HostPlatform = T.HostPlatform;
+export import VersionedHostPocketListSubscribeError = T.VersionedHostPocketListSubscribeError;
 export import VersionedHostPocketListSubscribeItem = T.VersionedHostPocketListSubscribeItem;
+export import VersionedHostPocketListSubscribeRequest = T.VersionedHostPocketListSubscribeRequest;
 export import VersionedHostPocketRemoveCardError = T.VersionedHostPocketRemoveCardError;
 export import VersionedHostPocketRemoveCardRequest = T.VersionedHostPocketRemoveCardRequest;
 export import VersionedHostPocketRemoveCardResponse = T.VersionedHostPocketRemoveCardResponse;
@@ -5385,7 +5539,9 @@ export import VersionedHostPushNotificationCancelResponse = T.VersionedHostPushN
 export import VersionedHostPushNotificationError = T.VersionedHostPushNotificationError;
 export import VersionedHostPushNotificationRequest = T.VersionedHostPushNotificationRequest;
 export import VersionedHostPushNotificationResponse = T.VersionedHostPushNotificationResponse;
+export import VersionedHostRendererActionSubscribeError = T.VersionedHostRendererActionSubscribeError;
 export import VersionedHostRendererActionSubscribeItem = T.VersionedHostRendererActionSubscribeItem;
+export import VersionedHostRendererActionSubscribeRequest = T.VersionedHostRendererActionSubscribeRequest;
 export import VersionedHostRequestLoginError = T.VersionedHostRequestLoginError;
 export import VersionedHostRequestLoginRequest = T.VersionedHostRequestLoginRequest;
 export import VersionedHostRequestLoginResponse = T.VersionedHostRequestLoginResponse;
@@ -5405,7 +5561,9 @@ export import VersionedHostSignRawResponse = T.VersionedHostSignRawResponse;
 export import VersionedHostSignRawWithLegacyAccountError = T.VersionedHostSignRawWithLegacyAccountError;
 export import VersionedHostSignRawWithLegacyAccountRequest = T.VersionedHostSignRawWithLegacyAccountRequest;
 export import VersionedHostSignRawWithLegacyAccountResponse = T.VersionedHostSignRawWithLegacyAccountResponse;
+export import VersionedHostThemeSubscribeError = T.VersionedHostThemeSubscribeError;
 export import VersionedHostThemeSubscribeItem = T.VersionedHostThemeSubscribeItem;
+export import VersionedHostThemeSubscribeRequest = T.VersionedHostThemeSubscribeRequest;
 export import ImageFit = T.ImageFit;
 export import ImageProps = T.ImageProps;
 export import ImageSource = T.ImageSource;
@@ -5421,6 +5579,7 @@ export import ProductAccount = T.ProductAccount;
 export import ProductAccountId = T.ProductAccountId;
 export import ProductAccountTxPayload = T.ProductAccountTxPayload;
 export import ProductProofContext = T.ProductProofContext;
+export import VersionedProductRendererRenderError = T.VersionedProductRendererRenderError;
 export import VersionedProductRendererRenderItem = T.VersionedProductRendererRenderItem;
 export import VersionedProductRendererRenderRequest = T.VersionedProductRendererRenderRequest;
 export import RawPayload = T.RawPayload;
@@ -5434,6 +5593,7 @@ export import VersionedRemoteChainHeadCallResponse = T.VersionedRemoteChainHeadC
 export import VersionedRemoteChainHeadContinueError = T.VersionedRemoteChainHeadContinueError;
 export import VersionedRemoteChainHeadContinueRequest = T.VersionedRemoteChainHeadContinueRequest;
 export import VersionedRemoteChainHeadContinueResponse = T.VersionedRemoteChainHeadContinueResponse;
+export import VersionedRemoteChainHeadFollowError = T.VersionedRemoteChainHeadFollowError;
 export import VersionedRemoteChainHeadFollowItem = T.VersionedRemoteChainHeadFollowItem;
 export import VersionedRemoteChainHeadFollowRequest = T.VersionedRemoteChainHeadFollowRequest;
 export import VersionedRemoteChainHeadHeaderError = T.VersionedRemoteChainHeadHeaderError;
@@ -5470,6 +5630,7 @@ export import RemotePermission = T.RemotePermission;
 export import VersionedRemotePermissionError = T.VersionedRemotePermissionError;
 export import VersionedRemotePermissionRequest = T.VersionedRemotePermissionRequest;
 export import VersionedRemotePermissionResponse = T.VersionedRemotePermissionResponse;
+export import VersionedRemotePreimageLookupSubscribeError = T.VersionedRemotePreimageLookupSubscribeError;
 export import VersionedRemotePreimageLookupSubscribeItem = T.VersionedRemotePreimageLookupSubscribeItem;
 export import VersionedRemotePreimageLookupSubscribeRequest = T.VersionedRemotePreimageLookupSubscribeRequest;
 export import VersionedRemotePreimageSubmitError = T.VersionedRemotePreimageSubmitError;
@@ -5483,6 +5644,7 @@ export import VersionedRemoteStatementStoreCreateProofRequest = T.VersionedRemot
 export import VersionedRemoteStatementStoreCreateProofResponse = T.VersionedRemoteStatementStoreCreateProofResponse;
 export import VersionedRemoteStatementStoreSubmitError = T.VersionedRemoteStatementStoreSubmitError;
 export import VersionedRemoteStatementStoreSubmitRequest = T.VersionedRemoteStatementStoreSubmitRequest;
+export import VersionedRemoteStatementStoreSubmitResponse = T.VersionedRemoteStatementStoreSubmitResponse;
 export import VersionedRemoteStatementStoreSubscribeError = T.VersionedRemoteStatementStoreSubscribeError;
 export import VersionedRemoteStatementStoreSubscribeItem = T.VersionedRemoteStatementStoreSubscribeItem;
 export import VersionedRemoteStatementStoreSubscribeRequest = T.VersionedRemoteStatementStoreSubscribeRequest;
@@ -5892,13 +6054,13 @@ export { ResultAsync, SubscriptionError };
 export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 2;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "4d76f9685fe126db";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "c587cc31e1b00844";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to account connection status changes. */
-    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
     /** Retrieve a product-scoped account. */
     getAccount(request: T.HostAccountGetRequest): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
     /** Retrieve the contextual alias for a context and ring. */
@@ -5948,7 +6110,7 @@ export declare class ChainClient {
     /** Follow the chain head and receive block events. */
     followHeadSubscribe({ request }: {
         request: T.RemoteChainHeadFollowRequest;
-    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.GenericError>>;
+    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
     /** Fetch a block header. */
     getHeadHeader(request: T.RemoteChainHeadHeaderRequest): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
     /** Fetch a block body. */
@@ -5988,7 +6150,7 @@ export declare class ChatClient {
     /** Register a chat bot. */
     registerBot(request: T.HostChatRegisterBotRequest): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
     /** Subscribe to the list of chat rooms. */
-    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
     /**
      * Post a message to a chat room.
      *
@@ -6006,7 +6168,7 @@ export declare class ChatClient {
      */
     postMessage(request: T.HostChatPostMessageRequest): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
-    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
 }
 /**
  * CoinPayment operations.
@@ -6070,7 +6232,7 @@ export declare class LocaleClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
-    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
@@ -6138,7 +6300,7 @@ export declare class PocketClient {
      *
      * Emits the whole set on subscribe and again after every change.
      */
-    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.VersionedHostPocketListSubscribeError>>;
     /**
      * Remove one of the calling product's cards.
      *
@@ -6154,7 +6316,7 @@ export declare class PreimageClient {
     /** Subscribe to preimage lookups for a given key. */
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
-    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
     /** Submit a preimage. Returns the preimage key (hash) on success. */
     submit(request: HexString): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
@@ -6168,11 +6330,11 @@ export declare class RendererClient {
      * replaces the previous tree. The stream stays open while the body is
      * displayed so the product can redraw in place.
      */
-    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.GenericError>>): {
+    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.VersionedProductRendererRenderError>>): {
         unsubscribe(): void;
     };
     /** Subscribe to actions triggered inside this product's rendered bodies. */
-    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.VersionedHostRendererActionSubscribeError>>;
 }
 /** Resource pre-allocation (allowance management). */
 export declare class ResourceAllocationClient {
@@ -6303,7 +6465,7 @@ export declare class ThemeClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to host theme changes. */
-    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.GenericError>>;
+    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
 }
 export interface TrUApiClient {
     readonly account: AccountClient;
@@ -7235,34 +7397,4 @@ export declare function createMessagePortProvider(port: MessagePort | Promise<Me
  * caller never has to await {@link WebSocketWireProvider.opened} first.
  **/
 export declare function createWebSocketProvider(url: string): WebSocketWireProvider;
-
-
-// well-known-chains.d.ts
-/** Well-known chain descriptors. Each chain is its own \`export const\` so that
- * bundlers can tree-shake the ones a consumer does not import. */
-export interface WellKnownChain {
-    readonly name: string;
-    readonly network: "Mainnet" | "Testnet";
-    readonly genesis: HexString;
-}
-export declare const PASEO_NEXT_V2_ASSET_HUB: {
-    readonly name: "Paseo Next v2 Hub";
-    readonly network: "Testnet";
-    readonly genesis: "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a";
-};
-export declare const PASEO_NEXT_V2_INDIVIDUALITY: {
-    readonly name: "Paseo Next v2 Individuality";
-    readonly network: "Testnet";
-    readonly genesis: "0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48";
-};
-export declare const PREVIEWNET_ASSET_HUB: {
-    readonly name: "Previewnet Hub";
-    readonly network: "Testnet";
-    readonly genesis: "0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe";
-};
-export declare const PREVIEWNET_INDIVIDUALITY: {
-    readonly name: "Previewnet Individuality";
-    readonly network: "Testnet";
-    readonly genesis: "0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218";
-};
 `;
