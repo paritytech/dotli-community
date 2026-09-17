@@ -3,7 +3,7 @@
 # Rendered per-env from nginx/nginx.conf.template by `make deploy-nginx`
 # (envsubst). Substituted tokens: ${DOMAIN}, ${WEBROOT}, ${ZONE}, ${RL},
 # ${SENTRY}, ${SENTRY_INGEST}, ${SENTRY_PROJECT}.
-# ${RL} is "" to enable rate-limiting (paseo.li) or "#" to
+# ${RL} is "" to enable rate-limiting (paseo.li / testnet.li) or "#" to
 # comment it out (all other envs). ${SENTRY} works the same for the optional
 # Sentry tunnel lines: "" when SENTRY_DSN is set (with ${SENTRY_INGEST} and
 # ${SENTRY_PROJECT} cut from the DSN), "#" when it is not - the tunnel
