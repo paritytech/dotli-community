@@ -332,7 +332,13 @@ test.describe("dot.li > host-playground.dot", () => {
         destination.hostname = "truapi-playground.localhost";
         destination.pathname = "/";
         await frame.getByTestId("run-navigate-polkadot").click();
-        await expect(navigationPage).toHaveURL(destination.href);
+        // The deeplink names the product, not the host's backend query, so
+        // assert where the tab landed rather than what it carried along.
+        await expect(navigationPage).toHaveURL(
+          (url) =>
+            url.host === destination.host &&
+            url.pathname === destination.pathname,
+        );
       } finally {
         await navigationPage.close();
       }
