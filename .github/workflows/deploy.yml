@@ -202,3 +202,15 @@ jobs:
         env:
           DOTLI_SMOKE_ROOT: ${{ matrix.environment }}
           DOTLI_WEBGPU: "1"
+
+      # Capability coverage against the deployed host: the paired E2E suite
+      # only ever talks to a local build, so without this a deployment could
+      # serve a host the published products cannot call.
+      - name: Smoke published TrUAPI capabilities
+        # Run even when a product smoke fails: a broken published product
+        # and a broken host capability are separate findings.
+        if: ${{ !cancelled() }}
+        working-directory: apps/host
+        run: bun run test:smoke:truapi
+        env:
+          DOTLI_SMOKE_ROOT: ${{ matrix.environment }}

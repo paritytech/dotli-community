@@ -16,6 +16,7 @@
     "test:perf:compare": "bun tests/performance/compare.ts",
     "test:polkavm:doom": "playwright test --config=tests/performance/playwright.config.ts tests/performance/polkavm-doom.spec.ts",
     "test:smoke:products": "playwright test --config=tests/smoke/playwright.config.ts tests/smoke/polkavm-products.spec.ts",
+    "test:smoke:truapi": "playwright test --config=tests/smoke/playwright.config.ts tests/smoke/truapi-playground.spec.ts",
     "test:perf:compare:md": "bun tests/performance/compare.ts --markdown",
     "lint": "bunx eslint src/",
     "typecheck": "tsc --noEmit"
