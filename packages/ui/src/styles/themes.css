@@ -57,7 +57,7 @@
 [data-theme="light"] .verification-shield {
   color: rgba(0, 0, 0, 0.3);
 }
-[data-theme="light"] .verification-shield.validating {
+[data-theme="light"] .verification-shield.trusted {
   color: #ff8c00;
 }
 [data-theme="light"] .verification-shield.verified {
@@ -127,13 +127,15 @@
 [data-theme="light"] .verification-tooltip-row strong {
   color: #111;
 }
-[data-theme="light"] .verification-tooltip-dot.is-verified {
-  background: #16a34a;
-  box-shadow: 0 0 6px rgba(22, 163, 74, 0.4);
+[data-theme="light"] .verification-tooltip-icon.is-verified {
+  color: #16a34a;
 }
-[data-theme="light"] .verification-tooltip-dot.is-trusted {
-  background: #ff8c00;
-  box-shadow: 0 0 6px rgba(255, 140, 0, 0.4);
+[data-theme="light"] .verification-tooltip-icon.is-trusted {
+  color: #ff8c00;
+}
+[data-theme="light"] .verification-tooltip-current {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.65);
 }
 
 [data-theme="light"] .auth-modal-backdrop {
