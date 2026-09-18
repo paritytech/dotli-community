@@ -1625,6 +1625,7 @@ function createShell(controls: string[]): {
   surface: HTMLElement;
   canvas: HTMLCanvasElement;
   status: HTMLElement;
+  fpsBadge: HTMLElement;
 } {
   const style = document.createElement("style");
   style.id = "dotli-polkavm-style";
@@ -1638,6 +1639,7 @@ function createShell(controls: string[]): {
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
+    #dotli-polkavm-performance{bottom:12px;z-index:2;padding:5px 8px;pointer-events:none;font-weight:700;font-variant-numeric:tabular-nums}
     #dotli-polkavm-file-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
     #dotli-polkavm-file-open:hover{border-color:#e6007a}
     #dotli-polkavm-file-open:disabled{cursor:wait;opacity:.55}
@@ -1664,15 +1666,19 @@ function createShell(controls: string[]): {
   status.id = "dotli-polkavm-status";
   status.className = "dotli-polkavm-overlay";
   status.textContent = "Translating PolkaVM application…";
+  const fpsBadge = document.createElement("div");
+  fpsBadge.id = "dotli-polkavm-performance";
+  fpsBadge.className = "dotli-polkavm-overlay";
+  fpsBadge.textContent = "PVM · -- FPS";
   const controlText = document.createElement("div");
   controlText.id = "dotli-polkavm-controls";
   controlText.textContent = controls.join(" · ");
-  surface.append(canvas, status, controlText);
+  surface.append(canvas, status, fpsBadge, controlText);
   shell.append(surface);
   document.getElementById("dotli-polkavm-style")?.remove();
   document.head.append(style);
   document.body.replaceChildren(shell);
-  return { surface, canvas, status };
+  return { surface, canvas, status, fpsBadge };
 }
 
 function filePickerAccept(
@@ -2840,7 +2846,9 @@ export async function runPolkaVmApplication(
   ) {
     throw new Error("required motion input is unavailable");
   }
-  const { surface, canvas, status } = createShell(descriptor.controls);
+  const { surface, canvas, status, fpsBadge } = createShell(
+    descriptor.controls,
+  );
   if (forceInterpreter) {
     status.textContent = "Starting PolkaVM interpreter…";
   }
@@ -2994,6 +3002,13 @@ export async function runPolkaVmApplication(
     canvas.dataset.polkavmUpdateMaxMs = String(polkavmMetrics.updateMaxMs);
     canvas.dataset.polkavmAudioChunks = String(polkavmMetrics.audioChunks);
     canvas.dataset.polkavmAudioSamples = String(polkavmMetrics.audioSamples);
+    const backend =
+      polkavmMetrics.backend === "compiler"
+        ? "JIT"
+        : polkavmMetrics.backend === "interpreter"
+          ? "INTERPRETER"
+          : "STARTING";
+    fpsBadge.textContent = `PVM ${backend} · ${polkavmMetrics.fps.toFixed(1)} FPS`;
     const message: PolkaVmDebugMessage = {
       type: "dotli:polkavm-metrics",
       metrics: polkavmMetrics,
