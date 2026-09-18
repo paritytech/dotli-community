@@ -63,6 +63,12 @@ export type MainToWorker = {
 } | {
     kind: "notifySessionStoreChanged";
 } | {
+    kind: "acquireWorker";
+    productId: string;
+} | {
+    kind: "releaseWorker";
+    productId: string;
+} | {
     kind: "activateStoredSession";
     requestId: number;
 } | {
@@ -120,16 +126,22 @@ export type MainToWorker = {
     kind: "publishChatAction";
     coreId: number;
     requestId: number;
+    /** SCALE-encoded `HostChatActionSubscribeItem`. */
     action: Uint8Array;
 } | {
-    kind: "renderCustomMessageStart";
+    kind: "publishRendererAction";
+    coreId: number;
+    requestId: number;
+    /** SCALE-encoded `HostRendererActionSubscribeItem`. */
+    action: Uint8Array;
+} | {
+    kind: "renderStart";
     coreId: number;
     renderId: number;
-    messageId: string;
-    messageType: string;
-    payload: Uint8Array;
+    /** SCALE-encoded `ProductRendererRenderRequest`. */
+    request: Uint8Array;
 } | {
-    kind: "renderCustomMessageStop";
+    kind: "renderStop";
     renderId: number;
 } | {
     kind: "callbackResponse";
@@ -308,18 +320,36 @@ export type WorkerToMain = {
     ok: false;
     error: string;
 }
-/** One replacement tree, as a SCALE-encoded `CustomRendererNode`. */
+/**
+ * Demand on one product's worker crossed zero. Posted in ledger order, so
+ * the latest message for a product is its current level.
+ */
  | {
-    kind: "renderCustomMessageItem";
+    kind: "workerDemandChanged";
+    productId: string;
+    wanted: boolean;
+} | {
+    kind: "publishRendererActionResponse";
+    requestId: number;
+    ok: true;
+} | {
+    kind: "publishRendererActionResponse";
+    requestId: number;
+    ok: false;
+    error: string;
+}
+/** One replacement tree, as a SCALE-encoded `RendererNode`. */
+ | {
+    kind: "renderItem";
     renderId: number;
     node: Uint8Array;
 }
 /** The product ended the render stream; no further items follow. */
  | {
-    kind: "renderCustomMessageComplete";
+    kind: "renderComplete";
     renderId: number;
 } | {
-    kind: "renderCustomMessageError";
+    kind: "renderError";
     renderId: number;
     error: string;
 } | {

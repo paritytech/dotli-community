@@ -418,9 +418,16 @@ declare type CombineResultsWithAllErrorsArray<T extends readonly Result<unknown,
  * plus the Polkadot-flavour helpers it does not ship (hex-encoded bytes,
  * lazy recursive codecs, and \`V<N>\`-indexed tagged unions).
  */
-import { type Codec } from "scale-ts";
+import { type Codec, type ResultPayload } from "scale-ts";
 export type { Codec };
 export type { ResultPayload } from "scale-ts";
+/**
+ * Bare-named type alias matching generated codegen's naming convention for
+ * generic wire types: \`Result<Ok, Err>\` is used as both a value (the codec
+ * builder re-exported below) and a type (this alias for scale-ts's own
+ * \`ResultPayload\`) in generated \`types.ts\`.
+ */
+export type Result<Ok, Err> = ResultPayload<Ok, Err>;
 export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, bool, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
 /**
  * Substrate \`OptionBool\`: a one-byte \`Option<bool>\`.
@@ -527,7 +534,10 @@ declare namespace T {
 /** A 32-byte raw account identifier used for legacy (non-product) accounts. */
 export type AccountId = HexString;
 export const AccountId: Codec<AccountId>;
-/** Payload when a user clicks an action button. */
+/**
+ * A press on a button the host draws for a \`ChatMessageContent::Actions\`
+ * message.
+ */
 export interface ActionTrigger {
     /**
      * Message containing the action, as returned by \`Chat::post_message\` in
@@ -577,7 +587,7 @@ export const AllocatableResource: Codec<AllocatableResource>;
 /** Outcome of allocating a single resource (RFC 0010). */
 export type AllocationOutcome = "Allocated" | "Rejected" | "NotAvailable";
 export const AllocationOutcome: Codec<AllocationOutcome>;
-/** Layout arrangement (like CSS flexbox \`justify-content\`). */
+/** Main-axis distribution of children. */
 export type Arrangement = "Start" | "End" | "Center" | "SpaceBetween" | "SpaceAround" | "SpaceEvenly";
 export const Arrangement: Codec<Arrangement>;
 /** Background styling. */
@@ -594,6 +604,12 @@ export const Background: Codec<Background>;
  */
 export type Balance = bigint;
 export const Balance: Codec<Balance>;
+/**
+ * How a node composites with what is behind it. The values are those common
+ * to CSS \`mix-blend-mode\`, SwiftUI \`BlendMode\` and Compose \`BlendMode\`.
+ */
+export type BlendingMode = "Normal" | "Multiply" | "Screen" | "Overlay" | "Darken" | "Lighten" | "ColorDodge" | "ColorBurn" | "HardLight" | "SoftLight" | "Difference" | "Exclusion" | "Hue" | "Saturation" | "Color" | "Luminosity";
+export const BlendingMode: Codec<BlendingMode>;
 /** Border styling. */
 export interface BorderStyle {
     /** Border width. */
@@ -604,27 +620,30 @@ export interface BorderStyle {
     shape?: Shape;
 }
 export const BorderStyle: Codec<BorderStyle>;
-/** Properties for a [\`CustomRendererNode::Box\`] container. */
+/** Properties of a \`Box\`. */
 export interface BoxProps {
-    /** Content alignment within the box. */
+    /** Placement of content within the box. */
     contentAlignment?: ContentAlignment;
 }
 export const BoxProps: Codec<BoxProps>;
-/** Properties for a [\`CustomRendererNode::Button\`]. */
+/** Properties of a \`Button\`. */
 export interface ButtonProps {
-    /** Button label text. */
+    /** Button label. */
     text: string;
-    /** Button style variant. */
+    /** Button emphasis. */
     variant?: ButtonVariant;
-    /** Whether the button is enabled. Absent leaves the default to the host. */
-    enabled: OptionalBool;
-    /** Whether the button shows a loading state. Absent leaves the default to the host. */
-    loading: OptionalBool;
-    /** Action identifier triggered on click. */
+    /** Whether the button accepts presses. Absent leaves the default to the host. */
+    enabled?: boolean;
+    /**
+     * Whether the button shows a loading state. A loading button accepts no
+     * presses. Absent leaves the default to the host.
+     */
+    loading?: boolean;
+    /** Action triggered on press. A button without one is inert. */
     clickAction?: string;
 }
 export const ButtonProps: Codec<ButtonProps>;
-/** Button style variants. */
+/** Button emphasis. */
 export type ButtonVariant = "Primary" | "Secondary" | "Text";
 export const ButtonVariant: Codec<ButtonVariant>;
 /**
@@ -655,7 +674,7 @@ export type ChatActionPayload =
     tag: "MessagePosted";
     value: ChatMessageContent;
 }
-/** A user triggered an action button. */
+/** A user pressed a host-drawn \`Actions\` button. */
  | {
     tag: "ActionTriggered";
     value: ActionTrigger;
@@ -687,7 +706,11 @@ export interface ChatCommand {
     payload: string;
 }
 export const ChatCommand: Codec<ChatCommand>;
-/** A custom message with application-defined type and binary payload. */
+/**
+ * A custom message with application-defined type and binary payload. The
+ * host draws it through \`Renderer::render\`, with a \`ChatMessage\` context
+ * carrying \`message_type\` and \`payload\` as the render payload.
+ */
 export interface ChatCustomMessage {
     /** Application-defined type key. */
     messageType: string;
@@ -880,18 +903,18 @@ export type CoinPaymentTransmissionChannel =
     };
 };
 export const CoinPaymentTransmissionChannel: Codec<CoinPaymentTransmissionChannel>;
-/** Semantic color tokens for theming. */
+/** Semantic color tokens, resolved by the host's theme. */
 export type ColorToken = "FgPrimary" | "FgSecondary" | "FgTertiary" | "BgSurfaceMain" | "BgSurfaceContainer" | "BgSurfaceNested" | "FgSuccess" | "FgError" | "FgWarning";
 export const ColorToken: Codec<ColorToken>;
-/** Properties for a [\`CustomRendererNode::Column\`] layout. */
+/** Properties of a \`Column\`. */
 export interface ColumnProps {
-    /** Horizontal alignment of children. */
+    /** Cross-axis alignment of children. */
     horizontalAlignment?: HorizontalAlignment;
-    /** Vertical arrangement of children. */
+    /** Main-axis distribution of children. */
     verticalArrangement?: Arrangement;
 }
 export const ColumnProps: Codec<ColumnProps>;
-/** 2D content alignment. */
+/** Placement of content within a \`Box\`. */
 export type ContentAlignment = "TopStart" | "TopCenter" | "TopEnd" | "CenterStart" | "Center" | "CenterEnd" | "BottomStart" | "BottomCenter" | "BottomEnd";
 export const ContentAlignment: Codec<ContentAlignment>;
 /** A privacy-preserving alias derived via ring VRF, bound to a specific context. */
@@ -902,86 +925,6 @@ export interface ContextualAlias {
     alias: HexString;
 }
 export const ContextualAlias: Codec<ContextualAlias>;
-/**
- * A node in the custom renderer UI tree. Component variants contain recursive
- * \`children\` fields.
- */
-export type CustomRendererNode = 
-/** Empty node. */
-{
-    tag: "Nil";
-    value?: undefined;
-}
-/** Raw text string. */
- | {
-    tag: "String";
-    value: {
-        text: string;
-    };
-}
-/** Generic container. */
- | {
-    tag: "Box";
-    value: {
-        modifiers: Array<Modifier>;
-        props: BoxProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Vertical layout. */
- | {
-    tag: "Column";
-    value: {
-        modifiers: Array<Modifier>;
-        props: ColumnProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Horizontal layout. */
- | {
-    tag: "Row";
-    value: {
-        modifiers: Array<Modifier>;
-        props: RowProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Flexible space. */
- | {
-    tag: "Spacer";
-    value: {
-        modifiers: Array<Modifier>;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Text display. */
- | {
-    tag: "Text";
-    value: {
-        modifiers: Array<Modifier>;
-        props: TextProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Interactive button. */
- | {
-    tag: "Button";
-    value: {
-        modifiers: Array<Modifier>;
-        props: ButtonProps;
-        children: Array<CustomRendererNode>;
-    };
-}
-/** Text input. */
- | {
-    tag: "TextField";
-    value: {
-        modifiers: Array<Modifier>;
-        props: TextFieldProps;
-        children: Array<CustomRendererNode>;
-    };
-};
-export const CustomRendererNode: Codec<CustomRendererNode>;
 /**
  * Account selector within a product subtree. Encodes as
  * \`Either<u32, [u8; 32]>\` on the wire (\`Index\` = left, \`Raw\` = right).
@@ -1003,21 +946,27 @@ export type DerivationIndex =
     value: HexString;
 };
 export const DerivationIndex: Codec<DerivationIndex>;
-/**
- * CSS-like dimensions: (top, end, bottom, start).
- * Bottom defaults to top, start defaults to end when \`None\`.
- */
+/** Edge dimensions. \`bottom\` defaults to \`top\` and \`start\` to \`end\` when absent. */
 export interface Dimensions {
-    /** Top dimension. */
+    /** Top edge. */
     top: Size;
-    /** End dimension. */
+    /** End edge. */
     end: Size;
-    /** Bottom dimension. Defaults to top when absent. */
+    /** Bottom edge; defaults to \`top\`. */
     bottom?: Size;
-    /** Start dimension. Defaults to end when absent. */
+    /** Start edge; defaults to \`end\`. */
     start?: Size;
 }
 export const Dimensions: Codec<Dimensions>;
+/** A visual effect. Each variant names one effect and carries its parameters. */
+export type Effect = "Rainbow";
+export const Effect: Codec<Effect>;
+/** Properties of an \`Effect\`. */
+export interface EffectProps {
+    /** The effect applied to the children. */
+    effect: Effect;
+}
+export const EffectProps: Codec<EffectProps>;
 /**
  * Generic error payload carrying a human-readable reason string. Used by many
  * methods as a catch-all error type.
@@ -1030,9 +979,17 @@ export const GenericError: Codec<GenericError>;
 /** A 32-byte chain genesis hash used to identify the target chain. */
 export type GenesisHash = HexString;
 export const GenesisHash: Codec<GenesisHash>;
-/** Horizontal alignment options. */
+/** Cross-axis alignment of \`Column\` children. */
 export type HorizontalAlignment = "Start" | "Center" | "End";
 export const HorizontalAlignment: Codec<HorizontalAlignment>;
+/** Versioned envelope for [\`HostAccountConnectionStatusSubscribeError\`]. */
+export type VersionedHostAccountConnectionStatusSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostAccountConnectionStatusSubscribeError: Codec<VersionedHostAccountConnectionStatusSubscribeError>;
 /** Versioned envelope for [\`HostAccountConnectionStatusSubscribeItem\`]. */
 export type VersionedHostAccountConnectionStatusSubscribeItem = 
 /** Version 1 payload. */
@@ -1041,6 +998,14 @@ export type VersionedHostAccountConnectionStatusSubscribeItem =
     value: HostAccountConnectionStatusSubscribeItem;
 };
 export const VersionedHostAccountConnectionStatusSubscribeItem: Codec<VersionedHostAccountConnectionStatusSubscribeItem>;
+/** Versioned envelope for [\`HostAccountConnectionStatusSubscribeRequest\`]. */
+export type VersionedHostAccountConnectionStatusSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostAccountConnectionStatusSubscribeRequest: Codec<VersionedHostAccountConnectionStatusSubscribeRequest>;
 /** Versioned envelope for [\`HostAccountCreateProofError\`]. */
 export type VersionedHostAccountCreateProofError = 
 /** Version 1 payload. */
@@ -1209,6 +1174,14 @@ export type VersionedHostAccountSignVrfResponse =
     value: VrfSignature;
 };
 export const VersionedHostAccountSignVrfResponse: Codec<VersionedHostAccountSignVrfResponse>;
+/** Versioned envelope for [\`HostChatActionSubscribeError\`]. */
+export type VersionedHostChatActionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostChatActionSubscribeError: Codec<VersionedHostChatActionSubscribeError>;
 /** Versioned envelope for [\`HostChatActionSubscribeItem\`]. */
 export type VersionedHostChatActionSubscribeItem = 
 /** Version 1 payload. */
@@ -1217,6 +1190,14 @@ export type VersionedHostChatActionSubscribeItem =
     value: HostChatActionSubscribeItem;
 };
 export const VersionedHostChatActionSubscribeItem: Codec<VersionedHostChatActionSubscribeItem>;
+/** Versioned envelope for [\`HostChatActionSubscribeRequest\`]. */
+export type VersionedHostChatActionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostChatActionSubscribeRequest: Codec<VersionedHostChatActionSubscribeRequest>;
 /** Versioned envelope for [\`HostChatCreateRoomError\`]. */
 export type VersionedHostChatCreateRoomError = 
 /** Version 1 payload. */
@@ -1241,6 +1222,14 @@ export type VersionedHostChatCreateRoomResponse =
     value: HostChatCreateRoomResponse;
 };
 export const VersionedHostChatCreateRoomResponse: Codec<VersionedHostChatCreateRoomResponse>;
+/** Versioned envelope for [\`HostChatListSubscribeError\`]. */
+export type VersionedHostChatListSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostChatListSubscribeError: Codec<VersionedHostChatListSubscribeError>;
 /** Versioned envelope for [\`HostChatListSubscribeItem\`]. */
 export type VersionedHostChatListSubscribeItem = 
 /** Version 1 payload. */
@@ -1249,6 +1238,14 @@ export type VersionedHostChatListSubscribeItem =
     value: HostChatListSubscribeItem;
 };
 export const VersionedHostChatListSubscribeItem: Codec<VersionedHostChatListSubscribeItem>;
+/** Versioned envelope for [\`HostChatListSubscribeRequest\`]. */
+export type VersionedHostChatListSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostChatListSubscribeRequest: Codec<VersionedHostChatListSubscribeRequest>;
 /** Versioned envelope for [\`HostChatPostMessageError\`]. */
 export type VersionedHostChatPostMessageError = 
 /** Version 1 payload. */
@@ -1782,7 +1779,7 @@ export type VersionedHostLocalStorageClearError =
 /** Version 1 payload. */
 {
     tag: "V1";
-    value: HostLocalStorageReadError;
+    value: V01HostLocalStorageReadError;
 };
 export const VersionedHostLocalStorageClearError: Codec<VersionedHostLocalStorageClearError>;
 /** Versioned envelope for [\`HostLocalStorageClearRequest\`]. */
@@ -1803,25 +1800,25 @@ export type VersionedHostLocalStorageClearResponse =
 export const VersionedHostLocalStorageClearResponse: Codec<VersionedHostLocalStorageClearResponse>;
 /** Versioned envelope for [\`HostLocalStorageReadError\`]. */
 export type VersionedHostLocalStorageReadError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostLocalStorageReadError;
 };
 export const VersionedHostLocalStorageReadError: Codec<VersionedHostLocalStorageReadError>;
 /** Versioned envelope for [\`HostLocalStorageReadRequest\`]. */
 export type VersionedHostLocalStorageReadRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostLocalStorageReadRequest;
 };
 export const VersionedHostLocalStorageReadRequest: Codec<VersionedHostLocalStorageReadRequest>;
 /** Versioned envelope for [\`HostLocalStorageReadResponse\`]. */
 export type VersionedHostLocalStorageReadResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostLocalStorageReadResponse;
 };
 export const VersionedHostLocalStorageReadResponse: Codec<VersionedHostLocalStorageReadResponse>;
@@ -1830,7 +1827,7 @@ export type VersionedHostLocalStorageWriteError =
 /** Version 1 payload. */
 {
     tag: "V1";
-    value: HostLocalStorageReadError;
+    value: V01HostLocalStorageReadError;
 };
 export const VersionedHostLocalStorageWriteError: Codec<VersionedHostLocalStorageWriteError>;
 /** Versioned envelope for [\`HostLocalStorageWriteRequest\`]. */
@@ -1849,6 +1846,14 @@ export type VersionedHostLocalStorageWriteResponse =
     value?: undefined;
 };
 export const VersionedHostLocalStorageWriteResponse: Codec<VersionedHostLocalStorageWriteResponse>;
+/** Versioned envelope for [\`HostLocaleSubscribeError\`]. */
+export type VersionedHostLocaleSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostLocaleSubscribeError: Codec<VersionedHostLocaleSubscribeError>;
 /** Versioned envelope for [\`HostLocaleSubscribeItem\`]. */
 export type VersionedHostLocaleSubscribeItem = 
 /** Version 1 payload. */
@@ -1857,6 +1862,14 @@ export type VersionedHostLocaleSubscribeItem =
     value: HostLocaleSubscribeItem;
 };
 export const VersionedHostLocaleSubscribeItem: Codec<VersionedHostLocaleSubscribeItem>;
+/** Versioned envelope for [\`HostLocaleSubscribeRequest\`]. */
+export type VersionedHostLocaleSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostLocaleSubscribeRequest: Codec<VersionedHostLocaleSubscribeRequest>;
 /** Versioned envelope for [\`HostNavigateToError\`]. */
 export type VersionedHostNavigateToError = 
 /** Version 1 payload. */
@@ -1980,6 +1993,54 @@ export const VersionedHostPaymentTopUpResponse: Codec<VersionedHostPaymentTopUpR
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export const HostPlatform: Codec<HostPlatform>;
+/** Versioned envelope for [\`HostPocketListSubscribeError\`]. */
+export type VersionedHostPocketListSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostPocketListSubscribeError: Codec<VersionedHostPocketListSubscribeError>;
+/** Versioned envelope for [\`HostPocketListSubscribeItem\`]. */
+export type VersionedHostPocketListSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketListSubscribeItem;
+};
+export const VersionedHostPocketListSubscribeItem: Codec<VersionedHostPocketListSubscribeItem>;
+/** Versioned envelope for [\`HostPocketListSubscribeRequest\`]. */
+export type VersionedHostPocketListSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostPocketListSubscribeRequest: Codec<VersionedHostPocketListSubscribeRequest>;
+/** Versioned envelope for [\`HostPocketRemoveCardError\`]. */
+export type VersionedHostPocketRemoveCardError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardError;
+};
+export const VersionedHostPocketRemoveCardError: Codec<VersionedHostPocketRemoveCardError>;
+/** Versioned envelope for [\`HostPocketRemoveCardRequest\`]. */
+export type VersionedHostPocketRemoveCardRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPocketRemoveCardRequest;
+};
+export const VersionedHostPocketRemoveCardRequest: Codec<VersionedHostPocketRemoveCardRequest>;
+/** Versioned envelope for [\`HostPocketRemoveCardResponse\`]. */
+export type VersionedHostPocketRemoveCardResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostPocketRemoveCardResponse: Codec<VersionedHostPocketRemoveCardResponse>;
 /** Versioned envelope for [\`HostPushNotificationCancelError\`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -2028,6 +2089,30 @@ export type VersionedHostPushNotificationResponse =
     value: HostPushNotificationResponse;
 };
 export const VersionedHostPushNotificationResponse: Codec<VersionedHostPushNotificationResponse>;
+/** Versioned envelope for [\`HostRendererActionSubscribeError\`]. */
+export type VersionedHostRendererActionSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostRendererActionSubscribeError: Codec<VersionedHostRendererActionSubscribeError>;
+/** Versioned envelope for [\`HostRendererActionSubscribeItem\`]. */
+export type VersionedHostRendererActionSubscribeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostRendererActionSubscribeItem;
+};
+export const VersionedHostRendererActionSubscribeItem: Codec<VersionedHostRendererActionSubscribeItem>;
+/** Versioned envelope for [\`HostRendererActionSubscribeRequest\`]. */
+export type VersionedHostRendererActionSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostRendererActionSubscribeRequest: Codec<VersionedHostRendererActionSubscribeRequest>;
 /** Versioned envelope for [\`HostRequestLoginError\`]. */
 export type VersionedHostRequestLoginError = 
 /** Version 1 payload. */
@@ -2209,6 +2294,14 @@ export type VersionedHostSignRawWithLegacyAccountResponse =
     value: HostSignPayloadResponse;
 };
 export const VersionedHostSignRawWithLegacyAccountResponse: Codec<VersionedHostSignRawWithLegacyAccountResponse>;
+/** Versioned envelope for [\`HostThemeSubscribeError\`]. */
+export type VersionedHostThemeSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostThemeSubscribeError: Codec<VersionedHostThemeSubscribeError>;
 /** Versioned envelope for [\`HostThemeSubscribeItem\`]. */
 export type VersionedHostThemeSubscribeItem = 
 /** Version 1 payload. */
@@ -2217,6 +2310,41 @@ export type VersionedHostThemeSubscribeItem =
     value: HostThemeSubscribeItem;
 };
 export const VersionedHostThemeSubscribeItem: Codec<VersionedHostThemeSubscribeItem>;
+/** Versioned envelope for [\`HostThemeSubscribeRequest\`]. */
+export type VersionedHostThemeSubscribeRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostThemeSubscribeRequest: Codec<VersionedHostThemeSubscribeRequest>;
+/** How an image meets the box its modifiers size. */
+export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";
+export const ImageFit: Codec<ImageFit>;
+/** Properties of an \`Image\`. */
+export interface ImageProps {
+    /** Where the image bytes come from. */
+    source: ImageSource;
+    /** Defaults to \`Fill\`. */
+    fit?: ImageFit;
+}
+export const ImageProps: Codec<ImageProps>;
+/** Where image bytes come from. The host fetches them; the tree carries no URL. */
+export type ImageSource = 
+/** A Bulletin chain blob, addressed by its CID. */
+{
+    tag: "Bulletin";
+    value: string;
+}
+/**
+ * A file inside the product's executable archive, as a path relative to
+ * the archive root.
+ */
+ | {
+    tag: "Archive";
+    value: string;
+};
+export const ImageSource: Codec<ImageSource>;
 /**
  * A user-imported (legacy) account: public key plus an optional user-chosen
  * display name.
@@ -2250,7 +2378,7 @@ export interface LegacyAccountTxPayload {
     txExtVersion: number;
 }
 export const LegacyAccountTxPayload: Codec<LegacyAccountTxPayload>;
-/** Layout and styling modifiers applied to custom renderer components. */
+/** Layout and styling applied to one node. */
 export type Modifier = 
 /** Outer spacing. */
 {
@@ -2267,7 +2395,7 @@ export type Modifier =
     tag: "Background";
     value: Background;
 }
-/** Border style. */
+/** Border. */
  | {
     tag: "Border";
     value: BorderStyle;
@@ -2275,44 +2403,42 @@ export type Modifier =
 /** Fixed height. */
  | {
     tag: "Height";
-    value: {
-        height: Size;
-    };
+    value: Size;
 }
 /** Fixed width. */
  | {
     tag: "Width";
-    value: {
-        width: Size;
-    };
+    value: Size;
 }
 /** Minimum width. */
  | {
     tag: "MinWidth";
-    value: {
-        width: Size;
-    };
+    value: Size;
 }
 /** Minimum height. */
  | {
     tag: "MinHeight";
-    value: {
-        height: Size;
-    };
+    value: Size;
 }
-/** Fill available width. */
+/** Fill the available width. */
  | {
     tag: "FillWidth";
-    value: {
-        enabled: boolean;
-    };
+    value: boolean;
 }
-/** Fill available height. */
+/** Fill the available height. */
  | {
     tag: "FillHeight";
-    value: {
-        enabled: boolean;
-    };
+    value: boolean;
+}
+/** 0 is transparent, 255 is opaque. */
+ | {
+    tag: "Opacity";
+    value: number;
+}
+/** Compositing mode against what is behind the node. */
+ | {
+    tag: "BlendingMode";
+    value: BlendingMode;
 };
 export const Modifier: Codec<Modifier>;
 /** Opaque identifier for a push notification, unique per product. */
@@ -2333,9 +2459,6 @@ export type OperationStartedResult =
     value?: undefined;
 };
 export const OperationStartedResult: Codec<OperationStartedResult>;
-/** An optional boolean with the compact SCALE encoding used by renderer props. */
-export type OptionalBool = boolean | undefined;
-export const OptionalBool: Codec<OptionalBool>;
 /**
  * Source for a payment top-up operation.
  *
@@ -2372,6 +2495,14 @@ export type PaymentTopUpSource =
     };
 };
 export const PaymentTopUpSource: Codec<PaymentTopUpSource>;
+/** One of the calling product's Pocket cards. */
+export interface PocketCard {
+    /** Card label declared by the product, unique within the product. */
+    cardId: string;
+    /** Placed by the host itself; removable by neither the user nor the product. */
+    privileged: boolean;
+}
+export const PocketCard: Codec<PocketCard>;
 /** Preimage submission error. */
 export type PreimageSubmitError = 
 /** Catch-all. */
@@ -2419,22 +2550,6 @@ export interface ProductAccountTxPayload {
     txExtVersion: number;
 }
 export const ProductAccountTxPayload: Codec<ProductAccountTxPayload>;
-/** Versioned envelope for [\`ProductChatCustomMessageRenderItem\`]. */
-export type VersionedProductChatCustomMessageRenderItem = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: CustomRendererNode;
-};
-export const VersionedProductChatCustomMessageRenderItem: Codec<VersionedProductChatCustomMessageRenderItem>;
-/** Versioned envelope for [\`ProductChatCustomMessageRenderRequest\`]. */
-export type VersionedProductChatCustomMessageRenderRequest = 
-/** Version 1 payload. */
-{
-    tag: "V1";
-    value: ProductChatCustomMessageRenderRequest;
-};
-export const VersionedProductChatCustomMessageRenderRequest: Codec<VersionedProductChatCustomMessageRenderRequest>;
 /**
  * A product-scoped proof context: a product and a context within it.
  *
@@ -2452,6 +2567,30 @@ export interface ProductProofContext {
     suffix: DerivationIndex;
 }
 export const ProductProofContext: Codec<ProductProofContext>;
+/** Versioned envelope for [\`ProductRendererRenderError\`]. */
+export type VersionedProductRendererRenderError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedProductRendererRenderError: Codec<VersionedProductRendererRenderError>;
+/** Versioned envelope for [\`ProductRendererRenderItem\`]. */
+export type VersionedProductRendererRenderItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: RendererNode;
+};
+export const VersionedProductRendererRenderItem: Codec<VersionedProductRendererRenderItem>;
+/** Versioned envelope for [\`ProductRendererRenderRequest\`]. */
+export type VersionedProductRendererRenderRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: ProductRendererRenderRequest;
+};
+export const VersionedProductRendererRenderRequest: Codec<VersionedProductRendererRenderRequest>;
 /** Raw data to sign -- either binary bytes or a string message. */
 export type RawPayload = 
 /** Raw binary data to sign. */
@@ -2551,6 +2690,14 @@ export type VersionedRemoteChainHeadContinueResponse =
     value?: undefined;
 };
 export const VersionedRemoteChainHeadContinueResponse: Codec<VersionedRemoteChainHeadContinueResponse>;
+/** Versioned envelope for [\`RemoteChainHeadFollowError\`]. */
+export type VersionedRemoteChainHeadFollowError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedRemoteChainHeadFollowError: Codec<VersionedRemoteChainHeadFollowError>;
 /** Versioned envelope for [\`RemoteChainHeadFollowItem\`]. */
 export type VersionedRemoteChainHeadFollowItem = 
 /** Version 1 payload. */
@@ -2886,6 +3033,14 @@ export type VersionedRemotePermissionResponse =
     value: RemotePermissionResponse;
 };
 export const VersionedRemotePermissionResponse: Codec<VersionedRemotePermissionResponse>;
+/** Versioned envelope for [\`RemotePreimageLookupSubscribeError\`]. */
+export type VersionedRemotePreimageLookupSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedRemotePreimageLookupSubscribeError: Codec<VersionedRemotePreimageLookupSubscribeError>;
 /** Versioned envelope for [\`RemotePreimageLookupSubscribeItem\`]. */
 export type VersionedRemotePreimageLookupSubscribeItem = 
 /** Version 1 payload. */
@@ -2990,6 +3145,14 @@ export type VersionedRemoteStatementStoreSubmitRequest =
     value: SignedStatement;
 };
 export const VersionedRemoteStatementStoreSubmitRequest: Codec<VersionedRemoteStatementStoreSubmitRequest>;
+/** Versioned envelope for [\`RemoteStatementStoreSubmitResponse\`]. */
+export type VersionedRemoteStatementStoreSubmitResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedRemoteStatementStoreSubmitResponse: Codec<VersionedRemoteStatementStoreSubmitResponse>;
 /** Versioned envelope for [\`RemoteStatementStoreSubscribeError\`]. */
 export type VersionedRemoteStatementStoreSubscribeError = 
 /** Version 1 payload. */
@@ -3014,6 +3177,126 @@ export type VersionedRemoteStatementStoreSubscribeRequest =
     value: RemoteStatementStoreSubscribeRequest;
 };
 export const VersionedRemoteStatementStoreSubscribeRequest: Codec<VersionedRemoteStatementStoreSubscribeRequest>;
+/** Where a product-rendered body lives, and the id that names it there. */
+export type RenderContext = 
+/** A message in a chat room. */
+{
+    tag: "ChatMessage";
+    value: {
+        roomId: string;
+        messageId: string;
+        messageType: string;
+    };
+}
+/** A candidate answered to an input query. */
+ | {
+    tag: "InputWidget";
+    value: {
+        candidateId: string;
+    };
+}
+/** A card face in the host's Pocket collection. */
+ | {
+    tag: "PocketCard";
+    value: {
+        cardId: string;
+    };
+};
+export const RenderContext: Codec<RenderContext>;
+/**
+ * A node in a product-rendered tree. Container variants recurse through
+ * \`children\`.
+ */
+export type RendererNode = 
+/** Draws nothing. */
+{
+    tag: "Nil";
+    value?: undefined;
+}
+/** A text run. */
+ | {
+    tag: "String";
+    value: {
+        text: string;
+    };
+}
+/** Generic container. */
+ | {
+    tag: "Box";
+    value: {
+        modifiers: Array<Modifier>;
+        props: BoxProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Vertical layout. */
+ | {
+    tag: "Column";
+    value: {
+        modifiers: Array<Modifier>;
+        props: ColumnProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Horizontal layout. */
+ | {
+    tag: "Row";
+    value: {
+        modifiers: Array<Modifier>;
+        props: RowProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Flexible space. */
+ | {
+    tag: "Spacer";
+    value: {
+        modifiers: Array<Modifier>;
+    };
+}
+/** Styled text. */
+ | {
+    tag: "Text";
+    value: {
+        modifiers: Array<Modifier>;
+        props: TextProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Interactive button. */
+ | {
+    tag: "Button";
+    value: {
+        modifiers: Array<Modifier>;
+        props: ButtonProps;
+        children: Array<RendererNode>;
+    };
+}
+/** Single-line text input. */
+ | {
+    tag: "TextField";
+    value: {
+        modifiers: Array<Modifier>;
+        props: TextFieldProps;
+    };
+}
+/** Image, sized by modifiers. */
+ | {
+    tag: "Image";
+    value: {
+        modifiers: Array<Modifier>;
+        props: ImageProps;
+    };
+}
+/** Applies its effect to its children. */
+ | {
+    tag: "Effect";
+    value: {
+        props: EffectProps;
+        children: Array<RendererNode>;
+    };
+};
+export const RendererNode: Codec<RendererNode>;
 /** Error from [\`crate::api::ResourceAllocation::request\`]. */
 export type ResourceAllocationError = 
 /** Catch-all. */
@@ -3054,11 +3337,11 @@ export const RingVrfKeyDisclosure: Codec<RingVrfKeyDisclosure>;
 /** Ring-VRF member public key. */
 export type RingVrfPublicKey = HexString;
 export const RingVrfPublicKey: Codec<RingVrfPublicKey>;
-/** Properties for a [\`CustomRendererNode::Row\`] layout. */
+/** Properties of a \`Row\`. */
 export interface RowProps {
-    /** Vertical alignment of children. */
+    /** Cross-axis alignment of children. */
     verticalAlignment?: VerticalAlignment;
-    /** Horizontal arrangement of children. */
+    /** Main-axis distribution of children. */
     horizontalArrangement?: Arrangement;
 }
 export const RowProps: Codec<RowProps>;
@@ -3101,18 +3384,21 @@ export type RuntimeType =
     };
 };
 export const RuntimeType: Codec<RuntimeType>;
-/** Shape for borders and backgrounds. */
+/** Outline of a background or border. */
 export type Shape = 
-/** Border radius value. */
+/** Rounded corners with the given radius. */
 {
     tag: "Rounded";
-    value: {
-        radius: Size;
-    };
+    value: Size;
 }
 /** Circular shape. */
  | {
     tag: "Circle";
+    value?: undefined;
+}
+/** Square corners. */
+ | {
+    tag: "Square";
     value?: undefined;
 };
 export const Shape: Codec<Shape>;
@@ -3132,12 +3418,7 @@ export interface SignedStatement {
     data?: HexString;
 }
 export const SignedStatement: Codec<SignedStatement>;
-/**
- * A size/dimension value (logical pixels) used across the custom renderer.
- *
- * Encoded as a SCALE \`Compact<u64>\`: the common small values cost a single
- * byte on the wire instead of eight.
- */
+/** A size in logical pixels, SCALE-encoded as \`Compact<u64>\`. */
 export type Size = number | bigint;
 export const Size: Codec<Size>;
 /** A statement with optional proof and metadata. */
@@ -3215,21 +3496,24 @@ export interface StorageResultItem {
     closestDescendantMerkleValue?: HexString;
 }
 export const StorageResultItem: Codec<StorageResultItem>;
-/** Properties for a [\`CustomRendererNode::TextField\`]. */
+/** Properties of a \`TextField\`. */
 export interface TextFieldProps {
-    /** Current text value. */
+    /** Current value. */
     text: string;
-    /** Placeholder text. */
+    /** Shown when the value is empty. */
     placeholder?: string;
     /** Field label. */
     label?: string;
-    /** Whether the field is enabled. Absent leaves the default to the host. */
-    enabled: OptionalBool;
-    /** Action identifier triggered when the value changes. */
+    /** Whether the field accepts input. Absent leaves the default to the host. */
+    enabled?: boolean;
+    /**
+     * Action triggered on every value change. The action carries the new
+     * value as UTF-8 bytes, with no length prefix.
+     */
     valueChangeAction?: string;
 }
 export const TextFieldProps: Codec<TextFieldProps>;
-/** Properties for a [\`CustomRendererNode::Text\`] display. */
+/** Properties of a \`Text\`. */
 export interface TextProps {
     /** Typography preset. */
     style?: TypographyStyle;
@@ -3266,7 +3550,7 @@ export interface TxPayloadExtension {
     additionalSigned: HexString;
 }
 export const TxPayloadExtension: Codec<TxPayloadExtension>;
-/** Text typography presets. */
+/** Typography presets, resolved by the host's design system. */
 export type TypographyStyle = "HeadlineLarge" | "TitleMediumRegular" | "BodyLargeRegular" | "BodyMediumRegular" | "BodySmallRegular";
 export const TypographyStyle: Codec<TypographyStyle>;
 /** User's authentication state. */
@@ -3954,7 +4238,7 @@ export interface HostLocalStorageClearRequest {
 }
 export const HostLocalStorageClearRequest: Codec<HostLocalStorageClearRequest>;
 /** Local storage operation error. */
-export type HostLocalStorageReadError = 
+export type V01HostLocalStorageReadError = 
 /** Storage quota exceeded. */
 {
     tag: "Full";
@@ -3967,13 +4251,13 @@ export type HostLocalStorageReadError =
         reason: string;
     };
 };
-export const HostLocalStorageReadError: Codec<HostLocalStorageReadError>;
+export const V01HostLocalStorageReadError: Codec<V01HostLocalStorageReadError>;
 /** Request to read a local storage value. */
-export interface HostLocalStorageReadRequest {
+export interface V01HostLocalStorageReadRequest {
     /** Storage key to read. */
     key: string;
 }
-export const HostLocalStorageReadRequest: Codec<HostLocalStorageReadRequest>;
+export const V01HostLocalStorageReadRequest: Codec<V01HostLocalStorageReadRequest>;
 /** Response containing an optional local storage value. */
 export interface HostLocalStorageReadResponse {
     /** Stored value, if present. */
@@ -4208,6 +4492,33 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export const HostPaymentTopUpRequest: Codec<HostPaymentTopUpRequest>;
+/** The calling product's cards: the whole set on subscribe and after every change. */
+export interface HostPocketListSubscribeItem {
+    /** Cards currently in Pocket for the calling product. */
+    cards: Array<PocketCard>;
+}
+export const HostPocketListSubscribeItem: Codec<HostPocketListSubscribeItem>;
+/** Card removal failure. */
+export type HostPocketRemoveCardError = 
+/** The card is privileged and stays in Pocket. */
+{
+    tag: "Privileged";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostPocketRemoveCardError: Codec<HostPocketRemoveCardError>;
+/** Request to remove one of the calling product's cards. */
+export interface HostPocketRemoveCardRequest {
+    /** Card to remove. A card that is not present is already removed. */
+    cardId: string;
+}
+export const HostPocketRemoveCardRequest: Codec<HostPocketRemoveCardRequest>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [\`HostPushNotificationResponse\`]. */
@@ -4256,6 +4567,20 @@ export interface HostPushNotificationResponse {
     id: NotificationId;
 }
 export const HostPushNotificationResponse: Codec<HostPushNotificationResponse>;
+/** An action triggered inside a product-rendered body. */
+export interface HostRendererActionSubscribeItem {
+    /** Where the body lives. */
+    context: RenderContext;
+    /** Which action was triggered, as named in the renderer tree. */
+    actionId: string;
+    /**
+     * Data the node attached to the action. A \`Button\` press carries an
+     * empty payload; a \`TextField\` value change carries the UTF-8 bytes of
+     * the new value, with no length prefix.
+     */
+    payload: HexString;
+}
+export const HostRendererActionSubscribeItem: Codec<HostRendererActionSubscribeItem>;
 /** Login request error. */
 export type HostRequestLoginError = 
 /** Catch-all. */
@@ -4367,16 +4692,14 @@ export interface HostThemeSubscribeItem {
     variant: ThemeVariant;
 }
 export const HostThemeSubscribeItem: Codec<HostThemeSubscribeItem>;
-/** Render work sent by the host when a native custom-message cell appears. */
-export interface ProductChatCustomMessageRenderRequest {
-    /** Stable identifier used to correlate triggered actions. */
-    messageId: string;
-    /** Product-defined discriminator used to select a renderer. */
-    messageType: string;
-    /** Stored product-defined message payload. */
+/** A body the host needs drawn. */
+export interface ProductRendererRenderRequest {
+    /** Where the body lives. */
+    context: RenderContext;
+    /** Product-defined payload, opaque to the host. */
     payload: HexString;
 }
-export const ProductChatCustomMessageRenderRequest: Codec<ProductChatCustomMessageRenderRequest>;
+export const ProductRendererRenderRequest: Codec<ProductRendererRenderRequest>;
 /** Request to fetch the body of a pinned block. */
 export interface RemoteChainHeadBodyRequest {
     /** Chain genesis hash. */
@@ -4754,7 +5077,53 @@ export type RemoteStatementStoreSubscribeRequest =
     value: Array<Topic>;
 };
 export const RemoteStatementStoreSubscribeRequest: Codec<RemoteStatementStoreSubscribeRequest>;
-/** Vertical alignment options. */
+/** Local storage read failure. */
+export type HostLocalStorageReadError = 
+/** Storage quota exceeded. */
+{
+    tag: "Full";
+    value?: undefined;
+}
+/**
+ * The addressed storage belongs to another product that has not granted
+ * this caller the \`storage\` scope.
+ *
+ * One variant answers every reason: the product does not resolve, it
+ * published no manifest, or its manifest grants this caller nothing.
+ * Distinguishing them would make the call a probe for which products exist
+ * and which hold data.
+ */
+ | {
+    tag: "AccessNotGranted";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostLocalStorageReadError: Codec<HostLocalStorageReadError>;
+/**
+ * Request to read a local storage value.
+ *
+ * Storage is private by default: \`product: None\` addresses the caller's own
+ * storage, which is what every v0.1 read resolved to. Naming another product
+ * reads that product's storage instead, and succeeds only if that product's
+ * manifest grants this caller the \`storage\` scope.
+ */
+export interface HostLocalStorageReadRequest {
+    /**
+     * Product whose storage is read. \`None\`, or the caller's own id, means the
+     * caller, and consults no grant.
+     */
+    product?: string;
+    /** Storage key to read. */
+    key: string;
+}
+export const HostLocalStorageReadRequest: Codec<HostLocalStorageReadRequest>;
+/** Cross-axis alignment of \`Row\` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export const VerticalAlignment: Codec<VerticalAlignment>;
 /** An sr25519 (schnorrkel) VRF signature: the VRF pre-output and its proof. */
@@ -4786,6 +5155,7 @@ export import AllocationOutcome = T.AllocationOutcome;
 export import Arrangement = T.Arrangement;
 export import Background = T.Background;
 export import Balance = T.Balance;
+export import BlendingMode = T.BlendingMode;
 export import BorderStyle = T.BorderStyle;
 export import BoxProps = T.BoxProps;
 export import ButtonProps = T.ButtonProps;
@@ -4825,13 +5195,16 @@ export import ColorToken = T.ColorToken;
 export import ColumnProps = T.ColumnProps;
 export import ContentAlignment = T.ContentAlignment;
 export import ContextualAlias = T.ContextualAlias;
-export import CustomRendererNode = T.CustomRendererNode;
 export import DerivationIndex = T.DerivationIndex;
 export import Dimensions = T.Dimensions;
+export import Effect = T.Effect;
+export import EffectProps = T.EffectProps;
 export import GenericError = T.GenericError;
 export import GenesisHash = T.GenesisHash;
 export import HorizontalAlignment = T.HorizontalAlignment;
+export import VersionedHostAccountConnectionStatusSubscribeError = T.VersionedHostAccountConnectionStatusSubscribeError;
 export import VersionedHostAccountConnectionStatusSubscribeItem = T.VersionedHostAccountConnectionStatusSubscribeItem;
+export import VersionedHostAccountConnectionStatusSubscribeRequest = T.VersionedHostAccountConnectionStatusSubscribeRequest;
 export import VersionedHostAccountCreateProofError = T.VersionedHostAccountCreateProofError;
 export import VersionedHostAccountCreateProofRequest = T.VersionedHostAccountCreateProofRequest;
 export import VersionedHostAccountCreateProofResponse = T.VersionedHostAccountCreateProofResponse;
@@ -4853,11 +5226,15 @@ export import VersionedHostAccountRingVrfSignResponse = T.VersionedHostAccountRi
 export import VersionedHostAccountSignVrfError = T.VersionedHostAccountSignVrfError;
 export import VersionedHostAccountSignVrfRequest = T.VersionedHostAccountSignVrfRequest;
 export import VersionedHostAccountSignVrfResponse = T.VersionedHostAccountSignVrfResponse;
+export import VersionedHostChatActionSubscribeError = T.VersionedHostChatActionSubscribeError;
 export import VersionedHostChatActionSubscribeItem = T.VersionedHostChatActionSubscribeItem;
+export import VersionedHostChatActionSubscribeRequest = T.VersionedHostChatActionSubscribeRequest;
 export import VersionedHostChatCreateRoomError = T.VersionedHostChatCreateRoomError;
 export import VersionedHostChatCreateRoomRequest = T.VersionedHostChatCreateRoomRequest;
 export import VersionedHostChatCreateRoomResponse = T.VersionedHostChatCreateRoomResponse;
+export import VersionedHostChatListSubscribeError = T.VersionedHostChatListSubscribeError;
 export import VersionedHostChatListSubscribeItem = T.VersionedHostChatListSubscribeItem;
+export import VersionedHostChatListSubscribeRequest = T.VersionedHostChatListSubscribeRequest;
 export import VersionedHostChatPostMessageError = T.VersionedHostChatPostMessageError;
 export import VersionedHostChatPostMessageRequest = T.VersionedHostChatPostMessageRequest;
 export import VersionedHostChatPostMessageResponse = T.VersionedHostChatPostMessageResponse;
@@ -4931,7 +5308,9 @@ export import VersionedHostLocalStorageReadResponse = T.VersionedHostLocalStorag
 export import VersionedHostLocalStorageWriteError = T.VersionedHostLocalStorageWriteError;
 export import VersionedHostLocalStorageWriteRequest = T.VersionedHostLocalStorageWriteRequest;
 export import VersionedHostLocalStorageWriteResponse = T.VersionedHostLocalStorageWriteResponse;
+export import VersionedHostLocaleSubscribeError = T.VersionedHostLocaleSubscribeError;
 export import VersionedHostLocaleSubscribeItem = T.VersionedHostLocaleSubscribeItem;
+export import VersionedHostLocaleSubscribeRequest = T.VersionedHostLocaleSubscribeRequest;
 export import VersionedHostNavigateToError = T.VersionedHostNavigateToError;
 export import VersionedHostNavigateToRequest = T.VersionedHostNavigateToRequest;
 export import VersionedHostNavigateToResponse = T.VersionedHostNavigateToResponse;
@@ -4948,12 +5327,21 @@ export import VersionedHostPaymentTopUpError = T.VersionedHostPaymentTopUpError;
 export import VersionedHostPaymentTopUpRequest = T.VersionedHostPaymentTopUpRequest;
 export import VersionedHostPaymentTopUpResponse = T.VersionedHostPaymentTopUpResponse;
 export import HostPlatform = T.HostPlatform;
+export import VersionedHostPocketListSubscribeError = T.VersionedHostPocketListSubscribeError;
+export import VersionedHostPocketListSubscribeItem = T.VersionedHostPocketListSubscribeItem;
+export import VersionedHostPocketListSubscribeRequest = T.VersionedHostPocketListSubscribeRequest;
+export import VersionedHostPocketRemoveCardError = T.VersionedHostPocketRemoveCardError;
+export import VersionedHostPocketRemoveCardRequest = T.VersionedHostPocketRemoveCardRequest;
+export import VersionedHostPocketRemoveCardResponse = T.VersionedHostPocketRemoveCardResponse;
 export import VersionedHostPushNotificationCancelError = T.VersionedHostPushNotificationCancelError;
 export import VersionedHostPushNotificationCancelRequest = T.VersionedHostPushNotificationCancelRequest;
 export import VersionedHostPushNotificationCancelResponse = T.VersionedHostPushNotificationCancelResponse;
 export import VersionedHostPushNotificationError = T.VersionedHostPushNotificationError;
 export import VersionedHostPushNotificationRequest = T.VersionedHostPushNotificationRequest;
 export import VersionedHostPushNotificationResponse = T.VersionedHostPushNotificationResponse;
+export import VersionedHostRendererActionSubscribeError = T.VersionedHostRendererActionSubscribeError;
+export import VersionedHostRendererActionSubscribeItem = T.VersionedHostRendererActionSubscribeItem;
+export import VersionedHostRendererActionSubscribeRequest = T.VersionedHostRendererActionSubscribeRequest;
 export import VersionedHostRequestLoginError = T.VersionedHostRequestLoginError;
 export import VersionedHostRequestLoginRequest = T.VersionedHostRequestLoginRequest;
 export import VersionedHostRequestLoginResponse = T.VersionedHostRequestLoginResponse;
@@ -4973,21 +5361,27 @@ export import VersionedHostSignRawResponse = T.VersionedHostSignRawResponse;
 export import VersionedHostSignRawWithLegacyAccountError = T.VersionedHostSignRawWithLegacyAccountError;
 export import VersionedHostSignRawWithLegacyAccountRequest = T.VersionedHostSignRawWithLegacyAccountRequest;
 export import VersionedHostSignRawWithLegacyAccountResponse = T.VersionedHostSignRawWithLegacyAccountResponse;
+export import VersionedHostThemeSubscribeError = T.VersionedHostThemeSubscribeError;
 export import VersionedHostThemeSubscribeItem = T.VersionedHostThemeSubscribeItem;
+export import VersionedHostThemeSubscribeRequest = T.VersionedHostThemeSubscribeRequest;
+export import ImageFit = T.ImageFit;
+export import ImageProps = T.ImageProps;
+export import ImageSource = T.ImageSource;
 export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
 export import NotificationId = T.NotificationId;
 export import OperationStartedResult = T.OperationStartedResult;
-export import OptionalBool = T.OptionalBool;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
+export import PocketCard = T.PocketCard;
 export import PreimageSubmitError = T.PreimageSubmitError;
 export import ProductAccount = T.ProductAccount;
 export import ProductAccountId = T.ProductAccountId;
 export import ProductAccountTxPayload = T.ProductAccountTxPayload;
-export import VersionedProductChatCustomMessageRenderItem = T.VersionedProductChatCustomMessageRenderItem;
-export import VersionedProductChatCustomMessageRenderRequest = T.VersionedProductChatCustomMessageRenderRequest;
 export import ProductProofContext = T.ProductProofContext;
+export import VersionedProductRendererRenderError = T.VersionedProductRendererRenderError;
+export import VersionedProductRendererRenderItem = T.VersionedProductRendererRenderItem;
+export import VersionedProductRendererRenderRequest = T.VersionedProductRendererRenderRequest;
 export import RawPayload = T.RawPayload;
 export import RegisteredRingVrfKey = T.RegisteredRingVrfKey;
 export import VersionedRemoteChainHeadBodyError = T.VersionedRemoteChainHeadBodyError;
@@ -4999,6 +5393,7 @@ export import VersionedRemoteChainHeadCallResponse = T.VersionedRemoteChainHeadC
 export import VersionedRemoteChainHeadContinueError = T.VersionedRemoteChainHeadContinueError;
 export import VersionedRemoteChainHeadContinueRequest = T.VersionedRemoteChainHeadContinueRequest;
 export import VersionedRemoteChainHeadContinueResponse = T.VersionedRemoteChainHeadContinueResponse;
+export import VersionedRemoteChainHeadFollowError = T.VersionedRemoteChainHeadFollowError;
 export import VersionedRemoteChainHeadFollowItem = T.VersionedRemoteChainHeadFollowItem;
 export import VersionedRemoteChainHeadFollowRequest = T.VersionedRemoteChainHeadFollowRequest;
 export import VersionedRemoteChainHeadHeaderError = T.VersionedRemoteChainHeadHeaderError;
@@ -5035,6 +5430,7 @@ export import RemotePermission = T.RemotePermission;
 export import VersionedRemotePermissionError = T.VersionedRemotePermissionError;
 export import VersionedRemotePermissionRequest = T.VersionedRemotePermissionRequest;
 export import VersionedRemotePermissionResponse = T.VersionedRemotePermissionResponse;
+export import VersionedRemotePreimageLookupSubscribeError = T.VersionedRemotePreimageLookupSubscribeError;
 export import VersionedRemotePreimageLookupSubscribeItem = T.VersionedRemotePreimageLookupSubscribeItem;
 export import VersionedRemotePreimageLookupSubscribeRequest = T.VersionedRemotePreimageLookupSubscribeRequest;
 export import VersionedRemotePreimageSubmitError = T.VersionedRemotePreimageSubmitError;
@@ -5048,9 +5444,12 @@ export import VersionedRemoteStatementStoreCreateProofRequest = T.VersionedRemot
 export import VersionedRemoteStatementStoreCreateProofResponse = T.VersionedRemoteStatementStoreCreateProofResponse;
 export import VersionedRemoteStatementStoreSubmitError = T.VersionedRemoteStatementStoreSubmitError;
 export import VersionedRemoteStatementStoreSubmitRequest = T.VersionedRemoteStatementStoreSubmitRequest;
+export import VersionedRemoteStatementStoreSubmitResponse = T.VersionedRemoteStatementStoreSubmitResponse;
 export import VersionedRemoteStatementStoreSubscribeError = T.VersionedRemoteStatementStoreSubscribeError;
 export import VersionedRemoteStatementStoreSubscribeItem = T.VersionedRemoteStatementStoreSubscribeItem;
 export import VersionedRemoteStatementStoreSubscribeRequest = T.VersionedRemoteStatementStoreSubscribeRequest;
+export import RenderContext = T.RenderContext;
+export import RendererNode = T.RendererNode;
 export import ResourceAllocationError = T.ResourceAllocationError;
 export import RingLocation = T.RingLocation;
 export import RingLocationJunction = T.RingLocationJunction;
@@ -5134,8 +5533,8 @@ export import HostGetUserIdResponse = T.HostGetUserIdResponse;
 export import HostHandshakeError = T.HostHandshakeError;
 export import HostHandshakeRequest = T.HostHandshakeRequest;
 export import HostLocalStorageClearRequest = T.HostLocalStorageClearRequest;
-export import HostLocalStorageReadError = T.HostLocalStorageReadError;
-export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
+export import V01HostLocalStorageReadError = T.V01HostLocalStorageReadError;
+export import V01HostLocalStorageReadRequest = T.V01HostLocalStorageReadRequest;
 export import HostLocalStorageReadResponse = T.HostLocalStorageReadResponse;
 export import HostLocalStorageWriteRequest = T.HostLocalStorageWriteRequest;
 export import HostLocaleSubscribeItem = T.HostLocaleSubscribeItem;
@@ -5152,10 +5551,14 @@ export import HostPaymentStatusSubscribeItem = T.HostPaymentStatusSubscribeItem;
 export import HostPaymentStatusSubscribeRequest = T.HostPaymentStatusSubscribeRequest;
 export import HostPaymentTopUpError = T.HostPaymentTopUpError;
 export import HostPaymentTopUpRequest = T.HostPaymentTopUpRequest;
+export import HostPocketListSubscribeItem = T.HostPocketListSubscribeItem;
+export import HostPocketRemoveCardError = T.HostPocketRemoveCardError;
+export import HostPocketRemoveCardRequest = T.HostPocketRemoveCardRequest;
 export import HostPushNotificationCancelRequest = T.HostPushNotificationCancelRequest;
 export import HostPushNotificationError = T.HostPushNotificationError;
 export import HostPushNotificationRequest = T.HostPushNotificationRequest;
 export import HostPushNotificationResponse = T.HostPushNotificationResponse;
+export import HostRendererActionSubscribeItem = T.HostRendererActionSubscribeItem;
 export import HostRequestLoginError = T.HostRequestLoginError;
 export import HostRequestLoginRequest = T.HostRequestLoginRequest;
 export import HostRequestLoginResponse = T.HostRequestLoginResponse;
@@ -5168,7 +5571,7 @@ export import HostSignPayloadWithLegacyAccountRequest = T.HostSignPayloadWithLeg
 export import HostSignRawRequest = T.HostSignRawRequest;
 export import HostSignRawWithLegacyAccountRequest = T.HostSignRawWithLegacyAccountRequest;
 export import HostThemeSubscribeItem = T.HostThemeSubscribeItem;
-export import ProductChatCustomMessageRenderRequest = T.ProductChatCustomMessageRenderRequest;
+export import ProductRendererRenderRequest = T.ProductRendererRenderRequest;
 export import RemoteChainHeadBodyRequest = T.RemoteChainHeadBodyRequest;
 export import RemoteChainHeadBodyResponse = T.RemoteChainHeadBodyResponse;
 export import RemoteChainHeadCallRequest = T.RemoteChainHeadCallRequest;
@@ -5203,6 +5606,8 @@ export import RemoteStatementStoreCreateProofRequest = T.RemoteStatementStoreCre
 export import RemoteStatementStoreCreateProofResponse = T.RemoteStatementStoreCreateProofResponse;
 export import RemoteStatementStoreSubscribeItem = T.RemoteStatementStoreSubscribeItem;
 export import RemoteStatementStoreSubscribeRequest = T.RemoteStatementStoreSubscribeRequest;
+export import HostLocalStorageReadError = T.HostLocalStorageReadError;
+export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
 export import VerticalAlignment = T.VerticalAlignment;
 export import VrfSignature = T.VrfSignature;
 export import VrfTranscriptItem = T.VrfTranscriptItem;
@@ -5213,29 +5618,25 @@ export type { Subscription, TrUApiTransport };
 export declare class RequestTimeoutError extends Error {
     /** Transport-assigned request identifier. */
     readonly requestId: string;
-    /** Wire discriminant of the unanswered request. */
-    readonly discriminant: number;
-    /** Configured request deadline in milliseconds. */
+    /** Trait discriminant of the unanswered request. */
+    readonly traitId: number;
+    /** Method discriminant of the unanswered request. */
+    readonly methodId: number;
+    /** Deadline that elapsed, in milliseconds. */
     readonly timeoutMs: number;
-    constructor(requestId: string, discriminant: number, timeoutMs: number);
+    constructor(requestId: string, traitId: number, methodId: number, timeoutMs: number);
 }
 /**
- * Version overrides used when constructing a transport.
+ * Options accepted when constructing a transport.
  */
 export interface CreateTransportOptions {
-    /**
-     * SCALE codec version advertised during host handshake negotiation.
-     *
-     * @deprecated TODO(shared-core-wire): remove this override with
-     * \`TrUApiTransport.codecVersion\` once generated handshake requests use
-     * \`TRUAPI_CODEC_VERSION\` directly.
-     */
-    codecVersion?: number;
     /**
      * Maximum time to wait for a matching response before rejecting the request.
      *
      * Defaults to 120 seconds. This bounds dead hosts and missed transport
      * handshakes while leaving interactive approval flows enough time to finish.
+     * The handshake keeps its own shorter deadline, since a codec mismatch means
+     * no answer is ever coming.
      */
     requestTimeoutMs?: number;
 }
@@ -5309,6 +5710,22 @@ export declare const services: ServiceInfo[];
 
 
 // explorer/codegen/versions/0.14.0/types.d.ts
+export declare const types: DataType[];
+
+
+// explorer/codegen/versions/0.15.0/services.d.ts
+export declare const services: ServiceInfo[];
+
+
+// explorer/codegen/versions/0.15.0/types.d.ts
+export declare const types: DataType[];
+
+
+// explorer/codegen/versions/0.16.0/services.d.ts
+export declare const services: ServiceInfo[];
+
+
+// explorer/codegen/versions/0.16.0/types.d.ts
 export declare const types: DataType[];
 
 
@@ -5425,22 +5842,22 @@ export interface VersionEntry {
  * time. Mirrors the \`truapi\` crate version. Used by the explorer to render
  * the \`main\` selector label as \`main (x.y.z)\`.
  */
-export declare const packageVersion = "0.14.0";
+export declare const packageVersion = "0.16.0";
 export declare const versions: VersionEntry[];
 
 
 // generated/client.d.ts
 export { ResultAsync, SubscriptionError };
-export type { ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport };
-export declare const TRUAPI_VERSION: 1;
-export declare const TRUAPI_CODEC_VERSION: 1;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "43581e5572c0315a";
+export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
+export declare const TRUAPI_VERSION: 2;
+export declare const TRUAPI_CODEC_VERSION: 2;
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "50637d83426acd22";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to account connection status changes. */
-    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem>;
+    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
     /** Retrieve a product-scoped account. */
     getAccount(request: T.HostAccountGetRequest): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
     /** Retrieve the contextual alias for a context and ring. */
@@ -5485,7 +5902,7 @@ export declare class ChainClient {
     /** Follow the chain head and receive block events. */
     followHeadSubscribe({ request }: {
         request: T.RemoteChainHeadFollowRequest;
-    }): ObservableLike<T.RemoteChainHeadFollowItem>;
+    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
     /** Fetch a block header. */
     getHeadHeader(request: T.RemoteChainHeadHeaderRequest): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
     /** Fetch a block body. */
@@ -5519,14 +5936,13 @@ export declare class ChainClient {
 /** Chat room, bot, and message APIs. */
 export declare class ChatClient {
     private readonly transport;
-    private readonly customMessageRenderRegistration;
     constructor(transport: TrUApiTransport);
     /** Create a chat room. */
     createRoom(request: T.HostChatCreateRoomRequest): ResultAsync<T.HostChatCreateRoomResponse, S.CallErrorValue<T.VersionedHostChatCreateRoomError>>;
     /** Register a chat bot. */
     registerBot(request: T.HostChatRegisterBotRequest): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
     /** Subscribe to the list of chat rooms. */
-    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem>;
+    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
     /**
      * Post a message to a chat room.
      *
@@ -5544,11 +5960,7 @@ export declare class ChatClient {
      */
     postMessage(request: T.HostChatPostMessageRequest): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
-    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem>;
-    /** Streams renderer trees for one stored custom message. */
-    onCustomMessageRender(handler: (request: T.ProductChatCustomMessageRenderRequest) => ObservableSource<T.CustomRendererNode>): {
-        unsubscribe(): void;
-    };
+    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
 }
 /**
  * CoinPayment operations.
@@ -5612,7 +6024,7 @@ export declare class LocaleClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
-    subscribe(): ObservableLike<T.HostLocaleSubscribeItem>;
+    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
@@ -5666,6 +6078,29 @@ export declare class PermissionsClient {
     /** Request a remote-operation permission. */
     requestRemotePermission(request: T.RemotePermissionRequest): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
 }
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export declare class PocketClient {
+    private readonly transport;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.VersionedHostPocketListSubscribeError>>;
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with \`Privileged\`.
+     */
+    removeCard(request: T.HostPocketRemoveCardRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
+}
 /** Preimage lookup and submission methods. */
 export declare class PreimageClient {
     private readonly transport;
@@ -5673,9 +6108,25 @@ export declare class PreimageClient {
     /** Subscribe to preimage lookups for a given key. */
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
-    }): ObservableLike<T.RemotePreimageLookupSubscribeItem>;
+    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
     /** Submit a preimage. Returns the preimage key (hash) on success. */
     submit(request: HexString): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
+}
+/** Product-rendered bodies and the actions triggered inside them. */
+export declare class RendererClient {
+    private readonly transport;
+    private readonly renderRegistration;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Streams renderer trees for one product-rendered body. Each item
+     * replaces the previous tree. The stream stays open while the body is
+     * displayed so the product can redraw in place.
+     */
+    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.VersionedProductRendererRenderError>>): {
+        unsubscribe(): void;
+    };
+    /** Subscribe to actions triggered inside this product's rendered bodies. */
+    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.VersionedHostRendererActionSubscribeError>>;
 }
 /** Resource pre-allocation (allowance management). */
 export declare class ResourceAllocationClient {
@@ -5713,6 +6164,30 @@ export declare class SigningClient {
     signRaw(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
     /** Sign an extrinsic payload. */
     signPayload(request: T.HostSignPayloadRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     */
+    signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     */
+    signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
 }
 /** Statement store methods. */
 export declare class StatementStoreClient {
@@ -5782,7 +6257,7 @@ export declare class ThemeClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to host theme changes. */
-    subscribe(): ObservableLike<T.HostThemeSubscribeItem>;
+    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
 }
 export interface TrUApiClient {
     readonly account: AccountClient;
@@ -5795,7 +6270,9 @@ export interface TrUApiClient {
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;
+    readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
+    readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
     readonly signing: SigningClient;
     readonly statementStore: StatementStoreClient;
@@ -5803,341 +6280,406 @@ export interface TrUApiClient {
     readonly theme: ThemeClient;
 }
 export type Client = TrUApiClient;
-export type GeneratedClientTransport = Omit<TrUApiTransport, "codecVersion"> & Partial<Pick<TrUApiTransport, "codecVersion">>;
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
-export declare function createClient(transport: GeneratedClientTransport): TrUApiClient;
+export declare function createClient(transport: TrUApiTransport): TrUApiClient;
 
 
 // generated/index.d.ts
 
 
 // generated/wire-decode.d.ts
-/** Dev-only: decode a wire frame's SCALE payload to a plain JS value, keyed by frameId.
- *  Request/response/subscription frames only; unknown ids are absent (caller falls back to bytes). */
-export declare const WIRE_DECODE_TABLE: Record<number, (payload: Uint8Array) => unknown>;
+/** Dev-only: decode a wire frame's SCALE payload, keyed by \`trait * 256 +
+ *  method\` and then by that frame's own \`messageType\` byte. Unknown
+ *  addresses or message types are absent (caller falls back to bytes). */
+export declare const WIRE_DECODE_TABLE: Record<number, Record<number, (payload: Uint8Array) => unknown>>;
 
 
 // generated/wire-table.d.ts
 export declare const SYSTEM_HANDSHAKE: {
-    readonly request: 0;
-    readonly response: 1;
+    readonly trait: 1;
+    readonly method: 0;
+    readonly kind: "request";
 };
 export declare const SYSTEM_FEATURE_SUPPORTED: {
-    readonly request: 2;
-    readonly response: 3;
-};
-export declare const NOTIFICATIONS_SEND_PUSH_NOTIFICATION: {
-    readonly request: 4;
-    readonly response: 5;
+    readonly trait: 1;
+    readonly method: 1;
+    readonly kind: "request";
 };
 export declare const SYSTEM_NAVIGATE_TO: {
-    readonly request: 6;
-    readonly response: 7;
-};
-export declare const PERMISSIONS_REQUEST_DEVICE_PERMISSION: {
-    readonly request: 8;
-    readonly response: 9;
-};
-export declare const PERMISSIONS_REQUEST_REMOTE_PERMISSION: {
-    readonly request: 10;
-    readonly response: 11;
-};
-export declare const LOCAL_STORAGE_READ: {
-    readonly request: 12;
-    readonly response: 13;
-};
-export declare const LOCAL_STORAGE_WRITE: {
-    readonly request: 14;
-    readonly response: 15;
-};
-export declare const LOCAL_STORAGE_CLEAR: {
-    readonly request: 16;
-    readonly response: 17;
-};
-export declare const ACCOUNT_CONNECTION_STATUS_SUBSCRIBE: {
-    readonly start: 18;
-    readonly stop: 19;
-    readonly interrupt: 20;
-    readonly receive: 21;
-};
-export declare const ACCOUNT_GET_ACCOUNT: {
-    readonly request: 22;
-    readonly response: 23;
-};
-export declare const ACCOUNT_GET_ACCOUNT_ALIAS: {
-    readonly request: 24;
-    readonly response: 25;
-};
-export declare const ACCOUNT_CREATE_ACCOUNT_PROOF: {
-    readonly request: 26;
-    readonly response: 27;
-};
-export declare const ACCOUNT_GET_LEGACY_ACCOUNTS: {
-    readonly request: 28;
-    readonly response: 29;
-};
-export declare const SIGNING_CREATE_TRANSACTION: {
-    readonly request: 30;
-    readonly response: 31;
-};
-export declare const SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT: {
-    readonly request: 32;
-    readonly response: 33;
-};
-export declare const SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT: {
-    readonly request: 34;
-    readonly response: 35;
-};
-export declare const SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT: {
-    readonly request: 36;
-    readonly response: 37;
-};
-export declare const CHAT_CREATE_ROOM: {
-    readonly request: 38;
-    readonly response: 39;
-};
-export declare const CHAT_REGISTER_BOT: {
-    readonly request: 40;
-    readonly response: 41;
-};
-export declare const CHAT_LIST_SUBSCRIBE: {
-    readonly start: 42;
-    readonly stop: 43;
-    readonly interrupt: 44;
-    readonly receive: 45;
-};
-export declare const CHAT_POST_MESSAGE: {
-    readonly request: 46;
-    readonly response: 47;
-};
-export declare const CHAT_ACTION_SUBSCRIBE: {
-    readonly start: 48;
-    readonly stop: 49;
-    readonly interrupt: 50;
-    readonly receive: 51;
-};
-export declare const CHAT_CUSTOM_MESSAGE_RENDER: {
-    readonly start: 52;
-    readonly stop: 53;
-    readonly interrupt: 54;
-    readonly receive: 55;
-};
-export declare const STATEMENT_STORE_SUBSCRIBE: {
-    readonly start: 56;
-    readonly stop: 57;
-    readonly interrupt: 58;
-    readonly receive: 59;
-};
-export declare const STATEMENT_STORE_CREATE_PROOF: {
-    readonly request: 60;
-    readonly response: 61;
-};
-export declare const STATEMENT_STORE_SUBMIT: {
-    readonly request: 62;
-    readonly response: 63;
-};
-export declare const PREIMAGE_LOOKUP_SUBSCRIBE: {
-    readonly start: 64;
-    readonly stop: 65;
-    readonly interrupt: 66;
-    readonly receive: 67;
-};
-export declare const PREIMAGE_SUBMIT: {
-    readonly request: 68;
-    readonly response: 69;
-};
-export declare const CHAIN_FOLLOW_HEAD_SUBSCRIBE: {
-    readonly start: 76;
-    readonly stop: 77;
-    readonly interrupt: 78;
-    readonly receive: 79;
-};
-export declare const CHAIN_GET_HEAD_HEADER: {
-    readonly request: 80;
-    readonly response: 81;
-};
-export declare const CHAIN_GET_HEAD_BODY: {
-    readonly request: 82;
-    readonly response: 83;
-};
-export declare const CHAIN_GET_HEAD_STORAGE: {
-    readonly request: 84;
-    readonly response: 85;
-};
-export declare const CHAIN_CALL_HEAD: {
-    readonly request: 86;
-    readonly response: 87;
-};
-export declare const CHAIN_UNPIN_HEAD: {
-    readonly request: 88;
-    readonly response: 89;
-};
-export declare const CHAIN_CONTINUE_HEAD: {
-    readonly request: 90;
-    readonly response: 91;
-};
-export declare const CHAIN_STOP_HEAD_OPERATION: {
-    readonly request: 92;
-    readonly response: 93;
-};
-export declare const CHAIN_GET_SPEC_GENESIS_HASH: {
-    readonly request: 94;
-    readonly response: 95;
-};
-export declare const CHAIN_GET_SPEC_CHAIN_NAME: {
-    readonly request: 96;
-    readonly response: 97;
-};
-export declare const CHAIN_GET_SPEC_PROPERTIES: {
-    readonly request: 98;
-    readonly response: 99;
-};
-export declare const CHAIN_BROADCAST_TRANSACTION: {
-    readonly request: 100;
-    readonly response: 101;
-};
-export declare const CHAIN_STOP_TRANSACTION: {
-    readonly request: 102;
-    readonly response: 103;
-};
-export declare const THEME_SUBSCRIBE: {
-    readonly start: 104;
-    readonly stop: 105;
-    readonly interrupt: 106;
-    readonly receive: 107;
-};
-export declare const ENTROPY_DERIVE: {
-    readonly request: 108;
-    readonly response: 109;
-};
-export declare const ACCOUNT_GET_USER_ID: {
-    readonly request: 110;
-    readonly response: 111;
-};
-export declare const ACCOUNT_REQUEST_LOGIN: {
-    readonly request: 112;
-    readonly response: 113;
-};
-export declare const SIGNING_SIGN_RAW: {
-    readonly request: 114;
-    readonly response: 115;
-};
-export declare const SIGNING_SIGN_PAYLOAD: {
-    readonly request: 116;
-    readonly response: 117;
-};
-export declare const PAYMENT_BALANCE_SUBSCRIBE: {
-    readonly start: 118;
-    readonly stop: 119;
-    readonly interrupt: 120;
-    readonly receive: 121;
-};
-export declare const PAYMENT_TOP_UP: {
-    readonly request: 122;
-    readonly response: 123;
-};
-export declare const PAYMENT_REQUEST: {
-    readonly request: 124;
-    readonly response: 125;
-};
-export declare const PAYMENT_STATUS_SUBSCRIBE: {
-    readonly start: 126;
-    readonly stop: 127;
-    readonly interrupt: 128;
-    readonly receive: 129;
-};
-export declare const RESOURCE_ALLOCATION_REQUEST: {
-    readonly request: 130;
-    readonly response: 131;
-};
-export declare const STATEMENT_STORE_CREATE_PROOF_AUTHORIZED: {
-    readonly request: 132;
-    readonly response: 133;
-};
-export declare const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION: {
-    readonly request: 134;
-    readonly response: 135;
-};
-export declare const COIN_PAYMENT_CREATE_PURSE: {
-    readonly request: 136;
-    readonly response: 137;
-};
-export declare const COIN_PAYMENT_QUERY_PURSE: {
-    readonly request: 138;
-    readonly response: 139;
-};
-export declare const COIN_PAYMENT_REBALANCE_PURSE: {
-    readonly start: 140;
-    readonly stop: 141;
-    readonly interrupt: 142;
-    readonly receive: 143;
-};
-export declare const COIN_PAYMENT_DELETE_PURSE: {
-    readonly start: 144;
-    readonly stop: 145;
-    readonly interrupt: 146;
-    readonly receive: 147;
-};
-export declare const COIN_PAYMENT_CREATE_RECEIVABLE: {
-    readonly request: 148;
-    readonly response: 149;
-};
-export declare const COIN_PAYMENT_CREATE_CHEQUE: {
-    readonly request: 150;
-    readonly response: 151;
-};
-export declare const COIN_PAYMENT_DEPOSIT: {
-    readonly start: 152;
-    readonly stop: 153;
-    readonly interrupt: 154;
-    readonly receive: 155;
-};
-export declare const COIN_PAYMENT_REFUND: {
-    readonly start: 156;
-    readonly stop: 157;
-    readonly interrupt: 158;
-    readonly receive: 159;
-};
-export declare const COIN_PAYMENT_LISTEN_FOR_PAYMENT: {
-    readonly start: 160;
-    readonly stop: 161;
-    readonly interrupt: 162;
-    readonly receive: 163;
-};
-export declare const ACCOUNT_SIGN_VRF: {
-    readonly request: 164;
-    readonly response: 165;
-};
-export declare const CHAIN_GET_CHAIN_INFO: {
-    readonly request: 166;
-    readonly response: 167;
-};
-export declare const ACCOUNT_REGISTER_RING_VRF_KEY: {
-    readonly request: 168;
-    readonly response: 169;
-};
-export declare const ACCOUNT_LIST_RING_VRF_KEYS: {
-    readonly request: 170;
-    readonly response: 171;
-};
-export declare const ACCOUNT_RING_VRF_SIGN: {
-    readonly request: 172;
-    readonly response: 173;
-};
-export declare const SYSTEM_GET_PRODUCT_CONTEXT: {
-    readonly request: 190;
-    readonly response: 191;
+    readonly trait: 1;
+    readonly method: 2;
+    readonly kind: "request";
 };
 export declare const SYSTEM_HOST_INFO: {
-    readonly request: 192;
-    readonly response: 193;
+    readonly trait: 1;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const SYSTEM_GET_PRODUCT_CONTEXT: {
+    readonly trait: 1;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_CONNECTION_STATUS_SUBSCRIBE: {
+    readonly trait: 2;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const ACCOUNT_GET_ACCOUNT: {
+    readonly trait: 2;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_GET_ACCOUNT_ALIAS: {
+    readonly trait: 2;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_CREATE_ACCOUNT_PROOF: {
+    readonly trait: 2;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_GET_LEGACY_ACCOUNTS: {
+    readonly trait: 2;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_GET_USER_ID: {
+    readonly trait: 2;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_REQUEST_LOGIN: {
+    readonly trait: 2;
+    readonly method: 6;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_SIGN_VRF: {
+    readonly trait: 2;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_REGISTER_RING_VRF_KEY: {
+    readonly trait: 2;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_LIST_RING_VRF_KEYS: {
+    readonly trait: 2;
+    readonly method: 9;
+    readonly kind: "request";
+};
+export declare const ACCOUNT_RING_VRF_SIGN: {
+    readonly trait: 2;
+    readonly method: 10;
+    readonly kind: "request";
+};
+export declare const CHAIN_FOLLOW_HEAD_SUBSCRIBE: {
+    readonly trait: 3;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const CHAIN_GET_HEAD_HEADER: {
+    readonly trait: 3;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const CHAIN_GET_HEAD_BODY: {
+    readonly trait: 3;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const CHAIN_GET_HEAD_STORAGE: {
+    readonly trait: 3;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const CHAIN_CALL_HEAD: {
+    readonly trait: 3;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const CHAIN_UNPIN_HEAD: {
+    readonly trait: 3;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const CHAIN_CONTINUE_HEAD: {
+    readonly trait: 3;
+    readonly method: 6;
+    readonly kind: "request";
+};
+export declare const CHAIN_STOP_HEAD_OPERATION: {
+    readonly trait: 3;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const CHAIN_GET_SPEC_GENESIS_HASH: {
+    readonly trait: 3;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const CHAIN_GET_SPEC_CHAIN_NAME: {
+    readonly trait: 3;
+    readonly method: 9;
+    readonly kind: "request";
+};
+export declare const CHAIN_GET_SPEC_PROPERTIES: {
+    readonly trait: 3;
+    readonly method: 10;
+    readonly kind: "request";
+};
+export declare const CHAIN_BROADCAST_TRANSACTION: {
+    readonly trait: 3;
+    readonly method: 11;
+    readonly kind: "request";
+};
+export declare const CHAIN_STOP_TRANSACTION: {
+    readonly trait: 3;
+    readonly method: 12;
+    readonly kind: "request";
+};
+export declare const CHAIN_GET_CHAIN_INFO: {
+    readonly trait: 3;
+    readonly method: 13;
+    readonly kind: "request";
+};
+export declare const CHAT_CREATE_ROOM: {
+    readonly trait: 4;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const CHAT_REGISTER_BOT: {
+    readonly trait: 4;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const CHAT_LIST_SUBSCRIBE: {
+    readonly trait: 4;
+    readonly method: 2;
+    readonly kind: "subscription";
+};
+export declare const CHAT_POST_MESSAGE: {
+    readonly trait: 4;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const CHAT_ACTION_SUBSCRIBE: {
+    readonly trait: 4;
+    readonly method: 4;
+    readonly kind: "subscription";
+};
+export declare const COIN_PAYMENT_CREATE_PURSE: {
+    readonly trait: 5;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const COIN_PAYMENT_QUERY_PURSE: {
+    readonly trait: 5;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const COIN_PAYMENT_REBALANCE_PURSE: {
+    readonly trait: 5;
+    readonly method: 2;
+    readonly kind: "subscription";
+};
+export declare const COIN_PAYMENT_DELETE_PURSE: {
+    readonly trait: 5;
+    readonly method: 3;
+    readonly kind: "subscription";
+};
+export declare const COIN_PAYMENT_CREATE_RECEIVABLE: {
+    readonly trait: 5;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const COIN_PAYMENT_CREATE_CHEQUE: {
+    readonly trait: 5;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const COIN_PAYMENT_DEPOSIT: {
+    readonly trait: 5;
+    readonly method: 6;
+    readonly kind: "subscription";
+};
+export declare const COIN_PAYMENT_REFUND: {
+    readonly trait: 5;
+    readonly method: 7;
+    readonly kind: "subscription";
+};
+export declare const COIN_PAYMENT_LISTEN_FOR_PAYMENT: {
+    readonly trait: 5;
+    readonly method: 8;
+    readonly kind: "subscription";
+};
+export declare const ENTROPY_DERIVE: {
+    readonly trait: 6;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const LOCAL_STORAGE_READ: {
+    readonly trait: 7;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const LOCAL_STORAGE_WRITE: {
+    readonly trait: 7;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const LOCAL_STORAGE_CLEAR: {
+    readonly trait: 7;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_SEND_PUSH_NOTIFICATION: {
+    readonly trait: 8;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION: {
+    readonly trait: 8;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const PAYMENT_BALANCE_SUBSCRIBE: {
+    readonly trait: 9;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const PAYMENT_TOP_UP: {
+    readonly trait: 9;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const PAYMENT_REQUEST: {
+    readonly trait: 9;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const PAYMENT_STATUS_SUBSCRIBE: {
+    readonly trait: 9;
+    readonly method: 3;
+    readonly kind: "subscription";
+};
+export declare const PERMISSIONS_REQUEST_DEVICE_PERMISSION: {
+    readonly trait: 10;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const PERMISSIONS_REQUEST_REMOTE_PERMISSION: {
+    readonly trait: 10;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const PREIMAGE_LOOKUP_SUBSCRIBE: {
+    readonly trait: 11;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const PREIMAGE_SUBMIT: {
+    readonly trait: 11;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const RESOURCE_ALLOCATION_REQUEST: {
+    readonly trait: 12;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const SIGNING_CREATE_TRANSACTION: {
+    readonly trait: 13;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT: {
+    readonly trait: 13;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT: {
+    readonly trait: 13;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT: {
+    readonly trait: 13;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const SIGNING_SIGN_RAW: {
+    readonly trait: 13;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const SIGNING_SIGN_PAYLOAD: {
+    readonly trait: 13;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED: {
+    readonly trait: 13;
+    readonly method: 6;
+    readonly kind: "request";
+};
+export declare const SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT: {
+    readonly trait: 13;
+    readonly method: 7;
+    readonly kind: "request";
+};
+export declare const STATEMENT_STORE_SUBSCRIBE: {
+    readonly trait: 14;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const STATEMENT_STORE_CREATE_PROOF: {
+    readonly trait: 14;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const STATEMENT_STORE_SUBMIT: {
+    readonly trait: 14;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const STATEMENT_STORE_CREATE_PROOF_AUTHORIZED: {
+    readonly trait: 14;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const THEME_SUBSCRIBE: {
+    readonly trait: 15;
+    readonly method: 0;
+    readonly kind: "subscription";
 };
 export declare const LOCALE_SUBSCRIBE: {
-    readonly start: 194;
-    readonly stop: 195;
-    readonly interrupt: 196;
-    readonly receive: 197;
+    readonly trait: 16;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const RENDERER_RENDER: {
+    readonly trait: 17;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const RENDERER_ACTION_SUBSCRIBE: {
+    readonly trait: 17;
+    readonly method: 1;
+    readonly kind: "subscription";
+};
+export declare const POCKET_LIST_SUBSCRIBE: {
+    readonly trait: 18;
+    readonly method: 0;
+    readonly kind: "subscription";
+};
+export declare const POCKET_REMOVE_CARD: {
+    readonly trait: 18;
+    readonly method: 1;
+    readonly kind: "request";
 };
 
 
@@ -6278,13 +6820,20 @@ export declare function subscribeConnectionStatus(callback: (status: ConnectionS
 
 
 // transport.d.ts
-/** Wire discriminant reserved for method-independent protocol errors. **/
-export declare const PROTOCOL_ERROR_ID: 255;
+/**
+ * Wire trait discriminant reserved for method-independent protocol errors. No
+ * API trait may declare it, so no method is ever addressed here.
+ **/
+export declare const PROTOCOL_ERROR_TRAIT_ID: 255;
+/** Wire method discriminant reserved for method-independent protocol errors. **/
+export declare const PROTOCOL_ERROR_METHOD_ID: 255;
 /** The peer rejected an outbound frame because it does not support its API. **/
 export declare class UnsupportedMessageError extends Error {
-    /** Wire discriminant of the unsupported outbound frame. **/
-    readonly discriminant: number;
-    constructor(discriminant: number);
+    /** Trait discriminant of the unsupported outbound frame. **/
+    readonly traitId: number;
+    /** Method discriminant of the unsupported outbound frame. **/
+    readonly methodId: number;
+    constructor(traitId: number, methodId: number);
 }
 /** Call result returned when the peer does not recognize a request frame. **/
 export type UnsupportedCallError = Extract<CallErrorValue<never>, {
@@ -6373,51 +6922,39 @@ export interface ObservableLike<Item, Reason = never> {
     [Symbol.observable](): ObservableLike<Item, Reason>;
 }
 /**
- * Observable source accepted by generated channel methods as the
- * product-to-host request stream. Structurally satisfied by RxJS subjects and
- * observables as well as generated \`ObservableLike\` values.
+ * Product-side handler for a subscription the native host initiates.
+ *
+ * It receives the decoded request and two callbacks: \`send\` delivers one item
+ * to the host, and \`interrupt\` ends the stream, cleanly when called with no
+ * argument and with the method's interrupt value otherwise. The returned
+ * teardown, if any, runs once the stream ends: on the host's stop frame, on
+ * \`interrupt\`, when the transport closes, or when the host restarts the same
+ * request id.
  **/
-export interface ObservableSource<Item> {
-    /**
-     * Start consuming the source until the returned handle unsubscribes.
-     **/
-    subscribe(observer: Partial<Observer<Item>>): {
-        unsubscribe(): void;
-    };
-}
+export type HostInitiatedSubscriptionHandler<Request, Item, Reason = never> = (request: Request, send: (item: Item) => void, interrupt: (reason?: Reason) => void) => (() => void) | void;
 /**
- * Numeric frame ids for a one-shot request method.
+ * Wire discriminant pair addressing a method. One id addresses a method
+ * regardless of shape (request/response, or a subscription's four phases):
+ * which leg of the exchange a frame carries is the wire's own \`messageType\`
+ * byte, not a separate id per leg.
  **/
-export interface RequestFrameIds {
+export interface MethodIds {
     /**
-     * Wire discriminant for the outbound request frame.
+     * Wire trait discriminant.
      **/
-    request: number;
+    trait: number;
     /**
-     * Wire discriminant for the inbound response frame.
+     * Wire method discriminant within the trait.
      **/
-    response: number;
-}
-/**
- * Numeric frame ids for a subscription method.
- **/
-export interface SubscriptionFrameIds {
+    method: number;
     /**
-     * Wire discriminant for the outbound start frame.
+     * Whether this method's legs follow the request/response shape or the
+     * subscription shape (\`"subscription"\` covers both plain and result
+     * subscriptions, which share the same four-leg wire shape). The one piece
+     * of shape a payload-blind reader needs to interpret a frame's own
+     * \`messageType\` byte without decoding the payload.
      **/
-    start: number;
-    /**
-     * Wire discriminant for the outbound stop frame.
-     **/
-    stop: number;
-    /**
-     * Wire discriminant for the inbound interrupt frame.
-     **/
-    interrupt: number;
-    /**
-     * Wire discriminant for the inbound receive frame.
-     **/
-    receive: number;
+    kind: "request" | "subscription";
 }
 /**
  * Options accepted by \`TrUApiTransport.request\`.
@@ -6426,15 +6963,17 @@ export interface RequestParams<Ok, Err> {
     /**
      * Wire discriminants for this request method.
      **/
-    ids: RequestFrameIds;
+    ids: MethodIds;
     /**
-     * SCALE-encoded request payload bytes.
+     * SCALE-encoded request wrapper payload bytes (its own \`V<N>\` tag is the
+     * wire's only version signal), constructed by the generated caller.
      **/
     payload: Uint8Array;
     /**
-     * Decode SCALE response payload bytes into the wire \`ResultPayload\`
-     * envelope. The transport unwraps the envelope into
-     * \`ResultAsync<Ok, Err | UnsupportedCallError>\`.
+     * Decode a \`Response\`-leg frame's raw payload bytes into the typed Ok/Err
+     * outcome. Implementations decode \`Result<{Method}Response,
+     * CallError<{Method}Error>>\` directly. The transport unwraps the result
+     * into \`ResultAsync<Ok, Err | UnsupportedCallError>\`.
      **/
     decodeResponse: (payload: Uint8Array) => ResultPayload<Ok, Err>;
 }
@@ -6445,17 +6984,19 @@ export interface SubscribeRawParams {
     /**
      * Wire discriminants for this subscription method.
      **/
-    ids: SubscriptionFrameIds;
+    ids: MethodIds;
     /**
-     * SCALE-encoded subscription start payload bytes.
+     * SCALE-encoded \`Start\`-leg payload bytes: the request wrapper's own
+     * encoding, or empty bytes for a method with no request at all,
+     * constructed by the generated caller.
      **/
     payload: Uint8Array;
     /**
-     * Called with raw SCALE receive payload bytes.
+     * Called with a \`Receive\`-leg frame's raw payload bytes.
      **/
     onReceive: (payload: Uint8Array) => void;
     /**
-     * Called with raw SCALE interrupt payload bytes when the peer interrupts the subscription.
+     * Called with an \`Interrupt\`-leg frame's raw payload bytes.
      **/
     onInterrupt?: (payload: Uint8Array) => void;
     /**
@@ -6464,27 +7005,35 @@ export interface SubscribeRawParams {
      **/
     onClose?: (error: Error) => void;
 }
-/**
- * Handler for a subscription initiated by the native host.
- **/
-export type HostInitiatedSubscriptionHandler<Request, Item> = (request: Request) => ObservableSource<Item>;
 /** Product-side registration for one host-initiated subscription method. **/
-export interface HostInitiatedSubscriptionRegistration<Request, Item> {
+export interface HostInitiatedSubscriptionRegistration<Request, Item, Reason = never> {
     /** Install or replace the handler used for future start frames. **/
-    setHandler(handler: HostInitiatedSubscriptionHandler<Request, Item>): {
+    setHandler(handler: HostInitiatedSubscriptionHandler<Request, Item, Reason>): {
         unsubscribe(): void;
     };
 }
 /** Options used to register a host-initiated subscription method. **/
-export interface RegisterHostInitiatedSubscriptionParams<Request, Item> {
+export interface RegisterHostInitiatedSubscriptionParams<Request, Item, Reason = never> {
     /** Wire discriminants for the host-initiated subscription. **/
-    ids: SubscriptionFrameIds;
-    /** Decode the host's start payload. **/
+    ids: MethodIds;
+    /**
+     * Decode a \`Start\`-leg frame's raw payload bytes into the typed request.
+     **/
     decodeRequest(payload: Uint8Array): Request;
-    /** Encode one product renderer emission. **/
+    /**
+     * Encode one product emission as a \`Receive\`-leg frame's raw payload bytes.
+     **/
     encodeItem(item: Item): Uint8Array;
-    /** Exact payload used when the product declines a render instance. **/
-    interruptPayload: Uint8Array;
+    /**
+     * Encode an \`Interrupt\`-leg frame's raw payload bytes: the stream's clean
+     * end when \`reason\` is omitted, and the method's interrupt value otherwise.
+     **/
+    encodeInterrupt(reason?: Reason): Uint8Array;
+    /**
+     * Exact payload used when the transport ends a stream the product's handler
+     * never got to serve.
+     **/
+    declinePayload: Uint8Array;
     /** Number of starts retained before a handler is installed. **/
     bufferCapacity: number;
 }
@@ -6492,14 +7041,6 @@ export interface RegisterHostInitiatedSubscriptionParams<Request, Item> {
  * Byte-level transport used by generated client stubs.
  **/
 export interface TrUApiTransport {
-    /**
-     * SCALE codec version used by generated handshake calls.
-     *
-     * @deprecated TODO(shared-core-wire): remove this public transport field once
-     * generated handshake requests read \`TRUAPI_CODEC_VERSION\` directly instead
-     * of going through transport state.
-     **/
-    readonly codecVersion: number;
     /**
      * Send a one-shot request and resolve with the typed Ok/Err outcome.
      **/
@@ -6509,7 +7050,7 @@ export interface TrUApiTransport {
      **/
     subscribeRaw(params: SubscribeRawParams): Subscription;
     /** Register product-side handling for a host-initiated subscription. **/
-    registerHostInitiatedSubscription<Request, Item>(params: RegisterHostInitiatedSubscriptionParams<Request, Item>): HostInitiatedSubscriptionRegistration<Request, Item>;
+    registerHostInitiatedSubscription<Request, Item, Reason>(params: RegisterHostInitiatedSubscriptionParams<Request, Item, Reason>): HostInitiatedSubscriptionRegistration<Request, Item, Reason>;
     /**
      * Tear down the transport and release the listeners it registered on the
      * underlying \`WireProvider\`. Pending requests reject and live subscriptions
@@ -6526,14 +7067,37 @@ export interface TrUApiTransport {
  **/
 export interface Payload {
     /**
-     * Wire-table numeric discriminant.
+     * Wire-table trait discriminant: first byte of the \`(trait, method)\` pair.
      **/
-    id: number;
+    traitId: number;
     /**
-     * SCALE-encoded payload body.
+     * Wire-table method discriminant within the trait: second byte of the pair.
+     **/
+    methodId: number;
+    /**
+     * Which leg of the method's exchange this frame carries: \`Request\`/\`Start\`
+     * = 0, \`Response\`/\`Receive\` = 1, \`Interrupt\` = 2, \`Stop\` = 3. Third byte of
+     * the wire frame — readable generically, without decoding \`value\`.
+     **/
+    messageType: number;
+    /**
+     * SCALE-encoded payload body: that leg's own versioned wrapper, with no
+     * further tag identifying direction or version beyond the wrapper's own.
      **/
     value: Uint8Array;
 }
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_REQUEST = 0;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_START = 0;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_RESPONSE = 1;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_RECEIVE = 1;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_INTERRUPT = 2;
+/** See {@link Payload.messageType}. */
+export declare const MESSAGE_TYPE_STOP = 3;
 /**
  * Top-level TrUAPI wire message.
  **/
@@ -6620,34 +7184,4 @@ export declare function createMessagePortProvider(port: MessagePort | Promise<Me
  * caller never has to await {@link WebSocketWireProvider.opened} first.
  **/
 export declare function createWebSocketProvider(url: string): WebSocketWireProvider;
-
-
-// well-known-chains.d.ts
-/** Well-known chain descriptors. Each chain is its own \`export const\` so that
- * bundlers can tree-shake the ones a consumer does not import. */
-export interface WellKnownChain {
-    readonly name: string;
-    readonly network: "Mainnet" | "Testnet";
-    readonly genesis: HexString;
-}
-export declare const PASEO_NEXT_V2_ASSET_HUB: {
-    readonly name: "Paseo Next v2 Hub";
-    readonly network: "Testnet";
-    readonly genesis: "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a";
-};
-export declare const PASEO_NEXT_V2_INDIVIDUALITY: {
-    readonly name: "Paseo Next v2 Individuality";
-    readonly network: "Testnet";
-    readonly genesis: "0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48";
-};
-export declare const PREVIEWNET_ASSET_HUB: {
-    readonly name: "Previewnet Hub";
-    readonly network: "Testnet";
-    readonly genesis: "0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe";
-};
-export declare const PREVIEWNET_INDIVIDUALITY: {
-    readonly name: "Previewnet Individuality";
-    readonly network: "Testnet";
-    readonly genesis: "0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218";
-};
 `;

@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, Bytes32, ChainIdentifier, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -204,6 +204,19 @@ export type CoreStorageKey =
         rootPublicKey: Uint8Array;
         peerStatementAccountId: Uint8Array;
         peerEncryptionPublicKey: Uint8Array;
+    };
+}
+/**
+ * Cached root manifest of one product, as published to dotNS.
+ *
+ * The value carries the manifest JSON alongside the time it was read. The
+ * core honours it for a bounded lifetime, which is what makes a revoked
+ * trust grant eventually take effect.
+ */
+ | {
+    tag: "ProductManifest";
+    value: {
+        productId: string;
     };
 };
 /**
@@ -460,6 +473,8 @@ export type SignPayloadReview =
 };
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
+ * Hosts must display the payload according to `watermarked` and warn that
+ * unwatermarked signatures can authorize transactions.
  */
 export type SignRawReview = 
 /**
@@ -467,14 +482,20 @@ export type SignRawReview =
  */
 {
     tag: "Product";
-    value: HostSignRawRequest;
+    value: {
+        request: HostSignRawRequest;
+        watermarked: boolean;
+    };
 }
 /**
  * Legacy-account raw signing request.
  */
  | {
     tag: "LegacyAccount";
-    value: HostSignRawWithLegacyAccountRequest;
+    value: {
+        request: HostSignRawWithLegacyAccountRequest;
+        watermarked: boolean;
+    };
 };
 /**
  * Review shown before signing an RFC-0023 VRF transcript.
@@ -705,6 +726,8 @@ export declare const SessionUiInfo: S.Codec<SessionUiInfo>;
 export declare const SignPayloadReview: S.Codec<SignPayloadReview>;
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
+ * Hosts must display the payload according to `watermarked` and warn that
+ * unwatermarked signatures can authorize transactions.
  */
 export declare const SignRawReview: S.Codec<SignRawReview>;
 /**
@@ -1026,6 +1049,25 @@ export interface Permissions {
     remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
 }
 /**
+ * Host-implemented adapter through which product Pocket calls reach the
+ * host's card collection. Optional: a host that omits it leaves Pocket
+ * requests answered `Unsupported`. See `OptionalPlatform`.
+ *
+ * The host owns the collection: it decides which cards are privileged and
+ * keeps each card's newest face. A face does not cross this boundary.
+ */
+export interface PocketPlatform {
+    /**
+     * Emit the calling product's current cards and every later replacement.
+     */
+    subscribePocketCards(product: ProductContext): AsyncIterable<Result<HostPocketListSubscribeItem, GenericError>>;
+    /**
+     * Remove one of the calling product's cards. Removing an absent card
+     * succeeds; a privileged card is refused with `Privileged`.
+     */
+    removePocketCard(product: ProductContext, request: HostPocketRemoveCardRequest): Promise<void>;
+}
+/**
  * Host preimage backend. The core builds, signs, and submits the Bulletin
  * `TransactionStorage.store` transaction itself; the host only owns preimage
  * content retrieval (P2P/IPFS lookup).
@@ -1042,10 +1084,19 @@ export interface PreimageHost {
  * The core namespaces product keys before calling this trait. Host
  * implementations may treat `key` as opaque or decode it with
  * `ProductStorageKey` when their physical storage is separated by product.
+ * Storage errors are pinned to `v01` rather than taken from `truapi::latest`.
+ * The read error gained a cross-product refusal in v0.2 that the core decides
+ * before it ever calls a host, so a host has no way to produce it and should
+ * not have to match on it.
  */
 export interface ProductStorage {
     /**
      * Read a value by key.
+     *
+     * Always the calling product's own storage. A read addressed at another
+     * product is adjudicated in the core against that product's manifest and
+     * refused there, so a host is never asked to enforce a grant and has no
+     * variant for one.
      */
     read(key: string): Promise<Uint8Array | undefined>;
     /**
@@ -1096,6 +1147,7 @@ export interface HostCallbacks {
     preimage: PreimageHost;
     chat?: ChatPlatform;
     permissionStatus?: PermissionStatusHost;
+    pocket?: PocketPlatform;
 }
 export interface RequiredHostCallbacks {
     navigation: Required<Navigation>;
@@ -1112,4 +1164,5 @@ export interface RequiredHostCallbacks {
     preimage: Required<PreimageHost>;
     chat?: Required<ChatPlatform>;
     permissionStatus?: Required<PermissionStatusHost>;
+    pocket?: Required<PocketPlatform>;
 }

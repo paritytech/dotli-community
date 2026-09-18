@@ -9,8 +9,9 @@
 // nobody is looking at. The observer starts the subscription when the
 // cell scrolls in and drops it when it leaves, like the desktop host.
 
-import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import { renderCustomMessage, userTriggerAction } from "./service";
+import type { HexString, RenderContext } from "@parity/truapi";
+import { bytesToHex } from "@parity/truapi/scale";
+import { renderCustomMessage, userTriggerRendererAction } from "./service";
 import { renderCustomNode } from "./custom-renderer";
 
 export interface CustomMessageMount {
@@ -19,7 +20,7 @@ export interface CustomMessageMount {
   messageId: string;
   messageType: string;
   /** Stored product-defined payload, hex-encoded. */
-  payload: string;
+  payload: HexString;
 }
 
 /**
@@ -36,11 +37,22 @@ export function mountCustomMessage(
   setPlaceholder(root, "Loading…");
   container.appendChild(root);
 
-  const onAction = (actionId: string, payload?: Uint8Array): void => {
-    userTriggerAction(mount.productId, mount.roomId, {
+  // The same context names the body on the render request and on every
+  // action fired inside it, so the product can pair the two.
+  const context: RenderContext = {
+    tag: "ChatMessage",
+    value: {
+      roomId: mount.roomId,
       messageId: mount.messageId,
+      messageType: mount.messageType,
+    },
+  };
+
+  const onAction = (actionId: string, payload?: Uint8Array): void => {
+    userTriggerRendererAction(mount.productId, {
+      context,
       actionId,
-      payload: payload === undefined ? undefined : bytesToHex(payload),
+      payload: payload === undefined ? "0x" : bytesToHex(payload),
     }).catch(() => {
       setPlaceholder(root, "The app could not be reached.");
     });
@@ -55,11 +67,7 @@ export function mountCustomMessage(
     }
     stopRender = renderCustomMessage(
       mount.productId,
-      {
-        messageId: mount.messageId,
-        messageType: mount.messageType,
-        payload: hexToBytes(mount.payload),
-      },
+      { context, payload: mount.payload },
       {
         onUpdate: (node) => {
           if (disposed) {

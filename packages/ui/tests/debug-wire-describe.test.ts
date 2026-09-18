@@ -1,20 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  encodeWireMessage,
   HostRequestResourceAllocationResponse,
+  MESSAGE_TYPE_INTERRUPT,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
+  MESSAGE_TYPE_START,
+  MESSAGE_TYPE_STOP,
+  RemoteChainHeadHeaderResponse,
   VersionedHostRequestResourceAllocationError,
   VersionedHostRequestResourceAllocationRequest,
-  RemoteChainHeadHeaderResponse,
   VersionedRemoteChainHeadFollowRequest,
   VersionedRemoteChainHeadHeaderError,
   VersionedRemoteChainHeadHeaderRequest,
+  VersionedRemoteChainHeadHeaderResponse,
   VersionedRemoteChainHeadUnpinError,
+  VersionedRemoteChainHeadUnpinResponse,
 } from "@parity/truapi";
-import {
-  CallError,
-  indexedTaggedUnion,
-  Result,
-  _void,
-} from "@parity/truapi/scale";
+import { CallError, Result, indexedTaggedUnion } from "@parity/truapi/scale";
 import * as WIRE_TABLE from "@parity/truapi/wire-table";
 import {
   CHAIN_FOLLOW_HEAD_SUBSCRIBE,
@@ -23,8 +26,13 @@ import {
   LOCAL_STORAGE_READ,
   SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
-import { describeWireFrame, __testing } from "@dotli/ui/debug-wire-describe";
-import { blockHash, genesisHash } from "./support.ts";
+import {
+  describeWireFrame,
+  wireFrameId,
+  wireFrameKey,
+  __testing,
+} from "@dotli/ui/debug-wire-describe";
+import { blockHash, genesisHash, unwrap } from "./support.ts";
 
 function payloadBytes(
   codec: { enc: (v: never) => Uint8Array },
@@ -65,12 +73,20 @@ describe("describeWireFrame", () => {
       },
     );
     expect(
-      describeWireFrame(WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request, request)
-        .value,
+      describeWireFrame(
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_REQUEST,
+        ),
+        request,
+      ).value,
     ).toEqual({ resources });
     expect(
       describeWireFrame(
-        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response,
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_RESPONSE,
+        ),
         response,
       ).value,
     ).toEqual({ outcomes: ["Rejected", "Allocated"] });
@@ -91,13 +107,19 @@ describe("describeWireFrame", () => {
     const malformedResponse = new Uint8Array([255, ...privatePayload]);
     expect(
       describeWireFrame(
-        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.request,
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_REQUEST,
+        ),
         trailingPayload,
       ).value,
     ).toEqual({ redacted: true, byteLength: trailingPayload.length });
     expect(
       describeWireFrame(
-        WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST.response,
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_RESPONSE,
+        ),
         malformedResponse,
       ).value,
     ).toEqual({ redacted: true, byteLength: malformedResponse.length });
@@ -112,7 +134,7 @@ describe("describeWireFrame", () => {
 
     // When
     const described = describeWireFrame(
-      CHAIN_FOLLOW_HEAD_SUBSCRIBE.start,
+      wireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START),
       bytes,
     );
 
@@ -132,7 +154,10 @@ describe("describeWireFrame", () => {
     });
 
     // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.request, bytes);
+    const described = describeWireFrame(
+      wireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST),
+      bytes,
+    );
 
     // Then
     expect(described.tag).toBe("remote_chain_head_header_request");
@@ -147,12 +172,13 @@ describe("describeWireFrame", () => {
     const bytes = new Uint8Array([1, 2, 3]);
 
     // When
-    const described = describeWireFrame(SYSTEM_HANDSHAKE.request, bytes);
+    const frame = wireFrameId(SYSTEM_HANDSHAKE, MESSAGE_TYPE_REQUEST);
+    const described = describeWireFrame(frame, bytes);
 
     // Then: mechanical name, raw payload preserved for the detail pane.
     expect(described.tag).toBe("system_handshake_request");
     expect(described.value).toEqual({
-      wireId: SYSTEM_HANDSHAKE.request,
+      wireId: wireFrameKey(frame),
       bytes,
     });
   });
@@ -162,23 +188,27 @@ describe("describeWireFrame", () => {
     const bytes = new Uint8Array(48);
 
     // When
-    const described = describeWireFrame(LOCAL_STORAGE_READ.request, bytes);
+    const described = describeWireFrame(
+      wireFrameId(LOCAL_STORAGE_READ, MESSAGE_TYPE_REQUEST),
+      bytes,
+    );
 
     // Then: named, but neither decoded value nor raw bytes escape the tap.
     expect(described.tag).toBe("local_storage_read_request");
     expect(described.value).toEqual({ redacted: true, byteLength: 48 });
   });
 
-  it("As a dotli integrator, the host falls back to wire_<id> for unknown discriminants", () => {
+  it("As a dotli integrator, the host falls back to wire_<trait>_<method>_<type> for unknown discriminants", () => {
     // Given
     const bytes = new Uint8Array([9]);
+    const frame = { traitId: 250, methodId: 7, messageType: 0 };
 
     // When
-    const described = describeWireFrame(60_000, bytes);
+    const described = describeWireFrame(frame, bytes);
 
     // Then
-    expect(described.tag).toBe("wire_60000");
-    expect(described.value).toEqual({ wireId: 60_000, bytes });
+    expect(described.tag).toBe("wire_250_7_0");
+    expect(described.value).toEqual({ wireId: wireFrameKey(frame), bytes });
   });
 
   it("As a dotli integrator, the host degrades to raw bytes when a registered codec fails to decode", () => {
@@ -186,103 +216,121 @@ describe("describeWireFrame", () => {
     const bytes = new Uint8Array([0xff, 0xff, 0xff]);
 
     // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.request, bytes);
+    const described = describeWireFrame(
+      wireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST),
+      bytes,
+    );
 
     // Then: the tag still resolves and the payload keeps the raw form instead of throwing.
     expect(described.tag).toBe("remote_chain_head_header_request");
     expect(described.value).toEqual({
-      wireId: CHAIN_GET_HEAD_HEADER.request,
+      wireId: wireFrameKey(
+        wireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_REQUEST),
+      ),
       bytes,
     });
   });
 
+  it("As a dotli integrator, the host encodes a full envelope round-trip the tap will perform", () => {
+    // Given: the exact envelope the provider carries (guards Task 2's usage).
+    const inner = payloadBytes(VersionedRemoteChainHeadFollowRequest, {
+      tag: "V1",
+      value: { genesisHash, withRuntime: true },
+    });
+    const framed = unwrap(
+      encodeWireMessage({
+        requestId: "req-1",
+        payload: {
+          ...wireFrameId(CHAIN_FOLLOW_HEAD_SUBSCRIBE, MESSAGE_TYPE_START),
+          value: inner,
+        },
+      }),
+    );
+
+    // Then: sanity check that the envelope encodes. The tap decodes it with decodeWireMessage.
+    expect(framed).toBeInstanceOf(Uint8Array);
+  });
   it("As a dotli integrator, the host decodes a real chainHead.header Ok response using the generated client's wire composition", () => {
     // Given: the exact composition `ChainClient#getHeadHeader` decodes with,
-    // an indexed V1 envelope around Result(<bare response>, CallError(<error>)).
-    // A bare `VersionedRemoteChainHeadHeaderResponse` codec (the old, wrong
-    // registration) would silently decode this into garbage.
-    const codec = indexedTaggedUnion({
-      V1: [
-        0,
-        Result(
-          RemoteChainHeadHeaderResponse,
-          CallError(VersionedRemoteChainHeadHeaderError),
-        ),
-      ],
-    });
+    // Result(<versioned response>, CallError(<versioned error>)). A bare
+    // response codec would silently decode this into garbage.
+    const codec = Result(
+      VersionedRemoteChainHeadHeaderResponse,
+      CallError(VersionedRemoteChainHeadHeaderError),
+    );
     const bytes = payloadBytes(codec, {
-      tag: "V1",
-      value: { success: true, value: { header: blockHash } },
+      success: true,
+      value: { tag: "V1", value: { header: blockHash } },
     });
 
     // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.response, bytes);
+    const described = describeWireFrame(
+      wireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_RESPONSE),
+      bytes,
+    );
 
     // Then
     expect(described.tag).toBe("remote_chain_head_header_response");
     expect(described.value).toEqual({
-      tag: "V1",
-      value: { success: true, value: { header: blockHash } },
+      success: true,
+      value: { tag: "V1", value: { header: blockHash } },
     });
   });
 
   it("As a dotli integrator, the host decodes a real chainHead.header Err response using the generated client's wire composition", () => {
     // Given: a Domain error carrying the method's own versioned GenericError.
-    const codec = indexedTaggedUnion({
-      V1: [
-        0,
-        Result(
-          RemoteChainHeadHeaderResponse,
-          CallError(VersionedRemoteChainHeadHeaderError),
-        ),
-      ],
-    });
+    const codec = Result(
+      VersionedRemoteChainHeadHeaderResponse,
+      CallError(VersionedRemoteChainHeadHeaderError),
+    );
     const bytes = payloadBytes(codec, {
-      tag: "V1",
+      success: false,
       value: {
-        success: false,
-        value: {
-          tag: "Domain",
-          value: { tag: "V1", value: { reason: "unknown block" } },
-        },
+        tag: "Domain",
+        value: { tag: "V1", value: { reason: "unknown block" } },
       },
     });
 
     // When
-    const described = describeWireFrame(CHAIN_GET_HEAD_HEADER.response, bytes);
+    const described = describeWireFrame(
+      wireFrameId(CHAIN_GET_HEAD_HEADER, MESSAGE_TYPE_RESPONSE),
+      bytes,
+    );
 
     // Then
     expect(described.tag).toBe("remote_chain_head_header_response");
     expect(described.value).toEqual({
-      tag: "V1",
+      success: false,
       value: {
-        success: false,
-        value: {
-          tag: "Domain",
-          value: { tag: "V1", value: { reason: "unknown block" } },
-        },
+        tag: "Domain",
+        value: { tag: "V1", value: { reason: "unknown block" } },
       },
     });
   });
 
   it("As a dotli integrator, the host decodes a real chainHead.unpin (void) Ok response using the generated client's wire composition", () => {
-    // Given: `ChainClient#unpinHead` decodes with Result(_void, CallError(...)).
-    const codec = indexedTaggedUnion({
-      V1: [0, Result(_void, CallError(VersionedRemoteChainHeadUnpinError))],
-    });
+    // Given: `ChainClient#unpinHead` decodes with
+    // Result(VersionedRemoteChainHeadUnpinResponse, CallError(...)).
+    const codec = Result(
+      VersionedRemoteChainHeadUnpinResponse,
+      CallError(VersionedRemoteChainHeadUnpinError),
+    );
     const bytes = payloadBytes(codec, {
-      tag: "V1",
-      value: { success: true, value: undefined },
+      success: true,
+      value: { tag: "V1", value: undefined },
     });
 
     // When
-    const described = describeWireFrame(CHAIN_UNPIN_HEAD.response, bytes);
+    const described = describeWireFrame(
+      wireFrameId(CHAIN_UNPIN_HEAD, MESSAGE_TYPE_RESPONSE),
+      bytes,
+    );
 
     // Then
     expect(described.tag).toBe("remote_chain_head_unpin_response");
     expect(described.value).toEqual({
-      tag: "V1",
-      value: { success: true, value: undefined },
+      success: true,
+      value: { tag: "V1", value: undefined },
     });
   });
 
@@ -292,22 +340,27 @@ describe("describeWireFrame", () => {
     const interruptBytes = new Uint8Array([4, 5, 6]);
 
     // When
-    const stop = describeWireFrame(CHAIN_FOLLOW_HEAD_SUBSCRIBE.stop, stopBytes);
-    const interrupt = describeWireFrame(
-      CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt,
-      interruptBytes,
+    const stopFrame = wireFrameId(
+      CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_STOP,
     );
+    const interruptFrame = wireFrameId(
+      CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+      MESSAGE_TYPE_INTERRUPT,
+    );
+    const stop = describeWireFrame(stopFrame, stopBytes);
+    const interrupt = describeWireFrame(interruptFrame, interruptBytes);
 
     // Then: legacy `remote_chain_*` tags so the swimlane layout keys on them,
     // raw bytes preserved since there's no codec for these.
     expect(stop.tag).toBe("remote_chain_head_follow_stop");
     expect(stop.value).toEqual({
-      wireId: CHAIN_FOLLOW_HEAD_SUBSCRIBE.stop,
+      wireId: wireFrameKey(stopFrame),
       bytes: stopBytes,
     });
     expect(interrupt.tag).toBe("remote_chain_head_follow_interrupt");
     expect(interrupt.value).toEqual({
-      wireId: CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt,
+      wireId: wireFrameKey(interruptFrame),
       bytes: interruptBytes,
     });
   });
@@ -339,14 +392,14 @@ describe("chain-family drift guard", () => {
     "As a dotli integrator, the host resolves every codec export linkage row $stem needs for its shape",
     ({ wireTableKey, stem }) => {
       // Given: the shape (subscription vs call) the wire table declares for
-      // this row, read through the same discriminant production uses.
-      const roles = WIRE_TABLE[wireTableKey] as Parameters<
-        typeof __testing.isSubscriptionRoles
+      // this row, read through the same `kind` production uses.
+      const ids = WIRE_TABLE[wireTableKey] as Parameters<
+        typeof __testing.legsOf
       >[0];
 
       // When / Then: a codegen rename of any expected export fails here
       // instead of silently mis-decoding or falling back to raw bytes.
-      if (__testing.isSubscriptionRoles(roles)) {
+      if (ids.kind === "subscription") {
         expect(
           __testing.resolveCodec(`VersionedRemoteChain${stem}Request`),
         ).toBeDefined();
@@ -360,11 +413,9 @@ describe("chain-family drift guard", () => {
         expect(
           __testing.resolveCodec(`VersionedRemoteChain${stem}Error`),
         ).toBeDefined();
-        if (!__testing.VOID_RESPONSE_STEMS.has(stem)) {
-          expect(
-            __testing.resolveCodec(`RemoteChain${stem}Response`),
-          ).toBeDefined();
-        }
+        expect(
+          __testing.resolveCodec(`VersionedRemoteChain${stem}Response`),
+        ).toBeDefined();
       }
     },
   );

@@ -1,4 +1,4 @@
-import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider } from "../index.js";
+import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider, WorkerDemandChange } from "../index.js";
 import type { LocalIdentity, LocalIdentityProgress } from "../worker-protocol.js";
 export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "executionKind">;
 export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
@@ -48,6 +48,24 @@ export interface WorkerPairingHostRuntime {
     getSessionChatIdentityKey(): Promise<Uint8Array | undefined>;
     getDeviceEncryptionKey(): Promise<Uint8Array>;
     getProductSubtreePublicKey(productId: string, timeoutMs?: number): Promise<Uint8Array | undefined>;
+    /**
+     * Take one reference on a product's worker for a modality holder that is on
+     * screen or in flight. Pair every call with one
+     * {@link WorkerPairingHostRuntime.releaseWorker}. The core counts; the
+     * resulting level reaches
+     * {@link WorkerPairingHostRuntime.subscribeWorkerDemand} listeners, and the
+     * host runs and stops the worker executable itself.
+     */
+    acquireWorker(productId: string): void;
+    /** Release one reference. Releasing with none held is a no-op. */
+    releaseWorker(productId: string): void;
+    /**
+     * Observe which product workers the host should run. The listener first
+     * receives `wanted: true` for every product wanted right now, then each
+     * change as it happens, and `wanted: false` for every remaining product
+     * when the runtime is disposed. Returns the unsubscribe.
+     */
+    subscribeWorkerDemand(listener: (change: WorkerDemandChange) => void): () => void;
     setLogLevel(level: LogLevel): void;
     dispose(): void;
 }

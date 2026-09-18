@@ -1,16 +1,24 @@
 import { concatBytes } from "@noble/hashes/utils.js";
 import { err, ok } from "neverthrow";
 import { str, u8 } from "./scale.js";
-/** Wire discriminant reserved for method-independent protocol errors. **/
-export const PROTOCOL_ERROR_ID = 255;
+/**
+ * Wire trait discriminant reserved for method-independent protocol errors. No
+ * API trait may declare it, so no method is ever addressed here.
+ **/
+export const PROTOCOL_ERROR_TRAIT_ID = 255;
+/** Wire method discriminant reserved for method-independent protocol errors. **/
+export const PROTOCOL_ERROR_METHOD_ID = 255;
 /** The peer rejected an outbound frame because it does not support its API. **/
 export class UnsupportedMessageError extends Error {
-    /** Wire discriminant of the unsupported outbound frame. **/
-    discriminant;
-    constructor(discriminant) {
-        super(`Peer does not support wire message ${discriminant}`);
+    /** Trait discriminant of the unsupported outbound frame. **/
+    traitId;
+    /** Method discriminant of the unsupported outbound frame. **/
+    methodId;
+    constructor(traitId, methodId) {
+        super(`Peer does not support wire message (${traitId}, ${methodId})`);
         this.name = "UnsupportedMessageError";
-        this.discriminant = discriminant;
+        this.traitId = traitId;
+        this.methodId = methodId;
     }
 }
 /**
@@ -41,15 +49,33 @@ export class SubscriptionError extends Error {
             this.reason = options.reason;
     }
 }
+/** See {@link Payload.messageType}. */
+export const MESSAGE_TYPE_REQUEST = 0;
+/** See {@link Payload.messageType}. */
+export const MESSAGE_TYPE_START = 0;
+/** See {@link Payload.messageType}. */
+export const MESSAGE_TYPE_RESPONSE = 1;
+/** See {@link Payload.messageType}. */
+export const MESSAGE_TYPE_RECEIVE = 1;
+/** See {@link Payload.messageType}. */
+export const MESSAGE_TYPE_INTERRUPT = 2;
+/** See {@link Payload.messageType}. */
+export const MESSAGE_TYPE_STOP = 3;
 /**
  * Encode a `ProtocolMessage` into a SCALE wire frame.
  **/
 export function encodeWireMessage(message) {
-    const id = message.payload.id;
-    if (!Number.isInteger(id) || id < 0 || id > 255) {
-        return err(new Error(`Invalid wire discriminant: ${id}`));
+    const { traitId, methodId, messageType } = message.payload;
+    if (!Number.isInteger(traitId) || traitId < 0 || traitId > 255) {
+        return err(new Error(`Invalid wire trait discriminant: ${traitId}`));
     }
-    return ok(concatBytes(str.enc(message.requestId), u8.enc(id), message.payload.value));
+    if (!Number.isInteger(methodId) || methodId < 0 || methodId > 255) {
+        return err(new Error(`Invalid wire method discriminant: ${methodId}`));
+    }
+    if (!Number.isInteger(messageType) || messageType < 0 || messageType > 255) {
+        return err(new Error(`Invalid wire message type: ${messageType}`));
+    }
+    return ok(concatBytes(str.enc(message.requestId), u8.enc(traitId), u8.enc(methodId), u8.enc(messageType), message.payload.value));
 }
 /**
  * Decode a SCALE wire frame into a `ProtocolMessage`.
@@ -67,15 +93,26 @@ export function decodeWireMessage(message) {
     const requestId = str.dec(cursor.subarray(0, requestIdEnd));
     cursor = cursor.subarray(requestIdEnd);
     if (cursor.length < 1) {
-        return err(new Error("Wire frame too short: missing discriminant byte"));
+        return err(new Error("Wire frame too short: missing trait discriminant byte"));
     }
-    const id = cursor[0];
-    const value = cursor.subarray(1);
+    if (cursor.length < 2) {
+        return err(new Error("Wire frame too short: missing method discriminant byte"));
+    }
+    if (cursor.length < 3) {
+        return err(new Error("Wire frame too short: missing message-type byte"));
+    }
+    const traitId = cursor[0];
+    const methodId = cursor[1];
+    const messageType = cursor[2];
+    const value = cursor.subarray(3);
     // Hand the value bytes back as a fresh slice so callers may safely retain
     // it even if the source buffer is reused by the transport.
     const valueCopy = new Uint8Array(value.length);
     valueCopy.set(value);
-    return ok({ requestId, payload: { id, value: valueCopy } });
+    return ok({
+        requestId,
+        payload: { traitId, methodId, messageType, value: valueCopy },
+    });
 }
 /**
  * Return the byte offset just past the leading SCALE-encoded string.

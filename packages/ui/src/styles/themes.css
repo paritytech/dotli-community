@@ -256,6 +256,12 @@
   border-color: #ddd;
   color: #555;
 }
+[data-theme="light"] .signing-field-warning .signing-field-label {
+  color: #9a6700;
+}
+[data-theme="light"] .signing-field-warning .signing-field-value {
+  color: #7a5200;
+}
 [data-theme="light"] .signing-btn-cancel {
   border-color: #ddd;
   color: #666;

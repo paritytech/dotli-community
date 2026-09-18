@@ -2,19 +2,19 @@ import { ResultAsync, type Result } from 'neverthrow';
 import * as S from '../scale.js';
 import type { HexString } from '../scale.js';
 import { SubscriptionError } from '../transport.js';
-import type { ObservableLike, ObservableSource, Observer, Subscription, TrUApiTransport } from '../transport.js';
+import type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Subscription, TrUApiTransport } from '../transport.js';
 import * as T from './types.js';
 export { ResultAsync, SubscriptionError };
-export type { ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport };
-export declare const TRUAPI_VERSION: 1;
-export declare const TRUAPI_CODEC_VERSION: 1;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "43581e5572c0315a";
+export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
+export declare const TRUAPI_VERSION: 2;
+export declare const TRUAPI_CODEC_VERSION: 2;
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "50637d83426acd22";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to account connection status changes. */
-    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem>;
+    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
     /** Retrieve a product-scoped account. */
     getAccount(request: T.HostAccountGetRequest): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
     /** Retrieve the contextual alias for a context and ring. */
@@ -59,7 +59,7 @@ export declare class ChainClient {
     /** Follow the chain head and receive block events. */
     followHeadSubscribe({ request }: {
         request: T.RemoteChainHeadFollowRequest;
-    }): ObservableLike<T.RemoteChainHeadFollowItem>;
+    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
     /** Fetch a block header. */
     getHeadHeader(request: T.RemoteChainHeadHeaderRequest): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
     /** Fetch a block body. */
@@ -93,14 +93,13 @@ export declare class ChainClient {
 /** Chat room, bot, and message APIs. */
 export declare class ChatClient {
     private readonly transport;
-    private readonly customMessageRenderRegistration;
     constructor(transport: TrUApiTransport);
     /** Create a chat room. */
     createRoom(request: T.HostChatCreateRoomRequest): ResultAsync<T.HostChatCreateRoomResponse, S.CallErrorValue<T.VersionedHostChatCreateRoomError>>;
     /** Register a chat bot. */
     registerBot(request: T.HostChatRegisterBotRequest): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
     /** Subscribe to the list of chat rooms. */
-    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem>;
+    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
     /**
      * Post a message to a chat room.
      *
@@ -118,11 +117,7 @@ export declare class ChatClient {
      */
     postMessage(request: T.HostChatPostMessageRequest): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
-    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem>;
-    /** Streams renderer trees for one stored custom message. */
-    onCustomMessageRender(handler: (request: T.ProductChatCustomMessageRenderRequest) => ObservableSource<T.CustomRendererNode>): {
-        unsubscribe(): void;
-    };
+    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
 }
 /**
  * CoinPayment operations.
@@ -186,7 +181,7 @@ export declare class LocaleClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
-    subscribe(): ObservableLike<T.HostLocaleSubscribeItem>;
+    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
@@ -240,6 +235,29 @@ export declare class PermissionsClient {
     /** Request a remote-operation permission. */
     requestRemotePermission(request: T.RemotePermissionRequest): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
 }
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export declare class PocketClient {
+    private readonly transport;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.VersionedHostPocketListSubscribeError>>;
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with `Privileged`.
+     */
+    removeCard(request: T.HostPocketRemoveCardRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
+}
 /** Preimage lookup and submission methods. */
 export declare class PreimageClient {
     private readonly transport;
@@ -247,9 +265,25 @@ export declare class PreimageClient {
     /** Subscribe to preimage lookups for a given key. */
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
-    }): ObservableLike<T.RemotePreimageLookupSubscribeItem>;
+    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
     /** Submit a preimage. Returns the preimage key (hash) on success. */
     submit(request: HexString): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
+}
+/** Product-rendered bodies and the actions triggered inside them. */
+export declare class RendererClient {
+    private readonly transport;
+    private readonly renderRegistration;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Streams renderer trees for one product-rendered body. Each item
+     * replaces the previous tree. The stream stays open while the body is
+     * displayed so the product can redraw in place.
+     */
+    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.VersionedProductRendererRenderError>>): {
+        unsubscribe(): void;
+    };
+    /** Subscribe to actions triggered inside this product's rendered bodies. */
+    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.VersionedHostRendererActionSubscribeError>>;
 }
 /** Resource pre-allocation (allowance management). */
 export declare class ResourceAllocationClient {
@@ -264,6 +298,9 @@ export declare class SigningClient {
     constructor(transport: TrUApiTransport);
     /**
      * Construct a transaction for a product account.
+     *
+     * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
+     * grant covers the account; otherwise each call is confirmed by the user.
      *
      * Under Extrinsic V5, omitting `VerifyMultiSignature` from `extensions`
      * lets the host sign with the signer's key. Listing it — as `Disabled`,
@@ -283,10 +320,44 @@ export declare class SigningClient {
     signRawWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
     /** Sign an extrinsic payload with a non-product account. */
     signPayloadWithLegacyAccount(request: T.HostSignPayloadWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadWithLegacyAccountError>>;
-    /** Sign raw bytes or a message. */
+    /**
+     * Sign raw bytes or a message.
+     *
+     * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     */
     signRaw(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
-    /** Sign an extrinsic payload. */
+    /**
+     * Sign an extrinsic payload.
+     *
+     * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     */
     signPayload(request: T.HostSignPayloadRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     */
+    signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     */
+    signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
 }
 /** Statement store methods. */
 export declare class StatementStoreClient {
@@ -356,7 +427,7 @@ export declare class ThemeClient {
     private readonly transport;
     constructor(transport: TrUApiTransport);
     /** Subscribe to host theme changes. */
-    subscribe(): ObservableLike<T.HostThemeSubscribeItem>;
+    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
 }
 export interface TrUApiClient {
     readonly account: AccountClient;
@@ -369,7 +440,9 @@ export interface TrUApiClient {
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;
+    readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
+    readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
     readonly signing: SigningClient;
     readonly statementStore: StatementStoreClient;
@@ -377,7 +450,6 @@ export interface TrUApiClient {
     readonly theme: ThemeClient;
 }
 export type Client = TrUApiClient;
-export type GeneratedClientTransport = Omit<TrUApiTransport, "codecVersion"> & Partial<Pick<TrUApiTransport, "codecVersion">>;
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
-export declare function createClient(transport: GeneratedClientTransport): TrUApiClient;
+export declare function createClient(transport: TrUApiTransport): TrUApiClient;
