@@ -53,6 +53,8 @@ export function coreSlot(key: CoreStorageKey): string {
       return `RingVrfRegistry:${toHex(key.value.rootPublicKey)}`;
     case "ProductSubtree":
       return `ProductSubtree:${key.value.sessionId}:${key.value.productId}`;
+    case "ProductManifest":
+      return `ProductManifest:${key.value.productId}`;
     case "SsoResponderRequestLedger":
       return `SsoResponderRequestLedger:${toHex(key.value.rootPublicKey)}:${toHex(key.value.peerStatementAccountId)}`;
     default:

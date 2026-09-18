@@ -10,7 +10,7 @@ independently of the dotli app (see README, "Versioning and releases").
 
 ## 0.1.0 (unreleased)
 
-Initial release: a terminal host for `@parity/truapi-host` 0.10.1.
+Initial release: a terminal host for `@parity/truapi-host` 0.16.0.
 
 - The full required typed callback surface plus the optional
   permission-status probe, bridged through the package's own generated

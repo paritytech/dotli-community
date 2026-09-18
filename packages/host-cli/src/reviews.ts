@@ -83,10 +83,13 @@ export function describeReview(
       if (review.value.tag !== "Product") {
         return legacyAccountReview("Sign a message with a legacy account");
       }
-      const { account, payload } = review.value.value;
+      const { request, watermarked } = review.value.value;
+      const { account, payload } = request;
       // The RawPayload discriminant survives into the review: `Bytes` is
-      // raw binary, `Payload` is a wrapped string message. Rendering the
-      // distinction matters. Raw bytes could be anything, including a
+      // raw binary, `Payload` is a wrapped string message. Since 0.16 the
+      // review also states whether the core applies the `<Bytes>` watermark
+      // envelope before signing. Rendering both matters: an unwatermarked
+      // signature over raw bytes could authorize anything, including a
       // transaction-shaped payload.
       const kind =
         payload.tag === "Bytes"
@@ -94,7 +97,13 @@ export function describeReview(
           : "a text message";
       return {
         title: "Sign a message",
-        details: [accountLine(account), `payload: ${kind}`],
+        details: [
+          accountLine(account),
+          `payload: ${kind}`,
+          watermarked
+            ? "wrapped in the <Bytes> envelope before signing"
+            : "signed as-is (no <Bytes> envelope): the bytes could encode anything, including a transaction",
+        ],
         phoneVerifies: true,
       };
     }

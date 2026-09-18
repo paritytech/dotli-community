@@ -33,11 +33,14 @@ describe("describeReview", () => {
       value: {
         tag: "Product",
         value: {
-          account: {
-            dotNsIdentifier: "test.dot",
-            derivationIndex: { tag: "Index", value: 0 },
+          request: {
+            account: {
+              dotNsIdentifier: "test.dot",
+              derivationIndex: { tag: "Index", value: 0 },
+            },
+            payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
           },
-          payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
+          watermarked: false,
         },
       },
     });
@@ -46,5 +49,8 @@ describe("describeReview", () => {
     expect(request.phoneVerifies).toBe(true);
     expect(request.phoneNote).toBeUndefined();
     expect(request.details.join(" ")).toContain("raw binary data (4 bytes)");
+    // Unwatermarked raw bytes are the dangerous signing shape. The prompt
+    // must say so.
+    expect(request.details.join(" ")).toContain("no <Bytes> envelope");
   });
 });

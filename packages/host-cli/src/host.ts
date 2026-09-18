@@ -193,20 +193,28 @@ export async function createCliHost(config: CliHostConfig): Promise<CliHost> {
     log: config.log,
   });
 
-  const runtime = new core.bindings.WasmPairingHostRuntime(
-    core.createRawCallbacks(callbacks),
-    {
-      host: config.host,
-      platform: {
-        type: config.platform?.type ?? defaultPlatformType(),
-        version: config.platform?.version ?? process.version,
-      },
-      people: { genesisHash: config.people.genesisHash },
-      bulletin: { genesisHash: config.bulletin.genesisHash },
-      assetHub: { genesisHash: config.assetHub.genesisHash },
-      pairing: { deeplinkScheme: config.pairing.deeplinkScheme },
+  // Since engine 0.16 the runtime expects one callback OUTSIDE the typed
+  // platform surface: `workerDemandChanged`, the core's signal to start or
+  // stop a product's worker. Workers are how browsers deploy product cores;
+  // this host runs the core in-process, so the demand is acknowledged as a
+  // no-op.
+  const rawCallbacks = {
+    ...(core.createRawCallbacks(callbacks) as Record<string, unknown>),
+    workerDemandChanged: (productId: string, transition: string) => {
+      config.log?.(`workerDemandChanged(${productId}, ${transition})`);
     },
-  );
+  };
+  const runtime = new core.bindings.WasmPairingHostRuntime(rawCallbacks, {
+    host: config.host,
+    platform: {
+      type: config.platform?.type ?? defaultPlatformType(),
+      version: config.platform?.version ?? process.version,
+    },
+    people: { genesisHash: config.people.genesisHash },
+    bulletin: { genesisHash: config.bulletin.genesisHash },
+    assetHub: { genesisHash: config.assetHub.genesisHash },
+    pairing: { deeplinkScheme: config.pairing.deeplinkScheme },
+  });
 
   const products = new Set<CliHostProduct>();
   let disposed = false;
