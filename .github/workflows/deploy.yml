@@ -34,7 +34,7 @@ jobs:
           ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
             release)
-              echo 'environments=["paseo.li"]' >> "$GITHUB_OUTPUT"
+              echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
               ;;
             push)

@@ -17,18 +17,21 @@ SITE_polkadot      := dot.li
 SITE_paseo         := paseo.li
 SITE_dev-paseo     := paseoli.dev
 SITE_fyi-paseo     := paseo.fyi
+SITE_dev-test      := testnet.li
 
 # env tag → remote (only polkadot is prod; the rest share the staging box)
 REMOTE_FOR_polkadot      := $(REMOTE_PRD)
 REMOTE_FOR_paseo         := $(REMOTE_STG)
 REMOTE_FOR_dev-paseo     := $(REMOTE_STG)
 REMOTE_FOR_fyi-paseo     := $(REMOTE_STG)
+REMOTE_FOR_dev-test      := $(REMOTE_STG)
 
 # env tag → web root on the remote (rendered into the `root` directive)
 DEPLOY_PATH_polkadot      := /var/www/dotli
 DEPLOY_PATH_paseo         := /var/www/paseoli
 DEPLOY_PATH_dev-paseo     := /var/www/paseolidev
 DEPLOY_PATH_fyi-paseo     := /var/www/paseofyi
+DEPLOY_PATH_dev-test      := /var/www/testnetli
 
 # One cert per env covering <base>, *.<base>, and *.app.<base>. The cert
 # lands at /etc/letsencrypt/live/<base>/, matching the ssl_certificate paths
@@ -37,12 +40,13 @@ CERT_DOMAINS_polkadot     := dot.li *.dot.li *.app.dot.li
 CERT_DOMAINS_paseo        := paseo.li *.paseo.li *.app.paseo.li
 CERT_DOMAINS_dev-paseo    := paseoli.dev *.paseoli.dev *.app.paseoli.dev
 CERT_DOMAINS_fyi-paseo  := paseo.fyi *.paseo.fyi *.app.paseo.fyi
+CERT_DOMAINS_dev-test     := testnet.li *.testnet.li *.app.testnet.li
 
-VALID_ENVS := polkadot paseo dev-paseo fyi-paseo
+VALID_ENVS := polkadot paseo dev-paseo fyi-paseo dev-test
 
 # Production domains (env tags) that get nginx rate-limiting in the rendered
 # config; every other env renders with rate-limiting commented out.
-RATE_LIMITED_ENVS := paseo
+RATE_LIMITED_ENVS := paseo dev-test
 
 # Optional Sentry tunnel (nginx/snippets/dotli-sentry-tunnel.conf): the
 # ingest host and project id are cut from SENTRY_DSN, which has the shape
