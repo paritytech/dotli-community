@@ -32,10 +32,12 @@ export interface ConfirmRequest {
    */
   phoneVerifies: boolean;
   /**
-   * Overrides the default signing-specific "defer to the phone" line. Set it
-   * for authority or read requests (e.g. resolving account keys), where
-   * "nothing is signed" is true but misleading — it implies a signing prompt
-   * that never appears.
+   * Overrides the default signing-specific "defer to the phone" line, and
+   * renders regardless of {@link ConfirmRequest.phoneVerifies}. Set it
+   * wherever the default would mislead: authority or read requests where
+   * nothing is ever signed (e.g. resolving account keys), and locally-signed
+   * actions (Bulletin writes under an allowance) where terminal approval is
+   * FINAL and no phone checkpoint follows.
    */
   phoneNote?: string;
 }
@@ -161,16 +163,24 @@ export function describeReview(
         details: [`product: ${review.value.productId}`],
         phoneVerifies: true,
         phoneNote:
-          "Approve on your phone to let this app read its account keys. " +
-          "The phone only shows a request when the product id matches its network.",
+          "Approve on your phone to let this app read its account keys.",
       };
     case "PreimageSubmit":
+      // NOT phone-verified: Bulletin writes are signed in-core with the
+      // allowance key granted at login and never reach the wallet (measured
+      // with the phone off: every phone-dependent operation timed out while
+      // Bulletin writes succeeded). Approving here is FINAL, and the prompt
+      // must say so instead of promising a checkpoint that never comes.
       return {
         title: "Publish data to the Bulletin chain",
         details: [
           `size: ${String(review.value.size)} bytes (content not decodable here)`,
         ],
-        phoneVerifies: true,
+        phoneVerifies: false,
+        phoneNote:
+          "Approving here is final. The write is signed locally with the " +
+          "Bulletin allowance you approved at login and goes to the chain " +
+          "immediately.",
       };
     case "AccountAlias":
       return {

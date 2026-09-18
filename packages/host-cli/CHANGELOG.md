@@ -33,6 +33,11 @@ Initial release: a terminal host for `@parity/truapi-host` 0.10.1.
   (git remote helpers), and denies when no terminal exists.
 - Batch context on prompts: when confirms queue up (bulk Bulletin writes),
   each prompt states how many approvals wait behind it.
+- Bulletin publish prompts state that terminal approval is FINAL: those
+  writes are signed in-core with the login-time allowance and never reach
+  the phone, so the phone-checkpoint line was wrong in the unsafe direction
+  (verified with the wallet offline: phone-bound operations time out while
+  Bulletin writes succeed).
 - Owner-only (0600) JSON file storage for core and product state; product
   storage cleared on logout and on identity change.
 - Chain-connection pool keyed by genesis hash: per-lease request-id
