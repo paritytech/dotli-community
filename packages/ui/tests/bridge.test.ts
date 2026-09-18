@@ -1,10 +1,10 @@
 // Dynamic imports intentionally reload bridge state after vi.resetModules().
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  VersionedHostRequestLoginResponse,
   MESSAGE_TYPE_REQUEST,
   MESSAGE_TYPE_RESPONSE,
   VersionedHostRequestLoginError,
+  VersionedHostRequestLoginResponse,
   decodeWireMessage,
   encodeWireMessage,
   scale,
@@ -171,6 +171,7 @@ function loginResponseFrame(
     | { success: false; reason: string }
     | { success: false; hostFailure: string },
 ): Uint8Array {
+  // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
     VersionedHostRequestLoginResponse,
     scale.CallError(VersionedHostRequestLoginError),

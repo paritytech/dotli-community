@@ -15,12 +15,12 @@ import {
   createTransport,
   decodeWireMessage,
   encodeWireMessage,
-  VersionedHostRequestLoginResponse,
   MESSAGE_TYPE_REQUEST,
   MESSAGE_TYPE_RESPONSE,
   scale,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginRequest,
+  VersionedHostRequestLoginResponse,
   type HostRequestLoginResponse as LoginResponse,
   type TrUApiClient,
   type WireProvider as Provider,
@@ -1701,6 +1701,7 @@ export function requestCoreLogin(
   reason?: string,
 ): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
+  // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
     VersionedHostRequestLoginResponse,
     scale.CallError(VersionedHostRequestLoginError),
@@ -1767,17 +1768,18 @@ export function requestCoreLogin(
           rejectRequest(decoded.error);
           return;
         }
+        const { payload } = decoded.value;
         if (
           decoded.value.requestId !== requestId ||
-          decoded.value.payload.traitId !== ACCOUNT_REQUEST_LOGIN.trait ||
-          decoded.value.payload.methodId !== ACCOUNT_REQUEST_LOGIN.method ||
-          decoded.value.payload.messageType !== MESSAGE_TYPE_RESPONSE
+          payload.traitId !== ACCOUNT_REQUEST_LOGIN.trait ||
+          payload.methodId !== ACCOUNT_REQUEST_LOGIN.method ||
+          payload.messageType !== MESSAGE_TYPE_RESPONSE
         ) {
           return;
         }
         cleanup();
         try {
-          const result = responseCodec.dec(decoded.value.payload.value);
+          const result = responseCodec.dec(payload.value);
           if (result.success) {
             resolveRequest(result.value.value);
           } else {

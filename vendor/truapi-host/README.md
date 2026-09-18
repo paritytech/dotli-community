@@ -19,6 +19,15 @@ The shipped WASM includes `WasmSigningHostRuntime`. Its configuration requires
 `runtimeConfig.networkSuffix`: the bare TLD (`dot`, `paseo`, or `testnet`)
 matching the People chain and the wallet's onboarding configuration.
 
+`runtimeConfig.assetHub` is required by both configurations, pairing and
+signing. It is the Asset Hub genesis hash, in the same shape as
+`runtimeConfig.people` and `runtimeConfig.bulletin`. Product manifests are read
+from the dotNS contracts deployed there, so it is what makes a
+`trustedProducts` grant resolvable: without a usable value no manifest resolves,
+so every cross-product grant not already cached is refused, and the refusal is
+indistinguishable from the other product having granted nothing. A config
+omitting it is rejected.
+
 When a product requests a Statement Store allowance, the signing runtime first
 uses `confirmUserAction` for host-owned approval UI, then registers the
 product-scoped allowance account through the platform's People-chain

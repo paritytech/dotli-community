@@ -42,7 +42,7 @@ interface ConfirmationField {
   label: string;
   value: string;
   mono?: boolean;
-  alert?: boolean;
+  warning?: boolean;
 }
 
 type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
@@ -136,8 +136,9 @@ function showConfirmationModal(
 function createField(field: ConfirmationField): HTMLDivElement {
   const group = document.createElement("div");
   group.className = "signing-field";
-  if (field.alert === true) {
+  if (field.warning === true) {
     group.setAttribute("role", "alert");
+    group.classList.add("signing-field-warning");
   }
 
   const label = document.createElement("div");
@@ -252,7 +253,6 @@ function createSignRawFields(
   label: string,
   review: SignRawReview,
 ): ConfirmationField[] {
-  const { request, watermarked } = review.value;
   const signer =
     review.tag === "Product"
       ? formatProductAccount(review.value.request.account)
@@ -261,21 +261,21 @@ function createSignRawFields(
     { label: "App", value: label },
     { label: "Signer", value: signer },
     {
-      label: "Signing mode",
-      value: watermarked ? "Watermarked message" : "Unwatermarked payload",
-    },
-    {
-      label: "Bytes to sign",
-      value: formatRawPayload(request.payload, watermarked),
+      label: "Message",
+      value: formatRawPayload(
+        review.value.request.payload,
+        review.value.watermarked,
+      ),
       mono: true,
     },
   ];
-  if (!watermarked) {
-    fields.unshift({
+  // Without the <Bytes> watermark the signed bytes could be a valid
+  // transaction, so the user has to be told before approving.
+  if (!review.value.watermarked) {
+    fields.push({
       label: "Warning",
-      value:
-        "Unwatermarked signing can authorize transactions. No message-protection wrapper will be added.",
-      alert: true,
+      value: "Unprotected signature: may authorize transactions",
+      warning: true,
     });
   }
   return fields;
