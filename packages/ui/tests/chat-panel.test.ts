@@ -2,7 +2,12 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { labelToProductId } from "@dotli/ui/runtime-config";
 import { setChatCapability } from "@dotli/shared/chat-capability";
-import type { HostChatActionSubscribeItem } from "@parity/truapi";
+import type {
+  HostChatActionSubscribeItem,
+  HostRendererActionSubscribeItem,
+  ProductRendererRenderRequest,
+} from "@parity/truapi";
+import type { RenderSink } from "@parity/truapi-host";
 
 // The panel and service keep module-level state (listeners, connection
 // registry), so each test loads a fresh module instance via resetModules.
@@ -211,7 +216,8 @@ describe("chat panel", () => {
       publish: async (action) => {
         published.push(action);
       },
-      renderCustomMessage: () => () => undefined,
+      publishRendererAction: async () => undefined,
+      render: () => () => undefined,
     });
 
     await service.productCreateRoom(productId, {
@@ -370,23 +376,20 @@ describe("chat panel", () => {
       const productId = labelToProductId("chatty-custom");
 
       const published: HostChatActionSubscribeItem[] = [];
+      const rendererActions: HostRendererActionSubscribeItem[] = [];
       const renders: {
-        request: {
-          messageId: string;
-          messageType: string;
-          payload: Uint8Array;
-        };
-        sink: {
-          onUpdate(node: unknown): void;
-          onError?(error: Error): void;
-        };
+        request: ProductRendererRenderRequest;
+        sink: RenderSink;
       }[] = [];
       const disposeRender = vi.fn();
       service.registerChatConnection(productId, {
         publish: async (action) => {
           published.push(action);
         },
-        renderCustomMessage: (request, sink) => {
+        publishRendererAction: async (item) => {
+          rendererActions.push(item);
+        },
+        render: (request, sink) => {
           renders.push({ request, sink });
           return disposeRender;
         },
@@ -408,10 +411,12 @@ describe("chat panel", () => {
       await settle(() => renders.length === 1);
 
       // The cell subscribed with the stored message identity and payload.
+      const context = {
+        tag: "ChatMessage",
+        value: { roomId: "main", messageId, messageType: "poll" },
+      };
       expect(renders).toHaveLength(1);
-      expect(renders[0].request.messageId).toBe(messageId);
-      expect(renders[0].request.messageType).toBe("poll");
-      expect(renders[0].request.payload).toEqual(new Uint8Array([1, 2]));
+      expect(renders[0].request).toEqual({ context, payload: "0x0102" });
       expect(byId("chat-panel-messages").textContent).toContain("Loading…");
 
       // The product streams a tree; the cell replaces its content.
@@ -447,18 +452,14 @@ describe("chat panel", () => {
       });
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
-      // Tapping the rendered button publishes an ActionTriggered action.
+      // Tapping the rendered button publishes a renderer action naming the
+      // same body; the chat action stream stays untouched.
       document.querySelector<HTMLButtonElement>(".chat-custom-btn")?.click();
-      await settle(() => published.length === 1);
-      expect(published).toHaveLength(1);
-      expect(published[0]).toMatchObject({
-        roomId: "main",
-        peer: "user",
-        payload: {
-          tag: "ActionTriggered",
-          value: { messageId, actionId: "pick:a" },
-        },
-      });
+      await settle(() => rendererActions.length === 1);
+      expect(rendererActions).toEqual([
+        { context, actionId: "pick:a", payload: "0x" },
+      ]);
+      expect(published).toHaveLength(0);
 
       // A failed render must not leave a partial tree standing.
       renders[0].sink.onError?.(new Error("render refused"));

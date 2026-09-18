@@ -59,6 +59,12 @@
   max-height: 120px;
   overflow-y: auto;
 }
+.signing-field-warning .signing-field-label {
+  color: #d9a441;
+}
+.signing-field-warning .signing-field-value {
+  color: #f0c060;
+}
 .signing-modal-footer {
   display: flex;
   gap: 8px;

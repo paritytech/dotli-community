@@ -12,10 +12,12 @@
 import {
   decodeWireMessage,
   encodeWireMessage,
-  HostRequestLoginResponse,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
   scale,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginRequest,
+  VersionedHostRequestLoginResponse,
   type HostRequestLoginResponse as LoginResponse,
   type WireProvider as Provider,
   createMessagePortProvider,
@@ -28,7 +30,7 @@ import {
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
 import { getNetwork, withActiveTld } from "@dotli/config/network";
-import { m } from "@dotli/metrics/metrics";
+import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
@@ -57,6 +59,7 @@ import {
 import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { registerChatConnection } from "./chat/service";
 import { showNotification } from "./notification";
+import { ERRORS } from "./errors";
 
 const noop = (): void => undefined;
 
@@ -503,7 +506,7 @@ function emitWireFrameDebug(
       productId,
       requestId: decoded.value.requestId,
       payload: describeWireFrame(
-        decoded.value.payload.id,
+        decoded.value.payload,
         decoded.value.payload.value,
       ),
     });
@@ -577,19 +580,17 @@ export function requestCoreLogin(
   reason?: string,
 ): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(
-        HostRequestLoginResponse,
-        scale.CallError(VersionedHostRequestLoginError),
-      ),
-    ],
-  });
+  // Codec 2 legs carry Result outside and the version wrapper inside.
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
-      id: ACCOUNT_REQUEST_LOGIN.request,
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType: MESSAGE_TYPE_REQUEST,
       value: VersionedHostRequestLoginRequest.enc({
         tag: "V1",
         value: { reason },
@@ -646,18 +647,20 @@ export function requestCoreLogin(
           rejectRequest(decoded.error);
           return;
         }
+        const { payload } = decoded.value;
         if (
           decoded.value.requestId !== requestId ||
-          decoded.value.payload.id !== ACCOUNT_REQUEST_LOGIN.response
+          payload.traitId !== ACCOUNT_REQUEST_LOGIN.trait ||
+          payload.methodId !== ACCOUNT_REQUEST_LOGIN.method ||
+          payload.messageType !== MESSAGE_TYPE_RESPONSE
         ) {
           return;
         }
         cleanup();
         try {
-          const envelope = responseCodec.dec(decoded.value.payload.value);
-          const result = envelope.value;
+          const result = responseCodec.dec(payload.value);
           if (result.success) {
-            resolveRequest(result.value);
+            resolveRequest(result.value.value);
           } else {
             const error = new LoginRequestError(result.value);
             rejectRequest(error);
@@ -871,12 +874,16 @@ async function createCoreProvider(
             provider.publishChatAction === undefined
               ? Promise.reject(new Error("chat publishing unavailable"))
               : provider.publishChatAction(action),
-          renderCustomMessage: (request, sink) => {
-            if (provider.renderCustomMessage === undefined) {
-              sink.onError?.(new Error("custom rendering unavailable"));
+          publishRendererAction: (item) =>
+            provider.publishRendererAction === undefined
+              ? Promise.reject(new Error("renderer actions unavailable"))
+              : provider.publishRendererAction(item),
+          render: (request, sink) => {
+            if (provider.render === undefined) {
+              sink.onError?.(new Error("rendering unavailable"));
               return noop;
             }
-            return provider.renderCustomMessage(request, sink);
+            return provider.render(request, sink);
           },
         })
       : noop;
@@ -1127,7 +1134,7 @@ export async function renderAppSubdomain(
   }
   const parsedUrl = new URL(deepPath ? `${appOrigin}${deepPath}` : appOrigin);
   if (parsedUrl.origin !== appOrigin) {
-    throw new Error("Refusing to render an app URL outside its sandbox origin");
+    throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
   }
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
   parsedUrl.searchParams.set(
@@ -1144,6 +1151,13 @@ export async function renderAppSubdomain(
   }
   if (fullReset) {
     parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
+  }
+  const resolutionId = getResolutionId();
+  if (resolutionId !== null) {
+    parsedUrl.searchParams.set(
+      SANDBOX_CONTRACT_PARAMS.resolutionId,
+      resolutionId,
+    );
   }
   const url = parsedUrl.toString();
 

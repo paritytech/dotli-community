@@ -4,7 +4,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
-        "@parity/truapi": "0.13.1",
+        "@parity/truapi": "0.17.0",
       },
       "devDependencies": {
         "prettier": "3.8.4",
@@ -33,6 +33,7 @@
         "@playwright/test": "^1.59.1",
         "@types/node": "^25.9.3",
         "eslint": "^10.5.0",
+        "happy-dom": "^20.10.3",
         "jsqr": "^1.4.0",
         "playwright": "^1.59.1",
         "prettier": "^3.8.3",
@@ -41,6 +42,7 @@
         "vite": "^8.0.16",
         "vite-plugin-pwa": "^1.2.0",
         "vite-plugin-wasm": "^3.5.0",
+        "vitest": "^4.1.8",
         "workbox-window": "^7.4.0",
       },
     },
@@ -87,10 +89,12 @@
         "@dotli/typescript-config": "workspace:*",
         "@types/node": "^25.9.3",
         "eslint": "^10.5.0",
+        "happy-dom": "^20.10.3",
         "prettier": "^3.8.3",
         "typescript": "~6.0.3",
         "vite": "^8.0.16",
         "vite-plugin-wasm": "^3.5.0",
+        "vitest": "^4.1.8",
       },
     },
     "packages/config": {
@@ -112,11 +116,13 @@
       "dependencies": {
         "@dotli/config": "workspace:*",
         "@dotli/metrics": "workspace:*",
+        "@dotli/protocol": "workspace:*",
         "@dotli/shared": "workspace:*",
         "@ipld/car": "^5.4.3",
         "@ipld/dag-pb": "^4.1.5",
         "@noble/ciphers": "^2.1.1",
         "@noble/hashes": "^2.2.0",
+        "@polkadot-api/json-rpc-provider": "^0.2.0",
         "ipfs-unixfs": "^13.0.0",
         "multiformats": "^14.0.0",
       },
@@ -146,14 +152,14 @@
       "name": "@dotli/host-cli",
       "version": "0.1.0",
       "dependencies": {
-        "@parity/truapi-host": "0.10.1",
+        "@parity/truapi-host": "0.16.0",
         "neverthrow": "^8.2.0",
         "qrcode": "^1.5.4",
       },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",
         "@dotli/typescript-config": "workspace:*",
-        "@parity/truapi": "0.13.1",
+        "@parity/truapi": "0.16.0",
         "@types/node": "^22.0.0",
         "@types/qrcode": "^1.5.6",
         "eslint": "^10.5.0",
@@ -212,7 +218,7 @@
         "@dotli/storage": "workspace:*",
         "@ensdomains/content-hash": "^3.0.0",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi-provider": "0.1.0",
+        "@parity/truapi-provider": "0.2.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@polkadot-api/json-rpc-provider-proxy": "^0.4.0",
         "@polkadot-api/substrate-bindings": "0.20.3",
@@ -313,8 +319,8 @@
         "@dotli/storage": "workspace:*",
         "@dotli/truapi-debug": "workspace:*",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi": "0.13.1",
-        "@parity/truapi-host": "0.10.1",
+        "@parity/truapi": "0.17.0",
+        "@parity/truapi-host": "0.17.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
@@ -681,11 +687,11 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.148.0", "", {}, "sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A=="],
 
-    "@parity/truapi": ["@parity/truapi@0.13.1", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-6gkfHskN8I7H5DwB7j96wRusVx7xuGzu1YGWLBLPCD1RtBSnkPaQq/8Ac3MwudNz8kYqKZ5kZao3EkJ4PN4nCg=="],
+    "@parity/truapi": ["@parity/truapi@0.17.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-IwJqcTyNSBrigGZjGhco7OqKg6V+wXnXzf/FxngGdEU9jcwzomku7D+9a/CUVYWnolz4pmwb4E8NgYoY/b+nxg=="],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.10.1", "", { "dependencies": { "@parity/truapi": "^0.13.1" } }, "sha512-XcS8CeOVGBH/RBZb5KmFw5EnwHAsoqXnG2NyP3g7gMA5S575FEOzQxQf4FzIr7Jvz38JBYGZWIq079TOAtVRlw=="],
+    "@parity/truapi-host": ["@parity/truapi-host@0.16.0", "", { "dependencies": { "@parity/truapi": "^0.16.0" } }, "sha512-1+wUjJCduN0xzqFIvwsnRIck7kr6pT81hMq9tpcoNLlutMeh0E9h5eBXUnaqoHabYkG63xSVG0USHCTSiaAqnw=="],
 
-    "@parity/truapi-provider": ["@parity/truapi-provider@0.1.0", "", {}, "sha512-7OY/XYHETWMOGnHePp46GEADkYj+CjiQiXi+JMqO+30x0uD/2vGVf8dyzYrDnrmxVZ0I9HbgId0579fQi/dhqA=="],
+    "@parity/truapi-provider": ["@parity/truapi-provider@0.2.0", "", {}, "sha512-rw09aF/OeVbKgCLftLqcw/4IqLXRhrNxd4MOuR+l5nd7M1RzKSPc2BU05jBD3a7h+EwsRk3cZG0cN1PbLZvEiw=="],
 
     "@playwright/test": ["@playwright/test@1.62.1", "", { "dependencies": { "playwright": "1.62.1" }, "bin": { "playwright": "cli.js" } }, "sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ=="],
 
@@ -1759,15 +1765,21 @@
 
     "@dotli/host/prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
+    "@dotli/host-cli/@parity/truapi": ["@parity/truapi@0.16.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-eydaI/BZFFV3VutlVC7UkgPXpsCNRS8v82bAo77KUG+t4Q9dAyP4cpSLcReKXRuyjljnDBwhkNi4rVGeMIOosw=="],
+
     "@dotli/host-cli/@types/node": ["@types/node@22.20.2", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-xlvWf4Vs9n1PEVYwP1n4vvG07M6y8WgvJ2t0vbrWTmijsIHp1cS+uJ2kMIRdY3nHZK0nCYKrPeD171+SzF4/zw=="],
 
     "@dotli/protocol-app/prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
     "@dotli/sandbox/prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
+    "@dotli/ui/@parity/truapi-host": ["@parity/truapi-host@0.17.0", "", { "dependencies": { "@parity/truapi": "^0.17.0" } }, "sha512-z7J4dIpofwlFuApIq4xz1QBs7UYrdvlaraaL8c7RJrobAZcfS8Ge9r2XBhMHgzroJkbSz/CQwhv7PlZ+sZv1YA=="],
+
     "@ensdomains/content-hash/multiformats": ["multiformats@13.4.2", "", {}, "sha512-eh6eHCrRi1+POZ3dA+Dq1C6jhP1GNtr9CRINMb67OKzqW9I5DUuZM/3jLPlzhgpGeiNUlEGEbkCYChXMCc/8DQ=="],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
+
+    "@parity/truapi-host/@parity/truapi": ["@parity/truapi@0.16.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-eydaI/BZFFV3VutlVC7UkgPXpsCNRS8v82bAo77KUG+t4Q9dAyP4cpSLcReKXRuyjljnDBwhkNi4rVGeMIOosw=="],
 
     "@polkadot-api/cli/commander": ["commander@15.0.0", "", {}, "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg=="],
 

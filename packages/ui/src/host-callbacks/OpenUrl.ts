@@ -1,6 +1,9 @@
 // Navigation callback. The Rust core pre-normalizes URLs, but dotli still
 // needs to classify the result so `.dot` domains land on the right host
 // subdomain and localhost products wrap into the configured host origin.
+//
+// Product targets take over the current tab as on the mobile hosts, so a
+// handoff between products reads as one experience. Websites open apart.
 
 import type { Navigation } from "@parity/truapi-host";
 import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
@@ -32,13 +35,11 @@ export function createNavigateTo(): Navigation["navigateTo"] {
     const dotUrl = dotNsUrl.parseDotNsDomain(url);
 
     if (dotUrl && dotNsUrl.isDotDomain(dotUrl.identifier)) {
-      window.open(
+      window.location.assign(
         buildDotTargetUrl(
           identifierToLabel(dotUrl.identifier),
           dotUrl.pathname,
         ),
-        "_blank",
-        "noopener",
       );
       return Promise.resolve(undefined);
     }
@@ -46,10 +47,8 @@ export function createNavigateTo(): Navigation["navigateTo"] {
     const localhostUrl = dotNsUrl.parseLocalhostUrl(url);
     if (localhostUrl) {
       const suffix = localhostUrl.pathname ? "/" + localhostUrl.pathname : "";
-      window.open(
+      window.location.assign(
         `${getHostOrigin()}/${localhostUrl.host}${suffix}`,
-        "_blank",
-        "noopener",
       );
       return Promise.resolve(undefined);
     }

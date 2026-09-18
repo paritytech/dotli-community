@@ -139,7 +139,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  margin: -8px 0;
 }
 .landing-recent-item {
   position: relative;
@@ -148,46 +148,56 @@
 .landing-recent-pill {
   display: inline-flex;
   align-items: center;
+  padding: 8px 4px;
   text-decoration: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.landing-recent-label {
   padding: 6px 14px;
   background: #151515;
   border: 1px solid #2a2a2a;
   border-radius: 20px;
-  -webkit-touch-callout: none;
-  user-select: none;
+  font-size: 0.75rem;
+  color: #999;
+  white-space: nowrap;
   transition:
     border-color 0.15s,
     background 0.15s;
 }
-.landing-recent-pill:hover {
+.landing-recent-pill:hover .landing-recent-label {
   border-color: #444;
   background: #1a1a1a;
-}
-.landing-recent-label {
-  font-size: 0.75rem;
-  color: #999;
-  white-space: nowrap;
 }
 .landing-recent-remove {
   position: absolute;
   top: -5px;
-  right: -5px;
+  right: -9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  background: #2a2a2a;
-  border: 1px solid #0a0a0a;
-  border-radius: 50%;
+  background: none;
+  border: 0;
   color: #ccc;
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition:
-    opacity 0.15s,
-    background 0.15s;
+  transition: opacity 0.15s;
+}
+.landing-recent-remove::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  background: #2a2a2a;
+  border: 1px solid #0a0a0a;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+.landing-recent-remove svg {
+  position: relative;
 }
 .landing-recent-item:hover .landing-recent-remove,
 .landing-recent-item:focus-within .landing-recent-remove,
@@ -196,13 +206,14 @@
   pointer-events: auto;
 }
 .landing-recent-remove:hover {
-  background: #444;
   color: #fff;
 }
+.landing-recent-remove:hover::before {
+  background: #444;
+}
 @media (hover: none) {
-  .landing-recent-remove {
-    width: 20px;
-    height: 20px;
+  .landing-recent-remove::before {
+    inset: 6px;
   }
 }
 .landing-footer {

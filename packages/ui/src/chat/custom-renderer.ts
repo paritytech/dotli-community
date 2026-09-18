@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Vanilla-DOM renderer for product-authored custom message trees.
+// Vanilla-DOM renderer for product-authored render trees.
 //
 // The tree is a closed vocabulary: the product names layouts and design
 // tokens, never markup, styles, or URLs, so everything it can express is
@@ -10,12 +10,13 @@
 
 import type {
   Arrangement,
+  BlendingMode,
   ColorToken,
   ContentAlignment,
-  CustomRendererNode,
   Dimensions,
   HorizontalAlignment,
   Modifier,
+  RendererNode,
   Shape,
   Size,
   TypographyStyle,
@@ -97,6 +98,25 @@ const CONTENT_ALIGNMENT: Record<
   BottomEnd: ["end", "end"],
 };
 
+const BLENDING_MODE_CSS: Record<BlendingMode, string> = {
+  Normal: "normal",
+  Multiply: "multiply",
+  Screen: "screen",
+  Overlay: "overlay",
+  Darken: "darken",
+  Lighten: "lighten",
+  ColorDodge: "color-dodge",
+  ColorBurn: "color-burn",
+  HardLight: "hard-light",
+  SoftLight: "soft-light",
+  Difference: "difference",
+  Exclusion: "exclusion",
+  Hue: "hue",
+  Saturation: "saturation",
+  Color: "color",
+  Luminosity: "luminosity",
+};
+
 const textEncoder = new TextEncoder();
 
 function px(value: Size): string {
@@ -107,7 +127,14 @@ function shapeToBorderRadius(shape: Shape | undefined): string | undefined {
   if (shape === undefined) {
     return undefined;
   }
-  return shape.tag === "Circle" ? "50%" : px(shape.value.radius);
+  switch (shape.tag) {
+    case "Rounded":
+      return px(shape.value);
+    case "Circle":
+      return "50%";
+    case "Square":
+      return "0";
+  }
 }
 
 // Two- and three-value CSS shorthands carry the spec's defaulting rules:
@@ -153,26 +180,33 @@ function applyModifiers(
         break;
       }
       case "Height":
-        style.height = px(mod.value.height);
+        style.height = px(mod.value);
         break;
       case "Width":
-        style.width = px(mod.value.width);
+        style.width = px(mod.value);
         break;
       case "MinWidth":
-        style.minWidth = px(mod.value.width);
+        style.minWidth = px(mod.value);
         break;
       case "MinHeight":
-        style.minHeight = px(mod.value.height);
+        style.minHeight = px(mod.value);
         break;
       case "FillWidth":
-        if (mod.value.enabled) {
+        if (mod.value) {
           style.width = "100%";
         }
         break;
       case "FillHeight":
-        if (mod.value.enabled) {
+        if (mod.value) {
           style.height = "100%";
         }
+        break;
+      // The wire carries a u8 alpha; CSS wants the unit interval.
+      case "Opacity":
+        style.opacity = String(mod.value / 255);
+        break;
+      case "BlendingMode":
+        style.mixBlendMode = BLENDING_MODE_CSS[mod.value];
         break;
     }
   }
@@ -180,7 +214,7 @@ function applyModifiers(
 
 function appendChildren(
   parent: HTMLElement,
-  children: CustomRendererNode[],
+  children: RendererNode[],
   onAction: CustomActionHandler,
 ): void {
   for (const child of children) {
@@ -196,7 +230,7 @@ function appendChildren(
  * `textContent`/text nodes, so product strings can never inject markup.
  */
 export function renderCustomNode(
-  node: CustomRendererNode,
+  node: RendererNode,
   onAction: CustomActionHandler,
 ): globalThis.Node | null {
   switch (node.tag) {
@@ -256,11 +290,9 @@ export function renderCustomNode(
     }
 
     case "Spacer": {
-      const { modifiers, children } = node.value;
       const spacer = document.createElement("div");
       spacer.className = "chat-custom-spacer";
-      applyModifiers(spacer.style, modifiers);
-      appendChildren(spacer, children, onAction);
+      applyModifiers(spacer.style, node.value.modifiers);
       return spacer;
     }
 
@@ -336,6 +368,23 @@ export function renderCustomNode(
       field.appendChild(input);
       applyModifiers(field.style, modifiers);
       return field;
+    }
+
+    case "Image": {
+      // No fetch path for Bulletin or archive image bytes in the host frame
+      // yet, so an image draws as the empty space the RFC gives a miss.
+      const image = document.createElement("div");
+      image.className = "chat-custom-image";
+      applyModifiers(image.style, node.value.modifiers);
+      return image;
+    }
+
+    case "Effect": {
+      const { props, children } = node.value;
+      const effect = document.createElement("div");
+      effect.className = `chat-custom-effect chat-custom-effect-${props.effect.toLowerCase()}`;
+      appendChildren(effect, children, onAction);
+      return effect;
     }
   }
 }

@@ -127,7 +127,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `signPayload` / `signRaw`      | Shows signing modals and routes signing through the active session                    |
 | `chainConnection`              | Returns an isolated broker connection over the selected chain backend                 |
 | `localStorageRead/Write/Clear` | Scoped `localStorage` per `.dot` domain                                               |
-| `navigateTo`                   | Opens URLs in new tabs                                                                |
+| `navigateTo`                   | Moves the current tab to another dotNS product; external URLs open in a new tab       |
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
@@ -148,11 +148,13 @@ manifest.
 
 Custom messages (`ChatMessageContent::Custom`) render live: when a custom
 message cell scrolls into view, the panel asks the product to draw it
-(`chat.custom_message_render`) and renders the streamed tree with the
-host's own design system (`src/chat/custom-renderer.ts`). The tree is a
-closed vocabulary of layouts and design tokens, so a product can never
-inject markup, styles, or URLs. Button taps and text-field edits flow back
-as `ActionTriggered` actions, as do taps on `Actions`-content buttons.
+through the Renderer service (`renderer.render`, with a `ChatMessage`
+render context) and renders the streamed tree with the host's own design
+system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
+layouts and design tokens, so a product can never inject markup, styles, or
+URLs. Button taps and text-field edits inside a rendered tree flow back on
+`renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
+`ActionTriggered` chat actions.
 
 ### App iframe model
 
@@ -260,7 +262,7 @@ The published tag on the [Releases page](https://github.com/paritytech/dotli/rel
 
 dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
 
-In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploys at `paseoli.dev` / `dotli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
+In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploy at `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
 
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
 

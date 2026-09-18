@@ -14,7 +14,12 @@ import {
   VersionedRemoteChainHeadStopOperationRequest,
   VersionedRemoteChainHeadStorageRequest,
   VersionedRemoteChainHeadUnpinRequest,
+  MESSAGE_TYPE_INTERRUPT,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_START,
+  MESSAGE_TYPE_STOP,
   type Codec,
+  type MethodIds,
   type WireProvider,
 } from "@parity/truapi";
 import {
@@ -45,7 +50,7 @@ describe("createWindowMessageProvider", () => {
     const targetWindow = {
       postMessage: vi.fn(),
     } as unknown as Window;
-    const targetOrigin = "https://product.app.dotli.dev";
+    const targetOrigin = "https://product.app.paseoli.dev";
     const provider = createWindowMessageProvider(targetWindow, targetOrigin);
     const listener = vi.fn();
     provider.subscribe(listener);
@@ -129,11 +134,21 @@ function createHarness(productId?: string): {
   };
 }
 
-function frame(requestId: string, id: number, value: Uint8Array): Uint8Array {
+function frame(
+  requestId: string,
+  ids: MethodIds,
+  messageType: number,
+  value: Uint8Array,
+): Uint8Array {
   return unwrap(
     encodeWireMessage({
       requestId,
-      payload: { id, value },
+      payload: {
+        traitId: ids.trait,
+        methodId: ids.method,
+        messageType,
+        value,
+      },
     }),
   );
 }
@@ -141,7 +156,8 @@ function frame(requestId: string, id: number, value: Uint8Array): Uint8Array {
 function followStart(requestId: string): Uint8Array {
   return frame(
     requestId,
-    CHAIN_FOLLOW_HEAD_SUBSCRIBE.start,
+    CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+    MESSAGE_TYPE_START,
     VersionedRemoteChainHeadFollowRequest.enc({
       tag: "V1",
       value: { genesisHash, withRuntime: true },
@@ -150,16 +166,21 @@ function followStart(requestId: string): Uint8Array {
 }
 
 function followStop(requestId: string): Uint8Array {
-  return frame(requestId, CHAIN_FOLLOW_HEAD_SUBSCRIBE.stop, new Uint8Array());
+  return frame(
+    requestId,
+    CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+    MESSAGE_TYPE_STOP,
+    new Uint8Array(),
+  );
 }
 
 function followBoundFrame<T extends FollowBoundRequest>(
   requestId: string,
-  id: number,
+  ids: MethodIds,
   codec: Codec<T>,
   request: T,
 ): Uint8Array {
-  return frame(requestId, id, codec.enc(request));
+  return frame(requestId, ids, MESSAGE_TYPE_REQUEST, codec.enc(request));
 }
 
 function decodedFollowId<T extends FollowBoundRequest>(
@@ -179,7 +200,8 @@ describe("createLegacyNovaChainHeadProvider", () => {
     harness.emit(
       frame(
         "account-request",
-        ACCOUNT_GET_ACCOUNT.request,
+        ACCOUNT_GET_ACCOUNT,
+        MESSAGE_TYPE_REQUEST,
         VersionedHostAccountGetRequest.enc({
           tag: "V1",
           value: {
@@ -208,7 +230,8 @@ describe("createLegacyNovaChainHeadProvider", () => {
     harness.emit(
       frame(
         "account-request",
-        ACCOUNT_GET_ACCOUNT.request,
+        ACCOUNT_GET_ACCOUNT,
+        MESSAGE_TYPE_REQUEST,
         VersionedHostAccountGetRequest.enc({
           tag: "V1",
           value: {
@@ -236,7 +259,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
 
     const cases = [
       {
-        id: CHAIN_GET_HEAD_HEADER.request,
+        ids: CHAIN_GET_HEAD_HEADER,
         codec: VersionedRemoteChainHeadHeaderRequest,
         request: {
           tag: "V1",
@@ -248,7 +271,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         },
       },
       {
-        id: CHAIN_GET_HEAD_BODY.request,
+        ids: CHAIN_GET_HEAD_BODY,
         codec: VersionedRemoteChainHeadBodyRequest,
         request: {
           tag: "V1",
@@ -260,7 +283,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         },
       },
       {
-        id: CHAIN_GET_HEAD_STORAGE.request,
+        ids: CHAIN_GET_HEAD_STORAGE,
         codec: VersionedRemoteChainHeadStorageRequest,
         request: {
           tag: "V1",
@@ -273,7 +296,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         },
       },
       {
-        id: CHAIN_CALL_HEAD.request,
+        ids: CHAIN_CALL_HEAD,
         codec: VersionedRemoteChainHeadCallRequest,
         request: {
           tag: "V1",
@@ -287,7 +310,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         },
       },
       {
-        id: CHAIN_UNPIN_HEAD.request,
+        ids: CHAIN_UNPIN_HEAD,
         codec: VersionedRemoteChainHeadUnpinRequest,
         request: {
           tag: "V1",
@@ -299,7 +322,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         },
       },
       {
-        id: CHAIN_CONTINUE_HEAD.request,
+        ids: CHAIN_CONTINUE_HEAD,
         codec: VersionedRemoteChainHeadContinueRequest,
         request: {
           tag: "V1",
@@ -311,7 +334,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         },
       },
       {
-        id: CHAIN_STOP_HEAD_OPERATION.request,
+        ids: CHAIN_STOP_HEAD_OPERATION,
         codec: VersionedRemoteChainHeadStopOperationRequest,
         request: {
           tag: "V1",
@@ -329,7 +352,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       harness.emit(
         followBoundFrame(
           `request-${index}`,
-          item.id,
+          item.ids,
           item.codec as Codec<FollowBoundRequest>,
           item.request,
         ),
@@ -356,7 +379,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       harness.emit(
         followBoundFrame(
           "header-request",
-          CHAIN_GET_HEAD_HEADER.request,
+          CHAIN_GET_HEAD_HEADER,
           VersionedRemoteChainHeadHeaderRequest,
           request,
         ),
@@ -406,7 +429,8 @@ describe("createLegacyNovaChainHeadProvider", () => {
     harness.adapted.postMessage(
       frame(
         "wire-old",
-        CHAIN_FOLLOW_HEAD_SUBSCRIBE.interrupt,
+        CHAIN_FOLLOW_HEAD_SUBSCRIBE,
+        MESSAGE_TYPE_INTERRUPT,
         new Uint8Array(),
       ),
     );
@@ -414,7 +438,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
     harness.emit(
       followBoundFrame(
         "header-request",
-        CHAIN_GET_HEAD_HEADER.request,
+        CHAIN_GET_HEAD_HEADER,
         VersionedRemoteChainHeadHeaderRequest,
         request,
       ),
@@ -441,13 +465,18 @@ describe("createLegacyNovaChainHeadProvider", () => {
     // When
     harness.emit(followStart("wire-old"));
     harness.emit(
-      frame("handshake", SYSTEM_HANDSHAKE.request, new Uint8Array()),
+      frame(
+        "handshake",
+        SYSTEM_HANDSHAKE,
+        MESSAGE_TYPE_REQUEST,
+        new Uint8Array(),
+      ),
     );
     harness.emit(followStart("wire-new"));
     harness.emit(
       followBoundFrame(
         "header-request",
-        CHAIN_GET_HEAD_HEADER.request,
+        CHAIN_GET_HEAD_HEADER,
         VersionedRemoteChainHeadHeaderRequest,
         request,
       ),
@@ -474,7 +503,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       harness.emit(
         followBoundFrame(
           requestId,
-          CHAIN_GET_HEAD_HEADER.request,
+          CHAIN_GET_HEAD_HEADER,
           VersionedRemoteChainHeadHeaderRequest,
           {
             tag: "V1",
@@ -521,7 +550,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
       harness.emit(
         followBoundFrame(
           requestId,
-          CHAIN_GET_HEAD_HEADER.request,
+          CHAIN_GET_HEAD_HEADER,
           VersionedRemoteChainHeadHeaderRequest,
           {
             tag: "V1",

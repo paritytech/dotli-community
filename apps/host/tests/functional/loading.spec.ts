@@ -6,7 +6,11 @@ import type { Page } from "@playwright/test";
 import {
   HOST_ERRORS,
   FAILOVER_BTN_LABELS,
-  REFRESH_BTN_LABEL,
+  GO_BACK_BTN_LABEL,
+  OPEN_SETTINGS_BTN_LABEL,
+  RELOAD_BTN_LABEL,
+  ERROR_TITLES,
+  TRY_ANYWAY_BTN_LABEL,
 } from "../../src/errors";
 import { test } from "./helpers/shared-mode-reset";
 import { findAppFrame } from "../product-frame";
@@ -20,6 +24,9 @@ const DOMAIN = process.env.COMBO_DOMAIN ?? "host-playground";
 const PORT = process.env.COMBO_PORT ?? "5173";
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
+// The drop to a trusted provider is gated: the first sighting of a failure
+// offers Settings, and only a repeat of the same kind offers the one-click
+// switch. Most tests below assert the first screen.
 const RETRY_LABEL_FROM_SMOLDOT = FAILOVER_BTN_LABELS["rpc-gateway"];
 
 // The budget a `resolveDotName` handler derives from its request deadline.
@@ -156,17 +163,19 @@ test("As a user using smoldot directly, when the light client panics mid-resolut
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.FATAL_PANIC,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -182,17 +191,19 @@ test("As a user using smoldot in shared worker, when the light client panics mid
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.FATAL_PANIC,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -211,17 +222,19 @@ test("As a user using smoldot in shared worker, when the browser can't create a 
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.SW_FAILED_TO_START,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -240,17 +253,19 @@ test("As a user using smoldot in shared worker, when the worker dies silently, I
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.SW_TIMED_OUT,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -273,17 +288,19 @@ test("As a user using smoldot directly, when the sync times out (>45s) I see the
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.HUB_SYNC_TIMEOUT,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -323,14 +340,16 @@ test("As a user using smoldot directly, when every peer WebSocket is unavailable
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 30_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 30_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.HUB_SYNC_TIMEOUT,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
   expect(blockedSockets).toBeGreaterThan(0);
 });
@@ -354,17 +373,19 @@ test("As a user using smoldot in shared worker, when the sync times out (>45s) I
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.HUB_SYNC_TIMEOUT,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -380,8 +401,10 @@ test("As a user, when the app chunks fail to load mid-session, I see the appropr
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.MODULE_FETCH_FAILED,
@@ -404,17 +427,19 @@ test("As a user using smoldot directly, when smoldot rejects the chain spec, I s
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.CHAIN_SPEC_REJECTED,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -433,17 +458,19 @@ test("As a user using smoldot in shared worker, when smoldot rejects the chain s
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.CHAIN_SPEC_REJECTED,
   );
   await expect(page.locator("#error-retry-btn")).toContainText(
-    REFRESH_BTN_LABEL,
+    RELOAD_BTN_LABEL,
   );
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 });
 
@@ -486,13 +513,52 @@ test("As a user, when the domain's contenthash is unsupported or malformed, I se
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   await expect(page.locator(".error-page-detail")).toHaveText(
     HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
   );
   await expect(page.locator("#error-retry-btn")).toHaveCount(0);
+});
+
+test("As a user, when the same failure survives a reload, the error page escalates from Settings to a one-click backend switch", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-direct");
+  await mockProtocolIframe(page, fatalOnResolve("smoldot panic"));
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".error-page-title")).toHaveText(
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
+  );
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    OPEN_SETTINGS_BTN_LABEL,
+  );
+
+  // When
+  // Armed before the click: `waitForLoadState` after it can resolve against
+  // the document that is about to be torn down, which would let the assertions
+  // below read the pre-reload screen.
+  const reloaded = page.waitForEvent("load");
+  await page.locator("#error-retry-btn").click();
+  await reloaded;
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
+  );
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    RETRY_LABEL_FROM_SMOLDOT,
+  );
 });
 
 test("As a user, after a resolution failure, clicking retry switches backend and the app loads successfully", async ({
@@ -503,7 +569,17 @@ test("As a user, after a resolution failure, clicking retry switches backend and
   await mockProtocolIframe(page, fatalOnResolve("smoldot panic"));
   await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
+  );
+  // The switch is only offered on the second sighting, so reload into the
+  // same failure first.
+  await page.locator("#error-retry-btn").click();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    RETRY_LABEL_FROM_SMOLDOT,
     { timeout: 10_000 },
   );
   const backendBefore = await page.evaluate(() =>
@@ -513,6 +589,15 @@ test("As a user, after a resolution failure, clicking retry switches backend and
 
   // When
   await page.locator("#error-retry-btn-1").click();
+  // Dropping verification is confirmed first: `Try Anyway` is the leading
+  // action on the interstitial, so it keeps `#error-retry-btn`.
+  await expect(page.locator("#error-retry-btn")).toContainText(
+    TRY_ANYWAY_BTN_LABEL,
+  );
+  await expect(page.locator("#error-retry-btn-1")).toContainText(
+    GO_BACK_BTN_LABEL,
+  );
+  await page.locator("#error-retry-btn").click();
   await page.waitForLoadState("domcontentloaded");
 
   // Then
@@ -530,13 +615,15 @@ test("As a user, after a resolution failure, I can refresh instead of switching 
   await mockProtocolIframe(page, fatalOnResolve("smoldot panic"));
   await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   const refresh = page.locator("#error-retry-btn");
-  await expect(refresh).toContainText(REFRESH_BTN_LABEL);
+  await expect(refresh).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator("#error-retry-btn-1")).toContainText(
-    RETRY_LABEL_FROM_SMOLDOT,
+    OPEN_SETTINGS_BTN_LABEL,
   );
 
   // When
@@ -545,8 +632,10 @@ test("As a user, after a resolution failure, I can refresh instead of switching 
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveText(
-    "Domain can't be reached",
-    { timeout: 10_000 },
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    {
+      timeout: 10_000,
+    },
   );
   const backendAfter = await page.evaluate(() =>
     localStorage.getItem("dotli:chain-backend"),

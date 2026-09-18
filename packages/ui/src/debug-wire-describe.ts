@@ -22,27 +22,30 @@
 import * as WIRE_TABLE from "@parity/truapi/wire-table";
 import * as generated from "@parity/truapi";
 import {
-  CallError,
-  indexedTaggedUnion,
-  Result,
-  _void,
-  type Codec,
-} from "@parity/truapi/scale";
+  MESSAGE_TYPE_INTERRUPT,
+  MESSAGE_TYPE_RECEIVE,
+  MESSAGE_TYPE_REQUEST,
+  MESSAGE_TYPE_RESPONSE,
+  MESSAGE_TYPE_START,
+  MESSAGE_TYPE_STOP,
+  type MethodIds,
+} from "@parity/truapi";
+import { CallError, Result, type Codec } from "@parity/truapi/scale";
 
 interface WireCodec {
   dec: (bytes: Uint8Array) => unknown;
 }
 
 /**
- * Builds the codec for a chain response discriminant. The generated client
- * wraps every response in a `V1` envelope around
- * `Result(<bare response struct>, CallError(<versioned error>))`, never a
- * bare `Versioned*Response`. The composition has to match because the bare
- * codec doesn't throw on real response bytes. It quietly decodes garbage,
+ * Builds the codec for a chain response leg. Codec 2 puts the `Result`
+ * outside and each leg's own version wrapper inside:
+ * `Result(Versioned<Stem>Response, CallError(Versioned<Stem>Error))`, exactly
+ * as the generated client decodes it. The composition has to match because a
+ * bare codec doesn't throw on real response bytes. It quietly decodes garbage,
  * which would defeat the raw-bytes fallback in `describeWireFrame`.
  */
 function responseCodec<T, E>(ok: Codec<T>, err: Codec<E>): WireCodec {
-  return indexedTaggedUnion({ V1: [0, Result(ok, CallError(err))] });
+  return Result(ok, CallError(err));
 }
 
 /**
@@ -76,23 +79,6 @@ const CHAIN_LINKAGE: readonly ChainLinkage[] = [
   { wireTableKey: "CHAIN_STOP_TRANSACTION", stem: "TransactionStop" },
 ];
 
-/**
- * Chain methods whose Ok response is `_void`. These have no bare
- * `RemoteChain<Stem>Response` export to resolve, and the generated client
- * decodes them with `Result(_void, CallError(...))`. Kept as an explicit
- * set on purpose. With a `?? _void` fallback a renamed export would
- * silently decode with the wrong codec instead of degrading to raw bytes.
- */
-const VOID_RESPONSE_STEMS: ReadonlySet<string> = new Set([
-  "HeadUnpin",
-  "HeadContinue",
-  "HeadStopOperation",
-  "TransactionStop",
-]);
-
-/** `Codec<void>` widened so it type-checks alongside dynamically resolved codecs. */
-const VOID_CODEC = _void as unknown as Codec<unknown>;
-
 /** Turns a codec stem into its tag segment, e.g. `HeadStopOperation` into `head_stop_operation`. */
 function snakeCase(stem: string): string {
   return stem.replace(/(?!^)([A-Z])/g, "_$1").toLowerCase();
@@ -121,79 +107,105 @@ interface ChainEntry {
   codec: WireCodec | null;
 }
 
-interface SubscriptionRoles {
-  start: number;
-  stop: number;
-  interrupt: number;
-  receive: number;
+/** The (trait, method, messageType) triple that identifies one wire leg. */
+export interface WireFrameId {
+  traitId: number;
+  methodId: number;
+  messageType: number;
 }
 
-interface CallRoles {
-  request: number;
-  response: number;
+/** Packs a frame's triple into one stable number for map keys and raw dumps. */
+export function wireFrameKey(frame: WireFrameId): number {
+  return (frame.traitId << 16) | (frame.methodId << 8) | frame.messageType;
 }
 
-function isSubscriptionRoles(
-  roles: SubscriptionRoles | CallRoles,
-): roles is SubscriptionRoles {
-  return "start" in roles;
+/** The frame id of one leg of `ids`, for callers holding a wire-table entry. */
+export function wireFrameId(ids: MethodIds, messageType: number): WireFrameId {
+  return { traitId: ids.trait, methodId: ids.method, messageType };
+}
+
+const REQUEST_LEGS: readonly (readonly [number, string])[] = [
+  [MESSAGE_TYPE_REQUEST, "request"],
+  [MESSAGE_TYPE_RESPONSE, "response"],
+];
+
+const SUBSCRIPTION_LEGS: readonly (readonly [number, string])[] = [
+  [MESSAGE_TYPE_START, "start"],
+  [MESSAGE_TYPE_RECEIVE, "receive"],
+  [MESSAGE_TYPE_INTERRUPT, "interrupt"],
+  [MESSAGE_TYPE_STOP, "stop"],
+];
+
+/** The legs a method's `kind` implies, as `[messageType, role]` pairs. */
+function legsOf(ids: MethodIds): readonly (readonly [number, string])[] {
+  return ids.kind === "subscription" ? SUBSCRIPTION_LEGS : REQUEST_LEGS;
+}
+
+function isMethodIds(value: unknown): value is MethodIds {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as MethodIds).trait === "number" &&
+    typeof (value as MethodIds).method === "number"
+  );
 }
 
 /**
- * Builds every chain discriminant's `{ tag, codec }` entry from
- * `CHAIN_LINKAGE`, degrading to tag-only wherever a codec lookup misses.
- * The follow subscription's `stop`/`interrupt` control frames carry nothing
- * worth decoding, but the swimlane layout assigns lanes by the
- * `remote_chain_` tag prefix, so they still get the legacy tag to land in
- * their chain's lane instead of "other".
+ * Builds every chain leg's `{ tag, codec }` entry from `CHAIN_LINKAGE`,
+ * degrading to tag-only wherever a codec lookup misses. The follow
+ * subscription's `stop`/`interrupt` control frames carry nothing worth
+ * decoding, but the swimlane layout assigns lanes by the `remote_chain_` tag
+ * prefix, so they still get the legacy tag to land in their chain's lane
+ * instead of "other".
  */
 function buildChainEntries(): Map<number, ChainEntry> {
   const entries = new Map<number, ChainEntry>();
 
   for (const { wireTableKey, stem } of CHAIN_LINKAGE) {
-    const roles = WIRE_TABLE[wireTableKey] as unknown as
-      | SubscriptionRoles
-      | CallRoles;
+    const ids = WIRE_TABLE[wireTableKey] as unknown as MethodIds;
     const tagBase = `remote_chain_${snakeCase(stem)}`;
+    const set = (
+      messageType: number,
+      role: string,
+      codec: WireCodec | null,
+    ): void => {
+      entries.set(wireFrameKey(wireFrameId(ids, messageType)), {
+        tag: `${tagBase}_${role}`,
+        codec,
+      });
+    };
 
-    if (isSubscriptionRoles(roles)) {
-      const startCodec = resolveCodec(`VersionedRemoteChain${stem}Request`);
-      const receiveCodec = resolveCodec(`VersionedRemoteChain${stem}Item`);
-      entries.set(roles.start, {
-        tag: `${tagBase}_start`,
-        codec: startCodec ?? null,
-      });
-      entries.set(roles.receive, {
-        tag: `${tagBase}_receive`,
-        codec: receiveCodec ?? null,
-      });
+    if (ids.kind === "subscription") {
+      set(
+        MESSAGE_TYPE_START,
+        "start",
+        resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null,
+      );
+      set(
+        MESSAGE_TYPE_RECEIVE,
+        "receive",
+        resolveCodec(`VersionedRemoteChain${stem}Item`) ?? null,
+      );
       // Control frames: legacy tag for swimlane routing, never decoded.
-      entries.set(roles.stop, { tag: `${tagBase}_stop`, codec: null });
-      entries.set(roles.interrupt, {
-        tag: `${tagBase}_interrupt`,
-        codec: null,
-      });
+      set(MESSAGE_TYPE_INTERRUPT, "interrupt", null);
+      set(MESSAGE_TYPE_STOP, "stop", null);
       continue;
     }
 
-    const requestCodec = resolveCodec(`VersionedRemoteChain${stem}Request`);
-    entries.set(roles.request, {
-      tag: `${tagBase}_request`,
-      codec: requestCodec ?? null,
-    });
-
-    const okCodec = VOID_RESPONSE_STEMS.has(stem)
-      ? VOID_CODEC
-      : resolveCodec(`RemoteChain${stem}Response`);
+    set(
+      MESSAGE_TYPE_REQUEST,
+      "request",
+      resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null,
+    );
+    const okCodec = resolveCodec(`VersionedRemoteChain${stem}Response`);
     const errCodec = resolveCodec(`VersionedRemoteChain${stem}Error`);
-    const responseWireCodec =
+    set(
+      MESSAGE_TYPE_RESPONSE,
+      "response",
       okCodec !== undefined && errCodec !== undefined
         ? responseCodec(okCodec, errCodec)
-        : null;
-    entries.set(roles.response, {
-      tag: `${tagBase}_response`,
-      codec: responseWireCodec,
-    });
+        : null,
+    );
   }
 
   return entries;
@@ -211,24 +223,25 @@ interface GenericEntry {
 }
 
 /**
- * Every other discriminant gets `<lowercased export>_<role>` from the wire
- * table. The redaction flag is precomputed here so the per-frame path does
- * a single map lookup.
+ * Every other leg gets `<lowercased export>_<role>` from the wire table,
+ * with the roles implied by the entry's `kind`. The redaction flag is
+ * precomputed here so the per-frame path does a single map lookup.
  */
 function buildGenericNames(): Map<number, GenericEntry> {
   const names = new Map<number, GenericEntry>();
-  for (const [exportName, roles] of Object.entries(WIRE_TABLE)) {
-    if (typeof roles !== "object") {
+  for (const [exportName, ids] of Object.entries(WIRE_TABLE)) {
+    if (!isMethodIds(ids)) {
       continue;
     }
-    for (const [role, id] of Object.entries(roles)) {
-      if (typeof id === "number") {
-        const name = `${exportName.toLowerCase()}_${role}`;
-        const redacted = REDACTED_PREFIXES.some((prefix) =>
-          name.startsWith(prefix),
-        );
-        names.set(id, { name, redacted });
-      }
+    for (const [messageType, role] of legsOf(ids)) {
+      const name = `${exportName.toLowerCase()}_${role}`;
+      const redacted = REDACTED_PREFIXES.some((prefix) =>
+        name.startsWith(prefix),
+      );
+      names.set(wireFrameKey(wireFrameId(ids, messageType)), {
+        name,
+        redacted,
+      });
     }
   }
   return names;
@@ -238,12 +251,13 @@ let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
 
 export function describeWireFrame(
-  wireId: number,
+  frame: WireFrameId,
   bytes: Uint8Array,
 ): { tag: string; value: unknown } {
   chainEntries ??= buildChainEntries();
   genericNames ??= buildGenericNames();
 
+  const wireId = wireFrameKey(frame);
   const chain = chainEntries.get(wireId);
   if (chain !== undefined) {
     if (chain.codec === null) {
@@ -260,7 +274,8 @@ export function describeWireFrame(
 
   const generic = genericNames.get(wireId);
   if (generic === undefined) {
-    return { tag: `wire_${String(wireId)}`, value: { wireId, bytes } };
+    const tag = `wire_${String(frame.traitId)}_${String(frame.methodId)}_${String(frame.messageType)}`;
+    return { tag, value: { wireId, bytes } };
   }
   if (generic.redacted) {
     return {
@@ -275,9 +290,8 @@ export function describeWireFrame(
 // verifies tags and codec resolution against the installed `@parity/truapi`.
 export const __testing = {
   CHAIN_LINKAGE,
-  VOID_RESPONSE_STEMS,
   snakeCase,
   resolveCodec,
   buildChainEntries,
-  isSubscriptionRoles,
+  legsOf,
 };

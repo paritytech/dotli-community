@@ -7,7 +7,11 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
-import { ProtocolFatalError, ProtocolInitFailedError } from "./errors";
+import {
+  ProtocolFatalError,
+  PROTOCOL_ERRORS,
+  ProtocolInitFailedError,
+} from "./errors";
 import type {
   ExecutableManifest,
   ManifestResult,
@@ -15,17 +19,23 @@ import type {
 } from "@dotli/resolver/manifest";
 import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
 import {
+  getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
   getActiveSupportedGenesisHashes,
   getNetwork,
 } from "@dotli/config/network";
 import { getBackend, type Backend } from "@dotli/config/mode";
 import { log } from "@dotli/shared/log";
-import { m } from "@dotli/metrics/metrics";
+import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import type { SmoldotDbChain, SmoldotDbOutcome } from "./messages";
 import {
+  isChainDetailPayloadValid,
+  isChainSyncPayloadValid,
   isProtocolEnvelope,
+  type ProtocolChainDetailEnvelope,
+  type ProtocolChainSyncEnvelope,
+  type ProtocolNetBytesEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
@@ -69,6 +79,14 @@ let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
+const chainSyncListeners = new Set<
+  (event: ProtocolChainSyncEnvelope) => void
+>();
+let lastNetBytesTotal = 0;
+const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
+const chainDetailListeners = new Set<
+  (event: ProtocolChainDetailEnvelope) => void
+>();
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -179,6 +197,9 @@ export function resetProtocolFrame(): void {
 function resetProtocolFrameState(reason?: Error): void {
   protocolIframe?.remove();
   protocolIframe = null;
+  // The byte meter of the rebuilt frame restarts at zero, and the monotonic gate
+  // would otherwise drop every report until it passed the old total.
+  lastNetBytesTotal = 0;
   hostFramePromise = null;
   protocolReadyPromise = null;
   protocolReady = false;
@@ -187,10 +208,27 @@ function resetProtocolFrameState(reason?: Error): void {
   const orphaned = pendingReadyResolvers;
   pendingReadyResolvers = [];
   if (orphaned.length > 0) {
-    const err =
-      reason ?? new Error("Protocol frame state reset before ready signal");
+    const err = reason ?? new Error(PROTOCOL_ERRORS.FRAME_RESET);
     for (const waiter of orphaned) {
       waiter.reject(err);
+    }
+  }
+}
+
+/** Deliver to every listener, so one that throws cannot silence the rest. */
+function broadcast<T>(
+  listeners: ReadonlySet<(event: T) => void>,
+  event: T,
+  label: string,
+): void {
+  for (const listener of listeners) {
+    try {
+      listener(event);
+    } catch (err: unknown) {
+      log.error(
+        `[dot.li protocol] ${label} listener threw:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 }
@@ -242,6 +280,33 @@ function bindMessageListener(): void {
               : "ProtocolResponseError";
           pending.reject(err);
         }
+        return;
+      }
+      case "chain-sync": {
+        if (!isChainSyncPayloadValid(msg)) {
+          return;
+        }
+        broadcast(chainSyncListeners, msg, "Chain sync");
+        return;
+      }
+      case "chain-detail": {
+        if (!isChainDetailPayloadValid(msg)) {
+          return;
+        }
+        broadcast(chainDetailListeners, msg, "Chain detail");
+        return;
+      }
+      case "net-bytes": {
+        // Cumulative, so a total below the last one is spoofed or corrupt
+        // traffic and would feed a negative rate into the network panel.
+        if (
+          !Number.isFinite(msg.received) ||
+          msg.received < lastNetBytesTotal
+        ) {
+          return;
+        }
+        lastNetBytesTotal = msg.received;
+        broadcast(netBytesListeners, msg, "Net bytes");
         return;
       }
       case "fatal":
@@ -339,16 +404,7 @@ function bindMessageListener(): void {
           key: msg.key,
           value: msg.value,
         };
-        for (const listener of sharedAuthListeners) {
-          try {
-            listener(change);
-          } catch (err: unknown) {
-            log.error(
-              "[dot.li protocol] Shared auth listener threw:",
-              err instanceof Error ? err.message : err,
-            );
-          }
-        }
+        broadcast(sharedAuthListeners, change, "Shared auth");
         return;
       }
     }
@@ -386,6 +442,13 @@ function createHostIframe(): Promise<void> {
     if (protocolSkipWorkerCache) {
       params.set("skipWorkerCache", "1");
     }
+    // Carried on the URL rather than posted after load: the iframe boots its
+    // own Sentry client and starts emitting before any handshake completes, so
+    // an id that arrived by message would miss that first window.
+    const resolutionId = getResolutionId();
+    if (resolutionId !== null) {
+      params.set("resolutionId", resolutionId);
+    }
     const query = params.toString();
     iframe.src =
       query.length > 0
@@ -399,7 +462,7 @@ function createHostIframe(): Promise<void> {
     const timer = setTimeout(() => {
       cleanup();
       iframe.remove();
-      reject(new Error("Shared host iframe timed out while loading"));
+      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_TIMEOUT));
     }, IFRAME_LOAD_TIMEOUT_MS);
 
     const onLoad = (): void => {
@@ -411,7 +474,7 @@ function createHostIframe(): Promise<void> {
     const onError = (): void => {
       cleanup();
       iframe.remove();
-      reject(new Error("Shared host iframe failed to load"));
+      reject(new Error(PROTOCOL_ERRORS.HOST_FRAME_LOAD_FAILED));
     };
 
     function cleanup(): void {
@@ -484,7 +547,7 @@ function waitForProtocolReady(): Promise<void> {
     const timer = setTimeout(() => {
       pendingReadyResolvers = pendingReadyResolvers.filter((w) => w !== waiter);
       stopIframe();
-      reject(new Error("Shared protocol iframe timed out (no ready signal)"));
+      reject(new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT));
     }, IFRAME_READY_TIMEOUT_MS);
 
     pendingReadyResolvers.push(waiter);
@@ -538,7 +601,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
   if (!frameWindow) {
-    throw new Error("Shared protocol iframe is unavailable");
+    throw new Error(PROTOCOL_ERRORS.FRAME_UNAVAILABLE);
   }
 
   const id = createRequestId();
@@ -719,6 +782,60 @@ export function subscribeSharedAuthStorage(
   };
 }
 
+/**
+ * Subscribe to what the chains report about their sync.
+ *
+ * Events arrive only after the origin- and source-gated message listener
+ * validates the envelope, so callers never see spoofable raw messages.
+ * Returns an unsubscribe function.
+ */
+export function onProtocolChainSync(
+  listener: (event: ProtocolChainSyncEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  chainSyncListeners.add(listener);
+  return () => {
+    chainSyncListeners.delete(listener);
+  };
+}
+
+/** Subscribe to per-chain telemetry facts from the light client. */
+export function onProtocolChainDetail(
+  listener: (event: ProtocolChainDetailEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  chainDetailListeners.add(listener);
+  return () => {
+    chainDetailListeners.delete(listener);
+  };
+}
+
+/** Subscribe to the running byte total of the light client. */
+export function onProtocolNetBytes(
+  listener: (event: ProtocolNetBytesEnvelope) => void,
+): () => void {
+  bindMessageListener();
+  netBytesListeners.add(listener);
+  return () => {
+    netBytesListeners.delete(listener);
+  };
+}
+
+/**
+ * Whether a connection to this chain can actually be served.
+ *
+ * Wider than `isRemoteChainSupported`: the advertised set is curated for
+ * dApps, while Bulletin stays connectable in gateway mode so the network
+ * panel can watch its blocks over the configured RPC.
+ */
+export function isRemoteChainConnectable(genesisHash: string): boolean {
+  const supported =
+    getBackend() === "rpc-gateway"
+      ? getActiveCoreGatewaySupportedGenesisHashes()
+      : getActiveSupportedGenesisHashes();
+  return supported.has(genesisHash.toLowerCase());
+}
+
 export function isRemoteChainSupported(genesisHash: string): boolean {
   // Advertise only what the *active* backend can actually serve. Gateway mode
   // bridges a curated RPC subset, while smoldot can run any configured chain.
@@ -749,7 +866,7 @@ function buildJsonRpcError(
 export function createRemoteChainProvider(
   genesisHash: string,
 ): JsonRpcProvider | null {
-  if (!isRemoteChainSupported(genesisHash)) {
+  if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
 

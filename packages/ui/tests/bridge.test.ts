@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  HostRequestLoginResponse,
+  MESSAGE_TYPE_RESPONSE,
   VersionedHostRequestLoginError,
+  VersionedHostRequestLoginResponse,
   decodeWireMessage,
   encodeWireMessage,
   scale,
@@ -81,6 +82,7 @@ vi.mock("@dotli/metrics/metrics", () => ({
     measure: vi.fn(),
     timer: vi.fn(() => mocks.timerStop),
   },
+  getResolutionId: vi.fn(() => null),
 }));
 
 function makeProvider(): MockProvider {
@@ -159,19 +161,14 @@ function loginResponseFrame(
     | { success: false; reason: string }
     | { success: false; hostFailure: string },
 ): Uint8Array {
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(
-        HostRequestLoginResponse,
-        scale.CallError(VersionedHostRequestLoginError),
-      ),
-    ] as const,
-  });
-  const value = responseCodec.enc({
-    tag: "V1",
-    value: result.success
-      ? { success: true, value: result.value }
+  // Codec 2 legs carry Result outside and the version wrapper inside.
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
+  const value = responseCodec.enc(
+    result.success
+      ? { success: true, value: { tag: "V1", value: result.value } }
       : "hostFailure" in result
         ? {
             success: false,
@@ -193,11 +190,13 @@ function loginResponseFrame(
               },
             },
           },
-  });
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
-      id: ACCOUNT_REQUEST_LOGIN.response,
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType: MESSAGE_TYPE_RESPONSE,
       value,
     },
   });

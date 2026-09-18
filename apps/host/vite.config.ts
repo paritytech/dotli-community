@@ -164,7 +164,6 @@ function preloadCriticalAssets(): Plugin {
         const resolveChunk = findChunk(/^assets\/resolve-.*\.js$/);
         const fetchChunk = findChunk(/^assets\/fetch-.*\.js$/);
         const renderChunk = findChunk(/^assets\/render-.*\.js$/);
-        const wasmAsset = findChunk(/^assets\/.*\.wasm$/);
         const metadataAsset = findChunk(/^assets\/ah-.*\.scale$/);
 
         const chunks = [resolveChunk, fetchChunk, renderChunk].filter(Boolean);
@@ -172,7 +171,7 @@ function preloadCriticalAssets(): Plugin {
 
         const b = resolvedBase;
 
-        const fetchPreloads = [wasmAsset, metadataAsset]
+        const fetchPreloads = [metadataAsset]
           .filter(Boolean)
           .map(
             (a) =>
@@ -354,6 +353,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
+        globIgnores: ["**/truapi_provider_bg-*.wasm"],
         // VitePWA's default treats every file under `assets/` as
         // hash-versioned. The copied wasm-pack bundle keeps stable filenames,
         // so let Workbox attach content revisions to those entries.

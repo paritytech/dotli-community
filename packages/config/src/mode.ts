@@ -16,6 +16,19 @@ export type Backend =
   | "smoldot-shared-worker"
   | "rpc-gateway";
 
+/**
+ * What the Settings panel calls each backend.
+ *
+ * Lives with the type rather than in the topbar because error copy has to send
+ * the visitor to one of these by name. Two copies of these strings drift, and a
+ * tip naming a control that does not exist is worse than no tip.
+ */
+export const BACKEND_LABELS: Record<Backend, string> = {
+  "smoldot-direct": "Light Client Per-Tab",
+  "smoldot-shared-worker": "Light Client Shared",
+  "rpc-gateway": "Trusted Providers",
+};
+
 export interface CacheSettings {
   /** When true, skip CID cache reads. Always resolve from chain/RPC. */
   skipCidCache: boolean;
