@@ -64,8 +64,11 @@ jobs:
                   | select(IN($allowed[])) ]
                 | unique')"
               echo "environments=$ENVS" >> "$GITHUB_OUTPUT"
-              SMOKE_ENVS="$(jq -nc --argjson envs "$ENVS" '
-                [ $envs[] | select(. == "westendli.dev") ]')"
+              # Smoke whatever this label actually deployed. The old filter
+              # named `westendli.dev`, which no PR label can select, so a
+              # label deploy shipped published products without ever loading
+              # one — that is how a broken product reached paseo.fyi unnoticed.
+              SMOKE_ENVS="$ENVS"
               echo "smoke_environments=$SMOKE_ENVS" >> "$GITHUB_OUTPUT"
               echo "ref=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
               ;;
