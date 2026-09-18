@@ -41,7 +41,7 @@ jobs:
               echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
               ;;
             release)
-              echo 'environments=["paseo.li"]' >> "$GITHUB_OUTPUT"
+              echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
               ;;
             push)

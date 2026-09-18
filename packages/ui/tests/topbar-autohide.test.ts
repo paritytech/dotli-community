@@ -25,6 +25,7 @@ function installTopbarDom(): void {
       <button id="mode-button"></button>
       <button id="auth-button"><div class="user-badge">RS</div></button>
       <div class="more-popover" id="more-popover"></div>
+      <div class="verification-tooltip" id="verification-tooltip"></div>
     </div>
     <div class="user-popover" id="user-popover"></div>
     <div class="mode-popover" id="mode-popover"></div>
@@ -151,6 +152,26 @@ describe("topbar auto-hide reveal", () => {
 
     // When the popover closes, the bar hides again
     document.getElementById("mode-popover")?.classList.remove("open");
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it("As a keyboard user, the bar stays up while the shield explainer is open", async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+
+    // When
+    document.getElementById("verification-tooltip")?.classList.add("open");
+    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When the explainer closes, the bar hides again
+    document.getElementById("verification-tooltip")?.classList.remove("open");
     vi.advanceTimersByTime(HIDE_DELAY_MS);
 
     // Then

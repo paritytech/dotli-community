@@ -32,8 +32,13 @@ const TOPBAR_SURFACE_IDS = [
   "auth-modal-backdrop",
 ];
 
-// The mobile "more" flyout lives inside #topbar, so it only matters here.
-const OPEN_SURFACE_IDS = [...TOPBAR_SURFACE_IDS, "more-popover"];
+// The mobile "more" flyout and the shield explainer live inside #topbar, so
+// they only matter here.
+const OPEN_SURFACE_IDS = [
+  ...TOPBAR_SURFACE_IDS,
+  "more-popover",
+  "verification-tooltip",
+];
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
