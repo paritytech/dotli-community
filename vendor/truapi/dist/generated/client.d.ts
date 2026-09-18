@@ -304,6 +304,9 @@ export declare class SigningClient {
     /**
      * Construct a transaction for a product account.
      *
+     * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     *
      * Under Extrinsic V5, omitting `VerifyMultiSignature` from `extensions`
      * lets the host sign with the signer's key. Listing it — as `Disabled`,
      * with a proof in a later extension — encodes the given bytes verbatim and
@@ -322,9 +325,19 @@ export declare class SigningClient {
     signRawWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
     /** Sign an extrinsic payload with a non-product account. */
     signPayloadWithLegacyAccount(request: T.HostSignPayloadWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadWithLegacyAccountError>>;
-    /** Sign raw bytes or a message. */
+    /**
+     * Sign raw bytes or a message.
+     *
+     * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     */
     signRaw(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
-    /** Sign an extrinsic payload. */
+    /**
+     * Sign an extrinsic payload.
+     *
+     * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     */
     signPayload(request: T.HostSignPayloadRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
     /**
      * Sign the supplied data without adding or removing a watermark.

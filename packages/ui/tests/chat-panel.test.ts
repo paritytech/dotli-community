@@ -507,6 +507,10 @@ describe("chat panel", () => {
       await settle(() => renders.length === 1);
 
       // The cell subscribed with the stored message identity and payload.
+      const context = {
+        tag: "ChatMessage",
+        value: { roomId: "main", messageId, messageType: "poll" },
+      };
       expect(renders).toHaveLength(1);
       expect(renders[0].request.context).toEqual({
         tag: "ChatMessage",

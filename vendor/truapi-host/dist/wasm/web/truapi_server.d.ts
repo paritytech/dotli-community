@@ -289,6 +289,32 @@ export function deriveProductAccountPublicKey(product_subtree_public_key: Uint8A
 export function describeCoreStorageKey(encoded: Uint8Array): any;
 
 /**
+ * Whether `productId` is a first-party product the host grants every
+ * `RemotePermission` without prompting.
+ *
+ * Pure and stateless: it reads the compiled-in list and nothing else. **A
+ * stored user decision wins over the list**, so this is only the answer for
+ * the branch where the host's own store reads undetermined. Consulting it
+ * first would let a revoked grant keep working.
+ *
+ * `permissionAuthorizationStatus` is the stateful answer — it folds the list
+ * and the stored decision together — and a host that can reach a runtime
+ * should ask that instead.
+ *
+ * This exists for the path where a host mediates product network access in its
+ * own code — a service worker, a `fetch` shim — and has already found nothing
+ * stored. Without it a first-party product is prompted by the host for access
+ * the core would have granted.
+ *
+ * Covers remote permissions only. Device capabilities, identity disclosure and
+ * cross-product account access always prompt, whoever asks.
+ *
+ * Normalizes before matching, and answers `false` for an id that does not
+ * normalize, so an unknown spelling is never read as trusted.
+ */
+export function hasTrustedRemotePermissions(product_id: string): boolean;
+
+/**
  * Format a product account public key as the SS58 address host-spec C.6
  * mandates, so hosts do not each pick a prefix.
  */
@@ -324,6 +350,7 @@ export interface InitOutput {
     readonly __wbg_wasmsigninghostruntime_free: (a: number, b: number) => void;
     readonly deriveProductAccountPublicKey: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly describeCoreStorageKey: (a: number, b: number, c: number) => void;
+    readonly hasTrustedRemotePermissions: (a: number, b: number) => number;
     readonly productAccountAddress: (a: number, b: number, c: number) => void;
     readonly setLogLevel: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_acquireWorker: (a: number, b: number, c: number) => void;
@@ -373,12 +400,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_17115: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_17118: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_3558: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_3556: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_11180: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_3555: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_17228: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_17230: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4891: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4892: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_11182: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4893: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -106,29 +106,36 @@ const CLI_USAGE_EXIT_CODE = 2;
 // identity backend is down" apart from "dot.li tests asserted false".
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
-// Concurrent CI runs registering the same lite username collide on the shared
-// testnet ("dotlitest is taken"), so every run derives a unique prefix. The
-// CLI requires lowercase ASCII letters only, so the run id digits are mapped
-// onto a-j; locally the timestamp seeds the same encoding.
-const runToken = process.env.GITHUB_RUN_ID ?? Date.now().toString();
-const liteUsernameSuffix = runToken
-  .slice(-6)
-  .replace(/[^a-z]/g, (char) =>
-    String.fromCharCode(97 + (char.charCodeAt(0) % 10)),
-  );
-const liteUsernamePrefix = `dotlitest${liteUsernameSuffix}`;
+// The CLI registers this prefix verbatim as the lite username, and a name can
+// only be claimed once, so a fixed value burns on the first run and every later
+// run fails as taken. Six lowercase letters give a ~3·10^8 namespace. Lowercase
+// ASCII only: the CLI rejects digits and separators.
+function randomLiteUsernamePrefix(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  let suffix = "";
+  for (let i = 0; i < 6; i++) {
+    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return `dotlitest${suffix}`;
+}
 
-const signingHostConfig: SigningHostConfig = {
-  binary: SIGNING_HOST_BIN,
-  basePath: SIGNING_HOST_BASE_PATH,
-  network: NETWORK,
-  productId: PRODUCT_ID,
-  // With an explicit mnemonic the CLI signs as that account directly and
-  // rejects auto-account naming flags.
-  liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
-    ? undefined
-    : liteUsernamePrefix,
-};
+// Built per pair attempt, not once: a failed attempt can leave its name
+// registered but unattested, and the CLI creates a fresh account rather than
+// reusing one it has not attested. Sharing one name across attempts would make
+// every retry ask for a name the first attempt already claimed.
+function signingHostConfig(): SigningHostConfig {
+  return {
+    binary: SIGNING_HOST_BIN,
+    basePath: SIGNING_HOST_BASE_PATH,
+    network: NETWORK,
+    productId: PRODUCT_ID,
+    // With an explicit mnemonic the CLI signs as that account directly and
+    // rejects auto-account naming flags.
+    liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
+      ? undefined
+      : randomLiteUsernamePrefix(),
+  };
+}
 
 // Thrown when the CLI process dies before login; elapsedMs distinguishes
 // instant deterministic failures from chain-side ones.
@@ -297,7 +304,7 @@ async function pairOnce(
 
     const deeplink = await extractQrPayload(page, "#auth-modal-qr canvas");
     const pairStart = Date.now();
-    signingHost = startSigningHostPair(signingHostConfig, deeplink);
+    signingHost = startSigningHostPair(signingHostConfig(), deeplink);
 
     await waitForSignedIn(page, signingHost, badgeTimeoutMs, pairStart);
     console.log(`[globalSetup] signed in after ${Date.now() - pairStart}ms.`);

@@ -195,17 +195,18 @@ describe("user confirmation modal", () => {
           },
         },
       });
-      expect(modalFields()["Bytes to sign"]).toBe(signedBytes);
-      expect(document.querySelector('[role="alert"]')).toBeNull();
+      expect(modalFields().Message).toBe(signedBytes);
+      expect(document.querySelector(".signing-field-warning")).toBeNull();
       document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
       await expect(confirmation).resolves.toBe(true);
     }
   });
 
-  it("warns about unprotected signing and displays the unchanged bytes before denial", async () => {
+  it("As a dotli integrator, the host warns before an unwatermarked raw signature", async () => {
+    // Given
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
-    const confirmation = confirmUserAction({
+    const review: UserConfirmationReview = {
       tag: "SignRaw",
       value: {
         tag: "Product",
@@ -213,18 +214,35 @@ describe("user confirmation modal", () => {
           request: {
             account: {
               dotNsIdentifier: "truapi-playground.dot",
-              derivationIndex: { tag: "Index", value: 2 },
+              derivationIndex: { tag: "Index", value: 0 },
             },
-            payload: { tag: "Payload", value: { payload: "0x6869" } },
+            payload: { tag: "Bytes", value: { bytes: "0x0304" } },
           },
           watermarked: false,
         },
       },
+    };
+
+    // When
+    const confirmation = confirmUserAction(review);
+
+    // Then
+    expect(modalFields()).toEqual({
+      App: "localhost:3000",
+      Signer: "truapi-playground.dot / 0",
+      Message: "0x0304",
+      Warning: "Unprotected signature: may authorize transactions",
     });
-    expect(modalFields()["Bytes to sign"]).toBe("0x6869");
-    expect(document.querySelector('[role="alert"]')).not.toBeNull();
-    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
-    await expect(confirmation).resolves.toBe(false);
+    expect(
+      document.querySelector(".signing-field-warning .signing-field-label")
+        ?.textContent,
+    ).toBe("Warning");
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(true);
   });
 
   it("As a dotli integrator, the host renders VRF signing as structured transcript fields", async () => {
