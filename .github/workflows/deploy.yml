@@ -127,9 +127,37 @@ jobs:
 
       - run: ssh-keyscan ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
+      # Only these environments can opt into config updates. Validate routing
+      # before config or frontend uploads; other environments stay dist-only.
+      - name: Deploy identity proxy config
+        if: (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev') && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          case "$DEPLOY_SITE" in
+            dotli.dev) NGINX_ENV=dev-polkadot ;;
+            westendli.dev) NGINX_ENV=dev-westend ;;
+            *) echo "Identity proxy rollout is not allowed for $DEPLOY_SITE"; exit 1 ;;
+          esac
+          make ci-deploy-nginx ENV="$NGINX_ENV"
+        env:
+          DEPLOY_SITE: ${{ matrix.environment }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
       - name: Deploy
         run: make ci-deploy
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+      - name: Smoke identity proxy
+        if: (matrix.environment == 'dotli.dev' || matrix.environment == 'westendli.dev') && vars.DEPLOY_NGINX == 'true'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "https://${DEPLOY_SITE}/__dotli-identity/paseo/attester" \
+            | jq -e 'type == "object" and (.attester | type == "string" and test("^0x[0-9a-fA-F]{64}$"))'
+        env:
+          DEPLOY_SITE: ${{ matrix.environment }}

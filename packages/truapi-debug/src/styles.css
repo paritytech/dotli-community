@@ -143,14 +143,17 @@
    viewport height. Events list on top, inspector on the bottom. The
    resize handle moves from the top edge to a 5px column on the left. */
 #truapi-debug-panel.docked-right {
-  top: 0;
+  top: max(
+    var(--safe-top, 0px),
+    var(--debug-content-top, var(--topbar-height, 0px))
+  );
   right: 0;
   bottom: 0;
   left: auto;
   width: 480px;
   height: auto;
   max-height: none;
-  max-width: 80vw;
+  max-width: min(80vw, max(320px, calc(100vw - 240px)));
   border-top: none;
   border-left: 1px solid #1f1f1f;
   grid-template-columns: 5px 1fr;
@@ -214,10 +217,22 @@
 .td-header {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 0 12px;
   border-bottom: 1px solid #1f1f1f;
   background: #141414;
+  min-width: 0;
+  gap: 6px;
+}
+.td-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+.td-header-tools > * {
+  flex-shrink: 0;
 }
 .td-title {
   color: #a3a3a3;
@@ -232,8 +247,207 @@
 .td-spacer {
   margin-left: auto;
 }
+.td-wallet-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  flex-shrink: 0;
+  max-width: min(180px, 40%);
+  overflow: hidden;
+}
+.td-wallet-entry-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-wallet-entry-icon {
+  display: flex;
+}
+.td-wallet-view {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overflow-wrap: anywhere;
+  overscroll-behavior-y: contain;
+  scrollbar-color: #525252 #141414;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  touch-action: pan-y;
+  padding: 12px;
+  line-height: 1.45;
+}
+.td-wallet-view::-webkit-scrollbar {
+  width: 10px;
+}
+.td-wallet-view::-webkit-scrollbar-track {
+  background: #141414;
+}
+.td-wallet-view::-webkit-scrollbar-thumb {
+  border: 2px solid #141414;
+  border-radius: 999px;
+  background: #525252;
+}
+.td-wallet-view h3 {
+  margin: 4px 0 0;
+  font:
+    500 11px system-ui,
+    sans-serif;
+  color: #a3a3a3;
+  letter-spacing: 0.02em;
+}
+.td-wallet-view p {
+  margin: 0;
+}
+.td-wallet-overview,
+.td-wallet-recovery-content,
+.td-wallet-product,
+.td-wallet-resource {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.td-wallet-recovery {
+  margin-top: 16px;
+  border-top: 1px solid #1f1f1f;
+  padding-top: 12px;
+}
+.td-wallet-recovery summary,
+.td-wallet-details summary {
+  cursor: pointer;
+}
+.td-wallet-recovery-content {
+  padding-top: 12px;
+}
+.td-wallet-details > p {
+  padding-top: 8px;
+}
+.td-wallet-error {
+  color: #d4b77f;
+}
+.td-wallet-elapsed {
+  color: #a3a3a3;
+  font-variant-numeric: tabular-nums;
+}
+.td-wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.td-wallet-product,
+.td-wallet-resource {
+  border-top: 1px solid #1f1f1f;
+  padding-top: 8px;
+}
+.td-wallet-view .td-btn {
+  white-space: normal;
+  text-align: start;
+}
+.td-wallet-view .td-wallet-primary {
+  border-color: #737373;
+  background: #303030;
+  color: #fafafa;
+}
+.td-wallet-recovery-content > .td-btn {
+  align-self: flex-start;
+}
+.td-wallet-view :focus-visible,
+#truapi-debug-panel .td-btn:focus-visible,
+#truapi-debug-panel .td-tab:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+.td-wallet-view .td-wallet-delete {
+  color: #fca5a5;
+}
+#truapi-debug-panel [hidden] {
+  display: none;
+}
+.td-wallet-message {
+  overflow: auto;
+  max-height: 40%;
+  padding: 8px 12px;
+  border-top: 1px solid #2a2a2a;
+  background: #141414;
+  overflow-wrap: anywhere;
+}
+.td-wallet-status,
+.td-wallet-hint,
+.td-wallet-known-name {
+  color: #a3a3a3;
+  font-size: 11px;
+}
+.td-wallet-warning {
+  border-left: 2px solid #92400e;
+  padding-left: 8px;
+  color: #d4b77f;
+  font-size: 11px;
+}
+.td-wallet-username {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #2a2a2a;
+  border-left: 2px solid #6b7280;
+  background: #141414;
+}
+.td-wallet-username strong {
+  font-weight: 600;
+}
+.td-wallet-username[data-state="pending"],
+.td-wallet-username[data-state="checking"] {
+  border-left-color: #38bdf8;
+}
+.td-wallet-username[data-stage="retrying"] {
+  border-left-color: #fbbf24;
+}
+.td-wallet-username[data-state="claimed"] {
+  border-left-color: #4ade80;
+}
+.td-wallet-username[data-state="unclaimed"] {
+  border-left-color: #a3a3a3;
+}
+.td-wallet-username[data-state="failed"] {
+  border-left-color: #f87171;
+}
+.td-wallet-view .td-wallet-username-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+}
+@media (pointer: coarse) {
+  .td-wallet-view .td-wallet-username-input {
+    /* iOS zooms focused inputs whose text is smaller than 16px. */
+    font-size: 16px;
+  }
+  .td-wallet-view .td-btn,
+  .td-wallet-view .td-input {
+    min-height: 36px;
+  }
+}
+.td-wallet-phrase {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  background: #0b0b0b;
+  color: #d4d4d4;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  user-select: text;
+}
 .td-btn {
   background: #1f1f1f;
+  flex-shrink: 0;
   border: 1px solid #2a2a2a;
   color: #d4d4d4;
   padding: 3px 10px;
@@ -273,6 +487,7 @@
   display: block;
 }
 .td-btn:disabled {
+  opacity: 0.5;
   cursor: default;
 }
 .td-close {
@@ -361,13 +576,24 @@
 /* The Resolution view has nothing to select, so the detail pane would only
    ever say "select an event". The chart takes the whole width instead. */
 #truapi-debug-panel.res-view .td-body,
-#truapi-debug-panel.docked-right.res-view .td-body {
+#truapi-debug-panel.docked-right.res-view .td-body,
+#truapi-debug-panel.wallet-view .td-body,
+#truapi-debug-panel.docked-right.wallet-view .td-body {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
 #truapi-debug-panel.res-view .td-body-splitter,
-#truapi-debug-panel.res-view .td-detail {
+#truapi-debug-panel.res-view .td-detail,
+#truapi-debug-panel.wallet-view .td-body-splitter,
+#truapi-debug-panel.wallet-view .td-detail,
+#truapi-debug-panel.wallet-view .td-filters {
   display: none;
+}
+#truapi-debug-panel.wallet-view:not(.collapsed) {
+  grid-template-rows: 5px 32px 1fr;
+}
+#truapi-debug-panel.docked-right.wallet-view:not(.collapsed) {
+  grid-template-rows: 32px 0 1fr;
 }
 
 /* Draggable divider between the views pane and the detail pane. */
@@ -405,6 +631,8 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  overflow-x: auto;
+  min-width: 0;
   padding: 0 10px;
   border-bottom: 1px solid #1f1f1f;
   background: #0f0f0f;
@@ -1029,6 +1257,8 @@
    rather than drawing an edge the data does not have. */
 .td-res-block.is-open {
   mask-image: linear-gradient(to right, #000 70%, transparent 100%);
+}
+
 /* ── Pending call badge ────────────────────────────────────── */
 
 /* Sits beside the tag on a request row until its reply arrives, counting up

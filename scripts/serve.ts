@@ -43,6 +43,10 @@ import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin";
+import {
+  handleNodeIdentityProxy,
+  IDENTITY_PROXY_PREFIX,
+} from "./identity-proxy";
 
 const PORT = Number(process.env.PORT ?? "5173");
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -191,6 +195,10 @@ for (const sub of ["host", "app", "protocol"]) {
 createServer((req, res) => {
   const { dir, iframeable } = routeFor(req.headers.host ?? "");
   const url = new URL(req.url ?? "/", "http://placeholder");
+  if (url.pathname.startsWith(IDENTITY_PROXY_PREFIX)) {
+    void handleNodeIdentityProxy(req, res);
+    return;
+  }
   const acceptEncoding = req.headers["accept-encoding"] ?? "";
   const accept = Array.isArray(acceptEncoding)
     ? acceptEncoding.join(",")

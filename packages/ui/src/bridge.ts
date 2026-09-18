@@ -1,15 +1,18 @@
 // dot.li TrUAPI host bridge
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
-// product iframe via `@parity/truapi-host`. Each render swaps the running
-// runtime, so disposing the last host tears down both the iframe and
-// the core.
+// product iframe via `@parity/truapi-host`. Each render swaps its product
+// runtime. In experimental mode a separate host-owned signing runtime keeps
+// wallet identity and username operations alive independently of products.
 //
 // Nested dApp-in-dApp composition is not modeled as separate Rust runtimes,
 // sessions, product identities, or storage namespaces. Any future nested
 // traffic must share the top-level core/provider context.
 
 import {
+  AllocatableResource,
+  createClient,
+  createTransport,
   decodeWireMessage,
   encodeWireMessage,
   MESSAGE_TYPE_REQUEST,
@@ -19,17 +22,23 @@ import {
   VersionedHostRequestLoginRequest,
   VersionedHostRequestLoginResponse,
   type HostRequestLoginResponse as LoginResponse,
+  type TrUApiClient,
   type WireProvider as Provider,
   createMessagePortProvider,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import { BASE_DOMAIN } from "@dotli/config/config";
+import type { InspectorProduct } from "@dotli/truapi-debug/panel";
+import { BASE_DOMAIN, DEBUG } from "@dotli/config/config";
 import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
 import { getBackend, getCacheSettings } from "@dotli/config/mode";
-import { getNetwork, withActiveTld } from "@dotli/config/network";
+import {
+  getActiveServicesConfig,
+  getNetwork,
+  withActiveTld,
+} from "@dotli/config/network";
 import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
@@ -39,14 +48,42 @@ import {
   hasDotliDebugListeners,
 } from "@dotli/truapi-debug/dotli-debug-bus";
 import type { TrUApiProductProvider } from "@parity/truapi-host";
-import type { PairingHostAdmin } from "@parity/truapi-host";
+import type { AuthState, PairingHostAdmin } from "@parity/truapi-host";
+import type {
+  LocalIdentity,
+  LocalIdentityProgress,
+  WorkerPairingHostRuntime,
+  WorkerSigningHostRuntime,
+} from "@parity/truapi-host/web";
 import {
+  ALL_PERMISSIONS,
+  authorizationRequest,
+  fromAuthorizationStatus,
   buildAllowAttribute,
   registerPermissionAuthorizationProvider,
 } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
-import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
+import {
+  onStoredSessionChanged,
+  createLocalWalletSecret,
+  readLocalWalletSecret,
+  deleteLocalWalletSecret,
+  exportLocalWalletMnemonic,
+  importLocalWalletMnemonic,
+  isExperimentalWalletActive,
+  initializeLocalWalletState,
+  setLocalWalletEnabled,
+  onVerifiedLocalIdentityChanged,
+  localWalletContext,
+  isCurrentLocalWallet,
+  readVerifiedLocalIdentity,
+  readLocalWalletDisplay,
+  writeVerifiedLocalIdentity,
+  type LocalWalletIdentityBinding,
+  LOCAL_WALLET_ENABLED_KEY,
+  LOCAL_WALLET_REVISION_KEY,
+} from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
@@ -75,6 +112,7 @@ const runtimeChunkPromise = Promise.all([
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {
     createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
+    createWebWorkerSigningHostRuntime: web.createWebWorkerSigningHostRuntime,
     createIframeHost: web.createIframeHost,
     HostWorker: workerMod.default,
   };
@@ -86,6 +124,8 @@ void runtimeChunkPromise.catch(() => {
 const app = document.getElementById("app") ?? document.body;
 
 interface ActiveHost {
+  core: CoreProvider;
+  generation: number;
   iframe: HTMLIFrameElement;
   requestLogin: (reason?: string) => Promise<LoginResponse>;
   cancelLogin: () => void;
@@ -94,6 +134,7 @@ interface ActiveHost {
 }
 
 interface CoreHost {
+  core: CoreProvider;
   requestLogin: (reason?: string) => Promise<LoginResponse>;
   cancelLogin: () => void;
   disconnect: () => Promise<void>;
@@ -109,7 +150,7 @@ type CoreProviderBase = Provider &
     | "setPermissionAuthorizationStatus"
   >;
 type CoreProvider = CoreProviderBase & PairingHostAdmin;
-type PairingRuntimeControls = PairingHostAdmin & {
+type PairingRuntimeControls = Partial<PairingHostAdmin> & {
   dispose(): void;
 };
 type CurrentProduct =
@@ -138,13 +179,626 @@ const liveCoreProviders = new Set<CoreProvider>();
 let unsubscribeSessionStoreChanges: (() => void) | null = null;
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 
+interface LiveLocalWallet {
+  runtime: WorkerSigningHostRuntime;
+  binding: LocalWalletIdentityBinding;
+  identity: LocalIdentity;
+  nativeSessionUiInfo?: { publicKey?: string; fullUsername?: string };
+}
+
+const localRuntimeDisposers = new Set<() => void>();
+
+function disposeWalletRuntimes(): void {
+  disposeLandingAuthHost();
+  for (const provider of [...liveCoreProviders]) {
+    provider.dispose();
+  }
+  // Include workers still booting, before they have a tracked product provider.
+  for (const dispose of [...localRuntimeDisposers]) {
+    dispose();
+  }
+}
+const liveLocalWallets = new Map<WorkerSigningHostRuntime, LiveLocalWallet>();
+const providerWallets = new WeakMap<CoreProvider, LiveLocalWallet>();
+let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
+let localIdentityOperationPending = false;
+
+// Boot restoration and explicit updates share a queue: a provider created while
+// a claim is pending cannot install an older cache after the claim completes.
+function withLocalIdentityUpdate<T>(operation: () => Promise<T>): Promise<T> {
+  const result = localIdentityUpdateQueue.then(operation);
+  localIdentityUpdateQueue = result.catch(noop);
+  return result;
+}
+
+async function activeLocalWallet(): Promise<LiveLocalWallet> {
+  await initializeLocalWalletState();
+  if (!isExperimentalWalletActive()) {
+    throw new Error(
+      "Enable the debug test wallet before checking its username.",
+    );
+  }
+  const host = await getLandingAuthHost();
+  const wallet = providerWallets.get(host.core);
+  if (wallet === undefined) {
+    throw new Error(
+      "The current test wallet is not ready. Try again after it connects.",
+    );
+  }
+  if (!isCurrentLocalWallet(wallet.binding)) {
+    disposeWalletRuntimes();
+    throw new Error(
+      "The test wallet or network changed. Reopen the Wallet tab.",
+    );
+  }
+  return wallet;
+}
+
+async function updateLocalIdentity(
+  baseUsername?: string,
+  onProgress?: (progress: LocalIdentityProgress) => void,
+): Promise<LocalIdentity> {
+  if (localIdentityOperationPending) {
+    throw new Error("A username operation is already pending.");
+  }
+  localIdentityOperationPending = true;
+  try {
+    const wallet = await activeLocalWallet();
+    return await withLocalIdentityUpdate(async () => {
+      if (
+        !isCurrentLocalWallet(wallet.binding) ||
+        !liveLocalWallets.has(wallet.runtime)
+      ) {
+        throw new Error(
+          "Test wallet changed. Retry with the current identity.",
+        );
+      }
+      const identity =
+        baseUsername === undefined
+          ? await wallet.runtime.refreshLocalIdentity()
+          : await wallet.runtime.registerLocalLiteUsername(
+              baseUsername,
+              new URL(
+                getActiveServicesConfig().identityBackendBaseUrl,
+                window.location.origin,
+              ).href,
+              onProgress === undefined
+                ? undefined
+                : (progress) => {
+                    if (
+                      isCurrentLocalWallet(wallet.binding) &&
+                      liveLocalWallets.has(wallet.runtime)
+                    ) {
+                      onProgress(progress);
+                    }
+                  },
+            );
+      if (
+        identity.identityAccountId !== wallet.binding.identityAccountId ||
+        (baseUsername !== undefined &&
+          (identity.liteUsername?.trim() ?? "") === "")
+      ) {
+        throw new Error(
+          "Native username confirmation did not match the active identity.",
+        );
+      }
+      if (
+        !isCurrentLocalWallet(wallet.binding) ||
+        !liveLocalWallets.has(wallet.runtime)
+      ) {
+        throw new Error("Test wallet changed while confirming its username.");
+      }
+      wallet.identity = identity;
+      if (baseUsername !== undefined && identity.liteUsername !== undefined) {
+        showNotification({
+          text: `${identity.liteUsername} is confirmed on-chain and ready to use.`,
+          label: "Username claimed",
+          browserNotification: false,
+        });
+      }
+      // Persist only the SDK's ownership-confirmed result. An absent username is
+      // a verified chain absence, not a failed RPC or HTTP acceptance response.
+      let persistenceError: unknown;
+      try {
+        await writeVerifiedLocalIdentity(wallet.binding, identity);
+      } catch (error) {
+        persistenceError = error;
+      }
+      const updates = await Promise.allSettled(
+        [...liveLocalWallets.values()]
+          .filter(
+            (entry) =>
+              entry !== wallet &&
+              isCurrentLocalWallet(entry.binding) &&
+              entry.binding.identityAccountId === identity.identityAccountId,
+          )
+          .map(async (entry) => {
+            // Reactivating a live runtime would reset its session/grants. Refresh
+            // updates SessionInfo in place so current apps immediately get_user_id.
+            let refreshed: LocalIdentity;
+            try {
+              refreshed = await entry.runtime.refreshLocalIdentity();
+            } catch (error) {
+              // Product replacement retires its native session, not the claim.
+              if (!liveLocalWallets.has(entry.runtime)) {
+                return;
+              }
+              throw error;
+            }
+            if (!liveLocalWallets.has(entry.runtime)) {
+              return;
+            }
+            if (
+              !isCurrentLocalWallet(entry.binding) ||
+              refreshed.identityAccountId !== identity.identityAccountId ||
+              refreshed.liteUsername !== identity.liteUsername
+            ) {
+              throw new Error(
+                "A running app has not confirmed the same username yet.",
+              );
+            }
+            entry.identity = refreshed;
+          }),
+      );
+      if (!isCurrentLocalWallet(wallet.binding)) {
+        throw new Error(
+          "Test wallet changed while synchronizing its username.",
+        );
+      }
+      if (updates.some((result) => result.status === "rejected")) {
+        showNotification({
+          text: "The wallet username is confirmed, but a running product could not update its account. Reload that product to reconnect.",
+          label: "Product account update failed",
+          browserNotification: false,
+        });
+      }
+      if (persistenceError !== undefined) {
+        throw new Error(
+          `Chain confirmed ${identity.liteUsername ?? "no registered Lite username"}, but saving shared metadata failed. Use Check username to retry; do not submit another claim.`,
+        );
+      }
+      return identity;
+    });
+  } finally {
+    localIdentityOperationPending = false;
+  }
+}
+const INSPECTOR_REQUEST_PREFIX = "dotli:host-inspector:";
+let inspectorRequestSequence = 0;
+let inspectorResourcePending = false;
+
+function inspectorRequestId(message: Uint8Array): string | null {
+  try {
+    // Read only the leading SCALE string; decoding the whole wire message
+    // would copy every guest payload solely to check this reserved namespace.
+    const id = scale.str.dec(message);
+    return id.startsWith(INSPECTOR_REQUEST_PREFIX) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function assertInspectorWallet(wallet: LiveLocalWallet): void {
+  if (
+    !DEBUG ||
+    !isExperimentalWalletActive() ||
+    !isCurrentLocalWallet(wallet.binding) ||
+    liveLocalWallets.get(wallet.runtime) !== wallet ||
+    wallet.identity.identityAccountId !== wallet.binding.identityAccountId
+  ) {
+    throw new Error("The test identity changed. Reopen the Wallet tab.");
+  }
+}
+
+function inspectorProductContext(): InspectorProductContext | null {
+  const product = currentProduct;
+  const host = currentHost;
+  if (product === null) {
+    return null;
+  }
+  const wallet = host === null ? undefined : providerWallets.get(host.core);
+  if (host?.generation !== renderGeneration || wallet === undefined) {
+    throw new Error("The current product's test wallet is not ready.");
+  }
+  assertInspectorWallet(wallet);
+  const generation = renderGeneration;
+  return {
+    product,
+    host,
+    wallet,
+    id:
+      product.mode === "iframe"
+        ? (product.productId ?? labelToProductId(product.label))
+        : labelToProductId(product.label),
+    assertCurrent(): void {
+      assertInspectorWallet(wallet);
+      if (
+        currentProduct !== product ||
+        currentHost !== host ||
+        generation !== renderGeneration
+      ) {
+        throw new Error(
+          "The product changed during the Wallet tab operation. An allocation already submitted may have completed; check its outcome before making another request.",
+        );
+      }
+    },
+  };
+}
+
+interface InspectorProductContext {
+  product: CurrentProduct;
+  host: ActiveHost;
+  wallet: LiveLocalWallet;
+  id: string;
+  assertCurrent(): void;
+}
+
+// The generated transport starts at p:1 and auto-answers inbound handshakes.
+// Give it only its own namespaced responses, never the guest's handshake or
+// traffic. Its dispose() detaches listeners; this adapter never owns the core.
+async function withInspectorClient<T>(
+  context: InspectorProductContext,
+  operation: (client: TrUApiClient) => PromiseLike<T>,
+): Promise<T> {
+  context.assertCurrent();
+  const prefix = `${INSPECTOR_REQUEST_PREFIX}${String(++inspectorRequestSequence)}:`;
+  const transport = createTransport({
+    postMessage(message) {
+      context.assertCurrent();
+      const decoded = decodeWireMessage(message);
+      if (decoded.isErr()) {
+        throw decoded.error;
+      }
+      const frame = encodeWireMessage({
+        ...decoded.value,
+        requestId: prefix + decoded.value.requestId,
+      });
+      if (frame.isErr()) {
+        throw frame.error;
+      }
+      context.host.core.postMessage(frame.value);
+    },
+    subscribe(callback) {
+      return context.host.core.subscribe((message) => {
+        if (inspectorRequestId(message)?.startsWith(prefix) !== true) {
+          return;
+        }
+        const decoded = decodeWireMessage(message);
+        if (decoded.isErr()) {
+          return;
+        }
+        const frame = encodeWireMessage({
+          ...decoded.value,
+          requestId: decoded.value.requestId.slice(prefix.length),
+        });
+        if (frame.isOk()) {
+          callback(frame.value);
+        }
+      });
+    },
+    subscribeClose(callback) {
+      return context.host.core.subscribeClose?.(callback) ?? noop;
+    },
+    dispose: noop,
+  });
+  try {
+    // createClient merely binds methods; do not invoke system.handshake().
+    const result = await operation(createClient(transport));
+    context.assertCurrent();
+    return result;
+  } finally {
+    transport.dispose();
+  }
+}
+
+// SCALE encoders may coerce invalid numbers or ignore extra fields. Require
+// the decoded canonical value to match the input, not just encode successfully.
+function matchesResourceValue(input: unknown, canonical: unknown): boolean {
+  if (input === canonical) {
+    return true;
+  }
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    typeof canonical !== "object" ||
+    canonical === null
+  ) {
+    return false;
+  }
+  const actual = input as Record<string, unknown>;
+  const expected = canonical as Record<string, unknown>;
+  return (
+    Object.keys(actual).every(
+      (key) => actual[key] === undefined || Object.hasOwn(expected, key),
+    ) &&
+    Object.keys(expected).every((key) =>
+      matchesResourceValue(actual[key], expected[key]),
+    )
+  );
+}
+
+function describeResource(resource: unknown): {
+  id: string;
+  label: string;
+  request: AllocatableResource;
+} | null {
+  try {
+    const encoded = AllocatableResource.enc(resource as AllocatableResource);
+    const request = AllocatableResource.dec(encoded);
+    if (
+      request.tag === "AutoSigning" ||
+      !matchesResourceValue(resource, request)
+    ) {
+      return null;
+    }
+    const selector = request.value as unknown;
+    const suffix =
+      typeof selector === "object" &&
+      selector !== null &&
+      "tag" in selector &&
+      "value" in selector &&
+      (selector.tag === "Index" || selector.tag === "Raw")
+        ? ` (${selector.tag} ${String(selector.value)})`
+        : "";
+    return {
+      id: Array.from(encoded, (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join(""),
+      label: request.tag.replace(/([a-z])([A-Z])/g, "$1 $2") + suffix,
+      request,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getInspectorProduct(): Promise<InspectorProduct | null> {
+  const context = inspectorProductContext();
+  if (context === null) {
+    return null;
+  }
+  const statuses = await context.host.core.getPermissionAuthorizationStatuses(
+    ALL_PERMISSIONS.map(({ name }) => authorizationRequest(name)),
+  );
+  context.assertCurrent();
+  if (statuses.length !== ALL_PERMISSIONS.length) {
+    throw new Error("Native permission status response was incomplete.");
+  }
+  let accountPublicKey: string | undefined;
+  let accountError: string | undefined;
+  try {
+    const result = await withInspectorClient(context, (client) =>
+      client.account.getAccount({
+        productAccountId: {
+          dotNsIdentifier: context.id,
+          derivationIndex: { tag: "Index", value: 0 },
+        },
+      }),
+    );
+    if (result.isErr()) {
+      accountError = "Native host did not disclose this product account.";
+    } else {
+      accountPublicKey = result.value.account.publicKey;
+    }
+  } catch (error) {
+    context.assertCurrent();
+    accountError =
+      error instanceof Error ? error.message : "Product account lookup failed.";
+  }
+  context.assertCurrent();
+  const defaults: AllocatableResource[] = [
+    { tag: "StatementStoreAllowance" },
+    { tag: "BulletinAllowance" },
+    { tag: "SmartContractAllowance", value: { tag: "Index", value: 0 } },
+  ];
+  return {
+    id: context.id,
+    name: context.product.label,
+    origin:
+      context.product.mode === "iframe"
+        ? new URL(context.product.url, window.location.href).origin
+        : getAppOrigin(context.product.label),
+    accountPublicKey,
+    accountError,
+    derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
+    permissions: ALL_PERMISSIONS.map(({ name, label }, index) => ({
+      id: name,
+      label,
+      status: fromAuthorizationStatus(statuses[index]),
+    })),
+    resources: defaults.flatMap((resource) => {
+      const description = describeResource(resource);
+      return description === null ? [] : [description];
+    }),
+  };
+}
+
+async function requestInspectorResource(
+  productId: string,
+  resource: unknown,
+): Promise<"Allocated" | "Rejected" | "NotAvailable"> {
+  if (inspectorResourcePending) {
+    throw new Error("A resource request is already pending.");
+  }
+  const context = inspectorProductContext();
+  if (context?.id !== productId) {
+    throw new Error(
+      "Select the current product before requesting an allowance.",
+    );
+  }
+  const description = describeResource(resource);
+  if (description === null) {
+    throw new Error(
+      "Unsupported allowance request. Auto-signing is a permission, not an allowance.",
+    );
+  }
+  inspectorResourcePending = true;
+  try {
+    // This is the same native product provider and its host confirmation flow.
+    // An outcome is not a balance: the API exposes no remaining-quota counter.
+    const result = await withInspectorClient(context, (client) =>
+      client.resourceAllocation.request({ resources: [description.request] }),
+    );
+    if (result.isErr()) {
+      throw new Error("Native resource allocation failed.", {
+        cause: result.error,
+      });
+    }
+    if (result.value.outcomes.length !== 1) {
+      throw new Error(
+        "Native allocation returned no unique outcome. Do not retry blindly.",
+      );
+    }
+    return result.value.outcomes[0];
+  } finally {
+    inspectorResourcePending = false;
+  }
+}
+
+// Mode switches reload deliberately: no signing worker from the previous
+// identity may survive switching back to mobile pairing.
+export const experimentalWalletControls = {
+  isActive: isExperimentalWalletActive,
+  networkLabel(): string {
+    return getActiveServicesConfig().label;
+  },
+  getCachedIdentity() {
+    const display = readLocalWalletDisplay();
+    return display === undefined
+      ? undefined
+      : { ...display, network: getActiveServicesConfig().label };
+  },
+  async getIdentity(): Promise<
+    LocalIdentity & {
+      network: string;
+      publicKey?: string;
+      fullUsername?: string;
+    }
+  > {
+    const wallet = await activeLocalWallet();
+    assertInspectorWallet(wallet);
+    return {
+      ...wallet.identity,
+      ...wallet.nativeSessionUiInfo,
+      network: getActiveServicesConfig().label,
+    };
+  },
+  getProduct: getInspectorProduct,
+  describeResource,
+  requestResource: requestInspectorResource,
+  refreshUsername(): Promise<LocalIdentity> {
+    return updateLocalIdentity();
+  },
+  claimLiteUsername(
+    baseUsername: string,
+    onProgress?: (progress: LocalIdentityProgress) => void,
+  ): Promise<LocalIdentity> {
+    const username = baseUsername.trim();
+    if (username === "" || username.includes(".")) {
+      return Promise.reject(
+        new Error("Enter a base username only, without a network suffix."),
+      );
+    }
+    return updateLocalIdentity(username, onProgress);
+  },
+  async activate(): Promise<void> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    disposeWalletRuntimes();
+    await setLocalWalletEnabled(true);
+    window.location.reload();
+  },
+  async disconnect(): Promise<void> {
+    if (!DEBUG) {
+      return Promise.reject(
+        new Error("Experimental wallets require a debug build"),
+      );
+    }
+    if (isExperimentalWalletActive()) {
+      disposeWalletRuntimes();
+    }
+    await setLocalWalletEnabled(false);
+    window.location.reload();
+  },
+  async exportMnemonic(): Promise<string> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    return exportLocalWalletMnemonic();
+  },
+  async importMnemonic(mnemonic: string): Promise<void> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    await importLocalWalletMnemonic(mnemonic, () => {
+      disposeWalletRuntimes();
+    });
+    await setLocalWalletEnabled(true);
+    window.location.reload();
+  },
+  async deleteWallet(): Promise<void> {
+    if (!DEBUG) {
+      throw new Error("Experimental wallets require a debug build");
+    }
+    if (isExperimentalWalletActive()) {
+      disposeWalletRuntimes();
+    }
+    await deleteLocalWalletSecret();
+    await setLocalWalletEnabled(false);
+    window.location.reload();
+  },
+};
+
 function ensureStoredSessionForwarder(): void {
   if (unsubscribeSessionStoreChanges !== null) {
     return;
   }
-  unsubscribeSessionStoreChanges = onStoredSessionChanged(() => {
+  const unsubscribeSession = onStoredSessionChanged(() => {
     notifyLiveCoreProvidersSessionStoreChanged();
   });
+  const unsubscribeIdentity = onVerifiedLocalIdentityChanged(() => {
+    void withLocalIdentityUpdate(async () => {
+      await Promise.all(
+        [...liveLocalWallets.values()].map(async (entry) => {
+          if (!isCurrentLocalWallet(entry.binding)) {
+            return;
+          }
+          const cached = await readVerifiedLocalIdentity(entry.binding);
+          if (
+            cached === undefined ||
+            cached.liteUsername === entry.identity.liteUsername ||
+            !isCurrentLocalWallet(entry.binding) ||
+            !liveLocalWallets.has(entry.runtime)
+          ) {
+            return;
+          }
+          // Other trusted host tabs learn of the shared record, then update their
+          // own native sessions by checking the chain, without resetting grants.
+          const identity = await entry.runtime.refreshLocalIdentity();
+          if (
+            isCurrentLocalWallet(entry.binding) &&
+            liveLocalWallets.has(entry.runtime)
+          ) {
+            entry.identity = identity;
+          }
+        }),
+      );
+    }).catch((error: unknown) => {
+      log.warn("[dot.li] shared test-wallet username refresh failed:", error);
+      showNotification({
+        text: "A shared test-wallet username changed, but this app could not refresh it. Use Wallet tab → Check username.",
+        label: "Test wallet",
+        browserNotification: false,
+      });
+    });
+  });
+  unsubscribeSessionStoreChanges = () => {
+    unsubscribeSession();
+    unsubscribeIdentity();
+  };
 }
 
 function trackCoreProvider(
@@ -166,10 +820,10 @@ function trackCoreProvider(
       await provider.disconnectSession();
     },
     cancelPairing() {
-      pairing.cancelPairing();
+      pairing.cancelPairing?.();
     },
     notifySessionStoreChanged() {
-      pairing.notifySessionStoreChanged();
+      pairing.notifySessionStoreChanged?.();
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
@@ -333,7 +987,46 @@ export function initBridgeEventListeners(
   (
     window as typeof window & { __dotliTruapiBridgeReady?: boolean }
   ).__dotliTruapiBridgeReady = true;
+  if (DEBUG) {
+    window.addEventListener("storage", (event) => {
+      if (
+        event.key === LOCAL_WALLET_ENABLED_KEY ||
+        event.key === LOCAL_WALLET_REVISION_KEY ||
+        event.key === null
+      ) {
+        disposeWalletRuntimes();
+        window.location.reload();
+      }
+    });
+    // The host identity is available on the landing page and outlives every
+    // product. Mobile keeps its existing lazy pairing lifecycle.
+    const generation = landingAuthGeneration;
+    void initializeLocalWalletState()
+      .then(async () => {
+        if (
+          isExperimentalWalletActive() &&
+          generation === landingAuthGeneration
+        ) {
+          await getLandingAuthHost();
+        }
+      })
+      .catch((error: unknown) => {
+        if (
+          isExperimentalWalletActive() &&
+          generation === landingAuthGeneration
+        ) {
+          dispatchAuthState({
+            tag: "WalletUnavailable",
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+  }
   window.addEventListener("dotli:truapi-disconnect-request", () => {
+    if (isExperimentalWalletActive()) {
+      void experimentalWalletControls.disconnect();
+      return;
+    }
     void disconnectTruapiHosts();
   });
 
@@ -441,6 +1134,11 @@ function pipeProviders(
   let sawOutbound = false;
   const unsubs = [
     product.subscribe((message) => {
+      // This namespace belongs to host-only clients. Guests cannot inject a
+      // matching request or receive an inspector response.
+      if (inspectorRequestId(message) !== null) {
+        return;
+      }
       if (!sawInbound) {
         sawInbound = true;
         emitDotliDebugEvent({
@@ -454,6 +1152,9 @@ function pipeProviders(
       core.postMessage(message);
     }),
     core.subscribe((message) => {
+      if (inspectorRequestId(message) !== null) {
+        return;
+      }
       if (!sawOutbound) {
         sawOutbound = true;
         emitDotliDebugEvent({
@@ -702,6 +1403,7 @@ async function createHost(args: {
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
+  const generation = renderGeneration;
   const coreProvider = await createCoreProvider(args.label, {
     productId: args.productId,
   });
@@ -799,6 +1501,8 @@ async function createHost(args: {
     };
 
     return {
+      core: coreProvider,
+      generation,
       iframe: host.iframe,
       requestLogin(reason) {
         return requestCoreLogin(coreProvider, reason);
@@ -833,6 +1537,7 @@ async function createCoreProvider(
     pairingDotSuffix?: boolean;
     pairingHostGlobal?: boolean;
     productId?: string;
+    walletOwner?: boolean;
   } = {},
 ): Promise<CoreProvider> {
   if (blockingModalCoordinator === null) {
@@ -840,7 +1545,33 @@ async function createCoreProvider(
       "TrUAPI bridge initialized without a blocking modal coordinator",
     );
   }
+  await initializeLocalWalletState();
+  // Bootstrap the persistent owner first; products never own wallet identity.
+  const owner =
+    isExperimentalWalletActive() && options.walletOwner !== true
+      ? await activeLocalWallet()
+      : undefined;
   const blockingModalScope = blockingModalCoordinator.createScope();
+  const localContext = isExperimentalWalletActive()
+    ? localWalletContext()
+    : undefined;
+  let activatedIdentity: LocalIdentity | undefined;
+  let nativeSessionUiInfo: LiveLocalWallet["nativeSessionUiInfo"];
+  let liveWallet: LiveLocalWallet | undefined;
+  let walletAuthReady = false;
+  let pendingWalletAuthState: AuthState | undefined;
+  let runtimeDisposed = false;
+  const isRuntimeDisposed = (): boolean => runtimeDisposed;
+  let runtime: WorkerPairingHostRuntime | WorkerSigningHostRuntime | undefined;
+  const disposeNativeRuntime = (): void => {
+    runtimeDisposed = true;
+    localRuntimeDisposers.delete(disposeNativeRuntime);
+    if (liveWallet !== undefined) {
+      liveLocalWallets.delete(liveWallet.runtime);
+    }
+    runtime?.dispose();
+  };
+  localRuntimeDisposers.add(disposeNativeRuntime);
   try {
     const { createWebWorkerPairingHostRuntime, HostWorker } =
       await runtimeChunkPromise;
@@ -850,24 +1581,177 @@ async function createCoreProvider(
     // their chat calls; everything an App connection can do still works.
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
-    const chatCapable = await chatCapabilityFor(label);
-    const runtime = await createWebWorkerPairingHostRuntime(
-      new HostWorker(),
-      createHostCallbacks({
-        label,
-        pairingLabel: options.pairingLabel,
-        pairingDotSuffix: options.pairingDotSuffix,
-        pairingHostGlobal: options.pairingHostGlobal,
-        blockingModalScope,
-      }),
-      {
-        hostConfig,
-      },
-    );
+    const chatCapable =
+      options.walletOwner !== true && (await chatCapabilityFor(label));
+    const callbacks = createHostCallbacks({
+      label,
+      pairingLabel: options.pairingLabel,
+      pairingDotSuffix: options.pairingDotSuffix,
+      pairingHostGlobal: options.pairingHostGlobal,
+      blockingModalScope,
+    });
+    const forwardAuthState = callbacks.auth.authStateChanged;
+    callbacks.auth.authStateChanged = (state) => {
+      // Worker messages queued before replacement must never repaint a new
+      // identity or overwrite the separate Mobile session UI cache.
+      if (
+        isRuntimeDisposed() ||
+        (localContext === undefined
+          ? isExperimentalWalletActive()
+          : !isCurrentLocalWallet(localContext))
+      ) {
+        return;
+      }
+      if (localContext !== undefined && state.tag === "Connected") {
+        const account = state.value.identityAccountId;
+        if (account !== undefined && /^(?:0x)?[0-9a-fA-F]{64}$/.test(account)) {
+          activatedIdentity = {
+            identityAccountId: `0x${account.replace(/^0x/, "").toLowerCase()}`,
+            ...((state.value.liteUsername ?? "") !== ""
+              ? { liteUsername: state.value.liteUsername }
+              : {}),
+          };
+          nativeSessionUiInfo = {
+            publicKey: state.value.publicKey,
+            fullUsername: state.value.fullUsername,
+          };
+          if (
+            liveWallet !== undefined &&
+            activatedIdentity.identityAccountId !==
+              liveWallet.binding.identityAccountId
+          ) {
+            return;
+          }
+          if (liveWallet !== undefined) {
+            liveWallet.identity = activatedIdentity;
+            liveWallet.nativeSessionUiInfo = nativeSessionUiInfo;
+          }
+        }
+      }
+      if (localContext === undefined) {
+        forwardAuthState(state);
+      } else if (options.walletOwner === true) {
+        // Activation reports Connected before chain restoration. Publish only
+        // the final restored native session, never a transient bare identity.
+        if (walletAuthReady) {
+          forwardAuthState(state);
+        } else {
+          pendingWalletAuthState = state;
+        }
+      }
+    };
+    if (localContext !== undefined) {
+      const secret = await readLocalWalletSecret();
+      if (secret === undefined) {
+        throw new Error(
+          "Experimental wallet is unavailable. Disconnect it in the debug bar.",
+        );
+      }
+      try {
+        const { createWebWorkerSigningHostRuntime } = await runtimeChunkPromise;
+        const signing = await createWebWorkerSigningHostRuntime(
+          new HostWorker(),
+          callbacks,
+          {
+            hostConfig: {
+              ...hostConfig,
+              networkSuffix: getActiveServicesConfig().dotns.TLD,
+            },
+          },
+        );
+        runtime = signing;
+        if (isRuntimeDisposed() || !isCurrentLocalWallet(localContext)) {
+          throw new Error(
+            "Test wallet changed while the signing worker was starting.",
+          );
+        }
+        await signing.activateLocalSession(secret);
+        if (
+          isRuntimeDisposed() ||
+          !isCurrentLocalWallet(localContext) ||
+          activatedIdentity === undefined
+        ) {
+          throw new Error(
+            "Test wallet changed or native activation did not report its identity.",
+          );
+        }
+        const binding: LocalWalletIdentityBinding = {
+          ...localContext,
+          identityAccountId: activatedIdentity.identityAccountId,
+        };
+        await withLocalIdentityUpdate(async () => {
+          if (owner !== undefined) {
+            assertInspectorWallet(owner);
+            if (owner.binding.identityAccountId !== binding.identityAccountId) {
+              throw new Error(
+                "The product activated a different test identity.",
+              );
+            }
+          }
+          const usernameHint =
+            owner === undefined
+              ? (await readVerifiedLocalIdentity(binding))?.liteUsername
+              : owner.identity.liteUsername;
+          if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
+            throw new Error("Test wallet changed during username restoration.");
+          }
+          if (usernameHint !== undefined) {
+            // Neither disk hints nor another runtime's session prove this
+            // product's native identity. Verify without resetting its grants.
+            activatedIdentity = await signing.refreshLocalIdentity();
+            if (
+              activatedIdentity.identityAccountId !== binding.identityAccountId
+            ) {
+              throw new Error(
+                "Restored username did not match the active wallet.",
+              );
+            }
+          }
+          if (
+            isRuntimeDisposed() ||
+            !isCurrentLocalWallet(binding) ||
+            activatedIdentity === undefined
+          ) {
+            throw new Error("Test wallet changed during native activation.");
+          }
+          liveWallet = {
+            runtime: signing,
+            binding,
+            identity: activatedIdentity,
+            nativeSessionUiInfo,
+          };
+          liveLocalWallets.set(signing, liveWallet);
+        });
+      } finally {
+        secret.fill(0);
+      }
+    } else {
+      runtime = await createWebWorkerPairingHostRuntime(
+        new HostWorker(),
+        callbacks,
+        { hostConfig },
+      );
+      if (isRuntimeDisposed() || isExperimentalWalletActive()) {
+        throw new Error(
+          "Wallet mode changed while the Mobile worker was starting.",
+        );
+      }
+    }
     const provider = await runtime.createProvider({
       productId,
       executionKind: chatCapable ? "Worker" : "App",
     });
+    if (
+      isRuntimeDisposed() ||
+      (localContext === undefined
+        ? isExperimentalWalletActive()
+        : !isCurrentLocalWallet(localContext))
+    ) {
+      provider.dispose();
+      throw new Error(
+        "Wallet changed while the product provider was starting.",
+      );
+    }
     const unregisterChat = chatCapable
       ? registerChatConnection(productId, {
           publish: (action) =>
@@ -887,15 +1771,56 @@ async function createCoreProvider(
           },
         })
       : noop;
-    return trackCoreProvider(
-      wrapCoreProviderForDebug(provider, options.productId ?? label),
+    let unsubscribeOwnerClose: (() => void) | undefined;
+    const tracked = trackCoreProvider(
+      wrapCoreProviderForDebug(provider, productId),
       runtime,
       () => {
+        runtimeDisposed = true;
+        unsubscribeOwnerClose?.();
+        localRuntimeDisposers.delete(disposeNativeRuntime);
+        if (liveWallet !== undefined) {
+          liveLocalWallets.delete(liveWallet.runtime);
+          providerWallets.delete(tracked);
+        }
         unregisterChat();
         blockingModalScope.dispose();
       },
     );
+    if (liveWallet !== undefined) {
+      providerWallets.set(tracked, liveWallet);
+    }
+    if (options.walletOwner === true) {
+      if (liveWallet !== undefined) {
+        let closeError: Error | undefined;
+        unsubscribeOwnerClose = tracked.subscribeClose?.((error) => {
+          if (isRuntimeDisposed()) {
+            return;
+          }
+          closeError = error;
+          disposeLandingAuthHost();
+          tracked.dispose();
+          dispatchAuthState({
+            tag: "WalletUnavailable",
+            reason: error.message,
+          });
+        });
+        // Subscription can synchronously report an already-closed provider.
+        // Do not publish Connected or return its retired native authority.
+        if (closeError !== undefined) {
+          unsubscribeOwnerClose?.();
+          throw closeError;
+        }
+      }
+      walletAuthReady = true;
+      if (pendingWalletAuthState !== undefined) {
+        forwardAuthState(pendingWalletAuthState);
+        pendingWalletAuthState = undefined;
+      }
+    }
+    return tracked;
   } catch (error) {
+    disposeNativeRuntime();
     blockingModalScope.dispose();
     throw error;
   }
@@ -934,8 +1859,10 @@ async function createLandingAuthHost(): Promise<CoreHost> {
     pairingLabel: LANDING_AUTH_DISPLAY_LABEL,
     pairingDotSuffix: false,
     pairingHostGlobal: true,
+    walletOwner: true,
   });
   return {
+    core: coreProvider,
     requestLogin(reason) {
       return requestCoreLogin(coreProvider, reason);
     },
@@ -992,7 +1919,9 @@ export async function renderIframe(
   if (previousHost === null) {
     app.innerHTML = "";
   }
-  disposeLandingAuthHost();
+  if (!isExperimentalWalletActive()) {
+    disposeLandingAuthHost();
+  }
 
   currentProduct = {
     mode: "iframe",
@@ -1102,7 +2031,9 @@ export async function renderAppSubdomain(
   // `allow` attribute. Keep the current product visible until its replacement
   // core and iframe are ready, just like the direct-iframe render path.
   const previousHost = currentHost;
-  disposeLandingAuthHost();
+  if (!isExperimentalWalletActive()) {
+    disposeLandingAuthHost();
+  }
 
   currentProduct = {
     mode: "subdomain",

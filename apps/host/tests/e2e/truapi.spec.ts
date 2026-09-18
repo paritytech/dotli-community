@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect } from "./fixtures/paired";
+import { test, expect, waitForHostPlaygroundFrame } from "./fixtures/paired";
 import {
   waitForPlaygroundReady,
   runTestExpectSuccess,
@@ -321,8 +321,27 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "navigate-http");
     });
 
-    test("Polkadot URL", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "navigate-polkadot");
+    test("Polkadot URL", async ({ pairedPage }) => {
+      // Navigation destroys the sending iframe. Use a separate tab so the
+      // worker's playground stays available for the remaining capability tests.
+      const navigationPage = await pairedPage.context().newPage();
+      try {
+        await navigationPage.goto(pairedPage.url());
+        const frame = await waitForHostPlaygroundFrame(navigationPage, 20_000);
+        const destination = new URL(pairedPage.url());
+        destination.hostname = "truapi-playground.localhost";
+        destination.pathname = "/";
+        await frame.getByTestId("run-navigate-polkadot").click();
+        // The deeplink names the product, not the host's backend query, so
+        // assert where the tab landed rather than what it carried along.
+        await expect(navigationPage).toHaveURL(
+          (url) =>
+            url.host === destination.host &&
+            url.pathname === destination.pathname,
+        );
+      } finally {
+        await navigationPage.close();
+      }
     });
 
     // Red on main since before the CLI swap: the iframe lands on
