@@ -45,6 +45,15 @@ export interface TerminalPresenterOptions {
    * tests and exotic platforms. Defaults to opening `/dev/tty`.
    */
   openTty?: () => TtyStreams | undefined;
+  /**
+   * Make an empty answer (just Enter) APPROVE. The prompt then shows `[Y/n]`.
+   *
+   * Off by default: confirm prompts are deny-by-default, so a stray Enter
+   * never approves a signature or allocation. Enable it only for trusted,
+   * high-volume flows (e.g. a dogfooding CLI where the operator wants to hold
+   * Enter through a batch); a non-TTY still denies regardless.
+   */
+  defaultYes?: boolean;
 }
 
 export function createTerminalPresenter(
@@ -54,8 +63,15 @@ export function createTerminalPresenter(
   const input = options.input ?? process.stdin;
   const openTty = options.openTty ?? openControllingTerminal;
   const renderQr = options.renderQr ?? renderQrTerminal;
+  const defaultYes = options.defaultYes ?? false;
   const write = (text: string): void => {
     output.write(text);
+  };
+  const promptLabel = defaultYes ? "  Continue? [Y/n] " : "  Continue? [y/N] ";
+  // An empty answer takes the default; otherwise only an explicit yes approves.
+  const isApproval = (answer: string): boolean => {
+    const trimmed = answer.trim();
+    return trimmed === "" ? defaultYes : /^y(es)?$/i.test(trimmed);
   };
 
   let progressTimer: NodeJS.Timeout | null = null;
@@ -195,8 +211,8 @@ export function createTerminalPresenter(
             output: tty.output,
           });
           try {
-            const answer = await rl.question("  Continue? [y/N] ");
-            return /^y(es)?$/i.test(answer.trim());
+            const answer = await rl.question(promptLabel);
+            return isApproval(answer);
           } finally {
             rl.close();
             tty.close();
@@ -209,8 +225,8 @@ export function createTerminalPresenter(
         }
         const rl = readline.createInterface({ input, output });
         try {
-          const answer = await rl.question("  Continue? [y/N] ");
-          return /^y(es)?$/i.test(answer.trim());
+          const answer = await rl.question(promptLabel);
+          return isApproval(answer);
         } finally {
           rl.close();
         }

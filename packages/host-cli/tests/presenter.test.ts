@@ -139,6 +139,47 @@ describe("createTerminalPresenter prompt routing", () => {
     presenter.dispose();
   });
 
+  it("As a batch operator with defaultYes, a bare Enter approves and the label says so", async () => {
+    // Given
+    const out = sink();
+    const tty = fakeTty();
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      openTty: () => tty.streams,
+      defaultYes: true,
+    });
+
+    // When
+    const decision = presenter.confirm(REQUEST);
+    tty.type("\n");
+
+    // Then
+    expect(await decision).toBe(true);
+    expect(tty.screenText()).toContain("[Y/n]");
+    presenter.dispose();
+  });
+
+  it("As a batch operator with defaultYes, an explicit n still denies", async () => {
+    // Given
+    const out = sink();
+    const tty = fakeTty();
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      openTty: () => tty.streams,
+      defaultYes: true,
+    });
+
+    // When
+    const decision = presenter.confirm(REQUEST);
+    tty.type("n\n");
+
+    // Then
+    expect(await decision).toBe(false);
+    presenter.dispose();
+  });
+
   it("As a CI process with piped stdin, prompts deny automatically", async () => {
     // Given
     const out = sink();
