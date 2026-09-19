@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -504,6 +505,34 @@ describe("PolkaVM package recognition", () => {
     expect(() => describePolkaVmPackage(files, `${manifest}\n`)).toThrow(
       /does not match/,
     );
+  });
+
+  it("bounds declared controls by UTF-8 bytes and rejects malformed device input", () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: { deviceInput: unknown };
+    };
+    const parse = (input: unknown): string[] | undefined => {
+      value.capabilities.deviceInput = input;
+      const manifest = JSON.stringify(value);
+      return describePolkaVmPackage(
+        { "manifest.json": encoder.encode(manifest) },
+        manifest,
+      )?.controls;
+    };
+    const input = { abiVersion: 1, requiredFeatures: ["keyboard", "focus"] };
+    const controls = ["é".repeat(80), "Arrows: Move"];
+    expect(parse({ ...input, controls })).toEqual(controls);
+    for (const malformed of [
+      null,
+      { ...input, unknown: true },
+      { ...input, controls: "Arrows: Move" },
+      { ...input, controls: [""] },
+      { ...input, controls: [" padded "] },
+      { ...input, controls: ["é".repeat(81)] },
+      { ...input, controls: Array.from({ length: 33 }, () => "Move") },
+    ]) {
+      expect(() => parse(malformed)).toThrow();
+    }
   });
 
   it("routes registered files without inspecting their contents", () => {
