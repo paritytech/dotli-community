@@ -86,6 +86,7 @@ export interface PolkaVmAppManifestV2 {
     };
     deviceInput?: {
       abiVersion: 1;
+      controls?: readonly string[];
       requiredFeatures: readonly (
         | "pointer"
         | "keyboard"
@@ -329,12 +330,26 @@ function validateAppV2(input: Record<string, unknown>, p: string): string[] {
     }
   }
   if (capabilities?.deviceInput !== undefined) {
+    const encoder = new TextEncoder();
     const inputCapability = isPlainObject(capabilities.deviceInput)
       ? capabilities.deviceInput
       : null;
     if (inputCapability === null) {
       errors.push(`${p}deviceInput capability is unsupported`);
     } else if (
+      Object.keys(inputCapability).some(
+        (key) => !["abiVersion", "requiredFeatures", "controls"].includes(key),
+      ) ||
+      (inputCapability.controls !== undefined &&
+        (!Array.isArray(inputCapability.controls) ||
+          inputCapability.controls.length > 32 ||
+          inputCapability.controls.some(
+            (control) =>
+              typeof control !== "string" ||
+              control.trim() === "" ||
+              control !== control.trim() ||
+              encoder.encode(control).byteLength > 160,
+          ))) ||
       inputCapability.abiVersion !== 1 ||
       !requiredFeatures(inputCapability.requiredFeatures, [
         "pointer",

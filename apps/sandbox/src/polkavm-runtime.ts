@@ -11,6 +11,7 @@ import {
   polkaVmRuntimeAssetUrl,
 } from "./polkavm-runtime-assets";
 import { Tri2dRenderer } from "./tri2d-renderer";
+import { installPolkaVmMenu, type PolkaVmMenu } from "./polkavm-menu";
 import {
   installPolkaVmTouchControls,
   type PolkaVmTouchControls,
@@ -801,6 +802,22 @@ function parseManifest(
           ? deviceInput.requiredFeatures
           : null;
     if (
+      (capabilities?.deviceInput !== undefined && deviceInput === null) ||
+      (deviceInput !== null &&
+        Object.keys(deviceInput).some(
+          (key) =>
+            !["abiVersion", "requiredFeatures", "controls"].includes(key),
+        )) ||
+      (deviceInput?.controls !== undefined &&
+        (!Array.isArray(deviceInput.controls) ||
+          deviceInput.controls.length > 32 ||
+          deviceInput.controls.some(
+            (control) =>
+              typeof control !== "string" ||
+              control.trim() === "" ||
+              control !== control.trim() ||
+              encoder.encode(control).byteLength > 160,
+          ))) ||
       (deviceInput !== null && deviceInput.abiVersion !== 1) ||
       deviceFeatures === null ||
       deviceFeatures.some(
@@ -830,10 +847,12 @@ function parseManifest(
     ) {
       throw new Error("PolkaVM App v2 requires unsupported audio features");
     }
-    controls = deviceFeatures.map(
-      (feature) =>
-        (feature as string)[0].toUpperCase() + (feature as string).slice(1),
-    );
+    controls =
+      (deviceInput?.controls as string[] | undefined) ??
+      deviceFeatures.map(
+        (feature) =>
+          (feature as string)[0].toUpperCase() + (feature as string).slice(1),
+      );
     // Device input is baseline App ABI behavior, not a manifest opt-in.
     inputFeatures = ["pointer", "keyboard", "text", "ime", "focus", "wheel"];
     if (deviceFeatures.includes("motion")) {
@@ -1621,7 +1640,7 @@ export function accumulateRelativePointerDelta(
   ];
 }
 
-function createShell(controls: string[]): {
+function createShell(): {
   surface: HTMLElement;
   canvas: HTMLCanvasElement;
   status: HTMLElement;
@@ -1638,10 +1657,16 @@ function createShell(controls: string[]): {
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
-    #dotli-polkavm-file-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
-    #dotli-polkavm-file-open:hover{border-color:#e6007a}
-    #dotli-polkavm-file-open:disabled{cursor:wait;opacity:.55}
-    .dotli-file-consent-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:#000a;font:14px/1.45 system-ui,sans-serif}
+    #dotli-polkavm-menu-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
+    #dotli-polkavm-menu-open:hover{border-color:#e6007a}
+    .dotli-polkavm-menu{max-height:80vh;overflow:auto;font:14px/1.5 system-ui,sans-serif}
+    .dotli-polkavm-menu::backdrop,.dotli-file-consent-backdrop::backdrop{background:#000a}
+    .dotli-polkavm-menu>button{display:block;width:100%;margin-top:12px;background:#303238;color:#fff}
+    .dotli-polkavm-menu>button[hidden]{display:none}
+    .dotli-polkavm-menu button:disabled{opacity:.55;cursor:wait}
+    .dotli-polkavm-menu details{margin-top:16px}
+    .dotli-polkavm-menu summary{cursor:pointer}
+    .dotli-file-consent-backdrop{border:0;padding:0;background:transparent;max-width:calc(100vw - 32px);font:14px/1.45 system-ui,sans-serif}
     .dotli-file-consent{width:min(440px,100%);border:1px solid #ffffff26;border-radius:14px;padding:22px;background:#17181c;color:#fff;box-shadow:0 24px 80px #000b}
     .dotli-file-consent h2{margin:0 0 8px;font-size:20px}
     .dotli-file-consent p{margin:0;color:#b8bbc3}
@@ -1651,7 +1676,6 @@ function createShell(controls: string[]): {
     .dotli-file-consent button{border:0;border-radius:7px;padding:8px 12px;font:600 13px system-ui,sans-serif;cursor:pointer}
     .dotli-file-consent-cancel{background:#303238;color:#fff}
     .dotli-file-consent-approve{background:#e6007a;color:#fff}
-    #dotli-polkavm-controls{position:absolute;right:12px;bottom:12px;max-width:min(480px,70vw);font:11px/1.4 ui-monospace,monospace;color:#ddd;text-align:right}
   `;
   const shell = document.createElement("main");
   shell.id = "dotli-polkavm-shell";
@@ -1664,10 +1688,8 @@ function createShell(controls: string[]): {
   status.id = "dotli-polkavm-status";
   status.className = "dotli-polkavm-overlay";
   status.textContent = "Translating PolkaVM application…";
-  const controlText = document.createElement("div");
-  controlText.id = "dotli-polkavm-controls";
-  controlText.textContent = controls.join(" · ");
-  surface.append(canvas, status, controlText);
+  status.setAttribute("role", "status");
+  surface.append(canvas, status);
   shell.append(surface);
   document.getElementById("dotli-polkavm-style")?.remove();
   document.head.append(style);
@@ -1699,15 +1721,16 @@ function formatFileBytes(bytes: number): string {
 function askFileInputConsent(
   file: File,
   handlers: readonly PolkaVmFileInputHandler[],
+  signal: AbortSignal,
 ): Promise<PolkaVmFileInputHandler | null> {
   return new Promise((resolve) => {
-    const backdrop = document.createElement("div");
+    const backdrop = document.createElement("dialog");
     backdrop.className = "dotli-file-consent-backdrop";
     const modal = document.createElement("div");
     modal.className = "dotli-file-consent";
-    modal.setAttribute("role", "dialog");
-    modal.setAttribute("aria-modal", "true");
     const heading = document.createElement("h2");
+    heading.id = "dotli-file-consent-title";
+    backdrop.setAttribute("aria-labelledby", heading.id);
     heading.textContent = "Give this file to the app?";
     const explanation = document.createElement("p");
     explanation.textContent =
@@ -1750,21 +1773,34 @@ function askFileInputConsent(
     modal.append(actions);
     backdrop.append(modal);
     document.body.append(backdrop);
+    const previousFocus = document.activeElement;
+    backdrop.showModal();
     let settled = false;
     const finish = (handler: PolkaVmFileInputHandler | null): void => {
       if (settled) {
         return;
       }
       settled = true;
-      window.removeEventListener("keydown", keydown);
+      signal.removeEventListener("abort", aborted);
+      window.removeEventListener("keydown", keydown, true);
+      backdrop.close();
       backdrop.remove();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
       resolve(handler);
     };
     const keydown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
         finish(null);
       }
     };
+    const aborted = (): void => {
+      finish(null);
+    };
+    signal.addEventListener("abort", aborted, { once: true });
     cancel.addEventListener("click", () => {
       finish(null);
     });
@@ -1776,7 +1812,11 @@ function askFileInputConsent(
         finish(null);
       }
     });
-    window.addEventListener("keydown", keydown);
+    backdrop.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      finish(null);
+    });
+    window.addEventListener("keydown", keydown, true);
     cancel.focus();
   });
 }
@@ -1790,39 +1830,53 @@ function installFileInputControls(
     bytes: Uint8Array,
     file: File,
   ) => Promise<void>,
+  menu: PolkaVmMenu,
 ): () => void {
-  if (handlers.length === 0) {
+  const open = menu.changeFile;
+  if (open === null) {
     return () => undefined;
   }
-  const open = document.createElement("button");
-  open.id = "dotli-polkavm-file-open";
-  open.type = "button";
-  open.textContent = "Open file";
   const picker = document.createElement("input");
   picker.type = "file";
   picker.accept = filePickerAccept(handlers);
   picker.hidden = true;
-  surface.append(open, picker);
+  open.after(picker);
   let busy = false;
+  const cancellation = new AbortController();
   const process = async (file: File): Promise<void> => {
-    if (busy) {
+    if (busy || cancellation.signal.aborted) {
+      return;
+    }
+    menu.open();
+    if (file.size === 0) {
+      status.textContent = "This file is empty. Choose another file.";
       return;
     }
     const candidates = matchingFileInputHandlers(handlers, file);
     if (candidates.length === 0) {
-      status.textContent = "This app does not accept that file.";
-      return;
-    }
-    const handler = await askFileInputConsent(file, candidates);
-    if (handler === null) {
-      status.textContent = "";
+      status.textContent =
+        "This app does not accept that file type or size. Choose another file.";
       return;
     }
     busy = true;
-    open.disabled = true;
+    menu.setBusy(true);
+    const handler = await askFileInputConsent(
+      file,
+      candidates,
+      cancellation.signal,
+    );
+    if (handler === null) {
+      busy = false;
+      menu.setBusy(false);
+      if (open.isConnected) {
+        open.focus();
+      }
+      return;
+    }
     status.textContent = `Reading ${file.name}…`;
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      cancellation.signal.throwIfAborted();
       if (
         bytes.byteLength !== file.size ||
         bytes.byteLength > handler.maxBytes
@@ -1834,15 +1888,17 @@ function installFileInputControls(
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "File delivery failed.";
-      (document.getElementById("dotli-polkavm-status") ?? status).textContent =
-        message;
+      status.textContent = `${message} Choose another file or return to the launcher.`;
+    } finally {
       busy = false;
+      menu.setBusy(false);
       if (open.isConnected) {
-        open.disabled = false;
+        open.focus();
       }
     }
   };
   const click = (): void => {
+    menu.open();
     picker.click();
   };
   const change = (): void => {
@@ -1889,14 +1945,13 @@ function installFileInputControls(
   surface.addEventListener("dragleave", dragleave);
   surface.addEventListener("drop", drop);
   return () => {
+    cancellation.abort();
     open.removeEventListener("click", click);
     picker.removeEventListener("change", change);
     surface.removeEventListener("dragover", dragover);
     surface.removeEventListener("dragleave", dragleave);
     surface.removeEventListener("drop", drop);
-    open.remove();
     picker.remove();
-    document.querySelector(".dotli-file-consent-backdrop")?.remove();
   };
 }
 
@@ -1919,7 +1974,9 @@ function installInput(
   sendSurfaceMetrics: () => void;
   setPointerCaptureRequest: (capture: boolean) => void;
   supportsPointerCapture: () => boolean;
+  setPaused: (paused: boolean) => void;
 } {
+  let inputPaused = false;
   const pressed = new Set<number>();
   const heldPointerButtons = new Set<number>();
   const touchKeys = new Set<number>();
@@ -2209,6 +2266,7 @@ function installInput(
   };
   const syncFocus = (): void => {
     const focused =
+      !inputPaused &&
       document.visibilityState !== "hidden" &&
       document.hasFocus() &&
       (document.activeElement === canvas ||
@@ -2257,6 +2315,7 @@ function installInput(
   };
   const paste = (event: ClipboardEvent): void => {
     if (
+      inputPaused ||
       !inputFeatureSet.has("text") ||
       !wantsTextInput ||
       composing ||
@@ -2275,6 +2334,7 @@ function installInput(
   };
   const beforeInput = (event: InputEvent): void => {
     if (
+      inputPaused ||
       !inputFeatureSet.has("text") ||
       composing ||
       event.isComposing ||
@@ -2341,6 +2401,9 @@ function installInput(
     }
   };
   const wheel = (event: WheelEvent): void => {
+    if (inputPaused) {
+      return;
+    }
     event.preventDefault();
     const scale =
       event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -2351,22 +2414,19 @@ function installInput(
     send(encodedWheelInput(event.deltaX, event.deltaY, scale));
   };
   const keydown = (event: KeyboardEvent): void => {
+    if (
+      inputPaused ||
+      (document.activeElement !== canvas &&
+        document.activeElement !== textInput)
+    ) {
+      return;
+    }
     // Candidate navigation and confirmation belong to the active IME, not the
     // guest's editor shortcuts. Text arrives through the composition records.
     if (composing || event.isComposing) {
       return;
     }
     requestDeviceMotionPermission();
-    if (event.code === "Escape" && document.pointerLockElement === canvas) {
-      event.preventDefault();
-      const code = keyCodes.Escape;
-      send(encodedInput(1, code));
-      window.setTimeout(() => {
-        send(encodedInput(2, code));
-      }, 50);
-      releasePointerLock();
-      return;
-    }
     if (!(event.code in keyCodes)) {
       return;
     }
@@ -2404,6 +2464,7 @@ function installInput(
     }
     if (
       textInput === null ||
+      !wantsTextInput ||
       event.ctrlKey ||
       event.metaKey ||
       event.altKey ||
@@ -2463,6 +2524,9 @@ function installInput(
     send(encodedInput(type, button, x, y));
   };
   const move = (event: PointerEvent): void => {
+    if (inputPaused) {
+      return;
+    }
     if (event.pointerType === "touch") {
       touch(event, 19);
       return;
@@ -2496,6 +2560,9 @@ function installInput(
     previousPointer = [event.clientX, event.clientY];
   };
   const down = (event: PointerEvent): void => {
+    if (inputPaused) {
+      return;
+    }
     if (event.pointerType === "touch") {
       touch(event, 18);
       return;
@@ -2610,6 +2677,9 @@ function installInput(
     send(encodedInput(7, clamp(scale * 32, 1, 128), width, height));
   };
   const applyUiOutput = (output: UiPlatformOutput): void => {
+    if (inputPaused) {
+      return;
+    }
     canvas.style.cursor = output.cursorIcon;
     wantsTextInput = output.mutableTextUnderCursor || output.ime !== null;
     if (textInput === null) {
@@ -2707,7 +2777,7 @@ function installInput(
       },
     });
   const updateTouchControls = (): void => {
-    const enabled = captureRequested && touchControlsEligible();
+    const enabled = !inputPaused && captureRequested && touchControlsEligible();
     if (enabled) {
       touchControls ??= createTouchControls();
     }
@@ -2753,6 +2823,17 @@ function installInput(
   return {
     applyUiOutput,
     sendSurfaceMetrics,
+    setPaused: (paused) => {
+      inputPaused = paused;
+      if (paused) {
+        // Force a release even if focus's microtask has not run yet.
+        reportedFocused = true;
+        syncFocus();
+        clearPointerMotion();
+        releasePointerLock();
+      }
+      updateTouchControls();
+    },
     supportsPointerCapture: () =>
       pointerCaptureSupported || touchControlsEligible(),
     setPointerCaptureRequest: (capture) => {
@@ -2829,6 +2910,66 @@ export async function runPolkaVmApplication(
     throw new Error("package is not a PolkaVM application");
   }
   validateFiles(files, descriptor);
+  let cleanupRecovery = (): void => undefined;
+  const launch = async (nextFiles: ArchiveFiles): Promise<void> => {
+    cleanupRecovery();
+    cleanupRecovery = () => undefined;
+    const recover = (error: unknown): void => {
+      const { surface, canvas, status } = createShell();
+      status.textContent = "";
+      const menu = installPolkaVmMenu(surface, canvas, descriptor.controls, {
+        pause: () => undefined,
+        hasFileInput: descriptor.fileInputHandlers.length > 0,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Application startup failed.",
+        retry: () => {
+          void launch(nextFiles);
+        },
+        launcher: () => {
+          void launch(files);
+        },
+      });
+      const cleanupFiles = installFileInputControls(
+        surface,
+        menu.status,
+        descriptor.fileInputHandlers,
+        async (handler, bytes) => {
+          await launch({ ...nextFiles, [handler.mountPath]: bytes });
+        },
+        menu,
+      );
+      cleanupRecovery = () => {
+        cleanupFiles();
+        menu.cleanup();
+      };
+    };
+    try {
+      await startPolkaVmApplication(
+        nextFiles,
+        cid,
+        descriptor,
+        launch,
+        () => launch(files),
+        recover,
+      );
+    } catch (error) {
+      recover(error);
+    }
+  };
+  await launch(files);
+}
+
+async function startPolkaVmApplication(
+  files: ArchiveFiles,
+  cid: string,
+  descriptor: PolkaVmDescriptor,
+  launch: (files: ArchiveFiles) => Promise<void>,
+  launcher: () => Promise<void>,
+  recover: (error: unknown) => void,
+): Promise<void> {
+  validateFiles(files, descriptor);
   const forceInterpreter =
     new URLSearchParams(location.search).get("polkavmMode") === "interpreter";
 
@@ -2840,7 +2981,7 @@ export async function runPolkaVmApplication(
   ) {
     throw new Error("required motion input is unavailable");
   }
-  const { surface, canvas, status } = createShell(descriptor.controls);
+  const { surface, canvas, status } = createShell();
   if (forceInterpreter) {
     status.textContent = "Starting PolkaVM interpreter…";
   }
@@ -2955,6 +3096,10 @@ export async function runPolkaVmApplication(
   hostFramePort.start();
   let audioContext: AudioContext | null = null;
   let audioCursor = 0;
+  const audioSources = new Set<AudioBufferSourceNode>();
+  let menuPaused = false;
+  let paused = false;
+  let pauseAcknowledged = false;
   let firstFrame = false;
   let frameWindowStarted = performance.now();
   let frameWindowCount = 0;
@@ -3032,6 +3177,9 @@ export async function runPolkaVmApplication(
   };
 
   const resumeAudio = (): void => {
+    if (paused || pauseAcknowledged || !descriptor.audioEnabled) {
+      return;
+    }
     audioContext ??= new AudioContext({ sampleRate: 48_000 });
     if (audioContext.state === "suspended") {
       void audioContext.resume();
@@ -3039,6 +3187,9 @@ export async function runPolkaVmApplication(
   };
   const playAudio = (message: WorkerAudio): void => {
     if (
+      paused ||
+      pauseAcknowledged ||
+      !descriptor.audioEnabled ||
       !Number.isInteger(message.channels) ||
       message.channels < 1 ||
       message.channels > 2 ||
@@ -3094,6 +3245,11 @@ export async function runPolkaVmApplication(
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(audioContext.destination);
+    audioSources.add(source);
+    source.onended = () => {
+      audioSources.delete(source);
+      source.disconnect();
+    };
     source.start(start);
     audioCursor = start + buffer.duration;
   };
@@ -3109,7 +3265,7 @@ export async function runPolkaVmApplication(
       ),
     );
   };
-  const timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
+  let timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
   let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
   if (
@@ -3191,6 +3347,9 @@ export async function runPolkaVmApplication(
     }
   };
   const sendMotion = (bytes: Uint8Array): void => {
+    if (paused || pauseAcknowledged) {
+      return;
+    }
     const flags = new DataView(
       bytes.buffer,
       bytes.byteOffset,
@@ -3313,12 +3472,16 @@ export async function runPolkaVmApplication(
     sendSurfaceMetrics,
     setPointerCaptureRequest,
     supportsPointerCapture,
+    setPaused: setInputPaused,
   } = installInput(
     canvas,
     webGpu,
     descriptor.graphicsProfile,
     descriptor.inputFeatures,
     (bytes) => {
+      if (paused) {
+        return;
+      }
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
     },
     sendMotion,
@@ -3345,6 +3508,8 @@ export async function runPolkaVmApplication(
     }
     stopped = true;
     cleanupFileInputControls();
+    menu.cleanup();
+    document.removeEventListener("visibilitychange", visibilityChanged);
     window.removeEventListener("pagehide", stop);
     window.clearTimeout(timer);
     if (activeMediatedInput !== undefined) {
@@ -3370,9 +3535,15 @@ export async function runPolkaVmApplication(
     hostFrameQueue.close();
   };
   failRuntime = (error: Error): void => {
+    if (stopped) {
+      return;
+    }
     status.textContent = error.message;
     stop();
     rejectStarted(error);
+    if (firstFrame) {
+      recover(error);
+    }
   };
   const recoverTri2d = (error: Error): void => {
     if (stopped) {
@@ -3391,13 +3562,79 @@ export async function runPolkaVmApplication(
   // it. Ordinary tab/app switches only change visibility and must preserve
   // the live guest and its session-only state.
   installPageCacheRestoreReload();
+  const syncPause = (): void => {
+    const next = menuPaused || document.visibilityState === "hidden";
+    if (next === paused || stopped) {
+      return;
+    }
+    // Release records must precede pause; the worker drains them before freezing.
+    if (next) {
+      setInputPaused(true);
+    }
+    paused = next;
+    canvas.dataset.polkavmPaused = String(paused);
+    // Old audio may already be in flight; only a resume ack reopens playback.
+    pauseAcknowledged = true;
+    worker.postMessage({ type: "pause", paused });
+    if (paused) {
+      window.clearTimeout(timer);
+      for (const source of audioSources) {
+        source.stop();
+        source.disconnect();
+      }
+      audioSources.clear();
+      audioCursor = 0;
+      if (audioContext?.state === "running") {
+        void audioContext.suspend();
+      }
+    } else {
+      setInputPaused(false);
+      if (!firstFrame) {
+        timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
+      }
+      resumeAudio();
+    }
+  };
+  const visibilityChanged = (): void => {
+    syncPause();
+  };
+  const menu = installPolkaVmMenu(surface, canvas, descriptor.controls, {
+    pause: (value) => {
+      menuPaused = value;
+      syncPause();
+    },
+    hasFileInput: descriptor.fileInputHandlers.length > 0,
+    retry: () => {
+      resolveStarted(undefined);
+      stop();
+      void launch(files);
+    },
+    launcher: () => {
+      resolveStarted(undefined);
+      stop();
+      void launcher();
+    },
+  });
+  document.addEventListener("visibilitychange", visibilityChanged);
 
   worker.onmessage = (event: MessageEvent<unknown>): void => {
+    if (stopped) {
+      return;
+    }
     const message = object(event.data);
     if (hostFrameQueue.handleMessage(message)) {
       return;
     }
     switch (message?.type) {
+      case "pause-state": {
+        if (typeof message.paused === "boolean") {
+          pauseAcknowledged = message.paused;
+          if (!paused && !pauseAcknowledged) {
+            resumeAudio();
+          }
+        }
+        break;
+      }
       case "startup": {
         const startup = message as unknown as WorkerStartup;
         if (typeof startup.stage === "string" && startup.stage !== "") {
@@ -3473,6 +3710,7 @@ export async function runPolkaVmApplication(
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
         workerReady = true;
+        worker.postMessage({ type: "pause", paused });
         postViewInsets(INPUT_SAFE_AREA_INSETS, {
           left: 0,
           top: 0,
@@ -3667,6 +3905,9 @@ export async function runPolkaVmApplication(
         break;
       }
       case "ui-output": {
+        if (paused || pauseAcknowledged) {
+          break;
+        }
         const output = validatedUiPlatformOutput(message.output);
         if (output === null) {
           failRuntime(
@@ -3801,21 +4042,31 @@ export async function runPolkaVmApplication(
     transfers,
   );
 
-  await startedPromise.catch((error: unknown) => {
-    stop();
-    throw error;
-  });
+  syncPause();
   cleanupFileInputControls = installFileInputControls(
     surface,
-    status,
+    menu.status,
     descriptor.fileInputHandlers,
     async (handler, bytes) => {
       const relaunchedFiles: ArchiveFiles = {
         ...files,
         [handler.mountPath]: bytes,
       };
+      resolveStarted(undefined);
       stop();
-      await runPolkaVmApplication(relaunchedFiles, cid, externalManifest);
+      await launch(relaunchedFiles);
+    },
+    menu,
+  );
+  await startedPromise.then(
+    () => {
+      if (!stopped && !menuPaused && !paused) {
+        canvas.focus({ preventScroll: true });
+      }
+    },
+    (error: unknown) => {
+      stop();
+      throw error;
     },
   );
 }

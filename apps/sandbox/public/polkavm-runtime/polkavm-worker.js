@@ -807,6 +807,21 @@
       this.#run(update, false);
     }
 
+    pauseInput() {
+      const survivesPause = (record) =>
+        record[0] === 2 || record[0] === 4 || record[0] === 7 ||
+        record[0] === 12 || record[0] === 16 || record[0] === 17 ||
+        record[0] === 20 || record[0] === 21 ||
+        ((record[0] === 13 || record[0] === 15) && record[1] === 0);
+      this.input = this.input.filter(survivesPause);
+      this.epocaInput = this.epocaInput.filter(survivesPause);
+      this.coreInput = this.coreInput.filter(
+        ([key, value]) => value === 0 && key !== 0xa3 && key !== 0xa4,
+      );
+      this.pointer = null;
+      this.motionSample = null;
+    }
+
     sendInput(bytes) {
       if (this.stopped || bytes.byteLength !== INPUT_EVENT_BYTES) {
         return;
@@ -1145,6 +1160,7 @@
       this.stopped = true;
       this.input.length = 0;
       this.coreInput.length = 0;
+      this.epocaInput.length = 0;
       this.hostFrameRequests = 0;
       this.hostFrameRequestBytes = 0;
       this.gpuEvents.length = 0;
@@ -2368,6 +2384,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   let backend = "interpreter";
   let running = false;
   let disposed = false;
+  let starting = false;
+  let paused = false;
+  let pausedAt = 0;
   let demandDriven = false;
   let tickPending = false;
   let motionAvailability = 0;
@@ -2379,6 +2398,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   let updateCount = 0;
   const updateSamples = [];
   const activeMediatedInputHandles = new Set();
+  const heldInputs = new Map();
   const tickChannel = new MessageChannel();
   tickChannel.port1.onmessage = () => {
     tickPending = false;
@@ -2395,6 +2415,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     activeMediatedInputHandles.clear();
     running = false;
+    heldInputs.clear();
     clearTimeout(timer);
     translated?.stop();
     pvm?.polkavm_browser_reset?.();
@@ -2404,6 +2425,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function postRuntimeOutput(output, transfers = []) {
+    // The Host also clears already delivered audio when it requests a pause.
+    if (paused && output?.type === "audio") {
+      return;
+    }
     if (output?.type === "mediated-input-request") {
       activeMediatedInputHandles.add(output.handle);
     } else if (output?.type === "mediated-input-cancel") {
@@ -2578,6 +2603,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
 
   function drainAudio() {
     while (pvm.polkavm_browser_take_audio()) {
+      if (paused) {
+        continue;
+      }
       const sampleRate = pvm.polkavm_browser_audio_sample_rate();
       const channels = pvm.polkavm_browser_audio_channels();
       const length = pvm.polkavm_browser_audio_length() * 2;
@@ -2634,7 +2662,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function scheduleTick(delayMs) {
-    if (!running) {
+    if (!running || paused) {
       return;
     }
     clearTimeout(timer);
@@ -2651,7 +2679,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     timer = setTimeout(() => {
       timer = undefined;
-      if (!running || tickPending) {
+      if (!running || paused || tickPending) {
         return;
       }
       tickPending = true;
@@ -2661,6 +2689,49 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
 
   function wake() {
     if (demandDriven) {
+      scheduleTick(0);
+    }
+  }
+
+  function pauseInput() {
+    if (translated) {
+      translated.pauseInput();
+    } else {
+      check(pvm.polkavm_browser_pause_input(), "discard paused PolkaVM browser input");
+    }
+    // Releases survive the pause boundary; presses and movement never do.
+    // A conforming Host has already sent these, but also release controls if
+    // focus disappeared before the Host received their physical key-up.
+    for (const bytes of heldInputs.values()) {
+      bytes[0] = bytes[0] === 18 ? 21 : bytes[0] + 1;
+      sendInput(bytes);
+    }
+    heldInputs.clear();
+    pendingMotionSample = null;
+  }
+
+  function setPaused(next) {
+    if (typeof next !== "boolean") {
+      throw new Error("invalid PolkaVM browser pause state");
+    }
+    const changed = paused !== next;
+    if (changed) {
+      const now = performance.now();
+      if (next) {
+        clearTimeout(timer);
+        timer = undefined;
+        pendingMotionSample = null;
+        if (running) {
+          pauseInput();
+          pausedAt = now;
+        }
+      } else if (running) {
+        startedAt += now - pausedAt;
+      }
+      paused = next;
+    }
+    postMessage({ type: "pause-state", paused });
+    if (changed && !paused) {
       scheduleTick(0);
     }
   }
@@ -2676,7 +2747,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function tick() {
-    if (!running) {
+    if (!running || paused) {
       return;
     }
     const firstUpdate = updateCount === 0;
@@ -2866,10 +2937,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     if (disposed) {
       throw new Error("PolkaVM browser worker is stopped");
     }
-    if (pvm || running) {
+    if (starting || pvm || running) {
       throw new Error("PolkaVM browser worker is already started");
     }
     const program = validateStartMessage(message);
+    starting = true;
     motionAvailability = message.motionAvailability ?? 0;
     pointerCaptureSupported = message.pointerCaptureSupported === true;
     pendingGpuCapabilities =
@@ -2914,6 +2986,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     pvm = (
       await WebAssembly.instantiate(message.runtime, runtimeImports)
     ).instance.exports;
+    if (disposed) {
+      pvm.polkavm_browser_reset?.();
+      return;
+    }
     if (pvm.polkavm_browser_abi_version() !== 2) {
       throw new Error("PolkaVM browser runtime has an incompatible ABI");
     }
@@ -2957,8 +3033,14 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
           compiledProgram =
             await globalThis.TranslatedPolkaVmRuntime.compile(bytes);
           compilationMs = performance.now() - compilationStarted;
+          if (disposed) {
+            return;
+          }
         } catch (error) {
           compilationMs = performance.now() - compilationStarted;
+          if (disposed) {
+            return;
+          }
           // Invalid Wasm cannot be repaired by changing compilation-unit sizes.
           if (error instanceof WebAssembly.CompileError) {
             throw error;
@@ -2970,6 +3052,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
           pvm = (
             await WebAssembly.instantiate(message.runtime, runtimeImports)
           ).instance.exports;
+          if (disposed) {
+            pvm.polkavm_browser_reset?.();
+            return;
+          }
           stage(program);
           const translationStarted = performance.now();
           check(
@@ -2993,6 +3079,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
           } finally {
             compilationMs += performance.now() - partsStarted;
           }
+        }
+        if (disposed) {
+          return;
         }
         if (generatedTranslation) {
           const persistent = bytes.slice();
@@ -3039,6 +3128,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       backend = "compiler";
     } catch (error) {
       translated = null;
+      if (disposed) {
+        return;
+      }
       pendingOutputs.length = 0;
       if (error !== FORCE_INTERPRETER) {
         compilerFallbackReason =
@@ -3052,6 +3144,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         pvm = (
           await WebAssembly.instantiate(message.runtime, runtimeImports)
         ).instance.exports;
+        if (disposed) {
+          pvm.polkavm_browser_reset?.();
+          return;
+        }
       }
       let presentation = 0;
       if (message.graphicsProfile === "tri2d") {
@@ -3146,6 +3242,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       drainHostFrameRequests();
       drainLogs();
     }
+    if (disposed) {
+      translated?.stop();
+      pvm?.polkavm_browser_reset?.();
+      return;
+    }
     const usesMotion = translated
       ? translated.usesMotion()
       : pvm.polkavm_browser_uses_motion() === 1;
@@ -3157,6 +3258,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       : typeof pvm.polkavm_browser_uses_update_scheduling === "function" &&
         pvm.polkavm_browser_uses_update_scheduling() === 1;
     startedAt = performance.now();
+    starting = false;
+    if (paused) {
+      pausedAt = startedAt;
+      pauseInput();
+    }
     running = true;
     postMessage({
       type: "ready",
@@ -3192,6 +3298,21 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     if (!running) {
       return;
+    }
+    const type = bytes[0];
+    if (paused && !(type === 2 || type === 4 || type === 7 || type === 12 ||
+        type === 20 || type === 21 || ((type === 13 || type === 15) && bytes[1] === 0))) {
+      return;
+    }
+    if (type === 1 || type === 3 || type === 18) {
+      const key = type * 256 + bytes[1];
+      if (!heldInputs.has(key)) {
+        heldInputs.set(key, bytes.slice());
+      }
+    } else if (type === 2 || type === 4) {
+      heldInputs.delete((type - 1) * 256 + bytes[1]);
+    } else if (type === 20 || type === 21) {
+      heldInputs.delete(18 * 256 + bytes[1]);
     }
     if (translated) {
       translated.sendInput(bytes);
@@ -3309,6 +3430,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     if (bytes.byteLength !== MOTION_SAMPLE_BYTES) {
       throw new Error("invalid PolkaVM browser motion sample");
     }
+    if (paused) {
+      return;
+    }
     if (!running) {
       pendingMotionSample = bytes.slice();
       motionAvailability = 1;
@@ -3403,10 +3527,21 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     const message = event.data;
     if (message?.type === "start") {
       void start(message).catch((error) => {
+        if (disposed) {
+          return;
+        }
         stopRuntime();
         postMessage({ type: "error", message: error.message });
         postMessage({ type: "terminated" });
       });
+    } else if (message?.type === "pause") {
+      try {
+        setPaused(message.paused);
+      } catch (error) {
+        stopRuntime();
+        postMessage({ type: "error", message: error.message });
+        postMessage({ type: "terminated" });
+      }
     } else if (message?.type === "input") {
       try {
         sendInput(new Uint8Array(message.bytes));
