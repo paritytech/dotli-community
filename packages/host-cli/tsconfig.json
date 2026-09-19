@@ -1,0 +1,14 @@
+{
+  "extends": "@dotli/typescript-config/base.json",
+  "compilerOptions": {
+    // This package is PUBLISHED and runs under plain node, so it deviates from
+    // the app packages: nodenext resolution (relative imports carry a `.js`
+    // extension), no DOM lib, and node types instead of vite's.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": false,
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "examples"]
+}
