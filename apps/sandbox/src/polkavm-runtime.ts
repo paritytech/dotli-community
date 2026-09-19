@@ -814,8 +814,8 @@ function parseManifest(
           deviceInput.controls.some(
             (control) =>
               typeof control !== "string" ||
-              control.trim() === "" ||
-              control !== control.trim() ||
+              control.length === 0 ||
+              /^\p{White_Space}|\p{White_Space}$/u.test(control) ||
               encoder.encode(control).byteLength > 160,
           ))) ||
       (deviceInput !== null && deviceInput.abiVersion !== 1) ||
