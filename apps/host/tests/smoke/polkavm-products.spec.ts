@@ -233,6 +233,25 @@ async function smokeProduct(
       "pointer",
     );
   } else if (product.interaction === "host-frame-handshake") {
+    // The product draws its own UI, so a click delivered before its first
+    // draw lands on nothing and asks the host for no frame at all. Waiting
+    // longer cannot recover a click that already missed, so re-issue the
+    // gesture until the bridge answers.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const requests = await counter(
+        canvas,
+        "data-polkavm-host-frame-requests",
+      );
+      if (requests > hostFrameRequestsBefore) {
+        break;
+      }
+      if (attempt > 0) {
+        await canvas.click({
+          position: product.clickPosition ?? { x: 160, y: 100 },
+        });
+      }
+      await page.waitForTimeout(5_000);
+    }
     await expect
       .poll(() => counter(canvas, "data-polkavm-host-frame-requests"), {
         timeout: 30_000,
