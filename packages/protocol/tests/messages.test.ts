@@ -185,7 +185,6 @@ describe("getRequestSyncTimeoutMs", () => {
     // Then
     expect(budget).toBe(1);
   });
-
   it("ignores missing or non-finite deadlines", () => {
     const request: ProtocolRequestEnvelope = {
       namespace: "dotli:protocol",

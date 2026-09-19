@@ -37,7 +37,7 @@ function createPreimageLookupSubscribe(
       return createResultStream<Uint8Array | undefined>([cached], () => noop);
     }
 
-    let stopped = false;
+    const state = { stopped: false };
     return createResultStream<Uint8Array | undefined>(
       [undefined],
       (push, pushError) => {
@@ -49,7 +49,7 @@ function createPreimageLookupSubscribe(
         // consumer that has gone.
         const aborter = new AbortController();
         const stopPolling = (): void => {
-          stopped = true;
+          state.stopped = true;
           aborter.abort();
           if (intervalId !== null) {
             clearInterval(intervalId);
@@ -60,64 +60,63 @@ function createPreimageLookupSubscribe(
             initialTimeoutId = null;
           }
         };
-        const attempt = async (): Promise<void> => {
-          const cached = preimageCache.get(key);
-          if (cached) {
-            push(cached);
-            stopPolling();
+        const isPollingStopped = (): boolean => state.stopped;
+        // A lookup can outlive the poll interval while providers attach.
+        // Keep one retry budget open per subscription, not one per tick.
+        let pollInFlight = false;
+        const poll = async (): Promise<void> => {
+          if (isPollingStopped() || pollInFlight) {
             return;
           }
-
-          const cid = hashToCid(key);
-          const cidString = cid.toString();
-          const backend = getBackend();
-          let data: Uint8Array;
+          pollInFlight = true;
           try {
-            if (backend !== "rpc-gateway") {
-              data = await bitswapGet(cidString, aborter.signal);
-            } else {
-              const result = await fetchFromIpfs(cidString);
-              data = result.data;
-            }
-          } catch (err) {
-            // Teardown aborts the in-flight lookup, so this is the expected
-            // end of a dropped subscription rather than a failure to report.
-            if (aborter.signal.aborted) {
+            const cached = preimageCache.get(key);
+            if (cached) {
+              push(cached);
+              stopPolling();
               return;
             }
-            log.warn(`[${label}] preimage lookup via ${backend} failed:`, err);
-            return;
-          }
-          if (data.length === 0) {
-            return;
-          }
-          try {
-            assertBlockMatchesCid(cid, data);
-          } catch (err) {
+
+            const cid = hashToCid(key);
+            const cidString = cid.toString();
+            const backend = getBackend();
+            let data: Uint8Array;
+            try {
+              if (backend !== "rpc-gateway") {
+                data = await bitswapGet(cidString, aborter.signal);
+              } else {
+                const result = await fetchFromIpfs(cidString);
+                data = result.data;
+              }
+            } catch (err) {
+              // Teardown aborts the in-flight lookup rather than reporting a
+              // backend failure for a consumer that has gone.
+              if (aborter.signal.aborted) {
+                return;
+              }
+              log.warn(
+                `[${label}] preimage lookup via ${backend} failed:`,
+                err,
+              );
+              return;
+            }
+            if (isPollingStopped() || data.length === 0) {
+              return;
+            }
+            try {
+              assertBlockMatchesCid(cid, data);
+            } catch (err) {
+              stopPolling();
+              pushError({
+                reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
+              });
+              return;
+            }
+            preimageCache.set(key, data);
+            push(data);
             stopPolling();
-            pushError({
-              reason: `preimage lookup via ${backend} failed: ${serializeError(err)}`,
-            });
-            return;
-          }
-          preimageCache.set(key, data);
-          push(data);
-          stopPolling();
-        };
-        // A lookup can now outlive the poll interval, because bitswapGet
-        // retries a CID whose providers have not attached yet. Without this
-        // guard every tick during that wait starts another lookup for the same
-        // key, each opening its own retry budget.
-        let inFlight = false;
-        const poll = async (): Promise<void> => {
-          if (stopped || inFlight) {
-            return;
-          }
-          inFlight = true;
-          try {
-            await attempt();
           } finally {
-            inFlight = false;
+            pollInFlight = false;
           }
         };
 

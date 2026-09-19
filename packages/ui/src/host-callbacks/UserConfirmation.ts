@@ -22,6 +22,7 @@ import type {
   RawPayload,
   RingLocationJunction,
 } from "@parity/truapi";
+import { hexToBytes } from "@parity/truapi/scale";
 import { showPreimageSubmitModal } from "../preimage-modal";
 import { ERRORS } from "../errors";
 import {
@@ -136,6 +137,7 @@ function createField(field: ConfirmationField): HTMLDivElement {
   const group = document.createElement("div");
   group.className = "signing-field";
   if (field.warning === true) {
+    group.setAttribute("role", "alert");
     group.classList.add("signing-field-warning");
   }
 
@@ -194,10 +196,20 @@ function truncateHex(value: string): string {
   return value.length > 80 ? `${value.slice(0, 80)}...` : value;
 }
 
-function formatRawPayload(payload: RawPayload): string {
-  return truncateHex(
-    payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload,
-  );
+function formatRawPayload(payload: RawPayload, watermarked: boolean): string {
+  const value =
+    payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload;
+  const raw =
+    payload.tag === "Bytes" ||
+    (value.startsWith("0x") && value.length % 2 === 0)
+      ? hexToBytes(value)
+      : new TextEncoder().encode(value);
+  const hex = formatBytes(raw);
+  const prefix = "3c42797465733e";
+  const suffix = "3c2f42797465733e";
+  return watermarked && !(hex.startsWith(`0x${prefix}`) && hex.endsWith(suffix))
+    ? `0x${prefix}${hex.slice(2)}${suffix}`
+    : hex;
 }
 
 function formatDerivationIndex(index: DerivationIndex): string {
@@ -250,7 +262,10 @@ function createSignRawFields(
     { label: "Signer", value: signer },
     {
       label: "Message",
-      value: formatRawPayload(review.value.request.payload),
+      value: formatRawPayload(
+        review.value.request.payload,
+        review.value.watermarked,
+      ),
       mono: true,
     },
   ];
@@ -380,7 +395,9 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
     case "SignPayload":
       return { title: "Sign Transaction", action: "Sign" };
     case "SignRaw":
-      return { title: "Sign Message", action: "Sign" };
+      return review.value.value.watermarked
+        ? { title: "Sign Message", action: "Sign" }
+        : { title: "Sign Unwatermarked Payload", action: "Sign Unwatermarked" };
     case "StatementStoreProductSign":
       return { title: "Sign Statement", action: "Sign" };
     case "SignVrf":

@@ -675,6 +675,39 @@ async function postRequest<M extends ProtocolRequestMethod>(
     frameWindow.postMessage(envelope, getProtocolOrigin());
   });
 }
+type ResolverRequestMethod =
+  | "resolveDotName"
+  | "resolveOwner"
+  | "resolveExecutableManifest"
+  | "resolveRootManifest";
+
+function isStoppedResolverResponse(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error.name === "ApiStoppedError" ||
+      (error.name === "ProtocolResponseError" &&
+        error.message.startsWith("chainHead follow stopped")))
+  );
+}
+
+async function postResolverRequest<M extends ResolverRequestMethod>(
+  method: M,
+  payload: ProtocolRequestMap[M],
+  onProgress?: (message: string) => void,
+): Promise<unknown> {
+  try {
+    return await postRequest(method, payload, onProgress);
+  } catch (error: unknown) {
+    if (!isStoppedResolverResponse(error)) {
+      throw error;
+    }
+    log.warn(
+      `[dot.li protocol] ${method} lost its chainHead follow; retrying once on the replacement resolver generation`,
+    );
+    onProgress?.("Light client stopped; reconnecting...");
+    return postRequest(method, payload, onProgress);
+  }
+}
 
 export async function warmupProtocol(): Promise<void> {
   await postRequest("warmup", {});
@@ -684,7 +717,7 @@ export async function resolveDotNameRemote(
   label: string,
   onStatus?: (message: string) => void,
 ): Promise<string | null> {
-  return (await postRequest("resolveDotName", { label }, onStatus)) as
+  return (await postResolverRequest("resolveDotName", { label }, onStatus)) as
     | string
     | null;
 }
@@ -692,7 +725,9 @@ export async function resolveDotNameRemote(
 export async function resolveOwnerRemote(
   label: string,
 ): Promise<string | null> {
-  return (await postRequest("resolveOwner", { label })) as string | null;
+  return (await postResolverRequest("resolveOwner", { label })) as
+    | string
+    | null;
 }
 
 /**
@@ -705,7 +740,7 @@ export async function resolveExecutableManifestRemote(
   label: string,
   kind: "app" | "widget" | "worker",
 ): Promise<ManifestResult<ExecutableManifest>> {
-  return (await postRequest("resolveExecutableManifest", {
+  return (await postResolverRequest("resolveExecutableManifest", {
     label,
     kind,
   })) as ManifestResult<ExecutableManifest>;
@@ -715,7 +750,7 @@ export async function resolveExecutableManifestRemote(
 export async function resolveRootManifestRemote(
   label: string,
 ): Promise<ManifestResult<RootManifest>> {
-  return (await postRequest("resolveRootManifest", {
+  return (await postResolverRequest("resolveRootManifest", {
     label,
   })) as ManifestResult<RootManifest>;
 }

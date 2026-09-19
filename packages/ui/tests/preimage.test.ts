@@ -95,6 +95,41 @@ describe("preimage host callbacks", () => {
     }
   });
 
+  it("does not overlap slow lookup backend polls", async () => {
+    vi.useFakeTimers();
+    try {
+      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const missingKey = new Uint8Array(32);
+      let resolveFirst: ((value: { data: Uint8Array }) => void) | undefined;
+      mocks.fetchFromIpfs.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+
+      const iterator = lookupPreimage(missingKey)[Symbol.asyncIterator]();
+      await iterator.next();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
+
+      if (resolveFirst === undefined) {
+        throw new Error("expected initial lookup to start");
+      }
+      resolveFirst({ data: new Uint8Array() });
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(2);
+      await iterator.return?.();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("As a dotli integrator, the host caches a gateway preimage only after hash verification", async () => {
     // Given
     vi.useFakeTimers();

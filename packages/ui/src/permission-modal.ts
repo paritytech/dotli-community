@@ -13,9 +13,10 @@ import { blockingModalAbortError } from "./blocking-modal-queue";
 // Shows a confirmation dialog when a product requests a permission the
 // host can actually gate: the Permissions-Policy-backed device
 // variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
-// Biometrics, Notifications), identity disclosure, and the internal submitted
-// gates (ChainSubmit, PreimageSubmit, StatementSubmit). `OpenUrl` is
-// auto-granted at the container level and never reaches this modal.
+// Biometrics, Notifications), identity disclosure,
+// and the internal submitted gates (ChainSubmit, PreimageSubmit,
+// StatementSubmit). `OpenUrl` is auto-granted at the container level and never
+// reaches this modal.
 // Returns an explicit decision so callers can distinguish "Deny" from
 // dismissing the dialog without storing a denial.
 //

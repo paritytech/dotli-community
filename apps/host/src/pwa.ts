@@ -21,31 +21,41 @@ const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 if ("serviceWorker" in navigator) {
   const wb = new Workbox("/host-sw.js");
+  let hostUpdateRequired = false;
+  let applyingUpdate = false;
+
+  const applyWaitingUpdate = (): void => {
+    if (applyingUpdate) {
+      return;
+    }
+    applyingUpdate = true;
+    wb.addEventListener("controlling", () => {
+      window.location.reload();
+    });
+    wb.messageSkipWaiting();
+  };
 
   wb.addEventListener("waiting", () => {
+    if (hostUpdateRequired) {
+      applyWaitingUpdate();
+      return;
+    }
     showNotification({
       label: "Update available",
       text: "A new version of dot.li is ready. Reload to apply.",
       dismissMs: 0,
       action: {
         label: "Reload",
-        onClick: () => {
-          // Reload once the new SW is in control to avoid serving a mix of
-          // old and new chunks during the swap.
-          wb.addEventListener("controlling", () => {
-            window.location.reload();
-          });
-          wb.messageSkipWaiting();
-        },
+        onClick: applyWaitingUpdate,
       },
     });
   });
 
-  void wb
+  const registrationPromise = wb
     .register()
     .then((registration) => {
       if (!registration) {
-        return;
+        return undefined;
       }
       setInterval(() => {
         if (navigator.onLine) {
@@ -57,8 +67,27 @@ if ("serviceWorker" in navigator) {
           void registration.update();
         }
       });
+      return registration;
     })
     .catch((err: unknown) => {
       log.warn(`[dot.li] SW registration failed: ${String(err)}`);
+      return undefined;
     });
+
+  // The sandbox emits this only when its schema is newer than the contract
+  // supplied by this host build. Consent is no longer relevant: the current
+  // host cannot run the app safely, so activate a waiting compatible build.
+  window.addEventListener("dotli:host-update-required", () => {
+    hostUpdateRequired = true;
+    void registrationPromise.then((registration) => {
+      if (!registration) {
+        return;
+      }
+      if (registration.waiting) {
+        applyWaitingUpdate();
+        return;
+      }
+      void registration.update();
+    });
+  });
 }

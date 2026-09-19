@@ -1,18 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Mounts one custom-message cell in the chat panel.
-//
-// The visibility gate is not a rendering optimization, it gates the
-// subscription: a tree is live and each open render is work the product
-// is doing, so a long history would otherwise hold one per row for rows
-// nobody is looking at. The observer starts the subscription when the
-// cell scrolls in and drops it when it leaves, like the desktop host.
+// Visibility gates the product subscription and all resources of its tree.
+// Offscreen history must not keep product workers or image URLs alive.
 
-import type { HexString, RenderContext } from "@parity/truapi";
+import type { RenderContext } from "@parity/truapi";
 import { bytesToHex } from "@parity/truapi/scale";
-import { renderCustomMessage, userTriggerRendererAction } from "./service";
-import { renderCustomNode } from "./custom-renderer";
+import {
+  loadRendererImage,
+  render,
+  userTriggerRendererAction,
+} from "./service";
+import { renderNode } from "./custom-renderer";
 
 export interface CustomMessageMount {
   productId: string;
@@ -20,14 +19,10 @@ export interface CustomMessageMount {
   messageId: string;
   messageType: string;
   /** Stored product-defined payload, hex-encoded. */
-  payload: HexString;
+  payload: `0x${string}`;
 }
 
-/**
- * Render a live custom message into `container`. Returns a disposer that
- * stops the observer and any open render subscription; callers must invoke
- * it before dropping the container, replaced rows included.
- */
+/** Mount one live body; dispose before removing or replacing its cell. */
 export function mountCustomMessage(
   container: HTMLElement,
   mount: CustomMessageMount,
@@ -36,9 +31,6 @@ export function mountCustomMessage(
   root.className = "chat-custom-root";
   setPlaceholder(root, "Loading…");
   container.appendChild(root);
-
-  // The same context names the body on the render request and on every
-  // action fired inside it, so the product can pair the two.
   const context: RenderContext = {
     tag: "ChatMessage",
     value: {
@@ -48,16 +40,6 @@ export function mountCustomMessage(
     },
   };
 
-  const onAction = (actionId: string, payload?: Uint8Array): void => {
-    userTriggerRendererAction(mount.productId, {
-      context,
-      actionId,
-      payload: payload === undefined ? "0x" : bytesToHex(payload),
-    }).catch(() => {
-      setPlaceholder(root, "The app could not be reached.");
-    });
-  };
-
   let disposed = false;
   let stopRender: (() => void) | null = null;
 
@@ -65,32 +47,85 @@ export function mountCustomMessage(
     if (disposed || stopRender !== null) {
       return;
     }
-    stopRender = renderCustomMessage(
+    const lifecycle = { active: true };
+    let ended = false;
+    let tree: AbortController | null = null;
+    let unsubscribe: (() => void) | undefined;
+    const stop = (): void => {
+      lifecycle.active = false;
+      tree?.abort();
+      unsubscribe?.();
+      unsubscribe = undefined;
+    };
+    // Install the gate before calling render: a sink can terminate synchronously.
+    stopRender = stop;
+    const fail = (): void => {
+      if (!lifecycle.active) {
+        return;
+      }
+      ended = true;
+      stop();
+      setPlaceholder(root, "This message can’t be shown right now.");
+    };
+    const subscription = render(
       mount.productId,
       { context, payload: mount.payload },
       {
         onUpdate: (node) => {
-          if (disposed) {
+          if (!lifecycle.active || ended) {
             return;
           }
-          const rendered = renderCustomNode(node, onAction);
-          root.replaceChildren(...(rendered === null ? [] : [rendered]));
-        },
-        // A failed render may have delivered a partial tree, which must not
-        // stand as final; replace it with a neutral fallback.
-        onError: () => {
-          if (!disposed) {
-            setPlaceholder(root, "This message can’t be shown right now.");
+          tree?.abort();
+          const resources = new AbortController();
+          tree = resources;
+          try {
+            const rendered = renderNode(
+              node,
+              (actionId, payload) => {
+                if (!lifecycle.active || resources.signal.aborted) {
+                  return;
+                }
+                void userTriggerRendererAction(mount.productId, {
+                  context,
+                  actionId,
+                  payload: payload === undefined ? "0x" : bytesToHex(payload),
+                }).catch(() => {
+                  if (!resources.signal.aborted) {
+                    fail();
+                  }
+                });
+              },
+              {
+                signal: resources.signal,
+                loadImage: (source, signal) =>
+                  loadRendererImage(mount.productId, source, signal),
+                onError: fail,
+              },
+            );
+            root.replaceChildren(...(rendered === null ? [] : [rendered]));
+          } catch {
+            fail();
           }
         },
+        onComplete: () => {
+          ended = true;
+        },
+        // A failed stream's partial tree must never stand as final.
+        onError: fail,
       },
     );
+    if (lifecycle.active) {
+      unsubscribe = subscription;
+    } else {
+      subscription();
+    }
   };
 
   const stop = (): void => {
     if (stopRender !== null) {
       stopRender();
       stopRender = null;
+      setPlaceholder(root, "Loading…");
     }
   };
 

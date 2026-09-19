@@ -3,7 +3,7 @@
 
 // dot.li shared IndexedDB connection.
 //
-// Single "dotli" database with stores for CID cache and smoldot chain data.
+// Single "dotli" database for smoldot and host application state.
 // Pre-opened during HTML parse via an inline <script> (window.__dotliDb).
 //
 // The pre-opened-handle path does not silently fall back to a fresh open
@@ -22,7 +22,7 @@ declare global {
 }
 
 const DB_NAME = "dotli";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -38,8 +38,9 @@ function openFresh(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains("cids")) {
-        db.createObjectStore("cids", { keyPath: "label" });
+      // v5: installed executables moved to their own scoped database.
+      if (db.objectStoreNames.contains("cids")) {
+        db.deleteObjectStore("cids");
       }
       if (!db.objectStoreNames.contains("chains")) {
         db.createObjectStore("chains", { keyPath: "chain" });
