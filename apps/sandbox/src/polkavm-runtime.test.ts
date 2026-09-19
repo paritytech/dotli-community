@@ -520,7 +520,7 @@ describe("PolkaVM package recognition", () => {
       )?.controls;
     };
     const input = { abiVersion: 1, requiredFeatures: ["keyboard", "focus"] };
-    const controls = ["é".repeat(80), "Arrows: Move"];
+    const controls = ["é".repeat(80), "Arrows: Move", "\uFEFFStart: Enter"];
     expect(parse({ ...input, controls })).toEqual(controls);
     for (const malformed of [
       null,
@@ -528,6 +528,7 @@ describe("PolkaVM package recognition", () => {
       { ...input, controls: "Arrows: Move" },
       { ...input, controls: [""] },
       { ...input, controls: [" padded "] },
+      { ...input, controls: ["Start: Enter\u0085"] },
       { ...input, controls: ["é".repeat(81)] },
       { ...input, controls: Array.from({ length: 33 }, () => "Move") },
     ]) {
