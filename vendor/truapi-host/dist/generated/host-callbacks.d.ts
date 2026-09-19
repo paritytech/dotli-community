@@ -1,5 +1,5 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
 import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
@@ -81,6 +81,15 @@ export type AuthState =
     tag: "Authenticating";
     value?: undefined;
 };
+/**
+ * Review shown before a product binds or uses wallet-held Chat identity authority.
+ */
+export interface ChatAuthorityReview {
+    /**
+     * Product requesting the Chat identity operation.
+     */
+    productId: string;
+}
 /**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
@@ -341,6 +350,22 @@ export type PermissionAuthorizationRequest =
     tag: "AccountAccess";
     value: {
         targetProductId: string;
+    };
+}
+/**
+ * Product-scoped permission to bind and use wallet-held Chat identity authority.
+ */
+ | {
+    tag: "ChatAuthority";
+    value?: undefined;
+}
+/**
+ * Product-scoped permission to ensure Statement Store quota, not increase it.
+ */
+ | {
+    tag: "StatementStoreAllowance";
+    value: {
+        derivationIndex?: DerivationIndex;
     };
 };
 /**
@@ -613,6 +638,13 @@ export type UserConfirmationReview =
  | {
     tag: "ProductSubtree";
     value: ProductSubtreeReview;
+}
+/**
+ * Allow a product to bind and use wallet-held Chat identity authority.
+ */
+ | {
+    tag: "ChatAuthority";
+    value: ChatAuthorityReview;
 };
 /**
  * Review shown before a product asks to access another product account.
@@ -628,6 +660,10 @@ export declare const AccountAliasReview: S.Codec<AccountAliasReview>;
  * and never derive auth UI from any other signal.
  */
 export declare const AuthState: S.Codec<AuthState>;
+/**
+ * Review shown before a product binds or uses wallet-held Chat identity authority.
+ */
+export declare const ChatAuthorityReview: S.Codec<ChatAuthorityReview>;
 /**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.

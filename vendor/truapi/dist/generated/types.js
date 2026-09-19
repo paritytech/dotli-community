@@ -2,7 +2,7 @@
 import * as S from '../scale.js';
 export const AccountId = S.lazy(() => S.Hex(32));
 export const ActionTrigger = S.lazy(() => S.Struct({ messageId: S.str, actionId: S.str, payload: S.Option(S.Hex()) }));
-export const AllocatableResource = S.lazy(() => S.TaggedUnion({ StatementStoreAllowance: S._void, BulletinAllowance: S._void, SmartContractAllowance: DerivationIndex, AutoSigning: S._void }));
+export const AllocatableResource = S.lazy(() => S.TaggedUnion({ StatementStoreAllowance: S._void, BulletinAllowance: S._void, SmartContractAllowance: DerivationIndex, AutoSigning: S._void, ProductStatementStoreAllowance: DerivationIndex }));
 export const AllocationOutcome = S.lazy(() => S.Status("Allocated", "Rejected", "NotAvailable"));
 export const Arrangement = S.lazy(() => S.Status("Start", "End", "Center", "SpaceBetween", "SpaceAround", "SpaceEvenly"));
 export const Background = S.lazy(() => S.Struct({ color: ColorToken, shape: S.Option(Shape) }));
@@ -185,6 +185,10 @@ export const VersionedHostPocketListSubscribeRequest = S.lazy(() => S.indexedTag
 export const VersionedHostPocketRemoveCardError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPocketRemoveCardError] }));
 export const VersionedHostPocketRemoveCardRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPocketRemoveCardRequest] }));
 export const VersionedHostPocketRemoveCardResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
+export const HostProductDeviceChatCipherSuite = S.lazy(() => S.TaggedUnion({ LegacyV2: S._void, ContextBoundV1: S.Struct({ peerAccountId: S.Hex(32), channelId: S.Hex(32) }) }));
+export const VersionedHostProductDeviceChatError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProductDeviceChatError] }));
+export const VersionedHostProductDeviceChatRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProductDeviceChatRequest] }));
+export const VersionedHostProductDeviceChatResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProductDeviceChatResponse] }));
 export const VersionedHostPushNotificationCancelError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedHostPushNotificationCancelRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostPushNotificationCancelRequest] }));
 export const VersionedHostPushNotificationCancelResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -406,6 +410,9 @@ export const HostPaymentTopUpRequest = S.lazy(() => S.Struct({ into: S.Option(Co
 export const HostPocketListSubscribeItem = S.lazy(() => S.Struct({ cards: S.Vector(PocketCard) }));
 export const HostPocketRemoveCardError = S.lazy(() => S.TaggedUnion({ Privileged: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPocketRemoveCardRequest = S.lazy(() => S.Struct({ cardId: S.str }));
+export const HostProductDeviceChatError = S.lazy(() => S.TaggedUnion({ NotConnected: S._void, Rejected: S._void, InvalidPeerKey: S._void, InvalidCiphertext: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostProductDeviceChatRequest = S.lazy(() => S.TaggedUnion({ Bind: S.Struct({ productAccountId: ProductAccountId, peerIdentityAccountId: S.Hex(32), peerChatPublicKey: S.Hex(32) }), Seal: S.Struct({ productAccountId: ProductAccountId, peerChatPublicKey: S.Hex(32), cipherSuite: HostProductDeviceChatCipherSuite, plaintext: S.Hex() }), Open: S.Struct({ productAccountId: ProductAccountId, peerChatPublicKey: S.Hex(32), cipherSuite: HostProductDeviceChatCipherSuite, combinedCiphertext: S.Hex() }), SignRequestProof: S.Struct({ productAccountId: ProductAccountId, payload: S.Hex() }), Identity: S.Struct({ productAccountId: ProductAccountId }), VerifyPeerDevice: S.Struct({ productAccountId: ProductAccountId, peerIdentityAccountId: S.Hex(32), peerChatPublicKey: S.Hex(32), peerDeviceAccountId: S.Hex(32), proof: S.Hex(32) }) }));
+export const HostProductDeviceChatResponse = S.lazy(() => S.TaggedUnion({ IdentityBinding: S.Struct({ identityAccountId: S.Hex(32), proof: S.Hex(32), walletOwnSessionId: S.Hex(32), peerOwnSessionId: S.Hex(32), walletOutgoingChannelId: S.Hex(32), walletIncomingChannelId: S.Hex(32) }), Sealed: S.Struct({ combinedCiphertext: S.Hex() }), Opened: S.Struct({ plaintext: S.Hex() }), RequestProofSigned: S.Struct({ signature: S.Hex(64) }), Identity: S.Struct({ identityAccountId: S.Hex(32), chatPublicKey: S.Hex(32) }), PeerDeviceVerified: S.Struct({ valid: S.bool }) }));
 export const HostPushNotificationCancelRequest = S.lazy(() => S.Struct({ id: NotificationId }));
 export const HostPushNotificationError = S.lazy(() => S.TaggedUnion({ ScheduleLimitReached: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPushNotificationRequest = S.lazy(() => S.Struct({ text: S.str, deeplink: S.Option(S.str), scheduledAt: S.Option(S.u64) }));

@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 2;
-export const TRUAPI_WIRE_SCHEMA_HASH = "50637d83426acd22";
+export const TRUAPI_WIRE_SCHEMA_HASH = "c587cc31e1b00844";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -236,6 +236,20 @@ export class AccountClient {
             payload: T.VersionedHostAccountRingVrfSignRequest.enc({ tag: "V1", value: request }),
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountRingVrfSignResponse, S.CallError(T.VersionedHostAccountRingVrfSignError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Bind a product account as a Chat v2 device, or seal/open identity-route
+     * payloads without exposing the wallet Chat identity secret.
+     */
+    deviceChat(request) {
+        return this.transport.request({
+            ids: W.ACCOUNT_PRODUCT_DEVICE_CHAT,
+            payload: T.VersionedHostProductDeviceChatRequest.enc({ tag: "V1", value: request }),
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProductDeviceChatResponse, S.CallError(T.VersionedHostProductDeviceChatError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
