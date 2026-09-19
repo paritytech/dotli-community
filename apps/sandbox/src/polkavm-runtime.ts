@@ -1659,7 +1659,7 @@ function createShell(): {
     #dotli-polkavm-status:empty{display:none}
     #dotli-polkavm-menu-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
     #dotli-polkavm-menu-open:hover{border-color:#e6007a}
-    .dotli-polkavm-menu{max-height:80vh;overflow:auto;font:14px/1.5 system-ui,sans-serif}
+    .dotli-polkavm-menu{position:fixed;inset:52px 12px auto auto;margin:0;box-sizing:border-box;max-width:calc(100vw - 24px);max-height:calc(100dvh - 64px);overflow:auto;font:14px/1.5 system-ui,sans-serif}
     .dotli-polkavm-menu::backdrop,.dotli-file-consent-backdrop::backdrop{background:#000a}
     .dotli-polkavm-menu>button{display:block;width:100%;margin-top:12px;background:#303238;color:#fff}
     .dotli-polkavm-menu>button[hidden]{display:none}
