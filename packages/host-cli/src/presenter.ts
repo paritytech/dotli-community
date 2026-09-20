@@ -51,7 +51,7 @@ export interface TerminalPresenterOptions {
    * Off by default: confirm prompts are deny-by-default, so a stray Enter
    * never approves a signature or allocation. Enable it only for trusted,
    * high-volume flows (e.g. a dogfooding CLI where the operator wants to hold
-   * Enter through a batch); a non-TTY still denies regardless.
+   * Enter through a batch). A non-TTY still denies regardless.
    */
   defaultYes?: boolean;
 }
@@ -68,10 +68,37 @@ export function createTerminalPresenter(
     output.write(text);
   };
   const promptLabel = defaultYes ? "  Continue? [Y/n] " : "  Continue? [y/N] ";
-  // An empty answer takes the default; otherwise only an explicit yes approves.
+  // An empty answer takes the default. Anything else approves only on an
+  // explicit yes.
   const isApproval = (answer: string): boolean => {
     const trimmed = answer.trim();
     return trimmed === "" ? defaultYes : /^y(es)?$/i.test(trimmed);
+  };
+
+  // Word-wrap a note without ever dropping text: unbroken runs longer than
+  // the width (URLs, hashes) are hard-chunked. A regex like /.{1,68}(\s|$)/
+  // silently discards the head of such runs, which for a safety-relevant
+  // note is the worst possible failure mode.
+  const wrapNote = (text: string, width = 68): string[] => {
+    const wrapped: string[] = [];
+    let line = "";
+    for (const word of text.split(/\s+/)) {
+      const pieces = word.match(new RegExp(`.{1,${String(width)}}`, "g")) ?? [];
+      for (const piece of pieces) {
+        if (line === "") {
+          line = piece;
+        } else if (line.length + 1 + piece.length <= width) {
+          line = `${line} ${piece}`;
+        } else {
+          wrapped.push(line);
+          line = piece;
+        }
+      }
+    }
+    if (line !== "") {
+      wrapped.push(line);
+    }
+    return wrapped;
   };
 
   let progressTimer: NodeJS.Timeout | null = null;
@@ -81,7 +108,7 @@ export function createTerminalPresenter(
   let promptChain: Promise<void> = Promise.resolve();
   // Confirms currently entered and not yet answered. Batch submissions fire
   // many identical reviews at once (bulk Bulletin writes are the primary
-  // case); telling the user how many are queued behind the current prompt is
+  // case). Telling the user how many are queued behind the current prompt is
   // the only batch context the host has.
   let pendingConfirms = 0;
 
@@ -184,10 +211,8 @@ export function createTerminalPresenter(
           );
         }
         if (request.phoneNote !== undefined) {
-          for (const line of request.phoneNote.match(/.{1,68}(\s|$)/g) ?? [
-            request.phoneNote,
-          ]) {
-            lines.push(`    ${line.trimEnd()}`);
+          for (const line of wrapNote(request.phoneNote)) {
+            lines.push(`    ${line}`);
           }
         } else if (request.phoneVerifies) {
           lines.push(
@@ -198,7 +223,7 @@ export function createTerminalPresenter(
         write(`${lines.join("\n")}\n`);
         if (input === "tty") {
           // The standard streams belong to someone else (a git remote
-          // helper); ask on the controlling terminal instead. Opened per
+          // helper). Ask on the controlling terminal instead. Opened per
           // prompt so an idle host holds no terminal descriptors.
           const tty = openTty();
           if (tty === undefined) {

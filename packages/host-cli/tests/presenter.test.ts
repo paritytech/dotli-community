@@ -180,6 +180,58 @@ describe("createTerminalPresenter prompt routing", () => {
     presenter.dispose();
   });
 
+  it("As a batch operator with defaultYes on a non-TTY, prompts still deny", async () => {
+    // Given
+    const out = sink();
+    const pipedStdin = new PassThrough() as unknown as NodeJS.ReadStream;
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: pipedStdin,
+      defaultYes: true,
+    });
+
+    // When
+    const decision = await presenter.confirm(REQUEST);
+
+    // Then
+    expect(decision).toBe(false);
+    expect(out.text()).toContain("No interactive terminal");
+    presenter.dispose();
+  });
+
+  it("As a CLI user, a note containing a long URL renders in full instead of being truncated", async () => {
+    // Given
+    const url = `https://example.com/${"a".repeat(90)}`;
+    const out = sink();
+    const tty = fakeTty();
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      openTty: () => tty.streams,
+    });
+
+    // When
+    const decision = presenter.confirm({
+      title: "Publish data to the Bulletin chain",
+      details: [],
+      phoneVerifies: false,
+      phoneNote: `See ${url} for details`,
+    });
+    tty.type("\n");
+    await decision;
+
+    // Then
+    // Rejoin the wrapped lines. Every character of the URL must survive.
+    const rendered = out
+      .text()
+      .split("\n")
+      .map((line) => line.trim())
+      .join(" ")
+      .replace(/ /g, "");
+    expect(rendered).toContain(url.replace(/ /g, ""));
+    presenter.dispose();
+  });
+
   it("As a CI process with piped stdin, prompts deny automatically", async () => {
     // Given
     const out = sink();

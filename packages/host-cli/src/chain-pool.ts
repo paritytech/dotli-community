@@ -22,7 +22,7 @@
 import type { JsonRpcConnection } from "@parity/truapi-host";
 import { toHex } from "./hex.js";
 
-/** Protocol role of a chain within the host's environment (RFC 0026). */
+/** Protocol role of a chain within the host's environment. */
 export type ChainRole = "Relay" | "AssetHub" | "People" | "Bulletin";
 
 export interface ChainEndpoint {

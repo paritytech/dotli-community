@@ -4,7 +4,7 @@
 // Runnable pairing demo: renders a QR in your terminal, waits for a phone
 // scan, and round-trips a product localStorage value through the paired core.
 //
-//   bun examples/pair.ts          # or: node --experimental-strip-types
+//   bun examples/pair.ts
 //
 // Needs network egress to the Paseo Next V2 endpoints below, and a phone with
 // the Polkadot app to scan the QR. State lands in ~/.dotli-host-cli-example

@@ -38,7 +38,7 @@ Initial release: a terminal host for `@parity/truapi-host` 0.16.0.
   the phone, so the phone-checkpoint line was wrong in the unsafe direction
   (verified with the wallet offline: phone-bound operations time out while
   Bulletin writes succeed).
-- Owner-only (0600) JSON file storage for core and product state; product
+- Owner-only (0600) JSON file storage for core and product state. Product
   storage cleared on logout and on identity change.
 - Chain-connection pool keyed by genesis hash: per-lease request-id
   rewriting, subscription routing, capped leases per socket,

@@ -26,8 +26,14 @@ export interface HostCallbackDeps {
   pool: ChainPool;
   presenter: HostPresenter;
   endpoints: ChainEndpoints;
-  /** Environment id advertised through `supportedChains` (RFC 0026). */
+  /** Environment id advertised through the core's supported-chains set. */
   network: string;
+  /**
+   * Awaited before every product-storage operation. The host uses it to hold
+   * reads back while an identity switch is still clearing the previous
+   * identity's data, so a fast product can never observe stale entries.
+   */
+  productStorageGate?: () => Promise<void>;
   theme: "Dark" | "Light";
   /** BCP 47 language tag served through the `locale` subscription. */
   locale: string;
@@ -56,7 +62,7 @@ export function coreSlot(key: CoreStorageKey): string {
     case "ProductManifest":
       return `ProductManifest:${key.value.productId}`;
     case "SsoResponderRequestLedger":
-      return `SsoResponderRequestLedger:${toHex(key.value.rootPublicKey)}:${toHex(key.value.peerStatementAccountId)}`;
+      return `SsoResponderRequestLedger:${toHex(key.value.rootPublicKey)}:${toHex(key.value.peerStatementAccountId)}:${toHex(key.value.peerEncryptionPublicKey)}`;
     default:
       // Parameterless slots flatten to their tag. A NEW parameterized slot
       // landing here would collide across its parameters, so new engine
@@ -81,6 +87,7 @@ export function createHostCallbacks(
     locale,
     lookupPreimage,
     onAuthState,
+    productStorageGate,
     log,
   } = deps;
   let nextNotificationId = 1;
@@ -140,8 +147,8 @@ export function createHostCallbacks(
         return { supported };
       },
       async supportedChains() {
-        // Advertise the role-mapped subset of the endpoint map (RFC 0026).
-        // Both advertisements answer from the same map, so they can never
+        // Advertise the role-mapped subset of the endpoint map. Both
+        // advertisements answer from the same map, so they can never
         // disagree with `featureSupported` or with `chain.connect`.
         return {
           network,
@@ -167,13 +174,16 @@ export function createHostCallbacks(
       // NO account component, which is why the host clears this store on
       // logout (see CliHost).
       async read(key) {
+        await productStorageGate?.();
         const hit = await productStore.get(key);
         return hit === null ? undefined : fromHex(hit);
       },
       async write(key, value) {
+        await productStorageGate?.();
         await productStore.set(key, toHex(value));
       },
       async clear(key) {
+        await productStorageGate?.();
         await productStore.delete(key);
       },
     },

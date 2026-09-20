@@ -38,7 +38,7 @@ export interface CliHostConfig {
    */
   chains: ChainEndpoints;
   /**
-   * Environment id advertised through `supportedChains` (RFC 0026), e.g.
+   * Environment id advertised through the core's supported-chains set, e.g.
    * `paseo-next-v2`. Informational, but products see it in `getChainInfo`.
    */
   network: string;
@@ -190,13 +190,17 @@ export async function createCliHost(config: CliHostConfig): Promise<CliHost> {
     locale: config.locale ?? Intl.DateTimeFormat().resolvedOptions().locale,
     lookupPreimage: config.lookupPreimage,
     onAuthState: dispatchAuthState,
+    // Product-storage operations wait for any in-flight identity check, so a
+    // product racing a Connected-with-new-identity emission can never read
+    // the previous identity's entries before the clear lands.
+    productStorageGate: () => identityChain,
     log: config.log,
   });
 
   // Since engine 0.16 the runtime expects one callback OUTSIDE the typed
   // platform surface: `workerDemandChanged`, the core's signal to start or
-  // stop a product's worker. Workers are how browsers deploy product cores;
-  // this host runs the core in-process, so the demand is acknowledged as a
+  // stop a product's worker. Workers are how browsers deploy product cores.
+  // This host runs the core in-process, so the demand is acknowledged as a
   // no-op.
   const rawCallbacks = {
     ...(core.createRawCallbacks(callbacks) as Record<string, unknown>),

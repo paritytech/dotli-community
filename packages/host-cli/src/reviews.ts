@@ -27,7 +27,7 @@ export interface ConfirmRequest {
    * Whether the paired wallet is the authoritative surface for this action.
    * When true, presenters tell the user to complete it on the phone. The
    * default phrasing is signing-specific ("nothing is signed until you
-   * approve it there"); reviews that are NOT signing operations should set
+   * approve it there"). Reviews that are NOT signing operations should set
    * {@link ConfirmRequest.phoneNote} so the prompt does not claim otherwise.
    */
   phoneVerifies: boolean;
@@ -164,7 +164,7 @@ export function describeReview(
       };
     case "ProductSubtree":
       // Resolves the product's own account subtree over SSO. The answer is a
-      // public key; addresses derived from it appear on later reviews. It is
+      // public key, and addresses derived from it appear on later reviews. It is
       // a read-authority request, NOT signing, so the note must not claim a
       // signing prompt is coming.
       return {
