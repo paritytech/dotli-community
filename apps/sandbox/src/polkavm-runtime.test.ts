@@ -766,7 +766,9 @@ describe("PolkaVM package recognition", () => {
     }
     validateFiles(files, descriptor);
     files["app.polkavm"] = program;
-    expect(() => validateFiles(files, descriptor)).toThrow();
+    expect(() => {
+      validateFiles(files, descriptor);
+    }).toThrow();
   });
 
   it("selects a declared web fallback when WebGPU is unavailable", async () => {
