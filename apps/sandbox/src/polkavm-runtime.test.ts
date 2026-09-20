@@ -753,34 +753,20 @@ describe("PolkaVM package recognition", () => {
     });
   });
 
-  it("accepts the deployed GPUI editor within the runtime program ceiling", () => {
+  it("admits a 128 MiB program view but rejects one byte more", () => {
     const manifest = webGpuRasterAppV2Manifest();
+    const program = new Uint8Array(128 * 1024 * 1024 + 1);
     const files = {
       "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array(51_425_059),
+      "app.polkavm": program.subarray(1),
     };
     const descriptor = describePolkaVmPackage(files, manifest);
     if (descriptor === null) {
       throw new Error("GPUI package was not recognized");
     }
-    expect(() => {
-      validateFiles(files, descriptor);
-    }).not.toThrow();
-  });
-
-  it("rejects programs beyond the runtime program ceiling", () => {
-    const manifest = webGpuRasterAppV2Manifest();
-    const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array(64 * 1024 * 1024 + 1),
-    };
-    const descriptor = describePolkaVmPackage(files, manifest);
-    if (descriptor === null) {
-      throw new Error("oversized package was not recognized");
-    }
-    expect(() => {
-      validateFiles(files, descriptor);
-    }).toThrow(/oversized program/);
+    validateFiles(files, descriptor);
+    files["app.polkavm"] = program;
+    expect(() => validateFiles(files, descriptor)).toThrow();
   });
 
   it("selects a declared web fallback when WebGPU is unavailable", async () => {

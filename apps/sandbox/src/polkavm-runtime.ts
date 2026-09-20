@@ -22,7 +22,7 @@ import {
   type WebGpuRequirements,
 } from "./webgpu";
 
-const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
+const MAX_PROGRAM_BYTES = 128 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
 const MAX_ASSET_NAME_BYTES = 1_024;
 const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
