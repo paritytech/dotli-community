@@ -85,7 +85,7 @@ function getElement(id: string): HTMLElement {
 // DOM refs are resolved lazily inside initTopBar() to avoid throwing
 // at module scope if the HTML IDs change or the script loads early.
 let authButton: HTMLElement;
-let modalBackdrop: HTMLElement;
+let authDialog: HTMLDialogElement;
 let modalTitle: HTMLElement;
 let modalQr: HTMLElement;
 let modalReason: HTMLElement;
@@ -127,6 +127,7 @@ let truapiSessionConnected = false;
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
 let releaseAuthModal: (() => void) | null = null;
+let authModalPreviousFocus: HTMLElement | null = null;
 
 type ThemePref = "light" | "dark" | "system";
 
@@ -295,7 +296,7 @@ export function initTopBar(
 ): void {
   blockingModalCoordinator = modalCoordinator;
   authButton = getElement("auth-button");
-  modalBackdrop = getElement("auth-modal-backdrop");
+  authDialog = getElement("auth-modal-dialog") as HTMLDialogElement;
   modalTitle = getElement("auth-modal-title");
   modalQr = getElement("auth-modal-qr");
   modalReason = getElement("auth-modal-reason");
@@ -307,10 +308,9 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
-  modalBackdrop.setAttribute("role", "dialog");
-  modalBackdrop.setAttribute("aria-modal", "true");
-  modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
-  modalBackdrop.tabIndex = -1;
+  // The dialog itself takes focus on open so its title is announced; the
+  // QR view has no control worth landing on first.
+  authDialog.tabIndex = -1;
 
   // Auth button: opens modal (logged out) or popover (logged in)
   authButton.addEventListener("click", handleAuthButtonClick);
@@ -322,11 +322,17 @@ export function initTopBar(
     closeModal();
   });
 
-  // Clicking backdrop (outside modal) closes modal
-  modalBackdrop.addEventListener("click", (e) => {
+  // The panel fills the padding-less dialog, so a click that targets the
+  // dialog itself landed on the ::backdrop.
+  authDialog.addEventListener("click", (e) => {
     if (e.target === e.currentTarget) {
       closeModal();
     }
+  });
+
+  // Escape and the platform back gesture cancel the login like the button.
+  authDialog.addEventListener("cancel", () => {
+    closeModal();
   });
 
   // Disconnect button
@@ -1812,7 +1818,6 @@ function initModeToggle(): void {
 
 let modePopoverFocusTrap: (() => void) | null = null;
 let permissionsPopoverFocusTrap: (() => void) | null = null;
-let authModalFocusTrap: (() => void) | null = null;
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -3101,9 +3106,10 @@ function openModal(
 }
 
 function closeModal(opts: { skipTruapiCancel?: boolean } = {}): void {
-  modalBackdrop.classList.remove("open");
-  authModalFocusTrap?.();
-  authModalFocusTrap = null;
+  if (authDialog.open) {
+    authDialog.close();
+    restoreAuthModalFocus();
+  }
   currentQrPayload = null;
   modalQr.innerHTML = "";
   const scope = authModalScope;
@@ -3148,17 +3154,35 @@ function ensureAuthModalLease(): void {
           };
           releaseAuthModal = finish;
           signal.addEventListener("abort", finish, { once: true });
-          modalBackdrop.classList.add("open");
-          authModalFocusTrap ??= trapPopoverFocus(
-            modalBackdrop,
-            authButton,
-            () => {
-              closeModal();
-            },
-          );
+          showAuthDialog();
         }),
     )
     .catch(() => {
       // Closing a pending or active authentication modal disposes its lease.
     });
+}
+
+function showAuthDialog(): void {
+  if (authDialog.open) {
+    return;
+  }
+  const active = document.activeElement;
+  authModalPreviousFocus =
+    active instanceof HTMLElement && active !== document.body ? active : null;
+  authDialog.showModal();
+  authDialog.focus();
+}
+
+// Hand focus back to whatever opened the login, falling back to the auth
+// button when a product-initiated login started with nothing focused.
+function restoreAuthModalFocus(): void {
+  const previous = authModalPreviousFocus;
+  authModalPreviousFocus = null;
+  if (previous?.isConnected === true) {
+    previous.focus();
+    if (document.activeElement === previous) {
+      return;
+    }
+  }
+  authButton.focus();
 }

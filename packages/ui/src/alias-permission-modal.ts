@@ -10,15 +10,13 @@
 // DOM structure follows the signing modal pattern (signing.css).
 
 import { ERRORS } from "./errors";
+import { openModalDialog } from "./modal-dialog";
 
 export function showAliasPermissionModal(
   requestingIdentifier: string,
   requestedIdentifier: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
-
     const modal = document.createElement("div");
     modal.className = "signing-modal";
 
@@ -74,28 +72,41 @@ export function showAliasPermissionModal(
     footer.appendChild(allowBtn);
 
     modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
 
-    function cleanup(): void {
-      backdrop.remove();
+    let settled = false;
+    function finish(error?: Error): void {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      dialog.close();
+      if (error === undefined) {
+        resolve();
+      } else {
+        reject(error);
+      }
     }
 
+    const dialog = openModalDialog(modal, {
+      dialogClass: "signing-dialog",
+      title: heading,
+      description: fieldsContainer,
+      // Land on the safe action so a stray Enter cannot grant the alias.
+      initialFocus: denyBtn,
+      onCancel: () => {
+        finish(new Error(ERRORS.ALIAS_PERMISSION_DISMISSED));
+      },
+      onBackdropClick: () => {
+        finish(new Error(ERRORS.ALIAS_PERMISSION_DISMISSED));
+      },
+    });
+
     denyBtn.addEventListener("click", () => {
-      cleanup();
-      reject(new Error(ERRORS.ALIAS_PERMISSION_DENIED));
+      finish(new Error(ERRORS.ALIAS_PERMISSION_DENIED));
     });
 
     allowBtn.addEventListener("click", () => {
-      cleanup();
-      resolve();
-    });
-
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        cleanup();
-        reject(new Error(ERRORS.ALIAS_PERMISSION_DISMISSED));
-      }
+      finish();
     });
   });
 }

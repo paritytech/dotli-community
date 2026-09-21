@@ -3,28 +3,42 @@
 
 /* dot.li — Auth modal (QR pairing) */
 
-.auth-modal-backdrop {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 2000;
-  align-items: center;
-  justify-content: center;
+.auth-modal-dialog {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  width: min(340px, calc(100% - 32px));
+  max-width: none;
+  max-height: none;
+  overflow: visible;
   opacity: 0;
   transition:
     opacity 0.3s ease-out,
-    display 0.3s allow-discrete;
+    display 0.3s allow-discrete,
+    overlay 0.3s allow-discrete;
 }
-.auth-modal-backdrop.open {
-  display: flex;
+.auth-modal-dialog[open] {
   opacity: 1;
 }
-.auth-modal-backdrop:focus-visible {
+.auth-modal-dialog:focus-visible {
   outline: none;
 }
+.auth-modal-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition:
+    opacity 0.3s ease-out,
+    display 0.3s allow-discrete,
+    overlay 0.3s allow-discrete;
+}
+.auth-modal-dialog[open]::backdrop {
+  opacity: 1;
+}
 @starting-style {
-  .auth-modal-backdrop.open {
+  .auth-modal-dialog[open],
+  .auth-modal-dialog[open]::backdrop {
     opacity: 0;
   }
 }
@@ -44,18 +58,19 @@
     opacity 0.28s ease-out,
     transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1);
 }
-.auth-modal-backdrop.open .auth-modal {
+.auth-modal-dialog[open] .auth-modal {
   opacity: 1;
   transform: scale(1);
 }
 @starting-style {
-  .auth-modal-backdrop.open .auth-modal {
+  .auth-modal-dialog[open] .auth-modal {
     opacity: 0;
     transform: scale(0.7);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .auth-modal-backdrop,
+  .auth-modal-dialog,
+  .auth-modal-dialog::backdrop,
   .auth-modal {
     transition: none !important;
   }
