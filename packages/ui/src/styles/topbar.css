@@ -98,7 +98,7 @@
 }
 /* Narrow viewports: drop the brand wordmark so the URL pill and right-side
    action buttons stay on-screen. Logo + Beta badge are small enough to keep.
-   Also collapse Permissions/Theme/Settings into a single "more" button that
+   Also collapse Network/Permissions/Theme/Settings into a single "more" button that
    opens a flyout proxying clicks to the original buttons (which stay in the
    DOM, just hidden, so their popovers keep working unchanged). */
 .topbar-btn.topbar-more-btn {
@@ -248,11 +248,15 @@
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
 }
+.more-row[hidden] {
+  display: none;
+}
 @media (max-width: 560px) {
   .topbar-brand,
   .topbar-beta {
     display: none;
   }
+  #topbar #chains-button,
   #topbar #permissions-button,
   #topbar #theme-toggle,
   #topbar #mode-button {

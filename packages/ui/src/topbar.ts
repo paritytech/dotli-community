@@ -346,8 +346,8 @@ export function initTopBar(
   window.addEventListener("dotli:truapi-auth-state", (e: Event) => {
     renderAuthState((e as CustomEvent<DotliAuthState>).detail);
   });
-  // Mobile-only "more" menu: collapses Permissions / Theme / Settings into a
-  // single flyout. Each row delegates to .click() on the real button so the
+  // Mobile-only "more" menu: collapses Network / Permissions / Theme / Settings
+  // into a single flyout. Each row delegates to .click() on the real button so the
   // existing handlers (and their viewport-anchored popovers) work unchanged.
   const moreButton = document.getElementById("more-button");
   const morePopover = document.getElementById("more-popover");
@@ -1724,6 +1724,10 @@ export function setChainsButtonVisible(visible: boolean): void {
   document
     .getElementById("chains-button")
     ?.classList.toggle("visible", visible);
+  const moreRow = document.getElementById("more-row-network");
+  if (moreRow !== null) {
+    moreRow.hidden = !visible;
+  }
 }
 
 function initChainsPopover(): void {

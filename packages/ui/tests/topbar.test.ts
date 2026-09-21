@@ -33,6 +33,8 @@ vi.mock("@dotli/protocol/client", () => ({
       sharedAuth.listeners.delete(listener);
     };
   },
+  isRemoteChainConnectable: () => false,
+  isRemoteChainSupported: () => false,
 }));
 
 const device = vi.hoisted(() => ({ mobile: false }));
@@ -1433,5 +1435,76 @@ describe("topbar theme toggle", () => {
       "system",
     );
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  });
+});
+
+describe("topbar mobile more menu", () => {
+  function installMoreMenuDom(): void {
+    installTopbarDom();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `
+      <button id="chains-button" class="topbar-btn topbar-chains-btn" aria-expanded="false"></button>
+      <div class="more-popover chains-popover" id="chains-popover"></div>
+      <button id="more-button" aria-expanded="false"></button>
+      <div class="more-popover" id="more-popover">
+        <button class="more-row" id="more-row-network" data-target="chains-button" hidden></button>
+        <button class="more-row" data-target="permissions-button"></button>
+      </div>
+    `,
+    );
+  }
+
+  it("As a phone user, the Network row shows up in the more menu only once a product is on screen", async () => {
+    // Given
+    installMoreMenuDom();
+    const { initTopBar, setChainsButtonVisible } =
+      await import("@dotli/ui/topbar");
+    initTopBar();
+    const row = document.getElementById("more-row-network") as HTMLElement;
+    const button = document.getElementById("chains-button") as HTMLElement;
+    expect(row.hidden).toBe(true);
+
+    // When
+    setChainsButtonVisible(true);
+
+    // Then
+    expect(row.hidden).toBe(false);
+    expect(button.classList.contains("visible")).toBe(true);
+
+    // When
+    setChainsButtonVisible(false);
+
+    // Then
+    expect(row.hidden).toBe(true);
+    expect(button.classList.contains("visible")).toBe(false);
+  });
+
+  it("As a phone user, tapping Network in the more menu opens the network panel and closes the menu", async () => {
+    // Given
+    installMoreMenuDom();
+    const { initTopBar, setChainsButtonVisible } =
+      await import("@dotli/ui/topbar");
+    initTopBar();
+    setChainsButtonVisible(true);
+    const moreButton = document.getElementById("more-button") as HTMLElement;
+    const morePopover = document.getElementById("more-popover") as HTMLElement;
+    const chainsButton = document.getElementById(
+      "chains-button",
+    ) as HTMLElement;
+    const chainsPopover = document.getElementById(
+      "chains-popover",
+    ) as HTMLElement;
+    moreButton.click();
+    expect(morePopover.classList.contains("open")).toBe(true);
+
+    // When
+    (document.getElementById("more-row-network") as HTMLElement).click();
+
+    // Then
+    expect(morePopover.classList.contains("open")).toBe(false);
+    expect(moreButton.getAttribute("aria-expanded")).toBe("false");
+    expect(chainsPopover.classList.contains("open")).toBe(true);
+    expect(chainsButton.getAttribute("aria-expanded")).toBe("true");
   });
 });
