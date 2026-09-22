@@ -80,7 +80,7 @@ export declare const ACCOUNT_RING_VRF_SIGN: {
 };
 export declare const ACCOUNT_PRODUCT_DEVICE_CHAT: {
     readonly trait: 2;
-    readonly method: 11;
+    readonly method: 12;
     readonly kind: "request";
 };
 export declare const CHAIN_FOLLOW_HEAD_SUBSCRIBE: {

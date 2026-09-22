@@ -229,7 +229,7 @@ export async function setPermissionStatus(
 ): Promise<void> {
   const provider = providerFor(label);
   if (provider === null) {
-    return;
+    throw new Error("product connection is unavailable");
   }
   await provider.setPermissionAuthorizationStatus(
     authorizationRequest(permission),

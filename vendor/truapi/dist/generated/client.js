@@ -6,8 +6,8 @@ import * as T from './types.js';
 import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
-export const TRUAPI_CODEC_VERSION = 2;
-export const TRUAPI_WIRE_SCHEMA_HASH = "c587cc31e1b00844";
+export const TRUAPI_CODEC_VERSION = 3;
+export const TRUAPI_WIRE_SCHEMA_HASH = "0931d05042135353";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -241,8 +241,10 @@ export class AccountClient {
         });
     }
     /**
-     * Bind a product account as a Chat v2 device, or seal/open identity-route
-     * payloads without exposing the wallet Chat identity secret.
+     * Operate a Host-owned native Chat device and propose one-shot main-purse
+     * payments. Transport private keys and spendable memos never leave the Host.
+     *
+     * Method 11 (the former raw-crypto interface) is retired, not forwarded.
      */
     deviceChat(request) {
         return this.transport.request({

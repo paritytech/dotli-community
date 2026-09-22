@@ -4,15 +4,22 @@
 // callback surface the WASM core invokes. Codec-backed wire and
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
+import * as S from "@parity/truapi/scale";
 import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, RemotePermissionRequest, RemotePermissionResponse, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
-import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { chainConnectAdapter, driveResultStream, hopConnectAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
+const allowedHopEndpointsResultCodec = S.Vector(S.str);
+const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
+const pickChatFilesResultCodec = S.Vector(NativeChatPickedFile);
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */
 export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
+    const identityBackend = callbacks.identityBackend;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
+    const hop = callbacks.hop ?? unavailableHopProvider;
+    const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
     return {
         authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
         chainConnect: chainConnectAdapter(callbacks.chain),
@@ -29,7 +36,21 @@ export function createWasmRawCallbacks(callbacks) {
         clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
         featureSupported: async (request) => HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(HostFeatureSupportedRequest.dec(request))),
         supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+        allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
+        hopConnect: hopConnectAdapter(hop),
+        ...(identityBackend
+            ? {
+                identityUsernameCandidates: async (username, peopleChainGenesisHash) => identityUsernameCandidatesResultCodec.enc(await identityBackend.identityUsernameCandidates(username, peopleChainGenesisHash)),
+            }
+            : {}),
         subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(HostLocaleSubscribeItem.enc(item)), sendError),
+        pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
+        readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
+        releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
+        beginChatFileExport: async (request) => await nativeChatFiles.beginChatFileExport(NativeChatFileExportRequest.dec(request)),
+        writeChatFileExport: async (exportId, offset, data) => await nativeChatFiles.writeChatFileExport(exportId, offset, data),
+        finishChatFileExport: async (exportId) => await nativeChatFiles.finishChatFileExport(exportId),
+        cancelChatFileExport: async (exportId) => await nativeChatFiles.cancelChatFileExport(exportId),
         navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
         pushNotification: async (notification) => HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(HostPushNotificationRequest.dec(notification))),
         cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),

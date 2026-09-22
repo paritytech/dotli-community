@@ -1347,6 +1347,270 @@ export type VersionedHostLocaleSubscribeRequest =
     value?: undefined;
 };
 export declare const VersionedHostLocaleSubscribeRequest: S.Codec<VersionedHostLocaleSubscribeRequest>;
+/** A peer's native delivery acknowledgment, not a payment-clearing receipt. */
+export interface HostNativeChatAcknowledgment {
+    /** Authenticated acknowledging identity. */
+    peerIdentity: HexString;
+    /** Acknowledged native request identifier. */
+    requestId: string;
+    /** Native response code; zero denotes successful delivery processing. */
+    responseCode: number;
+}
+export declare const HostNativeChatAcknowledgment: S.Codec<HostNativeChatAcknowledgment>;
+/** Public attachment handle; only the Host can resolve its private backing. */
+export interface HostNativeChatAttachment {
+    /** Opaque handle scoped to the current wallet, network and calling product. */
+    attachmentId: HexString;
+    /** Non-secret native metadata. */
+    metadata: HostNativeChatAttachmentMetadata;
+    /** Current durable transfer progress. */
+    state: HostNativeChatAttachmentState;
+}
+export declare const HostNativeChatAttachment: S.Codec<HostNativeChatAttachment>;
+/** Public native media metadata; thumbnails are BlurHash text, not executable images. */
+export type HostNativeChatAttachmentKind = 
+/** A general document or other opaque file. */
+{
+    tag: "File";
+    value?: undefined;
+}
+/** An image with native dimensions and an optional UTF-8 BlurHash. */
+ | {
+    tag: "Image";
+    value: {
+        width: number;
+        height: number;
+        thumbnail?: HexString;
+    };
+}
+/** A video with native duration and an optional UTF-8 BlurHash. */
+ | {
+    tag: "Video";
+    value: {
+        durationSeconds: number;
+        thumbnail?: HexString;
+    };
+};
+export declare const HostNativeChatAttachmentKind: S.Codec<HostNativeChatAttachmentKind>;
+/** Safe attachment description, independent of private transfer credentials. */
+export interface HostNativeChatAttachmentMetadata {
+    /** Validated media type; it does not authorize execution or network loading. */
+    mimeType: string;
+    /** Exact native file size, verified against the downloaded root and chunks. */
+    sizeBytes: number;
+    /** General file, image or video metadata. */
+    kind: HostNativeChatAttachmentKind;
+}
+export declare const HostNativeChatAttachmentMetadata: S.Codec<HostNativeChatAttachmentMetadata>;
+/** Durable transfer progress, distinct from message delivery acknowledgment. */
+export type HostNativeChatAttachmentState = 
+/** The Host is securing an immutable selected source. */
+{
+    tag: "Preparing";
+    value?: undefined;
+}
+/** Native HOP entries are being uploaded. */
+ | {
+    tag: "Uploading";
+    value: {
+        uploadedBytes: number;
+    };
+}
+/** Verified file bytes are being committed to private local storage. */
+ | {
+    tag: "Downloading";
+    value: {
+        downloadedBytes: number;
+    };
+}
+/** Complete verified bytes are available through trusted Host presentation. */
+ | {
+    tag: "Ready";
+    value?: undefined;
+}
+/** An interrupted transfer retains its exact credentials and progress for retry. */
+ | {
+    tag: "Recovering";
+    value?: undefined;
+};
+export declare const HostNativeChatAttachmentState: S.Codec<HostNativeChatAttachmentState>;
+/** The Host-owned device's public identity and statement-signing account. */
+export interface HostNativeChatDevice {
+    /** Wallet identity on the configured People chain. */
+    identityAccountId: HexString;
+    /** Wallet identity's public X25519 key. */
+    identityChatPublicKey: HexString;
+    /** Product account used to obtain a statement-store allowance for this device. */
+    productAccount: ProductAccountId;
+    /** Public statement signer for the Host-owned device. */
+    accountId: HexString;
+    /** Public X25519 key; its secret never leaves the Host. */
+    chatPublicKey: HexString;
+}
+export declare const HostNativeChatDevice: S.Codec<HostNativeChatDevice>;
+/** An authenticated invitation awaiting the user's Chat decision. */
+export interface HostNativeChatInvitation {
+    /** Host-generated stable invitation identifier. */
+    invitationId: HexString;
+    /** Authenticated sender identity. */
+    peerIdentity: HexString;
+    /** Host-resolved sender username, when available. */
+    username?: string;
+    /** Authenticated native invitation timestamp in milliseconds. */
+    timestamp: bigint;
+    /** Ordinary initial text, never an embedded payment or control message. */
+    text: string;
+}
+export declare const HostNativeChatInvitation: S.Codec<HostNativeChatInvitation>;
+/** Safe ordinary messages from one authenticated native request. */
+export interface HostNativeChatMessages {
+    /** Authenticated counterparty identity. */
+    peerIdentity: HexString;
+    /** Whether the peer sent these messages; false also covers our welcome text. */
+    incoming: boolean;
+    /** Native request identifier, retained for message-delivery correlation. */
+    requestId: string;
+    /** Native message encodings after custody-sensitive content is removed. */
+    messages: Array<HexString>;
+}
+export declare const HostNativeChatMessages: S.Codec<HostNativeChatMessages>;
+/** A product-visible payment card; it contains no spendable memo material. */
+export interface HostNativeChatPayment {
+    /** Durable, product-scoped operation identifier. */
+    operationId: HexString;
+    /** Caller request id for outgoing payments; native request id for incoming ones. */
+    requestId: string;
+    /** Native message id used to place the payment in conversation history. */
+    messageId: string;
+    /** Native message timestamp in milliseconds. */
+    timestamp: bigint;
+    /** Counterparty identity authenticated by the Host. */
+    peerIdentity: HexString;
+    /** Incoming or outgoing relative to the current wallet. */
+    direction: HostNativeChatPaymentDirection;
+    /** Exact requested/received value in cents. */
+    amountCents: bigint;
+    /** Durable transport/clearing state. */
+    state: HostNativeChatPaymentState;
+}
+export declare const HostNativeChatPayment: S.Codec<HostNativeChatPayment>;
+/** Payment direction relative to the current wallet. */
+export type HostNativeChatPaymentDirection = "Outgoing" | "Incoming";
+export declare const HostNativeChatPaymentDirection: S.Codec<HostNativeChatPaymentDirection>;
+/** Public, non-secret payment failure categories. */
+export type HostNativeChatPaymentFailure = "Cancelled" | "InsufficientBalance" | "AlreadySpent" | "InvalidMemo" | "ChainRejected";
+export declare const HostNativeChatPaymentFailure: S.Codec<HostNativeChatPaymentFailure>;
+/** Durable payment state. Delivery and on-chain clearing are deliberately distinct. */
+export type HostNativeChatPaymentState = 
+/** Approved inputs are reserved; required split/unload work is in progress. */
+{
+    tag: "Preparing";
+    value?: undefined;
+}
+/** The encrypted memo is durable and transport delivery is being retried. */
+ | {
+    tag: "Delivering";
+    value?: undefined;
+}
+/** The peer acknowledged the memo; settlement has not yet been established. */
+ | {
+    tag: "Delivered";
+    value?: undefined;
+}
+/** Received secrets are durably held while their claim is in progress. */
+ | {
+    tag: "Claiming";
+    value?: undefined;
+}
+/** Some, but not all, of the payment has been observed clearing on chain. */
+ | {
+    tag: "PartiallyCleared";
+    value: {
+        clearedCents: bigint;
+    };
+}
+/** The complete payment has been verified at chain finality. */
+ | {
+    tag: "Cleared";
+    value?: undefined;
+}
+/** An ambiguous effect is retained for reconciliation; inputs remain reserved. */
+ | {
+    tag: "Recovering";
+    value?: undefined;
+}
+/** A definitive failure; the Host has reconciled any possible prior effects. */
+ | {
+    tag: "Failed";
+    value: {
+        reason: HostNativeChatPaymentFailure;
+    };
+};
+export declare const HostNativeChatPaymentState: S.Codec<HostNativeChatPaymentState>;
+/** Public conversation state; products cannot write this roster back to the Host. */
+export interface HostNativeChatPeer {
+    /** Recipient wallet identity. */
+    identityAccountId: HexString;
+    /** Username resolved by the Host, if currently available. */
+    username?: string;
+    /** Devices admitted by authenticated native invitation/control messages. */
+    devices: Array<HostNativeChatPeerDevice>;
+    /** Native session topics for subscriptions, not request/response channel hashes. */
+    incomingChannels: Array<HexString>;
+    /** Whether establishment and legacy-device revocation have been acknowledged. */
+    readyForPayments: boolean;
+}
+export declare const HostNativeChatPeer: S.Codec<HostNativeChatPeer>;
+/** Public metadata for one authenticated remote device. */
+export interface HostNativeChatPeerDevice {
+    /** Remote device's statement signer. */
+    accountId: HexString;
+    /** Remote device's authenticated public X25519 key. */
+    chatPublicKey: HexString;
+}
+export declare const HostNativeChatPeerDevice: S.Codec<HostNativeChatPeerDevice>;
+/** Authenticated rich content after private file capabilities have been removed. */
+export interface HostNativeChatRichMessage {
+    /** Authenticated conversation identity. */
+    peerIdentity: HexString;
+    /** Whether the remote peer authored this content. */
+    incoming: boolean;
+    /** Native request id used for delivery acknowledgment. */
+    requestId: string;
+    /** Native id of this message or edit event. */
+    messageId: string;
+    /** Native timestamp in milliseconds. */
+    timestamp: bigint;
+    /** New message, reply or edit; authorship checks still apply to edits. */
+    kind: HostNativeChatRichMessageKind;
+    /** Ordinary optional text. */
+    text?: string;
+    /** Opaque file handles and safe metadata, never native file references. */
+    attachments: Array<HostNativeChatAttachment>;
+}
+export declare const HostNativeChatRichMessage: S.Codec<HostNativeChatRichMessage>;
+/** Native rich-content timeline operation. */
+export type HostNativeChatRichMessageKind = 
+/** A new ordinary rich message. */
+{
+    tag: "Message";
+    value?: undefined;
+}
+/** A new rich message replying to an earlier message. */
+ | {
+    tag: "Reply";
+    value: {
+        messageId: string;
+    };
+}
+/** A replacement of the same author's earlier rich content. */
+ | {
+    tag: "Edited";
+    value: {
+        messageId: string;
+    };
+};
+export declare const HostNativeChatRichMessageKind: S.Codec<HostNativeChatRichMessageKind>;
 /** Versioned envelope for [`HostNavigateToError`]. */
 export type VersionedHostNavigateToError = 
 /** Version 1 payload. */
@@ -1518,27 +1782,6 @@ export type VersionedHostPocketRemoveCardResponse =
     value?: undefined;
 };
 export declare const VersionedHostPocketRemoveCardResponse: S.Codec<VersionedHostPocketRemoveCardResponse>;
-/**
- * Cipher suite used by product-device Chat identity-route operations.
- *
- * Legacy v2 preserves current mobile interoperability. Context-bound v1
- * authenticates the product/network, both account roles, route, and direction.
- */
-export type HostProductDeviceChatCipherSuite = 
-/** Existing Chat v2 CryptoKit-compatible empty-context HKDF and AEAD. */
-{
-    tag: "LegacyV2";
-    value?: undefined;
-}
-/** Domain-separated encryption for peers that explicitly support it. */
- | {
-    tag: "ContextBoundV1";
-    value: {
-        peerAccountId: HexString;
-        channelId: HexString;
-    };
-};
-export declare const HostProductDeviceChatCipherSuite: S.Codec<HostProductDeviceChatCipherSuite>;
 /** Versioned envelope for [`HostProductDeviceChatError`]. */
 export type VersionedHostProductDeviceChatError = 
 /** Version 1 payload. */
@@ -4041,149 +4284,6 @@ export interface HostPocketRemoveCardRequest {
     cardId: string;
 }
 export declare const HostPocketRemoveCardRequest: S.Codec<HostPocketRemoveCardRequest>;
-/** Product-device Chat v2 identity failure. */
-export type HostProductDeviceChatError = 
-/** No account-authority session is connected. */
-{
-    tag: "NotConnected";
-    value?: undefined;
-}
-/** The user or Host rejected the operation. */
- | {
-    tag: "Rejected";
-    value?: undefined;
-}
-/** The peer X25519 public key is invalid. */
- | {
-    tag: "InvalidPeerKey";
-    value?: undefined;
-}
-/** The ciphertext failed structural or authentication checks. */
- | {
-    tag: "InvalidCiphertext";
-    value?: undefined;
-}
-/** The Host could not complete the operation. */
- | {
-    tag: "Unknown";
-    value: {
-        reason: string;
-    };
-};
-export declare const HostProductDeviceChatError: S.Codec<HostProductDeviceChatError>;
-/**
- * Product-device Chat v2 identity operation.
- *
- * The wallet Chat identity secret and derived shared key remain host-private.
- */
-export type HostProductDeviceChatRequest = 
-/** Resolve the product account as a Chat device and bind it to the wallet identity. */
-{
-    tag: "Bind";
-    value: {
-        productAccountId: ProductAccountId;
-        peerIdentityAccountId: HexString;
-        peerChatPublicKey: HexString;
-    };
-}
-/** Seal identity-route plaintext for the peer with a host-generated nonce. */
- | {
-    tag: "Seal";
-    value: {
-        productAccountId: ProductAccountId;
-        peerChatPublicKey: HexString;
-        cipherSuite: HostProductDeviceChatCipherSuite;
-        plaintext: HexString;
-    };
-}
-/** Open an identity-route combined nonce/ciphertext/tag value. */
- | {
-    tag: "Open";
-    value: {
-        productAccountId: ProductAccountId;
-        peerChatPublicKey: HexString;
-        cipherSuite: HostProductDeviceChatCipherSuite;
-        combinedCiphertext: HexString;
-    };
-}
-/** Sign the canonical Chat first-contact proof payload without wallet-message framing. */
- | {
-    tag: "SignRequestProof";
-    value: {
-        productAccountId: ProductAccountId;
-        payload: HexString;
-    };
-}
-/** Read the authorized wallet's public Chat identity for incoming requests. */
- | {
-    tag: "Identity";
-    value: {
-        productAccountId: ProductAccountId;
-    };
-}
-/** Verify a peer's identity-to-device binding without exposing shared keys. */
- | {
-    tag: "VerifyPeerDevice";
-    value: {
-        productAccountId: ProductAccountId;
-        peerIdentityAccountId: HexString;
-        peerChatPublicKey: HexString;
-        peerDeviceAccountId: HexString;
-        proof: HexString;
-    };
-};
-export declare const HostProductDeviceChatRequest: S.Codec<HostProductDeviceChatRequest>;
-/** Result of a product-device Chat v2 identity operation. */
-export type HostProductDeviceChatResponse = 
-/** Wallet identity binding and deterministic peer routes. */
-{
-    tag: "IdentityBinding";
-    value: {
-        identityAccountId: HexString;
-        proof: HexString;
-        walletOwnSessionId: HexString;
-        peerOwnSessionId: HexString;
-        walletOutgoingChannelId: HexString;
-        walletIncomingChannelId: HexString;
-    };
-}
-/** Sealed identity-route payload. */
- | {
-    tag: "Sealed";
-    value: {
-        combinedCiphertext: HexString;
-    };
-}
-/** Opened identity-route payload. */
- | {
-    tag: "Opened";
-    value: {
-        plaintext: HexString;
-    };
-}
-/** Raw sr25519 signature over a canonical Chat request proof payload. */
- | {
-    tag: "RequestProofSigned";
-    value: {
-        signature: HexString;
-    };
-}
-/** Public Chat identity of the authorized wallet. */
- | {
-    tag: "Identity";
-    value: {
-        identityAccountId: HexString;
-        chatPublicKey: HexString;
-    };
-}
-/** Result of verifying a peer identity-to-device binding. */
- | {
-    tag: "PeerDeviceVerified";
-    value: {
-        valid: boolean;
-    };
-};
-export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [`HostPushNotificationResponse`]. */
@@ -4788,6 +4888,110 @@ export interface HostLocalStorageReadRequest {
     key: string;
 }
 export declare const HostLocalStorageReadRequest: S.Codec<HostLocalStorageReadRequest>;
+/** Failure of a Host-owned Chat operation before a public update is available. */
+export type HostProductDeviceChatError = "NotConnected" | "AccessNotGranted" | "UserRejected" | "AllowanceRequired" | "PeerNotReady" | "OperationConflict" | "InvalidRequest" | "InvalidStatement" | "RecipientNotFound" | "InsufficientBalance" | "StorageUnavailable" | "NetworkUnavailable" | "OperationNotFound" | "AttachmentsUnavailable";
+export declare const HostProductDeviceChatError: S.Codec<HostProductDeviceChatError>;
+/** An operation on the calling product's Host-owned native Chat device. */
+export type HostProductDeviceChatRequest = 
+/** Restore the installation's public device and durable conversation state. */
+{
+    tag: "Initialize";
+    value?: undefined;
+}
+/** Resolve a username in the configured network and send a fresh invitation. */
+ | {
+    tag: "Invite";
+    value: {
+        username: string;
+        text: string;
+    };
+}
+/** Authenticate, decrypt and durably process a native statement. */
+ | {
+    tag: "Receive";
+    value: {
+        statement: SignedStatement;
+    };
+}
+/** Accept an invitation previously authenticated and retained by the Host. */
+ | {
+    tag: "AcceptInvitation";
+    value: {
+        invitationId: HexString;
+    };
+}
+/** Reject an invitation previously authenticated and retained by the Host. */
+ | {
+    tag: "RejectInvitation";
+    value: {
+        invitationId: HexString;
+    };
+}
+/** Send ordinary messages to an established, Host-authenticated peer roster. */
+ | {
+    tag: "Send";
+    value: {
+        peerIdentity: HexString;
+        requestId: string;
+        messages: Array<HexString>;
+    };
+}
+/** Propose one main-purse payment; this operation always requires Host review. */
+ | {
+    tag: "SendPayment";
+    value: {
+        peerIdentity: HexString;
+        requestId: string;
+        amountCents: bigint;
+    };
+}
+/** Read a payment's durable status without authorizing another spend. */
+ | {
+    tag: "PaymentStatus";
+    value: {
+        operationId: HexString;
+    };
+}
+/** Resume durable transport work and return newly available public views. */
+ | {
+    tag: "Reconcile";
+    value?: undefined;
+}
+/** Select immutable files in trusted Host UI and send native rich content. */
+ | {
+    tag: "SendAttachments";
+    value: {
+        peerIdentity: HexString;
+        requestId: string;
+        text?: string;
+    };
+}
+/** Resume a private download and present or export through trusted Host UI. */
+ | {
+    tag: "OpenAttachment";
+    value: {
+        attachmentId: HexString;
+    };
+};
+export declare const HostProductDeviceChatRequest: S.Codec<HostProductDeviceChatRequest>;
+/** Public updates from a Host-owned Chat operation. */
+export interface HostProductDeviceChatResponse {
+    /** Public local device metadata, including its allowance account. */
+    device: HostNativeChatDevice;
+    /** Current authenticated peers and subscription channels. */
+    peers: Array<HostNativeChatPeer>;
+    /** Invitations still awaiting a user decision. */
+    invitations: Array<HostNativeChatInvitation>;
+    /** Newly processed safe ordinary messages. */
+    messages: Array<HostNativeChatMessages>;
+    /** Newly processed native delivery acknowledgments. */
+    acknowledgments: Array<HostNativeChatAcknowledgment>;
+    /** Current public payment statuses belonging to the calling product. */
+    payments: Array<HostNativeChatPayment>;
+    /** Safe rich-content views and their current private-transfer progress. */
+    richMessages: Array<HostNativeChatRichMessage>;
+}
+export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;
 /** Cross-axis alignment of `Row` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export declare const VerticalAlignment: S.Codec<VerticalAlignment>;

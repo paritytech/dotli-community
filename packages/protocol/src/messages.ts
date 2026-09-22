@@ -12,6 +12,7 @@ import type {
   SharedWalletOperation,
   SharedWalletState,
 } from "./wallet-storage";
+import type { CoreCustodyOperation } from "./core-custody";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -34,6 +35,7 @@ export interface ProtocolRequestMap {
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
   walletStorage: { siteId: string; operation: SharedWalletOperation };
+  coreCustody: { siteId: string; operation: CoreCustodyOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };

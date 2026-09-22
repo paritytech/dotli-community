@@ -14,6 +14,19 @@ Complete notices, per-file hashes, and source provenance ship beside the
 runtime. Build-time-only tooling under source-available FSL-1.1-MIT terms is
 not redistributed as part of the application.
 
+The vendored `@parity/truapi` client is MIT-licensed. The `@parity/truapi-host`
+distribution is `MIT AND AGPL-3.0-only`, not MIT-only: its Rust signing
+runtime/WASM includes the native Chat, HOP and Coinage implementations. Both
+packages come from [host-rust-core revision
+`e4af1e67f9ce6c7c2e7da17d9f2b76a6faff7445`](https://github.com/paritytech/host-rust-core/commit/e4af1e67f9ce6c7c2e7da17d9f2b76a6faff7445).
+Archive and installed artifact hashes are recorded in
+`vendor/truapi-host.lock.json`, including the local dependency override.
+The Host's `LICENSE`, `LICENSE-AGPL-3.0` and `NOTICE` are retained in
+`vendor/truapi-host/`; the notice identifies the adapted components and their
+source revisions. Corresponding Source for redistribution must include that
+exact Host source, its component provenance and build instructions, plus any
+local modifications; a repository URL alone does not supply unpublished changes.
+
 > Generated from the resolved dependency tree (595 distinct third-party
 > packages). Platform-specific binary packages (for example
 > `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;

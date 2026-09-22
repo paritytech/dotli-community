@@ -5,6 +5,7 @@ import type {
   CreateProofReview,
   CreateTransactionReview,
   IdentityDisclosureReview,
+  MainPurseChatPaymentReview,
   PreimageSubmitReview,
   ProductSubtreeReview,
   ResourceAllocationReview,
@@ -24,6 +25,7 @@ import type {
   RingLocationJunction,
 } from "@parity/truapi";
 import { hexToBytes } from "@parity/truapi/scale";
+import { getActiveServicesConfig } from "@dotli/config/network";
 import { showPreimageSubmitModal } from "../preimage-modal";
 import { ERRORS } from "../errors";
 import {
@@ -190,6 +192,8 @@ function confirmationDisplay(
       return { fields: createRequestingProductFields(review.value) };
     case "ChatAuthority":
       return { fields: createChatAuthorityFields(review.value) };
+    case "MainPurseChatPayment":
+      return { fields: createMainPurseChatPaymentFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -389,6 +393,49 @@ function createChatAuthorityFields(
   ];
 }
 
+function createMainPurseChatPaymentFields(
+  review: MainPurseChatPaymentReview,
+): ConfirmationField[] {
+  const services = getActiveServicesConfig();
+  if (
+    services.coinage === undefined ||
+    review.coinageInstanceId !== services.coinage.instanceId ||
+    formatBytes(review.genesisHash) !== services.people.genesis.toLowerCase()
+  ) {
+    throw new Error("Main-purse payment does not match the configured chain and asset");
+  }
+  // Keep u64 amounts exact through the review; Number loses cents above 2^53.
+  const amount = (cents: bigint): string =>
+    `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")} ${services.coinage!.symbol}`;
+  return [
+    { label: "Requesting product", value: review.callingProductId },
+    {
+      label: "Recipient",
+      value: review.recipientUsername ?? "Unnamed identity",
+    },
+    {
+      label: "Recipient identity",
+      value: formatBytes(review.recipientIdentity),
+      mono: true,
+    },
+    { label: "Recipient amount", value: amount(review.amountCents) },
+    { label: "Maximum purse debit (including fees)", value: amount(review.maxDebitCents) },
+    { label: "Chain genesis", value: formatBytes(review.genesisHash), mono: true },
+    {
+      label: "Coinage asset instance",
+      value: review.coinageInstanceId === undefined
+        ? "Legacy single-asset runtime"
+        : String(review.coinageInstanceId),
+    },
+    { label: "Payment operation", value: formatBytes(review.operationId), mono: true },
+    {
+      label: "One-time payment",
+      value: "Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.",
+      warning: true,
+    },
+  ];
+}
+
 function formatResource(resource: AllocatableResource): string {
   return resource.tag === "SmartContractAllowance"
     ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
@@ -449,6 +496,12 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
         title: "Chat Identity Authority",
         action: "Allow",
         cancelAction: "Deny",
+      };
+    case "MainPurseChatPayment":
+      return {
+        title: "Send Main-Purse Payment",
+        action: "Send payment",
+        cancelAction: "Reject",
       };
     case "ProductSubtree":
       return {

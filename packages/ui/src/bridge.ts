@@ -2,8 +2,8 @@
 //
 // Boots a WASM TrUAPI core instance and connects it to a sandboxed
 // product iframe via `@parity/truapi-host`. Each render swaps its product
-// runtime. In experimental mode a separate host-owned signing runtime keeps
-// wallet identity and username operations alive independently of products.
+// runtime. Experimental products share one host-owned signing runtime, purse
+// and background Chat actors, with per-execution UI callback attribution.
 //
 // Nested dApp-in-dApp composition is not modeled as separate Rust runtimes,
 // sessions, product identities, or storage namespaces. Any future nested
@@ -43,6 +43,7 @@ import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
+import { requestCoreCustody } from "@dotli/protocol/client";
 import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
@@ -50,6 +51,7 @@ import {
 import type { TrUApiProductProvider } from "@parity/truapi-host";
 import type { AuthState, PairingHostAdmin } from "@parity/truapi-host";
 import type {
+  BrowserNativeChatFilesHost,
   LocalIdentity,
   LocalIdentityProgress,
   WorkerPairingHostRuntime,
@@ -123,6 +125,7 @@ const runtimeChunkPromise = Promise.all([
   return {
     createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
     createWebWorkerSigningHostRuntime: web.createWebWorkerSigningHostRuntime,
+    createBrowserNativeChatFilesHost: web.createBrowserNativeChatFilesHost,
     createIframeHost: web.createIframeHost,
     HostWorker: workerMod.default,
   };
@@ -260,6 +263,7 @@ const mediatedInputHost = new MediatedInputHost({
 
 interface LiveLocalWallet {
   runtime: WorkerSigningHostRuntime;
+  custodyLease: string;
   binding: LocalWalletIdentityBinding;
   identity: LocalIdentity;
   nativeSessionUiInfo?: { publicKey?: string; fullUsername?: string };
@@ -277,6 +281,7 @@ function disposeWalletRuntimes(): void {
     dispose();
   }
 }
+window.addEventListener("pagehide", disposeWalletRuntimes);
 const liveLocalWallets = new Map<WorkerSigningHostRuntime, LiveLocalWallet>();
 const providerWallets = new WeakMap<CoreProvider, LiveLocalWallet>();
 let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
@@ -383,53 +388,10 @@ async function updateLocalIdentity(
       } catch (error) {
         persistenceError = error;
       }
-      const updates = await Promise.allSettled(
-        [...liveLocalWallets.values()]
-          .filter(
-            (entry) =>
-              entry !== wallet &&
-              isCurrentLocalWallet(entry.binding) &&
-              entry.binding.identityAccountId === identity.identityAccountId,
-          )
-          .map(async (entry) => {
-            // Reactivating a live runtime would reset its session/grants. Refresh
-            // updates SessionInfo in place so current apps immediately get_user_id.
-            let refreshed: LocalIdentity;
-            try {
-              refreshed = await entry.runtime.refreshLocalIdentity();
-            } catch (error) {
-              // Product replacement retires its native session, not the claim.
-              if (!liveLocalWallets.has(entry.runtime)) {
-                return;
-              }
-              throw error;
-            }
-            if (!liveLocalWallets.has(entry.runtime)) {
-              return;
-            }
-            if (
-              !isCurrentLocalWallet(entry.binding) ||
-              refreshed.identityAccountId !== identity.identityAccountId ||
-              refreshed.liteUsername !== identity.liteUsername
-            ) {
-              throw new Error(
-                "A running app has not confirmed the same username yet.",
-              );
-            }
-            entry.identity = refreshed;
-          }),
-      );
       if (!isCurrentLocalWallet(wallet.binding)) {
         throw new Error(
           "Test wallet changed while synchronizing its username.",
         );
-      }
-      if (updates.some((result) => result.status === "rejected")) {
-        showNotification({
-          text: "The wallet username is confirmed, but a running product could not update its account. Reload that product to reconnect.",
-          label: "Product account update failed",
-          browserNotification: false,
-        });
       }
       if (persistenceError !== undefined) {
         throw new Error(
@@ -1988,13 +1950,27 @@ async function createCoreProvider(
   let runtimeDisposed = false;
   const isRuntimeDisposed = (): boolean => runtimeDisposed;
   let runtime: WorkerPairingHostRuntime | WorkerSigningHostRuntime | undefined;
+  let custodyLease = owner?.custodyLease;
+  let nativeChatFiles: BrowserNativeChatFilesHost | undefined;
+  const releaseCustody = (): void => {
+    if (owner !== undefined || custodyLease === undefined) return;
+    const lease = custodyLease;
+    custodyLease = undefined;
+    // Worker termination is queued by dispose first; never hand custody off
+    // while the retired signer can still issue callbacks.
+    setTimeout(() => {
+      void requestCoreCustody({ action: "release", lease }).catch(() => {});
+    }, 0);
+  };
   const disposeNativeRuntime = (): void => {
     runtimeDisposed = true;
     localRuntimeDisposers.delete(disposeNativeRuntime);
-    if (liveWallet !== undefined) {
+    if (liveWallet !== undefined && owner === undefined) {
       liveLocalWallets.delete(liveWallet.runtime);
     }
-    runtime?.dispose();
+    if (owner === undefined) runtime?.dispose();
+    nativeChatFiles?.dispose();
+    releaseCustody();
   };
   localRuntimeDisposers.add(disposeNativeRuntime);
   try {
@@ -2008,13 +1984,39 @@ async function createCoreProvider(
     // this await settles from cache or the in-flight manifest read.
     const chatCapable =
       options.walletOwner !== true && (await chatCapabilityFor(label));
+    if (isRuntimeDisposed()) throw new Error("Wallet host closed while starting");
+    if (localContext !== undefined && owner === undefined) {
+      const acquired = await requestCoreCustody({ action: "acquire", walletRevision: localContext.revision });
+      if (typeof acquired !== "string") throw new Error("Private wallet custody was not acquired");
+      custodyLease = acquired;
+    }
+    if (isRuntimeDisposed()) throw new Error("Wallet host closed while acquiring custody");
     const callbacks = createHostCallbacks({
       label,
       pairingLabel: options.pairingLabel,
       pairingDotSuffix: options.pairingDotSuffix,
       pairingHostGlobal: options.pairingHostGlobal,
       blockingModalScope,
+      custodyLease,
     });
+    if (owner === undefined && custodyLease !== undefined) {
+      const lease = custodyLease;
+      const { createBrowserNativeChatFilesHost } = await runtimeChunkPromise;
+      nativeChatFiles = createBrowserNativeChatFilesHost({
+        async putSources(sources) {
+          await requestCoreCustody({ action: "putSources", lease, sources: [...sources] });
+        },
+        async readSource(sourceId) {
+          const blob = await requestCoreCustody({ action: "readSource", lease, sourceId });
+          if (blob !== undefined && !(blob instanceof Blob)) throw new Error("Invalid private Chat source");
+          return blob;
+        },
+        async releaseSource(sourceId) {
+          await requestCoreCustody({ action: "releaseSource", lease, sourceId });
+        },
+      });
+      callbacks.nativeChatFiles = nativeChatFiles;
+    }
     const forwardAuthState = callbacks.auth.authStateChanged;
     callbacks.auth.authStateChanged = (state) => {
       // Worker messages queued before replacement must never repaint a new
@@ -2065,7 +2067,11 @@ async function createCoreProvider(
         }
       }
     };
-    if (localContext !== undefined) {
+    if (owner !== undefined) {
+      assertInspectorWallet(owner);
+      runtime = owner.runtime;
+      liveWallet = owner;
+    } else if (localContext !== undefined) {
       const secret = await readLocalWalletSecret();
       if (secret === undefined) {
         throw new Error(
@@ -2081,6 +2087,7 @@ async function createCoreProvider(
             hostConfig: {
               ...hostConfig,
               networkSuffix: getActiveServicesConfig().dotns.TLD,
+              coinageInstanceId: getActiveServicesConfig().coinage?.instanceId,
             },
           },
         );
@@ -2105,24 +2112,12 @@ async function createCoreProvider(
           identityAccountId: activatedIdentity.identityAccountId,
         };
         await withLocalIdentityUpdate(async () => {
-          if (owner !== undefined) {
-            assertInspectorWallet(owner);
-            if (owner.binding.identityAccountId !== binding.identityAccountId) {
-              throw new Error(
-                "The product activated a different test identity.",
-              );
-            }
-          }
-          const usernameHint =
-            owner === undefined
-              ? (await readVerifiedLocalIdentity(binding))?.liteUsername
-              : owner.identity.liteUsername;
+          const usernameHint = (await readVerifiedLocalIdentity(binding))?.liteUsername;
           if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
             throw new Error("Test wallet changed during username restoration.");
           }
           if (usernameHint !== undefined) {
-            // Neither disk hints nor another runtime's session prove this
-            // product's native identity. Verify without resetting its grants.
+            // Disk metadata is a hint, not proof of the active native identity.
             activatedIdentity = await signing.refreshLocalIdentity();
             if (
               activatedIdentity.identityAccountId !== binding.identityAccountId
@@ -2141,6 +2136,7 @@ async function createCoreProvider(
           }
           liveWallet = {
             runtime: signing,
+            custodyLease: custodyLease!,
             binding,
             identity: activatedIdentity,
             nativeSessionUiInfo,
@@ -2165,7 +2161,7 @@ async function createCoreProvider(
     const provider = await runtime.createProvider({
       productId,
       executionKind: chatCapable ? "Worker" : "App",
-    });
+    }, owner === undefined ? undefined : callbacks);
     if (
       isRuntimeDisposed() ||
       (localContext === undefined
@@ -2198,15 +2194,18 @@ async function createCoreProvider(
         })
       : noop;
     let unsubscribeOwnerClose: (() => void) | undefined;
+    const providerRuntime = runtime;
     const tracked = trackCoreProvider(
       wrapCoreProviderForDebug(provider, productId),
-      runtime,
+      owner === undefined
+        ? { ...providerRuntime, dispose() { providerRuntime.dispose(); nativeChatFiles?.dispose(); releaseCustody(); } }
+        : { dispose: noop },
       () => {
         runtimeDisposed = true;
         unsubscribeOwnerClose?.();
         localRuntimeDisposers.delete(disposeNativeRuntime);
         if (liveWallet !== undefined) {
-          liveLocalWallets.delete(liveWallet.runtime);
+          if (owner === undefined) liveLocalWallets.delete(liveWallet.runtime);
           providerWallets.delete(tracked);
         }
         unregisterChat();

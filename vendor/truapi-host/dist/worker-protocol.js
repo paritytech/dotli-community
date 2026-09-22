@@ -28,4 +28,5 @@
 // transferables: the sender keeps using its buffer (the worker side posts
 // views into WASM memory) and frames are small, so the copy is the simpler
 // safe choice.
-export {};
+/** Shared cap includes connections still opening or closing during an open. */
+export const MAX_JSON_RPC_CONNECTIONS = 64;

@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -30,7 +30,7 @@ export const ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }) }));
+export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
  */
@@ -66,6 +66,25 @@ export const IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str
  * than only display it.
  */
 export const LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
+/**
+ * Exact Host-resolved payment reviewed before debiting the user's main purse.
+ *
+ * This review never grants a reusable spending permission. Chat authority and
+ * automatic product signing do not authorize it.
+ */
+export const MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
+/**
+ * Trusted context for exporting a verified native Chat attachment.
+ */
+export const NativeChatFileExportRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), metadata: HostNativeChatAttachmentMetadata }));
+/**
+ * Trusted native Chat selection context; never passed to a product.
+ */
+export const NativeChatFilePickRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), maxFiles: S.u32 }));
+/**
+ * Immutable Host-owned source and metadata derived from its actual bytes.
+ */
+export const NativeChatPickedFile = S.lazy(() => S.Struct({ sourceId: S.str, metadata: HostNativeChatAttachmentMetadata }));
 /**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
@@ -139,4 +158,4 @@ export const StatementStoreProductSignReview = S.lazy(() => S.Struct({ account: 
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview }));
+export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview }));

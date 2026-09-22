@@ -116,6 +116,8 @@ import {
   isSharedWalletState,
 } from "@dotli/protocol/wallet-storage";
 import { PROTOCOL_APP_ERRORS } from "./errors";
+import { isCoreCustodyOperation } from "@dotli/protocol/core-custody";
+import { CORE_CUSTODY_DB_NAME, handleCoreCustody } from "./core-custody";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -388,7 +390,7 @@ function bindSharedWalletListener(): void {
     if (
       !isProtocolEnvelope(request) ||
       request.kind !== "request" ||
-      request.method !== "walletStorage"
+      (request.method !== "walletStorage" && request.method !== "coreCustody")
     ) {
       return;
     }
@@ -405,12 +407,24 @@ function bindSharedWalletListener(): void {
         typeof payload !== "object" ||
         payload === null ||
         !("siteId" in payload) ||
-        !("operation" in payload) ||
-        !isSharedWalletOperation(payload.operation)
+        !("operation" in payload)
       ) {
         throw new Error("Invalid wallet operation");
       }
       assertSharedAuthSiteId(payload.siteId);
+      if (request.method === "coreCustody") {
+        if (!isCoreCustodyOperation(payload.operation)) throw new Error("Invalid private custody operation");
+        const result = await handleCoreCustody(payload.operation, request.deadlineMs);
+        postToSource(event.source, event.origin, {
+          namespace: "dotli:protocol",
+          kind: "response",
+          id: request.id,
+          ok: true,
+          result,
+        });
+        return;
+      }
+      if (!isSharedWalletOperation(payload.operation)) throw new Error("Invalid wallet operation");
       const result = await handleWalletOperation(
         payload.operation,
         (state) => {
@@ -535,7 +549,7 @@ function getRequestedNetwork(): RequestedNetwork {
 async function purgeWorkerCaches(): Promise<void> {
   // Throw on enumeration failure and await each delete: a silent log-and-
   // continue would let smoldot boot against the still-present stale DB.
-  const KEEP = new Set(["dotli", "dotli-sw", WALLET_DB_NAME, "dotli-core"]);
+  const KEEP = new Set(["dotli", "dotli-sw", WALLET_DB_NAME, CORE_CUSTODY_DB_NAME, "dotli-core"]);
   if (
     typeof indexedDB === "undefined" ||
     typeof indexedDB.databases !== "function"
@@ -772,7 +786,8 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     if (
       isSharedAuthRequestMethod(data.method) ||
       isSharedModeRequestMethod(data.method) ||
-      data.method === "walletStorage"
+      data.method === "walletStorage" ||
+      data.method === "coreCustody"
     ) {
       return;
     }
@@ -1051,7 +1066,8 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
     if (
       isSharedAuthRequestMethod(data.method) ||
       isSharedModeRequestMethod(data.method) ||
-      data.method === "walletStorage"
+      data.method === "walletStorage" ||
+      data.method === "coreCustody"
     ) {
       return;
     }
@@ -1370,7 +1386,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
     if (
       isSharedAuthRequestMethod(request.method) ||
       isSharedModeRequestMethod(request.method) ||
-      request.method === "walletStorage"
+      request.method === "walletStorage" ||
+      request.method === "coreCustody"
     ) {
       throw new Error(
         `Shared storage request reached the chain engine: ${request.method}`,

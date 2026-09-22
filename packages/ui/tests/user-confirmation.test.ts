@@ -1,12 +1,15 @@
 import type { UserConfirmation } from "@parity/truapi-host";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
+import * as network from "@dotli/config/network";
+import { hexToBytes } from "@parity/truapi/scale";
 
 type UserConfirmationReview = Parameters<
   Required<UserConfirmation>["confirmUserAction"]
 >[0];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -21,6 +24,68 @@ function modalFields(): Record<string, string> {
 }
 
 describe("user confirmation modal", () => {
+  it("reviews each main-purse spend separately without rounding u64 cents", async () => {
+    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
+    vi.spyOn(network, "getActiveServicesConfig").mockReturnValue(services);
+    const { confirmUserAction } = createUserConfirmationAdapters("egui-chat.paseo");
+    const review = {
+      tag: "MainPurseChatPayment",
+      value: {
+        callingProductId: "egui-chat.paseo",
+        recipientIdentity: new Uint8Array(32).fill(7),
+        recipientUsername: "recipient.paseo",
+        amountCents: 9007199254740993n,
+        maxDebitCents: 9007199254740994n,
+        genesisHash: hexToBytes(services.people.genesis),
+        coinageInstanceId: 0,
+        operationId: new Uint8Array(32).fill(9),
+      },
+    } satisfies UserConfirmationReview;
+    const first = confirmUserAction(review);
+    expect(modalFields()).toMatchObject({
+      "Requesting product": "egui-chat.paseo",
+      "Recipient identity": `0x${"07".repeat(32)}`,
+      "Recipient amount": "90071992547409.93 pUSD",
+      "Maximum purse debit (including fees)": "90071992547409.94 pUSD",
+      "Chain genesis": services.people.genesis,
+      "Coinage asset instance": "0",
+      "Payment operation": `0x${"09".repeat(32)}`,
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")!.click();
+    await expect(first).resolves.toBe(true);
+    const second = confirmUserAction({
+      ...review,
+      value: { ...review.value, operationId: new Uint8Array(32).fill(10) },
+    });
+    expect(document.querySelector(".signing-modal")).not.toBeNull();
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!.click();
+    await expect(second).resolves.toBe(false);
+  });
+
+  it("does not offer approval for a payment on an unconfigured chain or asset", async () => {
+    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
+    vi.spyOn(network, "getActiveServicesConfig").mockReturnValue(services);
+    const { confirmUserAction } = createUserConfirmationAdapters("egui-chat.paseo");
+    const value = {
+      callingProductId: "egui-chat.paseo",
+      recipientIdentity: new Uint8Array(32).fill(7),
+      amountCents: 1n,
+      maxDebitCents: 1n,
+      genesisHash: hexToBytes(services.people.genesis),
+      coinageInstanceId: 0,
+      operationId: new Uint8Array(32).fill(9),
+    };
+    await expect(confirmUserAction({
+      tag: "MainPurseChatPayment",
+      value: { ...value, genesisHash: new Uint8Array(32) },
+    })).rejects.toThrow();
+    await expect(confirmUserAction({
+      tag: "MainPurseChatPayment",
+      value: { ...value, coinageInstanceId: 1 },
+    })).rejects.toThrow();
+    expect(document.querySelector(".signing-modal")).toBeNull();
+  });
+
   it("As a dotli integrator, the host shows concurrent confirmation requests one at a time", async () => {
     // Given
     const { confirmUserAction } =

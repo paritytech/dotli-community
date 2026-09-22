@@ -66,8 +66,9 @@ export class WasmPairingHostRuntime {
     permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
     /**
      * Build one product-scoped runtime from this pairing host runtime.
+     * Optional platform callbacks are execution-local; shared authority stays here.
      */
-    productRuntime(product: any, core_callbacks: any): WasmProductRuntime;
+    productRuntime(product: any, core_callbacks: any, platform_callbacks?: any | null): WasmProductRuntime;
     /**
      * Resolve a product's hard-subtree public key from the cache, the
      * persisted slot, or the Account Holder. `timeoutMs` bounds that wait and
@@ -247,8 +248,9 @@ export class WasmSigningHostRuntime {
     permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
     /**
      * Build one product-scoped runtime from this signing host.
+     * Optional platform callbacks are execution-local; custody stays on this host.
      */
-    productRuntime(product: any, core_callbacks: any): WasmProductRuntime;
+    productRuntime(product: any, core_callbacks: any, platform_callbacks?: any | null): WasmProductRuntime;
     /**
      * Resolve a product's hard-subtree public key from the active local
      * signing session.
@@ -364,7 +366,7 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_notifySessionStoreChanged: (a: number) => void;
     readonly wasmpairinghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmpairinghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
-    readonly wasmpairinghostruntime_productRuntime: (a: number, b: number, c: number, d: number) => void;
+    readonly wasmpairinghostruntime_productRuntime: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmpairinghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
     readonly wasmpairinghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_resetSessionState: (a: number) => number;
@@ -393,19 +395,19 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_new: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
-    readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number) => void;
+    readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmsigninghostruntime_productSubtreePublicKey: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_17228: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_17230: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4891: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4892: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_11182: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4893: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_23039: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_23041: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_7349: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_7350: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_16143: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_7351: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

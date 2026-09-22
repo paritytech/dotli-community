@@ -7,8 +7,8 @@ import * as T from './types.js';
 export { ResultAsync, SubscriptionError };
 export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
-export declare const TRUAPI_CODEC_VERSION: 2;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "c587cc31e1b00844";
+export declare const TRUAPI_CODEC_VERSION: 3;
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "0931d05042135353";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     private readonly transport;
@@ -37,8 +37,10 @@ export declare class AccountClient {
     /** Sign bytes directly with a registered ring-VRF member key. */
     ringVrfSign(request: T.HostAccountRingVrfSignRequest): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
     /**
-     * Bind a product account as a Chat v2 device, or seal/open identity-route
-     * payloads without exposing the wallet Chat identity secret.
+     * Operate a Host-owned native Chat device and propose one-shot main-purse
+     * payments. Transport private keys and spendable memos never leave the Host.
+     *
+     * Method 11 (the former raw-crypto interface) is retired, not forwarded.
      */
     deviceChat(request: T.HostProductDeviceChatRequest): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
     /**
