@@ -96,18 +96,16 @@ site is live at `https://<base-domain>`.
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
 - For nginx-only updates, `make deploy-nginx ENV=<env>`.
 
-## Opt-in CI identity proxy rollout (dotli.dev and westendli.dev)
+## Opt-in CI identity proxy rollout
 
 CI normally uploads only the three frontend builds. To also deploy the existing
 NGINX template and identity proxy, set the GitHub Actions **environment variable**
-`DEPLOY_NGINX=true` on the approved `dotli.dev` or `westendli.dev` environment.
-Each environment opts in independently; enabling it on `dotli.dev` does not
-enable or change `westendli.dev`. Other matrix environments remain dist-only
-even if this variable is set there. Deployment planning and triggers are
-unchanged: apply the matching `deploy: dotli.dev` or `deploy: westendli.dev` PR
-label, or push to a PR already carrying it. For a dotli.dev-only rollout, use
-only `deploy: dotli.dev`; remove any other deployment labels before pushing.
-Only enable config rollout for a reviewed deployment commit.
+`DEPLOY_NGINX=true` on the approved `dotli.dev`, `westendli.dev`, or `paseo.fyi`
+environment. Each environment opts in independently; other matrix environments
+remain dist-only even if this variable is set there. Deployment planning and
+triggers are unchanged. For `paseo.fyi`, use the existing feature PR carrying
+`deploy: paseo.fyi`; its frontend and identity proxy share the same reviewed
+deployment revision. Only enable config rollout for a reviewed deployment commit.
 
 Only these environment-to-site mappings are accepted by `ci-deploy-nginx`:
 
@@ -115,6 +113,7 @@ Only these environment-to-site mappings are accepted by `ci-deploy-nginx`:
 | ------------------ | ---------------------- | ----------------------------- | ------------------------------------ |
 | `dotli.dev`        | `ENV=dev-polkadot`     | `/var/www/dotlidev`           | `/etc/nginx/snippets/dotli.dev/`     |
 | `westendli.dev`    | `ENV=dev-westend`      | `/var/www/westendlidev`       | `/etc/nginx/snippets/westendli.dev/` |
+| `paseo.fyi`        | `ENV=fyi-paseo`        | `/var/www/paseofyi`           | `/etc/nginx/snippets/paseo.fyi/`     |
 
 The selected environment must already be provisioned:
 
@@ -128,9 +127,8 @@ The selected environment must already be provisioned:
   uploading config. The workflow does this before uploading frontend files.
 - DNS for the selected site, `*.<site>`, and `*.app.<site>` must reach this
   server, with the existing matching certificate under
-  `/etc/letsencrypt/live/dotli.dev/` or
-  `/etc/letsencrypt/live/westendli.dev/`, respectively. NGINX, its Brotli modules,
-  and the template's DNS resolver at `127.0.0.53` must already be available.
+  `/etc/letsencrypt/live/<site>/`. NGINX, its Brotli modules, and the template's
+  DNS resolver at `127.0.0.53` must already be available.
 - Keep the environment's configured `SENTRY_DSN` secret: CI forwards the same
   value used by the frontend build when rendering the `/t` tunnel. An unset
   secret disables that tunnel; do not omit an existing DSN for config rollout.
@@ -146,12 +144,14 @@ the approved environment:
 make ci-deploy-nginx ENV=dev-polkadot
 # Or, for an independently approved westendli.dev rollout:
 make ci-deploy-nginx ENV=dev-westend
+# Or, for an independently approved paseo.fyi rollout:
+make ci-deploy-nginx ENV=fyi-paseo
 ```
 
 This delegates to `deploy-nginx` with the CI SSH destination, ignoring local
 `REMOTE` settings. It installs snippets under the selected site's isolated
 directory above and rewrites both the site's and snippets' include paths to
-that directory. Shared snippet files and the other site's isolated directory
+that directory. Shared snippet files and other sites' isolated directories
 are not overwritten. The tradeoff is that each opted-in site has its own
 snapshot: future shared snippet fixes must be rolled out to that site too.
 Keep using this CI
@@ -162,8 +162,7 @@ repair but does not reload the running service. This is not an atomic rollback
 or a full provisioning path.
 
 After frontend upload, the opted-in job performs a public read-only GET to
-`https://dotli.dev/__dotli-identity/paseo/attester` or
-`https://westendli.dev/__dotli-identity/paseo/attester`, matching its environment.
+`https://<site>/__dotli-identity/paseo/attester`, matching its environment.
 It requires successful HTTP status and a JSON object containing a 32-byte hex
 `attester`; frontend HTML
 with status 200 fails. No authentication challenge, token, or username is
