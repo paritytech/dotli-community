@@ -165,7 +165,10 @@ vi.mock("@parity/truapi-host/web", () => ({
         closeCallbacks.add(closeProvider);
         if (closeError) closeProvider(closeError);
         return {
-          postMessage: () => { assertLive(); if (providerError) throw providerError; },
+          postMessage: () => {
+            assertLive();
+            if (providerError) throw providerError;
+          },
           subscribe: () => () => {},
           subscribeClose: (callback: (error: Error) => void) => {
             if (providerError !== undefined) callback(providerError);
@@ -298,7 +301,6 @@ describe("host-owned experimental identity", () => {
     expect(auth).toEqual(before);
     expect(wallet.sessions).toHaveLength(1);
   });
-
 
   it("finishes an in-flight claim while a product is replaced", async () => {
     const { experimentalWalletControls: controls, renderAppSubdomain } = boot();

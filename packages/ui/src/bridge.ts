@@ -1953,13 +1953,17 @@ async function createCoreProvider(
   let custodyLease = owner?.custodyLease;
   let nativeChatFiles: BrowserNativeChatFilesHost | undefined;
   const releaseCustody = (): void => {
-    if (owner !== undefined || custodyLease === undefined) return;
+    if (owner !== undefined || custodyLease === undefined) {
+      return;
+    }
     const lease = custodyLease;
     custodyLease = undefined;
     // Worker termination is queued by dispose first; never hand custody off
     // while the retired signer can still issue callbacks.
     setTimeout(() => {
-      void requestCoreCustody({ action: "release", lease }).catch(() => {});
+      void requestCoreCustody({ action: "release", lease }).catch(() => {
+        // Teardown may outlive the protocol iframe; page destruction releases its lock.
+      });
     }, 0);
   };
   const disposeNativeRuntime = (): void => {
@@ -1968,7 +1972,9 @@ async function createCoreProvider(
     if (liveWallet !== undefined && owner === undefined) {
       liveLocalWallets.delete(liveWallet.runtime);
     }
-    if (owner === undefined) runtime?.dispose();
+    if (owner === undefined) {
+      runtime?.dispose();
+    }
     nativeChatFiles?.dispose();
     releaseCustody();
   };
@@ -1984,13 +1990,22 @@ async function createCoreProvider(
     // this await settles from cache or the in-flight manifest read.
     const chatCapable =
       options.walletOwner !== true && (await chatCapabilityFor(label));
-    if (isRuntimeDisposed()) throw new Error("Wallet host closed while starting");
+    if (isRuntimeDisposed()) {
+      throw new Error("Wallet host closed while starting");
+    }
     if (localContext !== undefined && owner === undefined) {
-      const acquired = await requestCoreCustody({ action: "acquire", walletRevision: localContext.revision });
-      if (typeof acquired !== "string") throw new Error("Private wallet custody was not acquired");
+      const acquired = await requestCoreCustody({
+        action: "acquire",
+        walletRevision: localContext.revision,
+      });
+      if (typeof acquired !== "string") {
+        throw new Error("Private wallet custody was not acquired");
+      }
       custodyLease = acquired;
     }
-    if (isRuntimeDisposed()) throw new Error("Wallet host closed while acquiring custody");
+    if (isRuntimeDisposed()) {
+      throw new Error("Wallet host closed while acquiring custody");
+    }
     const callbacks = createHostCallbacks({
       label,
       pairingLabel: options.pairingLabel,
@@ -2004,15 +2019,29 @@ async function createCoreProvider(
       const { createBrowserNativeChatFilesHost } = await runtimeChunkPromise;
       nativeChatFiles = createBrowserNativeChatFilesHost({
         async putSources(sources) {
-          await requestCoreCustody({ action: "putSources", lease, sources: [...sources] });
+          await requestCoreCustody({
+            action: "putSources",
+            lease,
+            sources: [...sources],
+          });
         },
         async readSource(sourceId) {
-          const blob = await requestCoreCustody({ action: "readSource", lease, sourceId });
-          if (blob !== undefined && !(blob instanceof Blob)) throw new Error("Invalid private Chat source");
+          const blob = await requestCoreCustody({
+            action: "readSource",
+            lease,
+            sourceId,
+          });
+          if (blob !== undefined && !(blob instanceof Blob)) {
+            throw new Error("Invalid private Chat source");
+          }
           return blob;
         },
         async releaseSource(sourceId) {
-          await requestCoreCustody({ action: "releaseSource", lease, sourceId });
+          await requestCoreCustody({
+            action: "releaseSource",
+            lease,
+            sourceId,
+          });
         },
       });
       callbacks.nativeChatFiles = nativeChatFiles;
@@ -2112,7 +2141,8 @@ async function createCoreProvider(
           identityAccountId: activatedIdentity.identityAccountId,
         };
         await withLocalIdentityUpdate(async () => {
-          const usernameHint = (await readVerifiedLocalIdentity(binding))?.liteUsername;
+          const usernameHint = (await readVerifiedLocalIdentity(binding))
+            ?.liteUsername;
           if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
             throw new Error("Test wallet changed during username restoration.");
           }
@@ -2130,13 +2160,14 @@ async function createCoreProvider(
           if (
             isRuntimeDisposed() ||
             !isCurrentLocalWallet(binding) ||
-            activatedIdentity === undefined
+            activatedIdentity === undefined ||
+            custodyLease === undefined
           ) {
             throw new Error("Test wallet changed during native activation.");
           }
           liveWallet = {
             runtime: signing,
-            custodyLease: custodyLease!,
+            custodyLease,
             binding,
             identity: activatedIdentity,
             nativeSessionUiInfo,
@@ -2158,10 +2189,13 @@ async function createCoreProvider(
         );
       }
     }
-    const provider = await runtime.createProvider({
-      productId,
-      executionKind: chatCapable ? "Worker" : "App",
-    }, owner === undefined ? undefined : callbacks);
+    const provider = await runtime.createProvider(
+      {
+        productId,
+        executionKind: chatCapable ? "Worker" : "App",
+      },
+      owner === undefined ? undefined : callbacks,
+    );
     if (
       isRuntimeDisposed() ||
       (localContext === undefined
@@ -2198,14 +2232,23 @@ async function createCoreProvider(
     const tracked = trackCoreProvider(
       wrapCoreProviderForDebug(provider, productId),
       owner === undefined
-        ? { ...providerRuntime, dispose() { providerRuntime.dispose(); nativeChatFiles?.dispose(); releaseCustody(); } }
+        ? {
+            ...providerRuntime,
+            dispose() {
+              providerRuntime.dispose();
+              nativeChatFiles?.dispose();
+              releaseCustody();
+            },
+          }
         : { dispose: noop },
       () => {
         runtimeDisposed = true;
         unsubscribeOwnerClose?.();
         localRuntimeDisposers.delete(disposeNativeRuntime);
         if (liveWallet !== undefined) {
-          if (owner === undefined) liveLocalWallets.delete(liveWallet.runtime);
+          if (owner === undefined) {
+            liveLocalWallets.delete(liveWallet.runtime);
+          }
           providerWallets.delete(tracked);
         }
         unregisterChat();

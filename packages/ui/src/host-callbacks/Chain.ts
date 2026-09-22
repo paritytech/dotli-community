@@ -144,36 +144,51 @@ export function createChainConnect(): ChainProvider["connect"] {
 /** HOP is a separate trusted transport, not a fallback chain RPC provider. */
 export function createHopProvider(): Required<HopProvider> {
   return {
-    async allowedHopEndpoints(genesisHash) {
+    allowedHopEndpoints(genesisHash) {
       const bulletin = getActiveServicesConfig().bulletin;
-      return bytesToHex(genesisHash) === bulletin.genesis.toLowerCase()
-        ? [...(bulletin.hopEndpoints ?? [])]
-        : [];
+      return Promise.resolve(
+        bytesToHex(genesisHash) === bulletin.genesis.toLowerCase()
+          ? [...(bulletin.hopEndpoints ?? [])]
+          : [],
+      );
     },
     async connectHop(genesisHash, endpoint) {
       const bulletin = getActiveServicesConfig().bulletin;
       if (
         bytesToHex(genesisHash) !== bulletin.genesis.toLowerCase() ||
-        !bulletin.hopEndpoints?.includes(endpoint)
-      ) throw new Error("HOP endpoint is not configured for this Bulletin chain");
+        bulletin.hopEndpoints?.includes(endpoint) !== true
+      ) {
+        throw new Error(
+          "HOP endpoint is not configured for this Bulletin chain",
+        );
+      }
       const socket = new WebSocket(endpoint);
-      const opened = Promise.withResolvers<void>();
+      const opened = Promise.withResolvers<undefined>();
       const queue: string[] = [];
       let stopped = false;
       let wake: (() => void) | undefined;
       const close = (): void => {
-        if (stopped) return;
+        if (stopped) {
+          return;
+        }
         stopped = true;
         socket.close();
         opened.reject(new Error("HOP connection closed before opening"));
         wake?.();
       };
-      socket.onopen = () => opened.resolve();
+      socket.onopen = () => {
+        opened.resolve(undefined);
+      };
       socket.onerror = close;
       socket.onclose = close;
       socket.onmessage = (event: MessageEvent<unknown>) => {
-        if (stopped) return;
-        if (typeof event.data !== "string") { close(); return; }
+        if (stopped) {
+          return;
+        }
+        if (typeof event.data !== "string") {
+          close();
+          return;
+        }
         queue.push(event.data);
         wake?.();
         wake = undefined;
@@ -181,19 +196,28 @@ export function createHopProvider(): Required<HopProvider> {
       await opened.promise;
       return {
         send(request) {
-          if (stopped || socket.readyState !== WebSocket.OPEN) throw new Error("HOP connection is closed");
+          if (stopped || socket.readyState !== WebSocket.OPEN) {
+            throw new Error("HOP connection is closed");
+          }
           socket.send(request);
         },
         async *responses() {
           try {
             while (!stopped) {
               const response = queue.shift();
-              if (response !== undefined) { yield response; continue; }
-              const next = Promise.withResolvers<void>();
-              wake = () => next.resolve();
+              if (response !== undefined) {
+                yield response;
+                continue;
+              }
+              const next = Promise.withResolvers<undefined>();
+              wake = () => {
+                next.resolve(undefined);
+              };
               await next.promise;
             }
-          } finally { close(); }
+          } finally {
+            close();
+          }
         },
         close,
       };

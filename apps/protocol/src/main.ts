@@ -413,8 +413,13 @@ function bindSharedWalletListener(): void {
       }
       assertSharedAuthSiteId(payload.siteId);
       if (request.method === "coreCustody") {
-        if (!isCoreCustodyOperation(payload.operation)) throw new Error("Invalid private custody operation");
-        const result = await handleCoreCustody(payload.operation, request.deadlineMs);
+        if (!isCoreCustodyOperation(payload.operation)) {
+          throw new Error("Invalid private custody operation");
+        }
+        const result = await handleCoreCustody(
+          payload.operation,
+          request.deadlineMs,
+        );
         postToSource(event.source, event.origin, {
           namespace: "dotli:protocol",
           kind: "response",
@@ -424,7 +429,9 @@ function bindSharedWalletListener(): void {
         });
         return;
       }
-      if (!isSharedWalletOperation(payload.operation)) throw new Error("Invalid wallet operation");
+      if (!isSharedWalletOperation(payload.operation)) {
+        throw new Error("Invalid wallet operation");
+      }
       const result = await handleWalletOperation(
         payload.operation,
         (state) => {
@@ -549,7 +556,13 @@ function getRequestedNetwork(): RequestedNetwork {
 async function purgeWorkerCaches(): Promise<void> {
   // Throw on enumeration failure and await each delete: a silent log-and-
   // continue would let smoldot boot against the still-present stale DB.
-  const KEEP = new Set(["dotli", "dotli-sw", WALLET_DB_NAME, CORE_CUSTODY_DB_NAME, "dotli-core"]);
+  const KEEP = new Set([
+    "dotli",
+    "dotli-sw",
+    WALLET_DB_NAME,
+    CORE_CUSTODY_DB_NAME,
+    "dotli-core",
+  ]);
   if (
     typeof indexedDB === "undefined" ||
     typeof indexedDB.databases !== "function"

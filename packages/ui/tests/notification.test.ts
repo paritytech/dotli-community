@@ -55,6 +55,7 @@ describe("notification host callbacks", () => {
 
   it("As a dotli integrator, the host prompts for notification permission, schedules, fires immediate notifications, and returns ids", async () => {
     // Given
+    await registerNotificationAuthorization();
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");

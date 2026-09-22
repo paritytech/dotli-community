@@ -1,6 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
 import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
+import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
 
 const mocks = vi.hoisted(() => ({
   scheduleNotification: vi.fn(),
@@ -98,16 +107,27 @@ describe("prompt rate limiting across host callbacks", () => {
   });
 
   it("As a dotli integrator, the host counts permission and notification prompts against one shared budget", async () => {
-    // Given: a single host callback surface. No authorization provider is
-    // registered, so every prompt reaches the "ask" path and the limiter.
+    // Reset the real grant between prompts to exercise one callback's shared budget.
+    let status: "NotDetermined" | "Denied" | "Authorized" = "NotDetermined";
+    const unregister = registerPermissionAuthorizationProvider("myapp", {
+      async getPermissionAuthorizationStatuses(requests) {
+        return requests.map(() => status);
+      },
+      async setPermissionAuthorizationStatus(_request, next) {
+        status = next;
+      },
+    });
+    onTestFinished(unregister);
     const { permissions, notifications } = createHostCallbacks({
       label: "myapp",
     });
 
     // When: permission prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+      status = "NotDetermined";
       await permissions.devicePermission("Camera");
     }
+    status = "NotDetermined";
 
     // Then: a notification prompt shares that budget and is rate limited
     // instead of showing a 21st modal.

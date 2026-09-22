@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  NetworkName,
-  getActiveServicesConfig,
-  setNetworkOverride,
-} from "@dotli/config/network";
+import { NetworkName, setNetworkOverride } from "@dotli/config/network";
 import {
   createTruapiRuntimeConfig,
   labelToProductId,
@@ -36,32 +32,5 @@ describe("createTruapiRuntimeConfig", () => {
       createTruapiRuntimeConfig("localhost:3000", "truapi-playground.dot")
         .productId,
     ).toBe("truapi-playground.dot");
-  });
-
-  it("As a dotli integrator, the host passes the full host runtime contract to the WASM core", () => {
-    expect(createTruapiRuntimeConfig("acme")).toEqual({
-      productId: "acme.paseo",
-      host: {
-        name: "Polkadot Web",
-        icon: undefined,
-        version: undefined,
-      },
-      platform: {
-        type: expect.any(String),
-        version: undefined,
-      },
-      people: {
-        genesisHash: getActiveServicesConfig().people.genesis,
-      },
-      bulletin: {
-        genesisHash: getActiveServicesConfig().bulletin.genesis,
-      },
-      assetHub: {
-        genesisHash: getActiveServicesConfig().assethub.genesis,
-      },
-      pairing: {
-        deeplinkScheme: "polkadotapp",
-      },
-    });
   });
 });

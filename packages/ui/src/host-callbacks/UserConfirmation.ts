@@ -402,11 +402,14 @@ function createMainPurseChatPaymentFields(
     review.coinageInstanceId !== services.coinage.instanceId ||
     formatBytes(review.genesisHash) !== services.people.genesis.toLowerCase()
   ) {
-    throw new Error("Main-purse payment does not match the configured chain and asset");
+    throw new Error(
+      "Main-purse payment does not match the configured chain and asset",
+    );
   }
   // Keep u64 amounts exact through the review; Number loses cents above 2^53.
+  const symbol = services.coinage.symbol;
   const amount = (cents: bigint): string =>
-    `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")} ${services.coinage!.symbol}`;
+    `${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} ${symbol}`;
   return [
     { label: "Requesting product", value: review.callingProductId },
     {
@@ -419,18 +422,28 @@ function createMainPurseChatPaymentFields(
       mono: true,
     },
     { label: "Recipient amount", value: amount(review.amountCents) },
-    { label: "Maximum purse debit (including fees)", value: amount(review.maxDebitCents) },
-    { label: "Chain genesis", value: formatBytes(review.genesisHash), mono: true },
+    {
+      label: "Maximum purse debit (including fees)",
+      value: amount(review.maxDebitCents),
+    },
+    {
+      label: "Chain genesis",
+      value: formatBytes(review.genesisHash),
+      mono: true,
+    },
     {
       label: "Coinage asset instance",
-      value: review.coinageInstanceId === undefined
-        ? "Legacy single-asset runtime"
-        : String(review.coinageInstanceId),
+      value: String(review.coinageInstanceId),
     },
-    { label: "Payment operation", value: formatBytes(review.operationId), mono: true },
+    {
+      label: "Payment operation",
+      value: formatBytes(review.operationId),
+      mono: true,
+    },
     {
       label: "One-time payment",
-      value: "Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.",
+      value:
+        "Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.",
       warning: true,
     },
   ];

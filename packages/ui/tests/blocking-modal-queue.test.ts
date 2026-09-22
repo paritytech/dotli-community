@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
@@ -12,6 +12,19 @@ afterEach(() => {
 describe("blocking modal queue", () => {
   it("As a dotli integrator, the host serializes user confirmation and device permission prompts", async () => {
     // Given
+    let status: "NotDetermined" | "Denied" | "Authorized" = "NotDetermined";
+    const unregister = registerPermissionAuthorizationProvider(
+      "localhost:3000",
+      {
+        async getPermissionAuthorizationStatuses(requests) {
+          return requests.map(() => status);
+        },
+        async setPermissionAuthorizationStatus(_request, next) {
+          status = next;
+        },
+      },
+    );
+    onTestFinished(unregister);
     const scope = createBlockingModalCoordinator().createScope();
     const callbacks = createHostCallbacks({
       label: "localhost:3000",

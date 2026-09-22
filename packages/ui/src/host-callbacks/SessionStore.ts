@@ -409,7 +409,8 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
   const custodyKey = (key: CoreStorageKey): string => {
     if (
       !experimental ||
-      !custodyLease ||
+      custodyLease === undefined ||
+      custodyLease === "" ||
       walletMutationPending ||
       generation !== localWalletStorageGeneration()
     ) {
@@ -424,29 +425,57 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case "NativeChatProducts":
       case "DeviceEncryptionKey":
         return encoded;
-      default:
-        return hexNoPrefix(new TextEncoder().encode(`${generation}:`)) + encoded;
+      case "AuthSession":
+      case "PairingDeviceIdentity":
+      case "PermissionAuthorization":
+      case "AllowanceKeys":
+      case "LastProcessedPairingStatement":
+      case "AutoSigningKey":
+      case "AutoSigningKeys":
+      case "RingVrfRegistry":
+      case "StatementRenewalTargets":
+      case "ProductSubtree":
+      case "SsoResponderRequestLedger":
+      case "ProductManifest":
+        return (
+          hexNoPrefix(new TextEncoder().encode(`${generation}:`)) + encoded
+        );
     }
   };
   return {
     async readCoreStorage(key) {
       if (experimental) {
-        const result = await requestCoreCustody({ action: "read", lease: custodyLease ?? "", key: custodyKey(key) });
-        if (result !== undefined && !(result instanceof Uint8Array)) throw new Error("Invalid private custody record");
+        const result = await requestCoreCustody({
+          action: "read",
+          lease: custodyLease ?? "",
+          key: custodyKey(key),
+        });
+        if (result !== undefined && !(result instanceof Uint8Array)) {
+          throw new Error("Invalid private custody record");
+        }
         return result;
       }
       return readCoreStorageValue(key);
     },
     async writeCoreStorage(key, value) {
       if (experimental) {
-        await requestCoreCustody({ action: "write", lease: custodyLease ?? "", key: custodyKey(key), value });
+        await requestCoreCustody({
+          action: "write",
+          lease: custodyLease ?? "",
+          key: custodyKey(key),
+          value,
+        });
         return;
       }
       await writeCoreStorageValue(key, value);
     },
     async clearCoreStorage(key) {
       if (experimental) {
-        await requestCoreCustody({ action: "clear", lease: custodyLease ?? "", key: custodyKey(key) });
+        await requestCoreCustody({
+          action: "clear",
+          lease: custodyLease ?? "",
+          key: custodyKey(key),
+        });
         return;
       }
       await clearCoreStorageValue(key);
@@ -470,12 +499,8 @@ async function readCoreStorageValue(
     }
     return decodeStoredBytes(raw, "shared auth session");
   }
-  const raw = localStorage.getItem(
-    coreLocalStorageKey(key),
-  );
-  return raw === null
-    ? undefined
-    : await decodeCoreStorageValue(key, raw);
+  const raw = localStorage.getItem(coreLocalStorageKey(key));
+  return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
 }
 
 function decodeStoredBytes(
@@ -507,9 +532,7 @@ async function writeCoreStorageValue(
   localStorage.setItem(coreLocalStorageKey(key), encoded);
 }
 
-async function clearCoreStorageValue(
-  key: CoreStorageKey,
-): Promise<void> {
+async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
   if (key.tag === "AuthSession") {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
@@ -519,9 +542,7 @@ async function clearCoreStorageValue(
   localStorage.removeItem(coreLocalStorageKey(key));
 }
 
-function coreLocalStorageKey(
-  key: CoreStorageKey,
-): string {
+function coreLocalStorageKey(key: CoreStorageKey): string {
   switch (key.tag) {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;

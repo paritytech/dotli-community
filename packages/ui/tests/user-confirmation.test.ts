@@ -25,9 +25,11 @@ function modalFields(): Record<string, string> {
 
 describe("user confirmation modal", () => {
   it("reviews each main-purse spend separately without rounding u64 cents", async () => {
-    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
+    const services =
+      network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
     vi.spyOn(network, "getActiveServicesConfig").mockReturnValue(services);
-    const { confirmUserAction } = createUserConfirmationAdapters("egui-chat.paseo");
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("egui-chat.paseo");
     const review = {
       tag: "MainPurseChatPayment",
       value: {
@@ -63,9 +65,11 @@ describe("user confirmation modal", () => {
   });
 
   it("does not offer approval for a payment on an unconfigured chain or asset", async () => {
-    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
+    const services =
+      network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
     vi.spyOn(network, "getActiveServicesConfig").mockReturnValue(services);
-    const { confirmUserAction } = createUserConfirmationAdapters("egui-chat.paseo");
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("egui-chat.paseo");
     const value = {
       callingProductId: "egui-chat.paseo",
       recipientIdentity: new Uint8Array(32).fill(7),
@@ -75,14 +79,18 @@ describe("user confirmation modal", () => {
       coinageInstanceId: 0,
       operationId: new Uint8Array(32).fill(9),
     };
-    await expect(confirmUserAction({
-      tag: "MainPurseChatPayment",
-      value: { ...value, genesisHash: new Uint8Array(32) },
-    })).rejects.toThrow();
-    await expect(confirmUserAction({
-      tag: "MainPurseChatPayment",
-      value: { ...value, coinageInstanceId: 1 },
-    })).rejects.toThrow();
+    await expect(
+      confirmUserAction({
+        tag: "MainPurseChatPayment",
+        value: { ...value, genesisHash: new Uint8Array(32) },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      confirmUserAction({
+        tag: "MainPurseChatPayment",
+        value: { ...value, coinageInstanceId: 1 },
+      }),
+    ).rejects.toThrow();
     expect(document.querySelector(".signing-modal")).toBeNull();
   });
 

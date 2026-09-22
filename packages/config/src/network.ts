@@ -94,7 +94,10 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       rpcs: ["wss://paseo-bulletin-next-rpc.polkadot.io"],
       blockTimeMs: 6000,
       ipfsGateways: ["https://paseo-bulletin-next-ipfs.polkadot.io"],
-      hopEndpoints: ["wss://paseo-hop-next-0.polkadot.io", "wss://paseo-hop-next-1.polkadot.io"],
+      hopEndpoints: [
+        "wss://paseo-hop-next-0.polkadot.io",
+        "wss://paseo-hop-next-1.polkadot.io",
+      ],
     },
     people: {
       genesis:
