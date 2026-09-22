@@ -203,8 +203,8 @@ ci-deploy:
 # Opt-in CI config rollout. Reject implicit ENV and mismatched web roots before
 # uploading anything; never inherit the local REMOTE or the default paseo env.
 ci-deploy-nginx:
-	@test "$(origin ENV)" = "command line" || (echo "ci-deploy-nginx: pass ENV=dev-polkadot or ENV=dev-westend explicitly"; exit 1)
-	@case "$(ENV)" in dev-polkadot|dev-westend) ;; *) echo "ci-deploy-nginx: only ENV=dev-polkadot or ENV=dev-westend is allowed"; exit 1 ;; esac
+	@test "$(origin ENV)" = "command line" || (echo "ci-deploy-nginx: pass ENV=dev-polkadot, ENV=dev-westend, or ENV=fyi-paseo explicitly"; exit 1)
+	@case "$(ENV)" in dev-polkadot|dev-westend|fyi-paseo) ;; *) echo "ci-deploy-nginx: only ENV=dev-polkadot, ENV=dev-westend, or ENV=fyi-paseo is allowed"; exit 1 ;; esac
 	@test -n "$(DEPLOY_USER)" || (echo "ci-deploy-nginx: DEPLOY_USER not set"; exit 1)
 	@test -n "$(DEPLOY_HOST)" || (echo "ci-deploy-nginx: DEPLOY_HOST not set"; exit 1)
 	@test "$(DEPLOY_PATH)" = "$(DEPLOY_PATH_$(ENV))" || (echo "ci-deploy-nginx: DEPLOY_PATH must be $(DEPLOY_PATH_$(ENV)) for ENV=$(ENV)"; exit 1)
