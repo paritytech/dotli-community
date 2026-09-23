@@ -231,12 +231,12 @@ describe("isEnforceableDevicePermission", () => {
 });
 
 describe("device permission prompts", () => {
-// 0.20 passes the requesting product ahead of the permission. The prompt copy
-// here is product-agnostic, so any well-formed context exercises the same path.
-const TEST_PRODUCT = {
-  productId: "myapp",
-  executionKind: { tag: "App" },
-} as const;
+  // 0.20 passes the requesting product ahead of the permission. The prompt copy
+  // here is product-agnostic, so any well-formed context exercises the same path.
+  const TEST_PRODUCT = {
+    productId: "myapp",
+    executionKind: { tag: "App" },
+  } as const;
 
   async function grantAndCountReloads(
     permission: "Camera" | "Notifications",
@@ -247,11 +247,10 @@ const TEST_PRODUCT = {
     };
     window.addEventListener("dotli:device-permission-changed", onReload);
 
-    const response =
-      createPromptPermission("myapp").devicePermission(
-        TEST_PRODUCT,
-        permission,
-      );
+    const response = createPromptPermission("myapp").devicePermission(
+      TEST_PRODUCT,
+      permission,
+    );
     await vi.waitFor(() => {
       expect(document.querySelector(".signing-btn-sign")).not.toBeNull();
     });
