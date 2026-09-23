@@ -202,7 +202,7 @@
         "@dotli/storage": "workspace:*",
         "@ensdomains/content-hash": "^3.0.0",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi-provider": "0.2.0",
+        "@parity/truapi-provider": "0.2.1",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@polkadot-api/json-rpc-provider-proxy": "^0.4.0",
         "@polkadot-api/substrate-bindings": "0.20.3",
@@ -674,7 +674,7 @@
 
     "@parity/truapi-host": ["@parity/truapi-host@file:vendor/truapi-host", { "dependencies": { "@parity/truapi": "file:../truapi" }, "devDependencies": { "@types/bun": "^1.3.0", "neverthrow": "^8.2.0", "typescript": "^5.7" } }],
 
-    "@parity/truapi-provider": ["@parity/truapi-provider@0.2.0", "", {}, "sha512-rw09aF/OeVbKgCLftLqcw/4IqLXRhrNxd4MOuR+l5nd7M1RzKSPc2BU05jBD3a7h+EwsRk3cZG0cN1PbLZvEiw=="],
+    "@parity/truapi-provider": ["@parity/truapi-provider@0.2.1", "", {}, "sha512-cj3gnPfwhW2HzsRiPhB4BeSoT6RmdWb+VIvGQd8P7xK52h19jiFvP7MVR7opndh9WzkP16P/6iJvy7uMj1/MiA=="],
 
     "@playwright/test": ["@playwright/test@1.62.1", "", { "dependencies": { "playwright": "1.62.1" }, "bin": { "playwright": "cli.js" } }, "sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ=="],
 

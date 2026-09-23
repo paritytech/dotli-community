@@ -14,3 +14,11 @@ description = "Chain-spec genesis files embed public SS58 account addresses (pre
 paths = [
   '''packages/resolver/src/chain-specs/.*\.json$''',
 ]
+
+[[allowlists]]
+description = "TRUAPI_WIRE_SCHEMA_HASH is the public TrUAPI wire-schema fingerprint (published in @parity/truapi) that vendored truapi builds embed; it trips generic-api-key but is not a secret."
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = [
+  '''TRUAPI_WIRE_SCHEMA_HASH\s*[:=]\s*["'][0-9a-f]{16}["']''',
+]

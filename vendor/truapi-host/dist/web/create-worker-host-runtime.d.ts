@@ -1,5 +1,5 @@
 import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider, WorkerDemandChange } from "../index.js";
-import type { LocalIdentity, LocalIdentityProgress } from "../worker-protocol.js";
+import type { HostRole, LocalIdentity, LocalIdentityProgress } from "../worker-protocol.js";
 export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "executionKind">;
 export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
     /** Bare dotNS network suffix (`dot`, `paseo`, or `testnet`). */
@@ -37,6 +37,14 @@ export interface WorkerPairingHostRuntime {
      */
     activateExternalSession(blob: Uint8Array): Promise<void>;
     /**
+     * Establish a session from host-held BIP-39 entropy.
+     *
+     * Signing hosts only. A pairing host has no local secret and rejects this:
+     * it waits for a wallet to answer over the statement-store channel instead.
+     */
+    activateLocalSession(secret: Uint8Array, liteUsername?: string): Promise<void>;
+    setGrantAllowancesUnchecked(granted: boolean): Promise<void>;
+    /**
      * Drop the active paired session without notifying the peer. Rejects on a
      * disposed runtime, as
      * {@link WorkerPairingHostRuntime.activateStoredSession} does.
@@ -46,6 +54,7 @@ export interface WorkerPairingHostRuntime {
     getPermissionAuthorizationStatuses(productId: string, requests: PermissionAuthorizationRequest[]): Promise<PermissionAuthorizationStatus[]>;
     setPermissionAuthorizationStatus(productId: string, request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
     getSessionChatIdentityKey(): Promise<Uint8Array | undefined>;
+    getDeviceStatementKey(): Promise<Uint8Array | undefined>;
     getDeviceEncryptionKey(): Promise<Uint8Array>;
     getProductSubtreePublicKey(productId: string, timeoutMs?: number): Promise<Uint8Array | undefined>;
     /**
@@ -81,15 +90,24 @@ interface CreateWebWorkerHostRuntimeOptions {
     logLevel?: LogLevel;
     hostConfig: WebWorkerHostConfig | WebWorkerSigningHostConfig;
     initTimeoutMs?: number;
-    runtimeKind?: "pairing" | "signing";
+    /**
+     * Host role the worker constructs. Omitted means `"pairing"`.
+     *
+     * `"signing"` requires a worker loading the `testing` WASM bundle, the only
+     * one built with a signing host in it.
+     */
+    role?: HostRole;
+    /**
+     * How long `dispose()` waits for open `worker.beginOperation` holds before
+     * tearing down anyway. Defaults to 30s.
+     */
+    operationGraceMs?: number;
 }
 export interface CreateWebWorkerPairingHostRuntimeOptions extends CreateWebWorkerHostRuntimeOptions {
     hostConfig: WebWorkerHostConfig;
-    runtimeKind?: "pairing";
 }
 export interface CreateWebWorkerSigningHostRuntimeOptions extends CreateWebWorkerHostRuntimeOptions {
     hostConfig: WebWorkerSigningHostConfig;
-    runtimeKind?: "signing";
 }
 export type WebWorkerHostCallbacks = RequiredHostCallbacks;
 export declare function createWebWorkerPairingHostRuntime(worker: Worker, host: WebWorkerHostCallbacks, options: CreateWebWorkerPairingHostRuntimeOptions): Promise<WorkerPairingHostRuntime>;

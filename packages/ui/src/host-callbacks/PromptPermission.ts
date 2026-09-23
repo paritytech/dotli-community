@@ -2,9 +2,13 @@
 // the product reply, so a slow modal blocks the product just as long as the
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
+//
+// A user's answer is durable (`AllowAlways` / `Deny`), matching the grant the
+// topbar permissions menu shows and resets. Auto-grants answer `AllowOnce` so
+// the core records nothing the user never saw.
 
 import { withActiveTld } from "@dotli/config/network";
-import type { Permissions } from "@parity/truapi-host";
+import type { PermissionDecision, Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
@@ -48,14 +52,17 @@ export function createPromptPermission(
   // its prompt budget by alternating prompt kinds.
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
-  const devicePermission: Permissions["devicePermission"] = async (tag) => {
+  const devicePermission: Permissions["devicePermission"] = async (
+    _product,
+    tag,
+  ) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
-      return { granted: true };
+      return "AllowOnce";
     }
-    return {
-      granted: await decidePromptPermission(
+    return userDecision(
+      await decidePromptPermission(
         label,
         tag,
         {
@@ -65,16 +72,19 @@ export function createPromptPermission(
         },
         modalScope,
       ),
-    };
+    );
   };
 
-  const remotePermission: Permissions["remotePermission"] = async (request) => {
+  const remotePermission: Permissions["remotePermission"] = async (
+    _product,
+    request,
+  ) => {
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
-      return { granted: true };
+      return "AllowOnce";
     }
-    return {
-      granted: await decidePromptPermission(
+    return userDecision(
+      await decidePromptPermission(
         label,
         name,
         {
@@ -83,10 +93,14 @@ export function createPromptPermission(
         },
         modalScope,
       ),
-    };
+    );
   };
 
   return { devicePermission, remotePermission };
+}
+
+function userDecision(granted: boolean): PermissionDecision {
+  return granted ? "AllowAlways" : "Deny";
 }
 
 export async function decidePromptPermission(

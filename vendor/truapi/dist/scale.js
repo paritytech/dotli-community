@@ -6,7 +6,13 @@
  */
 import { Bytes, Enum, Struct, createCodec, createDecoder, enhanceCodec, str, u8, _void, } from "scale-ts";
 import { bytesToHex as encodeHex, hexToBytes as decodeHex, } from "@noble/hashes/utils.js";
-export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, bool, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
+export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
+/** SCALE boolean, rejecting byte values Rust cannot decode. */
+export const bool = enhanceCodec(u8, (value) => (value ? 1 : 0), (byte) => {
+    if (byte > 1)
+        throw new Error("Invalid SCALE boolean");
+    return byte === 1;
+});
 /**
  * Substrate `OptionBool`: a one-byte `Option<bool>`.
  *
@@ -66,6 +72,9 @@ export function CallError(domain) {
         Unsupported: _void,
         MalformedFrame: Struct({ reason: str }),
         HostFailure: Struct({ reason: str }),
+        // Appended last, mirroring the Rust enum: the variants above keep their
+        // SCALE indices.
+        Cancelled: _void,
     });
 }
 /**

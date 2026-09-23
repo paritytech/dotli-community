@@ -21,9 +21,12 @@ export const CALLBACK_NAMES = [
     "devicePermission",
     "remotePermission",
     "removePocketCard",
+    "beginOperation",
+    "endOperation",
     "read",
     "write",
     "clear",
+    "confirmPermission",
     "confirmUserAction",
 ];
 export const SUBSCRIPTION_NAMES = [
@@ -31,6 +34,7 @@ export const SUBSCRIPTION_NAMES = [
     "subscribeLocale",
     "subscribePocketCards",
     "lookupPreimage",
+    "subscribeStorage",
     "subscribeTheme",
 ];
 function rawCallbacks(bridge) {
@@ -44,11 +48,14 @@ function rawCallbacks(bridge) {
         navigateTo: (url) => bridge.callbackRequest("navigateTo", [url]),
         pushNotification: (notification) => bridge.callbackRequest("pushNotification", [notification]),
         cancelNotification: (id) => bridge.callbackRequest("cancelNotification", [id]),
-        devicePermission: (request) => bridge.callbackRequest("devicePermission", [request]),
-        remotePermission: (request) => bridge.callbackRequest("remotePermission", [request]),
+        devicePermission: (product, request) => bridge.callbackRequest("devicePermission", [product, request]),
+        remotePermission: (product, request) => bridge.callbackRequest("remotePermission", [product, request]),
+        beginOperation: (product, label) => bridge.callbackRequest("beginOperation", [product, label]),
+        endOperation: (product, id) => bridge.callbackRequest("endOperation", [product, id]),
         read: (key) => bridge.callbackRequest("read", [key]),
         write: (key, value) => bridge.callbackRequest("write", [key, value]),
         clear: (key) => bridge.callbackRequest("clear", [key]),
+        confirmPermission: (review) => bridge.callbackRequest("confirmPermission", [review]),
         confirmUserAction: (review) => bridge.callbackRequest("confirmUserAction", [review]),
     };
 }
@@ -56,6 +63,7 @@ function subscriptionRawCallbacks(bridge) {
     return {
         subscribeLocale: (sendItem, sendError) => bridge.startSubscription("subscribeLocale", null, sendItem, sendError),
         lookupPreimage: (key, sendItem, sendError) => bridge.startSubscription("lookupPreimage", key, sendItem, sendError),
+        subscribeStorage: (key, sendItem, sendError) => bridge.startSubscription("subscribeStorage", key, sendItem, sendError),
         subscribeTheme: (sendItem, sendError) => bridge.startSubscription("subscribeTheme", null, sendItem, sendError),
     };
 }
@@ -95,7 +103,7 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
 export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
     switch (name) {
         case "subscribeChatRooms":
-            if (payload === null) {
+            if (!(payload instanceof Uint8Array)) {
                 console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
@@ -103,17 +111,23 @@ export function startRawSubscription(callbacks, name, payload, sendItem, sendErr
         case "subscribeLocale":
             return callbacks.subscribeLocale(sendItem, sendError);
         case "subscribePocketCards":
-            if (payload === null) {
+            if (!(payload instanceof Uint8Array)) {
                 console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
             return callbacks.subscribePocketCards?.(payload, sendItem, sendError);
         case "lookupPreimage":
-            if (payload === null) {
+            if (!(payload instanceof Uint8Array)) {
                 console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
             return callbacks.lookupPreimage(payload, sendItem, sendError);
+        case "subscribeStorage":
+            if (typeof payload !== "string") {
+                console.warn(`[truapi worker] ${name} requires payload`);
+                return undefined;
+            }
+            return callbacks.subscribeStorage(payload, sendItem, sendError);
         case "subscribeTheme":
             return callbacks.subscribeTheme(sendItem, sendError);
     }
