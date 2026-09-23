@@ -12,7 +12,6 @@ import {
 } from "./polkavm-runtime-assets";
 import { Tri2dRenderer } from "./tri2d-renderer";
 import { installPolkaVmMenu, type PolkaVmMenu } from "./polkavm-menu";
-import { PolkaVmChainFollowPause } from "./polkavm-chain-follow";
 import {
   installPolkaVmTouchControls,
   type PolkaVmTouchControls,
@@ -1118,7 +1117,6 @@ export interface HostFrameResponseQueueOptions {
   maxRetries?: number;
   setTimer?: (callback: () => void, delayMs: number) => number;
   clearTimer?: (timer: number) => void;
-  nextResponse?: () => Uint8Array | undefined;
 }
 
 interface HostFrameResponseEntry {
@@ -1144,14 +1142,12 @@ export class HostFrameResponseQueue {
   private readonly maxRetries: number;
   private readonly setTimer: (callback: () => void, delayMs: number) => number;
   private readonly clearTimer: (timer: number) => void;
-  private readonly nextResponse?: () => Uint8Array | undefined;
   private readonly queue: HostFrameResponseEntry[] = [];
   private queuedBytes = 0;
   private inFlight: HostFrameResponseEntry | null = null;
   private retryTimer: number | null = null;
   private nextSeq = 1;
   private started = false;
-  private paused = false;
   private closed = false;
 
   constructor(
@@ -1165,7 +1161,6 @@ export class HostFrameResponseQueue {
     this.maxBytes = options.maxBytes ?? MAX_PENDING_HOST_FRAME_BYTES;
     this.retryDelayMs = options.retryDelayMs ?? HOST_FRAME_RETRY_DELAY_MS;
     this.maxRetries = options.maxRetries ?? MAX_HOST_FRAME_RETRIES;
-    this.nextResponse = options.nextResponse;
     this.setTimer =
       options.setTimer ??
       ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
@@ -1209,17 +1204,6 @@ export class HostFrameResponseQueue {
     this.pump();
   }
 
-  setPaused(paused: boolean): void {
-    this.paused = paused;
-    if (paused && this.retryTimer !== null) {
-      this.clearTimer(this.retryTimer);
-      this.retryTimer = null;
-    }
-    if (!paused) {
-      this.pump();
-    }
-  }
-
   // Returns true when the message was a delivery ack consumed by the queue.
   handleMessage(message: Record<string, unknown> | null): boolean {
     const type = message?.type;
@@ -1251,17 +1235,12 @@ export class HostFrameResponseQueue {
         );
         return true;
       }
-      this.inFlight = null;
-      // A rejection racing with pause says nothing about the guest's ability
-      // to drain while running. Retain it without spending the retry budget.
-      if (this.paused) {
-        return true;
-      }
       entry.retries += 1;
       if (entry.retries > this.maxRetries) {
         this.abort(new Error("Host-frame response retry limit exceeded"));
         return true;
       }
+      this.inFlight = null;
       this.scheduleRetry();
       return true;
     }
@@ -1288,17 +1267,10 @@ export class HostFrameResponseQueue {
     if (
       !this.started ||
       this.closed ||
-      this.paused ||
       this.inFlight !== null ||
-      this.retryTimer !== null
+      this.retryTimer !== null ||
+      this.queue.length === 0
     ) {
-      return;
-    }
-    if (this.queue.length === 0) {
-      const next = this.nextResponse?.();
-      if (next !== undefined) {
-        this.enqueue(next);
-      }
       return;
     }
     const entry = this.queue[0];
@@ -3103,13 +3075,7 @@ async function startPolkaVmApplication(
   const failHostFrame = (error: Error): void => {
     failRuntime(error);
   };
-  const chainFollows = new PolkaVmChainFollowPause((bytes) => {
-    const request = ownedBytes(bytes);
-    hostFramePort.postMessage(request, [request.buffer]);
-  }, failHostFrame);
-  const hostFrameQueue = new HostFrameResponseQueue(worker, failHostFrame, {
-    nextResponse: () => chainFollows.nextInterrupted(),
-  });
+  const hostFrameQueue = new HostFrameResponseQueue(worker, failHostFrame);
   hostFramePort.onmessage = (event: MessageEvent<unknown>): void => {
     if (
       !(event.data instanceof Uint8Array) ||
@@ -3122,9 +3088,7 @@ async function startPolkaVmApplication(
     canvas.dataset.polkavmHostFrameResponses = String(
       Number(canvas.dataset.polkavmHostFrameResponses) + 1,
     );
-    if (chainFollows.receive(event.data)) {
-      hostFrameQueue.enqueue(event.data);
-    }
+    hostFrameQueue.enqueue(event.data);
   };
   hostFramePort.onmessageerror = () => {
     failHostFrame(new Error("Host port could not decode a host frame"));
@@ -3567,7 +3531,6 @@ async function startPolkaVmApplication(
     worker.terminate();
     webGpu?.dispose();
     void audioContext?.close();
-    chainFollows.close();
     closeHostFramePort();
     hostFrameQueue.close();
   };
@@ -3609,17 +3572,10 @@ async function startPolkaVmApplication(
       setInputPaused(true);
     }
     paused = next;
-    if (paused) {
-      hostFrameQueue.setPaused(true);
-    }
-    chainFollows.setPaused(paused);
     canvas.dataset.polkavmPaused = String(paused);
     // Old audio may already be in flight; only a resume ack reopens playback.
     pauseAcknowledged = true;
     worker.postMessage({ type: "pause", paused });
-    if (!paused) {
-      hostFrameQueue.setPaused(false);
-    }
     if (paused) {
       window.clearTimeout(timer);
       for (const source of audioSources) {
@@ -3861,10 +3817,11 @@ async function startPolkaVmApplication(
           failRuntime(new Error("PolkaVM guest emitted an invalid host frame"));
           return;
         }
+        const request = ownedBytes(bytes);
         canvas.dataset.polkavmHostFrameRequests = String(
           Number(canvas.dataset.polkavmHostFrameRequests) + 1,
         );
-        chainFollows.request(bytes);
+        hostFramePort.postMessage(request, [request.buffer]);
         break;
       }
       case "frame": {

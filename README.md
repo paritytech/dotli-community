@@ -112,14 +112,6 @@ PolkaVM runtime ABI 1. Guest Host requests use the neutral
 `host_frame_send`/`host_frame_poll` ABI; the browser worker exposes the same
 transport as `host-frame-request`/`host-frame-response` messages.
 
-Hidden tabs and the in-app menu pause guest execution without discarding its
-session state. Active chain-head follows are stopped upstream at that boundary;
-late events are discarded rather than filling the paused guest's bounded queue.
-After resume, each stopped follow receives a TrUAPI subscription interruption
-with a `HostFailure` reason. Apps must re-subscribe and rebuild their chain view
-after interruption. Other replies retain their normal queue bounds, and response
-delivery retries do not run while paused.
-
 App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and
 bounded capability negotiation; TrUAPI, MotionSample v1, text, IME, focus, and
 wheel input use the same pinned browser runtime as native Hosts. UI output v1 applies
