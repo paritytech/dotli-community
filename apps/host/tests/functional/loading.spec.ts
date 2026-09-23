@@ -124,7 +124,20 @@ const stoppedThenSuccessfulResolve = (cid: string): string => `
   ${READY}
   var resolveAttempts = 0;
   window.addEventListener("message", function(e) {
-    if (!e.data || e.data.namespace !== "dotli:protocol" || e.data.method !== "resolveDotName") {
+    if (!e.data || e.data.namespace !== "dotli:protocol") {
+      return;
+    }
+    if (e.data.method === "resolveExecutableManifest") {
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ok: true,
+        result: { kind: "empty" },
+      }, "*");
+      return;
+    }
+    if (e.data.method !== "resolveDotName") {
       return;
     }
     resolveAttempts += 1;
@@ -167,13 +180,60 @@ const nullResolveResponse = `
 const successfulResolveResponse = (cid: string): string => `
   ${READY}
   window.addEventListener("message", function(e) {
-    if (e.data && e.data.namespace === "dotli:protocol" && e.data.method === "resolveDotName") {
+    if (!e.data || e.data.namespace !== "dotli:protocol") {
+      return;
+    }
+    if (e.data.method === "resolveExecutableManifest") {
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ok: true,
+        result: { kind: "empty" },
+      }, "*");
+      return;
+    }
+    if (e.data.method === "resolveDotName") {
       window.parent.postMessage({
         namespace: "dotli:protocol",
         kind: "response",
         id: e.data.id,
         ok: true,
         result: ${JSON.stringify(cid)},
+      }, "*");
+    }
+  });
+`;
+
+const successfulContenthashWithAppManifestResponse = (
+  manifestResponse:
+    | { ok: true; result: unknown }
+    | { ok: false; error: string; errorName?: string },
+): string => `
+  ${READY}
+  window.addEventListener("message", function(e) {
+    if (!e.data || e.data.namespace !== "dotli:protocol") {
+      return;
+    }
+    if (e.data.method === "resolveDotName") {
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ok: true,
+        result: "bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa",
+      }, "*");
+      return;
+    }
+    if (e.data.method === "resolveExecutableManifest") {
+      var response = e.data.payload.kind === "app"
+        ? ${JSON.stringify(manifestResponse)}
+        : { ok: true, result: { kind: "empty" } };
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ...response,
       }, "*");
     }
   });
@@ -248,10 +308,69 @@ test("As a user, a stopped chainHead follow reconnects once without showing a do
 
   // When
   await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
-  await findAppFrame(page, 10_000);
+  expect(await findAppFrame(page, 10_000)).not.toBeNull();
 
   // Then
   await expect(page.locator(".error-page-title")).toHaveCount(0);
+});
+
+test("As a user, when executable-manifest resolution fails, I see the original resolution error instead of a sandbox manifest error", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-direct");
+  await mockProtocolIframe(
+    page,
+    successfulContenthashWithAppManifestResponse({
+      ok: false,
+      error:
+        "Sync to Asset Hub Paseo timed out after 45s — unable to reach peers",
+      errorName: "NetworkSyncTimeoutError",
+    }),
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    ERROR_TITLES.DOMAIN_UNREACHABLE,
+    { timeout: 10_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toHaveText(
+    HOST_ERRORS.HUB_SYNC_TIMEOUT,
+  );
+  await expect(page.locator("#app iframe")).toHaveCount(0);
+});
+
+test("As a user, when the app executable manifest is invalid, I see its validation failure before the sandbox launches", async ({
+  page,
+}) => {
+  // Given
+  await setBackend(page, "smoldot-direct");
+  await mockProtocolIframe(
+    page,
+    successfulContenthashWithAppManifestResponse({
+      ok: true,
+      result: {
+        kind: "invalid",
+        errors: ["runtime.entrypoint must be a non-empty string"],
+      },
+    }),
+  );
+
+  // When
+  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+
+  // Then
+  await expect(page.locator(".error-page-title")).toHaveText(
+    ERROR_TITLES.APP_UNUSABLE,
+    { timeout: 10_000 },
+  );
+  await expect(page.locator(".error-page-detail")).toHaveText(
+    "Invalid app executable manifest: runtime.entrypoint must be a non-empty string",
+  );
+  await expect(page.locator("#app iframe")).toHaveCount(0);
 });
 
 test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({
