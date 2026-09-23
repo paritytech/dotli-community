@@ -32,7 +32,6 @@
     "@dotli/content": "workspace:*",
     "@dotli/ui": "workspace:*",
     "@dotli/sandbox-checker": "workspace:*",
-    "@parity/truapi": "file:../../vendor/truapi",
     "@sentry/browser": "^10.57.0",
     "@sentry/vite-plugin": "^5.2.0"
   }
