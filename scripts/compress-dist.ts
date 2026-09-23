@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createWriteStream } from "node:fs";
+import { formatBytes } from "./dist-sizes.ts";
 
 const DIST = process.env.DIST ?? "dist";
 const COMPRESS_EXTENSIONS = new Set([
@@ -70,12 +71,6 @@ async function compressGzip(filePath: string, data: Buffer): Promise<number> {
   return info.size;
 }
 
-function fmt(bytes: number): string {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / 1024 / 1024).toFixed(2)} MB`
-    : `${(bytes / 1024).toFixed(1)} KB`;
-}
-
 async function main(): Promise<void> {
   const files = await collectFiles(DIST);
   let totalRaw = 0;
@@ -93,7 +88,7 @@ async function main(): Promise<void> {
     const rel = filePath.replace(DIST + "/", "");
     const brPct = ((1 - brSize / size) * 100).toFixed(0);
     console.log(
-      `  ${rel}: ${fmt(size)} → br ${fmt(brSize)} (-${brPct}%) / gz ${fmt(gzSize)}`,
+      `  ${rel}: ${formatBytes(size)} → br ${formatBytes(brSize)} (-${brPct}%) / gz ${formatBytes(gzSize)}`,
     );
     totalRaw += size;
     totalBr += brSize;
@@ -101,7 +96,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `\nTotal: ${fmt(totalRaw)} → br ${fmt(totalBr)} (-${((1 - totalBr / totalRaw) * 100).toFixed(0)}%) / gz ${fmt(totalGz)}`,
+    `\nTotal: ${formatBytes(totalRaw)} → br ${formatBytes(totalBr)} (-${((1 - totalBr / totalRaw) * 100).toFixed(0)}%) / gz ${formatBytes(totalGz)}`,
   );
 }
 
