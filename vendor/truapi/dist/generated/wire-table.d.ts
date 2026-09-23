@@ -238,6 +238,11 @@ export declare const LOCAL_STORAGE_CLEAR: {
     readonly method: 2;
     readonly kind: "request";
 };
+export declare const LOCAL_STORAGE_SUBSCRIBE: {
+    readonly trait: 7;
+    readonly method: 3;
+    readonly kind: "subscription";
+};
 export declare const NOTIFICATIONS_SEND_PUSH_NOTIFICATION: {
     readonly trait: 8;
     readonly method: 0;
@@ -276,6 +281,16 @@ export declare const PERMISSIONS_REQUEST_DEVICE_PERMISSION: {
 export declare const PERMISSIONS_REQUEST_REMOTE_PERMISSION: {
     readonly trait: 10;
     readonly method: 1;
+    readonly kind: "request";
+};
+export declare const PERMISSIONS_AUTHORIZE_REMOTE_PERMISSION: {
+    readonly trait: 10;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const PERMISSIONS_AUTHORIZE_DEVICE_PERMISSION: {
+    readonly trait: 10;
+    readonly method: 3;
     readonly kind: "request";
 };
 export declare const PREIMAGE_LOOKUP_SUBSCRIBE: {
@@ -380,6 +395,16 @@ export declare const POCKET_LIST_SUBSCRIBE: {
 };
 export declare const POCKET_REMOVE_CARD: {
     readonly trait: 18;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const WORKER_BEGIN_OPERATION: {
+    readonly trait: 19;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const WORKER_END_OPERATION: {
+    readonly trait: 19;
     readonly method: 1;
     readonly kind: "request";
 };

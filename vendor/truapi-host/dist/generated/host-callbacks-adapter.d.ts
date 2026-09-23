@@ -23,15 +23,19 @@ export interface RawCallbacks {
     pushNotification(notification: Uint8Array): Promise<Uint8Array>;
     cancelNotification(id: NotificationId): Promise<void>;
     devicePermissionStatus?(request: Uint8Array): Promise<Uint8Array>;
-    devicePermission(request: Uint8Array): Promise<Uint8Array>;
-    remotePermission(request: Uint8Array): Promise<Uint8Array>;
+    devicePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
+    remotePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     subscribePocketCards?(product: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     removePocketCard?(product: Uint8Array, request: Uint8Array): Promise<void>;
     lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    beginOperation(product: Uint8Array, label: string): Promise<Uint8Array>;
+    endOperation(product: Uint8Array, id: number): Promise<void>;
     read(key: string): Promise<Uint8Array | null | undefined>;
     write(key: string, value: Uint8Array): Promise<void>;
     clear(key: string): Promise<void>;
+    subscribeStorage(key: string, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    confirmPermission(review: Uint8Array): Promise<Uint8Array>;
     confirmUserAction(review: Uint8Array): Promise<boolean>;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the

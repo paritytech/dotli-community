@@ -4,8 +4,8 @@
 // callback surface the WASM core invokes. Codec-backed wire and
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, RemotePermissionRequest, RemotePermissionResponse, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */
@@ -38,8 +38,8 @@ export function createWasmRawCallbacks(callbacks) {
                 devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(HostDevicePermissionRequest.dec(request))),
             }
             : {}),
-        devicePermission: async (request) => HostDevicePermissionResponse.enc(await callbacks.permissions.devicePermission(HostDevicePermissionRequest.dec(request))),
-        remotePermission: async (request) => RemotePermissionResponse.enc(await callbacks.permissions.remotePermission(RemotePermissionRequest.dec(request))),
+        devicePermission: async (product, request) => PermissionDecision.enc(await callbacks.permissions.devicePermission(ProductContext.dec(product), HostDevicePermissionRequest.dec(request))),
+        remotePermission: async (product, request) => PermissionDecision.enc(await callbacks.permissions.remotePermission(ProductContext.dec(product), RemotePermissionRequest.dec(request))),
         ...(pocket
             ? {
                 subscribePocketCards: (product, sendItem, sendError) => driveResultStream(pocket.subscribePocketCards(ProductContext.dec(product)), (item) => sendItem(HostPocketListSubscribeItem.enc(item)), sendError),
@@ -47,10 +47,14 @@ export function createWasmRawCallbacks(callbacks) {
             }
             : {}),
         lookupPreimage: (key, sendItem, sendError) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem, sendError),
+        beginOperation: async (product, label) => HostWorkerBeginOperationResponse.enc(await callbacks.productOperations.beginOperation(ProductContext.dec(product), label)),
+        endOperation: async (product, id) => await callbacks.productOperations.endOperation(ProductContext.dec(product), id),
         read: async (key) => await callbacks.productStorage.read(key),
         write: async (key, value) => await callbacks.productStorage.write(key, value),
         clear: async (key) => await callbacks.productStorage.clear(key),
+        subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(HostLocalStorageChangeItem.enc(item)), sendError),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),
+        confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
         confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
     };
 }

@@ -21,6 +21,13 @@ export class UnsupportedMessageError extends Error {
         this.methodId = methodId;
     }
 }
+/** The host connection ended; interrupted operations are not retried. */
+export class ConnectionResetError extends Error {
+    constructor(options) {
+        super("TrUAPI host connection interrupted", options);
+        this.name = "ConnectionResetError";
+    }
+}
 /**
  * Coerce an unknown thrown value into an `Error` instance.
  */
@@ -61,6 +68,12 @@ export const MESSAGE_TYPE_RECEIVE = 1;
 export const MESSAGE_TYPE_INTERRUPT = 2;
 /** See {@link Payload.messageType}. */
 export const MESSAGE_TYPE_STOP = 3;
+/**
+ * A request's withdrawal, correlated by the same `requestId` and carrying no
+ * payload. The call still settles with exactly one response; this only fires
+ * the handler's cancellation token on the far side.
+ **/
+export const MESSAGE_TYPE_CANCEL = 4;
 /**
  * Encode a `ProtocolMessage` into a SCALE wire frame.
  **/
@@ -358,75 +371,110 @@ export function createMessagePortProvider(port) {
  * caller never has to await {@link WebSocketWireProvider.opened} first.
  **/
 export function createWebSocketProvider(url) {
-    const base = createBaseProvider();
-    const socket = new WebSocket(url);
-    socket.binaryType = "arraybuffer";
-    const pending = [];
-    let open = false;
-    // `send` types its view as ArrayBuffer-backed. Frames never come from a
-    // SharedArrayBuffer, and only the view's own bytes go on the wire, so a
-    // frame that is a window into a larger buffer stays correct.
-    const send = (frame) => socket.send(frame);
-    let resolveOpened;
-    let rejectOpened;
-    const opened = new Promise((resolve, reject) => {
-        resolveOpened = resolve;
-        rejectOpened = reject;
-    });
-    // `opened` is optional for callers, so a failed connection must not surface as
-    // an unhandled rejection. Close still reaches every `subscribeClose`.
-    opened.catch(() => { });
-    socket.addEventListener("open", () => {
-        open = true;
-        for (const frame of pending.splice(0))
-            send(frame);
-        resolveOpened();
-    });
-    socket.addEventListener("message", (event) => {
-        base.deliver(new Uint8Array(event.data));
-    });
-    socket.addEventListener("error", () => {
-        const error = new Error(`websocket error (${url})`);
-        rejectOpened(error);
-        base.close(error);
-    });
-    socket.addEventListener("close", () => {
-        const error = new Error(`websocket closed (${url})`);
-        rejectOpened(error);
-        base.close(error);
-    });
-    base.onClose(() => {
-        try {
-            socket.close();
-        }
-        catch {
-            // ignore duplicate close during shutdown
-        }
-    });
-    return {
-        opened,
-        postMessage(message) {
-            const error = base.closed();
-            if (error)
-                throw error;
-            if (open) {
+    return createWebSocketProviderFactory()(url);
+}
+/** Capture native socket APIs before product code installs network gates. */
+export function createWebSocketProviderFactory() {
+    const NativeWebSocket = WebSocket;
+    const socketSend = NativeWebSocket.prototype.send;
+    const socketClose = NativeWebSocket.prototype.close;
+    const addEventListener = EventTarget.prototype.addEventListener;
+    const messageData = Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data").get;
+    const setBinaryType = Object.getOwnPropertyDescriptor(NativeWebSocket.prototype, "binaryType").set;
+    const apply = Reflect.apply;
+    const bufferLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength").get;
+    return (url) => {
+        const base = createBaseProvider();
+        const socket = new NativeWebSocket(url);
+        apply(setBinaryType, socket, ["arraybuffer"]);
+        const pending = [];
+        let open = false;
+        // `send` types its view as ArrayBuffer-backed. Frames never come from a
+        // SharedArrayBuffer, and only the view's own bytes go on the wire, so a
+        // frame that is a window into a larger buffer stays correct.
+        const send = (frame) => apply(socketSend, socket, [frame]);
+        let resolveOpened;
+        let rejectOpened;
+        const opened = new Promise((resolve, reject) => {
+            resolveOpened = resolve;
+            rejectOpened = reject;
+        });
+        // `opened` is optional for callers, so a failed connection must not surface as
+        // an unhandled rejection. Close still reaches every `subscribeClose`.
+        opened.catch(() => { });
+        apply(addEventListener, socket, [
+            "open",
+            () => {
+                open = true;
+                for (const frame of pending.splice(0))
+                    send(frame);
+                resolveOpened();
+            },
+        ]);
+        apply(addEventListener, socket, [
+            "message",
+            (event) => {
+                let frame;
                 try {
-                    send(message);
+                    const buffer = apply(messageData, event, []);
+                    frame = new Uint8Array(buffer, 0, apply(bufferLength, buffer, []));
                 }
                 catch (error) {
                     base.close(error);
-                    throw toError(error);
+                    return;
                 }
+                base.deliver(frame);
+            },
+        ]);
+        apply(addEventListener, socket, [
+            "error",
+            () => {
+                const error = new Error(`websocket error (${url})`);
+                rejectOpened(error);
+                base.close(error);
+            },
+        ]);
+        apply(addEventListener, socket, [
+            "close",
+            () => {
+                const error = new Error(`websocket closed (${url})`);
+                rejectOpened(error);
+                base.close(error);
+            },
+        ]);
+        base.onClose(() => {
+            try {
+                apply(socketClose, socket, []);
             }
-            else {
-                pending.push(message);
+            catch {
+                // ignore duplicate close during shutdown
             }
-        },
-        subscribe: base.subscribe,
-        subscribeClose: base.subscribeClose,
-        dispose() {
-            base.close(new Error("websocket provider disposed"));
-            pending.length = 0;
-        },
+        });
+        return {
+            opened,
+            postMessage(message) {
+                const error = base.closed();
+                if (error)
+                    throw error;
+                if (open) {
+                    try {
+                        send(message);
+                    }
+                    catch (error) {
+                        base.close(error);
+                        throw toError(error);
+                    }
+                }
+                else {
+                    pending.push(message);
+                }
+            },
+            subscribe: base.subscribe,
+            subscribeClose: base.subscribeClose,
+            dispose() {
+                base.close(new Error("websocket provider disposed"));
+                pending.length = 0;
+            },
+        };
     };
 }

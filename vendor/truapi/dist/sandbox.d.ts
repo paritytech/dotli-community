@@ -1,11 +1,10 @@
 /**
  * Sandbox bootstrap for browser-embedded hosts.
  *
- * Detects whether the app runs inside a TrUAPI host (iframe or webview), builds
- * the matching {@link WireProvider}, and exposes a lazily-created, cached
- * {@link TrUApiClient} via {@link getClientSync} so embedders don't
- * re-implement the wiring. {@link subscribeConnectionStatus} surfaces a
- * connected / disconnected signal over that client.
+ * Detects whether the app runs inside a TrUAPI host (iframe or webview), adopts
+ * its client or builds the matching {@link WireProvider}, and exposes a cached
+ * {@link TrUApiClient} via {@link getClientSync}. {@link subscribeConnectionStatus}
+ * surfaces a connected / disconnected signal over that client.
  *
  * @module
  */
@@ -19,6 +18,11 @@ import { type TrUApiClient } from "./generated/index.js";
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 declare global {
     interface Window {
+        /** Public client and connection status supplied by the embedding host. */
+        __HOST_API_CLIENT__?: {
+            readonly client: TrUApiClient;
+            subscribeConnectionStatus(callback: (status: ConnectionStatus) => void): () => void;
+        };
         /** Set by webview hosts (Polkadot Desktop / Mobile) to mark the embedding. */
         __HOST_WEBVIEW_MARK__?: boolean;
         /** Injected by webview hosts to carry the host-side `MessagePort`. */
@@ -28,13 +32,13 @@ declare global {
 /**
  * Detect whether the app is running inside a TrUAPI host container: an iframe
  * (including a cross-origin parent), a marked webview, or a window carrying an
- * injected host message port. Synchronous, so it can gate hot paths.
+ * injected host client or message port. Synchronous, so it can gate hot paths.
  */
 export declare function isCorrectEnvironment(): boolean;
 /**
  * Build (or return the cached) {@link TrUApiClient}. Returns `null` outside a
- * host container or if the provider can't be built. A close drops the cache,
- * so the next call renegotiates.
+ * host container or if the provider can't be built. Host-injected clients retain
+ * their identity across connection resets; other closed pipes renegotiate.
  */
 export declare function getClientSync(): TrUApiClient | null;
 /**
