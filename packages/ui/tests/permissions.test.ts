@@ -280,13 +280,20 @@ describe("device permission prompts", () => {
       expect(document.querySelector(".signing-btn-sign")).not.toBeNull();
     });
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
-    await expect(response).resolves.toEqual({ granted: true });
+    await expect(response).resolves.toEqual("AllowAlways");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     window.removeEventListener("dotli:device-permission-changed", onReload);
     document.body.replaceChildren();
     return reloads;
   }
+
+  it("As a product, an auto-granted OpenUrl is answered once without a prompt", async () => {
+    await expect(
+      createPromptPermission("myapp").devicePermission("OpenUrl"),
+    ).resolves.toBe("AllowOnce");
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+  });
 
   it("As a product, my iframe stays alive when notifications are granted", async () => {
     expect(await grantAndCountReloads("Notifications")).toBe(0);
