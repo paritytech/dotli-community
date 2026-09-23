@@ -3,13 +3,7 @@
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
@@ -230,57 +224,6 @@ function previewCoepHeaders(): Plugin {
 }
 
 /**
- * The Rust core worker dynamically imports
- * `./wasm/web/truapi_server.js` relative to its emitted worker asset. Vite
- * treats that path as a runtime dynamic import, so copy wasm-pack's generated
- * web bundle beside the worker under `assets/wasm/web/`.
- */
-function copyTruapiWasmWebBundle(): Plugin {
-  return {
-    name: "copy-truapi-wasm-web-bundle",
-    apply: "build",
-    writeBundle() {
-      const source = findTruapiWasmWebBundle();
-      const targetParent = resolve(import.meta.dirname, OUT_DIR, "assets/wasm");
-      const target = resolve(targetParent, "web");
-      mkdirSync(targetParent, { recursive: true });
-      cpSync(source, target, { recursive: true });
-      console.log("Copied TrUAPI WASM web bundle -> assets/wasm/web/\n");
-    },
-  };
-}
-
-function findTruapiWasmWebBundle(): string {
-  const packageRelative = "node_modules/@parity/truapi-host/dist/wasm/web";
-  const checked: string[] = [];
-  for (const candidate of truapiWasmWebBundleCandidates(packageRelative)) {
-    checked.push(candidate);
-    if (existsSync(resolve(candidate, "truapi_server.js"))) {
-      return candidate;
-    }
-  }
-  throw new Error(
-    [
-      "Missing TrUAPI WASM web bundle.",
-      "Run `make wasm` from the TrUAPI repo root before building dotli.",
-      `Checked: ${checked.join(", ")}`,
-    ].join(" "),
-  );
-}
-
-function truapiWasmWebBundleCandidates(packageRelative: string): string[] {
-  const dotliRoot = resolve(import.meta.dirname, "../..");
-  return [
-    // Prefer the package that @dotli/ui actually declares. Walking above the
-    // dotli checkout can accidentally pick up an unrelated ancestor checkout
-    // (notably TrUAPI's workspace package when dotli is a submodule).
-    resolve(dotliRoot, "packages/ui", packageRelative),
-    // `bun run link:truapi` removes the nested copy and links at this root.
-    resolve(dotliRoot, packageRelative),
-  ];
-}
-
-/**
  * Sentry sourcemap upload. Skipped when metrics are off (runtime SDK is aliased to a
  * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
  * (preserves source maps for debugging).
@@ -319,15 +262,12 @@ export default defineConfig({
     }),
     preloadCriticalAssets(),
     previewCoepHeaders(),
-    copyTruapiWasmWebBundle(),
     sentry(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
-    // cross-origin and outside this SW's reach by design. The Rust TrUAPI core
-    // wasm-pack bundle uses stable filenames, so its JS glue and `.wasm` must
-    // be precached together; mixing old glue with a freshly served `.wasm`
-    // fails during instantiation. `registerType: "prompt"` defers update
-    // activation to the user via workbox-window in src/pwa.ts.
+    // cross-origin and outside this SW's reach by design. `registerType:
+    // "prompt"` defers update activation to the user via workbox-window in
+    // src/pwa.ts.
     VitePWA({
       injectRegister: false,
       registerType: "prompt",
@@ -354,10 +294,6 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
         globIgnores: ["**/truapi_provider_bg-*.wasm"],
-        // VitePWA's default treats every file under `assets/` as
-        // hash-versioned. The copied wasm-pack bundle keeps stable filenames,
-        // so let Workbox attach content revisions to those entries.
-        dontCacheBustURLsMatching: /^assets\/(?!wasm\/web\/)/,
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.
