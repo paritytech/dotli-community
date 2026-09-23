@@ -161,6 +161,7 @@ import {
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
   HOST_ERRORS,
+  InvalidAppExecutableManifestError,
   HOST_UNAVAILABLE_DETAIL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
@@ -409,39 +410,33 @@ async function resolveAppExecutableManifest(
   return resolveExecutableManifestRemote(label, "app");
 }
 
-async function loadAppExecutableManifest(
-  label: string,
-  chainBackend: Backend,
-): Promise<ManifestResult<ExecutableManifest> | null> {
-  try {
-    // App manifest v2 is an execution contract, not optional metadata. Let the
-    // resolver's own transport timeout govern this read: replacing a slow
-    // response with `null` makes the sandbox reject valid PolkaVM packages as
-    // if their required external manifest did not exist.
-    return await resolveAppExecutableManifest(label, chainBackend);
-  } catch (error: unknown) {
-    log.warn(
-      `[dot.li manifest] executable manifest resolution failed for ${withActiveTld(label)}: ${serializeError(error)}`,
-    );
-    return null;
-  }
-}
-
 function executableManifestText(
-  result: ManifestResult<ExecutableManifest> | null,
+  result: ManifestResult<ExecutableManifest>,
 ): string | null {
-  return result?.kind === "ok" && result.value.kind === "app"
-    ? result.raw
-    : null;
+  switch (result.kind) {
+    case "ok":
+      if (result.value.kind !== "app") {
+        throw new InvalidAppExecutableManifestError([
+          `expected kind 'app', received '${result.value.kind}'`,
+        ]);
+      }
+      return result.raw;
+    case "empty":
+    case "unsupported":
+      return null;
+    case "invalid":
+      throw new InvalidAppExecutableManifestError(result.errors);
+  }
 }
 
 function installedExecutableFromManifest(
   contenthash: string,
-  result: ManifestResult<ExecutableManifest> | null,
+  result: ManifestResult<ExecutableManifest>,
 ): InstalledExecutable | null {
-  return result?.kind === "ok" && result.value.kind === "app"
-    ? { contenthash, executableManifest: result.raw }
-    : null;
+  const executableManifest = executableManifestText(result);
+  return executableManifest === null
+    ? null
+    : { contenthash, executableManifest };
 }
 
 function cachedAppManifest(
@@ -490,7 +485,7 @@ async function resolveAppContenthash(
 async function applyProductBranding(
   label: string,
   chainBackend: Backend,
-  appResult: ManifestResult<ExecutableManifest> | null,
+  appResult: ManifestResult<ExecutableManifest>,
 ): Promise<void> {
   let rootResult: ManifestResult<RootManifest>;
   if (chainBackend === "rpc-gateway") {
@@ -532,7 +527,7 @@ async function applyProductBranding(
       clearTimeout(iconDeadline);
     }
   }
-  if (appResult?.kind === "ok" && appResult.value.kind === "app") {
+  if (appResult.kind === "ok" && appResult.value.kind === "app") {
     setActiveAppManifest({
       schemaVersion: appResult.value.$v,
       appVersion: appResult.value.appVersion,
@@ -1452,13 +1447,18 @@ async function main(): Promise<void> {
   advancePhase(0);
   const network = getNetwork();
   let appManifestPromise:
-    | Promise<ManifestResult<ExecutableManifest> | null>
+    | Promise<ManifestResult<ExecutableManifest>>
     | undefined;
-  const appManifest =
-    (): Promise<ManifestResult<ExecutableManifest> | null> => {
-      appManifestPromise ??= loadAppExecutableManifest(label, chainBackend);
-      return appManifestPromise;
-    };
+  const appManifest = (): Promise<ManifestResult<ExecutableManifest>> => {
+    if (appManifestPromise === undefined) {
+      appManifestPromise = resolveAppExecutableManifest(label, chainBackend);
+      // CID and manifest resolution run in parallel. Attach a handler now so a
+      // fast manifest rejection is not reported as unhandled while the CID is
+      // still resolving; awaiting this same promise below preserves the error.
+      void appManifestPromise.catch(() => undefined);
+    }
+    return appManifestPromise;
+  };
   let resolvedContenthash: string | undefined;
 
   // Opened before any resolution work so the trace covers the whole load, and
