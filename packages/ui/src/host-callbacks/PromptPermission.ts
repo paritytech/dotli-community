@@ -52,7 +52,10 @@ export function createPromptPermission(
   // its prompt budget by alternating prompt kinds.
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
-  const devicePermission: Permissions["devicePermission"] = async (_product, tag) => {
+  const devicePermission: Permissions["devicePermission"] = async (
+    _product,
+    tag,
+  ) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
