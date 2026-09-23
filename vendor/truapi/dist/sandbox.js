@@ -1,11 +1,10 @@
 /**
  * Sandbox bootstrap for browser-embedded hosts.
  *
- * Detects whether the app runs inside a TrUAPI host (iframe or webview), builds
- * the matching {@link WireProvider}, and exposes a lazily-created, cached
- * {@link TrUApiClient} via {@link getClientSync} so embedders don't
- * re-implement the wiring. {@link subscribeConnectionStatus} surfaces a
- * connected / disconnected signal over that client.
+ * Detects whether the app runs inside a TrUAPI host (iframe or webview), adopts
+ * its client or builds the matching {@link WireProvider}, and exposes a cached
+ * {@link TrUApiClient} via {@link getClientSync}. {@link subscribeConnectionStatus}
+ * surfaces a connected / disconnected signal over that client.
  *
  * @module
  */
@@ -13,7 +12,7 @@ import { createMessagePortProvider, createWebSocketProvider, } from "./transport
 import { createTransport } from "./client.js";
 import { createClient } from "./generated/index.js";
 import { tryCreateLegacyIframeProvider } from "./sandbox-legacy.js";
-/** Endpoint set by {@link connectWebSocketHost}, and the host when present. */
+/** Endpoint explicitly selected by {@link connectWebSocketHost}. */
 let webSocketEndpoint = null;
 function hostWindow() {
     return typeof window === "undefined" ? null : window;
@@ -50,16 +49,16 @@ function isIframe() {
 /**
  * Detect whether the app is running inside a TrUAPI host container: an iframe
  * (including a cross-origin parent), a marked webview, or a window carrying an
- * injected host message port. Synchronous, so it can gate hot paths.
+ * injected host client or message port. Synchronous, so it can gate hot paths.
  */
 export function isCorrectEnvironment() {
-    // An endpoint handed to `connectWebSocketHost` is the host, wherever the code
-    // runs: a plain browser tab against a loopback socket, or a script in Node.
     if (webSocketEndpoint !== null)
         return true;
     const win = hostWindow();
     if (!win)
         return false;
+    if (win.__HOST_API_CLIENT__)
+        return true;
     if (isIframe())
         return true;
     if (win.__HOST_WEBVIEW_MARK__ === true)
@@ -243,7 +242,7 @@ function createIframeCompatibilityProvider(onEstablished) {
  * Build the {@link WireProvider} matching the detected environment (iframe or
  * webview). `onEstablished` fires once the host channel is live.
  */
-function createSandboxProvider(onEstablished) {
+function createSandboxProvider(endpoint, onEstablished) {
     // Both branches settle off a promise, so the pipe may be dead by then.
     let closed = false;
     const established = () => {
@@ -256,8 +255,8 @@ function createSandboxProvider(onEstablished) {
         });
         return provider;
     };
-    if (webSocketEndpoint !== null) {
-        const provider = watchClose(createWebSocketProvider(webSocketEndpoint));
+    if (endpoint !== null) {
+        const provider = watchClose(createWebSocketProvider(endpoint));
         provider.opened.then(established, () => { });
         return provider;
     }
@@ -274,7 +273,7 @@ function createSandboxProvider(onEstablished) {
     };
     return provider;
 }
-let cachedClient = null;
+let cachedConnection = null;
 let status = "disconnected";
 const statusListeners = new Set();
 function setStatus(next) {
@@ -290,25 +289,36 @@ function setStatus(next) {
 }
 /**
  * Build (or return the cached) {@link TrUApiClient}. Returns `null` outside a
- * host container or if the provider can't be built. A close drops the cache,
- * so the next call renegotiates.
+ * host container or if the provider can't be built. Host-injected clients retain
+ * their identity across connection resets; other closed pipes renegotiate.
  */
 export function getClientSync() {
-    if (cachedClient)
-        return cachedClient;
+    if (cachedConnection)
+        return cachedConnection.client;
     if (!isCorrectEnvironment())
         return null;
     try {
-        const provider = createSandboxProvider(() => setStatus("connected"));
-        cachedClient = createClient(createTransport(provider));
+        const endpoint = webSocketEndpoint;
+        const injected = endpoint === null ? hostWindow()?.__HOST_API_CLIENT__ : undefined;
+        if (injected) {
+            cachedConnection = { client: injected.client, endpoint, injected: true };
+            injected.subscribeConnectionStatus(setStatus);
+            return cachedConnection.client;
+        }
+        const provider = createSandboxProvider(endpoint, () => setStatus("connected"));
+        cachedConnection = {
+            client: createClient(createTransport(provider)),
+            endpoint,
+            injected: false,
+        };
         provider.subscribeClose?.(() => {
             // Cleared first: a listener may call getClientSync from the notify below.
-            cachedClient = null;
-            if (webSocketEndpoint === null)
+            cachedConnection = null;
+            if (endpoint === null)
                 forgetHostPort();
             setStatus("disconnected");
         });
-        return cachedClient;
+        return cachedConnection?.client ?? null;
     }
     catch {
         return null;
@@ -334,7 +344,7 @@ export function getClientSync() {
  * a different endpoint is accepted.
  */
 export function connectWebSocketHost(url) {
-    if (cachedClient !== null && webSocketEndpoint !== url) {
+    if (cachedConnection !== null && cachedConnection.endpoint !== url) {
         throw new Error("connectWebSocketHost must be called before the TrUAPI client is created");
     }
     webSocketEndpoint = url;
@@ -359,7 +369,7 @@ export function subscribeConnectionStatus(callback) {
         // Building the client may establish the channel synchronously (an already
         // injected port), in which case the status is already "connected" here.
         const client = getClientSync();
-        if (client && status === "disconnected") {
+        if (client && !cachedConnection?.injected && status === "disconnected") {
             setStatus("connecting");
         }
     }

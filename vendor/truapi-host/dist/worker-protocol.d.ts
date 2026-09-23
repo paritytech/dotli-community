@@ -29,11 +29,12 @@ export type LocalIdentityProgress = {
  * worker/core lifecycle, forward encoded TrUAPI frames into the core, or return
  * host callback/subscription/chain responses requested by the worker.
  */
+/** Which host role a worker runtime plays. */
+export type HostRole = "pairing" | "signing";
 export type MainToWorker = {
     kind: "init";
     logLevel: LogLevel;
     hostConfig: unknown;
-    runtimeKind?: "pairing" | "signing";
     /**
      * Optional capabilities the main-thread host serves. The worker proxies
      * only these, so the core sees the same capability set on both sides of
@@ -41,6 +42,14 @@ export type MainToWorker = {
      */
     capabilities: OptionalCapabilities;
     debuggerUrl: string | null;
+    /**
+     * Which host role the worker constructs. Omitted means `"pairing"`, so a
+     * host written before this existed behaves exactly as it did.
+     *
+     * `"signing"` needs the `testing` WASM bundle, which is the only one
+     * built with a signing host in it.
+     */
+    role?: HostRole;
 } | {
     kind: "createCore";
     coreId: number;
@@ -75,13 +84,29 @@ export type MainToWorker = {
     kind: "activateExternalSession";
     requestId: number;
     blob: Uint8Array;
-} | {
-    kind: "resetSessionState";
-    requestId: number;
-} | {
+}
+/**
+ * Establish a session from host-held entropy. Signing hosts only: a pairing
+ * host has no local secret and answers this with an error.
+ */
+ | {
     kind: "activateLocalSession";
     requestId: number;
     secret: Uint8Array;
+    /**
+     * Display name to activate the session under. Absent activates without
+     * one, which leaves the session with no primary username -- and
+     * `account.get_user_id` answers `Unknown` rather than a name.
+     */
+    liteUsername?: string;
+} | {
+    kind: "setGrantAllowancesUnchecked";
+    requestId: number;
+    /** Answer allocation as granted without performing it. */
+    granted: boolean;
+} | {
+    kind: "resetSessionState";
+    requestId: number;
 } | {
     kind: "activateLocalSessionWithIdentity";
     requestId: number;
@@ -113,6 +138,9 @@ export type MainToWorker = {
     status: PermissionAuthorizationStatus;
 } | {
     kind: "getSessionChatIdentityKey";
+    requestId: number;
+} | {
+    kind: "getDeviceStatementKey";
     requestId: number;
 } | {
     kind: "getDeviceEncryptionKey";
@@ -291,6 +319,16 @@ export type WorkerToMain = {
     ok: false;
     error: string;
 } | {
+    kind: "deviceStatementKeyResponse";
+    requestId: number;
+    ok: true;
+    key: Uint8Array | undefined;
+} | {
+    kind: "deviceStatementKeyResponse";
+    requestId: number;
+    ok: false;
+    error: string;
+} | {
     kind: "productSubtreePublicKeyResponse";
     requestId: number;
     ok: true;
@@ -361,7 +399,7 @@ export type WorkerToMain = {
     kind: "subscriptionStart";
     subId: number;
     name: SubscriptionName;
-    payload: Uint8Array | null;
+    payload: Uint8Array | string | null;
 } | {
     kind: "subscriptionStop";
     subId: number;

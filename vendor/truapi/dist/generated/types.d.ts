@@ -1243,6 +1243,14 @@ export type VersionedHostInfoResponse =
     value: HostInfo;
 };
 export declare const VersionedHostInfoResponse: S.Codec<VersionedHostInfoResponse>;
+/** Versioned envelope for [`HostLocalStorageChangeItem`]. */
+export type VersionedHostLocalStorageChangeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocalStorageChangeItem;
+};
+export declare const VersionedHostLocalStorageChangeItem: S.Codec<VersionedHostLocalStorageChangeItem>;
 /** Versioned envelope for [`HostLocalStorageClearError`]. */
 export type VersionedHostLocalStorageClearError = 
 /** Version 1 payload. */
@@ -1291,6 +1299,22 @@ export type VersionedHostLocalStorageReadResponse =
     value: HostLocalStorageReadResponse;
 };
 export declare const VersionedHostLocalStorageReadResponse: S.Codec<VersionedHostLocalStorageReadResponse>;
+/** Versioned envelope for [`HostLocalStorageSubscribeError`]. */
+export type VersionedHostLocalStorageSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedHostLocalStorageSubscribeError: S.Codec<VersionedHostLocalStorageSubscribeError>;
+/** Versioned envelope for [`HostLocalStorageSubscribeRequest`]. */
+export type VersionedHostLocalStorageSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocalStorageSubscribeRequest;
+};
+export declare const VersionedHostLocalStorageSubscribeRequest: S.Codec<VersionedHostLocalStorageSubscribeRequest>;
 /** Versioned envelope for [`HostLocalStorageWriteError`]. */
 export type VersionedHostLocalStorageWriteError = 
 /** Version 1 payload. */
@@ -1787,6 +1811,72 @@ export type VersionedHostThemeSubscribeRequest =
     value?: undefined;
 };
 export declare const VersionedHostThemeSubscribeRequest: S.Codec<VersionedHostThemeSubscribeRequest>;
+/** Versioned envelope for [`HostWorkerBeginOperationError`]. */
+export type VersionedHostWorkerBeginOperationError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerOperationError;
+};
+export declare const VersionedHostWorkerBeginOperationError: S.Codec<VersionedHostWorkerBeginOperationError>;
+/** Versioned envelope for [`HostWorkerBeginOperationRequest`]. */
+export type VersionedHostWorkerBeginOperationRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerBeginOperationRequest;
+};
+export declare const VersionedHostWorkerBeginOperationRequest: S.Codec<VersionedHostWorkerBeginOperationRequest>;
+/** Versioned envelope for [`HostWorkerBeginOperationResponse`]. */
+export type VersionedHostWorkerBeginOperationResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerBeginOperationResponse;
+};
+export declare const VersionedHostWorkerBeginOperationResponse: S.Codec<VersionedHostWorkerBeginOperationResponse>;
+/** Versioned envelope for [`HostWorkerEndOperationError`]. */
+export type VersionedHostWorkerEndOperationError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerOperationError;
+};
+export declare const VersionedHostWorkerEndOperationError: S.Codec<VersionedHostWorkerEndOperationError>;
+/** Versioned envelope for [`HostWorkerEndOperationRequest`]. */
+export type VersionedHostWorkerEndOperationRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerEndOperationRequest;
+};
+export declare const VersionedHostWorkerEndOperationRequest: S.Codec<VersionedHostWorkerEndOperationRequest>;
+/** Versioned envelope for [`HostWorkerEndOperationResponse`]. */
+export type VersionedHostWorkerEndOperationResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostWorkerEndOperationResponse: S.Codec<VersionedHostWorkerEndOperationResponse>;
+/** Pending-operation error. */
+export type HostWorkerOperationError = 
+/**
+ * The product is already at the host's per-product limit of open
+ * operations.
+ */
+{
+    tag: "TooManyOpen";
+    value?: undefined;
+}
+/** Catch-all host failure. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostWorkerOperationError: S.Codec<HostWorkerOperationError>;
 /** How an image meets the box its modifiers size. */
 export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";
 export declare const ImageFit: S.Codec<ImageFit>;
@@ -1913,6 +2003,9 @@ export declare const Modifier: S.Codec<Modifier>;
 /** Opaque identifier for a push notification, unique per product. */
 export type NotificationId = number;
 export declare const NotificationId: S.Codec<NotificationId>;
+/** Opaque host-assigned pending-operation identifier, unique per product. */
+export type OperationId = number;
+export declare const OperationId: S.Codec<OperationId>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -2431,12 +2524,8 @@ export declare const VersionedRemoteChainTransactionStopResponse: S.Codec<Versio
  */
 export type RemotePermission = 
 /**
- * Reaching a set of domains: outbound HTTP/WebSocket access, and sending
- * the user out to one of them with `navigate_to`.
- *
- * One grant per host covers both, because both hand the same third party
- * the same thing: that the user is here, and whatever the product puts in
- * the URL. Splitting them would put the same question to the user twice.
+ * Outbound HTTP/WebSocket access to a set of domains. External navigation
+ * uses [`HostDevicePermissionRequest::OpenUrl`] instead.
  */
 {
     tag: "Remote";
@@ -2447,13 +2536,10 @@ export type RemotePermission =
 /**
  * WebRTC access.
  *
- * Enforced inside the product's own realm rather than at a network layer:
- * ICE reaches an arbitrary host over UDP, so no content rule list, request
- * interceptor, or CSP directive observes it. A host peeks this decision
- * before the product realm exists and the lockdown container removes
- * `RTCPeerConnection` — and its vendor-prefixed aliases — unless the answer
- * was an explicit grant. Resolving it up front is what makes the gate
- * unforgeable, and it means a fresh grant applies from the next load.
+ * The container authorizes each peer connection through Rust before its
+ * first network method. Later methods on that connection share the same
+ * decision, so a one-use grant permits one connection. New connections
+ * check current permissions without requiring a page reload.
  *
  * Camera and microphone capture is gated by the OS permission prompts and
  * [`HostDevicePermissionRequest`], not by this permission.
@@ -3598,9 +3684,8 @@ export declare const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyRespons
 /**
  * Device-capability permission requested from the host (RFC 0002).
  *
- * The user's decision is persisted indefinitely after the first prompt and
- * survives app restarts, whether the decision was grant or deny; the host
- * does not re-prompt on subsequent requests for the same capability.
+ * Lasting grants and denials survive app restarts. A host may also offer a
+ * one-use grant, held in memory until a permission-gated operation consumes it.
  *
  * That decision is about this product. The OS grant behind it belongs to the
  * host application and can move independently, so a host that can read OS
@@ -3700,6 +3785,12 @@ export interface HostHandshakeRequest {
     codecVersion: number;
 }
 export declare const HostHandshakeRequest: S.Codec<HostHandshakeRequest>;
+/** A change to a subscribed storage key, pushed to the subscriber. */
+export interface HostLocalStorageChangeItem {
+    /** Value after the change. `Some` on write, `None` after clear. */
+    value?: HexString;
+}
+export declare const HostLocalStorageChangeItem: S.Codec<HostLocalStorageChangeItem>;
 /** Request to clear a local storage key. */
 export interface HostLocalStorageClearRequest {
     /** Storage key to clear. */
@@ -3733,6 +3824,12 @@ export interface HostLocalStorageReadResponse {
     value?: HexString;
 }
 export declare const HostLocalStorageReadResponse: S.Codec<HostLocalStorageReadResponse>;
+/** Request to subscribe to changes of one local storage key. */
+export interface HostLocalStorageSubscribeRequest {
+    /** Storage key to observe. */
+    key: string;
+}
+export declare const HostLocalStorageSubscribeRequest: S.Codec<HostLocalStorageSubscribeRequest>;
 /** Request to write a value into local storage. */
 export interface HostLocalStorageWriteRequest {
     /** Storage key to write. */
@@ -4161,6 +4258,24 @@ export interface HostThemeSubscribeItem {
     variant: ThemeVariant;
 }
 export declare const HostThemeSubscribeItem: S.Codec<HostThemeSubscribeItem>;
+/** Request to begin a pending operation. */
+export interface HostWorkerBeginOperationRequest {
+    /** Optional label for host logs and UI. */
+    label?: string;
+}
+export declare const HostWorkerBeginOperationRequest: S.Codec<HostWorkerBeginOperationRequest>;
+/** Response carrying the id of a newly begun operation. */
+export interface HostWorkerBeginOperationResponse {
+    /** Id to pass to `end_operation`. */
+    id: OperationId;
+}
+export declare const HostWorkerBeginOperationResponse: S.Codec<HostWorkerBeginOperationResponse>;
+/** Request to end a pending operation. */
+export interface HostWorkerEndOperationRequest {
+    /** Id returned by `begin_operation`. */
+    id: OperationId;
+}
+export declare const HostWorkerEndOperationRequest: S.Codec<HostWorkerEndOperationRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */

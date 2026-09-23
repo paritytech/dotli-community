@@ -1,5 +1,5 @@
-import { HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, HostRendererActionSubscribeItem as HostRendererActionSubscribeItemCodec, ProductRendererRenderRequest as ProductRendererRenderRequestCodec, RendererNode as RendererNodeCodec, } from "@parity/truapi";
-import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
+import { HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, HostRendererActionSubscribeItem as HostRendererActionSubscribeItemCodec, HostWorkerBeginOperationResponse as HostWorkerBeginOperationResponseCodec, ProductRendererRenderRequest as ProductRendererRenderRequestCodec, RendererNode as RendererNodeCodec, } from "@parity/truapi";
+import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec, ProductContext as ProductContextCodec, } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import { bytesToHex } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
@@ -10,6 +10,7 @@ function debugLoggingEnabled(state) {
 let nextDisconnectRequestId = 0;
 let nextPermissionAuthorizationRequestId = 0;
 let nextSessionChatIdentityKeyRequestId = 0;
+let nextDeviceStatementKeyRequestId = 0;
 let nextDeviceEncryptionKeyRequestId = 0;
 let nextProductSubtreePublicKeyRequestId = 0;
 let nextSessionActivationRequestId = 0;
@@ -129,6 +130,43 @@ function persistLogLevel(level) {
 }
 let devLogLevelOverride = readPersistedLogLevel();
 const devGlobalTargets = new Set();
+/**
+ * Key one pending-operation hold. `OperationId` is unique per product, not per
+ * worker, so the product a `beginOperation`/`endOperation` arrived for has to be
+ * part of the key. Returns null if the encoded product will not decode, which
+ * drops the hold rather than letting it pin the worker forever.
+ */
+/**
+ * Read the host-assigned id out of a `beginOperation` response. Returns null if
+ * the response will not decode, so a hold that cannot be keyed is dropped
+ * rather than escaping and leaving the worker's call unanswered.
+ */
+function operationIdFrom(value) {
+    if (!(value instanceof Uint8Array))
+        return null;
+    try {
+        return HostWorkerBeginOperationResponseCodec.dec(value).id;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Key one pending-operation hold. `OperationId` is unique per product, not per
+ * worker, so the product a `beginOperation`/`endOperation` arrived for has to be
+ * part of the key. Returns null if the encoded product will not decode, which
+ * drops the hold rather than letting it pin the worker forever.
+ */
+function operationHold(encodedProduct, id) {
+    if (!(encodedProduct instanceof Uint8Array))
+        return null;
+    try {
+        return `${ProductContextCodec.dec(encodedProduct).productId}\u0000${id}`;
+    }
+    catch {
+        return null;
+    }
+}
 function handleCallbackRequest(state, msg) {
     const fn = Object.hasOwn(state.rawCallbacks, msg.name)
         ? state.rawCallbacks[msg.name]
@@ -145,6 +183,25 @@ function handleCallbackRequest(state, msg) {
     Promise.resolve()
         .then(() => fn(...msg.args))
         .then((value) => {
+        // Tracked in the success arm only: a rejected begin must not leave a
+        // hold that nothing will ever release.
+        if (msg.name === "beginOperation") {
+            const id = operationIdFrom(value);
+            const hold = id === null ? null : operationHold(msg.args[0], id);
+            if (hold !== null)
+                state.openOperations.add(hold);
+        }
+        else if (msg.name === "endOperation") {
+            const id = msg.args[1];
+            const hold = typeof id === "number" ? operationHold(msg.args[0], id) : null;
+            if (hold !== null)
+                state.openOperations.delete(hold);
+            if (state.openOperations.size === 0 && state.disposePending) {
+                state.disposePending = false;
+                clearDisposeGrace(state);
+                teardown(state, new Error("runtime disposed"), false);
+            }
+        }
         state.worker.postMessage({
             kind: "callbackResponse",
             requestId: msg.requestId,
@@ -303,6 +360,9 @@ function handleSetPermissionAuthorizationStatusResponse(state, msg) {
 function handleSessionChatIdentityKeyResponse(state, msg) {
     settlePending(state.pendingSessionChatIdentityKeys, msg.requestId, msg.ok ? { ok: true, value: msg.key } : { ok: false, error: msg.error });
 }
+function handleDeviceStatementKeyResponse(state, msg) {
+    settlePending(state.pendingDeviceStatementKeys, msg.requestId, msg.ok ? { ok: true, value: msg.key } : { ok: false, error: msg.error });
+}
 function handleProductSubtreePublicKeyResponse(state, msg) {
     settlePending(state.pendingProductSubtreePublicKeys, msg.requestId, msg.ok ? { ok: true, value: msg.key } : { ok: false, error: msg.error });
 }
@@ -317,6 +377,7 @@ function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
     rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
     rejectAll(state.pendingSessionChatIdentityKeys, error);
+    rejectAll(state.pendingDeviceStatementKeys, error);
     rejectAll(state.pendingDeviceEncryptionKeys, error);
     rejectAll(state.pendingProductSubtreePublicKeys, error);
     rejectAll(state.pendingActions, error);
@@ -383,10 +444,18 @@ function closeCoreState(core, error) {
     core.listeners.clear();
     core.closeListeners.clear();
 }
+/** Drop the ceiling armed by a deferred `dispose()`, if one is pending. */
+function clearDisposeGrace(state) {
+    if (state.disposeGraceTimer === undefined)
+        return;
+    clearTimeout(state.disposeGraceTimer);
+    state.disposeGraceTimer = undefined;
+}
 function teardown(state, error, fault) {
     if (state.disposed)
         return;
     state.disposed = true;
+    clearDisposeGrace(state);
     state.closedError = error;
     rejectPendingRuntimeRequests(state, error);
     for (const core of state.cores.values()) {
@@ -430,15 +499,15 @@ function teardown(state, error, fault) {
     }
 }
 export function createWebWorkerPairingHostRuntime(worker, host, options) {
-    return createWebWorkerHostRuntime(worker, host, {
-        ...options,
-        runtimeKind: "pairing",
-    });
+    // No role default: a host that asks for none must put exactly what it put
+    // on the wire before the field existed, and the worker reads absent as
+    // "pairing".
+    return createWebWorkerHostRuntime(worker, host, options);
 }
 export function createWebWorkerSigningHostRuntime(worker, host, options) {
     return createWebWorkerHostRuntime(worker, host, {
         ...options,
-        runtimeKind: "signing",
+        role: options.role ?? "signing",
     });
 }
 function createWebWorkerHostRuntime(worker, host, options) {
@@ -450,6 +519,10 @@ function createWebWorkerHostRuntime(worker, host, options) {
             cores: new Map(),
             pendingCores: new Map(),
             subscriptionDisposers: new Map(),
+            openOperations: new Set(),
+            disposePending: false,
+            disposeGraceTimer: undefined,
+            operationGraceMs: options.operationGraceMs ?? 30_000,
             chainConnections: new Map(),
             pendingDisconnects: new Map(),
             pendingSessionActivations: new Map(),
@@ -459,6 +532,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             pendingSetPermissionAuthorizationStatuses: new Map(),
             pendingSessionChatIdentityKeys: new Map(),
             pendingProductSubtreePublicKeys: new Map(),
+            pendingDeviceStatementKeys: new Map(),
             pendingDeviceEncryptionKeys: new Map(),
             pendingActions: new Map(),
             renders: new Map(),
@@ -541,6 +615,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     break;
                 case "sessionChatIdentityKeyResponse":
                     handleSessionChatIdentityKeyResponse(state, msg);
+                    break;
+                case "deviceStatementKeyResponse":
+                    handleDeviceStatementKeyResponse(state, msg);
                     break;
                 case "deviceEncryptionKeyResponse":
                     handleDeviceEncryptionKeyResponse(state, msg);
@@ -651,7 +728,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     kind: "init",
                     logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
                     hostConfig: options.hostConfig,
-                    runtimeKind: options.runtimeKind,
+                    role: options.role,
                     capabilities: {
                         chat: host.chat !== undefined,
                         permissionStatus: host.permissionStatus !== undefined,
@@ -777,6 +854,9 @@ function buildRuntime(state) {
         getSessionChatIdentityKey() {
             return sendWorkerRequest(state, state.pendingSessionChatIdentityKeys, () => ++nextSessionChatIdentityKeyRequestId, undefined, (requestId) => ({ kind: "getSessionChatIdentityKey", requestId }));
         },
+        getDeviceStatementKey() {
+            return sendWorkerRequest(state, state.pendingDeviceStatementKeys, () => ++nextDeviceStatementKeyRequestId, undefined, (requestId) => ({ kind: "getDeviceStatementKey", requestId }));
+        },
         getDeviceEncryptionKey() {
             // A key has no safe empty value: callers encrypt with what they get back,
             // so a disposed runtime must fail rather than hand out a zero-length one.
@@ -833,17 +913,25 @@ function buildRuntime(state) {
                 blob,
             }));
         },
-        resetSessionState() {
-            return sendSessionActivationRequest(state, (requestId) => ({
-                kind: "resetSessionState",
-                requestId,
-            }));
-        },
-        activateLocalSession(secret) {
+        activateLocalSession(secret, liteUsername) {
             return sendSessionActivationRequest(state, (requestId) => ({
                 kind: "activateLocalSession",
                 requestId,
                 secret,
+                liteUsername,
+            }));
+        },
+        setGrantAllowancesUnchecked(granted) {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "setGrantAllowancesUnchecked",
+                requestId,
+                granted,
+            }));
+        },
+        resetSessionState() {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "resetSessionState",
+                requestId,
             }));
         },
         activateLocalSessionWithIdentity(secret, liteUsername) {
@@ -904,6 +992,19 @@ function buildRuntime(state) {
         },
         dispose() {
             devGlobalTargets.delete(runtime);
+            // Let a background task (e.g. a funding transaction) finish; the last
+            // endOperation runs the teardown. Fault teardown is never deferred.
+            if (state.openOperations.size > 0) {
+                state.disposePending = true;
+                state.disposeGraceTimer ??= setTimeout(() => {
+                    state.disposeGraceTimer = undefined;
+                    if (!state.disposePending)
+                        return;
+                    state.disposePending = false;
+                    teardown(state, new Error("runtime disposed"), false);
+                }, state.operationGraceMs);
+                return;
+            }
             teardown(state, new Error("runtime disposed"), false);
         },
     };
@@ -1029,6 +1130,11 @@ function buildProvider(state, core, runtime) {
                 return undefined;
             const key = await runtime.getSessionChatIdentityKey();
             return key && bytesToHex(key);
+        },
+        async getDeviceStatementKey() {
+            if (core.disposed)
+                return undefined;
+            return runtime.getDeviceStatementKey();
         },
         async getDeviceEncryptionKey() {
             if (core.disposed) {

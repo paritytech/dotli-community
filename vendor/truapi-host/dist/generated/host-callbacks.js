@@ -70,10 +70,14 @@ export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Devic
 /**
  * Authorization status for a permission request.
  *
- * `NotDetermined` means the core has no persisted answer and will prompt the
+ * `NotDetermined` means the core has no saved or one-use answer and will prompt the
  * host the next time the product requests this permission.
  */
 export const PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
+/**
+ * User decision including how long an authorization should last.
+ */
+export const PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
 /**
  * Review shown before a preimage is submitted.
  */
@@ -110,7 +114,7 @@ export const ResourceAllocationReview = S.lazy(() => S.Struct({ callingProductId
  * Decoded session fields a host shell needs to render account UI without
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
-export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identityAccountId: S.Option(Bytes32), chatPublicKey: S.Option(Bytes32), deviceEncPublicKey: S.Option(Bytes32), peerStatementAccountId: S.Option(Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
+export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identityAccountId: S.Option(Bytes32), chatPublicKey: S.Option(Bytes32), deviceEncPublicKey: S.Option(Bytes32), peerStatementAccountId: S.Option(Bytes32), deviceStatementAccountId: S.Option(Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */

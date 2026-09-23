@@ -14,7 +14,9 @@ export type { ResultPayload } from "scale-ts";
  * `ResultPayload`) in generated `types.ts`.
  */
 export type Result<Ok, Err> = ResultPayload<Ok, Err>;
-export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, bool, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
+export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
+/** SCALE boolean, rejecting byte values Rust cannot decode. */
+export declare const bool: Codec<boolean>;
 /**
  * Substrate `OptionBool`: a one-byte `Option<bool>`.
  *
@@ -64,6 +66,9 @@ export type CallErrorValue<D> = {
     value: {
         reason: string;
     };
+} | {
+    tag: "Cancelled";
+    value?: undefined;
 };
 /** SCALE codec for Rust's derived `CallError<D>` enum. */
 export declare function CallError<D>(domain: Codec<D>): Codec<CallErrorValue<D>>;
