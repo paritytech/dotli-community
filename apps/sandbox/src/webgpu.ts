@@ -68,6 +68,7 @@ export class WebGpuBridge {
   readonly #stopObservingDimensions: () => void;
   readonly capabilities: Promise<Uint8Array>;
   #stopped = false;
+  #backgrounded = false;
   #physicalWidth = 1;
   #physicalHeight = 1;
   #capabilityTimer: number | undefined;
@@ -128,7 +129,9 @@ export class WebGpuBridge {
       ) {
         callbacks.event(message.bytes);
       } else if (message?.type === "presented") {
-        callbacks.presented();
+        if (!this.#backgrounded) {
+          callbacks.presented();
+        }
       } else if (message?.type === "error") {
         this.#clearCapabilityTimer();
         const error = new Error(
@@ -182,6 +185,14 @@ export class WebGpuBridge {
       return;
     }
     this.#worker.postMessage({ type: "batch", bytes }, [bytes.buffer]);
+  }
+
+  setBackgrounded(backgrounded: boolean): void {
+    if (this.#stopped || this.#backgrounded === backgrounded) {
+      return;
+    }
+    this.#backgrounded = backgrounded;
+    this.#worker.postMessage({ type: "background", backgrounded });
   }
 
   dispose(): void {

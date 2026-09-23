@@ -454,6 +454,11 @@ export class Tri2dRenderer {
   readonly #vao: WebGLVertexArrayObject;
   #textures = new Map<number, GpuTexture>();
   #textureBytes = 0;
+  #backgrounded = false;
+  #backgroundFramebuffer: WebGLFramebuffer | null = null;
+  #backgroundBuffer: WebGLRenderbuffer | null = null;
+  #backgroundWidth = 0;
+  #backgroundHeight = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
@@ -499,6 +504,95 @@ export class Tri2dRenderer {
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
   }
 
+  // Tri2D texture operations are retained state, not replaceable frame snapshots.
+  // Execute every stream offscreen and retain only its latest rendered surface.
+  setBackgrounded(backgrounded: boolean): boolean {
+    if (this.#backgrounded === backgrounded) {
+      return false;
+    }
+    this.#backgrounded = backgrounded;
+    if (backgrounded || this.#backgroundFramebuffer === null) {
+      return false;
+    }
+    const gl = this.#gl;
+    if (gl.isContextLost()) {
+      throw new Error("Tri2D WebGL context was lost");
+    }
+    const width = this.#backgroundWidth;
+    const height = this.#backgroundHeight;
+    if (this.#canvas.width !== width) {
+      this.#canvas.width = width;
+    }
+    if (this.#canvas.height !== height) {
+      this.#canvas.height = height;
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.#backgroundFramebuffer);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.blitFramebuffer(
+      0,
+      0,
+      width,
+      height,
+      0,
+      0,
+      width,
+      height,
+      gl.COLOR_BUFFER_BIT,
+      gl.NEAREST,
+    );
+    gl.enable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.flush();
+    this.#releaseBackgroundSurface();
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+      throw new Error(`Tri2D resume presentation failed (${String(error)})`);
+    }
+    return true;
+  }
+
+  #releaseBackgroundSurface(): void {
+    this.#gl.deleteFramebuffer(this.#backgroundFramebuffer);
+    this.#gl.deleteRenderbuffer(this.#backgroundBuffer);
+    this.#backgroundFramebuffer = null;
+    this.#backgroundBuffer = null;
+    this.#backgroundWidth = 0;
+    this.#backgroundHeight = 0;
+  }
+
+  #bindBackgroundSurface(width: number, height: number): void {
+    const gl = this.#gl;
+    if (width !== this.#backgroundWidth || height !== this.#backgroundHeight) {
+      this.#releaseBackgroundSurface();
+      this.#backgroundFramebuffer = gl.createFramebuffer();
+      this.#backgroundBuffer = gl.createRenderbuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.#backgroundFramebuffer);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, this.#backgroundBuffer);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, width, height);
+      gl.framebufferRenderbuffer(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.RENDERBUFFER,
+        this.#backgroundBuffer,
+      );
+      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+      if (
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE ||
+        gl.getError() !== gl.NO_ERROR
+      ) {
+        this.#releaseBackgroundSurface();
+        throw new Error(
+          "WebGL could not initialize the Tri2D background surface",
+        );
+      }
+      this.#backgroundWidth = width;
+      this.#backgroundHeight = height;
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.#backgroundFramebuffer);
+    }
+  }
+
   render(bytes: Uint8Array): ParsedTri2dFrame {
     const state = new Map<number, TextureState>();
     for (const [handle, texture] of this.#textures) {
@@ -513,11 +607,16 @@ export class Tri2dRenderer {
     if (gl.isContextLost()) {
       throw new Error("Tri2D WebGL context was lost");
     }
-    if (this.#canvas.width !== frame.width) {
-      this.#canvas.width = frame.width;
-    }
-    if (this.#canvas.height !== frame.height) {
-      this.#canvas.height = frame.height;
+    if (this.#backgrounded) {
+      this.#bindBackgroundSurface(frame.width, frame.height);
+    } else {
+      if (this.#canvas.width !== frame.width) {
+        this.#canvas.width = frame.width;
+      }
+      if (this.#canvas.height !== frame.height) {
+        this.#canvas.height = frame.height;
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
     gl.viewport(0, 0, frame.width, frame.height);
     gl.useProgram(this.#program);
@@ -629,6 +728,7 @@ export class Tri2dRenderer {
 
   dispose(): void {
     const gl = this.#gl;
+    this.#releaseBackgroundSurface();
     for (const texture of this.#textures.values()) {
       gl.deleteTexture(texture.texture);
     }

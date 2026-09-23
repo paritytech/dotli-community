@@ -52,11 +52,26 @@ the package implements; it does not define that contract. It MUST agree with
 the published guest ABI document and App manifests.
 
 The vendored browser runtime tracks `paritytech/polkavm-host-runtime` through
-`@useragent-kit/polkavm-runtime`, the distribution boundary shared by browser,
-Android, and Swift Hosts. Browser package 0.1.1 records host-runtime revision
-`08cb7401087f8b715dc4f1be0007753caa4bd7c2` and declares `abi.runtime: 1`.
-The package pin, full provenance, and per-file digests are recorded in
-`scripts/polkavm-runtime.lock.json`.
+`@parity/polkavm-browser-runtime`. The package pin, full provenance, and
+per-file digests are recorded in `scripts/polkavm-runtime.lock.json`.
+
+### Background host servicing
+
+Menu and visibility inactivity use the worker's `background` control, not its
+hard `pause` control. Background updates service bounded host-response work
+with frozen execution time, without stopping or restarting active follows.
+This is not a general guest-state freeze: a guest can change state in response
+to network traffic even when its elapsed-time argument is unchanged.
+
+The browser gates presentation, sound, gameplay input, and interactive output
+until the matching foreground acknowledgment. Stateful Tri2D and GPU commands
+still execute offscreen; returning to the foreground presents the retained
+surface rather than replaying command streams. Already submitted GPU work can
+finish at the transition.
+
+These controls and the runtime's pending-response queue query are private Host
+implementation contracts, not a new guest ABI. Worker and WASM artifacts must
+come from the same package; the application ABI remains 1.
 
 ## Consequences
 
