@@ -1455,7 +1455,7 @@ async function main(): Promise<void> {
       // CID and manifest resolution run in parallel. Attach a handler now so a
       // fast manifest rejection is not reported as unhandled while the CID is
       // still resolving; awaiting this same promise below preserves the error.
-      void appManifestPromise.catch(() => {});
+      void appManifestPromise.catch(() => undefined);
     }
     return appManifestPromise;
   };
