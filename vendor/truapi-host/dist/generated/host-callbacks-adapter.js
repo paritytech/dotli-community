@@ -5,9 +5,9 @@
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, RemotePermissionRequest, RemotePermissionResponse, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
-import { chainConnectAdapter, driveResultStream, hopConnectAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { chainConnectAdapter, coinageWalletHostAdapter, driveResultStream, hopConnectAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
 const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
 const pickChatFilesResultCodec = S.Vector(NativeChatPickedFile);
@@ -15,6 +15,7 @@ const pickChatFilesResultCodec = S.Vector(NativeChatPickedFile);
  *  WASM core invokes. */
 export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
+    const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
     const identityBackend = callbacks.identityBackend;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
@@ -29,6 +30,11 @@ export function createWasmRawCallbacks(callbacks) {
                 registerChatBot: async (product, request) => HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), HostChatRegisterBotRequest.dec(request))),
                 postChatMessage: async (product, request) => HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), HostChatPostMessageRequest.dec(request))),
                 subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(HostChatListSubscribeItem.enc(item)), sendError),
+            }
+            : {}),
+        ...(coinageWallet
+            ? {
+                nativeCoinage: async (request) => NativeCoinageResponse.enc(await coinageWallet.nativeCoinage(NativeCoinageRequest.dec(request))),
             }
             : {}),
         readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
@@ -59,8 +65,8 @@ export function createWasmRawCallbacks(callbacks) {
                 devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(HostDevicePermissionRequest.dec(request))),
             }
             : {}),
-        devicePermission: async (request) => HostDevicePermissionResponse.enc(await callbacks.permissions.devicePermission(HostDevicePermissionRequest.dec(request))),
-        remotePermission: async (request) => RemotePermissionResponse.enc(await callbacks.permissions.remotePermission(RemotePermissionRequest.dec(request))),
+        devicePermission: async (product, request) => PermissionDecision.enc(await callbacks.permissions.devicePermission(ProductContext.dec(product), HostDevicePermissionRequest.dec(request))),
+        remotePermission: async (product, request) => PermissionDecision.enc(await callbacks.permissions.remotePermission(ProductContext.dec(product), RemotePermissionRequest.dec(request))),
         ...(pocket
             ? {
                 subscribePocketCards: (product, sendItem, sendError) => driveResultStream(pocket.subscribePocketCards(ProductContext.dec(product)), (item) => sendItem(HostPocketListSubscribeItem.enc(item)), sendError),
@@ -68,10 +74,14 @@ export function createWasmRawCallbacks(callbacks) {
             }
             : {}),
         lookupPreimage: (key, sendItem, sendError) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem, sendError),
+        beginOperation: async (product, label) => HostWorkerBeginOperationResponse.enc(await callbacks.productOperations.beginOperation(ProductContext.dec(product), label)),
+        endOperation: async (product, id) => await callbacks.productOperations.endOperation(ProductContext.dec(product), id),
         read: async (key) => await callbacks.productStorage.read(key),
         write: async (key, value) => await callbacks.productStorage.write(key, value),
         clear: async (key) => await callbacks.productStorage.clear(key),
+        subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(HostLocalStorageChangeItem.enc(item)), sendError),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),
+        confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
         confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
     };
 }

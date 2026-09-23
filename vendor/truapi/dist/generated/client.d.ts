@@ -2,25 +2,25 @@ import { ResultAsync, type Result } from 'neverthrow';
 import * as S from '../scale.js';
 import type { HexString } from '../scale.js';
 import { SubscriptionError } from '../transport.js';
-import type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Subscription, TrUApiTransport } from '../transport.js';
+import type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Subscription, TrUApiTransport } from '../transport.js';
 import * as T from './types.js';
 export { ResultAsync, SubscriptionError };
-export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
+export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "0931d05042135353";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Subscribe to account connection status changes. */
     connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
     /** Retrieve a product-scoped account. */
-    getAccount(request: T.HostAccountGetRequest): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
+    getAccount(request: T.HostAccountGetRequest, options?: CallOptions): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
     /** Retrieve the contextual alias for a context and ring. */
-    getAccountAlias(request: T.HostAccountGetAliasRequest): ResultAsync<T.ContextualAlias, S.CallErrorValue<T.VersionedHostAccountGetAliasError>>;
+    getAccountAlias(request: T.HostAccountGetAliasRequest, options?: CallOptions): ResultAsync<T.ContextualAlias, S.CallErrorValue<T.VersionedHostAccountGetAliasError>>;
     /** Generate a ring VRF proof with an explicitly registered member key. */
-    createAccountProof(request: T.HostAccountCreateProofRequest): ResultAsync<T.HostAccountCreateProofResponse, S.CallErrorValue<T.VersionedHostAccountCreateProofError>>;
+    createAccountProof(request: T.HostAccountCreateProofRequest, options?: CallOptions): ResultAsync<T.HostAccountCreateProofResponse, S.CallErrorValue<T.VersionedHostAccountCreateProofError>>;
     /**
      * Produce an sr25519 (schnorrkel) VRF signature from a product account.
      *
@@ -29,82 +29,98 @@ export declare class AccountClient {
      * proof. Authorized like signing: local when `AutoSigning` covers the
      * account, otherwise a per-call user confirmation.
      */
-    signVrf(request: T.HostAccountSignVrfRequest): ResultAsync<T.VrfSignature, S.CallErrorValue<T.VersionedHostAccountSignVrfError>>;
+    signVrf(request: T.HostAccountSignVrfRequest, options?: CallOptions): ResultAsync<T.VrfSignature, S.CallErrorValue<T.VersionedHostAccountSignVrfError>>;
     /** Register a ring-VRF key owned by the calling product. */
-    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest): ResultAsync<T.RingVrfPublicKey, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
+    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest, options?: CallOptions): ResultAsync<T.RingVrfPublicKey, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
     /** List registered ring-VRF keys owned by a product. */
-    listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
+    listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest, options?: CallOptions): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
     /** Sign bytes directly with a registered ring-VRF member key. */
-    ringVrfSign(request: T.HostAccountRingVrfSignRequest): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
+    ringVrfSign(request: T.HostAccountRingVrfSignRequest, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
     /**
-     * Operate a Host-owned native Chat device and propose one-shot main-purse
-     * payments. Transport private keys and spendable memos never leave the Host.
+     * Use a non-exportable Host Chat device for native cryptographic operations
+     * and reviewed main-purse payments. The product owns native lifecycle frames,
+     * subscriptions, delivery, retries, history, and acknowledgments.
      *
-     * Method 11 (the former raw-crypto interface) is retired, not forwarded.
+     * `Bind` resolves the peer independently. `Prepare` validates native plaintext
+     * and returns signed ciphertext for product submission. `Open` authenticates
+     * complete external statements and rejects reflected local output; it is not
+     * an arbitrary decryption primitive. Incoming plaintext can contain incoming
+     * bearer coin keys: persist the import intent securely and use generic payment
+     * top-up before acknowledging. Wallet/device keys and outgoing main-purse
+     * coin secrets never leave the Host.
+     *
+     * `Initialize` also advances private file transfers. Persist any legacy
+     * migration view and ordinary prepared statements before `CommitMigration`.
+     * `ContinueOpen` retrieves the next bounded page of an authenticated batch.
+     * `ContinueState` retrieves remaining pages of a stable public state snapshot;
+     * persist every page before committing its migration.
+     *
+     * Method 11 (the former raw-crypto interface) and method 12's former V1 actor
+     * operations are retired, not forwarded. This boundary uses V2 payloads.
      */
-    deviceChat(request: T.HostProductDeviceChatRequest): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
+    deviceChat(request: T.HostProductDeviceChatRequest, options?: CallOptions): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
     /**
      * List non-product accounts the user owns.
      *
      * Current hosts do not expose non-product accounts, so the list is empty.
      */
-    getLegacyAccounts(): ResultAsync<T.HostGetLegacyAccountsResponse, S.CallErrorValue<T.VersionedHostGetLegacyAccountsError>>;
+    getLegacyAccounts(options?: CallOptions): ResultAsync<T.HostGetLegacyAccountsResponse, S.CallErrorValue<T.VersionedHostGetLegacyAccountsError>>;
     /** Fetch the user's primary identity. */
-    getUserId(): ResultAsync<T.HostGetUserIdResponse, S.CallErrorValue<T.VersionedHostGetUserIdError>>;
+    getUserId(options?: CallOptions): ResultAsync<T.HostGetUserIdResponse, S.CallErrorValue<T.VersionedHostGetUserIdError>>;
     /**
      * Request the host to present the login flow to the user.
      *
      * Products should call this in response to a user action (e.g. tapping a
      * "Sign in" button), not automatically on load.
      */
-    requestLogin(request: T.HostRequestLoginRequest): ResultAsync<T.HostRequestLoginResponse, S.CallErrorValue<T.VersionedHostRequestLoginError>>;
+    requestLogin(request: T.HostRequestLoginRequest, options?: CallOptions): ResultAsync<T.HostRequestLoginResponse, S.CallErrorValue<T.VersionedHostRequestLoginError>>;
 }
 /** Chain interaction methods. */
 export declare class ChainClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Follow the chain head and receive block events. */
     followHeadSubscribe({ request }: {
         request: T.RemoteChainHeadFollowRequest;
     }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
     /** Fetch a block header. */
-    getHeadHeader(request: T.RemoteChainHeadHeaderRequest): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
+    getHeadHeader(request: T.RemoteChainHeadHeaderRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
     /** Fetch a block body. */
-    getHeadBody(request: T.RemoteChainHeadBodyRequest): ResultAsync<T.RemoteChainHeadBodyResponse, S.CallErrorValue<T.VersionedRemoteChainHeadBodyError>>;
+    getHeadBody(request: T.RemoteChainHeadBodyRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadBodyResponse, S.CallErrorValue<T.VersionedRemoteChainHeadBodyError>>;
     /** Query runtime storage at a specific block. */
-    getHeadStorage(request: T.RemoteChainHeadStorageRequest): ResultAsync<T.RemoteChainHeadStorageResponse, S.CallErrorValue<T.VersionedRemoteChainHeadStorageError>>;
+    getHeadStorage(request: T.RemoteChainHeadStorageRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadStorageResponse, S.CallErrorValue<T.VersionedRemoteChainHeadStorageError>>;
     /** Invoke a runtime call at a specific block. */
-    callHead(request: T.RemoteChainHeadCallRequest): ResultAsync<T.RemoteChainHeadCallResponse, S.CallErrorValue<T.VersionedRemoteChainHeadCallError>>;
+    callHead(request: T.RemoteChainHeadCallRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadCallResponse, S.CallErrorValue<T.VersionedRemoteChainHeadCallError>>;
     /** Release pinned blocks. */
-    unpinHead(request: T.RemoteChainHeadUnpinRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadUnpinError>>;
+    unpinHead(request: T.RemoteChainHeadUnpinRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadUnpinError>>;
     /** Continue a paused chain-head operation. */
-    continueHead(request: T.RemoteChainHeadContinueRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadContinueError>>;
+    continueHead(request: T.RemoteChainHeadContinueRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadContinueError>>;
     /** Stop a chain-head operation. */
-    stopHeadOperation(request: T.RemoteChainHeadStopOperationRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadStopOperationError>>;
+    stopHeadOperation(request: T.RemoteChainHeadStopOperationRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadStopOperationError>>;
     /** Fetch the canonical genesis hash for a chain. */
-    getSpecGenesisHash(request: T.RemoteChainSpecGenesisHashRequest): ResultAsync<T.RemoteChainSpecGenesisHashResponse, S.CallErrorValue<T.VersionedRemoteChainSpecGenesisHashError>>;
+    getSpecGenesisHash(request: T.RemoteChainSpecGenesisHashRequest, options?: CallOptions): ResultAsync<T.RemoteChainSpecGenesisHashResponse, S.CallErrorValue<T.VersionedRemoteChainSpecGenesisHashError>>;
     /** Fetch the display name of a chain. */
-    getSpecChainName(request: T.RemoteChainSpecChainNameRequest): ResultAsync<T.RemoteChainSpecChainNameResponse, S.CallErrorValue<T.VersionedRemoteChainSpecChainNameError>>;
+    getSpecChainName(request: T.RemoteChainSpecChainNameRequest, options?: CallOptions): ResultAsync<T.RemoteChainSpecChainNameResponse, S.CallErrorValue<T.VersionedRemoteChainSpecChainNameError>>;
     /** Fetch the JSON-encoded properties of a chain. */
-    getSpecProperties(request: T.RemoteChainSpecPropertiesRequest): ResultAsync<T.RemoteChainSpecPropertiesResponse, S.CallErrorValue<T.VersionedRemoteChainSpecPropertiesError>>;
+    getSpecProperties(request: T.RemoteChainSpecPropertiesRequest, options?: CallOptions): ResultAsync<T.RemoteChainSpecPropertiesResponse, S.CallErrorValue<T.VersionedRemoteChainSpecPropertiesError>>;
     /** Broadcast a signed transaction. */
-    broadcastTransaction(request: T.RemoteChainTransactionBroadcastRequest): ResultAsync<T.RemoteChainTransactionBroadcastResponse, S.CallErrorValue<T.VersionedRemoteChainTransactionBroadcastError>>;
+    broadcastTransaction(request: T.RemoteChainTransactionBroadcastRequest, options?: CallOptions): ResultAsync<T.RemoteChainTransactionBroadcastResponse, S.CallErrorValue<T.VersionedRemoteChainTransactionBroadcastError>>;
     /** Stop a transaction broadcast. */
-    stopTransaction(request: T.RemoteChainTransactionStopRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainTransactionStopError>>;
+    stopTransaction(request: T.RemoteChainTransactionStopRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainTransactionStopError>>;
     /**
      * Resolve a chain identifier to its genesis hash against the host's
      * configured environment (RFC 0026).
      */
-    getChainInfo(request: T.RemoteChainInfoRequest): ResultAsync<T.RemoteChainInfoResponse, S.CallErrorValue<T.VersionedRemoteChainInfoError>>;
+    getChainInfo(request: T.RemoteChainInfoRequest, options?: CallOptions): ResultAsync<T.RemoteChainInfoResponse, S.CallErrorValue<T.VersionedRemoteChainInfoError>>;
 }
 /** Chat room, bot, and message APIs. */
 export declare class ChatClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Create a chat room. */
-    createRoom(request: T.HostChatCreateRoomRequest): ResultAsync<T.HostChatCreateRoomResponse, S.CallErrorValue<T.VersionedHostChatCreateRoomError>>;
+    createRoom(request: T.HostChatCreateRoomRequest, options?: CallOptions): ResultAsync<T.HostChatCreateRoomResponse, S.CallErrorValue<T.VersionedHostChatCreateRoomError>>;
     /** Register a chat bot. */
-    registerBot(request: T.HostChatRegisterBotRequest): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
+    registerBot(request: T.HostChatRegisterBotRequest, options?: CallOptions): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
     /** Subscribe to the list of chat rooms. */
     listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
     /**
@@ -122,7 +138,7 @@ export declare class ChatClient {
      * The returned `messageId` is the correlation key for any action the
      * message carries: a later `actionSubscribe` trigger names it.
      */
-    postMessage(request: T.HostChatPostMessageRequest): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
+    postMessage(request: T.HostChatPostMessageRequest, options?: CallOptions): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
     /** Subscribe to received chat actions. */
     actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
 }
@@ -134,12 +150,12 @@ export declare class ChatClient {
  * updates.
  */
 export declare class CoinPaymentClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Create a new firewalled CoinPayment purse. */
-    createPurse(request: T.HostCoinPaymentCreatePurseRequest): ResultAsync<T.HostCoinPaymentCreatePurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreatePurseError>>;
+    createPurse(request: T.HostCoinPaymentCreatePurseRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentCreatePurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreatePurseError>>;
     /** Query product-visible purse metadata and balance. */
-    queryPurse(request: T.HostCoinPaymentQueryPurseRequest): ResultAsync<T.HostCoinPaymentQueryPurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentQueryPurseError>>;
+    queryPurse(request: T.HostCoinPaymentQueryPurseRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentQueryPurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentQueryPurseError>>;
     /** Transfer balance between local purses. */
     rebalancePurse({ request }: {
         request: T.HostCoinPaymentRebalancePurseRequest;
@@ -149,9 +165,9 @@ export declare class CoinPaymentClient {
         request: T.HostCoinPaymentDeletePurseRequest;
     }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentDeletePurseError>>;
     /** Create a receivable public key for depositing into a purse. */
-    createReceivable(request: T.HostCoinPaymentCreateReceivableRequest): ResultAsync<T.HostCoinPaymentCreateReceivableResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateReceivableError>>;
+    createReceivable(request: T.HostCoinPaymentCreateReceivableRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentCreateReceivableResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateReceivableError>>;
     /** Create a cheque paying from a local purse to a receivable. */
-    createCheque(request: T.HostCoinPaymentCreateChequeRequest): ResultAsync<T.HostCoinPaymentCreateChequeResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateChequeError>>;
+    createCheque(request: T.HostCoinPaymentCreateChequeRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentCreateChequeResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateChequeError>>;
     /** Claim coins from a cheque into the receivable's purse. */
     deposit({ request }: {
         request: T.HostCoinPaymentDepositRequest;
@@ -167,32 +183,42 @@ export declare class CoinPaymentClient {
 }
 /** Deterministic entropy derivation. */
 export declare class EntropyClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Derive deterministic entropy. */
-    derive(request: T.HostDeriveEntropyRequest): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
+    derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
 }
 /** Local key/value storage scoped to the calling product. */
 export declare class LocalStorageClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Read a value by key. */
-    read(request: T.HostLocalStorageReadRequest): ResultAsync<T.HostLocalStorageReadResponse, S.CallErrorValue<T.VersionedHostLocalStorageReadError>>;
+    read(request: T.HostLocalStorageReadRequest, options?: CallOptions): ResultAsync<T.HostLocalStorageReadResponse, S.CallErrorValue<T.VersionedHostLocalStorageReadError>>;
     /** Write a value to a key. */
-    write(request: T.HostLocalStorageWriteRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageWriteError>>;
+    write(request: T.HostLocalStorageWriteRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageWriteError>>;
     /** Clear a value by key. */
-    clear(request: T.HostLocalStorageClearRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageClearError>>;
+    clear(request: T.HostLocalStorageClearRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageClearError>>;
+    /**
+     * Subscribe to changes of one key in the product's own storage namespace.
+     *
+     * Emits the current value immediately, then one item per later write or
+     * clear of the key by any of the product's runtimes. A write that leaves
+     * the stored bytes unchanged emits nothing.
+     */
+    subscribe({ request }: {
+        request: T.HostLocalStorageSubscribeRequest;
+    }): ObservableLike<T.HostLocalStorageChangeItem, S.CallErrorValue<T.VersionedHostLocalStorageSubscribeError>>;
 }
 /** Host locale subscription. */
 export declare class LocaleClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
     subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /**
      * Send a push notification to the user.
@@ -205,7 +231,7 @@ export declare class NotificationsClient {
      *
      * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
-    sendPushNotification(request: T.HostPushNotificationRequest): ResultAsync<T.HostPushNotificationResponse, S.CallErrorValue<T.VersionedHostPushNotificationError>>;
+    sendPushNotification(request: T.HostPushNotificationRequest, options?: CallOptions): ResultAsync<T.HostPushNotificationResponse, S.CallErrorValue<T.VersionedHostPushNotificationError>>;
     /**
      * Cancels a previously issued push notification.
      *
@@ -214,33 +240,37 @@ export declare class NotificationsClient {
      *
      * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
-    cancelPushNotification(request: T.HostPushNotificationCancelRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Subscribe to payment balance updates. */
     balanceSubscribe({ request }: {
         request: T.HostPaymentBalanceSubscribeRequest;
     }): ObservableLike<T.HostPaymentBalanceSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentBalanceSubscribeError>>;
     /** Request a payment from the user. */
-    request(request: T.HostPaymentRequest): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
+    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
     /** Subscribe to payment lifecycle updates for a specific payment. */
     statusSubscribe({ request }: {
         request: T.HostPaymentStatusSubscribeRequest;
     }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
     /** Top up the user's payment balance. */
-    topUp(request: T.HostPaymentTopUpRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
+    topUp(request: T.HostPaymentTopUpRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
 }
 /** Permission request methods. */
 export declare class PermissionsClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Request a device-capability permission from the user. */
-    requestDevicePermission(request: T.HostDevicePermissionRequest): ResultAsync<T.HostDevicePermissionResponse, S.CallErrorValue<T.VersionedHostDevicePermissionError>>;
-    /** Request a remote-operation permission. */
-    requestRemotePermission(request: T.RemotePermissionRequest): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
+    requestDevicePermission(request: T.HostDevicePermissionRequest, options?: CallOptions): ResultAsync<T.HostDevicePermissionResponse, S.CallErrorValue<T.VersionedHostDevicePermissionError>>;
+    /**
+     * Request a remote-operation permission.
+     *
+     * This example makes live requests to Frankfurter after permission is granted.
+     */
+    requestRemotePermission(request: T.RemotePermissionRequest, options?: CallOptions): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
 }
 /**
  * Pocket cards backed by the calling product.
@@ -249,7 +279,7 @@ export declare class PermissionsClient {
  * remove them, but cannot add one.
  */
 export declare class PocketClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /**
      * Subscribe to the calling product's cards.
@@ -263,23 +293,22 @@ export declare class PocketClient {
      * Removing a card that is not present succeeds. A privileged card is
      * refused with `Privileged`.
      */
-    removeCard(request: T.HostPocketRemoveCardRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
+    removeCard(request: T.HostPocketRemoveCardRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
 }
 /** Preimage lookup and submission methods. */
 export declare class PreimageClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Subscribe to preimage lookups for a given key. */
     lookupSubscribe({ request }: {
         request: T.RemotePreimageLookupSubscribeRequest;
     }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
     /** Submit a preimage. Returns the preimage key (hash) on success. */
-    submit(request: HexString): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
+    submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {
-    private readonly transport;
-    private readonly renderRegistration;
+    #private;
     constructor(transport: TrUApiTransport);
     /**
      * Streams renderer trees for one product-rendered body. Each item
@@ -294,14 +323,14 @@ export declare class RendererClient {
 }
 /** Resource pre-allocation (allowance management). */
 export declare class ResourceAllocationClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Request the host to pre-allocate one or more resources. */
-    request(request: T.HostRequestResourceAllocationRequest): ResultAsync<T.HostRequestResourceAllocationResponse, S.CallErrorValue<T.VersionedHostRequestResourceAllocationError>>;
+    request(request: T.HostRequestResourceAllocationRequest, options?: CallOptions): ResultAsync<T.HostRequestResourceAllocationResponse, S.CallErrorValue<T.VersionedHostRequestResourceAllocationError>>;
 }
 /** Signing operations. */
 export declare class SigningClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /**
      * Construct a transaction for a product account.
@@ -314,7 +343,7 @@ export declare class SigningClient {
      * with a proof in a later extension — encodes the given bytes verbatim and
      * returns an unsigned transaction.
      */
-    createTransaction(request: T.ProductAccountTxPayload): ResultAsync<T.HostCreateTransactionResponse, S.CallErrorValue<T.VersionedHostCreateTransactionError>>;
+    createTransaction(request: T.ProductAccountTxPayload, options?: CallOptions): ResultAsync<T.HostCreateTransactionResponse, S.CallErrorValue<T.VersionedHostCreateTransactionError>>;
     /**
      * Construct a transaction for a non-product (legacy) account.
      *
@@ -322,25 +351,25 @@ export declare class SigningClient {
      * [`Signing::create_transaction`]: omit it and the host signs, list it and
      * the given bytes are used with no host signature.
      */
-    createTransactionWithLegacyAccount(request: T.LegacyAccountTxPayload): ResultAsync<T.HostCreateTransactionWithLegacyAccountResponse, S.CallErrorValue<T.VersionedHostCreateTransactionWithLegacyAccountError>>;
+    createTransactionWithLegacyAccount(request: T.LegacyAccountTxPayload, options?: CallOptions): ResultAsync<T.HostCreateTransactionWithLegacyAccountResponse, S.CallErrorValue<T.VersionedHostCreateTransactionWithLegacyAccountError>>;
     /** Sign raw bytes with a non-product account. */
-    signRawWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
+    signRawWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
     /** Sign an extrinsic payload with a non-product account. */
-    signPayloadWithLegacyAccount(request: T.HostSignPayloadWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadWithLegacyAccountError>>;
+    signPayloadWithLegacyAccount(request: T.HostSignPayloadWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadWithLegacyAccountError>>;
     /**
      * Sign raw bytes or a message.
      *
      * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
      * grant covers the account; otherwise each call is confirmed by the user.
      */
-    signRaw(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
+    signRaw(request: T.HostSignRawRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
     /**
      * Sign an extrinsic payload.
      *
      * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
      * grant covers the account; otherwise each call is confirmed by the user.
      */
-    signPayload(request: T.HostSignPayloadRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
+    signPayload(request: T.HostSignPayloadRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
     /**
      * Sign the supplied data without adding or removing a watermark.
      *
@@ -350,9 +379,9 @@ export declare class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
      */
-    signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
+    signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
     /**
      * Sign the supplied data without adding or removing a watermark.
      *
@@ -362,13 +391,13 @@ export declare class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
      */
-    signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
+    signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
 }
 /** Statement store methods. */
 export declare class StatementStoreClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Subscribe to statements matching a topic filter. */
     subscribe({ request }: {
@@ -382,30 +411,30 @@ export declare class StatementStoreClient {
      * require a per-call signing prompt. Pairing hosts may reject this method
      * when their signing channel cannot sign statement proof payloads exactly.
      */
-    createProof(request: T.RemoteStatementStoreCreateProofRequest): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofError>>;
+    createProof(request: T.RemoteStatementStoreCreateProofRequest, options?: CallOptions): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofError>>;
     /**
      * Create a proof for a statement using a pre-allocated allowance account,
      * bypassing the per-call signing prompt.
      */
-    createProofAuthorized(request: T.Statement): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofAuthorizedError>>;
+    createProofAuthorized(request: T.Statement, options?: CallOptions): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofAuthorizedError>>;
     /**
      * Submit a signed statement to the network. The request body is the
      * [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
      * struct), matching upstream `triangle-js-sdks`.
      */
-    submit(request: T.SignedStatement): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteStatementStoreSubmitError>>;
+    submit(request: T.SignedStatement, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteStatementStoreSubmitError>>;
 }
 /**
  * General-purpose TrUAPI methods for handshake, feature detection,
  * navigation, and runtime information.
  */
 export declare class SystemClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Negotiate the wire codec version with the product. */
-    handshake(): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostHandshakeError>>;
+    handshake(options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostHandshakeError>>;
     /** Query whether the host supports a specific feature. */
-    featureSupported(request: T.HostFeatureSupportedRequest): ResultAsync<T.HostFeatureSupportedResponse, S.CallErrorValue<T.VersionedHostFeatureSupportedError>>;
+    featureSupported(request: T.HostFeatureSupportedRequest, options?: CallOptions): ResultAsync<T.HostFeatureSupportedResponse, S.CallErrorValue<T.VersionedHostFeatureSupportedError>>;
     /**
      * Request the host to open a URL.
      *
@@ -416,7 +445,7 @@ export declare class SystemClient {
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
-    navigateTo(request: T.HostNavigateToRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNavigateToError>>;
+    navigateTo(request: T.HostNavigateToRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNavigateToError>>;
     /**
      * Report the host's identity and version.
      *
@@ -425,16 +454,33 @@ export declare class SystemClient {
      * adapting to the host, telemetry, and attributing behaviour to a
      * concrete build in diagnostics and bug reports.
      */
-    info(): ResultAsync<T.HostInfo, S.CallErrorValue<T.VersionedHostInfoError>>;
+    info(options?: CallOptions): ResultAsync<T.HostInfo, S.CallErrorValue<T.VersionedHostInfoError>>;
     /** Return the product context bound to the current host runtime. */
-    getProductContext(): ResultAsync<T.HostGetProductContextResponse, S.CallErrorValue<T.VersionedHostGetProductContextError>>;
+    getProductContext(options?: CallOptions): ResultAsync<T.HostGetProductContextResponse, S.CallErrorValue<T.VersionedHostGetProductContextError>>;
 }
 /** Host theme subscription. */
 export declare class ThemeClient {
-    private readonly transport;
+    #private;
     constructor(transport: TrUApiTransport);
     /** Subscribe to host theme changes. */
     subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
+}
+/**
+ * Worker background-operation APIs.
+ *
+ * The host keeps a product's worker running while it holds at least one open
+ * operation, which is how a worker outlives the surface that started it.
+ */
+export declare class WorkerClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Begin a pending operation. */
+    beginOperation(request: T.HostWorkerBeginOperationRequest, options?: CallOptions): ResultAsync<T.HostWorkerBeginOperationResponse, S.CallErrorValue<T.VersionedHostWorkerBeginOperationError>>;
+    /**
+     * End a pending operation. Idempotent: an unknown or already-ended id
+     * succeeds, so a retry after an ambiguous failure is safe.
+     */
+    endOperation(request: T.HostWorkerEndOperationRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostWorkerEndOperationError>>;
 }
 export interface TrUApiClient {
     readonly account: AccountClient;
@@ -455,6 +501,7 @@ export interface TrUApiClient {
     readonly statementStore: StatementStoreClient;
     readonly system: SystemClient;
     readonly theme: ThemeClient;
+    readonly worker: WorkerClient;
 }
 export type Client = TrUApiClient;
 /** Creates the generated client facade by binding each service namespace to the

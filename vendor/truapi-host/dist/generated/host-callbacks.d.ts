@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, NotificationId, RemotePermissionResponse, Result } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationId, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -464,6 +464,268 @@ export interface NativeChatPickedFile {
     metadata: HostNativeChatAttachmentMetadata;
 }
 /**
+ * Sanitized failures. Never forward secret-bearing native exception descriptions.
+ */
+export type NativeCoinageFailure = "Unavailable" | "InvalidRequest" | "InvalidSource" | "OperationConflict" | "OperationNotFound" | "InsufficientBalance" | "UserRejected";
+/**
+ * Host-private bearer material. Never return this through the product API or log it.
+ * Raw amounts are canonical unsigned decimal u128 strings, avoiding FFI truncation.
+ */
+export interface NativeCoinageMemo {
+    /**
+     * Validated 64-byte native sr25519 secret keys, confined to the trusted Host.
+     */
+    secretKeys: Array<Uint8Array>;
+    /**
+     * Exact total in canonical decimal raw chain units.
+     */
+    totalValueRaw: string;
+}
+/**
+ * Durable native-wallet operations, not an alternative inventory ledger.
+ */
+export type NativeCoinageOperation = 
+/**
+ * Read trusted denomination metadata without selecting or allocating inventory.
+ */
+{
+    tag: "Denomination";
+    value?: undefined;
+}
+/**
+ * Native trusted UI must review the exact intent and maximum debit before spending.
+ * Replays must reuse persisted preparation, never allocate a second payment.
+ * Before returning a memo, native custody must survive restart atomically with
+ * transaction registration. Startup must never release these coins as provisional.
+ */
+ | {
+    tag: "PreparePayment";
+    value: {
+        intent: NativeCoinagePaymentIntent;
+    };
+}
+/**
+ * Called only after the authenticated Host durably accepts encrypted delivery.
+ * Records transport acceptance; it is not the first durable native custody mark.
+ */
+ | {
+    tag: "CommitHandoff";
+    value: {
+        productId: string;
+        operationId: Uint8Array;
+    };
+}
+/**
+ * Immutable public cards; do not initialize or claim an unrelated wallet.
+ */
+ | {
+    tag: "Views";
+    value: {
+        productId: string;
+    };
+}
+/**
+ * Accepted ids come from the Host's durable ciphertext custody ledger.
+ */
+ | {
+    tag: "PendingHandoffs";
+    value: {
+        productId: string;
+        acceptedOperations: Array<Uint8Array>;
+    };
+}
+/**
+ * Read an existing recoverable handoff without approval, selection or spending.
+ */
+ | {
+    tag: "ReadHandoff";
+    value: {
+        productId: string;
+        operationId: Uint8Array;
+    };
+}
+/**
+ * Peer acknowledgment is not monetary settlement.
+ */
+ | {
+    tag: "NoteDelivery";
+    value: {
+        productId: string;
+        operationId: Uint8Array;
+    };
+}
+/**
+ * Resume already-owned work only; never authorize a fresh debit.
+ */
+ | {
+    tag: "Reconcile";
+    value?: undefined;
+}
+/**
+ * Persist source custody before returning. Only finalized credit is successful.
+ * Reordered sources reuse the same id; changed minimum or overlapping custody conflicts.
+ */
+ | {
+    tag: "TopUp";
+    value: {
+        productId: string;
+        operationId: Uint8Array;
+        minimumAmountRaw: string;
+        secretKeys: Array<Uint8Array>;
+    };
+};
+/**
+ * Immutable, Host-authenticated outgoing intent. No field is a product display hint.
+ */
+export interface NativeCoinagePaymentIntent {
+    /**
+     * Stable wallet-, network- and product-scoped operation identity.
+     */
+    operationId: Uint8Array;
+    /**
+     * Authenticated calling product, not a guest-provided display name.
+     */
+    productId: string;
+    /**
+     * Original caller request identifier, bound immutably to this intent.
+     */
+    requestId: string;
+    /**
+     * Recipient identity authenticated by the Host's Chat authority.
+     */
+    peerIdentity: Uint8Array;
+    /**
+     * Independently resolved recipient name, when available.
+     */
+    recipientUsername?: string;
+    /**
+     * Positive recipient amount in cents of the configured Coinage asset.
+     */
+    amountCents: bigint;
+}
+/**
+ * One native operation with the immutable wallet/network scope to authenticate.
+ */
+export interface NativeCoinageRequest {
+    /**
+     * Expected owner and asset, verified against the active native wallet.
+     */
+    scope: NativeCoinageScope;
+    /**
+     * Host-private command; incoming sources must never be logged.
+     */
+    operation: NativeCoinageOperation;
+}
+/**
+ * Typed native results. Only the trusted Host may consume a Prepared memo.
+ */
+export type NativeCoinageResponse = 
+/**
+ * Trusted denomination metadata for the selected wallet/asset.
+ */
+{
+    tag: "Denomination";
+    value: {
+        centsUnitRaw: string;
+    };
+}
+/**
+ * Existing durable native preparation, or a terminal public payment.
+ */
+ | {
+    tag: "Prepared";
+    value: {
+        payment: HostNativeChatPayment;
+        memo?: NativeCoinageMemo;
+    };
+}
+/**
+ * Product-scoped public payment cards, never a spendable balance.
+ */
+ | {
+    tag: "Payments";
+    value: {
+        payments: Array<HostNativeChatPayment>;
+    };
+}
+/**
+ * Result of an incoming custody operation.
+ */
+ | {
+    tag: "TopUp";
+    value: {
+        outcome: NativeCoinageTopUpOutcome;
+    };
+}
+/**
+ * The requested metadata transition or recovery pass completed.
+ */
+ | {
+    tag: "Done";
+    value?: undefined;
+}
+/**
+ * Sanitized domain rejection; cannot authorize another backend.
+ */
+ | {
+    tag: "Failed";
+    value: {
+        reason: NativeCoinageFailure;
+    };
+};
+/**
+ * Wallet and asset binding checked by the native service before every operation.
+ */
+export interface NativeCoinageScope {
+    /**
+     * Authenticated root key of the wallet owning the main purse.
+     */
+    rootPublicKey: Uint8Array;
+    /**
+     * Genesis hash of the configured Coinage chain.
+     */
+    genesisHash: Uint8Array;
+    /**
+     * Configured asset instance; `undefined` denotes a legacy single-asset runtime.
+     */
+    coinageInstanceId?: number;
+}
+/**
+ * Incoming settlement result; acceptance and best-head observations are not finality.
+ */
+export type NativeCoinageTopUpOutcome = 
+/**
+ * The original requested minimum has been credited at finality.
+ * For a zero minimum, the source claim is terminal with positive finalized credit.
+ */
+{
+    tag: "Cleared";
+    value?: undefined;
+}
+/**
+ * Terminal shortfall, expressed in raw chain units, not cents.
+ */
+ | {
+    tag: "Partial";
+    value: {
+        creditedAmountRaw: string;
+    };
+}
+/**
+ * Durable custody exists, but final credit has not been established.
+ */
+ | {
+    tag: "Pending";
+    value?: undefined;
+}
+/**
+ * Terminal: none of the requested funds could be claimed.
+ */
+ | {
+    tag: "NotClaimed";
+    value?: undefined;
+};
+/**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
@@ -517,10 +779,14 @@ export type PermissionAuthorizationRequest =
 /**
  * Authorization status for a permission request.
  *
- * `NotDetermined` means the core has no persisted answer and will prompt the
+ * `NotDetermined` means the core has no saved or one-use answer and will prompt the
  * host the next time the product requests this permission.
  */
 export type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Authorized";
+/**
+ * User decision including how long an authorization should last.
+ */
+export type PermissionDecision = "AllowOnce" | "AllowAlways" | "Deny";
 /**
  * Review shown before a preimage is submitted.
  */
@@ -615,6 +881,13 @@ export interface SessionUiInfo {
      * device discriminator; use `Self::device_enc_public_key` for that.
      */
     peerStatementAccountId?: Bytes32;
+    /**
+     * Statement-store account id this device advertises in the pairing
+     * proposal; the paired wallet registers the statement-store allowance for
+     * it, and peers address this host on topics derived from it. Rotated per
+     * login. Secret at `CoreAdmin::get_device_statement_key`.
+     */
+    deviceStatementAccountId?: Bytes32;
     /**
      * Short username from the dotNS identity record on Asset Hub.
      */
@@ -880,6 +1153,39 @@ export declare const NativeChatFilePickRequest: S.Codec<NativeChatFilePickReques
  */
 export declare const NativeChatPickedFile: S.Codec<NativeChatPickedFile>;
 /**
+ * Sanitized failures. Never forward secret-bearing native exception descriptions.
+ */
+export declare const NativeCoinageFailure: S.Codec<NativeCoinageFailure>;
+/**
+ * Host-private bearer material. Never return this through the product API or log it.
+ * Raw amounts are canonical unsigned decimal u128 strings, avoiding FFI truncation.
+ */
+export declare const NativeCoinageMemo: S.Codec<NativeCoinageMemo>;
+/**
+ * Durable native-wallet operations, not an alternative inventory ledger.
+ */
+export declare const NativeCoinageOperation: S.Codec<NativeCoinageOperation>;
+/**
+ * Immutable, Host-authenticated outgoing intent. No field is a product display hint.
+ */
+export declare const NativeCoinagePaymentIntent: S.Codec<NativeCoinagePaymentIntent>;
+/**
+ * One native operation with the immutable wallet/network scope to authenticate.
+ */
+export declare const NativeCoinageRequest: S.Codec<NativeCoinageRequest>;
+/**
+ * Typed native results. Only the trusted Host may consume a Prepared memo.
+ */
+export declare const NativeCoinageResponse: S.Codec<NativeCoinageResponse>;
+/**
+ * Wallet and asset binding checked by the native service before every operation.
+ */
+export declare const NativeCoinageScope: S.Codec<NativeCoinageScope>;
+/**
+ * Incoming settlement result; acceptance and best-head observations are not finality.
+ */
+export declare const NativeCoinageTopUpOutcome: S.Codec<NativeCoinageTopUpOutcome>;
+/**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
@@ -887,10 +1193,14 @@ export declare const PermissionAuthorizationRequest: S.Codec<PermissionAuthoriza
 /**
  * Authorization status for a permission request.
  *
- * `NotDetermined` means the core has no persisted answer and will prompt the
+ * `NotDetermined` means the core has no saved or one-use answer and will prompt the
  * host the next time the product requests this permission.
  */
 export declare const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizationStatus>;
+/**
+ * User decision including how long an authorization should last.
+ */
+export declare const PermissionDecision: S.Codec<PermissionDecision>;
 /**
  * Review shown before a preimage is submitted.
  */
@@ -1029,6 +1339,19 @@ export interface ChatPlatform {
     subscribeChatRooms(product: ProductContext): AsyncIterable<Result<HostChatListSubscribeItem, GenericError>>;
 }
 /**
+ * Optional native wallet service boundary, never exposed to products.
+ *
+ * Injecting this service at runtime construction assigns native custody for
+ * the runtime's lifetime. Absence selects the built-in Rust wallet; native
+ * unavailability or failure never permits Rust fallback.
+ */
+export interface CoinageWalletHost {
+    /**
+     * Invoke the selected native owner. An error never permits Rust fallback.
+     */
+    nativeCoinage(request: NativeCoinageRequest): Promise<NativeCoinageResponse>;
+}
+/**
  * Core-owned administration API exposed to host UI.
  *
  * Hosts call this surface to drive global runtime actions or inspect/update
@@ -1077,6 +1400,19 @@ export interface CoreAdmin {
      * secret placed there would reach hosts that never asked for it.
      */
     getSessionChatIdentityKey(): Promise<Bytes32 | undefined>;
+    /**
+     * Read the active session's expanded sr25519 statement-store secret, for
+     * hosts that run their own statement-store traffic. 64 bytes.
+     *
+     * The key behind `SessionUiInfo::device_statement_account_id`: signing
+     * with anything else produces statements no allowance covers. ``undefined``
+     * without an active pairing-host session; a signing host has no pairing
+     * proposal of its own.
+     *
+     * Deliberately not on `SessionUiInfo`, for the reason given on
+     * `Self::get_session_chat_identity_key`.
+     */
+    getDeviceStatementKey(): Promise<Uint8Array | undefined>;
     /**
      * Read this device's X25519 encryption secret, for hosts that run device
      * sync against the peer's `SessionUiInfo::device_enc_public_key`.
@@ -1321,13 +1657,13 @@ export interface PermissionStatusHost {
  */
 export interface Permissions {
     /**
-     * Prompt the user for a device-level permission.
+     * Prompt the user for a device-level permission `product` requested.
      */
-    devicePermission(request: HostDevicePermissionRequest): Promise<HostDevicePermissionResponse>;
+    devicePermission(product: ProductContext, request: HostDevicePermissionRequest): Promise<PermissionDecision>;
     /**
-     * Prompt the user for a remote (product-scoped) permission bundle.
+     * Prompt the user for a remote permission bundle `product` requested.
      */
-    remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
+    remotePermission(product: ProductContext, request: RemotePermissionRequest): Promise<PermissionDecision>;
 }
 /**
  * Host-implemented adapter through which product Pocket calls reach the
@@ -1360,6 +1696,29 @@ export interface PreimageHost {
     lookupPreimage(key: Uint8Array): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
 }
 /**
+ * Host store for a product's pending operations, which the host uses to keep
+ * the product's worker runtime alive. Reached only through the `Worker`
+ * protocol trait, so non-worker products never call these.
+ */
+export interface ProductOperations {
+    /**
+     * Record a pending operation. `label` is a host log and UI hint, empty
+     * when the product gave none.
+     *
+     * The returned id must be unique among this product's open operations.
+     * The core keys the worker reference an operation holds by that id, so an
+     * id already open for the product records nothing the second time, and
+     * ending it once drops the demand both were holding. Ids may repeat
+     * across products, and may be reused once an operation has ended.
+     */
+    beginOperation(product: ProductContext, label: string): Promise<HostWorkerBeginOperationResponse>;
+    /**
+     * Remove a pending operation. Idempotent: an unknown or already-ended id
+     * returns `Ok`, so a retry after an ambiguous failure is safe.
+     */
+    endOperation(product: ProductContext, id: number): Promise<void>;
+}
+/**
  * Product-scoped key-value storage.
  *
  * The core namespaces product keys before calling this trait. Host
@@ -1388,6 +1747,16 @@ export interface ProductStorage {
      * Clear a value at a key.
      */
     clear(key: string): Promise<void>;
+    /**
+     * Emit `key`'s current value, then each later change from any of the
+     * product's runtimes. `key` is namespaced exactly as `Self::read` takes
+     * it.
+     *
+     * Reporting a write that left the bytes unchanged is allowed: the core
+     * drops an item repeating the value it last delivered, so the product
+     * sees only real changes whether or not a host filters them itself.
+     */
+    subscribeStorage(key: string): AsyncIterable<Result<HostLocalStorageChangeItem, GenericError>>;
 }
 /**
  * Host theme source.
@@ -1404,14 +1773,18 @@ export interface ThemeHost {
  */
 export interface UserConfirmation {
     /**
+     * Preserve the lifetime of consent for identity and account disclosures.
+     */
+    confirmPermission?(review: UserConfirmationReview): Promise<PermissionDecision>;
+    /**
      * Confirm a reviewed action before the core continues.
      */
     confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }
 /**
  * Combined platform interface. A host must provide every capability trait
- * listed here. Members marked optional may be omitted; the core answers their
- * product calls with `Unsupported`. See `OptionalPlatform`.
+ * listed here. Optional capabilities are declared separately in
+ * `OptionalPlatform`.
  */
 export interface HostCallbacks {
     navigation: Navigation;
@@ -1428,7 +1801,9 @@ export interface HostCallbacks {
     theme: ThemeHost;
     locale: LocaleHost;
     preimage: PreimageHost;
+    productOperations: ProductOperations;
     chat?: ChatPlatform;
+    coinageWallet?: CoinageWalletHost;
     identityBackend?: IdentityBackendHost;
     permissionStatus?: PermissionStatusHost;
     pocket?: PocketPlatform;
@@ -1448,7 +1823,9 @@ export interface RequiredHostCallbacks {
     theme: Required<ThemeHost>;
     locale: Required<LocaleHost>;
     preimage: Required<PreimageHost>;
+    productOperations: Required<ProductOperations>;
     chat?: Required<ChatPlatform>;
+    coinageWallet?: Required<CoinageWalletHost>;
     identityBackend?: Required<IdentityBackendHost>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;

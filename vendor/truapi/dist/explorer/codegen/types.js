@@ -2163,7 +2163,7 @@ export const types = [
         name: "HostDevicePermissionRequest",
         category: "permissions",
         definition: 'export type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics";',
-        description: "Device-capability permission requested from the host (RFC 0002).\n\nThe user's decision is persisted indefinitely after the first prompt and\nsurvives app restarts, whether the decision was grant or deny; the host\ndoes not re-prompt on subsequent requests for the same capability.\n\nThat decision is about this product. The OS grant behind it belongs to the\nhost application and can move independently, so a host that can read OS\nstate has the capability resolve only while both allow it: a stored grant\nwhose OS grant was revoked answers `granted: false` without a prompt. An OS\ngrant that is merely undetermined does not change the answer, because the OS\nresolves its own gate when the capability is used.",
+        description: "Device-capability permission requested from the host (RFC 0002).\n\nLasting grants and denials survive app restarts. A host may also offer a\none-use grant, held in memory until a permission-gated operation consumes it.\n\nThat decision is about this product. The OS grant behind it belongs to the\nhost application and can move independently, so a host that can read OS\nstate has the capability resolve only while both allow it: a stored grant\nwhose OS grant was revoked answers `granted: false` without a prompt. An OS\ngrant that is merely undetermined does not change the answer, because the OS\nresolves its own gate when the capability is used.",
         variants: [
             {
                 name: "Notifications",
@@ -2203,7 +2203,7 @@ export const types = [
             {
                 name: "OpenUrl",
                 type: '{ tag: "OpenUrl"; value?: undefined }',
-                description: "Handing a URL to the operating system, leaving the host application\nentirely. Requestable and persistable, but the core enforces nothing with\nit: *which* hosts a product may send the user to is\n`RemotePermission::Remote`, wherever the destination ends up opening.",
+                description: "Opening an external URL through `navigate_to`. A one-use grant allows\none handoff to the browser or another system application.",
             },
             {
                 name: "Biometrics",
@@ -2383,6 +2383,20 @@ export const types = [
         ],
     },
     {
+        id: "host-local-storage-change-item",
+        name: "HostLocalStorageChangeItem",
+        category: "local_storage",
+        definition: "export interface HostLocalStorageChangeItem {\n  value?: HexString;\n}",
+        description: "A change to a subscribed storage key, pushed to the subscriber.",
+        fields: [
+            {
+                name: "value",
+                type: "HexString | undefined",
+                description: "Value after the change. `Some` on write, `None` after clear.",
+            },
+        ],
+    },
+    {
         id: "host-local-storage-clear-request",
         name: "HostLocalStorageClearRequest",
         category: "local_storage",
@@ -2450,6 +2464,20 @@ export const types = [
                 name: "value",
                 type: "HexString | undefined",
                 description: "Stored value, if present.",
+            },
+        ],
+    },
+    {
+        id: "host-local-storage-subscribe-request",
+        name: "HostLocalStorageSubscribeRequest",
+        category: "local_storage",
+        definition: "export interface HostLocalStorageSubscribeRequest {\n  key: string;\n}",
+        description: "Request to subscribe to changes of one local storage key.",
+        fields: [
+            {
+                name: "key",
+                type: "string",
+                description: "Storage key to observe.",
             },
         ],
     },
@@ -2617,6 +2645,30 @@ export const types = [
         ],
     },
     {
+        id: "host-native-chat-binding",
+        name: "HostNativeChatBinding",
+        category: "account",
+        definition: "export interface HostNativeChatBinding {\n  peerIdentity: HexString;\n  peerChatPublicKey: HexString;\n  identityProof: HexString;\n}",
+        description: "Peer cryptographic identity independently resolved and bound by the Host.",
+        fields: [
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "Authenticated peer root identity.",
+            },
+            {
+                name: "peer_chat_public_key",
+                type: "HexString",
+                description: "Peer identity-level native Chat encryption key.",
+            },
+            {
+                name: "identity_proof",
+                type: "HexString",
+                description: "Identity proof used in the native invitation handshake.",
+            },
+        ],
+    },
+    {
         id: "host-native-chat-device",
         name: "HostNativeChatDevice",
         category: "account",
@@ -2710,6 +2762,78 @@ export const types = [
                 name: "messages",
                 type: "Array<HexString>",
                 description: "Native message encodings after custody-sensitive content is removed.",
+            },
+        ],
+    },
+    {
+        id: "host-native-chat-migration-invitation",
+        name: "HostNativeChatMigrationInvitation",
+        category: "account",
+        definition: "export interface HostNativeChatMigrationInvitation {\n  invitationId: HexString;\n  requestId: string;\n}",
+        description: "Native request identity needed to answer a migrated legacy invitation.",
+        fields: [
+            {
+                name: "invitation_id",
+                type: "HexString",
+                description: "Invitation handle in the accompanying legacy public view.",
+            },
+            {
+                name: "request_id",
+                type: "string",
+                description: "Original native request identity to acknowledge when answering.",
+            },
+        ],
+    },
+    {
+        id: "host-native-chat-open-page",
+        name: "HostNativeChatOpenPage",
+        category: "account",
+        definition: "export interface HostNativeChatOpenPage {\n  openId: HexString;\n  cursor: number;\n  nextCursor?: number;\n}",
+        description: "Continuation metadata for a bounded page of authenticated incoming plaintext.",
+        fields: [
+            {
+                name: "open_id",
+                type: "HexString",
+                description: "Opaque identifier of the authenticated opening operation.",
+            },
+            {
+                name: "cursor",
+                type: "number",
+                description: "Cursor identifying this page.",
+            },
+            {
+                name: "next_cursor",
+                type: "number | undefined",
+                description: "Cursor to request next; absent when the authenticated batch is complete.",
+            },
+        ],
+    },
+    {
+        id: "host-native-chat-opened",
+        name: "HostNativeChatOpened",
+        category: "account",
+        definition: "export interface HostNativeChatOpened {\n  peerIdentity: HexString;\n  senderAccountId: HexString;\n  route: HostNativeChatRoute;\n  plaintext: HexString;\n}",
+        description: "Authenticated incoming native plaintext, potentially containing incoming coin keys.",
+        fields: [
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "Authenticated peer root identity, never the local wallet's own identity.",
+            },
+            {
+                name: "sender_account_id",
+                type: "HexString",
+                description: "Account that signed the accepted native statement.",
+            },
+            {
+                name: "route",
+                type: "HostNativeChatRoute",
+                description: "Authenticated native context of the incoming statement.",
+            },
+            {
+                name: "plaintext",
+                type: "HexString",
+                description: "Native invitation or tagged request/response plaintext; never outgoing payment memos.",
             },
         ],
     },
@@ -2918,6 +3042,40 @@ export const types = [
         ],
     },
     {
+        id: "host-native-chat-prepared",
+        name: "HostNativeChatPrepared",
+        category: "account",
+        definition: "export interface HostNativeChatPrepared {\n  statement: SignedStatement;\n  peerIdentity: HexString;\n  requestId: string;\n  requiresAck: boolean;\n  clientRequestId?: string;\n}",
+        description: "Signed ciphertext with the native identity required for durable product delivery.",
+        fields: [
+            {
+                name: "statement",
+                type: "SignedStatement",
+                description: "Exact signed ciphertext to submit again when retrying delivery.",
+            },
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "Authenticated recipient root identity.",
+            },
+            {
+                name: "request_id",
+                type: "string",
+                description: "Native request identity used to correlate delivery acknowledgments.",
+            },
+            {
+                name: "requires_ack",
+                type: "boolean",
+                description: "Whether delivery remains pending until a native peer acknowledgment arrives.",
+            },
+            {
+                name: "client_request_id",
+                type: "string | undefined",
+                description: "Original product intent id for correlating migrated pending UI, when retained.",
+            },
+        ],
+    },
+    {
         id: "host-native-chat-rich-message",
         name: "HostNativeChatRichMessage",
         category: "account",
@@ -2987,6 +3145,54 @@ export const types = [
                 name: "Edited",
                 type: '{ tag: "Edited"; value: { messageId: string } }',
                 description: "A replacement of the same author's earlier rich content.",
+            },
+        ],
+    },
+    {
+        id: "host-native-chat-route",
+        name: "HostNativeChatRoute",
+        category: "account",
+        definition: 'export type HostNativeChatRoute = "Invitation" | "Identity" | "Device";',
+        description: "The authenticated native encryption and statement-routing context.",
+        variants: [
+            {
+                name: "Invitation",
+                type: '{ tag: "Invitation"; value?: undefined }',
+                description: "A native invitation addressed to a peer identity.",
+            },
+            {
+                name: "Identity",
+                type: '{ tag: "Identity"; value?: undefined }',
+                description: "Native identity transport used for establishment and device admission.",
+            },
+            {
+                name: "Device",
+                type: '{ tag: "Device"; value?: undefined }',
+                description: "Native transport between admitted Chat devices.",
+            },
+        ],
+    },
+    {
+        id: "host-native-chat-state-page",
+        name: "HostNativeChatStatePage",
+        category: "account",
+        definition: "export interface HostNativeChatStatePage {\n  stateId: HexString;\n  cursor: number;\n  nextCursor?: number;\n}",
+        description: "Continuation metadata for a bounded page of a stable public state snapshot.",
+        fields: [
+            {
+                name: "state_id",
+                type: "HexString",
+                description: "Opaque identifier of the Host-retained public state snapshot.",
+            },
+            {
+                name: "cursor",
+                type: "number",
+                description: "Cursor identifying this page.",
+            },
+            {
+                name: "next_cursor",
+                type: "number | undefined",
+                description: "Cursor to request next; absent when the snapshot is complete.",
             },
         ],
     },
@@ -3411,63 +3617,73 @@ export const types = [
         id: "host-product-device-chat-request",
         name: "HostProductDeviceChatRequest",
         category: "account",
-        definition: 'export type HostProductDeviceChatRequest =\n  | { tag: "Initialize"; value?: undefined }\n  | { tag: "Invite"; value: { username: string; text: string } }\n  | { tag: "Receive"; value: { statement: SignedStatement } }\n  | { tag: "AcceptInvitation"; value: { invitationId: HexString } }\n  | { tag: "RejectInvitation"; value: { invitationId: HexString } }\n  | { tag: "Send"; value: { peerIdentity: HexString; requestId: string; messages: Array<HexString> } }\n  | { tag: "SendPayment"; value: { peerIdentity: HexString; requestId: string; amountCents: bigint } }\n  | { tag: "PaymentStatus"; value: { operationId: HexString } }\n  | { tag: "Reconcile"; value?: undefined }\n  | { tag: "SendAttachments"; value: { peerIdentity: HexString; requestId: string; text?: string } }\n  | { tag: "OpenAttachment"; value: { attachmentId: HexString } }\n;',
-        description: "An operation on the calling product's Host-owned native Chat device.",
+        definition: 'export type HostProductDeviceChatRequest =\n  | { tag: "Initialize"; value?: undefined }\n  | { tag: "Bind"; value: { username: string } }\n  | { tag: "Prepare"; value: { peerIdentity: HexString; route: HostNativeChatRoute; plaintext: HexString } }\n  | { tag: "Open"; value: { statement: SignedStatement } }\n  | { tag: "SendPayment"; value: { peerIdentity: HexString; requestId: string; amountCents: bigint } }\n  | { tag: "PaymentStatus"; value: { operationId: HexString } }\n  | { tag: "ReconcilePayments"; value?: undefined }\n  | { tag: "PrepareAttachments"; value: { peerIdentity: HexString; requestId: string; text?: string } }\n  | { tag: "OpenAttachment"; value: { attachmentId: HexString } }\n  | { tag: "CommitMigration"; value: { migrationId: HexString } }\n  | { tag: "ContinueOpen"; value: { openId: HexString; cursor: number } }\n  | { tag: "ContinueState"; value: { stateId: HexString; cursor: number } }\n  | { tag: "PaymentDenomination"; value?: undefined }\n;',
+        description: "An operation using the calling product's non-exportable Host Chat device.",
         variants: [
             {
                 name: "Initialize",
                 type: '{ tag: "Initialize"; value?: undefined }',
-                description: "Restore the installation's public device and durable conversation state.",
+                description: "Restore public metadata, pending ciphertext, and private file-transfer progress.",
             },
             {
-                name: "Invite",
-                type: '{ tag: "Invite"; value: { username: string; text: string } }',
-                description: "Resolve a username in the configured network and send a fresh invitation.",
+                name: "Bind",
+                type: '{ tag: "Bind"; value: { username: string } }',
+                description: "Independently resolve and bind a peer on the trusted network.",
             },
             {
-                name: "Receive",
-                type: '{ tag: "Receive"; value: { statement: SignedStatement } }',
-                description: "Authenticate, decrypt and durably process a native statement.",
+                name: "Prepare",
+                type: '{ tag: "Prepare"; value: { peerIdentity: HexString; route: HostNativeChatRoute; plaintext: HexString } }',
+                description: "Validate native plaintext and return signed ciphertext for product delivery.",
             },
             {
-                name: "AcceptInvitation",
-                type: '{ tag: "AcceptInvitation"; value: { invitationId: HexString } }',
-                description: "Accept an invitation previously authenticated and retained by the Host.",
-            },
-            {
-                name: "RejectInvitation",
-                type: '{ tag: "RejectInvitation"; value: { invitationId: HexString } }',
-                description: "Reject an invitation previously authenticated and retained by the Host.",
-            },
-            {
-                name: "Send",
-                type: '{ tag: "Send"; value: { peerIdentity: HexString; requestId: string; messages: Array<HexString> } }',
-                description: "Send ordinary messages to an established, Host-authenticated peer roster.",
+                name: "Open",
+                type: '{ tag: "Open"; value: { statement: SignedStatement } }',
+                description: "Authenticate and decrypt a complete external native statement, never own output.",
             },
             {
                 name: "SendPayment",
                 type: '{ tag: "SendPayment"; value: { peerIdentity: HexString; requestId: string; amountCents: bigint } }',
-                description: "Propose one main-purse payment; this operation always requires Host review.",
+                description: "Propose one main-purse payment; this operation requires trusted Host review.",
             },
             {
                 name: "PaymentStatus",
                 type: '{ tag: "PaymentStatus"; value: { operationId: HexString } }',
-                description: "Read a payment's durable status without authorizing another spend.",
+                description: "Read durable payment status without authorizing another spend.",
             },
             {
-                name: "Reconcile",
-                type: '{ tag: "Reconcile"; value?: undefined }',
-                description: "Resume durable transport work and return newly available public views.",
+                name: "ReconcilePayments",
+                type: '{ tag: "ReconcilePayments"; value?: undefined }',
+                description: "Reconcile payment custody and return opaque statements for product delivery.",
             },
             {
-                name: "SendAttachments",
-                type: '{ tag: "SendAttachments"; value: { peerIdentity: HexString; requestId: string; text?: string } }',
-                description: "Select immutable files in trusted Host UI and send native rich content.",
+                name: "PrepareAttachments",
+                type: '{ tag: "PrepareAttachments"; value: { peerIdentity: HexString; requestId: string; text?: string } }',
+                description: "Select files in trusted Host UI and prepare native rich content without delivery.",
             },
             {
                 name: "OpenAttachment",
                 type: '{ tag: "OpenAttachment"; value: { attachmentId: HexString } }',
                 description: "Resume a private download and present or export through trusted Host UI.",
+            },
+            {
+                name: "CommitMigration",
+                type: '{ tag: "CommitMigration"; value: { migrationId: HexString } }',
+                description: "Acknowledge durable product storage of the legacy view and ordinary ciphertext.",
+            },
+            {
+                name: "ContinueOpen",
+                type: '{ tag: "ContinueOpen"; value: { openId: HexString; cursor: number } }',
+                description: "Continue a Host-authenticated incoming batch without supplying new ciphertext.",
+            },
+            {
+                name: "ContinueState",
+                type: '{ tag: "ContinueState"; value: { stateId: HexString; cursor: number } }',
+                description: "Continue a bounded snapshot of custody metadata and pending prepared statements.",
+            },
+            {
+                name: "PaymentDenomination",
+                type: '{ tag: "PaymentDenomination"; value?: undefined }',
+                description: "Read configured raw chain units per native Coinage cent, without spending.",
             },
         ],
     },
@@ -3475,8 +3691,8 @@ export const types = [
         id: "host-product-device-chat-response",
         name: "HostProductDeviceChatResponse",
         category: "account",
-        definition: "export interface HostProductDeviceChatResponse {\n  device: HostNativeChatDevice;\n  peers: Array<HostNativeChatPeer>;\n  invitations: Array<HostNativeChatInvitation>;\n  messages: Array<HostNativeChatMessages>;\n  acknowledgments: Array<HostNativeChatAcknowledgment>;\n  payments: Array<HostNativeChatPayment>;\n  richMessages: Array<HostNativeChatRichMessage>;\n}",
-        description: "Public updates from a Host-owned Chat operation.",
+        definition: "export interface HostProductDeviceChatResponse {\n  device: HostNativeChatDevice;\n  peers: Array<HostNativeChatPeer>;\n  binding?: HostNativeChatBinding;\n  opened: Array<HostNativeChatOpened>;\n  prepared: Array<HostNativeChatPrepared>;\n  payments: Array<HostNativeChatPayment>;\n  richMessages: Array<HostNativeChatRichMessage>;\n  migration?: HostProductDeviceChatResponse;\n  migrationId?: HexString;\n  openPage?: HostNativeChatOpenPage;\n  migrationInvitations: Array<HostNativeChatMigrationInvitation>;\n  statePage?: HostNativeChatStatePage;\n  coinageCentsUnit?: bigint;\n}",
+        description: "Cryptographic results and custody metadata; products drive delivery and import.",
         fields: [
             {
                 name: "device",
@@ -3486,32 +3702,62 @@ export const types = [
             {
                 name: "peers",
                 type: "Array<HostNativeChatPeer>",
-                description: "Current authenticated peers and subscription channels.",
+                description: "Host-authenticated peer and device metadata.",
             },
             {
-                name: "invitations",
-                type: "Array<HostNativeChatInvitation>",
-                description: "Invitations still awaiting a user decision.",
+                name: "binding",
+                type: "HostNativeChatBinding | undefined",
+                description: "Newly resolved peer binding, when requested.",
             },
             {
-                name: "messages",
-                type: "Array<HostNativeChatMessages>",
-                description: "Newly processed safe ordinary messages.",
+                name: "opened",
+                type: "Array<HostNativeChatOpened>",
+                description: "Authenticated incoming plaintext; incoming payment import is product-owned.",
             },
             {
-                name: "acknowledgments",
-                type: "Array<HostNativeChatAcknowledgment>",
-                description: "Newly processed native delivery acknowledgments.",
+                name: "prepared",
+                type: "Array<HostNativeChatPrepared>",
+                description: "Signed ciphertext for product submission and exact-identity retries.",
             },
             {
                 name: "payments",
                 type: "Array<HostNativeChatPayment>",
-                description: "Current public payment statuses belonging to the calling product.",
+                description: "Durable public payment status, never outgoing bearer secrets.",
             },
             {
                 name: "rich_messages",
                 type: "Array<HostNativeChatRichMessage>",
-                description: "Safe rich-content views and their current private-transfer progress.",
+                description: "Rich-content metadata and trusted private-transfer progress.",
+            },
+            {
+                name: "migration",
+                type: "HostProductDeviceChatResponse | undefined",
+                description: "Legacy public view retained until the product durably commits migration.",
+            },
+            {
+                name: "migration_id",
+                type: "HexString | undefined",
+                description: "Snapshot identifier to acknowledge only after persisting its view and ciphertext.",
+            },
+            {
+                name: "open_page",
+                type: "HostNativeChatOpenPage | undefined",
+                description: "Continuation of an authenticated incoming batch, when opening is paginated.",
+            },
+            {
+                name: "migration_invitations",
+                type: "Array<HostNativeChatMigrationInvitation>",
+                description: "Native request identities for invitations in the legacy migration view.",
+            },
+            {
+                name: "state_page",
+                type: "HostNativeChatStatePage | undefined",
+                description: "Continuation of a bounded public state snapshot, when metadata is paginated.",
+            },
+            {
+                name: "coinage_cents_unit",
+                type: "bigint | undefined",
+                description: "Configured raw chain units per native Coinage cent, only when requested.\nThis is positive denomination metadata, never a balance or fiat price.",
             },
         ],
     },
@@ -3918,6 +4164,67 @@ export const types = [
         ],
     },
     {
+        id: "host-worker-begin-operation-request",
+        name: "HostWorkerBeginOperationRequest",
+        category: "worker",
+        definition: "export interface HostWorkerBeginOperationRequest {\n  label?: string;\n}",
+        description: "Request to begin a pending operation.",
+        fields: [
+            {
+                name: "label",
+                type: "string | undefined",
+                description: "Optional label for host logs and UI.",
+            },
+        ],
+    },
+    {
+        id: "host-worker-begin-operation-response",
+        name: "HostWorkerBeginOperationResponse",
+        category: "worker",
+        definition: "export interface HostWorkerBeginOperationResponse {\n  id: OperationId;\n}",
+        description: "Response carrying the id of a newly begun operation.",
+        fields: [
+            {
+                name: "id",
+                type: "OperationId",
+                description: "Id to pass to `end_operation`.",
+            },
+        ],
+    },
+    {
+        id: "host-worker-end-operation-request",
+        name: "HostWorkerEndOperationRequest",
+        category: "worker",
+        definition: "export interface HostWorkerEndOperationRequest {\n  id: OperationId;\n}",
+        description: "Request to end a pending operation.",
+        fields: [
+            {
+                name: "id",
+                type: "OperationId",
+                description: "Id returned by `begin_operation`.",
+            },
+        ],
+    },
+    {
+        id: "host-worker-operation-error",
+        name: "HostWorkerOperationError",
+        category: "worker",
+        definition: 'export type HostWorkerOperationError =\n  | { tag: "TooManyOpen"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Pending-operation error.",
+        variants: [
+            {
+                name: "TooManyOpen",
+                type: '{ tag: "TooManyOpen"; value?: undefined }',
+                description: "The product is already at the host's per-product limit of open\noperations.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all host failure.",
+            },
+        ],
+    },
+    {
         id: "image-fit",
         name: "ImageFit",
         category: "renderer",
@@ -4117,6 +4424,13 @@ export const types = [
         category: "notifications",
         definition: "export type NotificationId = number;",
         description: "Opaque identifier for a push notification, unique per product.",
+    },
+    {
+        id: "operation-id",
+        name: "OperationId",
+        category: "worker",
+        definition: "export type OperationId = number;",
+        description: "Opaque host-assigned pending-operation identifier, unique per product.",
     },
     {
         id: "operation-started-result",
@@ -4877,12 +5191,12 @@ export const types = [
             {
                 name: "Remote",
                 type: '{ tag: "Remote"; value: { domains: Array<string> } }',
-                description: "Reaching a set of domains: outbound HTTP/WebSocket access, and sending\nthe user out to one of them with `navigate_to`.\n\nOne grant per host covers both, because both hand the same third party\nthe same thing: that the user is here, and whatever the product puts in\nthe URL. Splitting them would put the same question to the user twice.",
+                description: "Outbound HTTP/WebSocket access to a set of domains. External navigation\nuses [`HostDevicePermissionRequest::OpenUrl`] instead.",
             },
             {
                 name: "WebRtc",
                 type: '{ tag: "WebRtc"; value?: undefined }',
-                description: "WebRTC access.\n\nEnforced inside the product's own realm rather than at a network layer:\nICE reaches an arbitrary host over UDP, so no content rule list, request\ninterceptor, or CSP directive observes it. A host peeks this decision\nbefore the product realm exists and the lockdown container removes\n`RTCPeerConnection` — and its vendor-prefixed aliases — unless the answer\nwas an explicit grant. Resolving it up front is what makes the gate\nunforgeable, and it means a fresh grant applies from the next load.\n\nCamera and microphone capture is gated by the OS permission prompts and\n[`HostDevicePermissionRequest`], not by this permission.",
+                description: "WebRTC access.\n\nThe container authorizes each peer connection through Rust before its\nfirst network method. Later methods on that connection share the same\ndecision, so a one-use grant permits one connection. New connections\ncheck current permissions without requiring a page reload.\n\nCamera and microphone capture is gated by the OS permission prompts and\n[`HostDevicePermissionRequest`], not by this permission.",
             },
             {
                 name: "ChainSubmit",
@@ -5720,6 +6034,114 @@ export const types = [
                 name: "key",
                 type: "string",
                 description: "Storage key to read.",
+            },
+        ],
+    },
+    {
+        id: "v-02-host-product-device-chat-request",
+        name: "V02HostProductDeviceChatRequest",
+        category: "account",
+        definition: 'export type V02HostProductDeviceChatRequest =\n  | { tag: "Initialize"; value?: undefined }\n  | { tag: "Invite"; value: { username: string; text: string } }\n  | { tag: "Receive"; value: { statement: SignedStatement } }\n  | { tag: "AcceptInvitation"; value: { invitationId: HexString } }\n  | { tag: "RejectInvitation"; value: { invitationId: HexString } }\n  | { tag: "Send"; value: { peerIdentity: HexString; requestId: string; messages: Array<HexString> } }\n  | { tag: "SendPayment"; value: { peerIdentity: HexString; requestId: string; amountCents: bigint } }\n  | { tag: "PaymentStatus"; value: { operationId: HexString } }\n  | { tag: "Reconcile"; value?: undefined }\n  | { tag: "SendAttachments"; value: { peerIdentity: HexString; requestId: string; text?: string } }\n  | { tag: "OpenAttachment"; value: { attachmentId: HexString } }\n;',
+        description: "An operation on the calling product's Host-owned native Chat device.",
+        variants: [
+            {
+                name: "Initialize",
+                type: '{ tag: "Initialize"; value?: undefined }',
+                description: "Restore the installation's public device and durable conversation state.",
+            },
+            {
+                name: "Invite",
+                type: '{ tag: "Invite"; value: { username: string; text: string } }',
+                description: "Resolve a username in the configured network and send a fresh invitation.",
+            },
+            {
+                name: "Receive",
+                type: '{ tag: "Receive"; value: { statement: SignedStatement } }',
+                description: "Authenticate, decrypt and durably process a native statement.",
+            },
+            {
+                name: "AcceptInvitation",
+                type: '{ tag: "AcceptInvitation"; value: { invitationId: HexString } }',
+                description: "Accept an invitation previously authenticated and retained by the Host.",
+            },
+            {
+                name: "RejectInvitation",
+                type: '{ tag: "RejectInvitation"; value: { invitationId: HexString } }',
+                description: "Reject an invitation previously authenticated and retained by the Host.",
+            },
+            {
+                name: "Send",
+                type: '{ tag: "Send"; value: { peerIdentity: HexString; requestId: string; messages: Array<HexString> } }',
+                description: "Send ordinary messages to an established, Host-authenticated peer roster.",
+            },
+            {
+                name: "SendPayment",
+                type: '{ tag: "SendPayment"; value: { peerIdentity: HexString; requestId: string; amountCents: bigint } }',
+                description: "Propose one main-purse payment; this operation always requires Host review.",
+            },
+            {
+                name: "PaymentStatus",
+                type: '{ tag: "PaymentStatus"; value: { operationId: HexString } }',
+                description: "Read a payment's durable status without authorizing another spend.",
+            },
+            {
+                name: "Reconcile",
+                type: '{ tag: "Reconcile"; value?: undefined }',
+                description: "Resume durable transport work and return newly available public views.",
+            },
+            {
+                name: "SendAttachments",
+                type: '{ tag: "SendAttachments"; value: { peerIdentity: HexString; requestId: string; text?: string } }',
+                description: "Select immutable files in trusted Host UI and send native rich content.",
+            },
+            {
+                name: "OpenAttachment",
+                type: '{ tag: "OpenAttachment"; value: { attachmentId: HexString } }',
+                description: "Resume a private download and present or export through trusted Host UI.",
+            },
+        ],
+    },
+    {
+        id: "v-02-host-product-device-chat-response",
+        name: "V02HostProductDeviceChatResponse",
+        category: "account",
+        definition: "export interface V02HostProductDeviceChatResponse {\n  device: HostNativeChatDevice;\n  peers: Array<HostNativeChatPeer>;\n  invitations: Array<HostNativeChatInvitation>;\n  messages: Array<HostNativeChatMessages>;\n  acknowledgments: Array<HostNativeChatAcknowledgment>;\n  payments: Array<HostNativeChatPayment>;\n  richMessages: Array<HostNativeChatRichMessage>;\n}",
+        description: "Public updates from a Host-owned Chat operation.",
+        fields: [
+            {
+                name: "device",
+                type: "HostNativeChatDevice",
+                description: "Public local device metadata, including its allowance account.",
+            },
+            {
+                name: "peers",
+                type: "Array<HostNativeChatPeer>",
+                description: "Current authenticated peers and subscription channels.",
+            },
+            {
+                name: "invitations",
+                type: "Array<HostNativeChatInvitation>",
+                description: "Invitations still awaiting a user decision.",
+            },
+            {
+                name: "messages",
+                type: "Array<HostNativeChatMessages>",
+                description: "Newly processed safe ordinary messages.",
+            },
+            {
+                name: "acknowledgments",
+                type: "Array<HostNativeChatAcknowledgment>",
+                description: "Newly processed native delivery acknowledgments.",
+            },
+            {
+                name: "payments",
+                type: "Array<HostNativeChatPayment>",
+                description: "Current public payment statuses belonging to the calling product.",
+            },
+            {
+                name: "rich_messages",
+                type: "Array<HostNativeChatRichMessage>",
+                description: "Safe rich-content views and their current private-transfer progress.",
             },
         ],
     },

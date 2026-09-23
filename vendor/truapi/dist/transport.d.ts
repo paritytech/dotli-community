@@ -15,6 +15,10 @@ export declare class UnsupportedMessageError extends Error {
     readonly methodId: number;
     constructor(traitId: number, methodId: number);
 }
+/** The host connection ended; interrupted operations are not retried. */
+export declare class ConnectionResetError extends Error {
+    constructor(options?: ErrorOptions);
+}
 /** Call result returned when the peer does not recognize a request frame. **/
 export type UnsupportedCallError = Extract<CallErrorValue<never>, {
     tag: "Unsupported";
@@ -137,6 +141,14 @@ export interface MethodIds {
     kind: "request" | "subscription";
 }
 /**
+ * Per-call options every generated request method accepts as its last
+ * argument.
+ **/
+export interface CallOptions {
+    /** See {@link RequestParams.signal}. **/
+    signal?: AbortSignal;
+}
+/**
  * Options accepted by `TrUApiTransport.request`.
  **/
 export interface RequestParams<Ok, Err> {
@@ -156,6 +168,18 @@ export interface RequestParams<Ok, Err> {
      * into `ResultAsync<Ok, Err | UnsupportedCallError>`.
      **/
     decodeResponse: (payload: Uint8Array) => ResultPayload<Ok, Err>;
+    /**
+     * Withdraw the call. Aborting sends a `Cancel` frame on this method's own
+     * address; the promise still settles on the response the host sends, which
+     * for a call the host stopped is `CallError::Cancelled`. A signal already
+     * aborted when the call is made sends nothing and rejects immediately.
+     *
+     * A host that predates the `Cancel` leg drops the frame, so an aborted call
+     * against one settles on its deadline instead. There is no way to detect that
+     * first: `system.featureSupported` answers only about chains, so an abort
+     * against an older host is indistinguishable from one it honoured.
+     **/
+    signal?: AbortSignal;
 }
 /**
  * Options accepted by `TrUApiTransport.subscribeRaw`.
@@ -279,6 +303,12 @@ export declare const MESSAGE_TYPE_INTERRUPT = 2;
 /** See {@link Payload.messageType}. */
 export declare const MESSAGE_TYPE_STOP = 3;
 /**
+ * A request's withdrawal, correlated by the same `requestId` and carrying no
+ * payload. The call still settles with exactly one response; this only fires
+ * the handler's cancellation token on the far side.
+ **/
+export declare const MESSAGE_TYPE_CANCEL = 4;
+/**
  * Top-level TrUAPI wire message.
  **/
 export interface ProtocolMessage {
@@ -313,6 +343,8 @@ export interface WireProvider {
      * the provider has already closed.
      **/
     subscribeClose?(callback: (error: Error) => void): () => void;
+    /** End current operations while keeping the provider available for new work. */
+    subscribeReset?(callback: (error: Error) => void): () => void;
     /**
      * Release provider resources and close the underlying pipe.
      **/
@@ -364,3 +396,5 @@ export declare function createMessagePortProvider(port: MessagePort | Promise<Me
  * caller never has to await {@link WebSocketWireProvider.opened} first.
  **/
 export declare function createWebSocketProvider(url: string): WebSocketWireProvider;
+/** Capture native socket APIs before product code installs network gates. */
+export declare function createWebSocketProviderFactory(): (url: string) => WebSocketWireProvider;

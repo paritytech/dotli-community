@@ -708,4 +708,42 @@ describe("user confirmation modal", () => {
     // Then
     await expect(confirmation).resolves.toBe(false);
   });
+
+  it("As a dotli user, accepting an account access prompt is remembered", async () => {
+    // Given
+    const { confirmPermission } =
+      createUserConfirmationAdapters("localhost:3000");
+
+    // When
+    const decision = confirmPermission({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(decision).resolves.toBe("AllowAlways");
+  });
+
+  it("As a dotli user, denying an account access prompt is remembered", async () => {
+    // Given
+    const { confirmPermission } =
+      createUserConfirmationAdapters("localhost:3000");
+
+    // When
+    const decision = confirmPermission({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+
+    // Then
+    await expect(decision).resolves.toBe("Deny");
+  });
 });

@@ -564,13 +564,20 @@ export function createUserConfirmationAdapters(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Required<UserConfirmationHost> {
+  const confirmUserAction: UserConfirmationHost["confirmUserAction"] = (
+    review,
+  ) => {
+    return modalScope.enqueue((signal) =>
+      review.tag === "PreimageSubmit"
+        ? handlePreimageSubmitReview(review.value, signal)
+        : handleConfirmationReview(label, review, signal),
+    );
+  };
   return {
-    confirmUserAction: (review) => {
-      return modalScope.enqueue((signal) =>
-        review.tag === "PreimageSubmit"
-          ? handlePreimageSubmitReview(review.value, signal)
-          : handleConfirmationReview(label, review, signal),
-      );
-    },
+    confirmUserAction,
+    // The modal offers no "just this once", so an acceptance is durable. This
+    // is the core's own default when a host leaves `confirmPermission` out.
+    confirmPermission: async (review) =>
+      (await confirmUserAction(review)) ? "AllowAlways" : "Deny",
   };
 }

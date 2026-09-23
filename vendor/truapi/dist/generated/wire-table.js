@@ -254,6 +254,11 @@ export const LOCAL_STORAGE_CLEAR = {
     method: 2,
     kind: "request",
 };
+export const LOCAL_STORAGE_SUBSCRIBE = {
+    trait: 7,
+    method: 3,
+    kind: "subscription",
+};
 export const NOTIFICATIONS_SEND_PUSH_NOTIFICATION = {
     trait: 8,
     method: 0,
@@ -292,6 +297,16 @@ export const PERMISSIONS_REQUEST_DEVICE_PERMISSION = {
 export const PERMISSIONS_REQUEST_REMOTE_PERMISSION = {
     trait: 10,
     method: 1,
+    kind: "request",
+};
+export const PERMISSIONS_AUTHORIZE_REMOTE_PERMISSION = {
+    trait: 10,
+    method: 2,
+    kind: "request",
+};
+export const PERMISSIONS_AUTHORIZE_DEVICE_PERMISSION = {
+    trait: 10,
+    method: 3,
     kind: "request",
 };
 export const PREIMAGE_LOOKUP_SUBSCRIBE = {
@@ -396,6 +411,16 @@ export const POCKET_LIST_SUBSCRIBE = {
 };
 export const POCKET_REMOVE_CARD = {
     trait: 18,
+    method: 1,
+    kind: "request",
+};
+export const WORKER_BEGIN_OPERATION = {
+    trait: 19,
+    method: 0,
+    kind: "request",
+};
+export const WORKER_END_OPERATION = {
+    trait: 19,
     method: 1,
     kind: "request",
 };

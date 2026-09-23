@@ -15,7 +15,9 @@ import {
   createLocalStorageRead,
   createLocalStorageWrite,
   createLocalStorageClear,
+  createLocalStorageSubscribe,
 } from "./LocalStorage";
+import { createProductOperations } from "./ProductOperations";
 import { createPreimageAdapters } from "./Preimage";
 import { createChainConnect, createHopProvider } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
@@ -75,7 +77,9 @@ export function createHostCallbacks(
       read: createLocalStorageRead(),
       write: createLocalStorageWrite(),
       clear: createLocalStorageClear(),
+      subscribeStorage: createLocalStorageSubscribe(),
     },
+    productOperations: createProductOperations(),
     coreStorage: createSessionStoreAdapters(custodyLease),
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {

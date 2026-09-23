@@ -1,7 +1,7 @@
-import { HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, HostRendererActionSubscribeItem as HostRendererActionSubscribeItemCodec, ProductRendererRenderRequest as ProductRendererRenderRequestCodec, RendererNode as RendererNodeCodec, } from "@parity/truapi";
-import { NativeChatPickedFile, PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec, } from "../generated/host-callbacks.js";
+import { HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, HostRendererActionSubscribeItem as HostRendererActionSubscribeItemCodec, HostWorkerBeginOperationResponse as HostWorkerBeginOperationResponseCodec, ProductRendererRenderRequest as ProductRendererRenderRequestCodec, RendererNode as RendererNodeCodec, } from "@parity/truapi";
+import { NativeChatPickedFile, PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec, ProductContext as ProductContextCodec, } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
-import { MAX_JSON_RPC_CONNECTIONS } from "../worker-protocol.js";
+import { COINAGE_WALLET_CALLBACKS, MAX_JSON_RPC_CONNECTIONS, } from "../worker-protocol.js";
 import { bytesToHex, Vector } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
 import { errorMessage, toError } from "../error.js";
@@ -12,6 +12,7 @@ function debugLoggingEnabled(state) {
 let nextDisconnectRequestId = 0;
 let nextPermissionAuthorizationRequestId = 0;
 let nextSessionChatIdentityKeyRequestId = 0;
+let nextDeviceStatementKeyRequestId = 0;
 let nextDeviceEncryptionKeyRequestId = 0;
 let nextProductSubtreePublicKeyRequestId = 0;
 let nextSessionActivationRequestId = 0;
@@ -157,10 +158,42 @@ async function discardChatFileCallback(state, name, value) {
         // A closed/failed backing store is unavailable; never log private handles or payloads.
     }
 }
+/**
+ * Read the host-assigned id out of a `beginOperation` response. Returns null if
+ * the response will not decode, so a hold that cannot be keyed is dropped
+ * rather than escaping and leaving the worker's call unanswered.
+ */
+function operationIdFrom(value) {
+    if (!(value instanceof Uint8Array))
+        return null;
+    try {
+        return HostWorkerBeginOperationResponseCodec.dec(value).id;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Key one pending-operation hold. `OperationId` is unique per product, not per
+ * worker, so the product a `beginOperation`/`endOperation` arrived for has to be
+ * part of the key. Returns null if the encoded product will not decode, which
+ * drops the hold rather than letting it pin the worker forever.
+ */
+function operationHold(encodedProduct, id) {
+    if (!(encodedProduct instanceof Uint8Array))
+        return null;
+    try {
+        return `${ProductContextCodec.dec(encodedProduct).productId}\u0000${id}`;
+    }
+    catch {
+        return null;
+    }
+}
 function handleCallbackRequest(state, msg) {
     if (state.disposed)
         return;
-    const callbacks = msg.coreId === undefined
+    const hostWalletCallback = COINAGE_WALLET_CALLBACKS[msg.name] === true;
+    const callbacks = msg.coreId === undefined || hostWalletCallback
         ? state.rawCallbacks
         : state.coreCallbacks.get(msg.coreId);
     const fn = callbacks && Object.hasOwn(callbacks, msg.name)
@@ -179,7 +212,9 @@ function handleCallbackRequest(state, msg) {
         .then(() => {
         if (state.disposed)
             throw new Error("Host runtime is unavailable");
-        if (msg.coreId !== undefined && !state.coreCallbacks.has(msg.coreId))
+        if (!hostWalletCallback &&
+            msg.coreId !== undefined &&
+            !state.coreCallbacks.has(msg.coreId))
             throw new Error("Product callbacks are unavailable");
         return fn(...msg.args);
     })
@@ -187,6 +222,25 @@ function handleCallbackRequest(state, msg) {
         if (state.disposed) {
             await discardChatFileCallback(state, msg.name, value);
             return;
+        }
+        // Tracked in the success arm only: a rejected begin must not leave a
+        // hold that nothing will ever release.
+        if (msg.name === "beginOperation") {
+            const id = operationIdFrom(value);
+            const hold = id === null ? null : operationHold(msg.args[0], id);
+            if (hold !== null)
+                state.openOperations.add(hold);
+        }
+        else if (msg.name === "endOperation") {
+            const id = msg.args[1];
+            const hold = typeof id === "number" ? operationHold(msg.args[0], id) : null;
+            if (hold !== null)
+                state.openOperations.delete(hold);
+            if (state.openOperations.size === 0 && state.disposePending) {
+                state.disposePending = false;
+                clearDisposeGrace(state);
+                teardown(state, new Error("runtime disposed"), false);
+            }
         }
         if (msg.name === "beginChatFileExport" && typeof value === "string") {
             state.chatFileExports.add(value);
@@ -227,9 +281,11 @@ function handleCallbackRequest(state, msg) {
                 kind: "callbackResponse",
                 requestId: msg.requestId,
                 ok: false,
-                error: NATIVE_CHAT_FILE_CALLBACKS[msg.name]
-                    ? "Native Chat file operation failed"
-                    : errorMessage(err),
+                error: hostWalletCallback
+                    ? "Native Coinage wallet operation failed"
+                    : NATIVE_CHAT_FILE_CALLBACKS[msg.name]
+                        ? "Native Chat file operation failed"
+                        : errorMessage(err),
             });
         }
         catch {
@@ -435,6 +491,9 @@ function handleSetPermissionAuthorizationStatusResponse(state, msg) {
 function handleSessionChatIdentityKeyResponse(state, msg) {
     settlePending(state.pendingSessionChatIdentityKeys, msg.requestId, msg.ok ? { ok: true, value: msg.key } : { ok: false, error: msg.error });
 }
+function handleDeviceStatementKeyResponse(state, msg) {
+    settlePending(state.pendingDeviceStatementKeys, msg.requestId, msg.ok ? { ok: true, value: msg.key } : { ok: false, error: msg.error });
+}
 function handleProductSubtreePublicKeyResponse(state, msg) {
     settlePending(state.pendingProductSubtreePublicKeys, msg.requestId, msg.ok ? { ok: true, value: msg.key } : { ok: false, error: msg.error });
 }
@@ -449,6 +508,7 @@ function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
     rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
     rejectAll(state.pendingSessionChatIdentityKeys, error);
+    rejectAll(state.pendingDeviceStatementKeys, error);
     rejectAll(state.pendingDeviceEncryptionKeys, error);
     rejectAll(state.pendingProductSubtreePublicKeys, error);
     rejectAll(state.pendingActions, error);
@@ -515,10 +575,18 @@ function closeCoreState(core, error) {
     core.listeners.clear();
     core.closeListeners.clear();
 }
+/** Drop the ceiling armed by a deferred `dispose()`, if one is pending. */
+function clearDisposeGrace(state) {
+    if (state.disposeGraceTimer === undefined)
+        return;
+    clearTimeout(state.disposeGraceTimer);
+    state.disposeGraceTimer = undefined;
+}
 function teardown(state, error, fault) {
     if (state.disposed)
         return;
     state.disposed = true;
+    clearDisposeGrace(state);
     state.closedError = error;
     rejectPendingRuntimeRequests(state, error);
     for (const core of state.cores.values()) {
@@ -569,15 +637,15 @@ function teardown(state, error, fault) {
     }
 }
 export function createWebWorkerPairingHostRuntime(worker, host, options) {
-    return createWebWorkerHostRuntime(worker, host, {
-        ...options,
-        runtimeKind: "pairing",
-    });
+    // No role default: a host that asks for none must put exactly what it put
+    // on the wire before the field existed, and the worker reads absent as
+    // "pairing".
+    return createWebWorkerHostRuntime(worker, host, options);
 }
 export function createWebWorkerSigningHostRuntime(worker, host, options) {
     return createWebWorkerHostRuntime(worker, host, {
         ...options,
-        runtimeKind: "signing",
+        role: options.role ?? "signing",
     });
 }
 function createWebWorkerHostRuntime(worker, host, options) {
@@ -596,6 +664,10 @@ function createWebWorkerHostRuntime(worker, host, options) {
             cores: new Map(),
             pendingCores: new Map(),
             subscriptionDisposers: new Map(),
+            openOperations: new Set(),
+            disposePending: false,
+            disposeGraceTimer: undefined,
+            operationGraceMs: options.operationGraceMs ?? 30_000,
             chainConnections: new Map(),
             chatFileExports: new Set(),
             disposeNativeChatFiles: () => browserFiles?.dispose(),
@@ -607,6 +679,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             pendingSetPermissionAuthorizationStatuses: new Map(),
             pendingSessionChatIdentityKeys: new Map(),
             pendingProductSubtreePublicKeys: new Map(),
+            pendingDeviceStatementKeys: new Map(),
             pendingDeviceEncryptionKeys: new Map(),
             pendingActions: new Map(),
             renders: new Map(),
@@ -689,6 +762,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     break;
                 case "sessionChatIdentityKeyResponse":
                     handleSessionChatIdentityKeyResponse(state, msg);
+                    break;
+                case "deviceStatementKeyResponse":
+                    handleDeviceStatementKeyResponse(state, msg);
                     break;
                 case "deviceEncryptionKeyResponse":
                     handleDeviceEncryptionKeyResponse(state, msg);
@@ -800,12 +876,13 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     kind: "init",
                     logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
                     hostConfig: options.hostConfig,
-                    runtimeKind: options.runtimeKind,
+                    role: options.role,
                     capabilities: {
                         chat: host.chat !== undefined,
                         permissionStatus: host.permissionStatus !== undefined,
                         pocket: host.pocket !== undefined,
                         identityBackend: host.identityBackend !== undefined,
+                        coinageWallet: callbacks.nativeCoinage !== undefined,
                     },
                     debuggerUrl: debuggerEnablement.url,
                 });
@@ -918,6 +995,7 @@ function buildRuntime(state) {
                                     permissionStatus: callbacks.permissionStatus !== undefined,
                                     pocket: callbacks.pocket !== undefined,
                                     identityBackend: callbacks.identityBackend !== undefined,
+                                    coinageWallet: state.rawCallbacks.nativeCoinage !== undefined,
                                 },
                             }),
                     });
@@ -941,6 +1019,9 @@ function buildRuntime(state) {
         },
         getSessionChatIdentityKey() {
             return sendWorkerRequest(state, state.pendingSessionChatIdentityKeys, () => ++nextSessionChatIdentityKeyRequestId, undefined, (requestId) => ({ kind: "getSessionChatIdentityKey", requestId }));
+        },
+        getDeviceStatementKey() {
+            return sendWorkerRequest(state, state.pendingDeviceStatementKeys, () => ++nextDeviceStatementKeyRequestId, undefined, (requestId) => ({ kind: "getDeviceStatementKey", requestId }));
         },
         getDeviceEncryptionKey() {
             // A key has no safe empty value: callers encrypt with what they get back,
@@ -998,17 +1079,25 @@ function buildRuntime(state) {
                 blob,
             }));
         },
-        resetSessionState() {
-            return sendSessionActivationRequest(state, (requestId) => ({
-                kind: "resetSessionState",
-                requestId,
-            }));
-        },
-        activateLocalSession(secret) {
+        activateLocalSession(secret, liteUsername) {
             return sendSessionActivationRequest(state, (requestId) => ({
                 kind: "activateLocalSession",
                 requestId,
                 secret,
+                liteUsername,
+            }));
+        },
+        setGrantAllowancesUnchecked(granted) {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "setGrantAllowancesUnchecked",
+                requestId,
+                granted,
+            }));
+        },
+        resetSessionState() {
+            return sendSessionActivationRequest(state, (requestId) => ({
+                kind: "resetSessionState",
+                requestId,
             }));
         },
         activateLocalSessionWithIdentity(secret, liteUsername) {
@@ -1069,6 +1158,19 @@ function buildRuntime(state) {
         },
         dispose() {
             devGlobalTargets.delete(runtime);
+            // Let a background task (e.g. a funding transaction) finish; the last
+            // endOperation runs the teardown. Fault teardown is never deferred.
+            if (state.openOperations.size > 0) {
+                state.disposePending = true;
+                state.disposeGraceTimer ??= setTimeout(() => {
+                    state.disposeGraceTimer = undefined;
+                    if (!state.disposePending)
+                        return;
+                    state.disposePending = false;
+                    teardown(state, new Error("runtime disposed"), false);
+                }, state.operationGraceMs);
+                return;
+            }
             teardown(state, new Error("runtime disposed"), false);
         },
     };
@@ -1194,6 +1296,11 @@ function buildProvider(state, core, runtime) {
                 return undefined;
             const key = await runtime.getSessionChatIdentityKey();
             return key && bytesToHex(key);
+        },
+        async getDeviceStatementKey() {
+            if (core.disposed)
+                return undefined;
+            return runtime.getDeviceStatementKey();
         },
         async getDeviceEncryptionKey() {
             if (core.disposed) {

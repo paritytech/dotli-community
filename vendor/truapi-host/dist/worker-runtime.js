@@ -3,7 +3,7 @@
 // bridges every host callback over postMessage. The main thread keeps the
 // state that needs DOM access (localStorage, prompts) while the core dispatcher
 // runs here off the page main thread.
-import { MAX_JSON_RPC_CONNECTIONS } from "./worker-protocol.js";
+import { COINAGE_WALLET_CALLBACKS, MAX_JSON_RPC_CONNECTIONS, } from "./worker-protocol.js";
 import { TRUAPI_CODEC_VERSION } from "@parity/truapi";
 import { createWorkerRawCallbacks, } from "./generated/worker-callbacks.js";
 import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, } from "./worker-permission-authorization.js";
@@ -165,7 +165,7 @@ function connectRpc(start, onResponse, onClosed) {
 function buildRawCallbacks(capabilities, coreId) {
     return {
         ...createWorkerRawCallbacks({
-            callbackRequest: (name, args) => callbackRequest(name, args, coreId),
+            callbackRequest: (name, args) => callbackRequest(name, args, COINAGE_WALLET_CALLBACKS[name] ? undefined : coreId),
             startSubscription: (name, payload, sendItem, sendError) => startSubscription(name, payload, sendItem, sendError, coreId),
             chainConnect,
             hopConnect,
@@ -675,11 +675,24 @@ ctx.addEventListener("message", (ev) => {
                 });
             }
             try {
-                const callbacks = buildRawCallbacks(msg.capabilities);
-                runtime =
-                    msg.runtimeKind === "signing"
-                        ? new wasm.WasmSigningHostRuntime(callbacks, msg.hostConfig)
-                        : new wasm.WasmPairingHostRuntime(callbacks, msg.hostConfig);
+                if (msg.role === "signing") {
+                    // Only the `testing` bundle carries a signing host; the production
+                    // `web` one is built without it, so say that rather than let an
+                    // undefined constructor surface as a generic type error.
+                    const SigningRuntime = wasm.WasmSigningHostRuntime;
+                    if (!SigningRuntime) {
+                        postToMain({
+                            kind: "fatalError",
+                            error: "init: this WASM bundle has no signing host. Use the " +
+                                "`testing` bundle, which is built with `wasm-signing-host`.",
+                        });
+                        break;
+                    }
+                    runtime = new SigningRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig);
+                }
+                else {
+                    runtime = new wasm.WasmPairingHostRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig);
+                }
                 postToMain({ kind: "ready", schema: coreWireSchemaHash(wasm) });
             }
             catch (err) {
@@ -728,6 +741,9 @@ ctx.addEventListener("message", (ev) => {
         case "getSessionChatIdentityKey":
             handleGetSessionChatIdentityKey(msg.requestId);
             break;
+        case "getDeviceStatementKey":
+            handleGetDeviceStatementKey(msg.requestId);
+            break;
         case "getDeviceEncryptionKey":
             void handleGetDeviceEncryptionKey(msg.requestId);
             break;
@@ -755,6 +771,39 @@ ctx.addEventListener("message", (ev) => {
             void handleSessionActivation(msg.requestId, "activateExternalSession", (rt) => isPairingRuntime(rt)
                 ? rt.activateExternalSession(blob)
                 : Promise.reject(new Error("pairing runtime is not active")));
+            break;
+        }
+        case "activateLocalSession": {
+            const { secret, liteUsername } = msg;
+            void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => {
+                const signing = rt;
+                if (typeof signing.activateLocalSession !== "function") {
+                    // A pairing host has no local secret to activate; saying so beats
+                    // a TypeError about an undefined function.
+                    return Promise.reject(new Error("activateLocalSession needs a signing host; this runtime is " +
+                        'a pairing host (pass role: "signing" to init)'));
+                }
+                // Activating with a name is a separate core entry point. Fall back
+                // when the name is absent, or when a core predating it is loaded.
+                if (liteUsername !== undefined &&
+                    typeof signing.activateLocalSessionWithIdentity === "function") {
+                    return signing.activateLocalSessionWithIdentity(secret, liteUsername);
+                }
+                return signing.activateLocalSession(secret);
+            });
+            break;
+        }
+        case "setGrantAllowancesUnchecked": {
+            const { granted } = msg;
+            void handleSessionActivation(msg.requestId, "setGrantAllowancesUnchecked", (rt) => {
+                const signing = rt;
+                if (typeof signing.setGrantAllowancesUnchecked !== "function") {
+                    return Promise.reject(new Error("setGrantAllowancesUnchecked needs a signing host built with " +
+                        "`wasm-signing-host`; this core does not carry it"));
+                }
+                signing.setGrantAllowancesUnchecked(granted);
+                return Promise.resolve();
+            });
             break;
         }
         case "resetSessionState":
@@ -961,6 +1010,33 @@ function handleGetSessionChatIdentityKey(requestId) {
     catch (err) {
         postToMain({
             kind: "sessionChatIdentityKeyResponse",
+            requestId,
+            ok: false,
+            error: errorMessage(err),
+        });
+    }
+}
+function handleGetDeviceStatementKey(requestId) {
+    if (!runtime) {
+        postToMain({
+            kind: "deviceStatementKeyResponse",
+            requestId,
+            ok: false,
+            error: "getDeviceStatementKey received before runtime is ready",
+        });
+        return;
+    }
+    try {
+        postToMain({
+            kind: "deviceStatementKeyResponse",
+            requestId,
+            ok: true,
+            key: runtime.deviceStatementKey(),
+        });
+    }
+    catch (err) {
+        postToMain({
+            kind: "deviceStatementKeyResponse",
             requestId,
             ok: false,
             error: errorMessage(err),

@@ -1,5 +1,5 @@
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
-import { decodeWireMessage, encodeWireMessage, MESSAGE_TYPE_INTERRUPT, MESSAGE_TYPE_RECEIVE, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, MESSAGE_TYPE_START, MESSAGE_TYPE_STOP, PROTOCOL_ERROR_METHOD_ID, PROTOCOL_ERROR_TRAIT_ID, UnsupportedMessageError, } from "./transport.js";
+import { decodeWireMessage, encodeWireMessage, MESSAGE_TYPE_CANCEL, MESSAGE_TYPE_INTERRUPT, MESSAGE_TYPE_RECEIVE, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, MESSAGE_TYPE_START, MESSAGE_TYPE_STOP, PROTOCOL_ERROR_METHOD_ID, PROTOCOL_ERROR_TRAIT_ID, UnsupportedMessageError, } from "./transport.js";
 import * as S from "./scale.js";
 import { TRUAPI_CODEC_VERSION } from "./generated/client.js";
 import * as T from "./generated/types.js";
@@ -39,6 +39,8 @@ export class RequestTimeoutError extends Error {
 }
 /** A subscription cancellation: `Stop` carries no payload at all. **/
 const STOP_FRAME = new Uint8Array();
+/** A `Cancel` leg carries no payload, exactly as `Stop` does. */
+const CANCEL_FRAME = new Uint8Array();
 /**
  * Report a frame the transport received but cannot act on.
  *
@@ -135,6 +137,7 @@ export function createTransport(provider, options = {}) {
         throw new RangeError("requestTimeoutMs must be a positive finite number");
     }
     let idCounter = 0;
+    const requestIdPrefix = options.requestIdPrefix ?? "p:";
     let closedError = null;
     const pending = new Map();
     const subscriptions = new Map();
@@ -154,34 +157,75 @@ export function createTransport(provider, options = {}) {
             return undefined;
         pending.delete(requestId);
         entry.cancelTimeout();
+        entry.detachAbort();
         return entry;
     }
     /**
-     * Close the transport once, rejecting pending requests and notifying live
-     * subscriptions.
+     * Withdraw an in-flight call. The frame rides the method's own address and
+     * carries no payload; the host answers the request, never the cancel, so
+     * nothing here settles the pending entry.
+     *
+     * Failing to send is not worth surfacing: the transport is already closing,
+     * and `closeWithError` settles every pending call behind it.
      */
-    function closeWithError(error) {
-        const nextError = toError(error);
-        if (closedError) {
+    function sendCancel(requestId, ids) {
+        if (closedError)
             return;
+        try {
+            send({
+                requestId,
+                payload: {
+                    traitId: ids.trait,
+                    methodId: ids.method,
+                    messageType: MESSAGE_TYPE_CANCEL,
+                    value: CANCEL_FRAME,
+                },
+            });
         }
-        closedError = nextError;
-        for (const requestId of [...pending.keys()]) {
-            takePending(requestId)?.reject(nextError);
-        }
-        for (const [requestId, subscription] of subscriptions) {
-            subscriptions.delete(requestId);
-            subscription.onClose?.(nextError);
-        }
-        for (const route of hostRoutes.values()) {
-            route.buffered.length = 0;
-            for (const instance of route.instances.values())
-                instance.unsubscribe();
-            route.instances.clear();
+        catch {
+            // provider already closed
         }
     }
+    function interruptOperations(error) {
+        const requests = [...pending.keys()].map((requestId) => takePending(requestId));
+        const streams = [...subscriptions.values()];
+        subscriptions.clear();
+        const instances = [];
+        for (const route of hostRoutes.values()) {
+            route.buffered.length = 0;
+            instances.push(...route.instances.values());
+            route.instances.clear();
+        }
+        for (const request of requests)
+            request.reject(error);
+        // Product callbacks must not stop the provider's remaining close listeners.
+        for (const instance of instances) {
+            try {
+                instance.unsubscribe();
+            }
+            catch { }
+        }
+        for (const subscription of streams) {
+            try {
+                subscription.onClose?.(error);
+            }
+            catch { }
+        }
+    }
+    /** Close permanently; a provider reset only interrupts current operations. */
+    function closeWithError(error) {
+        if (closedError)
+            return;
+        closedError = toError(error);
+        interruptOperations(closedError);
+    }
+    const onProtocolError = options.onProtocolError ?? closeWithError;
     const unsubscribeClose = provider.subscribeClose?.((error) => {
         closeWithError(error);
+    });
+    const unsubscribeReset = provider.subscribeReset?.((error) => {
+        if (!closedError)
+            interruptOperations(error);
     });
     const unsubscribeMessage = provider.subscribe((message) => {
         if (closedError) {
@@ -189,7 +233,7 @@ export function createTransport(provider, options = {}) {
         }
         const decoded = decodeWireMessage(message);
         if (decoded.isErr()) {
-            closeWithError(decoded.error);
+            onProtocolError(decoded.error);
             return;
         }
         const { requestId, payload } = decoded.value;
@@ -200,7 +244,7 @@ export function createTransport(provider, options = {}) {
                 unsupported = decodeUnsupportedMessage(payload.value);
             }
             catch (error) {
-                closeWithError(error);
+                onProtocolError(toError(error));
                 return;
             }
             if (unsupported === undefined) {
@@ -426,6 +470,25 @@ export function createTransport(provider, options = {}) {
             throw toError(error);
         }
     }
+    function prepare(ids, ready, failed) {
+        const onReady = () => {
+            try {
+                ready();
+            }
+            catch (error) {
+                failed(error);
+            }
+        };
+        try {
+            if (options.prepare)
+                void options.prepare(ids).then(onReady, failed);
+            else
+                onReady();
+        }
+        catch (error) {
+            failed(error);
+        }
+    }
     /**
      * End one host-initiated stream, sending `payload` on its interrupt leg and
      * running the handler's teardown. The instance is dropped before the
@@ -532,13 +595,19 @@ export function createTransport(provider, options = {}) {
          * Send one request frame and resolve with the typed Ok/Err outcome
          * decoded from the response payload's `ResultPayload` envelope.
          */
-        request({ ids, payload, decodeResponse, }) {
+        request({ ids, payload, decodeResponse, signal, }) {
             const promise = new Promise((resolve, reject) => {
                 if (closedError) {
                     reject(closedError);
                     return;
                 }
-                const requestId = `p:${++idCounter}`;
+                // Nothing to withdraw yet: sending a request only to cancel it in the
+                // same turn asks the host to start work no one wants.
+                if (signal?.aborted) {
+                    reject(toError(signal.reason));
+                    return;
+                }
+                const requestId = `${requestIdPrefix}${++idCounter}`;
                 // Every call is bounded, so a dead host can never strand one. The
                 // handshake takes a shorter window than the rest: it needs no
                 // host-side confirmation and settles the codec question before any
@@ -548,15 +617,32 @@ export function createTransport(provider, options = {}) {
                     ids.method === W.SYSTEM_HANDSHAKE.method;
                 const timeoutMs = isHandshake ? HANDSHAKE_TIMEOUT_MS : requestTimeoutMs;
                 const deadline = setTimeout(() => {
-                    if (!takePending(requestId)) {
+                    const entry = takePending(requestId);
+                    if (!entry)
                         return;
-                    }
+                    // The host is told even though this side has stopped waiting: a
+                    // deadline that only rejects locally is exactly the leak the
+                    // `Cancel` leg exists to close.
+                    if (entry.sent)
+                        sendCancel(requestId, ids);
                     reject(isHandshake
                         ? new Error(`TrUAPI handshake timed out after ${HANDSHAKE_TIMEOUT_MS}ms; the host did not answer on wire codec ${TRUAPI_CODEC_VERSION}`)
                         : new RequestTimeoutError(requestId, ids.trait, ids.method, timeoutMs));
                 }, timeoutMs);
+                // Sent calls settle on the host's response so callers can read Cancelled.
+                const onAbort = () => {
+                    const entry = pending.get(requestId);
+                    if (!entry)
+                        return;
+                    if (entry.sent)
+                        sendCancel(requestId, ids);
+                    else
+                        takePending(requestId)?.reject(toError(signal?.reason));
+                };
+                signal?.addEventListener("abort", onAbort, { once: true });
                 pending.set(requestId, {
                     ids,
+                    sent: false,
                     resolve: (response) => resolve(decodeResponse(response)),
                     resolveUnsupported: () => resolve({
                         success: false,
@@ -566,8 +652,13 @@ export function createTransport(provider, options = {}) {
                     // `takePending` cancels this for every settlement path, so no
                     // deadline outlives the call it bounds.
                     cancelTimeout: () => clearTimeout(deadline),
+                    detachAbort: () => signal?.removeEventListener("abort", onAbort),
                 });
-                try {
+                prepare(ids, () => {
+                    const entry = pending.get(requestId);
+                    if (!entry)
+                        return;
+                    entry.sent = true;
                     send({
                         requestId,
                         payload: {
@@ -577,13 +668,7 @@ export function createTransport(provider, options = {}) {
                             value: payload,
                         },
                     });
-                }
-                catch (error) {
-                    // Settles through `takePending`, so the deadline is cancelled with
-                    // the entry rather than firing later against a dead request.
-                    takePending(requestId);
-                    reject(toError(error));
-                }
+                }, (error) => takePending(requestId)?.reject(toError(error)));
             });
             return ResultAsync.fromSafePromise(promise).andThen((result) => result.success ? okAsync(result.value) : errAsync(result.value));
         },
@@ -596,14 +681,19 @@ export function createTransport(provider, options = {}) {
                 onClose?.(closedError);
                 return { unsubscribe: () => { }, subscriptionId: "" };
             }
-            const requestId = `p:${++idCounter}`;
+            const requestId = `${requestIdPrefix}${++idCounter}`;
             subscriptions.set(requestId, {
                 ids,
+                sent: false,
                 onReceive,
                 onInterrupt,
                 onClose,
             });
-            try {
+            prepare(ids, () => {
+                const entry = subscriptions.get(requestId);
+                if (!entry)
+                    return;
+                entry.sent = true;
                 send({
                     requestId,
                     payload: {
@@ -613,20 +703,21 @@ export function createTransport(provider, options = {}) {
                         value: payload,
                     },
                 });
-            }
-            catch (error) {
-                subscriptions.delete(requestId);
-                onClose?.(toError(error));
-                return { unsubscribe: () => { }, subscriptionId: requestId };
-            }
+            }, (error) => {
+                if (subscriptions.delete(requestId))
+                    onClose?.(toError(error));
+            });
             return {
                 subscriptionId: requestId,
                 unsubscribe: () => {
                     // Skip the `_stop` frame when the host already terminated the stream
                     // via `_interrupt` (which removes the entry from `subscriptions`).
-                    if (!subscriptions.has(requestId))
+                    const entry = subscriptions.get(requestId);
+                    if (!entry)
                         return;
                     subscriptions.delete(requestId);
+                    if (!entry.sent)
+                        return;
                     try {
                         send({
                             requestId,
@@ -682,9 +773,14 @@ export function createTransport(provider, options = {}) {
         dispose() {
             // Idempotent: closeWithError is a no-op once closedError is set, and
             // unsubscribe handles tolerate being called twice.
-            closeWithError(new Error("transport disposed"));
-            unsubscribeMessage();
-            unsubscribeClose?.();
+            try {
+                closeWithError(new Error("transport disposed"));
+            }
+            finally {
+                unsubscribeMessage();
+                unsubscribeClose?.();
+                unsubscribeReset?.();
+            }
         },
     };
 }

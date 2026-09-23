@@ -107,6 +107,28 @@ export const unavailableHopProvider = {
         throw new Error("HOP provider is unavailable");
     },
 };
+/** Native exceptions may contain bearer material; preserve only typed failure values. */
+export function coinageWalletHostAdapter(host) {
+    if (host === undefined)
+        return undefined;
+    let nativeCoinage;
+    try {
+        nativeCoinage = host.nativeCoinage.bind(host);
+    }
+    catch {
+        throw new Error("Native Coinage wallet callback is unavailable");
+    }
+    return {
+        async nativeCoinage(request) {
+            try {
+                return await nativeCoinage(request);
+            }
+            catch {
+                throw new Error("Native Coinage wallet operation failed");
+            }
+        },
+    };
+}
 /** Optional SDK embeddings must fail closed, never invent successful file handles. */
 export const unavailableNativeChatFilesHost = {
     async pickChatFiles() {

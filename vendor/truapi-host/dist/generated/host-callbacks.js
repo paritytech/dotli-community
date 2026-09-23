@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -86,6 +86,39 @@ export const NativeChatFilePickRequest = S.lazy(() => S.Struct({ productId: S.st
  */
 export const NativeChatPickedFile = S.lazy(() => S.Struct({ sourceId: S.str, metadata: HostNativeChatAttachmentMetadata }));
 /**
+ * Sanitized failures. Never forward secret-bearing native exception descriptions.
+ */
+export const NativeCoinageFailure = S.lazy(() => S.Status("Unavailable", "InvalidRequest", "InvalidSource", "OperationConflict", "OperationNotFound", "InsufficientBalance", "UserRejected"));
+/**
+ * Host-private bearer material. Never return this through the product API or log it.
+ * Raw amounts are canonical unsigned decimal u128 strings, avoiding FFI truncation.
+ */
+export const NativeCoinageMemo = S.lazy(() => S.Struct({ secretKeys: S.Vector(S.Bytes()), totalValueRaw: S.str }));
+/**
+ * Durable native-wallet operations, not an alternative inventory ledger.
+ */
+export const NativeCoinageOperation = S.lazy(() => S.TaggedUnion({ Denomination: S._void, PreparePayment: S.Struct({ intent: NativeCoinagePaymentIntent }), CommitHandoff: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), Views: S.Struct({ productId: S.str }), PendingHandoffs: S.Struct({ productId: S.str, acceptedOperations: S.Vector(S.Bytes(32)) }), ReadHandoff: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), NoteDelivery: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), Reconcile: S._void, TopUp: S.Struct({ productId: S.str, operationId: S.Bytes(32), minimumAmountRaw: S.str, secretKeys: S.Vector(S.Bytes()) }) }));
+/**
+ * Immutable, Host-authenticated outgoing intent. No field is a product display hint.
+ */
+export const NativeCoinagePaymentIntent = S.lazy(() => S.Struct({ operationId: S.Bytes(32), productId: S.str, requestId: S.str, peerIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64 }));
+/**
+ * One native operation with the immutable wallet/network scope to authenticate.
+ */
+export const NativeCoinageRequest = S.lazy(() => S.Struct({ scope: NativeCoinageScope, operation: NativeCoinageOperation }));
+/**
+ * Typed native results. Only the trusted Host may consume a Prepared memo.
+ */
+export const NativeCoinageResponse = S.lazy(() => S.TaggedUnion({ Denomination: S.Struct({ centsUnitRaw: S.str }), Prepared: S.Struct({ payment: HostNativeChatPayment, memo: S.Option(NativeCoinageMemo) }), Payments: S.Struct({ payments: S.Vector(HostNativeChatPayment) }), TopUp: S.Struct({ outcome: NativeCoinageTopUpOutcome }), Done: S._void, Failed: S.Struct({ reason: NativeCoinageFailure }) }));
+/**
+ * Wallet and asset binding checked by the native service before every operation.
+ */
+export const NativeCoinageScope = S.lazy(() => S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32) }));
+/**
+ * Incoming settlement result; acceptance and best-head observations are not finality.
+ */
+export const NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S._void, Partial: S.Struct({ creditedAmountRaw: S.str }), Pending: S._void, NotClaimed: S._void }));
+/**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
@@ -93,10 +126,14 @@ export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Devic
 /**
  * Authorization status for a permission request.
  *
- * `NotDetermined` means the core has no persisted answer and will prompt the
+ * `NotDetermined` means the core has no saved or one-use answer and will prompt the
  * host the next time the product requests this permission.
  */
 export const PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
+/**
+ * User decision including how long an authorization should last.
+ */
+export const PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
 /**
  * Review shown before a preimage is submitted.
  */
@@ -133,7 +170,7 @@ export const ResourceAllocationReview = S.lazy(() => S.Struct({ callingProductId
  * Decoded session fields a host shell needs to render account UI without
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
-export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identityAccountId: S.Option(Bytes32), chatPublicKey: S.Option(Bytes32), deviceEncPublicKey: S.Option(Bytes32), peerStatementAccountId: S.Option(Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
+export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identityAccountId: S.Option(Bytes32), chatPublicKey: S.Option(Bytes32), deviceEncPublicKey: S.Option(Bytes32), peerStatementAccountId: S.Option(Bytes32), deviceStatementAccountId: S.Option(Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */

@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "0931d05042135353";
+export const TRUAPI_WIRE_SCHEMA_HASH = "87a3b34c06a7c823";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -142,14 +142,14 @@ function createObservable({ transport, ids, payload, decodeItem, decodeInterrupt
 }
 /** Account lookup, aliasing, and proof generation. */
 export class AccountClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Subscribe to account connection status changes. */
     connectionStatusSubscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
             payload: T.VersionedHostAccountConnectionStatusSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostAccountConnectionStatusSubscribeItem.dec(payload).value,
@@ -157,10 +157,11 @@ export class AccountClient {
         });
     }
     /** Retrieve a product-scoped account. */
-    getAccount(request) {
-        return this.transport.request({
+    getAccount(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_GET_ACCOUNT,
             payload: T.VersionedHostAccountGetRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountGetResponse, S.CallError(T.VersionedHostAccountGetError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -168,10 +169,11 @@ export class AccountClient {
         });
     }
     /** Retrieve the contextual alias for a context and ring. */
-    getAccountAlias(request) {
-        return this.transport.request({
+    getAccountAlias(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_GET_ACCOUNT_ALIAS,
             payload: T.VersionedHostAccountGetAliasRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountGetAliasResponse, S.CallError(T.VersionedHostAccountGetAliasError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -179,10 +181,11 @@ export class AccountClient {
         });
     }
     /** Generate a ring VRF proof with an explicitly registered member key. */
-    createAccountProof(request) {
-        return this.transport.request({
+    createAccountProof(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_CREATE_ACCOUNT_PROOF,
             payload: T.VersionedHostAccountCreateProofRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountCreateProofResponse, S.CallError(T.VersionedHostAccountCreateProofError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -197,10 +200,11 @@ export class AccountClient {
      * proof. Authorized like signing: local when `AutoSigning` covers the
      * account, otherwise a per-call user confirmation.
      */
-    signVrf(request) {
-        return this.transport.request({
+    signVrf(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_SIGN_VRF,
             payload: T.VersionedHostAccountSignVrfRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountSignVrfResponse, S.CallError(T.VersionedHostAccountSignVrfError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -208,10 +212,11 @@ export class AccountClient {
         });
     }
     /** Register a ring-VRF key owned by the calling product. */
-    registerRingVrfKey(request) {
-        return this.transport.request({
+    registerRingVrfKey(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_REGISTER_RING_VRF_KEY,
             payload: T.VersionedHostAccountRegisterRingVrfKeyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountRegisterRingVrfKeyResponse, S.CallError(T.VersionedHostAccountRegisterRingVrfKeyError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -219,10 +224,11 @@ export class AccountClient {
         });
     }
     /** List registered ring-VRF keys owned by a product. */
-    listRingVrfKeys(request) {
-        return this.transport.request({
+    listRingVrfKeys(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_LIST_RING_VRF_KEYS,
             payload: T.VersionedHostAccountListRingVrfKeysRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountListRingVrfKeysResponse, S.CallError(T.VersionedHostAccountListRingVrfKeysError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -230,10 +236,11 @@ export class AccountClient {
         });
     }
     /** Sign bytes directly with a registered ring-VRF member key. */
-    ringVrfSign(request) {
-        return this.transport.request({
+    ringVrfSign(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_RING_VRF_SIGN,
             payload: T.VersionedHostAccountRingVrfSignRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountRingVrfSignResponse, S.CallError(T.VersionedHostAccountRingVrfSignError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -241,15 +248,32 @@ export class AccountClient {
         });
     }
     /**
-     * Operate a Host-owned native Chat device and propose one-shot main-purse
-     * payments. Transport private keys and spendable memos never leave the Host.
+     * Use a non-exportable Host Chat device for native cryptographic operations
+     * and reviewed main-purse payments. The product owns native lifecycle frames,
+     * subscriptions, delivery, retries, history, and acknowledgments.
      *
-     * Method 11 (the former raw-crypto interface) is retired, not forwarded.
+     * `Bind` resolves the peer independently. `Prepare` validates native plaintext
+     * and returns signed ciphertext for product submission. `Open` authenticates
+     * complete external statements and rejects reflected local output; it is not
+     * an arbitrary decryption primitive. Incoming plaintext can contain incoming
+     * bearer coin keys: persist the import intent securely and use generic payment
+     * top-up before acknowledging. Wallet/device keys and outgoing main-purse
+     * coin secrets never leave the Host.
+     *
+     * `Initialize` also advances private file transfers. Persist any legacy
+     * migration view and ordinary prepared statements before `CommitMigration`.
+     * `ContinueOpen` retrieves the next bounded page of an authenticated batch.
+     * `ContinueState` retrieves remaining pages of a stable public state snapshot;
+     * persist every page before committing its migration.
+     *
+     * Method 11 (the former raw-crypto interface) and method 12's former V1 actor
+     * operations are retired, not forwarded. This boundary uses V2 payloads.
      */
-    deviceChat(request) {
-        return this.transport.request({
+    deviceChat(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_PRODUCT_DEVICE_CHAT,
-            payload: T.VersionedHostProductDeviceChatRequest.enc({ tag: "V1", value: request }),
+            payload: T.VersionedHostProductDeviceChatRequest.enc({ tag: "V2", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProductDeviceChatResponse, S.CallError(T.VersionedHostProductDeviceChatError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -261,10 +285,11 @@ export class AccountClient {
      *
      * Current hosts do not expose non-product accounts, so the list is empty.
      */
-    getLegacyAccounts() {
-        return this.transport.request({
+    getLegacyAccounts(options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_GET_LEGACY_ACCOUNTS,
             payload: T.VersionedHostGetLegacyAccountsRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostGetLegacyAccountsResponse, S.CallError(T.VersionedHostGetLegacyAccountsError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -272,10 +297,11 @@ export class AccountClient {
         });
     }
     /** Fetch the user's primary identity. */
-    getUserId() {
-        return this.transport.request({
+    getUserId(options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_GET_USER_ID,
             payload: T.VersionedHostGetUserIdRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostGetUserIdResponse, S.CallError(T.VersionedHostGetUserIdError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -288,10 +314,11 @@ export class AccountClient {
      * Products should call this in response to a user action (e.g. tapping a
      * "Sign in" button), not automatically on load.
      */
-    requestLogin(request) {
-        return this.transport.request({
+    requestLogin(request, options) {
+        return this.#transport.request({
             ids: W.ACCOUNT_REQUEST_LOGIN,
             payload: T.VersionedHostRequestLoginRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostRequestLoginResponse, S.CallError(T.VersionedHostRequestLoginError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -301,14 +328,14 @@ export class AccountClient {
 }
 /** Chain interaction methods. */
 export class ChainClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Follow the chain head and receive block events. */
     followHeadSubscribe({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
             payload: T.VersionedRemoteChainHeadFollowRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemoteChainHeadFollowItem.dec(payload).value,
@@ -316,10 +343,11 @@ export class ChainClient {
         });
     }
     /** Fetch a block header. */
-    getHeadHeader(request) {
-        return this.transport.request({
+    getHeadHeader(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_HEAD_HEADER,
             payload: T.VersionedRemoteChainHeadHeaderRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadHeaderResponse, S.CallError(T.VersionedRemoteChainHeadHeaderError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -327,10 +355,11 @@ export class ChainClient {
         });
     }
     /** Fetch a block body. */
-    getHeadBody(request) {
-        return this.transport.request({
+    getHeadBody(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_HEAD_BODY,
             payload: T.VersionedRemoteChainHeadBodyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadBodyResponse, S.CallError(T.VersionedRemoteChainHeadBodyError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -338,10 +367,11 @@ export class ChainClient {
         });
     }
     /** Query runtime storage at a specific block. */
-    getHeadStorage(request) {
-        return this.transport.request({
+    getHeadStorage(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_HEAD_STORAGE,
             payload: T.VersionedRemoteChainHeadStorageRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadStorageResponse, S.CallError(T.VersionedRemoteChainHeadStorageError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -349,10 +379,11 @@ export class ChainClient {
         });
     }
     /** Invoke a runtime call at a specific block. */
-    callHead(request) {
-        return this.transport.request({
+    callHead(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_CALL_HEAD,
             payload: T.VersionedRemoteChainHeadCallRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadCallResponse, S.CallError(T.VersionedRemoteChainHeadCallError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -360,10 +391,11 @@ export class ChainClient {
         });
     }
     /** Release pinned blocks. */
-    unpinHead(request) {
-        return this.transport.request({
+    unpinHead(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_UNPIN_HEAD,
             payload: T.VersionedRemoteChainHeadUnpinRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadUnpinResponse, S.CallError(T.VersionedRemoteChainHeadUnpinError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -371,10 +403,11 @@ export class ChainClient {
         });
     }
     /** Continue a paused chain-head operation. */
-    continueHead(request) {
-        return this.transport.request({
+    continueHead(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_CONTINUE_HEAD,
             payload: T.VersionedRemoteChainHeadContinueRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadContinueResponse, S.CallError(T.VersionedRemoteChainHeadContinueError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -382,10 +415,11 @@ export class ChainClient {
         });
     }
     /** Stop a chain-head operation. */
-    stopHeadOperation(request) {
-        return this.transport.request({
+    stopHeadOperation(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_STOP_HEAD_OPERATION,
             payload: T.VersionedRemoteChainHeadStopOperationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainHeadStopOperationResponse, S.CallError(T.VersionedRemoteChainHeadStopOperationError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -393,10 +427,11 @@ export class ChainClient {
         });
     }
     /** Fetch the canonical genesis hash for a chain. */
-    getSpecGenesisHash(request) {
-        return this.transport.request({
+    getSpecGenesisHash(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_SPEC_GENESIS_HASH,
             payload: T.VersionedRemoteChainSpecGenesisHashRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainSpecGenesisHashResponse, S.CallError(T.VersionedRemoteChainSpecGenesisHashError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -404,10 +439,11 @@ export class ChainClient {
         });
     }
     /** Fetch the display name of a chain. */
-    getSpecChainName(request) {
-        return this.transport.request({
+    getSpecChainName(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_SPEC_CHAIN_NAME,
             payload: T.VersionedRemoteChainSpecChainNameRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainSpecChainNameResponse, S.CallError(T.VersionedRemoteChainSpecChainNameError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -415,10 +451,11 @@ export class ChainClient {
         });
     }
     /** Fetch the JSON-encoded properties of a chain. */
-    getSpecProperties(request) {
-        return this.transport.request({
+    getSpecProperties(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_SPEC_PROPERTIES,
             payload: T.VersionedRemoteChainSpecPropertiesRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainSpecPropertiesResponse, S.CallError(T.VersionedRemoteChainSpecPropertiesError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -426,10 +463,11 @@ export class ChainClient {
         });
     }
     /** Broadcast a signed transaction. */
-    broadcastTransaction(request) {
-        return this.transport.request({
+    broadcastTransaction(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_BROADCAST_TRANSACTION,
             payload: T.VersionedRemoteChainTransactionBroadcastRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainTransactionBroadcastResponse, S.CallError(T.VersionedRemoteChainTransactionBroadcastError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -437,10 +475,11 @@ export class ChainClient {
         });
     }
     /** Stop a transaction broadcast. */
-    stopTransaction(request) {
-        return this.transport.request({
+    stopTransaction(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_STOP_TRANSACTION,
             payload: T.VersionedRemoteChainTransactionStopRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainTransactionStopResponse, S.CallError(T.VersionedRemoteChainTransactionStopError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -451,10 +490,11 @@ export class ChainClient {
      * Resolve a chain identifier to its genesis hash against the host's
      * configured environment (RFC 0026).
      */
-    getChainInfo(request) {
-        return this.transport.request({
+    getChainInfo(request, options) {
+        return this.#transport.request({
             ids: W.CHAIN_GET_CHAIN_INFO,
             payload: T.VersionedRemoteChainInfoRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteChainInfoResponse, S.CallError(T.VersionedRemoteChainInfoError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -464,15 +504,16 @@ export class ChainClient {
 }
 /** Chat room, bot, and message APIs. */
 export class ChatClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Create a chat room. */
-    createRoom(request) {
-        return this.transport.request({
+    createRoom(request, options) {
+        return this.#transport.request({
             ids: W.CHAT_CREATE_ROOM,
             payload: T.VersionedHostChatCreateRoomRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostChatCreateRoomResponse, S.CallError(T.VersionedHostChatCreateRoomError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -480,10 +521,11 @@ export class ChatClient {
         });
     }
     /** Register a chat bot. */
-    registerBot(request) {
-        return this.transport.request({
+    registerBot(request, options) {
+        return this.#transport.request({
             ids: W.CHAT_REGISTER_BOT,
             payload: T.VersionedHostChatRegisterBotRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostChatRegisterBotResponse, S.CallError(T.VersionedHostChatRegisterBotError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -493,7 +535,7 @@ export class ChatClient {
     /** Subscribe to the list of chat rooms. */
     listSubscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.CHAT_LIST_SUBSCRIBE,
             payload: T.VersionedHostChatListSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostChatListSubscribeItem.dec(payload).value,
@@ -515,10 +557,11 @@ export class ChatClient {
      * The returned `messageId` is the correlation key for any action the
      * message carries: a later `actionSubscribe` trigger names it.
      */
-    postMessage(request) {
-        return this.transport.request({
+    postMessage(request, options) {
+        return this.#transport.request({
             ids: W.CHAT_POST_MESSAGE,
             payload: T.VersionedHostChatPostMessageRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostChatPostMessageResponse, S.CallError(T.VersionedHostChatPostMessageError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -528,7 +571,7 @@ export class ChatClient {
     /** Subscribe to received chat actions. */
     actionSubscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.CHAT_ACTION_SUBSCRIBE,
             payload: T.VersionedHostChatActionSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostChatActionSubscribeItem.dec(payload).value,
@@ -544,15 +587,16 @@ export class ChatClient {
  * updates.
  */
 export class CoinPaymentClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Create a new firewalled CoinPayment purse. */
-    createPurse(request) {
-        return this.transport.request({
+    createPurse(request, options) {
+        return this.#transport.request({
             ids: W.COIN_PAYMENT_CREATE_PURSE,
             payload: T.VersionedHostCoinPaymentCreatePurseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostCoinPaymentCreatePurseResponse, S.CallError(T.VersionedHostCoinPaymentCreatePurseError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -560,10 +604,11 @@ export class CoinPaymentClient {
         });
     }
     /** Query product-visible purse metadata and balance. */
-    queryPurse(request) {
-        return this.transport.request({
+    queryPurse(request, options) {
+        return this.#transport.request({
             ids: W.COIN_PAYMENT_QUERY_PURSE,
             payload: T.VersionedHostCoinPaymentQueryPurseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostCoinPaymentQueryPurseResponse, S.CallError(T.VersionedHostCoinPaymentQueryPurseError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -573,7 +618,7 @@ export class CoinPaymentClient {
     /** Transfer balance between local purses. */
     rebalancePurse({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.COIN_PAYMENT_REBALANCE_PURSE,
             payload: T.VersionedHostCoinPaymentRebalancePurseRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentRebalancePurseItem.dec(payload).value,
@@ -583,7 +628,7 @@ export class CoinPaymentClient {
     /** Delete a purse after draining its balance into another local purse. */
     deletePurse({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.COIN_PAYMENT_DELETE_PURSE,
             payload: T.VersionedHostCoinPaymentDeletePurseRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentDeletePurseItem.dec(payload).value,
@@ -591,10 +636,11 @@ export class CoinPaymentClient {
         });
     }
     /** Create a receivable public key for depositing into a purse. */
-    createReceivable(request) {
-        return this.transport.request({
+    createReceivable(request, options) {
+        return this.#transport.request({
             ids: W.COIN_PAYMENT_CREATE_RECEIVABLE,
             payload: T.VersionedHostCoinPaymentCreateReceivableRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostCoinPaymentCreateReceivableResponse, S.CallError(T.VersionedHostCoinPaymentCreateReceivableError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -602,10 +648,11 @@ export class CoinPaymentClient {
         });
     }
     /** Create a cheque paying from a local purse to a receivable. */
-    createCheque(request) {
-        return this.transport.request({
+    createCheque(request, options) {
+        return this.#transport.request({
             ids: W.COIN_PAYMENT_CREATE_CHEQUE,
             payload: T.VersionedHostCoinPaymentCreateChequeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostCoinPaymentCreateChequeResponse, S.CallError(T.VersionedHostCoinPaymentCreateChequeError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -615,7 +662,7 @@ export class CoinPaymentClient {
     /** Claim coins from a cheque into the receivable's purse. */
     deposit({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.COIN_PAYMENT_DEPOSIT,
             payload: T.VersionedHostCoinPaymentDepositRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentDepositItem.dec(payload).value,
@@ -625,7 +672,7 @@ export class CoinPaymentClient {
     /** Attempt to return coins associated with a receivable. */
     refund({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.COIN_PAYMENT_REFUND,
             payload: T.VersionedHostCoinPaymentRefundRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentRefundItem.dec(payload).value,
@@ -635,7 +682,7 @@ export class CoinPaymentClient {
     /** Listen for a cheque delivered through a standard transmission channel. */
     listenForPayment({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.COIN_PAYMENT_LISTEN_FOR_PAYMENT,
             payload: T.VersionedHostCoinPaymentListenForRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostCoinPaymentListenForItem.dec(payload).value,
@@ -645,15 +692,16 @@ export class CoinPaymentClient {
 }
 /** Deterministic entropy derivation. */
 export class EntropyClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Derive deterministic entropy. */
-    derive(request) {
-        return this.transport.request({
+    derive(request, options) {
+        return this.#transport.request({
             ids: W.ENTROPY_DERIVE,
             payload: T.VersionedHostDeriveEntropyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostDeriveEntropyResponse, S.CallError(T.VersionedHostDeriveEntropyError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -663,15 +711,16 @@ export class EntropyClient {
 }
 /** Local key/value storage scoped to the calling product. */
 export class LocalStorageClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Read a value by key. */
-    read(request) {
-        return this.transport.request({
+    read(request, options) {
+        return this.#transport.request({
             ids: W.LOCAL_STORAGE_READ,
             payload: T.VersionedHostLocalStorageReadRequest.enc({ tag: "V2", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostLocalStorageReadResponse, S.CallError(T.VersionedHostLocalStorageReadError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -679,10 +728,11 @@ export class LocalStorageClient {
         });
     }
     /** Write a value to a key. */
-    write(request) {
-        return this.transport.request({
+    write(request, options) {
+        return this.#transport.request({
             ids: W.LOCAL_STORAGE_WRITE,
             payload: T.VersionedHostLocalStorageWriteRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostLocalStorageWriteResponse, S.CallError(T.VersionedHostLocalStorageWriteError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -690,27 +740,44 @@ export class LocalStorageClient {
         });
     }
     /** Clear a value by key. */
-    clear(request) {
-        return this.transport.request({
+    clear(request, options) {
+        return this.#transport.request({
             ids: W.LOCAL_STORAGE_CLEAR,
             payload: T.VersionedHostLocalStorageClearRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostLocalStorageClearResponse, S.CallError(T.VersionedHostLocalStorageClearError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
     }
+    /**
+     * Subscribe to changes of one key in the product's own storage namespace.
+     *
+     * Emits the current value immediately, then one item per later write or
+     * clear of the key by any of the product's runtimes. A write that leaves
+     * the stored bytes unchanged emits nothing.
+     */
+    subscribe({ request }) {
+        return createObservable({
+            transport: this.#transport,
+            ids: W.LOCAL_STORAGE_SUBSCRIBE,
+            payload: T.VersionedHostLocalStorageSubscribeRequest.enc({ tag: "V1", value: request }),
+            decodeItem: (payload) => T.VersionedHostLocalStorageChangeItem.dec(payload).value,
+            decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostLocalStorageSubscribeError)),
+        });
+    }
 }
 /** Host locale subscription. */
 export class LocaleClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Subscribe to the host's selected locale. */
     subscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.LOCALE_SUBSCRIBE,
             payload: T.VersionedHostLocaleSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostLocaleSubscribeItem.dec(payload).value,
@@ -720,9 +787,9 @@ export class LocaleClient {
 }
 /** Notification methods for locally-rendered push notifications. */
 export class NotificationsClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /**
      * Send a push notification to the user.
@@ -735,10 +802,11 @@ export class NotificationsClient {
      *
      * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
-    sendPushNotification(request) {
-        return this.transport.request({
+    sendPushNotification(request, options) {
+        return this.#transport.request({
             ids: W.NOTIFICATIONS_SEND_PUSH_NOTIFICATION,
             payload: T.VersionedHostPushNotificationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPushNotificationResponse, S.CallError(T.VersionedHostPushNotificationError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -753,10 +821,11 @@ export class NotificationsClient {
      *
      * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
-    cancelPushNotification(request) {
-        return this.transport.request({
+    cancelPushNotification(request, options) {
+        return this.#transport.request({
             ids: W.NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION,
             payload: T.VersionedHostPushNotificationCancelRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -766,14 +835,14 @@ export class NotificationsClient {
 }
 /** Payment request and balance/status subscription methods. */
 export class PaymentClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Subscribe to payment balance updates. */
     balanceSubscribe({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.PAYMENT_BALANCE_SUBSCRIBE,
             payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostPaymentBalanceSubscribeItem.dec(payload).value,
@@ -781,10 +850,11 @@ export class PaymentClient {
         });
     }
     /** Request a payment from the user. */
-    request(request) {
-        return this.transport.request({
+    request(request, options) {
+        return this.#transport.request({
             ids: W.PAYMENT_REQUEST,
             payload: T.VersionedHostPaymentRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPaymentResponse, S.CallError(T.VersionedHostPaymentError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -794,7 +864,7 @@ export class PaymentClient {
     /** Subscribe to payment lifecycle updates for a specific payment. */
     statusSubscribe({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.PAYMENT_STATUS_SUBSCRIBE,
             payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedHostPaymentStatusSubscribeItem.dec(payload).value,
@@ -802,10 +872,11 @@ export class PaymentClient {
         });
     }
     /** Top up the user's payment balance. */
-    topUp(request) {
-        return this.transport.request({
+    topUp(request, options) {
+        return this.#transport.request({
             ids: W.PAYMENT_TOP_UP,
             payload: T.VersionedHostPaymentTopUpRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPaymentTopUpResponse, S.CallError(T.VersionedHostPaymentTopUpError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -815,26 +886,32 @@ export class PaymentClient {
 }
 /** Permission request methods. */
 export class PermissionsClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Request a device-capability permission from the user. */
-    requestDevicePermission(request) {
-        return this.transport.request({
+    requestDevicePermission(request, options) {
+        return this.#transport.request({
             ids: W.PERMISSIONS_REQUEST_DEVICE_PERMISSION,
             payload: T.VersionedHostDevicePermissionRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostDevicePermissionResponse, S.CallError(T.VersionedHostDevicePermissionError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
     }
-    /** Request a remote-operation permission. */
-    requestRemotePermission(request) {
-        return this.transport.request({
+    /**
+     * Request a remote-operation permission.
+     *
+     * This example makes live requests to Frankfurter after permission is granted.
+     */
+    requestRemotePermission(request, options) {
+        return this.#transport.request({
             ids: W.PERMISSIONS_REQUEST_REMOTE_PERMISSION,
             payload: T.VersionedRemotePermissionRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemotePermissionResponse, S.CallError(T.VersionedRemotePermissionError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -849,9 +926,9 @@ export class PermissionsClient {
  * remove them, but cannot add one.
  */
 export class PocketClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /**
      * Subscribe to the calling product's cards.
@@ -860,7 +937,7 @@ export class PocketClient {
      */
     listSubscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.POCKET_LIST_SUBSCRIBE,
             payload: T.VersionedHostPocketListSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostPocketListSubscribeItem.dec(payload).value,
@@ -873,10 +950,11 @@ export class PocketClient {
      * Removing a card that is not present succeeds. A privileged card is
      * refused with `Privileged`.
      */
-    removeCard(request) {
-        return this.transport.request({
+    removeCard(request, options) {
+        return this.#transport.request({
             ids: W.POCKET_REMOVE_CARD,
             payload: T.VersionedHostPocketRemoveCardRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPocketRemoveCardResponse, S.CallError(T.VersionedHostPocketRemoveCardError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -886,14 +964,14 @@ export class PocketClient {
 }
 /** Preimage lookup and submission methods. */
 export class PreimageClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Subscribe to preimage lookups for a given key. */
     lookupSubscribe({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.PREIMAGE_LOOKUP_SUBSCRIBE,
             payload: T.VersionedRemotePreimageLookupSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemotePreimageLookupSubscribeItem.dec(payload).value,
@@ -901,10 +979,11 @@ export class PreimageClient {
         });
     }
     /** Submit a preimage. Returns the preimage key (hash) on success. */
-    submit(request) {
-        return this.transport.request({
+    submit(request, options) {
+        return this.#transport.request({
             ids: W.PREIMAGE_SUBMIT,
             payload: T.VersionedRemotePreimageSubmitRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemotePreimageSubmitResponse, S.CallError(T.VersionedRemotePreimageSubmitError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -914,11 +993,11 @@ export class PreimageClient {
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export class RendererClient {
-    transport;
-    renderRegistration;
+    #transport;
+    #renderRegistration;
     constructor(transport) {
-        this.transport = transport;
-        this.renderRegistration = transport.registerHostInitiatedSubscription({
+        this.#transport = transport;
+        this.#renderRegistration = transport.registerHostInitiatedSubscription({
             ids: W.RENDERER_RENDER,
             decodeRequest: (payload) => T.VersionedProductRendererRenderRequest.dec(payload).value,
             encodeItem: (item) => T.VersionedProductRendererRenderItem.enc({ tag: "V1", value: item }),
@@ -933,12 +1012,12 @@ export class RendererClient {
      * displayed so the product can redraw in place.
      */
     onRender(handler) {
-        return this.renderRegistration.setHandler(handler);
+        return this.#renderRegistration.setHandler(handler);
     }
     /** Subscribe to actions triggered inside this product's rendered bodies. */
     actionSubscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.RENDERER_ACTION_SUBSCRIBE,
             payload: T.VersionedHostRendererActionSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostRendererActionSubscribeItem.dec(payload).value,
@@ -948,15 +1027,16 @@ export class RendererClient {
 }
 /** Resource pre-allocation (allowance management). */
 export class ResourceAllocationClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Request the host to pre-allocate one or more resources. */
-    request(request) {
-        return this.transport.request({
+    request(request, options) {
+        return this.#transport.request({
             ids: W.RESOURCE_ALLOCATION_REQUEST,
             payload: T.VersionedHostRequestResourceAllocationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostRequestResourceAllocationResponse, S.CallError(T.VersionedHostRequestResourceAllocationError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -966,9 +1046,9 @@ export class ResourceAllocationClient {
 }
 /** Signing operations. */
 export class SigningClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /**
      * Construct a transaction for a product account.
@@ -981,10 +1061,11 @@ export class SigningClient {
      * with a proof in a later extension — encodes the given bytes verbatim and
      * returns an unsigned transaction.
      */
-    createTransaction(request) {
-        return this.transport.request({
+    createTransaction(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_CREATE_TRANSACTION,
             payload: T.VersionedHostCreateTransactionRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostCreateTransactionResponse, S.CallError(T.VersionedHostCreateTransactionError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -998,10 +1079,11 @@ export class SigningClient {
      * [`Signing::create_transaction`]: omit it and the host signs, list it and
      * the given bytes are used with no host signature.
      */
-    createTransactionWithLegacyAccount(request) {
-        return this.transport.request({
+    createTransactionWithLegacyAccount(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostCreateTransactionWithLegacyAccountResponse, S.CallError(T.VersionedHostCreateTransactionWithLegacyAccountError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1009,10 +1091,11 @@ export class SigningClient {
         });
     }
     /** Sign raw bytes with a non-product account. */
-    signRawWithLegacyAccount(request) {
-        return this.transport.request({
+    signRawWithLegacyAccount(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostSignRawWithLegacyAccountResponse, S.CallError(T.VersionedHostSignRawWithLegacyAccountError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1020,10 +1103,11 @@ export class SigningClient {
         });
     }
     /** Sign an extrinsic payload with a non-product account. */
-    signPayloadWithLegacyAccount(request) {
-        return this.transport.request({
+    signPayloadWithLegacyAccount(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostSignPayloadWithLegacyAccountResponse, S.CallError(T.VersionedHostSignPayloadWithLegacyAccountError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1036,10 +1120,11 @@ export class SigningClient {
      * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
      * grant covers the account; otherwise each call is confirmed by the user.
      */
-    signRaw(request) {
-        return this.transport.request({
+    signRaw(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_SIGN_RAW,
             payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostSignRawResponse, S.CallError(T.VersionedHostSignRawError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1052,10 +1137,11 @@ export class SigningClient {
      * Served locally without a user confirmation when an RFC-0010 `AutoSigning`
      * grant covers the account; otherwise each call is confirmed by the user.
      */
-    signPayload(request) {
-        return this.transport.request({
+    signPayload(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_SIGN_PAYLOAD,
             payload: T.VersionedHostSignPayloadRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostSignPayloadResponse, S.CallError(T.VersionedHostSignPayloadError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1071,12 +1157,13 @@ export class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
      */
-    signRawUnwatermarkedDeprecated(request) {
-        return this.transport.request({
+    signRawUnwatermarkedDeprecated(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED,
             payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostSignRawResponse, S.CallError(T.VersionedHostSignRawError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1092,12 +1179,13 @@ export class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
      */
-    signRawUnwatermarkedDeprecatedWithLegacyAccount(request) {
-        return this.transport.request({
+    signRawUnwatermarkedDeprecatedWithLegacyAccount(request, options) {
+        return this.#transport.request({
             ids: W.SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT,
             payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostSignRawWithLegacyAccountResponse, S.CallError(T.VersionedHostSignRawWithLegacyAccountError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1107,14 +1195,14 @@ export class SigningClient {
 }
 /** Statement store methods. */
 export class StatementStoreClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Subscribe to statements matching a topic filter. */
     subscribe({ request }) {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.STATEMENT_STORE_SUBSCRIBE,
             payload: T.VersionedRemoteStatementStoreSubscribeRequest.enc({ tag: "V1", value: request }),
             decodeItem: (payload) => T.VersionedRemoteStatementStoreSubscribeItem.dec(payload).value,
@@ -1129,10 +1217,11 @@ export class StatementStoreClient {
      * require a per-call signing prompt. Pairing hosts may reject this method
      * when their signing channel cannot sign statement proof payloads exactly.
      */
-    createProof(request) {
-        return this.transport.request({
+    createProof(request, options) {
+        return this.#transport.request({
             ids: W.STATEMENT_STORE_CREATE_PROOF,
             payload: T.VersionedRemoteStatementStoreCreateProofRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteStatementStoreCreateProofResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1143,10 +1232,11 @@ export class StatementStoreClient {
      * Create a proof for a statement using a pre-allocated allowance account,
      * bypassing the per-call signing prompt.
      */
-    createProofAuthorized(request) {
-        return this.transport.request({
+    createProofAuthorized(request, options) {
+        return this.#transport.request({
             ids: W.STATEMENT_STORE_CREATE_PROOF_AUTHORIZED,
             payload: T.VersionedRemoteStatementStoreCreateProofAuthorizedRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteStatementStoreCreateProofAuthorizedResponse, S.CallError(T.VersionedRemoteStatementStoreCreateProofAuthorizedError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1158,10 +1248,11 @@ export class StatementStoreClient {
      * [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
      * struct), matching upstream `triangle-js-sdks`.
      */
-    submit(request) {
-        return this.transport.request({
+    submit(request, options) {
+        return this.#transport.request({
             ids: W.STATEMENT_STORE_SUBMIT,
             payload: T.VersionedRemoteStatementStoreSubmitRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemoteStatementStoreSubmitResponse, S.CallError(T.VersionedRemoteStatementStoreSubmitError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1174,15 +1265,16 @@ export class StatementStoreClient {
  * navigation, and runtime information.
  */
 export class SystemClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Negotiate the wire codec version with the product. */
-    handshake() {
-        return this.transport.request({
+    handshake(options) {
+        return this.#transport.request({
             ids: W.SYSTEM_HANDSHAKE,
             payload: T.VersionedHostHandshakeRequest.enc({ tag: "V1", value: { codecVersion: TRUAPI_CODEC_VERSION } }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostHandshakeResponse, S.CallError(T.VersionedHostHandshakeError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1190,10 +1282,11 @@ export class SystemClient {
         });
     }
     /** Query whether the host supports a specific feature. */
-    featureSupported(request) {
-        return this.transport.request({
+    featureSupported(request, options) {
+        return this.#transport.request({
             ids: W.SYSTEM_FEATURE_SUPPORTED,
             payload: T.VersionedHostFeatureSupportedRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostFeatureSupportedResponse, S.CallError(T.VersionedHostFeatureSupportedError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1210,10 +1303,11 @@ export class SystemClient {
      * per host and shared with outbound data access to that host, so approving
      * one covers the other.
      */
-    navigateTo(request) {
-        return this.transport.request({
+    navigateTo(request, options) {
+        return this.#transport.request({
             ids: W.SYSTEM_NAVIGATE_TO,
             payload: T.VersionedHostNavigateToRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostNavigateToResponse, S.CallError(T.VersionedHostNavigateToError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1228,10 +1322,11 @@ export class SystemClient {
      * adapting to the host, telemetry, and attributing behaviour to a
      * concrete build in diagnostics and bug reports.
      */
-    info() {
-        return this.transport.request({
+    info(options) {
+        return this.#transport.request({
             ids: W.SYSTEM_HOST_INFO,
             payload: T.VersionedHostInfoRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostInfoResponse, S.CallError(T.VersionedHostInfoError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1239,10 +1334,11 @@ export class SystemClient {
         });
     }
     /** Return the product context bound to the current host runtime. */
-    getProductContext() {
-        return this.transport.request({
+    getProductContext(options) {
+        return this.#transport.request({
             ids: W.SYSTEM_GET_PRODUCT_CONTEXT,
             payload: T.VersionedHostGetProductContextRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostGetProductContextResponse, S.CallError(T.VersionedHostGetProductContextError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
@@ -1252,18 +1348,57 @@ export class SystemClient {
 }
 /** Host theme subscription. */
 export class ThemeClient {
-    transport;
+    #transport;
     constructor(transport) {
-        this.transport = transport;
+        this.#transport = transport;
     }
     /** Subscribe to host theme changes. */
     subscribe() {
         return createObservable({
-            transport: this.transport,
+            transport: this.#transport,
             ids: W.THEME_SUBSCRIBE,
             payload: T.VersionedHostThemeSubscribeRequest.enc({ tag: "V1", value: undefined }),
             decodeItem: (payload) => T.VersionedHostThemeSubscribeItem.dec(payload).value,
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostThemeSubscribeError)),
+        });
+    }
+}
+/**
+ * Worker background-operation APIs.
+ *
+ * The host keeps a product's worker running while it holds at least one open
+ * operation, which is how a worker outlives the surface that started it.
+ */
+export class WorkerClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /** Begin a pending operation. */
+    beginOperation(request, options) {
+        return this.#transport.request({
+            ids: W.WORKER_BEGIN_OPERATION,
+            payload: T.VersionedHostWorkerBeginOperationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostWorkerBeginOperationResponse, S.CallError(T.VersionedHostWorkerBeginOperationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * End a pending operation. Idempotent: an unknown or already-ended id
+     * succeeds, so a retry after an ambiguous failure is safe.
+     */
+    endOperation(request, options) {
+        return this.#transport.request({
+            ids: W.WORKER_END_OPERATION,
+            payload: T.VersionedHostWorkerEndOperationRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostWorkerEndOperationResponse, S.CallError(T.VersionedHostWorkerEndOperationError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
@@ -1289,5 +1424,6 @@ export function createClient(transport) {
         statementStore: new StatementStoreClient(transport),
         system: new SystemClient(transport),
         theme: new ThemeClient(transport),
+        worker: new WorkerClient(transport),
     };
 }

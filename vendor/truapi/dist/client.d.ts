@@ -1,4 +1,4 @@
-import { type Subscription, type TrUApiTransport, type WireProvider } from "./transport.js";
+import { type MethodIds, type Subscription, type TrUApiTransport, type WireProvider } from "./transport.js";
 export type { Subscription, TrUApiTransport };
 /** A request received no matching response before its transport deadline. */
 export declare class RequestTimeoutError extends Error {
@@ -16,6 +16,12 @@ export declare class RequestTimeoutError extends Error {
  * Options accepted when constructing a transport.
  */
 export interface CreateTransportOptions {
+    /** Request ID namespace when multiple transports share a connection. Defaults to `p:`. */
+    requestIdPrefix?: string;
+    /** Wait for connection readiness before sending a request or starting a subscription. */
+    prepare?: (ids: MethodIds) => Promise<void>;
+    /** Replace a failed connection after a malformed frame; otherwise the transport closes permanently. */
+    onProtocolError?: (error: Error) => void;
     /**
      * Maximum time to wait for a matching response before rejecting the request.
      *

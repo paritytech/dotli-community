@@ -428,7 +428,9 @@ export type { ResultPayload } from "scale-ts";
  * \`ResultPayload\`) in generated \`types.ts\`.
  */
 export type Result<Ok, Err> = ResultPayload<Ok, Err>;
-export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, bool, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
+export { Bytes, Enum, Option, Result, Struct, Tuple, Vector, _void, compact, i8, i16, i32, i64, i128, str, u8, u16, u32, u64, u128, } from "scale-ts";
+/** SCALE boolean, rejecting byte values Rust cannot decode. */
+export declare const bool: Codec<boolean>;
 /**
  * Substrate \`OptionBool\`: a one-byte \`Option<bool>\`.
  *
@@ -478,6 +480,9 @@ export type CallErrorValue<D> = {
     value: {
         reason: string;
     };
+} | {
+    tag: "Cancelled";
+    value?: undefined;
 };
 /** SCALE codec for Rust's derived \`CallError<D>\` enum. */
 export declare function CallError<D>(domain: Codec<D>): Codec<CallErrorValue<D>>;
@@ -1782,6 +1787,14 @@ export type VersionedHostInfoResponse =
     value: HostInfo;
 };
 export const VersionedHostInfoResponse: Codec<VersionedHostInfoResponse>;
+/** Versioned envelope for [\`HostLocalStorageChangeItem\`]. */
+export type VersionedHostLocalStorageChangeItem = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocalStorageChangeItem;
+};
+export const VersionedHostLocalStorageChangeItem: Codec<VersionedHostLocalStorageChangeItem>;
 /** Versioned envelope for [\`HostLocalStorageClearError\`]. */
 export type VersionedHostLocalStorageClearError = 
 /** Version 1 payload. */
@@ -1830,6 +1843,22 @@ export type VersionedHostLocalStorageReadResponse =
     value: HostLocalStorageReadResponse;
 };
 export const VersionedHostLocalStorageReadResponse: Codec<VersionedHostLocalStorageReadResponse>;
+/** Versioned envelope for [\`HostLocalStorageSubscribeError\`]. */
+export type VersionedHostLocalStorageSubscribeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedHostLocalStorageSubscribeError: Codec<VersionedHostLocalStorageSubscribeError>;
+/** Versioned envelope for [\`HostLocalStorageSubscribeRequest\`]. */
+export type VersionedHostLocalStorageSubscribeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocalStorageSubscribeRequest;
+};
+export const VersionedHostLocalStorageSubscribeRequest: Codec<VersionedHostLocalStorageSubscribeRequest>;
 /** Versioned envelope for [\`HostLocalStorageWriteError\`]. */
 export type VersionedHostLocalStorageWriteError = 
 /** Version 1 payload. */
@@ -1888,6 +1917,93 @@ export interface HostNativeChatAcknowledgment {
     responseCode: number;
 }
 export const HostNativeChatAcknowledgment: Codec<HostNativeChatAcknowledgment>;
+/** Public attachment handle; only the Host can resolve its private backing. */
+export interface HostNativeChatAttachment {
+    /** Opaque handle scoped to the current wallet, network and calling product. */
+    attachmentId: HexString;
+    /** Non-secret native metadata. */
+    metadata: HostNativeChatAttachmentMetadata;
+    /** Current durable transfer progress. */
+    state: HostNativeChatAttachmentState;
+}
+export const HostNativeChatAttachment: Codec<HostNativeChatAttachment>;
+/** Public native media metadata; thumbnails are BlurHash text, not executable images. */
+export type HostNativeChatAttachmentKind = 
+/** A general document or other opaque file. */
+{
+    tag: "File";
+    value?: undefined;
+}
+/** An image with native dimensions and an optional UTF-8 BlurHash. */
+ | {
+    tag: "Image";
+    value: {
+        width: number;
+        height: number;
+        thumbnail?: HexString;
+    };
+}
+/** A video with native duration and an optional UTF-8 BlurHash. */
+ | {
+    tag: "Video";
+    value: {
+        durationSeconds: number;
+        thumbnail?: HexString;
+    };
+};
+export const HostNativeChatAttachmentKind: Codec<HostNativeChatAttachmentKind>;
+/** Safe attachment description, independent of private transfer credentials. */
+export interface HostNativeChatAttachmentMetadata {
+    /** Validated media type; it does not authorize execution or network loading. */
+    mimeType: string;
+    /** Exact native file size, verified against the downloaded root and chunks. */
+    sizeBytes: number;
+    /** General file, image or video metadata. */
+    kind: HostNativeChatAttachmentKind;
+}
+export const HostNativeChatAttachmentMetadata: Codec<HostNativeChatAttachmentMetadata>;
+/** Durable transfer progress, distinct from message delivery acknowledgment. */
+export type HostNativeChatAttachmentState = 
+/** The Host is securing an immutable selected source. */
+{
+    tag: "Preparing";
+    value?: undefined;
+}
+/** Native HOP entries are being uploaded. */
+ | {
+    tag: "Uploading";
+    value: {
+        uploadedBytes: number;
+    };
+}
+/** Verified file bytes are being committed to private local storage. */
+ | {
+    tag: "Downloading";
+    value: {
+        downloadedBytes: number;
+    };
+}
+/** Complete verified bytes are available through trusted Host presentation. */
+ | {
+    tag: "Ready";
+    value?: undefined;
+}
+/** An interrupted transfer retains its exact credentials and progress for retry. */
+ | {
+    tag: "Recovering";
+    value?: undefined;
+};
+export const HostNativeChatAttachmentState: Codec<HostNativeChatAttachmentState>;
+/** Peer cryptographic identity independently resolved and bound by the Host. */
+export interface HostNativeChatBinding {
+    /** Authenticated peer root identity. */
+    peerIdentity: HexString;
+    /** Peer identity-level native Chat encryption key. */
+    peerChatPublicKey: HexString;
+    /** Identity proof used in the native invitation handshake. */
+    identityProof: HexString;
+}
+export const HostNativeChatBinding: Codec<HostNativeChatBinding>;
 /** The Host-owned device's public identity and statement-signing account. */
 export interface HostNativeChatDevice {
     /** Wallet identity on the configured People chain. */
@@ -1928,6 +2044,36 @@ export interface HostNativeChatMessages {
     messages: Array<HexString>;
 }
 export const HostNativeChatMessages: Codec<HostNativeChatMessages>;
+/** Native request identity needed to answer a migrated legacy invitation. */
+export interface HostNativeChatMigrationInvitation {
+    /** Invitation handle in the accompanying legacy public view. */
+    invitationId: HexString;
+    /** Original native request identity to acknowledge when answering. */
+    requestId: string;
+}
+export const HostNativeChatMigrationInvitation: Codec<HostNativeChatMigrationInvitation>;
+/** Continuation metadata for a bounded page of authenticated incoming plaintext. */
+export interface HostNativeChatOpenPage {
+    /** Opaque identifier of the authenticated opening operation. */
+    openId: HexString;
+    /** Cursor identifying this page. */
+    cursor: number;
+    /** Cursor to request next; absent when the authenticated batch is complete. */
+    nextCursor?: number;
+}
+export const HostNativeChatOpenPage: Codec<HostNativeChatOpenPage>;
+/** Authenticated incoming native plaintext, potentially containing incoming coin keys. */
+export interface HostNativeChatOpened {
+    /** Authenticated peer root identity, never the local wallet's own identity. */
+    peerIdentity: HexString;
+    /** Account that signed the accepted native statement. */
+    senderAccountId: HexString;
+    /** Authenticated native context of the incoming statement. */
+    route: HostNativeChatRoute;
+    /** Native invitation or tagged request/response plaintext; never outgoing payment memos. */
+    plaintext: HexString;
+}
+export const HostNativeChatOpened: Codec<HostNativeChatOpened>;
 /** A product-visible payment card; it contains no spendable memo material. */
 export interface HostNativeChatPayment {
     /** Durable, product-scoped operation identifier. */
@@ -2023,6 +2169,75 @@ export interface HostNativeChatPeerDevice {
     chatPublicKey: HexString;
 }
 export const HostNativeChatPeerDevice: Codec<HostNativeChatPeerDevice>;
+/** Signed ciphertext with the native identity required for durable product delivery. */
+export interface HostNativeChatPrepared {
+    /** Exact signed ciphertext to submit again when retrying delivery. */
+    statement: SignedStatement;
+    /** Authenticated recipient root identity. */
+    peerIdentity: HexString;
+    /** Native request identity used to correlate delivery acknowledgments. */
+    requestId: string;
+    /** Whether delivery remains pending until a native peer acknowledgment arrives. */
+    requiresAck: boolean;
+    /** Original product intent id for correlating migrated pending UI, when retained. */
+    clientRequestId?: string;
+}
+export const HostNativeChatPrepared: Codec<HostNativeChatPrepared>;
+/** Authenticated rich content after private file capabilities have been removed. */
+export interface HostNativeChatRichMessage {
+    /** Authenticated conversation identity. */
+    peerIdentity: HexString;
+    /** Whether the remote peer authored this content. */
+    incoming: boolean;
+    /** Native request id used for delivery acknowledgment. */
+    requestId: string;
+    /** Native id of this message or edit event. */
+    messageId: string;
+    /** Native timestamp in milliseconds. */
+    timestamp: bigint;
+    /** New message, reply or edit; authorship checks still apply to edits. */
+    kind: HostNativeChatRichMessageKind;
+    /** Ordinary optional text. */
+    text?: string;
+    /** Opaque file handles and safe metadata, never native file references. */
+    attachments: Array<HostNativeChatAttachment>;
+}
+export const HostNativeChatRichMessage: Codec<HostNativeChatRichMessage>;
+/** Native rich-content timeline operation. */
+export type HostNativeChatRichMessageKind = 
+/** A new ordinary rich message. */
+{
+    tag: "Message";
+    value?: undefined;
+}
+/** A new rich message replying to an earlier message. */
+ | {
+    tag: "Reply";
+    value: {
+        messageId: string;
+    };
+}
+/** A replacement of the same author's earlier rich content. */
+ | {
+    tag: "Edited";
+    value: {
+        messageId: string;
+    };
+};
+export const HostNativeChatRichMessageKind: Codec<HostNativeChatRichMessageKind>;
+/** The authenticated native encryption and statement-routing context. */
+export type HostNativeChatRoute = "Invitation" | "Identity" | "Device";
+export const HostNativeChatRoute: Codec<HostNativeChatRoute>;
+/** Continuation metadata for a bounded page of a stable public state snapshot. */
+export interface HostNativeChatStatePage {
+    /** Opaque identifier of the Host-retained public state snapshot. */
+    stateId: HexString;
+    /** Cursor identifying this page. */
+    cursor: number;
+    /** Cursor to request next; absent when the snapshot is complete. */
+    nextCursor?: number;
+}
+export const HostNativeChatStatePage: Codec<HostNativeChatStatePage>;
 /** Versioned envelope for [\`HostNavigateToError\`]. */
 export type VersionedHostNavigateToError = 
 /** Version 1 payload. */
@@ -2204,17 +2419,17 @@ export type VersionedHostProductDeviceChatError =
 export const VersionedHostProductDeviceChatError: Codec<VersionedHostProductDeviceChatError>;
 /** Versioned envelope for [\`HostProductDeviceChatRequest\`]. */
 export type VersionedHostProductDeviceChatRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProductDeviceChatRequest;
 };
 export const VersionedHostProductDeviceChatRequest: Codec<VersionedHostProductDeviceChatRequest>;
 /** Versioned envelope for [\`HostProductDeviceChatResponse\`]. */
 export type VersionedHostProductDeviceChatResponse = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProductDeviceChatResponse;
 };
 export const VersionedHostProductDeviceChatResponse: Codec<VersionedHostProductDeviceChatResponse>;
@@ -2495,6 +2710,72 @@ export type VersionedHostThemeSubscribeRequest =
     value?: undefined;
 };
 export const VersionedHostThemeSubscribeRequest: Codec<VersionedHostThemeSubscribeRequest>;
+/** Versioned envelope for [\`HostWorkerBeginOperationError\`]. */
+export type VersionedHostWorkerBeginOperationError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerOperationError;
+};
+export const VersionedHostWorkerBeginOperationError: Codec<VersionedHostWorkerBeginOperationError>;
+/** Versioned envelope for [\`HostWorkerBeginOperationRequest\`]. */
+export type VersionedHostWorkerBeginOperationRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerBeginOperationRequest;
+};
+export const VersionedHostWorkerBeginOperationRequest: Codec<VersionedHostWorkerBeginOperationRequest>;
+/** Versioned envelope for [\`HostWorkerBeginOperationResponse\`]. */
+export type VersionedHostWorkerBeginOperationResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerBeginOperationResponse;
+};
+export const VersionedHostWorkerBeginOperationResponse: Codec<VersionedHostWorkerBeginOperationResponse>;
+/** Versioned envelope for [\`HostWorkerEndOperationError\`]. */
+export type VersionedHostWorkerEndOperationError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerOperationError;
+};
+export const VersionedHostWorkerEndOperationError: Codec<VersionedHostWorkerEndOperationError>;
+/** Versioned envelope for [\`HostWorkerEndOperationRequest\`]. */
+export type VersionedHostWorkerEndOperationRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostWorkerEndOperationRequest;
+};
+export const VersionedHostWorkerEndOperationRequest: Codec<VersionedHostWorkerEndOperationRequest>;
+/** Versioned envelope for [\`HostWorkerEndOperationResponse\`]. */
+export type VersionedHostWorkerEndOperationResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostWorkerEndOperationResponse: Codec<VersionedHostWorkerEndOperationResponse>;
+/** Pending-operation error. */
+export type HostWorkerOperationError = 
+/**
+ * The product is already at the host's per-product limit of open
+ * operations.
+ */
+{
+    tag: "TooManyOpen";
+    value?: undefined;
+}
+/** Catch-all host failure. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostWorkerOperationError: Codec<HostWorkerOperationError>;
 /** How an image meets the box its modifiers size. */
 export type ImageFit = "None" | "Fill" | "Cover" | "Contain" | "ScaleDown";
 export const ImageFit: Codec<ImageFit>;
@@ -2621,6 +2902,9 @@ export const Modifier: Codec<Modifier>;
 /** Opaque identifier for a push notification, unique per product. */
 export type NotificationId = number;
 export const NotificationId: Codec<NotificationId>;
+/** Opaque host-assigned pending-operation identifier, unique per product. */
+export type OperationId = number;
+export const OperationId: Codec<OperationId>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -3139,12 +3423,8 @@ export const VersionedRemoteChainTransactionStopResponse: Codec<VersionedRemoteC
  */
 export type RemotePermission = 
 /**
- * Reaching a set of domains: outbound HTTP/WebSocket access, and sending
- * the user out to one of them with \`navigate_to\`.
- *
- * One grant per host covers both, because both hand the same third party
- * the same thing: that the user is here, and whatever the product puts in
- * the URL. Splitting them would put the same question to the user twice.
+ * Outbound HTTP/WebSocket access to a set of domains. External navigation
+ * uses [\`HostDevicePermissionRequest::OpenUrl\`] instead.
  */
 {
     tag: "Remote";
@@ -3155,13 +3435,10 @@ export type RemotePermission =
 /**
  * WebRTC access.
  *
- * Enforced inside the product's own realm rather than at a network layer:
- * ICE reaches an arbitrary host over UDP, so no content rule list, request
- * interceptor, or CSP directive observes it. A host peeks this decision
- * before the product realm exists and the lockdown container removes
- * \`RTCPeerConnection\` — and its vendor-prefixed aliases — unless the answer
- * was an explicit grant. Resolving it up front is what makes the gate
- * unforgeable, and it means a fresh grant applies from the next load.
+ * The container authorizes each peer connection through Rust before its
+ * first network method. Later methods on that connection share the same
+ * decision, so a one-use grant permits one connection. New connections
+ * check current permissions without requiring a page reload.
  *
  * Camera and microphone capture is gated by the OS permission prompts and
  * [\`HostDevicePermissionRequest\`], not by this permission.
@@ -4306,9 +4583,8 @@ export const HostDeriveEntropyResponse: Codec<HostDeriveEntropyResponse>;
 /**
  * Device-capability permission requested from the host (RFC 0002).
  *
- * The user's decision is persisted indefinitely after the first prompt and
- * survives app restarts, whether the decision was grant or deny; the host
- * does not re-prompt on subsequent requests for the same capability.
+ * Lasting grants and denials survive app restarts. A host may also offer a
+ * one-use grant, held in memory until a permission-gated operation consumes it.
  *
  * That decision is about this product. The OS grant behind it belongs to the
  * host application and can move independently, so a host that can read OS
@@ -4408,6 +4684,12 @@ export interface HostHandshakeRequest {
     codecVersion: number;
 }
 export const HostHandshakeRequest: Codec<HostHandshakeRequest>;
+/** A change to a subscribed storage key, pushed to the subscriber. */
+export interface HostLocalStorageChangeItem {
+    /** Value after the change. \`Some\` on write, \`None\` after clear. */
+    value?: HexString;
+}
+export const HostLocalStorageChangeItem: Codec<HostLocalStorageChangeItem>;
 /** Request to clear a local storage key. */
 export interface HostLocalStorageClearRequest {
     /** Storage key to clear. */
@@ -4441,6 +4723,12 @@ export interface HostLocalStorageReadResponse {
     value?: HexString;
 }
 export const HostLocalStorageReadResponse: Codec<HostLocalStorageReadResponse>;
+/** Request to subscribe to changes of one local storage key. */
+export interface HostLocalStorageSubscribeRequest {
+    /** Storage key to observe. */
+    key: string;
+}
+export const HostLocalStorageSubscribeRequest: Codec<HostLocalStorageSubscribeRequest>;
 /** Request to write a value into local storage. */
 export interface HostLocalStorageWriteRequest {
     /** Storage key to write. */
@@ -4869,6 +5157,24 @@ export interface HostThemeSubscribeItem {
     variant: ThemeVariant;
 }
 export const HostThemeSubscribeItem: Codec<HostThemeSubscribeItem>;
+/** Request to begin a pending operation. */
+export interface HostWorkerBeginOperationRequest {
+    /** Optional label for host logs and UI. */
+    label?: string;
+}
+export const HostWorkerBeginOperationRequest: Codec<HostWorkerBeginOperationRequest>;
+/** Response carrying the id of a newly begun operation. */
+export interface HostWorkerBeginOperationResponse {
+    /** Id to pass to \`end_operation\`. */
+    id: OperationId;
+}
+export const HostWorkerBeginOperationResponse: Codec<HostWorkerBeginOperationResponse>;
+/** Request to end a pending operation. */
+export interface HostWorkerEndOperationRequest {
+    /** Id returned by \`begin_operation\`. */
+    id: OperationId;
+}
+export const HostWorkerEndOperationRequest: Codec<HostWorkerEndOperationRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */
@@ -5301,10 +5607,10 @@ export interface HostLocalStorageReadRequest {
 }
 export const HostLocalStorageReadRequest: Codec<HostLocalStorageReadRequest>;
 /** Failure of a Host-owned Chat operation before a public update is available. */
-export type HostProductDeviceChatError = "NotConnected" | "AccessNotGranted" | "UserRejected" | "AllowanceRequired" | "PeerNotReady" | "OperationConflict" | "InvalidRequest" | "InvalidStatement" | "RecipientNotFound" | "InsufficientBalance" | "StorageUnavailable" | "NetworkUnavailable" | "OperationNotFound";
+export type HostProductDeviceChatError = "NotConnected" | "AccessNotGranted" | "UserRejected" | "AllowanceRequired" | "PeerNotReady" | "OperationConflict" | "InvalidRequest" | "InvalidStatement" | "RecipientNotFound" | "InsufficientBalance" | "StorageUnavailable" | "NetworkUnavailable" | "OperationNotFound" | "AttachmentsUnavailable";
 export const HostProductDeviceChatError: Codec<HostProductDeviceChatError>;
 /** An operation on the calling product's Host-owned native Chat device. */
-export type HostProductDeviceChatRequest = 
+export type V02HostProductDeviceChatRequest = 
 /** Restore the installation's public device and durable conversation state. */
 {
     tag: "Initialize";
@@ -5368,10 +5674,26 @@ export type HostProductDeviceChatRequest =
  | {
     tag: "Reconcile";
     value?: undefined;
+}
+/** Select immutable files in trusted Host UI and send native rich content. */
+ | {
+    tag: "SendAttachments";
+    value: {
+        peerIdentity: HexString;
+        requestId: string;
+        text?: string;
+    };
+}
+/** Resume a private download and present or export through trusted Host UI. */
+ | {
+    tag: "OpenAttachment";
+    value: {
+        attachmentId: HexString;
+    };
 };
-export const HostProductDeviceChatRequest: Codec<HostProductDeviceChatRequest>;
+export const V02HostProductDeviceChatRequest: Codec<V02HostProductDeviceChatRequest>;
 /** Public updates from a Host-owned Chat operation. */
-export interface HostProductDeviceChatResponse {
+export interface V02HostProductDeviceChatResponse {
     /** Public local device metadata, including its allowance account. */
     device: HostNativeChatDevice;
     /** Current authenticated peers and subscription channels. */
@@ -5384,6 +5706,137 @@ export interface HostProductDeviceChatResponse {
     acknowledgments: Array<HostNativeChatAcknowledgment>;
     /** Current public payment statuses belonging to the calling product. */
     payments: Array<HostNativeChatPayment>;
+    /** Safe rich-content views and their current private-transfer progress. */
+    richMessages: Array<HostNativeChatRichMessage>;
+}
+export const V02HostProductDeviceChatResponse: Codec<V02HostProductDeviceChatResponse>;
+/** An operation using the calling product's non-exportable Host Chat device. */
+export type HostProductDeviceChatRequest = 
+/** Restore public metadata, pending ciphertext, and private file-transfer progress. */
+{
+    tag: "Initialize";
+    value?: undefined;
+}
+/** Independently resolve and bind a peer on the trusted network. */
+ | {
+    tag: "Bind";
+    value: {
+        username: string;
+    };
+}
+/** Validate native plaintext and return signed ciphertext for product delivery. */
+ | {
+    tag: "Prepare";
+    value: {
+        peerIdentity: HexString;
+        route: HostNativeChatRoute;
+        plaintext: HexString;
+    };
+}
+/** Authenticate and decrypt a complete external native statement, never own output. */
+ | {
+    tag: "Open";
+    value: {
+        statement: SignedStatement;
+    };
+}
+/** Propose one main-purse payment; this operation requires trusted Host review. */
+ | {
+    tag: "SendPayment";
+    value: {
+        peerIdentity: HexString;
+        requestId: string;
+        amountCents: bigint;
+    };
+}
+/** Read durable payment status without authorizing another spend. */
+ | {
+    tag: "PaymentStatus";
+    value: {
+        operationId: HexString;
+    };
+}
+/** Reconcile payment custody and return opaque statements for product delivery. */
+ | {
+    tag: "ReconcilePayments";
+    value?: undefined;
+}
+/** Select files in trusted Host UI and prepare native rich content without delivery. */
+ | {
+    tag: "PrepareAttachments";
+    value: {
+        peerIdentity: HexString;
+        requestId: string;
+        text?: string;
+    };
+}
+/** Resume a private download and present or export through trusted Host UI. */
+ | {
+    tag: "OpenAttachment";
+    value: {
+        attachmentId: HexString;
+    };
+}
+/** Acknowledge durable product storage of the legacy view and ordinary ciphertext. */
+ | {
+    tag: "CommitMigration";
+    value: {
+        migrationId: HexString;
+    };
+}
+/** Continue a Host-authenticated incoming batch without supplying new ciphertext. */
+ | {
+    tag: "ContinueOpen";
+    value: {
+        openId: HexString;
+        cursor: number;
+    };
+}
+/** Continue a bounded snapshot of custody metadata and pending prepared statements. */
+ | {
+    tag: "ContinueState";
+    value: {
+        stateId: HexString;
+        cursor: number;
+    };
+}
+/** Read configured raw chain units per native Coinage cent, without spending. */
+ | {
+    tag: "PaymentDenomination";
+    value?: undefined;
+};
+export const HostProductDeviceChatRequest: Codec<HostProductDeviceChatRequest>;
+/** Cryptographic results and custody metadata; products drive delivery and import. */
+export interface HostProductDeviceChatResponse {
+    /** Public local device metadata, including its allowance account. */
+    device: HostNativeChatDevice;
+    /** Host-authenticated peer and device metadata. */
+    peers: Array<HostNativeChatPeer>;
+    /** Newly resolved peer binding, when requested. */
+    binding?: HostNativeChatBinding;
+    /** Authenticated incoming plaintext; incoming payment import is product-owned. */
+    opened: Array<HostNativeChatOpened>;
+    /** Signed ciphertext for product submission and exact-identity retries. */
+    prepared: Array<HostNativeChatPrepared>;
+    /** Durable public payment status, never outgoing bearer secrets. */
+    payments: Array<HostNativeChatPayment>;
+    /** Rich-content metadata and trusted private-transfer progress. */
+    richMessages: Array<HostNativeChatRichMessage>;
+    /** Legacy public view retained until the product durably commits migration. */
+    migration?: V02HostProductDeviceChatResponse;
+    /** Snapshot identifier to acknowledge only after persisting its view and ciphertext. */
+    migrationId?: HexString;
+    /** Continuation of an authenticated incoming batch, when opening is paginated. */
+    openPage?: HostNativeChatOpenPage;
+    /** Native request identities for invitations in the legacy migration view. */
+    migrationInvitations: Array<HostNativeChatMigrationInvitation>;
+    /** Continuation of a bounded public state snapshot, when metadata is paginated. */
+    statePage?: HostNativeChatStatePage;
+    /**
+     * Configured raw chain units per native Coinage cent, only when requested.
+     * This is positive denomination metadata, never a balance or fiat price.
+     */
+    coinageCentsUnit?: bigint;
 }
 export const HostProductDeviceChatResponse: Codec<HostProductDeviceChatResponse>;
 /** Cross-axis alignment of \`Row\` children. */
@@ -5562,12 +6015,15 @@ export import HostInfo = T.HostInfo;
 export import VersionedHostInfoError = T.VersionedHostInfoError;
 export import VersionedHostInfoRequest = T.VersionedHostInfoRequest;
 export import VersionedHostInfoResponse = T.VersionedHostInfoResponse;
+export import VersionedHostLocalStorageChangeItem = T.VersionedHostLocalStorageChangeItem;
 export import VersionedHostLocalStorageClearError = T.VersionedHostLocalStorageClearError;
 export import VersionedHostLocalStorageClearRequest = T.VersionedHostLocalStorageClearRequest;
 export import VersionedHostLocalStorageClearResponse = T.VersionedHostLocalStorageClearResponse;
 export import VersionedHostLocalStorageReadError = T.VersionedHostLocalStorageReadError;
 export import VersionedHostLocalStorageReadRequest = T.VersionedHostLocalStorageReadRequest;
 export import VersionedHostLocalStorageReadResponse = T.VersionedHostLocalStorageReadResponse;
+export import VersionedHostLocalStorageSubscribeError = T.VersionedHostLocalStorageSubscribeError;
+export import VersionedHostLocalStorageSubscribeRequest = T.VersionedHostLocalStorageSubscribeRequest;
 export import VersionedHostLocalStorageWriteError = T.VersionedHostLocalStorageWriteError;
 export import VersionedHostLocalStorageWriteRequest = T.VersionedHostLocalStorageWriteRequest;
 export import VersionedHostLocalStorageWriteResponse = T.VersionedHostLocalStorageWriteResponse;
@@ -5575,15 +6031,28 @@ export import VersionedHostLocaleSubscribeError = T.VersionedHostLocaleSubscribe
 export import VersionedHostLocaleSubscribeItem = T.VersionedHostLocaleSubscribeItem;
 export import VersionedHostLocaleSubscribeRequest = T.VersionedHostLocaleSubscribeRequest;
 export import HostNativeChatAcknowledgment = T.HostNativeChatAcknowledgment;
+export import HostNativeChatAttachment = T.HostNativeChatAttachment;
+export import HostNativeChatAttachmentKind = T.HostNativeChatAttachmentKind;
+export import HostNativeChatAttachmentMetadata = T.HostNativeChatAttachmentMetadata;
+export import HostNativeChatAttachmentState = T.HostNativeChatAttachmentState;
+export import HostNativeChatBinding = T.HostNativeChatBinding;
 export import HostNativeChatDevice = T.HostNativeChatDevice;
 export import HostNativeChatInvitation = T.HostNativeChatInvitation;
 export import HostNativeChatMessages = T.HostNativeChatMessages;
+export import HostNativeChatMigrationInvitation = T.HostNativeChatMigrationInvitation;
+export import HostNativeChatOpenPage = T.HostNativeChatOpenPage;
+export import HostNativeChatOpened = T.HostNativeChatOpened;
 export import HostNativeChatPayment = T.HostNativeChatPayment;
 export import HostNativeChatPaymentDirection = T.HostNativeChatPaymentDirection;
 export import HostNativeChatPaymentFailure = T.HostNativeChatPaymentFailure;
 export import HostNativeChatPaymentState = T.HostNativeChatPaymentState;
 export import HostNativeChatPeer = T.HostNativeChatPeer;
 export import HostNativeChatPeerDevice = T.HostNativeChatPeerDevice;
+export import HostNativeChatPrepared = T.HostNativeChatPrepared;
+export import HostNativeChatRichMessage = T.HostNativeChatRichMessage;
+export import HostNativeChatRichMessageKind = T.HostNativeChatRichMessageKind;
+export import HostNativeChatRoute = T.HostNativeChatRoute;
+export import HostNativeChatStatePage = T.HostNativeChatStatePage;
 export import VersionedHostNavigateToError = T.VersionedHostNavigateToError;
 export import VersionedHostNavigateToRequest = T.VersionedHostNavigateToRequest;
 export import VersionedHostNavigateToResponse = T.VersionedHostNavigateToResponse;
@@ -5640,6 +6109,13 @@ export import VersionedHostSignRawWithLegacyAccountResponse = T.VersionedHostSig
 export import VersionedHostThemeSubscribeError = T.VersionedHostThemeSubscribeError;
 export import VersionedHostThemeSubscribeItem = T.VersionedHostThemeSubscribeItem;
 export import VersionedHostThemeSubscribeRequest = T.VersionedHostThemeSubscribeRequest;
+export import VersionedHostWorkerBeginOperationError = T.VersionedHostWorkerBeginOperationError;
+export import VersionedHostWorkerBeginOperationRequest = T.VersionedHostWorkerBeginOperationRequest;
+export import VersionedHostWorkerBeginOperationResponse = T.VersionedHostWorkerBeginOperationResponse;
+export import VersionedHostWorkerEndOperationError = T.VersionedHostWorkerEndOperationError;
+export import VersionedHostWorkerEndOperationRequest = T.VersionedHostWorkerEndOperationRequest;
+export import VersionedHostWorkerEndOperationResponse = T.VersionedHostWorkerEndOperationResponse;
+export import HostWorkerOperationError = T.HostWorkerOperationError;
 export import ImageFit = T.ImageFit;
 export import ImageProps = T.ImageProps;
 export import ImageSource = T.ImageSource;
@@ -5647,6 +6123,7 @@ export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
 export import NotificationId = T.NotificationId;
+export import OperationId = T.OperationId;
 export import OperationStartedResult = T.OperationStartedResult;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
 export import PocketCard = T.PocketCard;
@@ -5808,10 +6285,12 @@ export import HostGetUserIdError = T.HostGetUserIdError;
 export import HostGetUserIdResponse = T.HostGetUserIdResponse;
 export import HostHandshakeError = T.HostHandshakeError;
 export import HostHandshakeRequest = T.HostHandshakeRequest;
+export import HostLocalStorageChangeItem = T.HostLocalStorageChangeItem;
 export import HostLocalStorageClearRequest = T.HostLocalStorageClearRequest;
 export import V01HostLocalStorageReadError = T.V01HostLocalStorageReadError;
 export import V01HostLocalStorageReadRequest = T.V01HostLocalStorageReadRequest;
 export import HostLocalStorageReadResponse = T.HostLocalStorageReadResponse;
+export import HostLocalStorageSubscribeRequest = T.HostLocalStorageSubscribeRequest;
 export import HostLocalStorageWriteRequest = T.HostLocalStorageWriteRequest;
 export import HostLocaleSubscribeItem = T.HostLocaleSubscribeItem;
 export import HostNavigateToError = T.HostNavigateToError;
@@ -5847,6 +6326,9 @@ export import HostSignPayloadWithLegacyAccountRequest = T.HostSignPayloadWithLeg
 export import HostSignRawRequest = T.HostSignRawRequest;
 export import HostSignRawWithLegacyAccountRequest = T.HostSignRawWithLegacyAccountRequest;
 export import HostThemeSubscribeItem = T.HostThemeSubscribeItem;
+export import HostWorkerBeginOperationRequest = T.HostWorkerBeginOperationRequest;
+export import HostWorkerBeginOperationResponse = T.HostWorkerBeginOperationResponse;
+export import HostWorkerEndOperationRequest = T.HostWorkerEndOperationRequest;
 export import ProductRendererRenderRequest = T.ProductRendererRenderRequest;
 export import RemoteChainHeadBodyRequest = T.RemoteChainHeadBodyRequest;
 export import RemoteChainHeadBodyResponse = T.RemoteChainHeadBodyResponse;
@@ -5885,1250 +6367,15 @@ export import RemoteStatementStoreSubscribeRequest = T.RemoteStatementStoreSubsc
 export import HostLocalStorageReadError = T.HostLocalStorageReadError;
 export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
 export import HostProductDeviceChatError = T.HostProductDeviceChatError;
+export import V02HostProductDeviceChatRequest = T.V02HostProductDeviceChatRequest;
+export import V02HostProductDeviceChatResponse = T.V02HostProductDeviceChatResponse;
 export import HostProductDeviceChatRequest = T.HostProductDeviceChatRequest;
 export import HostProductDeviceChatResponse = T.HostProductDeviceChatResponse;
 export import VerticalAlignment = T.VerticalAlignment;
 export import VrfSignature = T.VrfSignature;
 export import VrfTranscriptItem = T.VrfTranscriptItem;
 
-// client.d.ts
-export type { Subscription, TrUApiTransport };
-/** A request received no matching response before its transport deadline. */
-export declare class RequestTimeoutError extends Error {
-    /** Transport-assigned request identifier. */
-    readonly requestId: string;
-    /** Trait discriminant of the unanswered request. */
-    readonly traitId: number;
-    /** Method discriminant of the unanswered request. */
-    readonly methodId: number;
-    /** Deadline that elapsed, in milliseconds. */
-    readonly timeoutMs: number;
-    constructor(requestId: string, traitId: number, methodId: number, timeoutMs: number);
-}
-/**
- * Options accepted when constructing a transport.
- */
-export interface CreateTransportOptions {
-    /**
-     * Maximum time to wait for a matching response before rejecting the request.
-     *
-     * Defaults to 120 seconds. This bounds dead hosts and missed transport
-     * handshakes while leaving interactive approval flows enough time to finish.
-     * The handshake keeps its own shorter deadline, since a codec mismatch means
-     * no answer is ever coming.
-     */
-    requestTimeoutMs?: number;
-}
-/**
- * Build a \`TrUApiTransport\` on top of a \`WireProvider\`, adding request/response
- * correlation and subscription start/receive/stop lifecycle handling.
- */
-export declare function createTransport(provider: WireProvider, options?: CreateTransportOptions): TrUApiTransport;
-
-
-// development.d.ts
-/** Same as \`HostAccountCreateProofRequest\`, with the 32-byte context given raw. */
-export interface DevelopmentCreateProofRequest extends Omit<HostAccountCreateProofRequest, "context"> {
-    /** The exact 32 bytes the proof is bound to, as \`0x\`-prefixed hex. */
-    context: HexString;
-}
-/**
- * \`account.createAccountProof\` with a verbatim 32-byte proof context instead of
- * a product-namespaced one.
- *
- */
-export declare function development_createAccountProof(client: Pick<TrUApiClient, "account">, request: DevelopmentCreateProofRequest): ResultAsync<HostAccountCreateProofResponse, CallErrorValue<VersionedHostAccountCreateProofError>>;
-
-
-// explorer/codegen/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.10.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.10.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.11.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.11.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.12.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.12.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.13.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.13.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.13.1/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.13.1/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.14.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.14.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.15.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.15.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.16.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.16.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.17.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.17.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.2.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.2.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.3.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.3.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.3.1/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.3.1/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.3.2/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.3.2/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.4.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.4.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.8.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.8.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/codegen/versions/0.9.0/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// explorer/codegen/versions/0.9.0/types.d.ts
-export declare const types: DataType[];
-
-
-// explorer/data-types.d.ts
-/** One named field or enum variant rendered on a \`DataType\`. */
-export interface DataTypeField {
-    /** Field or variant name as it appears in the generated TS source. */
-    name: string;
-    /** Rendered TypeScript type expression. */
-    type: string;
-    /** First paragraph of the field/variant doc comment, when present. */
-    description?: string;
-}
-/**
- * A type surfaced by the TrUAPI explorer. One entry per public type in the
- * generated client surface (versioned wrapper enums are not surfaced, the
- * explorer routes around them via \`MethodInfo.requestType\`/\`responseType\`).
- */
-export interface DataType {
-    /**
-     * Kebab-case identifier (e.g. \`host-account-get-request\`). Matches the
-     * \`requestType\`/\`responseType\`/\`errorType\` ids emitted on \`MethodInfo\`.
-     */
-    id: string;
-    /** Public TS type name (e.g. \`HostAccountGetRequest\`). */
-    name: string;
-    /**
-     * Rustdoc module bucket (\`account\`, \`chat\`, ...) or \`shared\` when the type
-     * lives outside \`api::<service>\`.
-     */
-    category: string;
-    /** TypeScript source for the type, ready to render in a code block. */
-    definition: string;
-    /**
-     * Free-form doc comment, with the optional \`\`\`ts ... \`\`\` example block
-     * stripped.
-     */
-    description?: string;
-    /** Named fields, populated for \`struct\`-shaped types. */
-    fields?: DataTypeField[];
-    /** Variants, populated for \`enum\`-shaped types. */
-    variants?: DataTypeField[];
-}
-/**
- * One snapshot of the API surface. \`id\` is \`"main"\` for the live codegen
- * output, or a semver string (e.g. \`"0.1.0"\`) for an archived snapshot.
- */
-export interface VersionEntry {
-    id: string;
-    services: ServiceInfo[];
-    types: DataType[];
-}
-
-
-// explorer/versions.d.ts
-/**
- * Version string declared in \`js/packages/truapi/package.json\` at codegen
- * time. Mirrors the \`truapi\` crate version. Used by the explorer to render
- * the \`main\` selector label as \`main (x.y.z)\`.
- */
-export declare const packageVersion = "0.17.0";
-export declare const versions: VersionEntry[];
-
-
-// generated/client.d.ts
-export { ResultAsync, SubscriptionError };
-export type { HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
-export declare const TRUAPI_VERSION: 2;
-export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "2a2db81d35f3749e";
-/** Account lookup, aliasing, and proof generation. */
-export declare class AccountClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Subscribe to account connection status changes. */
-    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
-    /** Retrieve a product-scoped account. */
-    getAccount(request: T.HostAccountGetRequest): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
-    /** Retrieve the contextual alias for a context and ring. */
-    getAccountAlias(request: T.HostAccountGetAliasRequest): ResultAsync<T.ContextualAlias, S.CallErrorValue<T.VersionedHostAccountGetAliasError>>;
-    /** Generate a ring VRF proof with an explicitly registered member key. */
-    createAccountProof(request: T.HostAccountCreateProofRequest): ResultAsync<T.HostAccountCreateProofResponse, S.CallErrorValue<T.VersionedHostAccountCreateProofError>>;
-    /**
-     * Produce an sr25519 (schnorrkel) VRF signature from a product account.
-     *
-     * The host builds a Merlin transcript from \`transcriptLabel\` and \`items\`
-     * and signs it with the account's key, returning the VRF pre-output and
-     * proof. Authorized like signing: local when \`AutoSigning\` covers the
-     * account, otherwise a per-call user confirmation.
-     */
-    signVrf(request: T.HostAccountSignVrfRequest): ResultAsync<T.VrfSignature, S.CallErrorValue<T.VersionedHostAccountSignVrfError>>;
-    /** Register a ring-VRF key owned by the calling product. */
-    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest): ResultAsync<T.RingVrfPublicKey, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
-    /** List registered ring-VRF keys owned by a product. */
-    listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
-    /** Sign bytes directly with a registered ring-VRF member key. */
-    ringVrfSign(request: T.HostAccountRingVrfSignRequest): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
-    /**
-     * Operate a Host-owned native Chat device and propose one-shot main-purse
-     * payments. Transport private keys and spendable memos never leave the Host.
-     *
-     * Method 11 (the former raw-crypto interface) is retired, not forwarded.
-     */
-    deviceChat(request: T.HostProductDeviceChatRequest): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
-    /**
-     * List non-product accounts the user owns.
-     *
-     * Current hosts do not expose non-product accounts, so the list is empty.
-     */
-    getLegacyAccounts(): ResultAsync<T.HostGetLegacyAccountsResponse, S.CallErrorValue<T.VersionedHostGetLegacyAccountsError>>;
-    /** Fetch the user's primary identity. */
-    getUserId(): ResultAsync<T.HostGetUserIdResponse, S.CallErrorValue<T.VersionedHostGetUserIdError>>;
-    /**
-     * Request the host to present the login flow to the user.
-     *
-     * Products should call this in response to a user action (e.g. tapping a
-     * "Sign in" button), not automatically on load.
-     */
-    requestLogin(request: T.HostRequestLoginRequest): ResultAsync<T.HostRequestLoginResponse, S.CallErrorValue<T.VersionedHostRequestLoginError>>;
-}
-/** Chain interaction methods. */
-export declare class ChainClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Follow the chain head and receive block events. */
-    followHeadSubscribe({ request }: {
-        request: T.RemoteChainHeadFollowRequest;
-    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
-    /** Fetch a block header. */
-    getHeadHeader(request: T.RemoteChainHeadHeaderRequest): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
-    /** Fetch a block body. */
-    getHeadBody(request: T.RemoteChainHeadBodyRequest): ResultAsync<T.RemoteChainHeadBodyResponse, S.CallErrorValue<T.VersionedRemoteChainHeadBodyError>>;
-    /** Query runtime storage at a specific block. */
-    getHeadStorage(request: T.RemoteChainHeadStorageRequest): ResultAsync<T.RemoteChainHeadStorageResponse, S.CallErrorValue<T.VersionedRemoteChainHeadStorageError>>;
-    /** Invoke a runtime call at a specific block. */
-    callHead(request: T.RemoteChainHeadCallRequest): ResultAsync<T.RemoteChainHeadCallResponse, S.CallErrorValue<T.VersionedRemoteChainHeadCallError>>;
-    /** Release pinned blocks. */
-    unpinHead(request: T.RemoteChainHeadUnpinRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadUnpinError>>;
-    /** Continue a paused chain-head operation. */
-    continueHead(request: T.RemoteChainHeadContinueRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadContinueError>>;
-    /** Stop a chain-head operation. */
-    stopHeadOperation(request: T.RemoteChainHeadStopOperationRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadStopOperationError>>;
-    /** Fetch the canonical genesis hash for a chain. */
-    getSpecGenesisHash(request: T.RemoteChainSpecGenesisHashRequest): ResultAsync<T.RemoteChainSpecGenesisHashResponse, S.CallErrorValue<T.VersionedRemoteChainSpecGenesisHashError>>;
-    /** Fetch the display name of a chain. */
-    getSpecChainName(request: T.RemoteChainSpecChainNameRequest): ResultAsync<T.RemoteChainSpecChainNameResponse, S.CallErrorValue<T.VersionedRemoteChainSpecChainNameError>>;
-    /** Fetch the JSON-encoded properties of a chain. */
-    getSpecProperties(request: T.RemoteChainSpecPropertiesRequest): ResultAsync<T.RemoteChainSpecPropertiesResponse, S.CallErrorValue<T.VersionedRemoteChainSpecPropertiesError>>;
-    /** Broadcast a signed transaction. */
-    broadcastTransaction(request: T.RemoteChainTransactionBroadcastRequest): ResultAsync<T.RemoteChainTransactionBroadcastResponse, S.CallErrorValue<T.VersionedRemoteChainTransactionBroadcastError>>;
-    /** Stop a transaction broadcast. */
-    stopTransaction(request: T.RemoteChainTransactionStopRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainTransactionStopError>>;
-    /**
-     * Resolve a chain identifier to its genesis hash against the host's
-     * configured environment (RFC 0026).
-     */
-    getChainInfo(request: T.RemoteChainInfoRequest): ResultAsync<T.RemoteChainInfoResponse, S.CallErrorValue<T.VersionedRemoteChainInfoError>>;
-}
-/** Chat room, bot, and message APIs. */
-export declare class ChatClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Create a chat room. */
-    createRoom(request: T.HostChatCreateRoomRequest): ResultAsync<T.HostChatCreateRoomResponse, S.CallErrorValue<T.VersionedHostChatCreateRoomError>>;
-    /** Register a chat bot. */
-    registerBot(request: T.HostChatRegisterBotRequest): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
-    /** Subscribe to the list of chat rooms. */
-    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
-    /**
-     * Post a message to a chat room.
-     *
-     * The host bounds and screens what it forwards. Message text is capped at
-     * 16 KiB and keeps line breaks and tabs, but is rejected for other
-     * control characters and for bidirectional overrides. Identifiers and
-     * display names are normalized and screened. A message carries at most 32
-     * actions and 32 media items, a custom payload at most 256 KiB, and a URL
-     * at most 2 KiB which must be \`https\` or an inline raster image. A
-     * rejection reports \`MessageTooLarge\` when the body or custom payload is
-     * over budget, and \`Unknown\` with a reason naming the field otherwise.
-     *
-     * The returned \`messageId\` is the correlation key for any action the
-     * message carries: a later \`actionSubscribe\` trigger names it.
-     */
-    postMessage(request: T.HostChatPostMessageRequest): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
-    /** Subscribe to received chat actions. */
-    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
-}
-/**
- * CoinPayment operations.
- *
- * RFC 0017 describes \`Resolvable<T>\` values for long-running operations.
- * TrUAPI represents those as subscriptions whose items are the RFC status
- * updates.
- */
-export declare class CoinPaymentClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Create a new firewalled CoinPayment purse. */
-    createPurse(request: T.HostCoinPaymentCreatePurseRequest): ResultAsync<T.HostCoinPaymentCreatePurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreatePurseError>>;
-    /** Query product-visible purse metadata and balance. */
-    queryPurse(request: T.HostCoinPaymentQueryPurseRequest): ResultAsync<T.HostCoinPaymentQueryPurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentQueryPurseError>>;
-    /** Transfer balance between local purses. */
-    rebalancePurse({ request }: {
-        request: T.HostCoinPaymentRebalancePurseRequest;
-    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentRebalancePurseError>>;
-    /** Delete a purse after draining its balance into another local purse. */
-    deletePurse({ request }: {
-        request: T.HostCoinPaymentDeletePurseRequest;
-    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentDeletePurseError>>;
-    /** Create a receivable public key for depositing into a purse. */
-    createReceivable(request: T.HostCoinPaymentCreateReceivableRequest): ResultAsync<T.HostCoinPaymentCreateReceivableResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateReceivableError>>;
-    /** Create a cheque paying from a local purse to a receivable. */
-    createCheque(request: T.HostCoinPaymentCreateChequeRequest): ResultAsync<T.HostCoinPaymentCreateChequeResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateChequeError>>;
-    /** Claim coins from a cheque into the receivable's purse. */
-    deposit({ request }: {
-        request: T.HostCoinPaymentDepositRequest;
-    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentDepositError>>;
-    /** Attempt to return coins associated with a receivable. */
-    refund({ request }: {
-        request: T.HostCoinPaymentRefundRequest;
-    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentRefundError>>;
-    /** Listen for a cheque delivered through a standard transmission channel. */
-    listenForPayment({ request }: {
-        request: T.HostCoinPaymentListenForRequest;
-    }): ObservableLike<T.HostCoinPaymentListenForItem, S.CallErrorValue<T.VersionedHostCoinPaymentListenForError>>;
-}
-/** Deterministic entropy derivation. */
-export declare class EntropyClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Derive deterministic entropy. */
-    derive(request: T.HostDeriveEntropyRequest): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
-}
-/** Local key/value storage scoped to the calling product. */
-export declare class LocalStorageClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Read a value by key. */
-    read(request: T.HostLocalStorageReadRequest): ResultAsync<T.HostLocalStorageReadResponse, S.CallErrorValue<T.VersionedHostLocalStorageReadError>>;
-    /** Write a value to a key. */
-    write(request: T.HostLocalStorageWriteRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageWriteError>>;
-    /** Clear a value by key. */
-    clear(request: T.HostLocalStorageClearRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageClearError>>;
-}
-/** Host locale subscription. */
-export declare class LocaleClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Subscribe to the host's selected locale. */
-    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
-}
-/** Notification methods for locally-rendered push notifications. */
-export declare class NotificationsClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Send a push notification to the user.
-     *
-     * Returns a [\`NotificationId\`](crate::v01::NotificationId) that can be
-     * passed to [\`cancel_push_notification\`](Self::cancel_push_notification)
-     * to retract a scheduled notification. When \`scheduled_at\` is set the host
-     * persists the notification across restarts and fires it through the
-     * platform-native scheduler. See [RFC 0019].
-     *
-     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
-     */
-    sendPushNotification(request: T.HostPushNotificationRequest): ResultAsync<T.HostPushNotificationResponse, S.CallErrorValue<T.VersionedHostPushNotificationError>>;
-    /**
-     * Cancels a previously issued push notification.
-     *
-     * Cancellation is idempotent: returns \`Ok(())\` whether the notification is
-     * still pending, already fired, or was never issued. See [RFC 0019].
-     *
-     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
-     */
-    cancelPushNotification(request: T.HostPushNotificationCancelRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
-}
-/** Payment request and balance/status subscription methods. */
-export declare class PaymentClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Subscribe to payment balance updates. */
-    balanceSubscribe({ request }: {
-        request: T.HostPaymentBalanceSubscribeRequest;
-    }): ObservableLike<T.HostPaymentBalanceSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentBalanceSubscribeError>>;
-    /** Request a payment from the user. */
-    request(request: T.HostPaymentRequest): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
-    /** Subscribe to payment lifecycle updates for a specific payment. */
-    statusSubscribe({ request }: {
-        request: T.HostPaymentStatusSubscribeRequest;
-    }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
-    /** Top up the user's payment balance. */
-    topUp(request: T.HostPaymentTopUpRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
-}
-/** Permission request methods. */
-export declare class PermissionsClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Request a device-capability permission from the user. */
-    requestDevicePermission(request: T.HostDevicePermissionRequest): ResultAsync<T.HostDevicePermissionResponse, S.CallErrorValue<T.VersionedHostDevicePermissionError>>;
-    /** Request a remote-operation permission. */
-    requestRemotePermission(request: T.RemotePermissionRequest): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
-}
-/**
- * Pocket cards backed by the calling product.
- *
- * The host owns the collection: a product observes its own cards and may
- * remove them, but cannot add one.
- */
-export declare class PocketClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Subscribe to the calling product's cards.
-     *
-     * Emits the whole set on subscribe and again after every change.
-     */
-    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.VersionedHostPocketListSubscribeError>>;
-    /**
-     * Remove one of the calling product's cards.
-     *
-     * Removing a card that is not present succeeds. A privileged card is
-     * refused with \`Privileged\`.
-     */
-    removeCard(request: T.HostPocketRemoveCardRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
-}
-/** Preimage lookup and submission methods. */
-export declare class PreimageClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Subscribe to preimage lookups for a given key. */
-    lookupSubscribe({ request }: {
-        request: T.RemotePreimageLookupSubscribeRequest;
-    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
-    /** Submit a preimage. Returns the preimage key (hash) on success. */
-    submit(request: HexString): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
-}
-/** Product-rendered bodies and the actions triggered inside them. */
-export declare class RendererClient {
-    private readonly transport;
-    private readonly renderRegistration;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Streams renderer trees for one product-rendered body. Each item
-     * replaces the previous tree. The stream stays open while the body is
-     * displayed so the product can redraw in place.
-     */
-    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.VersionedProductRendererRenderError>>): {
-        unsubscribe(): void;
-    };
-    /** Subscribe to actions triggered inside this product's rendered bodies. */
-    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.VersionedHostRendererActionSubscribeError>>;
-}
-/** Resource pre-allocation (allowance management). */
-export declare class ResourceAllocationClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Request the host to pre-allocate one or more resources. */
-    request(request: T.HostRequestResourceAllocationRequest): ResultAsync<T.HostRequestResourceAllocationResponse, S.CallErrorValue<T.VersionedHostRequestResourceAllocationError>>;
-}
-/** Signing operations. */
-export declare class SigningClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Construct a transaction for a product account.
-     *
-     * Served locally without a user confirmation when an RFC-0010 \`AutoSigning\`
-     * grant covers the account; otherwise each call is confirmed by the user.
-     *
-     * Under Extrinsic V5, omitting \`VerifyMultiSignature\` from \`extensions\`
-     * lets the host sign with the signer's key. Listing it — as \`Disabled\`,
-     * with a proof in a later extension — encodes the given bytes verbatim and
-     * returns an unsigned transaction.
-     */
-    createTransaction(request: T.ProductAccountTxPayload): ResultAsync<T.HostCreateTransactionResponse, S.CallErrorValue<T.VersionedHostCreateTransactionError>>;
-    /**
-     * Construct a transaction for a non-product (legacy) account.
-     *
-     * The V5 \`VerifyMultiSignature\` rule is the same as
-     * [\`Signing::create_transaction\`]: omit it and the host signs, list it and
-     * the given bytes are used with no host signature.
-     */
-    createTransactionWithLegacyAccount(request: T.LegacyAccountTxPayload): ResultAsync<T.HostCreateTransactionWithLegacyAccountResponse, S.CallErrorValue<T.VersionedHostCreateTransactionWithLegacyAccountError>>;
-    /** Sign raw bytes with a non-product account. */
-    signRawWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
-    /** Sign an extrinsic payload with a non-product account. */
-    signPayloadWithLegacyAccount(request: T.HostSignPayloadWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadWithLegacyAccountError>>;
-    /**
-     * Sign raw bytes or a message.
-     *
-     * Served locally without a user confirmation when an RFC-0010 \`AutoSigning\`
-     * grant covers the account; otherwise each call is confirmed by the user.
-     */
-    signRaw(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
-    /**
-     * Sign an extrinsic payload.
-     *
-     * Served locally without a user confirmation when an RFC-0010 \`AutoSigning\`
-     * grant covers the account; otherwise each call is confirmed by the user.
-     */
-    signPayload(request: T.HostSignPayloadRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
-    /**
-     * Sign the supplied data without adding or removing a watermark.
-     *
-     * Temporary compatibility API for runtime ownership proofs, including the
-     * 32-byte Resources alias used by Humanity. Payload decoding matches
-     * watermarked signing, but the decoded bytes are signed exactly as supplied.
-     * This permits transaction-shaped data and requires signing authorization
-     * and explicit user confirmation.
-     *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
-     */
-    signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
-    /**
-     * Sign the supplied data without adding or removing a watermark.
-     *
-     * Temporary compatibility API for runtime ownership proofs, including the
-     * 32-byte Resources alias used by Humanity. Payload decoding matches
-     * watermarked signing, but the decoded bytes are signed exactly as supplied.
-     * This permits transaction-shaped data and requires signing authorization
-     * and explicit user confirmation.
-     *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See https://github.com/paritytech/host-rust-core/issues/612
-     */
-    signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
-}
-/** Statement store methods. */
-export declare class StatementStoreClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Subscribe to statements matching a topic filter. */
-    subscribe({ request }: {
-        request: T.RemoteStatementStoreSubscribeRequest;
-    }): ObservableLike<T.RemoteStatementStoreSubscribeItem, S.CallErrorValue<T.VersionedRemoteStatementStoreSubscribeError>>;
-    /**
-     * Create a proof for a statement.
-     *
-     * **Deprecated:** use [\`create_proof_authorized\`](Self::create_proof_authorized)
-     * instead, which uses a pre-allocated allowance account and does not
-     * require a per-call signing prompt. Pairing hosts may reject this method
-     * when their signing channel cannot sign statement proof payloads exactly.
-     */
-    createProof(request: T.RemoteStatementStoreCreateProofRequest): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofError>>;
-    /**
-     * Create a proof for a statement using a pre-allocated allowance account,
-     * bypassing the per-call signing prompt.
-     */
-    createProofAuthorized(request: T.Statement): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofAuthorizedError>>;
-    /**
-     * Submit a signed statement to the network. The request body is the
-     * [\`SignedStatement\`](crate::v01::SignedStatement) directly (no wrapping
-     * struct), matching upstream \`triangle-js-sdks\`.
-     */
-    submit(request: T.SignedStatement): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteStatementStoreSubmitError>>;
-}
-/**
- * General-purpose TrUAPI methods for handshake, feature detection,
- * navigation, and runtime information.
- */
-export declare class SystemClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Negotiate the wire codec version with the product. */
-    handshake(): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostHandshakeError>>;
-    /** Query whether the host supports a specific feature. */
-    featureSupported(request: T.HostFeatureSupportedRequest): ResultAsync<T.HostFeatureSupportedResponse, S.CallErrorValue<T.VersionedHostFeatureSupportedError>>;
-    /**
-     * Request the host to open a URL.
-     *
-     * An \`http\` or \`https\` URL outside the ecosystem needs a
-     * \`RemotePermission::Remote\` grant for the target host, and prompts for one
-     * on first use. dotNS names, \`localhost\`, and the app-handoff schemes
-     * (\`mailto:\`, \`tel:\`, \`polkadot:\`, \`dot:\`) consume no grant. The grant is
-     * per host and shared with outbound data access to that host, so approving
-     * one covers the other.
-     */
-    navigateTo(request: T.HostNavigateToRequest): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNavigateToError>>;
-    /**
-     * Report the host's identity and version.
-     *
-     * Returns the host's platform, name, and version so a product knows
-     * exactly which host — and which build of it — is running it: for
-     * adapting to the host, telemetry, and attributing behaviour to a
-     * concrete build in diagnostics and bug reports.
-     */
-    info(): ResultAsync<T.HostInfo, S.CallErrorValue<T.VersionedHostInfoError>>;
-    /** Return the product context bound to the current host runtime. */
-    getProductContext(): ResultAsync<T.HostGetProductContextResponse, S.CallErrorValue<T.VersionedHostGetProductContextError>>;
-}
-/** Host theme subscription. */
-export declare class ThemeClient {
-    private readonly transport;
-    constructor(transport: TrUApiTransport);
-    /** Subscribe to host theme changes. */
-    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
-}
-export interface TrUApiClient {
-    readonly account: AccountClient;
-    readonly chain: ChainClient;
-    readonly chat: ChatClient;
-    readonly coinPayment: CoinPaymentClient;
-    readonly entropy: EntropyClient;
-    readonly localStorage: LocalStorageClient;
-    readonly locale: LocaleClient;
-    readonly notifications: NotificationsClient;
-    readonly payment: PaymentClient;
-    readonly permissions: PermissionsClient;
-    readonly pocket: PocketClient;
-    readonly preimage: PreimageClient;
-    readonly renderer: RendererClient;
-    readonly resourceAllocation: ResourceAllocationClient;
-    readonly signing: SigningClient;
-    readonly statementStore: StatementStoreClient;
-    readonly system: SystemClient;
-    readonly theme: ThemeClient;
-}
-export type Client = TrUApiClient;
-/** Creates the generated client facade by binding each service namespace to the
- * shared transport instance. */
-export declare function createClient(transport: TrUApiTransport): TrUApiClient;
-
-
-// generated/index.d.ts
-
-
-// generated/wire-decode.d.ts
-/** Dev-only: decode a wire frame's SCALE payload, keyed by \`trait * 256 +
- *  method\` and then by that frame's own \`messageType\` byte. Unknown
- *  addresses or message types are absent (caller falls back to bytes). */
-export declare const WIRE_DECODE_TABLE: Record<number, Record<number, (payload: Uint8Array) => unknown>>;
-
-
-// generated/wire-table.d.ts
-export declare const SYSTEM_HANDSHAKE: {
-    readonly trait: 1;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const SYSTEM_FEATURE_SUPPORTED: {
-    readonly trait: 1;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const SYSTEM_NAVIGATE_TO: {
-    readonly trait: 1;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const SYSTEM_HOST_INFO: {
-    readonly trait: 1;
-    readonly method: 3;
-    readonly kind: "request";
-};
-export declare const SYSTEM_GET_PRODUCT_CONTEXT: {
-    readonly trait: 1;
-    readonly method: 4;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_CONNECTION_STATUS_SUBSCRIBE: {
-    readonly trait: 2;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const ACCOUNT_GET_ACCOUNT: {
-    readonly trait: 2;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_GET_ACCOUNT_ALIAS: {
-    readonly trait: 2;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_CREATE_ACCOUNT_PROOF: {
-    readonly trait: 2;
-    readonly method: 3;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_GET_LEGACY_ACCOUNTS: {
-    readonly trait: 2;
-    readonly method: 4;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_GET_USER_ID: {
-    readonly trait: 2;
-    readonly method: 5;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_REQUEST_LOGIN: {
-    readonly trait: 2;
-    readonly method: 6;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_SIGN_VRF: {
-    readonly trait: 2;
-    readonly method: 7;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_REGISTER_RING_VRF_KEY: {
-    readonly trait: 2;
-    readonly method: 8;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_LIST_RING_VRF_KEYS: {
-    readonly trait: 2;
-    readonly method: 9;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_RING_VRF_SIGN: {
-    readonly trait: 2;
-    readonly method: 10;
-    readonly kind: "request";
-};
-export declare const ACCOUNT_PRODUCT_DEVICE_CHAT: {
-    readonly trait: 2;
-    readonly method: 12;
-    readonly kind: "request";
-};
-export declare const CHAIN_FOLLOW_HEAD_SUBSCRIBE: {
-    readonly trait: 3;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const CHAIN_GET_HEAD_HEADER: {
-    readonly trait: 3;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const CHAIN_GET_HEAD_BODY: {
-    readonly trait: 3;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const CHAIN_GET_HEAD_STORAGE: {
-    readonly trait: 3;
-    readonly method: 3;
-    readonly kind: "request";
-};
-export declare const CHAIN_CALL_HEAD: {
-    readonly trait: 3;
-    readonly method: 4;
-    readonly kind: "request";
-};
-export declare const CHAIN_UNPIN_HEAD: {
-    readonly trait: 3;
-    readonly method: 5;
-    readonly kind: "request";
-};
-export declare const CHAIN_CONTINUE_HEAD: {
-    readonly trait: 3;
-    readonly method: 6;
-    readonly kind: "request";
-};
-export declare const CHAIN_STOP_HEAD_OPERATION: {
-    readonly trait: 3;
-    readonly method: 7;
-    readonly kind: "request";
-};
-export declare const CHAIN_GET_SPEC_GENESIS_HASH: {
-    readonly trait: 3;
-    readonly method: 8;
-    readonly kind: "request";
-};
-export declare const CHAIN_GET_SPEC_CHAIN_NAME: {
-    readonly trait: 3;
-    readonly method: 9;
-    readonly kind: "request";
-};
-export declare const CHAIN_GET_SPEC_PROPERTIES: {
-    readonly trait: 3;
-    readonly method: 10;
-    readonly kind: "request";
-};
-export declare const CHAIN_BROADCAST_TRANSACTION: {
-    readonly trait: 3;
-    readonly method: 11;
-    readonly kind: "request";
-};
-export declare const CHAIN_STOP_TRANSACTION: {
-    readonly trait: 3;
-    readonly method: 12;
-    readonly kind: "request";
-};
-export declare const CHAIN_GET_CHAIN_INFO: {
-    readonly trait: 3;
-    readonly method: 13;
-    readonly kind: "request";
-};
-export declare const CHAT_CREATE_ROOM: {
-    readonly trait: 4;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const CHAT_REGISTER_BOT: {
-    readonly trait: 4;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const CHAT_LIST_SUBSCRIBE: {
-    readonly trait: 4;
-    readonly method: 2;
-    readonly kind: "subscription";
-};
-export declare const CHAT_POST_MESSAGE: {
-    readonly trait: 4;
-    readonly method: 3;
-    readonly kind: "request";
-};
-export declare const CHAT_ACTION_SUBSCRIBE: {
-    readonly trait: 4;
-    readonly method: 4;
-    readonly kind: "subscription";
-};
-export declare const COIN_PAYMENT_CREATE_PURSE: {
-    readonly trait: 5;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const COIN_PAYMENT_QUERY_PURSE: {
-    readonly trait: 5;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const COIN_PAYMENT_REBALANCE_PURSE: {
-    readonly trait: 5;
-    readonly method: 2;
-    readonly kind: "subscription";
-};
-export declare const COIN_PAYMENT_DELETE_PURSE: {
-    readonly trait: 5;
-    readonly method: 3;
-    readonly kind: "subscription";
-};
-export declare const COIN_PAYMENT_CREATE_RECEIVABLE: {
-    readonly trait: 5;
-    readonly method: 4;
-    readonly kind: "request";
-};
-export declare const COIN_PAYMENT_CREATE_CHEQUE: {
-    readonly trait: 5;
-    readonly method: 5;
-    readonly kind: "request";
-};
-export declare const COIN_PAYMENT_DEPOSIT: {
-    readonly trait: 5;
-    readonly method: 6;
-    readonly kind: "subscription";
-};
-export declare const COIN_PAYMENT_REFUND: {
-    readonly trait: 5;
-    readonly method: 7;
-    readonly kind: "subscription";
-};
-export declare const COIN_PAYMENT_LISTEN_FOR_PAYMENT: {
-    readonly trait: 5;
-    readonly method: 8;
-    readonly kind: "subscription";
-};
-export declare const ENTROPY_DERIVE: {
-    readonly trait: 6;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const LOCAL_STORAGE_READ: {
-    readonly trait: 7;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const LOCAL_STORAGE_WRITE: {
-    readonly trait: 7;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const LOCAL_STORAGE_CLEAR: {
-    readonly trait: 7;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const NOTIFICATIONS_SEND_PUSH_NOTIFICATION: {
-    readonly trait: 8;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION: {
-    readonly trait: 8;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const PAYMENT_BALANCE_SUBSCRIBE: {
-    readonly trait: 9;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const PAYMENT_TOP_UP: {
-    readonly trait: 9;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const PAYMENT_REQUEST: {
-    readonly trait: 9;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const PAYMENT_STATUS_SUBSCRIBE: {
-    readonly trait: 9;
-    readonly method: 3;
-    readonly kind: "subscription";
-};
-export declare const PERMISSIONS_REQUEST_DEVICE_PERMISSION: {
-    readonly trait: 10;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const PERMISSIONS_REQUEST_REMOTE_PERMISSION: {
-    readonly trait: 10;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const PREIMAGE_LOOKUP_SUBSCRIBE: {
-    readonly trait: 11;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const PREIMAGE_SUBMIT: {
-    readonly trait: 11;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const RESOURCE_ALLOCATION_REQUEST: {
-    readonly trait: 12;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const SIGNING_CREATE_TRANSACTION: {
-    readonly trait: 13;
-    readonly method: 0;
-    readonly kind: "request";
-};
-export declare const SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT: {
-    readonly trait: 13;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT: {
-    readonly trait: 13;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT: {
-    readonly trait: 13;
-    readonly method: 3;
-    readonly kind: "request";
-};
-export declare const SIGNING_SIGN_RAW: {
-    readonly trait: 13;
-    readonly method: 4;
-    readonly kind: "request";
-};
-export declare const SIGNING_SIGN_PAYLOAD: {
-    readonly trait: 13;
-    readonly method: 5;
-    readonly kind: "request";
-};
-export declare const SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED: {
-    readonly trait: 13;
-    readonly method: 6;
-    readonly kind: "request";
-};
-export declare const SIGNING_SIGN_RAW_UNWATERMARKED_DEPRECATED_WITH_LEGACY_ACCOUNT: {
-    readonly trait: 13;
-    readonly method: 7;
-    readonly kind: "request";
-};
-export declare const STATEMENT_STORE_SUBSCRIBE: {
-    readonly trait: 14;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const STATEMENT_STORE_CREATE_PROOF: {
-    readonly trait: 14;
-    readonly method: 1;
-    readonly kind: "request";
-};
-export declare const STATEMENT_STORE_SUBMIT: {
-    readonly trait: 14;
-    readonly method: 2;
-    readonly kind: "request";
-};
-export declare const STATEMENT_STORE_CREATE_PROOF_AUTHORIZED: {
-    readonly trait: 14;
-    readonly method: 3;
-    readonly kind: "request";
-};
-export declare const THEME_SUBSCRIBE: {
-    readonly trait: 15;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const LOCALE_SUBSCRIBE: {
-    readonly trait: 16;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const RENDERER_RENDER: {
-    readonly trait: 17;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const RENDERER_ACTION_SUBSCRIBE: {
-    readonly trait: 17;
-    readonly method: 1;
-    readonly kind: "subscription";
-};
-export declare const POCKET_LIST_SUBSCRIBE: {
-    readonly trait: 18;
-    readonly method: 0;
-    readonly kind: "subscription";
-};
-export declare const POCKET_REMOVE_CARD: {
-    readonly trait: 18;
-    readonly method: 1;
-    readonly kind: "request";
-};
-
-
 // index.d.ts
-
-
-// playground/codegen/services.d.ts
-export declare const services: ServiceInfo[];
-
-
-// playground/services-types.d.ts
-export interface MethodInfo {
-    name: string;
-    type: "unary" | "subscription";
-    /** Whether the host initiates this subscription into the product. */
-    hostInitiated?: boolean;
-    /** TS-shaped signature for the method (e.g. \`getAccount(request: HostAccountGetRequest): Promise<…>\`). */
-    signature?: string;
-    /** Cargo-doc URL fragment for this method (relative to the rustdoc root for the truapi crate). */
-    docUrl?: string;
-    description?: string;
-    requestDescription?: string;
-    exampleSource?: string;
-    /** DataType id (kebab-case) of the method's request payload, when applicable. */
-    requestType?: string;
-    /** DataType id of the method's response. */
-    responseType?: string;
-    /** DataType id of the method's error. */
-    errorType?: string;
-}
-/** Trusted executable kind required to access a generated service. */
-export type ProductExecutionKind = "App" | "Widget" | "Worker";
-export interface ServiceInfo {
-    name: string;
-    /**
-     * Executable kind required by the host, or unrestricted when absent. Typed
-     * as a string because the explorer's frozen per-version snapshots record the
-     * kind each past protocol version declared, not today's variants.
-     */
-    requiredExecution?: string;
-    methods: MethodInfo[];
-}
-/** Services visible to one trusted executable kind. */
-export declare function servicesForExecution(services: ServiceInfo[], execution: ProductExecutionKind): ServiceInfo[];
-
-
-// sandbox-legacy.d.ts
-/**
- * Legacy Nova iframe transport compatibility.
- *
- * Delete this module together with the marked fallback in \`sandbox.ts\` once
- * every iframe host transfers a \`MessagePort\` in response to \`truapi-ready\`.
- * The inbound \`host_handshake_request\` compatibility handler in \`client.ts\`
- * can be removed at the same time.
- *
- * @internal
- */
-export interface LegacyIframeProvider {
-    provider: WireProvider;
-    initialMessage: Uint8Array;
-}
-/**
- * Recognize a legacy host's first raw SCALE frame and create a provider pinned
- * to that frame's parent window and origin. Modern bootstrap messages return
- * \`null\` without changing any state.
- */
-export declare function tryCreateLegacyIframeProvider(win: Window, target: Window, event: MessageEvent): LegacyIframeProvider | null;
-
-
-// sandbox.d.ts
-/**
- * Sandbox bootstrap for browser-embedded hosts.
- *
- * Detects whether the app runs inside a TrUAPI host (iframe or webview), builds
- * the matching {@link WireProvider}, and exposes a lazily-created, cached
- * {@link TrUApiClient} via {@link getClientSync} so embedders don't
- * re-implement the wiring. {@link subscribeConnectionStatus} surfaces a
- * connected / disconnected signal over that client.
- *
- * @module
- */
-/**
- * Connection lifecycle state. {@link subscribeConnectionStatus} emits
- * \`"connecting"\` while the client waits for the host channel, \`"connected"\`
- * once the channel is established, and \`"disconnected"\` outside a host or
- * after the channel closes.
- */
-export type ConnectionStatus = "disconnected" | "connecting" | "connected";
-declare global {
-    interface Window {
-        /** Set by webview hosts (Polkadot Desktop / Mobile) to mark the embedding. */
-        __HOST_WEBVIEW_MARK__?: boolean;
-        /** Injected by webview hosts to carry the host-side \`MessagePort\`. */
-        __HOST_API_PORT__?: MessagePort;
-    }
-}
-/**
- * Detect whether the app is running inside a TrUAPI host container: an iframe
- * (including a cross-origin parent), a marked webview, or a window carrying an
- * injected host message port. Synchronous, so it can gate hot paths.
- */
-export declare function isCorrectEnvironment(): boolean;
-/**
- * Build (or return the cached) {@link TrUApiClient}. Returns \`null\` outside a
- * host container or if the provider can't be built. A close drops the cache,
- * so the next call renegotiates.
- */
-export declare function getClientSync(): TrUApiClient | null;
-/**
- * Connect to a host that serves protocol frames over a WebSocket, and return
- * the client for it. From then on this module treats that endpoint as the host:
- * {@link isCorrectEnvironment} reports \`true\` and {@link getClientSync} returns
- * the same cached client, so product code that already runs inside a webview or
- * an iframe needs no changes.
- *
- * The endpoint is whatever a host exposes on loopback. For local development
- * that is \`truapi-host signing-host --frame-listen 127.0.0.1:9955\`:
- *
- * \`\`\`ts
- * connectWebSocketHost("ws://127.0.0.1:9955");
- * \`\`\`
- *
- * Call it before anything else touches the client. It throws while a live
- * client for a different transport exists, because that client is cached and
- * cannot be redirected. Once the pipe closes there is no client to redirect, so
- * a different endpoint is accepted.
- */
-export declare function connectWebSocketHost(url: string): TrUApiClient | null;
-/**
- * Subscribe to connection-status changes. The callback fires immediately with
- * the current status and on every transition. Status is \`"connecting"\` while
- * the client waits for the host channel, \`"connected"\` once the channel is
- * established (\`truapi-init\` MessagePort handover, first legacy frame, or
- * webview port), and \`"disconnected"\` outside a host container or when the
- * provider reports the pipe closed. Returns an unsubscribe function.
- */
-export declare function subscribeConnectionStatus(callback: (status: ConnectionStatus) => void): () => void;
 
 
 // transport.d.ts
@@ -7146,6 +6393,10 @@ export declare class UnsupportedMessageError extends Error {
     /** Method discriminant of the unsupported outbound frame. **/
     readonly methodId: number;
     constructor(traitId: number, methodId: number);
+}
+/** The host connection ended; interrupted operations are not retried. */
+export declare class ConnectionResetError extends Error {
+    constructor(options?: ErrorOptions);
 }
 /** Call result returned when the peer does not recognize a request frame. **/
 export type UnsupportedCallError = Extract<CallErrorValue<never>, {
@@ -7269,6 +6520,14 @@ export interface MethodIds {
     kind: "request" | "subscription";
 }
 /**
+ * Per-call options every generated request method accepts as its last
+ * argument.
+ **/
+export interface CallOptions {
+    /** See {@link RequestParams.signal}. **/
+    signal?: AbortSignal;
+}
+/**
  * Options accepted by \`TrUApiTransport.request\`.
  **/
 export interface RequestParams<Ok, Err> {
@@ -7288,6 +6547,18 @@ export interface RequestParams<Ok, Err> {
      * into \`ResultAsync<Ok, Err | UnsupportedCallError>\`.
      **/
     decodeResponse: (payload: Uint8Array) => ResultPayload<Ok, Err>;
+    /**
+     * Withdraw the call. Aborting sends a \`Cancel\` frame on this method's own
+     * address; the promise still settles on the response the host sends, which
+     * for a call the host stopped is \`CallError::Cancelled\`. A signal already
+     * aborted when the call is made sends nothing and rejects immediately.
+     *
+     * A host that predates the \`Cancel\` leg drops the frame, so an aborted call
+     * against one settles on its deadline instead. There is no way to detect that
+     * first: \`system.featureSupported\` answers only about chains, so an abort
+     * against an older host is indistinguishable from one it honoured.
+     **/
+    signal?: AbortSignal;
 }
 /**
  * Options accepted by \`TrUApiTransport.subscribeRaw\`.
@@ -7411,6 +6682,12 @@ export declare const MESSAGE_TYPE_INTERRUPT = 2;
 /** See {@link Payload.messageType}. */
 export declare const MESSAGE_TYPE_STOP = 3;
 /**
+ * A request's withdrawal, correlated by the same \`requestId\` and carrying no
+ * payload. The call still settles with exactly one response; this only fires
+ * the handler's cancellation token on the far side.
+ **/
+export declare const MESSAGE_TYPE_CANCEL = 4;
+/**
  * Top-level TrUAPI wire message.
  **/
 export interface ProtocolMessage {
@@ -7445,6 +6722,8 @@ export interface WireProvider {
      * the provider has already closed.
      **/
     subscribeClose?(callback: (error: Error) => void): () => void;
+    /** End current operations while keeping the provider available for new work. */
+    subscribeReset?(callback: (error: Error) => void): () => void;
     /**
      * Release provider resources and close the underlying pipe.
      **/
@@ -7496,4 +6775,570 @@ export declare function createMessagePortProvider(port: MessagePort | Promise<Me
  * caller never has to await {@link WebSocketWireProvider.opened} first.
  **/
 export declare function createWebSocketProvider(url: string): WebSocketWireProvider;
+/** Capture native socket APIs before product code installs network gates. */
+export declare function createWebSocketProviderFactory(): (url: string) => WebSocketWireProvider;
+
+
+// client.d.ts
+export type { Subscription, TrUApiTransport };
+/** A request received no matching response before its transport deadline. */
+export declare class RequestTimeoutError extends Error {
+    /** Transport-assigned request identifier. */
+    readonly requestId: string;
+    /** Trait discriminant of the unanswered request. */
+    readonly traitId: number;
+    /** Method discriminant of the unanswered request. */
+    readonly methodId: number;
+    /** Deadline that elapsed, in milliseconds. */
+    readonly timeoutMs: number;
+    constructor(requestId: string, traitId: number, methodId: number, timeoutMs: number);
+}
+/**
+ * Options accepted when constructing a transport.
+ */
+export interface CreateTransportOptions {
+    /** Request ID namespace when multiple transports share a connection. Defaults to \`p:\`. */
+    requestIdPrefix?: string;
+    /** Wait for connection readiness before sending a request or starting a subscription. */
+    prepare?: (ids: MethodIds) => Promise<void>;
+    /** Replace a failed connection after a malformed frame; otherwise the transport closes permanently. */
+    onProtocolError?: (error: Error) => void;
+    /**
+     * Maximum time to wait for a matching response before rejecting the request.
+     *
+     * Defaults to 120 seconds. This bounds dead hosts and missed transport
+     * handshakes while leaving interactive approval flows enough time to finish.
+     * The handshake keeps its own shorter deadline, since a codec mismatch means
+     * no answer is ever coming.
+     */
+    requestTimeoutMs?: number;
+}
+/**
+ * Build a \`TrUApiTransport\` on top of a \`WireProvider\`, adding request/response
+ * correlation and subscription start/receive/stop lifecycle handling.
+ */
+export declare function createTransport(provider: WireProvider, options?: CreateTransportOptions): TrUApiTransport;
+
+
+// generated/index.d.ts
+
+
+// generated/client.d.ts
+export { ResultAsync, SubscriptionError };
+export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
+export declare const TRUAPI_VERSION: 2;
+export declare const TRUAPI_CODEC_VERSION: 3;
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
+/** Account lookup, aliasing, and proof generation. */
+export declare class AccountClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Subscribe to account connection status changes. */
+    connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem, S.CallErrorValue<T.VersionedHostAccountConnectionStatusSubscribeError>>;
+    /** Retrieve a product-scoped account. */
+    getAccount(request: T.HostAccountGetRequest, options?: CallOptions): ResultAsync<T.HostAccountGetResponse, S.CallErrorValue<T.VersionedHostAccountGetError>>;
+    /** Retrieve the contextual alias for a context and ring. */
+    getAccountAlias(request: T.HostAccountGetAliasRequest, options?: CallOptions): ResultAsync<T.ContextualAlias, S.CallErrorValue<T.VersionedHostAccountGetAliasError>>;
+    /** Generate a ring VRF proof with an explicitly registered member key. */
+    createAccountProof(request: T.HostAccountCreateProofRequest, options?: CallOptions): ResultAsync<T.HostAccountCreateProofResponse, S.CallErrorValue<T.VersionedHostAccountCreateProofError>>;
+    /**
+     * Produce an sr25519 (schnorrkel) VRF signature from a product account.
+     *
+     * The host builds a Merlin transcript from \`transcriptLabel\` and \`items\`
+     * and signs it with the account's key, returning the VRF pre-output and
+     * proof. Authorized like signing: local when \`AutoSigning\` covers the
+     * account, otherwise a per-call user confirmation.
+     */
+    signVrf(request: T.HostAccountSignVrfRequest, options?: CallOptions): ResultAsync<T.VrfSignature, S.CallErrorValue<T.VersionedHostAccountSignVrfError>>;
+    /** Register a ring-VRF key owned by the calling product. */
+    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest, options?: CallOptions): ResultAsync<T.RingVrfPublicKey, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
+    /** List registered ring-VRF keys owned by a product. */
+    listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest, options?: CallOptions): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
+    /** Sign bytes directly with a registered ring-VRF member key. */
+    ringVrfSign(request: T.HostAccountRingVrfSignRequest, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
+    /**
+     * Use a non-exportable Host Chat device for native cryptographic operations
+     * and reviewed main-purse payments. The product owns native lifecycle frames,
+     * subscriptions, delivery, retries, history, and acknowledgments.
+     *
+     * \`Bind\` resolves the peer independently. \`Prepare\` validates native plaintext
+     * and returns signed ciphertext for product submission. \`Open\` authenticates
+     * complete external statements and rejects reflected local output; it is not
+     * an arbitrary decryption primitive. Incoming plaintext can contain incoming
+     * bearer coin keys: persist the import intent securely and use generic payment
+     * top-up before acknowledging. Wallet/device keys and outgoing main-purse
+     * coin secrets never leave the Host.
+     *
+     * \`Initialize\` also advances private file transfers. Persist any legacy
+     * migration view and ordinary prepared statements before \`CommitMigration\`.
+     * \`ContinueOpen\` retrieves the next bounded page of an authenticated batch.
+     * \`ContinueState\` retrieves remaining pages of a stable public state snapshot;
+     * persist every page before committing its migration.
+     *
+     * Method 11 (the former raw-crypto interface) and method 12's former V1 actor
+     * operations are retired, not forwarded. This boundary uses V2 payloads.
+     */
+    deviceChat(request: T.HostProductDeviceChatRequest, options?: CallOptions): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
+    /**
+     * List non-product accounts the user owns.
+     *
+     * Current hosts do not expose non-product accounts, so the list is empty.
+     */
+    getLegacyAccounts(options?: CallOptions): ResultAsync<T.HostGetLegacyAccountsResponse, S.CallErrorValue<T.VersionedHostGetLegacyAccountsError>>;
+    /** Fetch the user's primary identity. */
+    getUserId(options?: CallOptions): ResultAsync<T.HostGetUserIdResponse, S.CallErrorValue<T.VersionedHostGetUserIdError>>;
+    /**
+     * Request the host to present the login flow to the user.
+     *
+     * Products should call this in response to a user action (e.g. tapping a
+     * "Sign in" button), not automatically on load.
+     */
+    requestLogin(request: T.HostRequestLoginRequest, options?: CallOptions): ResultAsync<T.HostRequestLoginResponse, S.CallErrorValue<T.VersionedHostRequestLoginError>>;
+}
+/** Chain interaction methods. */
+export declare class ChainClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Follow the chain head and receive block events. */
+    followHeadSubscribe({ request }: {
+        request: T.RemoteChainHeadFollowRequest;
+    }): ObservableLike<T.RemoteChainHeadFollowItem, S.CallErrorValue<T.VersionedRemoteChainHeadFollowError>>;
+    /** Fetch a block header. */
+    getHeadHeader(request: T.RemoteChainHeadHeaderRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadHeaderResponse, S.CallErrorValue<T.VersionedRemoteChainHeadHeaderError>>;
+    /** Fetch a block body. */
+    getHeadBody(request: T.RemoteChainHeadBodyRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadBodyResponse, S.CallErrorValue<T.VersionedRemoteChainHeadBodyError>>;
+    /** Query runtime storage at a specific block. */
+    getHeadStorage(request: T.RemoteChainHeadStorageRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadStorageResponse, S.CallErrorValue<T.VersionedRemoteChainHeadStorageError>>;
+    /** Invoke a runtime call at a specific block. */
+    callHead(request: T.RemoteChainHeadCallRequest, options?: CallOptions): ResultAsync<T.RemoteChainHeadCallResponse, S.CallErrorValue<T.VersionedRemoteChainHeadCallError>>;
+    /** Release pinned blocks. */
+    unpinHead(request: T.RemoteChainHeadUnpinRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadUnpinError>>;
+    /** Continue a paused chain-head operation. */
+    continueHead(request: T.RemoteChainHeadContinueRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadContinueError>>;
+    /** Stop a chain-head operation. */
+    stopHeadOperation(request: T.RemoteChainHeadStopOperationRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainHeadStopOperationError>>;
+    /** Fetch the canonical genesis hash for a chain. */
+    getSpecGenesisHash(request: T.RemoteChainSpecGenesisHashRequest, options?: CallOptions): ResultAsync<T.RemoteChainSpecGenesisHashResponse, S.CallErrorValue<T.VersionedRemoteChainSpecGenesisHashError>>;
+    /** Fetch the display name of a chain. */
+    getSpecChainName(request: T.RemoteChainSpecChainNameRequest, options?: CallOptions): ResultAsync<T.RemoteChainSpecChainNameResponse, S.CallErrorValue<T.VersionedRemoteChainSpecChainNameError>>;
+    /** Fetch the JSON-encoded properties of a chain. */
+    getSpecProperties(request: T.RemoteChainSpecPropertiesRequest, options?: CallOptions): ResultAsync<T.RemoteChainSpecPropertiesResponse, S.CallErrorValue<T.VersionedRemoteChainSpecPropertiesError>>;
+    /** Broadcast a signed transaction. */
+    broadcastTransaction(request: T.RemoteChainTransactionBroadcastRequest, options?: CallOptions): ResultAsync<T.RemoteChainTransactionBroadcastResponse, S.CallErrorValue<T.VersionedRemoteChainTransactionBroadcastError>>;
+    /** Stop a transaction broadcast. */
+    stopTransaction(request: T.RemoteChainTransactionStopRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteChainTransactionStopError>>;
+    /**
+     * Resolve a chain identifier to its genesis hash against the host's
+     * configured environment (RFC 0026).
+     */
+    getChainInfo(request: T.RemoteChainInfoRequest, options?: CallOptions): ResultAsync<T.RemoteChainInfoResponse, S.CallErrorValue<T.VersionedRemoteChainInfoError>>;
+}
+/** Chat room, bot, and message APIs. */
+export declare class ChatClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Create a chat room. */
+    createRoom(request: T.HostChatCreateRoomRequest, options?: CallOptions): ResultAsync<T.HostChatCreateRoomResponse, S.CallErrorValue<T.VersionedHostChatCreateRoomError>>;
+    /** Register a chat bot. */
+    registerBot(request: T.HostChatRegisterBotRequest, options?: CallOptions): ResultAsync<T.HostChatRegisterBotResponse, S.CallErrorValue<T.VersionedHostChatRegisterBotError>>;
+    /** Subscribe to the list of chat rooms. */
+    listSubscribe(): ObservableLike<T.HostChatListSubscribeItem, S.CallErrorValue<T.VersionedHostChatListSubscribeError>>;
+    /**
+     * Post a message to a chat room.
+     *
+     * The host bounds and screens what it forwards. Message text is capped at
+     * 16 KiB and keeps line breaks and tabs, but is rejected for other
+     * control characters and for bidirectional overrides. Identifiers and
+     * display names are normalized and screened. A message carries at most 32
+     * actions and 32 media items, a custom payload at most 256 KiB, and a URL
+     * at most 2 KiB which must be \`https\` or an inline raster image. A
+     * rejection reports \`MessageTooLarge\` when the body or custom payload is
+     * over budget, and \`Unknown\` with a reason naming the field otherwise.
+     *
+     * The returned \`messageId\` is the correlation key for any action the
+     * message carries: a later \`actionSubscribe\` trigger names it.
+     */
+    postMessage(request: T.HostChatPostMessageRequest, options?: CallOptions): ResultAsync<T.HostChatPostMessageResponse, S.CallErrorValue<T.VersionedHostChatPostMessageError>>;
+    /** Subscribe to received chat actions. */
+    actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem, S.CallErrorValue<T.VersionedHostChatActionSubscribeError>>;
+}
+/**
+ * CoinPayment operations.
+ *
+ * RFC 0017 describes \`Resolvable<T>\` values for long-running operations.
+ * TrUAPI represents those as subscriptions whose items are the RFC status
+ * updates.
+ */
+export declare class CoinPaymentClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Create a new firewalled CoinPayment purse. */
+    createPurse(request: T.HostCoinPaymentCreatePurseRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentCreatePurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreatePurseError>>;
+    /** Query product-visible purse metadata and balance. */
+    queryPurse(request: T.HostCoinPaymentQueryPurseRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentQueryPurseResponse, S.CallErrorValue<T.VersionedHostCoinPaymentQueryPurseError>>;
+    /** Transfer balance between local purses. */
+    rebalancePurse({ request }: {
+        request: T.HostCoinPaymentRebalancePurseRequest;
+    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentRebalancePurseError>>;
+    /** Delete a purse after draining its balance into another local purse. */
+    deletePurse({ request }: {
+        request: T.HostCoinPaymentDeletePurseRequest;
+    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentDeletePurseError>>;
+    /** Create a receivable public key for depositing into a purse. */
+    createReceivable(request: T.HostCoinPaymentCreateReceivableRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentCreateReceivableResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateReceivableError>>;
+    /** Create a cheque paying from a local purse to a receivable. */
+    createCheque(request: T.HostCoinPaymentCreateChequeRequest, options?: CallOptions): ResultAsync<T.HostCoinPaymentCreateChequeResponse, S.CallErrorValue<T.VersionedHostCoinPaymentCreateChequeError>>;
+    /** Claim coins from a cheque into the receivable's purse. */
+    deposit({ request }: {
+        request: T.HostCoinPaymentDepositRequest;
+    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentDepositError>>;
+    /** Attempt to return coins associated with a receivable. */
+    refund({ request }: {
+        request: T.HostCoinPaymentRefundRequest;
+    }): ObservableLike<T.CoinPaymentStatus, S.CallErrorValue<T.VersionedHostCoinPaymentRefundError>>;
+    /** Listen for a cheque delivered through a standard transmission channel. */
+    listenForPayment({ request }: {
+        request: T.HostCoinPaymentListenForRequest;
+    }): ObservableLike<T.HostCoinPaymentListenForItem, S.CallErrorValue<T.VersionedHostCoinPaymentListenForError>>;
+}
+/** Deterministic entropy derivation. */
+export declare class EntropyClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Derive deterministic entropy. */
+    derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
+}
+/** Local key/value storage scoped to the calling product. */
+export declare class LocalStorageClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Read a value by key. */
+    read(request: T.HostLocalStorageReadRequest, options?: CallOptions): ResultAsync<T.HostLocalStorageReadResponse, S.CallErrorValue<T.VersionedHostLocalStorageReadError>>;
+    /** Write a value to a key. */
+    write(request: T.HostLocalStorageWriteRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageWriteError>>;
+    /** Clear a value by key. */
+    clear(request: T.HostLocalStorageClearRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostLocalStorageClearError>>;
+    /**
+     * Subscribe to changes of one key in the product's own storage namespace.
+     *
+     * Emits the current value immediately, then one item per later write or
+     * clear of the key by any of the product's runtimes. A write that leaves
+     * the stored bytes unchanged emits nothing.
+     */
+    subscribe({ request }: {
+        request: T.HostLocalStorageSubscribeRequest;
+    }): ObservableLike<T.HostLocalStorageChangeItem, S.CallErrorValue<T.VersionedHostLocalStorageSubscribeError>>;
+}
+/** Host locale subscription. */
+export declare class LocaleClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Subscribe to the host's selected locale. */
+    subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
+}
+/** Notification methods for locally-rendered push notifications. */
+export declare class NotificationsClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Send a push notification to the user.
+     *
+     * Returns a [\`NotificationId\`](crate::v01::NotificationId) that can be
+     * passed to [\`cancel_push_notification\`](Self::cancel_push_notification)
+     * to retract a scheduled notification. When \`scheduled_at\` is set the host
+     * persists the notification across restarts and fires it through the
+     * platform-native scheduler. See [RFC 0019].
+     *
+     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     */
+    sendPushNotification(request: T.HostPushNotificationRequest, options?: CallOptions): ResultAsync<T.HostPushNotificationResponse, S.CallErrorValue<T.VersionedHostPushNotificationError>>;
+    /**
+     * Cancels a previously issued push notification.
+     *
+     * Cancellation is idempotent: returns \`Ok(())\` whether the notification is
+     * still pending, already fired, or was never issued. See [RFC 0019].
+     *
+     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     */
+    cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+}
+/** Payment request and balance/status subscription methods. */
+export declare class PaymentClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Subscribe to payment balance updates. */
+    balanceSubscribe({ request }: {
+        request: T.HostPaymentBalanceSubscribeRequest;
+    }): ObservableLike<T.HostPaymentBalanceSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentBalanceSubscribeError>>;
+    /** Request a payment from the user. */
+    request(request: T.HostPaymentRequest, options?: CallOptions): ResultAsync<T.HostPaymentResponse, S.CallErrorValue<T.VersionedHostPaymentError>>;
+    /** Subscribe to payment lifecycle updates for a specific payment. */
+    statusSubscribe({ request }: {
+        request: T.HostPaymentStatusSubscribeRequest;
+    }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
+    /** Top up the user's payment balance. */
+    topUp(request: T.HostPaymentTopUpRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
+}
+/** Permission request methods. */
+export declare class PermissionsClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Request a device-capability permission from the user. */
+    requestDevicePermission(request: T.HostDevicePermissionRequest, options?: CallOptions): ResultAsync<T.HostDevicePermissionResponse, S.CallErrorValue<T.VersionedHostDevicePermissionError>>;
+    /**
+     * Request a remote-operation permission.
+     *
+     * This example makes live requests to Frankfurter after permission is granted.
+     */
+    requestRemotePermission(request: T.RemotePermissionRequest, options?: CallOptions): ResultAsync<T.RemotePermissionResponse, S.CallErrorValue<T.VersionedRemotePermissionError>>;
+}
+/**
+ * Pocket cards backed by the calling product.
+ *
+ * The host owns the collection: a product observes its own cards and may
+ * remove them, but cannot add one.
+ */
+export declare class PocketClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Subscribe to the calling product's cards.
+     *
+     * Emits the whole set on subscribe and again after every change.
+     */
+    listSubscribe(): ObservableLike<T.HostPocketListSubscribeItem, S.CallErrorValue<T.VersionedHostPocketListSubscribeError>>;
+    /**
+     * Remove one of the calling product's cards.
+     *
+     * Removing a card that is not present succeeds. A privileged card is
+     * refused with \`Privileged\`.
+     */
+    removeCard(request: T.HostPocketRemoveCardRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPocketRemoveCardError>>;
+}
+/** Preimage lookup and submission methods. */
+export declare class PreimageClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Subscribe to preimage lookups for a given key. */
+    lookupSubscribe({ request }: {
+        request: T.RemotePreimageLookupSubscribeRequest;
+    }): ObservableLike<T.RemotePreimageLookupSubscribeItem, S.CallErrorValue<T.VersionedRemotePreimageLookupSubscribeError>>;
+    /** Submit a preimage. Returns the preimage key (hash) on success. */
+    submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
+}
+/** Product-rendered bodies and the actions triggered inside them. */
+export declare class RendererClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Streams renderer trees for one product-rendered body. Each item
+     * replaces the previous tree. The stream stays open while the body is
+     * displayed so the product can redraw in place.
+     */
+    onRender(handler: HostInitiatedSubscriptionHandler<T.ProductRendererRenderRequest, T.RendererNode, S.CallErrorValue<T.VersionedProductRendererRenderError>>): {
+        unsubscribe(): void;
+    };
+    /** Subscribe to actions triggered inside this product's rendered bodies. */
+    actionSubscribe(): ObservableLike<T.HostRendererActionSubscribeItem, S.CallErrorValue<T.VersionedHostRendererActionSubscribeError>>;
+}
+/** Resource pre-allocation (allowance management). */
+export declare class ResourceAllocationClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Request the host to pre-allocate one or more resources. */
+    request(request: T.HostRequestResourceAllocationRequest, options?: CallOptions): ResultAsync<T.HostRequestResourceAllocationResponse, S.CallErrorValue<T.VersionedHostRequestResourceAllocationError>>;
+}
+/** Signing operations. */
+export declare class SigningClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Construct a transaction for a product account.
+     *
+     * Served locally without a user confirmation when an RFC-0010 \`AutoSigning\`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     *
+     * Under Extrinsic V5, omitting \`VerifyMultiSignature\` from \`extensions\`
+     * lets the host sign with the signer's key. Listing it — as \`Disabled\`,
+     * with a proof in a later extension — encodes the given bytes verbatim and
+     * returns an unsigned transaction.
+     */
+    createTransaction(request: T.ProductAccountTxPayload, options?: CallOptions): ResultAsync<T.HostCreateTransactionResponse, S.CallErrorValue<T.VersionedHostCreateTransactionError>>;
+    /**
+     * Construct a transaction for a non-product (legacy) account.
+     *
+     * The V5 \`VerifyMultiSignature\` rule is the same as
+     * [\`Signing::create_transaction\`]: omit it and the host signs, list it and
+     * the given bytes are used with no host signature.
+     */
+    createTransactionWithLegacyAccount(request: T.LegacyAccountTxPayload, options?: CallOptions): ResultAsync<T.HostCreateTransactionWithLegacyAccountResponse, S.CallErrorValue<T.VersionedHostCreateTransactionWithLegacyAccountError>>;
+    /** Sign raw bytes with a non-product account. */
+    signRawWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
+    /** Sign an extrinsic payload with a non-product account. */
+    signPayloadWithLegacyAccount(request: T.HostSignPayloadWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadWithLegacyAccountError>>;
+    /**
+     * Sign raw bytes or a message.
+     *
+     * Served locally without a user confirmation when an RFC-0010 \`AutoSigning\`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     */
+    signRaw(request: T.HostSignRawRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
+    /**
+     * Sign an extrinsic payload.
+     *
+     * Served locally without a user confirmation when an RFC-0010 \`AutoSigning\`
+     * grant covers the account; otherwise each call is confirmed by the user.
+     */
+    signPayload(request: T.HostSignPayloadRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignPayloadError>>;
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
+     */
+    signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
+    /**
+     * Sign the supplied data without adding or removing a watermark.
+     *
+     * Temporary compatibility API for runtime ownership proofs, including the
+     * 32-byte Resources alias used by Humanity. Payload decoding matches
+     * watermarked signing, but the decoded bytes are signed exactly as supplied.
+     * This permits transaction-shaped data and requires signing authorization
+     * and explicit user confirmation.
+     *
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
+     */
+    signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
+}
+/** Statement store methods. */
+export declare class StatementStoreClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Subscribe to statements matching a topic filter. */
+    subscribe({ request }: {
+        request: T.RemoteStatementStoreSubscribeRequest;
+    }): ObservableLike<T.RemoteStatementStoreSubscribeItem, S.CallErrorValue<T.VersionedRemoteStatementStoreSubscribeError>>;
+    /**
+     * Create a proof for a statement.
+     *
+     * **Deprecated:** use [\`create_proof_authorized\`](Self::create_proof_authorized)
+     * instead, which uses a pre-allocated allowance account and does not
+     * require a per-call signing prompt. Pairing hosts may reject this method
+     * when their signing channel cannot sign statement proof payloads exactly.
+     */
+    createProof(request: T.RemoteStatementStoreCreateProofRequest, options?: CallOptions): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofError>>;
+    /**
+     * Create a proof for a statement using a pre-allocated allowance account,
+     * bypassing the per-call signing prompt.
+     */
+    createProofAuthorized(request: T.Statement, options?: CallOptions): ResultAsync<T.RemoteStatementStoreCreateProofResponse, S.CallErrorValue<T.VersionedRemoteStatementStoreCreateProofAuthorizedError>>;
+    /**
+     * Submit a signed statement to the network. The request body is the
+     * [\`SignedStatement\`](crate::v01::SignedStatement) directly (no wrapping
+     * struct), matching upstream \`triangle-js-sdks\`.
+     */
+    submit(request: T.SignedStatement, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedRemoteStatementStoreSubmitError>>;
+}
+/**
+ * General-purpose TrUAPI methods for handshake, feature detection,
+ * navigation, and runtime information.
+ */
+export declare class SystemClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Negotiate the wire codec version with the product. */
+    handshake(options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostHandshakeError>>;
+    /** Query whether the host supports a specific feature. */
+    featureSupported(request: T.HostFeatureSupportedRequest, options?: CallOptions): ResultAsync<T.HostFeatureSupportedResponse, S.CallErrorValue<T.VersionedHostFeatureSupportedError>>;
+    /**
+     * Request the host to open a URL.
+     *
+     * An \`http\` or \`https\` URL outside the ecosystem needs a
+     * \`RemotePermission::Remote\` grant for the target host, and prompts for one
+     * on first use. dotNS names, \`localhost\`, and the app-handoff schemes
+     * (\`mailto:\`, \`tel:\`, \`polkadot:\`, \`dot:\`) consume no grant. The grant is
+     * per host and shared with outbound data access to that host, so approving
+     * one covers the other.
+     */
+    navigateTo(request: T.HostNavigateToRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNavigateToError>>;
+    /**
+     * Report the host's identity and version.
+     *
+     * Returns the host's platform, name, and version so a product knows
+     * exactly which host — and which build of it — is running it: for
+     * adapting to the host, telemetry, and attributing behaviour to a
+     * concrete build in diagnostics and bug reports.
+     */
+    info(options?: CallOptions): ResultAsync<T.HostInfo, S.CallErrorValue<T.VersionedHostInfoError>>;
+    /** Return the product context bound to the current host runtime. */
+    getProductContext(options?: CallOptions): ResultAsync<T.HostGetProductContextResponse, S.CallErrorValue<T.VersionedHostGetProductContextError>>;
+}
+/** Host theme subscription. */
+export declare class ThemeClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Subscribe to host theme changes. */
+    subscribe(): ObservableLike<T.HostThemeSubscribeItem, S.CallErrorValue<T.VersionedHostThemeSubscribeError>>;
+}
+/**
+ * Worker background-operation APIs.
+ *
+ * The host keeps a product's worker running while it holds at least one open
+ * operation, which is how a worker outlives the surface that started it.
+ */
+export declare class WorkerClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /** Begin a pending operation. */
+    beginOperation(request: T.HostWorkerBeginOperationRequest, options?: CallOptions): ResultAsync<T.HostWorkerBeginOperationResponse, S.CallErrorValue<T.VersionedHostWorkerBeginOperationError>>;
+    /**
+     * End a pending operation. Idempotent: an unknown or already-ended id
+     * succeeds, so a retry after an ambiguous failure is safe.
+     */
+    endOperation(request: T.HostWorkerEndOperationRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostWorkerEndOperationError>>;
+}
+export interface TrUApiClient {
+    readonly account: AccountClient;
+    readonly chain: ChainClient;
+    readonly chat: ChatClient;
+    readonly coinPayment: CoinPaymentClient;
+    readonly entropy: EntropyClient;
+    readonly localStorage: LocalStorageClient;
+    readonly locale: LocaleClient;
+    readonly notifications: NotificationsClient;
+    readonly payment: PaymentClient;
+    readonly permissions: PermissionsClient;
+    readonly pocket: PocketClient;
+    readonly preimage: PreimageClient;
+    readonly renderer: RendererClient;
+    readonly resourceAllocation: ResourceAllocationClient;
+    readonly signing: SigningClient;
+    readonly statementStore: StatementStoreClient;
+    readonly system: SystemClient;
+    readonly theme: ThemeClient;
+    readonly worker: WorkerClient;
+}
+export type Client = TrUApiClient;
+/** Creates the generated client facade by binding each service namespace to the
+ * shared transport instance. */
+export declare function createClient(transport: TrUApiTransport): TrUApiClient;
+
+
+// development.d.ts
+/** Same as \`HostAccountCreateProofRequest\`, with the 32-byte context given raw. */
+export interface DevelopmentCreateProofRequest extends Omit<HostAccountCreateProofRequest, "context"> {
+    /** The exact 32 bytes the proof is bound to, as \`0x\`-prefixed hex. */
+    context: HexString;
+}
+/**
+ * \`account.createAccountProof\` with a verbatim 32-byte proof context instead of
+ * a product-namespaced one.
+ *
+ */
+export declare function development_createAccountProof(client: Pick<TrUApiClient, "account">, request: DevelopmentCreateProofRequest): ResultAsync<HostAccountCreateProofResponse, CallErrorValue<VersionedHostAccountCreateProofError>>;
 `;
