@@ -655,41 +655,140 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(false);
   });
 
-  it("As a dotli user, accepting an account access prompt is remembered", async () => {
-    // Given
-    const { confirmPermission } =
-      createUserConfirmationAdapters("localhost:3000");
-
+  it("As a dotli user, an account access prompt highlights Allow once", () => {
     // When
-    const decision = confirmPermission({
+    void createUserConfirmationAdapters("localhost:3000").confirmPermission({
       tag: "AccountAccess",
       value: {
         requestingProductId: "truapi-playground.dot",
         targetProductId: "other-product.dot",
       },
     });
+
+    // Then
+    expect(footerButtons()).toEqual([
+      { text: "Deny", className: "signing-btn-cancel" },
+      { text: "Always allow", className: "signing-btn-secondary" },
+      { text: "Allow once", className: "signing-btn-sign" },
+    ]);
+  });
+
+  it("As a dotli user, allowing account access once is not remembered", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(decision).resolves.toBe("AllowOnce");
+  });
+
+  it("As a dotli user, always allowing account access is remembered", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+
+    // When
+    document
+      .querySelector<HTMLButtonElement>(".signing-btn-secondary")
+      ?.click();
 
     // Then
     await expect(decision).resolves.toBe("AllowAlways");
   });
 
-  it("As a dotli user, denying an account access prompt is remembered", async () => {
+  it("As a dotli user, denying account access is remembered", async () => {
     // Given
-    const { confirmPermission } =
-      createUserConfirmationAdapters("localhost:3000");
-
-    // When
-    const decision = confirmPermission({
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
       tag: "AccountAccess",
       value: {
         requestingProductId: "truapi-playground.dot",
         targetProductId: "other-product.dot",
       },
     });
+
+    // When
     document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
 
     // Then
     await expect(decision).resolves.toBe("Deny");
   });
+
+  it("As a dotli user, allowing identity disclosure once is not remembered", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "IdentityDisclosure",
+      value: { productId: "truapi-playground.dot" },
+    });
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+
+    // Then
+    await expect(decision).resolves.toBe("AllowOnce");
+  });
+
+  it("As a dotli user, dismissing identity disclosure records no decision", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "IdentityDisclosure",
+      value: { productId: "truapi-playground.dot" },
+    });
+
+    // When
+    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+
+    // Then
+    await expect(decision).rejects.toThrow(
+      "User dismissed identity disclosure dialog",
+    );
+  });
+
+  it("As a dotli user, a per-action confirmation keeps two buttons", () => {
+    // When
+    void createUserConfirmationAdapters("localhost:3000").confirmUserAction({
+      tag: "AccountAccess",
+      value: {
+        requestingProductId: "truapi-playground.dot",
+        targetProductId: "other-product.dot",
+      },
+    });
+
+    // Then
+    expect(footerButtons().map(({ text }) => text)).toEqual(["Deny", "Allow"]);
+  });
 });
+
+function footerButtons(): { text: string; className: string }[] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      ".signing-modal-footer button",
+    ),
+    (button) => ({
+      text: button.textContent ?? "",
+      className: button.className,
+    }),
+  );
+}

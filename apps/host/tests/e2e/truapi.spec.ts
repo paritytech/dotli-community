@@ -78,7 +78,7 @@ test.describe("dot.li > host-playground.dot", () => {
     });
   });
 
-  // Each allocation triggers an "Allow" modal on the host that the user
+  // Each allocation triggers an "Always allow" / "Allow" modal on the host that the user
   // approves. The signing host is paired so the test only drives the modal.
 
   test.describe("Allowances", () => {
@@ -91,7 +91,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-statement-store",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -108,7 +108,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-bulletin",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -125,7 +125,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-smart-contract",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -144,7 +144,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-all",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -175,7 +175,7 @@ test.describe("dot.li > host-playground.dot", () => {
     });
   });
 
-  // Remote-permission tests trigger an "Allow" modal on the host the
+  // Remote-permission tests trigger an "Always allow" modal on the host the
   // first time a given capability is requested in a session.
 
   test.describe("Permissions", () => {
@@ -192,7 +192,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-remote",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -209,7 +209,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-webrtc",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -226,7 +226,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-chain-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -243,7 +243,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-preimage-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -260,7 +260,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-statement-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -291,7 +291,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "statement-store-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -398,7 +398,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-factory",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 60_000 },
       );
 
@@ -415,7 +415,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 60_000 },
       );
 
@@ -430,7 +430,7 @@ test.describe("dot.li > host-playground.dot", () => {
       productFrame,
     }) => {
       // Given
-      const approvalButtons = ["Allow"];
+      const approvalButtons = ["Always allow", "Allow"];
 
       // When
       const status = await runWebSignedTest(
@@ -459,7 +459,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "wallet-sign-message",
-        ["Allow", "Sign"],
+        ["Always allow", "Allow", "Sign"],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 

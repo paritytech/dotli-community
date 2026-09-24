@@ -1,5 +1,10 @@
 // Push-notification callback. The Rust core passes the typed request, and
 // this adapter returns a stable host-side id for cancel support.
+//
+// The core authorizes `Notifications` (prompting through `devicePermission`
+// and consuming a one-time grant) before it calls here, so this adapter does
+// not prompt or re-check: a second check would find a consumed "Allow once"
+// gone and prompt the user again.
 
 import type { Notifications } from "@parity/truapi-host";
 import { log } from "@dotli/shared/log";
@@ -8,21 +13,10 @@ import {
   scheduleNotification,
 } from "../scheduled-notifications";
 import { showNotification } from "../notification";
-import { decidePromptPermission } from "./PromptPermission";
-import {
-  createBlockingModalScope,
-  type BlockingModalScope,
-} from "../blocking-modal-queue";
-import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 import { ERRORS } from "../errors";
 
 export function createNotificationAdapters(
   label: string,
-  modalScope: BlockingModalScope = createBlockingModalScope(),
-  // One budget per host callback surface: `handlers.ts` passes the same
-  // limiter here and to the permission prompts so a product cannot double
-  // its prompt budget by alternating prompt kinds.
-  limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Required<Notifications> {
   const pushNotification: Required<Notifications>["pushNotification"] = async ({
     text,
@@ -34,19 +28,6 @@ export function createNotificationAdapters(
       deeplink,
       scheduledAt,
     });
-
-    const granted = await decidePromptPermission(
-      label,
-      "Notifications",
-      {
-        kind: "Device",
-        limiter,
-      },
-      modalScope,
-    );
-    if (!granted) {
-      throw new Error(ERRORS.NOTIFICATIONS_PERMISSION_DENIED);
-    }
 
     const result = await scheduleNotification({
       productId: label,
