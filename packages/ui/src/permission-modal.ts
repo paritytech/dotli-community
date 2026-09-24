@@ -99,10 +99,7 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
 };
 
 export type PermissionPromptDecision =
-  | "granted"
-  | "granted-once"
-  | "denied"
-  | "dismissed";
+  "granted" | "granted-once" | "denied" | "dismissed";
 
 export interface PermissionRequestModalOptions {
   /** Offer "Allow once" alongside "Always allow" and "Deny". */

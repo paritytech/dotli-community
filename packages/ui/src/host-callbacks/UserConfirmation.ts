@@ -46,10 +46,7 @@ interface ConfirmationField {
 }
 
 type ConfirmationDecision =
-  | "accepted"
-  | "accepted-once"
-  | "rejected"
-  | "dismissed";
+  "accepted" | "accepted-once" | "rejected" | "dismissed";
 
 /** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
 type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;

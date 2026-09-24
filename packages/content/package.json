@@ -15,10 +15,10 @@
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
-    "eslint": "^10.5.0",
-    "happy-dom": "^20.10.3",
+    "eslint": "^10.11.0",
+    "happy-dom": "^20.14.5",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16",
+    "vite": "^8.3.1",
     "vitest": "^5.0.1"
   },
   "dependencies": {
@@ -26,12 +26,12 @@
     "@dotli/metrics": "workspace:*",
     "@dotli/protocol": "workspace:*",
     "@dotli/shared": "workspace:*",
-    "@ipld/car": "^5.4.3",
-    "@ipld/dag-pb": "^4.1.5",
-    "@noble/ciphers": "^2.1.1",
-    "@noble/hashes": "^2.2.0",
+    "@ipld/car": "^5.4.7",
+    "@ipld/dag-pb": "^4.2.0",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
-    "ipfs-unixfs": "^13.0.0",
-    "multiformats": "^14.0.0"
+    "ipfs-unixfs": "^13.1.2",
+    "multiformats": "^14.0.5"
   }
 }

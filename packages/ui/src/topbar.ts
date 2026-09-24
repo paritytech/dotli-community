@@ -2438,11 +2438,9 @@ declare const __DOTLI_VERSION__: string | undefined;
 declare const __LIGHT_CLIENT_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSION__: string | undefined;
 declare const __POLKADOT_API_VERSIONS__:
-  | { name: string; version: string }[]
-  | undefined;
+  { name: string; version: string }[] | undefined;
 declare const __PARITY_TRUAPI_VERSIONS__:
-  | { name: string; version: string }[]
-  | undefined;
+  { name: string; version: string }[] | undefined;
 
 /**
  * Render the Diagnostics block at the bottom of the settings popover. Rows
