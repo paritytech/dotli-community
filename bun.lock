@@ -5,7 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
-        "@parity/truapi": "0.20.0",
+        "@parity/truapi": "0.21.0",
       },
       "devDependencies": {
         "prettier": "3.9.9",
@@ -200,7 +200,7 @@
         "@dotli/storage": "workspace:*",
         "@ensdomains/content-hash": "^3.1.1",
         "@noble/hashes": "^2.4.0",
-        "@parity/truapi-provider": "0.2.1",
+        "@parity/truapi-provider": "0.2.2",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@polkadot-api/json-rpc-provider-proxy": "^0.4.1",
         "@polkadot-api/substrate-bindings": "0.21.1",
@@ -301,8 +301,8 @@
         "@dotli/storage": "workspace:*",
         "@dotli/truapi-debug": "workspace:*",
         "@noble/hashes": "^2.4.0",
-        "@parity/truapi": "0.20.0",
-        "@parity/truapi-host": "0.20.0",
+        "@parity/truapi": "0.21.0",
+        "@parity/truapi-host": "0.21.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.4.0",
         "neverthrow": "^8.2.0",
@@ -675,11 +675,11 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.151.0", "", {}, "sha512-J1yXrIlNDZVzE3ada310xeAw7nH8yCAyLPuUIsjKatFPmfn5bS1oW+cM+QsGOtVWd5nhSpbwZWx/rue+r5Z+PA=="],
 
-    "@parity/truapi": ["@parity/truapi@0.20.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-nnkXlrL7QxCNjpSOyyhqnOMcsCe5YFnvqkgj3PXMYn83qgnU/ixzCTuM2balJKfLDYw6iFSIy+DMjoKtcPVzQA=="],
+    "@parity/truapi": ["@parity/truapi@0.21.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-Wgelbl+PFGm7GglWHGEgmeSHshORzR65jlTIaNMFCFgB3uq+M1y2KJKTY8/mSO2yfJEVoalYuh1VuDB3j2/cFQ=="],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.20.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "@parity/truapi": "^0.20.0", "neverthrow": "^8.2.0" }, "peerDependencies": { "@playwright/test": ">=1.40", "esbuild": ">=0.20" }, "optionalPeers": ["@playwright/test", "esbuild"] }, "sha512-E9MfoW2YGrw+49xTLmLjKlHacaAZv72e9ad5T1l9bcEnDsIQcaEsfY8g/K24HLu+kokfxbODqSNzWAdsyGpuEg=="],
+    "@parity/truapi-host": ["@parity/truapi-host@0.21.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "@parity/truapi": "^0.21.0", "neverthrow": "^8.2.0" }, "peerDependencies": { "@playwright/test": ">=1.40", "esbuild": ">=0.20" }, "optionalPeers": ["@playwright/test", "esbuild"] }, "sha512-AK0pMU/xF7u20bHaot6jFmHRtv+NinFQQwjbA/fTknwzM4dEKU4KRuaSbA817Q0INhzUIX7X4KHdSHMxaWvvGg=="],
 
-    "@parity/truapi-provider": ["@parity/truapi-provider@0.2.1", "", {}, "sha512-cj3gnPfwhW2HzsRiPhB4BeSoT6RmdWb+VIvGQd8P7xK52h19jiFvP7MVR7opndh9WzkP16P/6iJvy7uMj1/MiA=="],
+    "@parity/truapi-provider": ["@parity/truapi-provider@0.2.2", "", {}, "sha512-dFxyYRI2xeZagwIiZIme5kmpT5KYHuV0iYPNpfCp9OKqBwrcoQ/q4fa+EdL5CSPUvf42Jpy6vx5G3hMGIOE3tw=="],
 
     "@playwright/test": ["@playwright/test@1.63.0", "", { "dependencies": { "playwright": "1.63.0" }, "bin": { "playwright": "cli.js" } }, "sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ=="],
 

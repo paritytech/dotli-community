@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProductContext } from "@parity/truapi-host";
 import {
   ALL_PERMISSIONS,
   AUTO_GRANT_DEVICE_PERMISSIONS,
@@ -22,6 +23,11 @@ import type {
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
+
+const PRODUCT: ProductContext = {
+  productId: "myapp.paseo",
+  executionKind: "App",
+};
 
 type Store = Map<string, PermissionAuthorizationStatus>;
 
@@ -274,8 +280,10 @@ describe("device permission prompts", () => {
     };
     window.addEventListener("dotli:device-permission-changed", onReload);
 
-    const response =
-      createPromptPermission("myapp").devicePermission(permission);
+    const response = createPromptPermission("myapp").devicePermission(
+      PRODUCT,
+      permission,
+    );
     await clickPromptButton(permission === "Camera" ? "Allow" : "Always allow");
     await expect(response).resolves.toEqual("AllowAlways");
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -287,7 +295,7 @@ describe("device permission prompts", () => {
 
   it("As a product, an auto-granted OpenUrl is answered once without a prompt", async () => {
     await expect(
-      createPromptPermission("myapp").devicePermission("OpenUrl"),
+      createPromptPermission("myapp").devicePermission(PRODUCT, "OpenUrl"),
     ).resolves.toBe("AllowOnce");
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
   });
@@ -393,7 +401,7 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, allowing a transaction once grants only this one", async () => {
     // Given
-    const response = createPromptPermission("myapp").remotePermission({
+    const response = createPromptPermission("myapp").remotePermission(PRODUCT, {
       permission: { tag: "ChainSubmit" },
     });
 
@@ -407,7 +415,7 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, always allowing transactions saves the grant", async () => {
     // Given
-    const response = createPromptPermission("myapp").remotePermission({
+    const response = createPromptPermission("myapp").remotePermission(PRODUCT, {
       permission: { tag: "ChainSubmit" },
     });
 
@@ -421,7 +429,7 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, denying transactions saves the refusal", async () => {
     // Given
-    const response = createPromptPermission("myapp").remotePermission({
+    const response = createPromptPermission("myapp").remotePermission(PRODUCT, {
       permission: { tag: "ChainSubmit" },
     });
 
@@ -435,8 +443,10 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, I can allow a single notification", async () => {
     // Given
-    const response =
-      createPromptPermission("myapp").devicePermission("Notifications");
+    const response = createPromptPermission("myapp").devicePermission(
+      PRODUCT,
+      "Notifications",
+    );
 
     // When
     await clickPromptButton("Allow once");
@@ -448,7 +458,10 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, a camera prompt offers no one-time grant because granting reloads the app", async () => {
     // When
-    const response = createPromptPermission("myapp").devicePermission("Camera");
+    const response = createPromptPermission("myapp").devicePermission(
+      PRODUCT,
+      "Camera",
+    );
     await vi.waitFor(() => {
       expect(document.querySelector(".signing-modal-footer")).not.toBeNull();
     });
@@ -465,7 +478,7 @@ describe("three-way permission prompts", () => {
     await setPermissionStatus("myapp", "ChainSubmit", "granted");
 
     // When
-    const response = createPromptPermission("myapp").remotePermission({
+    const response = createPromptPermission("myapp").remotePermission(PRODUCT, {
       permission: { tag: "ChainSubmit" },
     });
 
@@ -479,8 +492,10 @@ describe("three-way permission prompts", () => {
     await setPermissionStatus("myapp", "Notifications", "denied");
 
     // When
-    const response =
-      createPromptPermission("myapp").devicePermission("Notifications");
+    const response = createPromptPermission("myapp").devicePermission(
+      PRODUCT,
+      "Notifications",
+    );
 
     // Then
     await expect(response).resolves.toBe("Deny");
@@ -492,8 +507,10 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, dismissing a notification prompt records no decision", async () => {
     // Given
-    const response =
-      createPromptPermission("myapp").devicePermission("Notifications");
+    const response = createPromptPermission("myapp").devicePermission(
+      PRODUCT,
+      "Notifications",
+    );
     await vi.waitFor(() => {
       expect(document.querySelector(".signing-modal-backdrop")).not.toBeNull();
     });

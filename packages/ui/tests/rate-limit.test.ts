@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProductContext } from "@parity/truapi-host";
 import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
+
+const PRODUCT: ProductContext = {
+  productId: "myapp.paseo",
+  executionKind: "App",
+};
 
 const mocks = vi.hoisted(() => ({
   scheduleNotification: vi.fn(),
@@ -105,14 +111,14 @@ describe("prompt rate limiting across host callbacks", () => {
 
     // When: camera prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
-      await permissions.devicePermission("Camera");
+      await permissions.devicePermission(PRODUCT, "Camera");
     }
 
     // Then: a different permission shares that budget and is rate limited
     // instead of showing a 21st modal.
-    await expect(permissions.devicePermission("Notifications")).rejects.toThrow(
-      "Permission prompt rate limited",
-    );
+    await expect(
+      permissions.devicePermission(PRODUCT, "Notifications"),
+    ).rejects.toThrow("Permission prompt rate limited");
     expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(
       MAX_PER_WINDOW,
     );
@@ -126,7 +132,7 @@ describe("prompt rate limiting across host callbacks", () => {
       label: "myapp",
     });
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
-      await permissions.devicePermission("Camera");
+      await permissions.devicePermission(PRODUCT, "Camera");
     }
 
     // When

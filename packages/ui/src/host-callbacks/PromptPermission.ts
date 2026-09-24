@@ -10,7 +10,8 @@
 // Notifications. A grant gated by the iframe `allow` attribute reloads the
 // product into a new execution, which would drop a one-time grant.
 // Auto-grants answer `AllowOnce` so the core records nothing the user never
-// saw.
+// saw. Each instance serves one product, so the product the core passes is
+// already known as `label`.
 
 import { withActiveTld } from "@dotli/config/network";
 import type { PermissionDecision, Permissions } from "@parity/truapi-host";
@@ -54,7 +55,10 @@ export function createPromptPermission(
   modalScope: BlockingModalScope = createBlockingModalScope(),
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
-  const devicePermission: Permissions["devicePermission"] = async (tag) => {
+  const devicePermission: Permissions["devicePermission"] = async (
+    _product,
+    tag,
+  ) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
@@ -68,7 +72,10 @@ export function createPromptPermission(
     );
   };
 
-  const remotePermission: Permissions["remotePermission"] = async (request) => {
+  const remotePermission: Permissions["remotePermission"] = async (
+    _product,
+    request,
+  ) => {
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
       return "AllowOnce";
