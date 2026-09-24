@@ -774,6 +774,7 @@ ctx.addEventListener("message", (ev) => {
             break;
         }
         case "activateLocalSession": {
+            identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
             void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => {
                 const signing = rt;
@@ -811,14 +812,6 @@ ctx.addEventListener("message", (ev) => {
                 ? rt.resetSessionState()
                 : Promise.reject(new Error("pairing runtime is not active")));
             break;
-        case "activateLocalSession": {
-            identityAbort?.abort(new Error("local identity activation changed"));
-            const { secret } = msg;
-            void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => isSigningRuntime(rt)
-                ? rt.activateLocalSession(secret)
-                : Promise.reject(new Error("signing runtime is not active")));
-            break;
-        }
         case "activateLocalSessionWithIdentity": {
             identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;

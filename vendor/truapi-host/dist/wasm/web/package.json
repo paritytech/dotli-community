@@ -7,8 +7,7 @@
   "files": [
     "truapi_server_bg.wasm",
     "truapi_server.js",
-    "truapi_server.d.ts",
-    "LICENSE-AGPL-3.0"
+    "truapi_server.d.ts"
   ],
   "main": "truapi_server.js",
   "types": "truapi_server.d.ts",
