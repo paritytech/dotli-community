@@ -18,7 +18,11 @@ const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
 // so seeing the user-badge should be near-instant. A tight cap surfaces a
 // broken signer or host fast instead of running out the workflow clock.
 const USER_BADGE_TIMEOUT_MS = 15_000;
-const PRODUCT_IFRAME_TIMEOUT_MS = 20_000;
+// A fresh page downloads the product's CAR from the public IPFS gateway,
+// which takes 4-23 s from CI runners (about 1 s locally). The SW archive
+// cache does not survive into a new browser context, so every worker start
+// pays it again.
+const PRODUCT_IFRAME_TIMEOUT_MS = 60_000;
 // A fresh page's product asks for its product account right after it
 // renders, which opens a blocking host modal over the iframe. A click that
 // lands while it is up hits the backdrop instead of the product.
@@ -260,7 +264,13 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
     // Test-scoped: dot.li replaces the product iframe when the page navigates
     // (a product handoff) or reloads the product, so a frame kept for the
     // whole worker would be detached for every test after that.
-    { scope: "test" },
+    // Its own timeout: a gateway download can exceed the 30 s test timeout
+    // it would otherwise share.
+    {
+      scope: "test",
+      timeout:
+        PRODUCT_IFRAME_TIMEOUT_MS + HOST_MODAL_SETTLE_TIMEOUT_MS + 10_000,
+    },
   ],
 });
 
