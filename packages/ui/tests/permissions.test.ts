@@ -276,10 +276,7 @@ describe("device permission prompts", () => {
 
     const response =
       createPromptPermission("myapp").devicePermission(permission);
-    await vi.waitFor(() => {
-      expect(document.querySelector(".signing-btn-sign")).not.toBeNull();
-    });
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await clickPromptButton(permission === "Camera" ? "Allow" : "Always allow");
     await expect(response).resolves.toEqual("AllowAlways");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -388,3 +385,146 @@ describe("DEVICE_PERMISSION_POLICY (sanity)", () => {
     }
   });
 });
+
+describe("three-way permission prompts", () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it("As a dotli user, allowing a transaction once grants only this one", async () => {
+    // Given
+    const response = createPromptPermission("myapp").remotePermission({
+      permission: { tag: "ChainSubmit" },
+    });
+
+    // When
+    await clickPromptButton("Allow once");
+
+    // Then
+    await expect(response).resolves.toBe("AllowOnce");
+    expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("ask");
+  });
+
+  it("As a dotli user, always allowing transactions saves the grant", async () => {
+    // Given
+    const response = createPromptPermission("myapp").remotePermission({
+      permission: { tag: "ChainSubmit" },
+    });
+
+    // When
+    await clickPromptButton("Always allow");
+
+    // Then
+    await expect(response).resolves.toBe("AllowAlways");
+    expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
+  });
+
+  it("As a dotli user, denying transactions saves the refusal", async () => {
+    // Given
+    const response = createPromptPermission("myapp").remotePermission({
+      permission: { tag: "ChainSubmit" },
+    });
+
+    // When
+    await clickPromptButton("Deny");
+
+    // Then
+    await expect(response).resolves.toBe("Deny");
+    expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("denied");
+  });
+
+  it("As a dotli user, I can allow a single notification", async () => {
+    // Given
+    const response =
+      createPromptPermission("myapp").devicePermission("Notifications");
+
+    // When
+    await clickPromptButton("Allow once");
+
+    // Then
+    await expect(response).resolves.toBe("AllowOnce");
+    expect(await getPermissionStatus("myapp", "Notifications")).toBe("ask");
+  });
+
+  it("As a dotli user, a camera prompt offers no one-time grant because granting reloads the app", async () => {
+    // When
+    const response = createPromptPermission("myapp").devicePermission("Camera");
+    await vi.waitFor(() => {
+      expect(document.querySelector(".signing-modal-footer")).not.toBeNull();
+    });
+
+    // Then
+    expect(promptButtonTexts()).toEqual(["Deny", "Allow"]);
+    await clickPromptButton("Deny");
+    await expect(response).resolves.toBe("Deny");
+  });
+
+  it("As a product, an existing grant is answered without being upgraded to a lasting one", async () => {
+    // Given: the status can reflect a pending one-time grant, so answering
+    // AllowAlways here would quietly make it permanent.
+    await setPermissionStatus("myapp", "ChainSubmit", "granted");
+
+    // When
+    const response = createPromptPermission("myapp").remotePermission({
+      permission: { tag: "ChainSubmit" },
+    });
+
+    // Then
+    await expect(response).resolves.toBe("AllowOnce");
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+  });
+
+  it("As a dotli user, a stored notification denial is answered without a prompt", async () => {
+    // Given
+    await setPermissionStatus("myapp", "Notifications", "denied");
+
+    // When
+    const response =
+      createPromptPermission("myapp").devicePermission("Notifications");
+
+    // Then
+    await expect(response).resolves.toBe("Deny");
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    expect(document.body.textContent).toContain(
+      "Notifications access is blocked. Use the permissions menu in the top bar to change this.",
+    );
+  });
+
+  it("As a dotli user, dismissing a notification prompt records no decision", async () => {
+    // Given
+    const response =
+      createPromptPermission("myapp").devicePermission("Notifications");
+    await vi.waitFor(() => {
+      expect(document.querySelector(".signing-modal-backdrop")).not.toBeNull();
+    });
+
+    // When
+    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+
+    // Then
+    await expect(response).rejects.toThrow("User dismissed permission dialog");
+    expect(await getPermissionStatus("myapp", "Notifications")).toBe("ask");
+  });
+});
+
+function promptButtonTexts(): string[] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      ".signing-modal-footer button",
+    ),
+    (button) => button.textContent ?? "",
+  );
+}
+
+async function clickPromptButton(text: string): Promise<void> {
+  await vi.waitFor(() => {
+    expect(promptButtonTexts()).toContain(text);
+  });
+  Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      ".signing-modal-footer button",
+    ),
+  )
+    .find((button) => button.textContent === text)
+    ?.click();
+}

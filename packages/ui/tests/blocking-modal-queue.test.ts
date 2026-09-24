@@ -85,12 +85,15 @@ describe("blocking modal queue", () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document
+      .querySelector<HTMLButtonElement>(".signing-btn-secondary")
+      ?.click();
 
-    // Then
+    // Then: the duplicate reads the saved grant instead of prompting, and
+    // answers without upgrading what it found.
     await expect(Promise.all([first, second])).resolves.toEqual([
       "AllowAlways",
-      "AllowAlways",
+      "AllowOnce",
     ]);
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     expect(status).toBe("Authorized");

@@ -22,7 +22,7 @@ const PRODUCT_IFRAME_TIMEOUT_MS = 20_000;
 
 /**
  * Background poller that dismisses the host's "Permission Request" modal
- * by clicking its "Allow" button as soon as one appears. Idempotent: a
+ * by clicking its lasting-grant button as soon as one appears. Idempotent: a
  * dismissed modal that re-opens later (different permission, different
  * test) is dismissed again. Returns a stop function that cancels the
  * loop on fixture teardown.
@@ -33,7 +33,12 @@ function startAutoAllow(page: Page): () => void {
   void (async () => {
     while (!stopped) {
       try {
-        const allow = page.getByRole("button", { name: "Allow", exact: true });
+        // Three-way prompts label the lasting grant "Always allow"; two-way
+        // ones keep "Allow". Neither picks the one-time grant, so a test's
+        // later operations are not prompted again.
+        const allow = page.getByRole("button", {
+          name: /^(Always allow|Allow)$/,
+        });
         const visible = await allow
           .first()
           .isVisible({ timeout: POLL_MS })

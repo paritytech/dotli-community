@@ -96,31 +96,47 @@ describe("prompt rate limiting across host callbacks", () => {
     });
   });
 
-  it("As a dotli integrator, the host counts permission and notification prompts against one shared budget", async () => {
+  it("As a dotli integrator, the host rate limits permission prompts per callback surface", async () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
+    const { createHostCallbacks } =
+      await import("@dotli/ui/host-callbacks/handlers");
+    const { permissions } = createHostCallbacks({ label: "myapp" });
+
+    // When: camera prompts exhaust the whole window budget.
+    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+      await permissions.devicePermission("Camera");
+    }
+
+    // Then: a different permission shares that budget and is rate limited
+    // instead of showing a 21st modal.
+    await expect(permissions.devicePermission("Notifications")).rejects.toThrow(
+      "Permission prompt rate limited",
+    );
+    expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(
+      MAX_PER_WINDOW,
+    );
+  });
+
+  it("As a dotli user, delivering notifications never spends the prompt budget", async () => {
+    // Given
     const { createHostCallbacks } =
       await import("@dotli/ui/host-callbacks/handlers");
     const { permissions, notifications } = createHostCallbacks({
       label: "myapp",
     });
-
-    // When: permission prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
       await permissions.devicePermission("Camera");
     }
 
-    // Then: a notification prompt shares that budget and is rate limited
-    // instead of showing a 21st modal.
-    await expect(
-      notifications.pushNotification({
-        text: "hello",
-        deeplink: undefined,
-        scheduledAt: undefined,
-      }),
-    ).rejects.toThrow("Permission prompt rate limited");
-    expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(
-      MAX_PER_WINDOW,
-    );
+    // When
+    const delivered = notifications.pushNotification({
+      text: "hello",
+      deeplink: undefined,
+      scheduledAt: undefined,
+    });
+
+    // Then
+    await expect(delivered).resolves.toEqual({ id: 7 });
   });
 });
