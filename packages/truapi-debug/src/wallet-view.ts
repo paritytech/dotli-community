@@ -8,6 +8,7 @@ import type {
   InspectorResource as Resource,
 } from "./panel.ts";
 import type { EventStore, StoredTruapiEvent } from "./event-store.ts";
+import { renderAllowanceSnapshot } from "./wallet-allowances.ts";
 
 type Wallet = NonNullable<SetupOptions["experimentalWallet"]>;
 
@@ -83,7 +84,35 @@ export function createWalletView(
   recoveryDetails.append(recoverySummary, recovery);
   const productDetails = document.createElement("section");
   productDetails.className = "td-wallet-product";
-  content.append(overview, recoveryDetails);
+  const allowances = document.createElement("section");
+  allowances.className = "td-wallet-allowances";
+  allowances.setAttribute("aria-labelledby", "td-wallet-allowances-title");
+  const allowancesTitle = document.createElement("h3");
+  allowancesTitle.id = "td-wallet-allowances-title";
+  allowancesTitle.textContent = "Usage & allowances";
+  const allowanceActions = document.createElement("div");
+  allowanceActions.className = "td-wallet-actions";
+  const refreshAllowances = button("Refresh");
+  refreshAllowances.setAttribute("aria-label", "Refresh usage and allowances");
+  refreshAllowances.disabled = true;
+  allowanceActions.append(refreshAllowances);
+  const allowanceStatus = paragraph(
+    "Connect and verify the experimental wallet to inspect live allowances.",
+  );
+  allowanceStatus.className = "td-wallet-status";
+  allowanceStatus.setAttribute("role", "status");
+  const allowanceResults = document.createElement("div");
+  allowanceResults.className = "td-wallet-allowance-results";
+  allowances.append(
+    allowancesTitle,
+    paragraph(
+      "Read-only current snapshot, not activity history. Refreshing never allocates or renews resources. Action costs and spending attribution are not available.",
+    ),
+    allowanceActions,
+    allowanceStatus,
+    allowanceResults,
+  );
+  content.append(overview, allowances, recoveryDetails);
 
   let opened = false;
   let disposed = false;
@@ -94,12 +123,118 @@ export function createWalletView(
   let minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
   let actionPending = false;
   let renderFrame = 0;
+  let productResolved = false;
+  let allowanceGeneration = 0;
+  let allowancePending: Promise<void> | undefined;
+  let allowanceNeedsLoad = true;
+  let allowanceReloadRequested = false;
   const outcomes = new Map<string, { status: string; at: number }>();
   const resourceButtons: HTMLButtonElement[] = [];
   let onVisibilityChange = (): void => {
     /* The wallet controls attach their sensitive-state cleanup after mounting. */
   };
   const isDisposed = (): boolean => disposed;
+
+  function invalidateAllowances(): void {
+    allowanceGeneration++;
+    allowancePending = undefined;
+    allowanceNeedsLoad = true;
+    allowanceReloadRequested = false;
+    allowanceResults.replaceChildren();
+    allowanceResults.setAttribute("aria-busy", "false");
+    allowanceStatus.textContent =
+      identity === undefined
+        ? "Connect and verify the experimental wallet to inspect live allowances."
+        : "Waiting for the current product scope.";
+    refreshAllowances.disabled = !opened || identity === undefined;
+  }
+
+  function loadAllowances(afterAllocation = false): Promise<void> {
+    if (!opened || disposed || identity === undefined || !productResolved) {
+      return Promise.resolve();
+    }
+    if (allowancePending !== undefined) {
+      allowanceReloadRequested ||= afterAllocation;
+      return allowancePending;
+    }
+    const generation = allowanceGeneration;
+    const selectedIdentity = identity;
+    const selectedProductId = product?.id;
+    const isCurrent = (): boolean =>
+      !disposed &&
+      opened &&
+      generation === allowanceGeneration &&
+      identity?.identityAccountId === selectedIdentity.identityAccountId &&
+      identity.network === selectedIdentity.network &&
+      product?.id === selectedProductId;
+    refreshAllowances.disabled = true;
+    allowanceResults.setAttribute("aria-busy", "true");
+    allowanceStatus.textContent = "Reading finalized chain state…";
+    allowanceNeedsLoad = false;
+    allowancePending = (async (): Promise<void> => {
+      try {
+        // Set the shared pending promise before invoking even a synchronously failing provider.
+        await Promise.resolve();
+        if (!isCurrent()) {
+          return;
+        }
+        const snapshot = await wallet.getAllowanceSnapshot();
+        if (!isCurrent() || allowanceReloadRequested) {
+          return;
+        }
+        if (
+          snapshot.identityAccountId !== selectedIdentity.identityAccountId ||
+          (selectedProductId === undefined
+            ? snapshot.productIds.length !== 0
+            : snapshot.productIds.length !== 1 ||
+              snapshot.productIds[0] !== selectedProductId)
+        ) {
+          throw new Error(
+            "Allowance snapshot does not match the current wallet and product.",
+          );
+        }
+        renderAllowanceSnapshot(allowanceResults, snapshot);
+        const unavailable = [
+          snapshot.statementStore,
+          snapshot.pgasClaims,
+          snapshot.pgasBalances,
+          snapshot.bulletinClaims,
+          snapshot.bulletinQuotas,
+        ].filter((section) => section.status === "unavailable").length;
+        allowanceStatus.textContent =
+          unavailable === 0
+            ? "Snapshot loaded. Each section shows its finalized source block and chain time."
+            : unavailable === 5
+              ? "All data sources are unavailable. No balance or capacity is inferred; each section states why."
+              : `${String(unavailable)} of 5 data sources unavailable. Available sections are shown below.`;
+      } catch {
+        if (isCurrent()) {
+          allowanceResults.replaceChildren();
+          allowanceStatus.textContent =
+            "Live allowances are unavailable. No balance or capacity is inferred. Refresh to try again.";
+        }
+      } finally {
+        if (isCurrent()) {
+          allowancePending = undefined;
+          allowanceResults.setAttribute("aria-busy", "false");
+          refreshAllowances.disabled = false;
+          if (allowanceReloadRequested) {
+            allowanceReloadRequested = false;
+            void loadAllowances();
+          }
+        }
+      }
+    })();
+    return allowancePending;
+  }
+
+  refreshAllowances.addEventListener("click", () => {
+    if (!productResolved) {
+      void loadProduct();
+    } else {
+      void loadAllowances();
+    }
+  });
 
   function setVisible(next: boolean): void {
     if (disposed || opened === next) {
@@ -109,9 +244,13 @@ export function createWalletView(
     entry.setAttribute("aria-expanded", String(opened));
     if (!opened) {
       recoveryDetails.open = false;
+      productGeneration++;
+      invalidateAllowances();
     }
     onVisibilityChange();
     if (opened) {
+      productResolved = false;
+      invalidateAllowances();
       void loadProduct();
     }
   }
@@ -271,11 +410,11 @@ export function createWalletView(
       ),
     );
     const allowancesTitle = document.createElement("h3");
-    allowancesTitle.textContent = "Allowances";
+    allowancesTitle.textContent = "Explicit allocation controls";
     productDetails.append(
       allowancesTitle,
       paragraph(
-        "The native host does not expose remaining quota or balance counters. Results below are last observed allocation outcomes, not current balances. Amount is host-determined; fees are not exposed. Nothing is replenished automatically.",
+        "These are last observed request outcomes, not balances or spending history. Consult Usage & allowances for live chain state. Amount is host-determined; fees are not exposed. Nothing is replenished automatically.",
       ),
     );
     const observed = observedResources();
@@ -288,7 +427,7 @@ export function createWalletView(
         paragraph(
           outcome === undefined
             ? "No allocation outcome observed in this capture."
-            : `Last observed: ${outcome.status} · ${new Date(outcome.at).toLocaleString()}. Remaining quota unknown.`,
+            : `Last observed request: ${outcome.status} · ${new Date(outcome.at).toLocaleString()}. See the live snapshot for current capacity.`,
         ),
       );
       const request = button(
@@ -348,7 +487,7 @@ export function createWalletView(
     const selectedGeneration = selectionGeneration;
     if (
       !window.confirm(
-        `Request ${resource.label}?\n\nProduct: ${selectedProduct.name} (${selectedProduct.id})\nIdentity: ${selectedIdentity.identityAccountId}\nNetwork: ${selectedIdentity.network}\n\nAmount is determined by the native host; fees and remaining quota are not exposed. The host must review this explicit request. No automatic renewal.`,
+        `Request ${resource.label}?\n\nProduct: ${selectedProduct.name} (${selectedProduct.id})\nIdentity: ${selectedIdentity.identityAccountId}\nNetwork: ${selectedIdentity.network}\n\nAmount is determined by the native host; fees are not exposed. Live allowance snapshots are not a spendability guarantee. The host must review this explicit request. No automatic renewal.`,
       )
     ) {
       return;
@@ -369,6 +508,9 @@ export function createWalletView(
         return;
       }
       recordOutcome(resource.id, result);
+      if (result === "Allocated") {
+        void loadAllowances(true);
+      }
     } catch {
       // Native errors may carry arbitrary details. Never retain/display them as activity.
       if (
@@ -392,6 +534,7 @@ export function createWalletView(
     const generation = ++productGeneration;
     if (identity === undefined) {
       product = null;
+      productResolved = false;
       renderProduct();
       return;
     }
@@ -402,14 +545,24 @@ export function createWalletView(
       }
       if (product?.id !== result?.id) {
         outcomes.clear();
+        selectionGeneration++;
+        invalidateAllowances();
       }
       product = result;
+      productResolved = true;
       renderProduct();
+      if (allowanceNeedsLoad) {
+        void loadAllowances();
+      }
     } catch {
       if (disposed || generation !== productGeneration) {
         return;
       }
       product = null;
+      productResolved = false;
+      invalidateAllowances();
+      allowanceStatus.textContent =
+        "Current product scope is unavailable. Refresh to retry; no product account is inferred.";
       productDetails.replaceChildren(
         paragraph(
           "Current product information is unavailable from the native host. No account or allowance is inferred.",
@@ -422,6 +575,8 @@ export function createWalletView(
     productGeneration++;
     selectionGeneration++;
     product = null;
+    productResolved = false;
+    invalidateAllowances();
     minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
     outcomes.clear();
     renderProduct();
@@ -492,21 +647,26 @@ export function createWalletView(
       entry.setAttribute("aria-label", entry.title);
     },
     setIdentity(next: Identity | undefined): void {
-      if (
+      const changed =
         next?.identityAccountId !== identity?.identityAccountId ||
-        next?.network !== identity?.network
-      ) {
+        next?.network !== identity?.network;
+      if (changed) {
         minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
         outcomes.clear();
         productGeneration++;
         selectionGeneration++;
         product = null;
+        productResolved = false;
       }
       identity = next;
+      if (changed) {
+        invalidateAllowances();
+      }
       void loadProduct();
     },
     dispose(): void {
       disposed = true;
+      invalidateAllowances();
       onVisibilityChange();
       productGeneration++;
       unsubscribe();

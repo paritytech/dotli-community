@@ -6,6 +6,8 @@ import {
   type LocalIdentityProgress,
 } from "@dotli/truapi-debug/panel";
 import { dispatchAuthState } from "@dotli/ui/host-callbacks/AuthState";
+import type { WalletAllowanceSnapshot } from "@parity/truapi-host/web";
+import { renderAllowanceSnapshot } from "@dotli/truapi-debug/wallet-allowances";
 
 type Wallet = NonNullable<SetupOptions["experimentalWallet"]>;
 const cached: InspectorIdentity = {
@@ -38,6 +40,9 @@ beforeEach(() => {
     getCachedIdentity: () => cached,
     getIdentity: vi.fn(),
     getProduct: async () => null,
+    getAllowanceSnapshot: async () => {
+      throw new Error("Allowance inspection is unavailable in this scenario");
+    },
     describeResource: () => null,
     requestResource: unexpectedOperation,
     refreshUsername: async () => cached,
@@ -354,5 +359,93 @@ describe("wallet claim progress", () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(claim.status.outerHTML).toBe(before);
     expect(document.querySelector(".td-wallet-entry")).toBeNull();
+  });
+});
+
+function unavailableSnapshot(reason: string): WalletAllowanceSnapshot {
+  const unavailable = { status: "unavailable" as const, reason };
+  return {
+    schemaVersion: 1,
+    identityAccountId: cached.identityAccountId,
+    networkSuffix: "paseo",
+    productIds: [],
+    statementStore: unavailable,
+    pgasClaims: unavailable,
+    pgasBalances: unavailable,
+    bulletinClaims: unavailable,
+    bulletinQuotas: unavailable,
+  };
+}
+
+describe("wallet allowance inspection", () => {
+  it("preserves integer precision while independently reporting unavailable resources", () => {
+    const snapshot = unavailableSnapshot("Claim capacity cannot be read");
+    snapshot.productIds = ["example.paseo"];
+    snapshot.pgasBalances = {
+      status: "available",
+      observation: {
+        genesisHash: `0x${"01".repeat(32)}`,
+        blockHash: `0x${"02".repeat(32)}`,
+        blockNumber: 42,
+        specVersion: 1,
+        chainTimestamp: 1_700_000_000,
+      },
+      value: {
+        assetId: "1",
+        decimals: null,
+        symbol: null,
+        accounts: [
+          {
+            productId: "example.paseo",
+            accountId: cached.identityAccountId,
+            derivationIndex: 0,
+            balance: "18446744073709551617",
+          },
+        ],
+      },
+    };
+    renderAllowanceSnapshot(document.body, snapshot);
+    expect(document.body.textContent).toContain("18,446,744,073,709,551,617");
+    expect(document.body.textContent).toContain(
+      "Claim capacity cannot be read",
+    );
+  });
+
+  it("does not replace a reopened wallet snapshot with a late closed-view response", async () => {
+    const oldRequest = Promise.withResolvers<WalletAllowanceSnapshot>();
+    const currentRequest = Promise.withResolvers<WalletAllowanceSnapshot>();
+    wallet.getIdentity = async () => cached;
+    const load = vi
+      .fn()
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(currentRequest.promise);
+    wallet.getAllowanceSnapshot = load;
+    dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
+    await vi.waitFor(() =>
+      expect(button("Check username").disabled).toBe(false),
+    );
+    const entry =
+      document.querySelector<HTMLButtonElement>(".td-wallet-entry")!;
+    entry.click();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    document
+      .querySelector<HTMLButtonElement>('.td-tab[data-view="list"]')!
+      .click();
+    entry.click();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    currentRequest.resolve(unavailableSnapshot("Current snapshot"));
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector(".td-wallet-allowance-results")?.textContent,
+      ).toContain("Current snapshot"),
+    );
+    oldRequest.resolve(unavailableSnapshot("Stale snapshot"));
+    await oldRequest.promise;
+    expect(
+      document.querySelector(".td-wallet-allowance-results")?.textContent,
+    ).toContain("Current snapshot");
+    expect(
+      document.querySelector(".td-wallet-allowance-results")?.textContent,
+    ).not.toContain("Stale snapshot");
   });
 });

@@ -863,6 +863,21 @@ function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
 
 // dist/web/create-worker-host-runtime.js
 init_error();
+
+// dist/wallet-allowances.js
+function validateAllowanceProductIds(value) {
+  if (!Array.isArray(value) || value.length > 32 || new Set(value).size !== value.length) {
+    throw new Error("allowance inspection requires at most 32 unique nonempty product IDs");
+  }
+  for (const id of value) {
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw new Error("allowance inspection requires nonempty product IDs");
+    }
+  }
+  return [...value];
+}
+
+// dist/web/create-worker-host-runtime.js
 var import_meta = {};
 function debugLoggingEnabled(state) {
   return state.logLevel === "debug" || state.logLevel === "trace";
@@ -875,6 +890,7 @@ var nextDeviceEncryptionKeyRequestId = 0;
 var nextProductSubtreePublicKeyRequestId = 0;
 var nextSessionActivationRequestId = 0;
 var nextLocalIdentityRequestId = 0;
+var nextAllowanceSnapshotRequestId = 0;
 var nextActionRequestId = 0;
 var nextRenderId = 0;
 function encodePermissionAuthorizationRequest(request) {
@@ -1143,6 +1159,7 @@ function rejectPendingRuntimeRequests(state, error) {
   rejectAll(state.pendingDisconnects, error);
   rejectAll(state.pendingSessionActivations, error);
   rejectAll(state.pendingLocalIdentities, error);
+  rejectAll(state.pendingAllowanceSnapshots, error);
   rejectAll(state.pendingPermissionAuthorizationStatuses, error);
   rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
   rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
@@ -1175,24 +1192,87 @@ function sendWorkerRequest(state, pending, nextId, disposedFallback, buildMessag
     }
   });
 }
-function sendSessionActivationRequest(state, buildMessage) {
+function sendSessionActivationRequest(state, buildMessage, changesIdentity = true) {
   if (state.disposed) {
     return Promise.reject(state.closedError ?? new Error("runtime disposed"));
   }
+  if (changesIdentity)
+    invalidateAllowanceIdentity(state);
   return sendWorkerRequest(state, state.pendingSessionActivations, () => ++nextSessionActivationRequestId, void 0, buildMessage);
 }
 function sendLocalIdentityRequest(state, buildMessage, onProgress) {
   if (state.disposed) {
     return Promise.reject(state.closedError ?? new Error("runtime disposed"));
   }
+  const generation = state.identityGeneration;
   const { promise, resolve, reject } = Promise.withResolvers();
   const requestId = ++nextLocalIdentityRequestId;
-  state.pendingLocalIdentities.set(requestId, { resolve, reject, onProgress });
+  state.pendingLocalIdentities.set(requestId, {
+    resolve(identity) {
+      if (generation !== state.identityGeneration || state.disposePending) {
+        reject(new Error("local identity activation changed"));
+        return;
+      }
+      state.identityAccountId = identity.identityAccountId;
+      resolve(identity);
+    },
+    reject,
+    onProgress
+  });
   try {
     state.worker.postMessage(buildMessage(requestId));
   } catch (error) {
     state.pendingLocalIdentities.delete(requestId);
     reject(error);
+  }
+  return promise;
+}
+function invalidateAllowanceIdentity(state) {
+  state.identityGeneration++;
+  state.identityAccountId = null;
+  rejectAll(state.pendingAllowanceSnapshots, new Error("local identity activation changed"));
+}
+async function getWalletAllowanceSnapshot(state, input) {
+  if (state.disposed || state.disposePending) {
+    throw state.closedError ?? new Error("runtime disposed");
+  }
+  if (state.role !== "signing" || state.pendingSessionActivations.size > 0 || state.pendingDisconnects.size > 0) {
+    throw new Error("allowance inspection requires a current local signing identity");
+  }
+  const productIds = validateAllowanceProductIds(input);
+  const accountId = state.identityAccountId;
+  const generation = state.identityGeneration;
+  const requestId = ++nextAllowanceSnapshotRequestId;
+  const { promise, resolve, reject } = Promise.withResolvers();
+  const timeout = setTimeout(() => {
+    state.pendingAllowanceSnapshots.delete(requestId);
+    reject(new Error("wallet allowance inspection timed out after 30000ms"));
+  }, 3e4);
+  state.pendingAllowanceSnapshots.set(requestId, {
+    resolve(snapshot) {
+      clearTimeout(timeout);
+      if (generation !== state.identityGeneration || snapshot?.schemaVersion !== 1 || accountId !== null && snapshot.identityAccountId !== accountId || snapshot.networkSuffix !== state.networkSuffix) {
+        reject(new Error("wallet allowance snapshot does not match the current identity"));
+        return;
+      }
+      resolve(snapshot);
+    },
+    reject(error) {
+      clearTimeout(timeout);
+      reject(error);
+    }
+  });
+  try {
+    state.worker.postMessage({
+      kind: "getWalletAllowanceSnapshot",
+      requestId,
+      productIds
+    });
+  } catch (error) {
+    settlePending(state.pendingAllowanceSnapshots, requestId, {
+      ok: false,
+      error: errorMessage(error)
+    });
   }
   return promise;
 }
@@ -1262,6 +1342,11 @@ function createWebWorkerHostRuntime(worker, host, options) {
   return new Promise((resolve, reject) => {
     const state = {
       worker,
+      role: options.role ?? "pairing",
+      networkSuffix: "networkSuffix" in options.hostConfig ? options.hostConfig.networkSuffix : void 0,
+      identityAccountId: null,
+      identityGeneration: 0,
+      pendingAllowanceSnapshots: /* @__PURE__ */ new Map(),
       rawCallbacks: callbacks,
       cores: /* @__PURE__ */ new Map(),
       pendingCores: /* @__PURE__ */ new Map(),
@@ -1344,6 +1429,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
           break;
         case "localIdentityResponse":
           settlePending(state.pendingLocalIdentities, msg.requestId, msg.ok ? { ok: true, value: msg.identity } : { ok: false, error: msg.error });
+          break;
+        case "walletAllowanceSnapshotResponse":
+          settlePending(state.pendingAllowanceSnapshots, msg.requestId, msg.ok ? { ok: true, value: msg.snapshot } : { ok: false, error: msg.error });
           break;
         case "permissionAuthorizationStatusResponse":
           handlePermissionAuthorizationStatusResponse(state, msg);
@@ -1569,6 +1657,7 @@ function buildRuntime(state) {
       });
     },
     disconnectSession() {
+      invalidateAllowanceIdentity(state);
       return sendWorkerRequest(state, state.pendingDisconnects, () => ++nextDisconnectRequestId, void 0, (requestId) => ({ kind: "disconnectSession", requestId }));
     },
     cancelPairing() {
@@ -1649,7 +1738,7 @@ function buildRuntime(state) {
         kind: "setGrantAllowancesUnchecked",
         requestId,
         granted
-      }));
+      }), false);
     },
     resetSessionState() {
       return sendSessionActivationRequest(state, (requestId) => ({
@@ -1670,6 +1759,9 @@ function buildRuntime(state) {
         kind: "refreshLocalIdentity",
         requestId
       }));
+    },
+    getWalletAllowanceSnapshot(productIds) {
+      return getWalletAllowanceSnapshot(state, productIds);
     },
     registerLocalLiteUsername(baseUsername, identityBackendBaseUrl, onProgress) {
       return sendLocalIdentityRequest(state, (requestId) => ({
@@ -1714,6 +1806,7 @@ function buildRuntime(state) {
       });
     },
     dispose() {
+      invalidateAllowanceIdentity(state);
       devGlobalTargets.delete(runtime);
       if (state.openOperations.size > 0) {
         state.disposePending = true;

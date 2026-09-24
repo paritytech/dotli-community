@@ -11,6 +11,7 @@
 // document, keyed by id.
 
 import { escapeHtml } from "@dotli/shared/html";
+import type { WalletAllowanceSnapshot } from "@parity/truapi-host/web";
 import {
   buildResolution,
   buildResolutionContainer,
@@ -148,6 +149,7 @@ export interface SetupOptions {
     getCachedIdentity(): InspectorIdentity | undefined;
     getIdentity(): Promise<InspectorIdentity>;
     getProduct(): Promise<InspectorProduct | null>;
+    getAllowanceSnapshot(): Promise<WalletAllowanceSnapshot>;
     describeResource(resource: unknown): InspectorResource | null;
     requestResource(
       productId: string,

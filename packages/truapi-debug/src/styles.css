@@ -342,6 +342,58 @@
   border-top: 1px solid #1f1f1f;
   padding-top: 8px;
 }
+.td-wallet-allowances,
+.td-wallet-allowance-results,
+.td-wallet-allowance-group,
+.td-wallet-allowance-section,
+.td-wallet-allowance-pool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.td-wallet-allowances {
+  margin-top: 16px;
+  border-top: 1px solid #1f1f1f;
+  padding-top: 12px;
+}
+.td-wallet-allowance-group {
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 12px;
+}
+.td-wallet-allowance-group h4,
+.td-wallet-allowance-group h5,
+.td-wallet-allowance-group h6 {
+  margin: 0;
+  color: #e5e5e5;
+  font:
+    600 12px system-ui,
+    sans-serif;
+}
+.td-wallet-allowance-group h4 {
+  font-size: 13px;
+}
+.td-wallet-allowance-section + .td-wallet-allowance-section {
+  border-top: 1px solid #333;
+  padding-top: 12px;
+}
+.td-wallet-allowance-pool {
+  border-left: 2px solid #525252;
+  padding-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.td-wallet-allowance-source {
+  color: #a3a3a3;
+  font-size: 11px;
+}
+.td-wallet-allowance-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
 .td-wallet-view .td-btn {
   white-space: normal;
   text-align: start;

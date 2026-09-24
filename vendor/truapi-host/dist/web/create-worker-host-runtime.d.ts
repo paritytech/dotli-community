@@ -1,5 +1,6 @@
 import type { ProductRuntimeConfig, LogLevel, PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductExecutionKind, RequiredHostCallbacks, TrUApiProductProvider, WorkerDemandChange } from "../index.js";
 import type { HostRole, LocalIdentity, LocalIdentityProgress } from "../worker-protocol.js";
+import { type WalletAllowanceSnapshot } from "../wallet-allowances.js";
 export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "executionKind">;
 export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
     /** Bare dotNS network suffix (`dot`, `paseo`, or `testnet`). */
@@ -83,6 +84,8 @@ export interface WorkerSigningHostRuntime extends Omit<WorkerPairingHostRuntime,
     activateLocalSessionWithIdentity(secret: Uint8Array, liteUsername?: string): Promise<void>;
     /** Read dotNS ownership and install verified metadata into the native session. */
     refreshLocalIdentity(): Promise<LocalIdentity>;
+    /** Read-only wallet-wide inspection bound to the native local activation. */
+    getWalletAllowanceSnapshot(productIds: string[]): Promise<WalletAllowanceSnapshot>;
     /** Complete native UID auth/proofs and wait for on-chain ownership confirmation. */
     registerLocalLiteUsername(baseUsername: string, identityBackendBaseUrl: string, onProgress?: (progress: LocalIdentityProgress) => void): Promise<LocalIdentity>;
 }
