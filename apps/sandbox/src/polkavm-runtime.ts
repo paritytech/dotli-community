@@ -3668,6 +3668,8 @@ async function startPolkaVmApplication(
           }
           webGpu?.setBackgrounded(false);
           setInputPaused(false);
+          // Resize events can arrive while the foreground acknowledgement is pending.
+          sendSurfaceMetrics();
           if (pendingPointerCapture !== null) {
             setPointerCaptureRequest(pendingPointerCapture);
             pendingPointerCapture = null;
