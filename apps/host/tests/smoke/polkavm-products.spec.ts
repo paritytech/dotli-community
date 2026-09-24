@@ -12,9 +12,7 @@ interface ProductSmoke {
   audio: boolean;
   nonzeroAudio: boolean;
   interaction?:
-    | "gameplay-pointer-capture"
-    | "pointer-motion"
-    | "host-frame-handshake";
+    "gameplay-pointer-capture" | "pointer-motion" | "host-frame-handshake";
 }
 
 const products: readonly ProductSmoke[] = [

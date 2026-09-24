@@ -17,8 +17,8 @@ export function createResultStream<T>(
       let cleanup: (() => void) | null = null;
       let cleanedUp = false;
       let resolve:
-        | ((result: IteratorResult<Result<T, GenericError>>) => void)
-        | null = null;
+        ((result: IteratorResult<Result<T, GenericError>>) => void) | null =
+        null;
 
       const complete = (): IteratorResult<Result<T, GenericError>> => ({
         done: true,

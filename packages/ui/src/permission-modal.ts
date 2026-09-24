@@ -18,7 +18,8 @@ import { blockingModalAbortError } from "./blocking-modal-queue";
 // StatementSubmit). `OpenUrl` is auto-granted at the container level and never
 // reaches this modal.
 // Returns an explicit decision so callers can distinguish "Deny" from
-// dismissing the dialog without storing a denial.
+// dismissing the dialog without storing a denial. With `allowOnce`, the prompt
+// also offers a one-time grant and highlights it over "Always allow".
 //
 // DOM structure follows the signing modal pattern (signing.css).
 
@@ -98,7 +99,13 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
 };
 
-export type PermissionPromptDecision = "granted" | "denied" | "dismissed";
+export type PermissionPromptDecision =
+  "granted" | "granted-once" | "denied" | "dismissed";
+
+export interface PermissionRequestModalOptions {
+  /** Offer "Allow once" alongside "Always allow" and "Deny". */
+  allowOnce?: boolean;
+}
 
 /**
  * Show a permission request modal.
@@ -107,6 +114,7 @@ export function showPermissionRequestModal(
   label: string,
   permission: EnforceablePermissionName,
   signal?: AbortSignal,
+  options: PermissionRequestModalOptions = {},
 ): Promise<PermissionPromptDecision> {
   return new Promise((resolve, reject) => {
     const backdrop = document.createElement("div");
@@ -179,10 +187,23 @@ export function showPermissionRequestModal(
     denyBtn.textContent = "Deny";
     footer.appendChild(denyBtn);
 
-    const allowBtn = document.createElement("button");
-    allowBtn.className = "signing-btn-sign";
-    allowBtn.textContent = "Allow";
-    footer.appendChild(allowBtn);
+    const allowOnce = options.allowOnce === true;
+    const alwaysBtn = document.createElement("button");
+    alwaysBtn.className = allowOnce
+      ? "signing-btn-secondary"
+      : "signing-btn-sign";
+    alwaysBtn.textContent = allowOnce ? "Always allow" : "Allow";
+    footer.appendChild(alwaysBtn);
+
+    if (allowOnce) {
+      const onceBtn = document.createElement("button");
+      onceBtn.className = "signing-btn-sign";
+      onceBtn.textContent = "Allow once";
+      onceBtn.addEventListener("click", () => {
+        finish("granted-once");
+      });
+      footer.appendChild(onceBtn);
+    }
 
     modal.appendChild(footer);
     backdrop.appendChild(modal);
@@ -222,7 +243,7 @@ export function showPermissionRequestModal(
       finish("denied");
     });
 
-    allowBtn.addEventListener("click", () => {
+    alwaysBtn.addEventListener("click", () => {
       finish("granted");
     });
 

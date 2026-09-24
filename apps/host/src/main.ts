@@ -389,12 +389,10 @@ function bindTopbarAutoHide(): void {
 function setShieldState(state: ShieldState): void {
   setVerificationShieldState(state);
   shieldVerified = true;
-  if (
-    !(
-      DEBUG &&
-      document.documentElement.classList.contains("experimental-wallet-active")
-    )
-  ) {
+  if (!(
+    DEBUG &&
+    document.documentElement.classList.contains("experimental-wallet-active")
+  )) {
     armTopbarAutoHide();
   }
 }
@@ -754,9 +752,7 @@ function listenForSandboxDebugMessages(
 ): void {
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data as
-      | { type?: unknown; event?: unknown; metrics?: unknown }
-      | null
-      | undefined;
+      { type?: unknown; event?: unknown; metrics?: unknown } | null | undefined;
     if (data === null || data === undefined || typeof data !== "object") {
       return;
     }
@@ -778,9 +774,7 @@ function listenForSandboxDebugMessages(
       return;
     }
     const payload = data.event as
-      | (DotliDebugEvent & { layer?: unknown })
-      | null
-      | undefined;
+      (DotliDebugEvent & { layer?: unknown }) | null | undefined;
     if (
       payload === null ||
       payload === undefined ||
@@ -1447,8 +1441,7 @@ async function main(): Promise<void> {
   advancePhase(0);
   const network = getNetwork();
   let appManifestPromise:
-    | Promise<ManifestResult<ExecutableManifest>>
-    | undefined;
+    Promise<ManifestResult<ExecutableManifest>> | undefined;
   const appManifest = (): Promise<ManifestResult<ExecutableManifest>> => {
     if (appManifestPromise === undefined) {
       appManifestPromise = resolveAppExecutableManifest(label, chainBackend);

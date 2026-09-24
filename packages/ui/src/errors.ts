@@ -16,7 +16,6 @@ export const ERRORS = {
   IDENTITY_DISCLOSURE_DISMISSED: "User dismissed identity disclosure dialog",
   PERMISSION_DIALOG_DISMISSED: "User dismissed permission dialog",
   PERMISSION_PROMPT_RATE_LIMITED: "Permission prompt rate limited",
-  NOTIFICATIONS_PERMISSION_DENIED: "Notifications permission denied",
   SCHEDULE_LIMIT_REACHED: "ScheduleLimitReached",
   STORAGE_READ_FAILED: "Failed to read from storage",
   STORAGE_WRITE_FAILED: "Failed to write to storage",

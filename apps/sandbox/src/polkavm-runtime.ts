@@ -3315,8 +3315,7 @@ async function startPolkaVmApplication(
   let usesMotion = false;
   let usesPointerCapture = false;
   let activeMediatedInput:
-    | { handle: number; mediaType: string; maxBytes: number }
-    | undefined;
+    { handle: number; mediaType: string; maxBytes: number } | undefined;
   let relayedMotionSequence = 0;
   let workerReady = false;
   let keyboardInsets: PolkaVmViewInsets = {

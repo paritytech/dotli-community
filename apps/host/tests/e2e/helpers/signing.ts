@@ -113,6 +113,10 @@ async function clickHostDialogs(
         );
         await page.waitForTimeout(preClickDelayMs);
       }
+      // The fixture's auto-allow poller clicks lasting-grant buttons too, and
+      // can close this modal during the pause. An unbounded click would then
+      // wait for a button that never returns and never reach the next dialog
+      // (e.g. "Sign"), so bound it and let the next pass move on.
       console.log(`[signed] dialog "${name}" — clicking`);
       // The paired fixture can approve the same permission and remove this
       // button first. Bound the action so cancellation can finish promptly.

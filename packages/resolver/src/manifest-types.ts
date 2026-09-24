@@ -16,8 +16,7 @@
 export type IconFormat = "jpeg" | "png";
 
 export type AppVersion =
-  | readonly [number, number, number]
-  | readonly [number, number, number, string];
+  readonly [number, number, number] | readonly [number, number, number, string];
 
 export interface FileInputHandler {
   id: string;
