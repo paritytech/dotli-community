@@ -2,9 +2,18 @@
 // the product reply, so a slow modal blocks the product just as long as the
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
+//
+// "Always allow" and "Deny" are durable, matching the grant the topbar
+// permissions menu shows and resets. "Allow once" is kept by the core for the
+// current execution and consumed by the next operation that needs it, so it
+// is offered only where the core is that gate: the submit permissions and
+// Notifications. A grant gated by the iframe `allow` attribute reloads the
+// product into a new execution, which would drop a one-time grant.
+// Auto-grants answer `AllowOnce` so the core records nothing the user never
+// saw.
 
 import { withActiveTld } from "@dotli/config/network";
-import type { Permissions } from "@parity/truapi-host";
+import type { PermissionDecision, Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
   getPermissionStatus,
@@ -43,62 +52,49 @@ function gatedRemotePermissionName(
 export function createPromptPermission(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
-  // One budget per host callback surface: `handlers.ts` passes the same
-  // limiter here and to the notification adapters so a product cannot double
-  // its prompt budget by alternating prompt kinds.
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
   const devicePermission: Permissions["devicePermission"] = async (tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
-      return { granted: true };
+      return "AllowOnce";
     }
-    return {
-      granted: await decidePromptPermission(
-        label,
-        tag,
-        {
-          kind: "Device",
-          limiter,
-          reloadOnGrant: isDevicePermission(tag),
-        },
-        modalScope,
-      ),
-    };
+    return decidePromptPermission(
+      label,
+      tag,
+      { kind: "Device", limiter },
+      modalScope,
+    );
   };
 
   const remotePermission: Permissions["remotePermission"] = async (request) => {
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
-      return { granted: true };
+      return "AllowOnce";
     }
-    return {
-      granted: await decidePromptPermission(
-        label,
-        name,
-        {
-          kind: "Remote",
-          limiter,
-        },
-        modalScope,
-      ),
-    };
+    return decidePromptPermission(
+      label,
+      name,
+      { kind: "Remote", limiter },
+      modalScope,
+    );
   };
 
   return { devicePermission, remotePermission };
 }
 
-export async function decidePromptPermission(
+interface PromptOptions {
+  kind: "Device" | "Remote";
+  limiter: { allow: () => boolean };
+}
+
+function decidePromptPermission(
   label: string,
   name: EnforceablePermissionName,
-  options: {
-    kind: "Device" | "Remote";
-    limiter: { allow: () => boolean };
-    reloadOnGrant?: boolean;
-  },
-  modalScope: BlockingModalScope = createBlockingModalScope(),
-): Promise<boolean> {
+  options: PromptOptions,
+  modalScope: BlockingModalScope,
+): Promise<PermissionDecision> {
   return modalScope.enqueue((signal) =>
     decidePromptPermissionWhenActive(label, name, options, signal),
   );
@@ -107,18 +103,19 @@ export async function decidePromptPermission(
 async function decidePromptPermissionWhenActive(
   label: string,
   name: EnforceablePermissionName,
-  options: {
-    kind: "Device" | "Remote";
-    limiter: { allow: () => boolean };
-    reloadOnGrant?: boolean;
-  },
+  options: PromptOptions,
   signal: AbortSignal,
-): Promise<boolean> {
-  const { kind, limiter, reloadOnGrant = false } = options;
+): Promise<PermissionDecision> {
+  const { kind, limiter } = options;
+  // Gated by the iframe `allow` attribute: a grant reloads the product.
+  const gatedByIframe = isDevicePermission(name);
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === "granted") {
-    return true;
+    // The status also reflects a pending one-time grant, so answering
+    // AllowAlways here would quietly make it permanent. AllowOnce leaves a
+    // saved grant untouched.
+    return "AllowOnce";
   }
   if (status === "denied") {
     showNotification({
@@ -130,27 +127,29 @@ async function decidePromptPermissionWhenActive(
       dismissMs: 6000,
       browserNotification: false,
     });
-    return false;
+    return "Deny";
   }
   // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
     throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
   }
-  const decision = await showPermissionRequestModal(label, name, signal);
+  const decision = await showPermissionRequestModal(label, name, signal, {
+    allowOnce: !gatedByIframe,
+  });
   throwIfAborted(signal);
   if (decision === "dismissed") {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
   if (decision === "denied") {
-    throwIfAborted(signal);
     await setPermissionStatus(label, name, "denied");
     throwIfAborted(signal);
-    return false;
+    return "Deny";
   }
-  throwIfAborted(signal);
-  await setPermissionStatus(label, name, "granted");
-  throwIfAborted(signal);
-  if (kind === "Device" && reloadOnGrant) {
+  if (decision === "granted") {
+    await setPermissionStatus(label, name, "granted");
+    throwIfAborted(signal);
+  }
+  if (gatedByIframe) {
     // Device permissions are also gated by the iframe `allow` attribute,
     // which is fixed at iframe load time. Reload so the next attempt sees
     // the updated attribute. Defer to the next tick so the prompt response
@@ -165,13 +164,12 @@ async function decidePromptPermissionWhenActive(
         }),
       );
     }, 0);
-    return true;
+  } else {
+    // No browser-level gate, so the grant takes effect as is. The event keeps
+    // the topbar in sync.
+    window.dispatchEvent(
+      new CustomEvent("dotli:permission-changed", { detail: { label } }),
+    );
   }
-  // Remote permissions have no browser-level gate, so we can return the
-  // actual grant. The event keeps the topbar in sync.
-  throwIfAborted(signal);
-  window.dispatchEvent(
-    new CustomEvent("dotli:permission-changed", { detail: { label } }),
-  );
-  return true;
+  return decision === "granted-once" ? "AllowOnce" : "AllowAlways";
 }
