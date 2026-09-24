@@ -318,7 +318,13 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
-        globIgnores: ["**/truapi_provider_bg-*.wasm"],
+        // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
+        // ring-VRF operation first needs it. Precaching it would make every
+        // installed shell download it after each release.
+        globIgnores: [
+          "**/truapi_provider_bg-*.wasm",
+          "**/truapi_verifiable_bg-*.wasm",
+        ],
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.

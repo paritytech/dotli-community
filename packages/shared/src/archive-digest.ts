@@ -27,12 +27,10 @@ export async function computeArchiveDigest(
   // Per-file hashes are independent — compute them concurrently, then
   // assemble the manifest in sorted-path order so the result stays stable.
   const pairs = await Promise.all(
-    paths.map(
-      async (p): Promise<[Uint8Array, Uint8Array]> => [
-        new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(p))),
-        new Uint8Array(await crypto.subtle.digest("SHA-256", files[p])),
-      ],
-    ),
+    paths.map(async (p): Promise<[Uint8Array, Uint8Array]> => [
+      new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(p))),
+      new Uint8Array(await crypto.subtle.digest("SHA-256", files[p])),
+    ]),
   );
   const manifest = new Uint8Array(paths.length * 64);
   pairs.forEach(([pathHash, fileHash], i) => {

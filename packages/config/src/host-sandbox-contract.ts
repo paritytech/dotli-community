@@ -207,9 +207,7 @@ export function validateSandboxParams(
     params: {
       cid,
       chainBackend: chainBackend as
-        | "smoldot-direct"
-        | "smoldot-shared-worker"
-        | "rpc-gateway",
+        "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway",
       network,
       skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",

@@ -4,6 +4,7 @@ import type {
   CreateProofReview,
   CreateTransactionReview,
   IdentityDisclosureReview,
+  PermissionDecision,
   PreimageSubmitReview,
   ProductSubtreeReview,
   ResourceAllocationReview,
@@ -44,16 +45,22 @@ interface ConfirmationField {
   warning?: boolean;
 }
 
-type ConfirmationDecision = "accepted" | "rejected" | "dismissed";
+type ConfirmationDecision =
+  "accepted" | "accepted-once" | "rejected" | "dismissed";
 
 /** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
 type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;
 
+/**
+ * With `allowOnce`, "Allow once" is offered and highlighted, and the lasting
+ * grant is labelled "Always allow".
+ */
 function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
   review: ModalReview,
   signal: AbortSignal,
+  allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
   throwIfAborted(signal);
   return new Promise((resolve, reject) => {
@@ -86,9 +93,18 @@ function showConfirmationModal(
     footer.appendChild(cancelBtn);
 
     const allowBtn = document.createElement("button");
-    allowBtn.className = "signing-btn-sign";
-    allowBtn.textContent = copy.action;
+    allowBtn.className = allowOnce
+      ? "signing-btn-secondary"
+      : "signing-btn-sign";
+    allowBtn.textContent = allowOnce ? "Always allow" : copy.action;
     footer.appendChild(allowBtn);
+
+    const onceBtn = allowOnce ? document.createElement("button") : null;
+    if (onceBtn !== null) {
+      onceBtn.className = "signing-btn-sign";
+      onceBtn.textContent = "Allow once";
+      footer.appendChild(onceBtn);
+    }
 
     modal.appendChild(footer);
     backdrop.appendChild(modal);
@@ -123,6 +139,9 @@ function showConfirmationModal(
     });
     allowBtn.addEventListener("click", () => {
       finish("accepted");
+    });
+    onceBtn?.addEventListener("click", () => {
+      finish("accepted-once");
     });
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) {
@@ -439,40 +458,60 @@ async function handleConfirmationReview(
   label: string,
   review: ModalReview,
   signal: AbortSignal,
-): Promise<boolean> {
+  allowOnce: boolean,
+): Promise<ConfirmationDecision> {
   const decision = await showConfirmationModal(
     label,
     confirmationCopy(review),
     review,
     signal,
+    allowOnce,
   );
-  if (decision === "accepted") {
-    return true;
-  }
   if (decision === "dismissed" && review.tag === "IdentityDisclosure") {
     throw new Error(ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
   }
-  return false;
+  return decision;
+}
+
+function permissionDecision(
+  decision: ConfirmationDecision,
+): PermissionDecision {
+  switch (decision) {
+    case "accepted-once":
+      return "AllowOnce";
+    case "accepted":
+      return "AllowAlways";
+    case "rejected":
+    case "dismissed":
+      return "Deny";
+  }
 }
 
 export function createUserConfirmationAdapters(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Required<UserConfirmationHost> {
-  const confirmUserAction: UserConfirmationHost["confirmUserAction"] = (
-    review,
-  ) => {
-    return modalScope.enqueue((signal) =>
-      review.tag === "PreimageSubmit"
-        ? handlePreimageSubmitReview(review.value, signal)
-        : handleConfirmationReview(label, review, signal),
-    );
-  };
   return {
-    confirmUserAction,
-    // The modal offers no "just this once", so an acceptance is durable. This
-    // is the core's own default when a host leaves `confirmPermission` out.
-    confirmPermission: async (review) =>
-      (await confirmUserAction(review)) ? "AllowAlways" : "Deny",
+    // Per-action reviews confirm a single operation, so there is no lifetime
+    // to choose and the modal keeps two buttons.
+    confirmUserAction: (review) =>
+      modalScope.enqueue(async (signal) =>
+        review.tag === "PreimageSubmit"
+          ? handlePreimageSubmitReview(review.value, signal)
+          : (await handleConfirmationReview(label, review, signal, false)) ===
+            "accepted",
+      ),
+    // Identity disclosure and account access: the core stores AllowAlways and
+    // Deny, and honours AllowOnce for this request only.
+    confirmPermission: (review) =>
+      modalScope.enqueue(async (signal) =>
+        review.tag === "PreimageSubmit"
+          ? (await handlePreimageSubmitReview(review.value, signal))
+            ? "AllowOnce"
+            : "Deny"
+          : permissionDecision(
+              await handleConfirmationReview(label, review, signal, true),
+            ),
+      ),
   };
 }

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProductContext } from "@parity/truapi-host";
 import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
-import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
+
+const PRODUCT: ProductContext = {
+  productId: "myapp.paseo",
+  executionKind: "App",
+};
 
 const mocks = vi.hoisted(() => ({
   scheduleNotification: vi.fn(),
@@ -97,29 +102,47 @@ describe("prompt rate limiting across host callbacks", () => {
     });
   });
 
-  it("As a dotli integrator, the host counts permission and notification prompts against one shared budget", async () => {
+  it("As a dotli integrator, the host rate limits permission prompts per callback surface", async () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
-    const { permissions, notifications } = createHostCallbacks({
-      label: "myapp",
-    });
+    const { createHostCallbacks } =
+      await import("@dotli/ui/host-callbacks/handlers");
+    const { permissions } = createHostCallbacks({ label: "myapp" });
 
-    // When: permission prompts exhaust the whole window budget.
+    // When: camera prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
-      await permissions.devicePermission("Camera");
+      await permissions.devicePermission(PRODUCT, "Camera");
     }
 
-    // Then: a notification prompt shares that budget and is rate limited
+    // Then: a different permission shares that budget and is rate limited
     // instead of showing a 21st modal.
     await expect(
-      notifications.pushNotification({
-        text: "hello",
-        deeplink: undefined,
-        scheduledAt: undefined,
-      }),
+      permissions.devicePermission(PRODUCT, "Notifications"),
     ).rejects.toThrow("Permission prompt rate limited");
     expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(
       MAX_PER_WINDOW,
     );
+  });
+
+  it("As a dotli user, delivering notifications never spends the prompt budget", async () => {
+    // Given
+    const { createHostCallbacks } =
+      await import("@dotli/ui/host-callbacks/handlers");
+    const { permissions, notifications } = createHostCallbacks({
+      label: "myapp",
+    });
+    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+      await permissions.devicePermission(PRODUCT, "Camera");
+    }
+
+    // When
+    const delivered = notifications.pushNotification({
+      text: "hello",
+      deeplink: undefined,
+      scheduledAt: undefined,
+    });
+
+    // Then
+    await expect(delivered).resolves.toEqual({ id: 7 });
   });
 });

@@ -16,12 +16,12 @@
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
     "@types/qrcode": "^1.5.6",
-    "eslint": "^10.5.0",
+    "eslint": "^10.11.0",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.10.3",
+    "happy-dom": "^20.14.5",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vite": "^8.3.1",
+    "vitest": "^5.0.1"
   },
   "dependencies": {
     "@dotli/config": "workspace:*",
@@ -32,14 +32,14 @@
     "@dotli/shared": "workspace:*",
     "@dotli/storage": "workspace:*",
     "@dotli/truapi-debug": "workspace:*",
-    "@noble/hashes": "^2.2.0",
+    "@noble/hashes": "^2.4.0",
     "@parity/truapi": "file:../../vendor/truapi",
     "@parity/truapi-host": "file:../../vendor/truapi-host",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
-    "@scure/base": "^2.2.0",
+    "@scure/base": "^2.4.0",
     "@scure/bip39": "^2.4.0",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^2.1.8",
+    "polkadot-api": "^3.1.0",
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {
