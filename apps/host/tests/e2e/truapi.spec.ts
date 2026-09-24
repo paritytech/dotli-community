@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect } from "./fixtures/paired";
+import { test, expect, openHostPlayground } from "./fixtures/paired";
 import {
   waitForPlaygroundReady,
   runTestExpectSuccess,
@@ -321,8 +321,25 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "navigate-http");
     });
 
-    test("Polkadot URL", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "navigate-polkadot");
+    test("Polkadot URL", async ({ pairedPage, productFrame }) => {
+      // Given: navigate-polkadot opens https://truapi-playground.paseo, a
+      // dotNS product. dot.li hands the tab over to that product, so the
+      // playground (and its result log) is gone once the call succeeds.
+      const run = productFrame.locator('[data-testid="run-navigate-polkadot"]');
+      await expect(run).toBeEnabled({ timeout: 10_000 });
+
+      // When
+      await run.click();
+
+      // Then
+      await pairedPage.waitForURL(
+        /^http:\/\/truapi-playground\.localhost:\d+\//,
+        { timeout: 15_000 },
+      );
+
+      // The page is shared by the worker, so put host-playground back for
+      // the tests that follow.
+      await openHostPlayground(pairedPage);
     });
 
     // Red on main since before the CLI swap: the iframe lands on
