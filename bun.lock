@@ -5,7 +5,7 @@
     "": {
       "name": "dotli",
       "dependencies": {
-        "@parity/truapi": "0.19.0",
+        "@parity/truapi": "0.20.0",
       },
       "devDependencies": {
         "prettier": "3.8.4",
@@ -301,8 +301,8 @@
         "@dotli/storage": "workspace:*",
         "@dotli/truapi-debug": "workspace:*",
         "@noble/hashes": "^2.2.0",
-        "@parity/truapi": "0.19.0",
-        "@parity/truapi-host": "0.19.0",
+        "@parity/truapi": "0.20.0",
+        "@parity/truapi-host": "0.20.0",
         "@polkadot-api/json-rpc-provider": "^0.2.0",
         "@scure/base": "^2.2.0",
         "neverthrow": "^8.2.0",
@@ -667,9 +667,9 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.148.0", "", {}, "sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A=="],
 
-    "@parity/truapi": ["@parity/truapi@0.19.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-EXWO24SRaIgyEeZVqxcMvBCOaFyajTT3D3WM+eUg61tMN96iMWdaPlqUT3hUFsAnuV5VA6ElfA1kKNvFFZg5qA=="],
+    "@parity/truapi": ["@parity/truapi@0.20.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "neverthrow": "^8.2.0", "scale-ts": "^1.6.1" } }, "sha512-nnkXlrL7QxCNjpSOyyhqnOMcsCe5YFnvqkgj3PXMYn83qgnU/ixzCTuM2balJKfLDYw6iFSIy+DMjoKtcPVzQA=="],
 
-    "@parity/truapi-host": ["@parity/truapi-host@0.19.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "@parity/truapi": "^0.19.0", "neverthrow": "^8.2.0" }, "peerDependencies": { "@playwright/test": ">=1.40", "esbuild": ">=0.20" }, "optionalPeers": ["@playwright/test", "esbuild"] }, "sha512-izf2+artE9s/5ucEQIvfs5wvSlnij4IouRp/ox+I39fZ6itSNAEQu986RO7LfWpK9DlL1N+HI3H2OeipramEFA=="],
+    "@parity/truapi-host": ["@parity/truapi-host@0.20.0", "", { "dependencies": { "@noble/hashes": "^2.2.0", "@parity/truapi": "^0.20.0", "neverthrow": "^8.2.0" }, "peerDependencies": { "@playwright/test": ">=1.40", "esbuild": ">=0.20" }, "optionalPeers": ["@playwright/test", "esbuild"] }, "sha512-E9MfoW2YGrw+49xTLmLjKlHacaAZv72e9ad5T1l9bcEnDsIQcaEsfY8g/K24HLu+kokfxbODqSNzWAdsyGpuEg=="],
 
     "@parity/truapi-provider": ["@parity/truapi-provider@0.2.1", "", {}, "sha512-cj3gnPfwhW2HzsRiPhB4BeSoT6RmdWb+VIvGQd8P7xK52h19jiFvP7MVR7opndh9WzkP16P/6iJvy7uMj1/MiA=="],
 
