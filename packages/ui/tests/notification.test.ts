@@ -15,29 +15,6 @@ vi.mock("@dotli/ui/permission-modal", () => ({
   showPermissionRequestModal: mocks.showPermissionRequestModal,
 }));
 
-async function registerNotificationAuthorization(
-  initialStatus: "NotDetermined" | "Denied" | "Authorized" = "NotDetermined",
-): Promise<{ status: "NotDetermined" | "Denied" | "Authorized" }> {
-  const state = { status: initialStatus };
-  const { registerPermissionAuthorizationProvider } =
-    await import("@dotli/ui/permissions");
-  registerPermissionAuthorizationProvider("myapp", {
-    async getPermissionAuthorizationStatuses(requests) {
-      return requests.map((request) =>
-        request.tag === "Device" && request.value === "Notifications"
-          ? state.status
-          : "NotDetermined",
-      );
-    },
-    async setPermissionAuthorizationStatus(request, status) {
-      if (request.tag === "Device" && request.value === "Notifications") {
-        state.status = status;
-      }
-    },
-  });
-  return state;
-}
-
 describe("notification host callbacks", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -50,12 +27,10 @@ describe("notification host callbacks", () => {
       immediate: true,
     });
     mocks.cancelNotification.mockResolvedValue(true);
-    mocks.showPermissionRequestModal.mockResolvedValue("granted");
   });
 
-  it("As a dotli integrator, the host prompts for notification permission, schedules, fires immediate notifications, and returns ids", async () => {
+  it("As a dotli integrator, the host schedules, fires immediate notifications, and returns ids", async () => {
     // Given
-    await registerNotificationAuthorization();
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");
@@ -69,11 +44,6 @@ describe("notification host callbacks", () => {
 
     // Then
     expect(response).toEqual({ id: 7 });
-    expect(mocks.showPermissionRequestModal).toHaveBeenCalledWith(
-      "myapp",
-      "Notifications",
-      expect.any(AbortSignal),
-    );
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
       productId: "myapp",
       title: "myapp",
@@ -88,9 +58,27 @@ describe("notification host callbacks", () => {
     ).toEqual(["hello"]);
   });
 
-  it("As a dotli integrator, the host reuses granted permission and cancels through the shared scheduler", async () => {
+  it("As a dotli user who allowed one notification, delivering it does not prompt again", async () => {
+    // Given: the core already authorized and consumed the one-time grant, so
+    // no stored grant is left for a host-side check to find.
+    const { createNotificationAdapters } =
+      await import("@dotli/ui/host-callbacks/PushNotification");
+    const { pushNotification } = createNotificationAdapters("myapp");
+
+    // When
+    await pushNotification({
+      text: "hello",
+      deeplink: undefined,
+      scheduledAt: undefined,
+    });
+
+    // Then
+    expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
+    expect(mocks.scheduleNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a dotli integrator, the host schedules later notifications and cancels through the shared scheduler", async () => {
     // Given
-    await registerNotificationAuthorization("Authorized");
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification, cancelNotification } =
@@ -105,7 +93,6 @@ describe("notification host callbacks", () => {
     await cancelNotification(7);
 
     // Then
-    expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
       productId: "myapp",
       title: "myapp",
@@ -116,10 +103,9 @@ describe("notification host callbacks", () => {
     expect(mocks.cancelNotification).toHaveBeenCalledWith("myapp", 7);
   });
 
-  it("As a dotli integrator, the host rejects when notification permission is denied", async () => {
+  it("As a dotli integrator, the host rejects when the schedule limit is reached", async () => {
     // Given
-    const authorization = await registerNotificationAuthorization();
-    mocks.showPermissionRequestModal.mockResolvedValue("denied");
+    mocks.scheduleNotification.mockResolvedValue({ ok: false });
     const { createNotificationAdapters } =
       await import("@dotli/ui/host-callbacks/PushNotification");
     const { pushNotification } = createNotificationAdapters("myapp");
@@ -132,61 +118,6 @@ describe("notification host callbacks", () => {
     });
 
     // Then
-    await expect(notification).rejects.toThrow(
-      "Notifications permission denied",
-    );
-
-    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
-    expect(authorization.status).toBe("Denied");
-  });
-
-  it("As a dotli integrator, the host keeps notification permission ask when the prompt is dismissed", async () => {
-    // Given
-    const authorization = await registerNotificationAuthorization();
-    mocks.showPermissionRequestModal.mockResolvedValue("dismissed");
-    const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
-
-    // When
-    const notification = pushNotification({
-      text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
-    });
-
-    // Then
-    await expect(notification).rejects.toThrow(
-      "User dismissed permission dialog",
-    );
-
-    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
-    expect(authorization.status).toBe("NotDetermined");
-  });
-
-  it("As a dotli integrator, the host reuses the shared blocked-permission path for stored notification denials", async () => {
-    // Given
-    await registerNotificationAuthorization("Denied");
-    const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
-
-    // When
-    const notification = pushNotification({
-      text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
-    });
-
-    // Then
-    await expect(notification).rejects.toThrow(
-      "Notifications permission denied",
-    );
-
-    expect(mocks.showPermissionRequestModal).not.toHaveBeenCalled();
-    expect(mocks.scheduleNotification).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain(
-      "Notifications access is blocked. Use the permissions menu in the top bar to change this.",
-    );
+    await expect(notification).rejects.toThrow("ScheduleLimitReached");
   });
 });

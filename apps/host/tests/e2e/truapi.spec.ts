@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect, waitForHostPlaygroundFrame } from "./fixtures/paired";
+import { test, expect, openHostPlayground } from "./fixtures/paired";
 import {
   waitForPlaygroundReady,
   runTestExpectSuccess,
@@ -78,7 +78,7 @@ test.describe("dot.li > host-playground.dot", () => {
     });
   });
 
-  // Each allocation triggers an "Allow" modal on the host that the user
+  // Each allocation triggers an "Always allow" / "Allow" modal on the host that the user
   // approves. The signing host is paired so the test only drives the modal.
 
   test.describe("Allowances", () => {
@@ -91,7 +91,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-statement-store",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -108,7 +108,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-bulletin",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -125,7 +125,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-smart-contract",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -144,7 +144,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "allowances-all",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -175,7 +175,7 @@ test.describe("dot.li > host-playground.dot", () => {
     });
   });
 
-  // Remote-permission tests trigger an "Allow" modal on the host the
+  // Remote-permission tests trigger an "Always allow" modal on the host the
   // first time a given capability is requested in a session.
 
   test.describe("Permissions", () => {
@@ -192,7 +192,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-remote",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -209,7 +209,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-webrtc",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -226,7 +226,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-chain-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -243,7 +243,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-preimage-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -260,7 +260,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "remote-permission-statement-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 30_000 },
       );
 
@@ -291,7 +291,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "statement-store-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 90_000 },
       );
 
@@ -321,27 +321,25 @@ test.describe("dot.li > host-playground.dot", () => {
       await runTestExpectSuccess(productFrame, "navigate-http");
     });
 
-    test("Polkadot URL", async ({ pairedPage }) => {
-      // Navigation destroys the sending iframe. Use a separate tab so the
-      // worker's playground stays available for the remaining capability tests.
-      const navigationPage = await pairedPage.context().newPage();
-      try {
-        await navigationPage.goto(pairedPage.url());
-        const frame = await waitForHostPlaygroundFrame(navigationPage, 20_000);
-        const destination = new URL(pairedPage.url());
-        destination.hostname = "truapi-playground.localhost";
-        destination.pathname = "/";
-        await frame.getByTestId("run-navigate-polkadot").click();
-        // The deeplink names the product, not the host's backend query, so
-        // assert where the tab landed rather than what it carried along.
-        await expect(navigationPage).toHaveURL(
-          (url) =>
-            url.host === destination.host &&
-            url.pathname === destination.pathname,
-        );
-      } finally {
-        await navigationPage.close();
-      }
+    test("Polkadot URL", async ({ pairedPage, productFrame }) => {
+      // Given: navigate-polkadot opens https://truapi-playground.paseo, a
+      // dotNS product. dot.li hands the tab over to that product, so the
+      // playground (and its result log) is gone once the call succeeds.
+      const run = productFrame.locator('[data-testid="run-navigate-polkadot"]');
+      await expect(run).toBeEnabled({ timeout: 10_000 });
+
+      // When
+      await run.click();
+
+      // Then
+      await pairedPage.waitForURL(
+        /^http:\/\/truapi-playground\.localhost:\d+\//,
+        { timeout: 15_000 },
+      );
+
+      // The page is shared by the worker, so put host-playground back for
+      // the tests that follow.
+      await openHostPlayground(pairedPage);
     });
 
     // Red on main since before the CLI swap: the iframe lands on
@@ -417,7 +415,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-factory",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 60_000 },
       );
 
@@ -434,7 +432,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "preimage-submit",
-        ["Allow"],
+        ["Always allow", "Allow"],
         { timeoutMs: 60_000 },
       );
 
@@ -449,7 +447,7 @@ test.describe("dot.li > host-playground.dot", () => {
       productFrame,
     }) => {
       // Given
-      const approvalButtons = ["Allow"];
+      const approvalButtons = ["Always allow", "Allow"];
 
       // When
       const status = await runWebSignedTest(
@@ -478,7 +476,7 @@ test.describe("dot.li > host-playground.dot", () => {
         pairedPage,
         productFrame,
         "wallet-sign-message",
-        ["Allow", "Sign"],
+        ["Always allow", "Allow", "Sign"],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 

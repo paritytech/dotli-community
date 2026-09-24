@@ -7,9 +7,15 @@ import {
   onTestFinished,
   vi,
 } from "vitest";
+import type { ProductContext } from "@parity/truapi-host";
 import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
 import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
+
+const PRODUCT: ProductContext = {
+  productId: "myapp.paseo",
+  executionKind: "App",
+};
 
 const mocks = vi.hoisted(() => ({
   scheduleNotification: vi.fn(),
@@ -118,28 +124,55 @@ describe("prompt rate limiting across host callbacks", () => {
       },
     });
     onTestFinished(unregister);
-    const { permissions, notifications } = createHostCallbacks({
+    const { permissions } = createHostCallbacks({
       label: "myapp",
     });
 
-    // When: permission prompts exhaust the whole window budget.
+    // When: camera prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
       status = "NotDetermined";
-      await permissions.devicePermission("Camera");
+      await permissions.devicePermission(PRODUCT, "Camera");
     }
     status = "NotDetermined";
 
-    // Then: a notification prompt shares that budget and is rate limited
+    // Then: a different permission shares that budget and is rate limited
     // instead of showing a 21st modal.
     await expect(
-      notifications.pushNotification({
-        text: "hello",
-        deeplink: undefined,
-        scheduledAt: undefined,
-      }),
+      permissions.devicePermission(PRODUCT, "Notifications"),
     ).rejects.toThrow("Permission prompt rate limited");
     expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(
       MAX_PER_WINDOW,
     );
+  });
+
+  it("As a dotli user, delivering notifications never spends the prompt budget", async () => {
+    // Given
+    let status: "NotDetermined" | "Denied" | "Authorized" = "NotDetermined";
+    const unregister = registerPermissionAuthorizationProvider("myapp", {
+      async getPermissionAuthorizationStatuses(requests) {
+        return requests.map(() => status);
+      },
+      async setPermissionAuthorizationStatus(_request, next) {
+        status = next;
+      },
+    });
+    onTestFinished(unregister);
+    const { permissions, notifications } = createHostCallbacks({
+      label: "myapp",
+    });
+    for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+      status = "NotDetermined";
+      await permissions.devicePermission(PRODUCT, "Camera");
+    }
+
+    // When
+    const delivered = notifications.pushNotification({
+      text: "hello",
+      deeplink: undefined,
+      scheduledAt: undefined,
+    });
+
+    // Then
+    await expect(delivered).resolves.toEqual({ id: 7 });
   });
 });

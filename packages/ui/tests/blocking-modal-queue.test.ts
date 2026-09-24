@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import type { ProductContext } from "@parity/truapi-host";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
 import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
+
+const PRODUCT: ProductContext = {
+  productId: "myapp.paseo",
+  executionKind: "App",
+};
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -39,7 +45,7 @@ describe("blocking modal queue", () => {
         targetProductId: "other-product.dot",
       },
     });
-    const camera = callbacks.permissions.devicePermission("Camera");
+    const camera = callbacks.permissions.devicePermission(PRODUCT, "Camera");
 
     // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -89,8 +95,8 @@ describe("blocking modal queue", () => {
     const { devicePermission } = createPromptPermission("myapp", scope);
 
     // When
-    const first = devicePermission("Notifications");
-    const second = devicePermission("Notifications");
+    const first = devicePermission(PRODUCT, "Notifications");
+    const second = devicePermission(PRODUCT, "Notifications");
     await vi.waitFor(() => {
       expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
         1,
@@ -98,12 +104,15 @@ describe("blocking modal queue", () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document
+      .querySelector<HTMLButtonElement>(".signing-btn-secondary")
+      ?.click();
 
-    // Then
+    // Then: the duplicate reads the saved grant instead of prompting, and
+    // answers without upgrading what it found.
     await expect(Promise.all([first, second])).resolves.toEqual([
       "AllowAlways",
-      "AllowAlways",
+      "AllowOnce",
     ]);
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     expect(status).toBe("Authorized");

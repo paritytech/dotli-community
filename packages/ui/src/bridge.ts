@@ -205,16 +205,17 @@ const mediatedInputHost = new MediatedInputHost({
     };
     signal.addEventListener("abort", abort, { once: true });
     try {
-      return await decidePromptPermission(
+      const decision = await decidePromptPermission(
         label,
         "Camera",
         {
           kind: "Device",
           limiter: mediatedInputPermissionLimiter,
-          reloadOnGrant: false,
+          gatedByIframe: false,
         },
         scope,
       );
+      return decision !== "Deny";
     } finally {
       signal.removeEventListener("abort", abort);
       scope.dispose();

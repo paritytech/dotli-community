@@ -9,14 +9,7 @@ import {
 } from "./polkavm-touch-controls";
 
 type Control =
-  | "move"
-  | "look"
-  | "fire"
-  | "grapple"
-  | "jump"
-  | "reload"
-  | "start"
-  | "run";
+  "move" | "look" | "fire" | "grapple" | "jump" | "reload" | "start" | "run";
 type PointerPhase =
   | "pointerdown"
   | "pointermove"
