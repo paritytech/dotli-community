@@ -19,6 +19,11 @@ const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
 // broken signer or host fast instead of running out the workflow clock.
 const USER_BADGE_TIMEOUT_MS = 15_000;
 const PRODUCT_IFRAME_TIMEOUT_MS = 20_000;
+// A fresh page's product asks for its product account right after it
+// renders, which opens a blocking host modal over the iframe. A click that
+// lands while it is up hits the backdrop instead of the product.
+const HOST_MODAL_QUIET_MS = 750;
+const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
 
 /**
  * Background poller that dismisses the host's "Permission Request" modal
@@ -91,6 +96,56 @@ async function waitForHostPlaygroundFrame(
 }
 
 /**
+ * Wait until no blocking host modal has been open for `HOST_MODAL_QUIET_MS`.
+ * The auto-allow poller answers permission and account prompts meanwhile.
+ */
+async function waitForHostModalsSettled(page: Page): Promise<void> {
+  const backdrop = page.locator(".signing-modal-backdrop");
+  const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
+  let quietSince = Date.now();
+  while (Date.now() < deadline) {
+    if ((await backdrop.count()) > 0) {
+      quietSince = Date.now();
+    } else if (Date.now() - quietSince >= HOST_MODAL_QUIET_MS) {
+      return;
+    }
+    await page.waitForTimeout(100);
+  }
+  console.log(
+    `[productFrame] host modal still open after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`,
+  );
+}
+
+/**
+ * Load host-playground in dot.li on `page` and wait for the restored session.
+ * The fixture opens the worker's page with it, and a test that sends the page
+ * to another product calls it to hand the next test a host-playground page.
+ */
+export async function openHostPlayground(page: Page): Promise<void> {
+  const productHostUrl =
+    PRODUCT_URL === undefined
+      ? `http://${HOST}.localhost:${PORT}/`
+      : `http://localhost:${PORT}/${new URL(PRODUCT_URL).host}`;
+  await page.goto(productHostUrl, {
+    timeout: 60_000,
+  });
+  if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+    await page
+      .getByRole("button", { name: "Switch to Gateway" })
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+  }
+
+  const restoreStart = Date.now();
+  await page
+    .locator("#auth-button .user-badge")
+    .waitFor({ state: "visible", timeout: USER_BADGE_TIMEOUT_MS });
+  console.log(
+    `[pairedPage] session restored in ${Date.now() - restoreStart}ms`,
+  );
+}
+
+/**
  * Worker-scoped fixtures: open a fresh page that inherits the
  * once-per-run signing-host pairing via `storageState` written by
  * globalSetup. No QR scan, no CLI spawn here. If the badge doesn't appear
@@ -102,11 +157,7 @@ async function waitForHostPlaygroundFrame(
  * behavior under `workers: 1` (worker-scope pairing) and avoids the
  * re-pair cascade that previously timed out CI on a single test failure.
  */
-export const test = base.extend<
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- no test-scoped fixtures
-  {},
-  { pairedPage: Page; productFrame: Frame }
->({
+export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
   pairedPage: [
     async ({ browser }, use) => {
       if (!existsSync(STATE_FILE)) {
@@ -173,27 +224,7 @@ export const test = base.extend<
         console.log(`[ws] CDP attach failed: ${(e as Error).message}`);
       }
 
-      const productHostUrl =
-        PRODUCT_URL === undefined
-          ? `http://${HOST}.localhost:${PORT}/`
-          : `http://localhost:${PORT}/${new URL(PRODUCT_URL).host}`;
-      await page.goto(productHostUrl, {
-        timeout: 60_000,
-      });
-      if (E2E_CHAIN_BACKEND === "rpc-gateway") {
-        await page
-          .getByRole("button", { name: "Switch to Gateway" })
-          .click({ timeout: 5_000 })
-          .catch(() => {});
-      }
-
-      const restoreStart = Date.now();
-      await page
-        .locator("#auth-button .user-badge")
-        .waitFor({ state: "visible", timeout: USER_BADGE_TIMEOUT_MS });
-      console.log(
-        `[pairedPage] session restored in ${Date.now() - restoreStart}ms`,
-      );
+      await openHostPlayground(page);
 
       // Auto-allow Permission Request modals.
       //
@@ -222,10 +253,14 @@ export const test = base.extend<
         pairedPage,
         PRODUCT_IFRAME_TIMEOUT_MS,
       );
+      await waitForHostModalsSettled(pairedPage);
       console.log(`[productFrame] iframe ready in ${Date.now() - start}ms`);
       await use(frame);
     },
-    { scope: "worker" },
+    // Test-scoped: dot.li replaces the product iframe when the page navigates
+    // (a product handoff) or reloads the product, so a frame kept for the
+    // whole worker would be detached for every test after that.
+    { scope: "test" },
   ],
 });
 
