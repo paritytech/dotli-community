@@ -730,6 +730,14 @@
       return this.updateAfterMs;
     }
 
+    hasPendingContinuation() {
+      return !this.coreVm && this.resumePending;
+    }
+
+    pendingHostFrameResponses() {
+      return this.hostFrameResponses.length;
+    }
+
     setPointerCaptureSupported(supported) {
       this.pointerCapture.supported = supported === true;
       if (!this.pointerCapture.supported) {
@@ -2360,6 +2368,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   const INPUT_KEYBOARD_INSETS = 17;
   const MAX_INSET_PIXELS = 65535;
   const UPDATE_AFTER_IDLE = 0xffffffff;
+  // Match the bounded host-response queue without requiring a new Wasm ABI.
+  const MAX_BACKGROUND_SERVICE_TICKS = 32;
+  const MAX_BACKGROUND_CONTINUATION_TICKS = 32;
   const FORCE_INTERPRETER = Symbol("force-interpreter");
   const CORE_STATUS_DENIED = -5;
   const decoder = new TextDecoder();
@@ -2386,7 +2397,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   let disposed = false;
   let starting = false;
   let paused = false;
-  let pausedAt = 0;
+  let backgrounded = false;
+  let inactiveAt = 0;
+  let backgroundServiceTicks = 0;
+  let backgroundContinuationTicks = 0;
+  let pendingFrame = null;
   let demandDriven = false;
   let tickPending = false;
   let motionAvailability = 0;
@@ -2417,6 +2432,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     activeMediatedInputHandles.clear();
     running = false;
     heldInputs.clear();
+    pendingFrame = null;
+    backgroundServiceTicks = 0;
+    backgroundContinuationTicks = 0;
     clearTimeout(timer);
     translated?.stop();
     pvm?.polkavm_browser_reset?.();
@@ -2426,10 +2444,19 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function postRuntimeOutput(output, transfers = []) {
-    // The Host also clears already delivered audio when it requests a pause.
-    if (paused && output?.type === "audio") {
+    if (disposed) {
       return;
     }
+    // The Host also clears already delivered audio when becoming inactive.
+    if ((paused || backgrounded) && output?.type === "audio") {
+      return;
+    }
+    if ((paused || backgrounded) && output?.type === "frame") {
+      pendingFrame = { output, transfers };
+      return;
+    }
+    // Tri2D streams contain retained texture mutations, not standalone
+    // snapshots. The Host must process them in order and hide presentation.
     if (output?.type === "mediated-input-request") {
       activeMediatedInputHandles.add(output.handle);
     } else if (output?.type === "mediated-input-cancel") {
@@ -2494,7 +2521,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       pixels[index + 2] = source[index];
       pixels[index + 3] = source[index + 3];
     }
-    postMessage({ type: "frame", width, height, pixels }, [pixels.buffer]);
+    postRuntimeOutput({ type: "frame", width, height, pixels }, [pixels.buffer]);
   }
 
   function drainTri2d() {
@@ -2604,7 +2631,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
 
   function drainAudio() {
     while (pvm.polkavm_browser_take_audio()) {
-      if (paused) {
+      if (paused || backgrounded) {
         continue;
       }
       const sampleRate = pvm.polkavm_browser_audio_sample_rate();
@@ -2662,8 +2689,23 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     postMessage({ type: "pointer-capture", capture: request });
   }
 
+  function pendingHostFrameResponses() {
+    return translated
+      ? translated.pendingHostFrameResponses()
+      : pvm.polkavm_browser_pending_host_frame_responses();
+  }
+
+  function hasBackgroundWork() {
+    // Only cooperative hostcall-budget yields are continuations. CoreVM's
+    // frame yield is an update boundary, never a reason for an idle spin.
+    if (translated?.hasPendingContinuation()) {
+      return backgroundContinuationTicks > 0;
+    }
+    return backgroundServiceTicks > 0 && pendingHostFrameResponses() > 0;
+  }
+
   function scheduleTick(delayMs) {
-    if (!running || paused) {
+    if (!running || paused || (backgrounded && !hasBackgroundWork())) {
       return;
     }
     clearTimeout(timer);
@@ -2680,7 +2722,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     }
     timer = setTimeout(() => {
       timer = undefined;
-      if (!running || paused || tickPending) {
+      if (!running || paused || backgrounded || tickPending) {
         return;
       }
       tickPending = true;
@@ -2689,7 +2731,20 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function wake() {
-    if (demandDriven) {
+    if (demandDriven && !backgrounded) {
+      scheduleTick(0);
+    }
+  }
+
+  function wakeHostResponse(accepted) {
+    // A full queue must wake too: otherwise a retry can never make room.
+    // Count bounded service opportunities rather than retaining response
+    // copies. One-poll-per-update guests can drain a coalesced queue in order.
+    backgroundServiceTicks = accepted
+      ? Math.min(backgroundServiceTicks + 1, MAX_BACKGROUND_SERVICE_TICKS)
+      : MAX_BACKGROUND_SERVICE_TICKS;
+    backgroundContinuationTicks = MAX_BACKGROUND_CONTINUATION_TICKS;
+    if (backgrounded || demandDriven) {
       scheduleTick(0);
     }
   }
@@ -2711,29 +2766,52 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     pendingMotionSample = null;
   }
 
-  function setPaused(next) {
+  function setActivity(type, next, seq) {
     if (typeof next !== "boolean") {
-      throw new Error("invalid PolkaVM browser pause state");
+      throw new Error(`invalid PolkaVM browser ${type} state`);
     }
-    const changed = paused !== next;
+    if (type === "background" && seq !== undefined &&
+        (!Number.isSafeInteger(seq) || seq < 0)) {
+      throw new Error("invalid PolkaVM browser background sequence");
+    }
+    const wasInactive = paused || backgrounded;
+    const changed = (type === "pause" ? paused : backgrounded) !== next;
+    if (type === "pause") {
+      paused = next;
+    } else {
+      backgrounded = next;
+    }
+    const inactive = paused || backgrounded;
     if (changed) {
-      const now = performance.now();
-      if (next) {
-        clearTimeout(timer);
-        timer = undefined;
+      clearTimeout(timer);
+      timer = undefined;
+      if (inactive && !wasInactive) {
         pendingMotionSample = null;
         if (running) {
+          inactiveAt = performance.now();
           pauseInput();
-          pausedAt = now;
         }
-      } else if (running) {
-        startedAt += now - pausedAt;
+      } else if (!inactive && wasInactive && running) {
+        const now = performance.now();
+        startedAt += now - inactiveAt;
         legacyNextUpdateAt = now;
       }
-      paused = next;
     }
-    postMessage({ type: "pause-state", paused });
-    if (changed && !paused) {
+    postMessage(type === "pause"
+      ? { type: "pause-state", paused }
+      : { type: "background-state", backgrounded, ...(seq === undefined ? {} : { seq }) });
+    if (changed && running && !paused) {
+      if (backgrounded) {
+        // Foreground updates need not poll. Recover actual queued work rather
+        // than assuming an update consumed the response that woke it.
+        backgroundServiceTicks = pendingHostFrameResponses();
+        backgroundContinuationTicks = MAX_BACKGROUND_CONTINUATION_TICKS;
+      }
+      if (!backgrounded && pendingFrame !== null) {
+        const { output, transfers } = pendingFrame;
+        pendingFrame = null;
+        postRuntimeOutput(output, transfers);
+      }
       scheduleTick(0);
     }
   }
@@ -2753,7 +2831,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
   }
 
   function tick() {
-    if (!running || paused) {
+    if (!running || paused || (backgrounded && !hasBackgroundWork())) {
       return;
     }
     const firstUpdate = updateCount === 0;
@@ -2763,10 +2841,10 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     const before = performance.now();
     try {
       if (translated) {
-        translated.update(before - startedAt);
+        translated.update((backgrounded ? inactiveAt : before) - startedAt);
       } else {
         check(
-          pvm.polkavm_browser_update(before - startedAt),
+          pvm.polkavm_browser_update((backgrounded ? inactiveAt : before) - startedAt),
           "update PolkaVM browser guest",
         );
         drainFrame();
@@ -2808,6 +2886,17 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         updateP95Ms: percentile(0.95),
         updateMaxMs: sorted[sorted.length - 1],
       });
+    }
+    if (translated?.hasPendingContinuation()) {
+      backgroundContinuationTicks = Math.max(0, backgroundContinuationTicks - 1);
+    } else {
+      backgroundServiceTicks = Math.max(0, backgroundServiceTicks - 1);
+    }
+    if (backgrounded) {
+      if (hasBackgroundWork()) {
+        scheduleTick(0);
+      }
+      return;
     }
     const requestedDelay = requestedUpdateDelay(completedAt);
     if (requestedDelay !== null) {
@@ -3265,8 +3354,8 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     startedAt = performance.now();
     legacyNextUpdateAt = startedAt;
     starting = false;
-    if (paused) {
-      pausedAt = startedAt;
+    if (paused || backgrounded) {
+      inactiveAt = startedAt;
       pauseInput();
     }
     running = true;
@@ -3306,7 +3395,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       return;
     }
     const type = bytes[0];
-    if (paused && !(type === 2 || type === 4 || type === 7 || type === 12 ||
+    if ((paused || backgrounded) && !(type === 2 || type === 4 || type === 7 || type === 12 ||
         type === 20 || type === 21 || ((type === 13 || type === 15) && bytes[1] === 0))) {
       return;
     }
@@ -3436,7 +3525,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     if (bytes.byteLength !== MOTION_SAMPLE_BYTES) {
       throw new Error("invalid PolkaVM browser motion sample");
     }
-    if (paused) {
+    if (paused || backgrounded) {
       return;
     }
     if (!running) {
@@ -3530,6 +3619,9 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     activeMediatedInputHandles.delete(handle);
   }
   endpoint.onmessage = (event) => {
+    if (disposed) {
+      return;
+    }
     const message = event.data;
     if (message?.type === "start") {
       void start(message).catch((error) => {
@@ -3540,9 +3632,13 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         postMessage({ type: "error", message: error.message });
         postMessage({ type: "terminated" });
       });
-    } else if (message?.type === "pause") {
+    } else if (message?.type === "pause" || message?.type === "background") {
       try {
-        setPaused(message.paused);
+        setActivity(
+          message.type,
+          message.type === "pause" ? message.paused : message.backgrounded,
+          message.seq,
+        );
       } catch (error) {
         stopRuntime();
         postMessage({ type: "error", message: error.message });
@@ -3640,8 +3736,12 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
             "invalid PolkaVM browser host frame response sequence",
           );
         }
-        if (sendHostFrameResponse(new Uint8Array(message.bytes))) {
-          wake();
+        const bytes = new Uint8Array(message.bytes);
+        const accepted = sendHostFrameResponse(bytes);
+        if (running && bytes.byteLength) {
+          wakeHostResponse(accepted);
+        }
+        if (accepted) {
           if (seq !== undefined) {
             postMessage({ type: "host-frame-response-accepted", seq });
           }

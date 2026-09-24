@@ -859,6 +859,12 @@ class GpuEngine {
     this.lastSequence = 0;
     this.stopped = false;
     this.disposed = false;
+    this.backgrounded = false;
+    this.backgroundRequested = false;
+    this.foregroundScheduled = false;
+    this.backgroundTexture = null;
+    this.backgroundTextureValid = false;
+    this.backgroundTextureSequence = 0;
     this.queue = Promise.resolve();
     this.pendingBatches = 0;
     this.testReadbacksRemaining = testReadback ? 8 : 0;
@@ -889,6 +895,7 @@ class GpuEngine {
         return;
       }
       this.stopped = true;
+      this.destroyBackgroundTexture();
       this.emitTextEvent(7, 0, 1, info.message || "WebGPU device lost");
       void this.restore();
     });
@@ -936,6 +943,7 @@ class GpuEngine {
     // and the guest re-creates what it needs after the restored event.
     this.resources.clear();
     this.handleSlots.clear();
+    this.destroyBackgroundTexture();
     this.device = replacement.device;
     this.context = replacement.context;
     this.format = replacement.format;
@@ -1092,6 +1100,9 @@ class GpuEngine {
     this.logicalWidth = logicalWidth;
     this.logicalHeight = logicalHeight;
     this.scale = scale;
+    if (changed) {
+      this.destroyBackgroundTexture();
+    }
     this.canvas.width = physicalWidth;
     this.canvas.height = physicalHeight;
     this.configureSurface();
@@ -1123,8 +1134,74 @@ class GpuEngine {
       alphaMode: "opaque",
       usage:
         GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.COPY_DST |
         (this.testReadbacksRemaining > 0 ? GPUTextureUsage.COPY_SRC : 0),
     });
+  }
+
+  setBackground(backgrounded) {
+    this.backgroundRequested = backgrounded;
+    if (backgrounded) {
+      // Hiding takes effect even for batches waiting on validation or readback.
+      this.backgrounded = true;
+      return;
+    }
+    if (!this.backgrounded || this.foregroundScheduled) {
+      return;
+    }
+    this.foregroundScheduled = true;
+    this.queue = this.queue
+      .then(() => {
+        this.foregroundScheduled = false;
+        if (this.backgroundRequested) {
+          return;
+        }
+        this.backgrounded = false;
+        if (this.stopped) {
+          return;
+        }
+        // Idle guests need not redraw on resume. Publish the last stored hidden
+        // surface, after its batch completes and before subsequent guest work.
+        // This is presentation only: no command replay or additional fence.
+        if (this.backgroundTextureValid) {
+          const encoder = this.device.createCommandEncoder();
+          encoder.copyTextureToTexture(
+            { texture: this.backgroundTexture },
+            { texture: this.context.getCurrentTexture() },
+            [this.physicalWidth, this.physicalHeight, 1]
+          );
+          this.device.queue.submit([encoder.finish()]);
+          postMessage({
+            type: "presented",
+            sequence: this.backgroundTextureSequence,
+          });
+        }
+        this.destroyBackgroundTexture();
+      })
+      .catch(error => {
+        postMessage({ type: "error", message: error.message || String(error) });
+        this.stopped = true;
+      });
+  }
+
+  destroyBackgroundTexture() {
+    this.backgroundTexture?.destroy();
+    this.backgroundTexture = null;
+    this.backgroundTextureValid = false;
+    this.backgroundTextureSequence = 0;
+  }
+
+  surfaceTexture() {
+    if (!this.backgrounded) {
+      return this.context.getCurrentTexture();
+    }
+    // Surface passes still run: they may share a batch with resource uploads,
+    // compute work or readbacks. One device-local target bounds hidden rendering.
+    return (this.backgroundTexture ??= this.device.createTexture({
+      size: [this.physicalWidth, this.physicalHeight, 1],
+      format: this.format,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+    }));
   }
 
   scheduleResize(dimensions) {
@@ -1592,6 +1669,8 @@ class GpuEngine {
     let surfaceView = null;
     let surfaceTexture = null;
     let readback = null;
+    let surfaceStored = false;
+    const backgrounded = this.backgrounded;
     const removed = [];
     const shaders = [];
     const created = [];
@@ -1766,6 +1845,12 @@ class GpuEngine {
           }
           case 12: {
             encoder ||= this.device.createCommandEncoder();
+            if (!command.colorView) {
+              surfaceStored = (command.flags & 2) !== 0;
+              if (backgrounded) {
+                this.backgroundTextureValid = false;
+              }
+            }
             const colorAttachment = {
               view: command.colorView
                 ? resource(
@@ -1775,7 +1860,7 @@ class GpuEngine {
                     command.index
                   ).value
                 : (surfaceView ??= (surfaceTexture ??=
-                    this.context.getCurrentTexture()).createView()),
+                    this.surfaceTexture()).createView()),
               loadOp: command.flags & 1 ? "load" : "clear",
               storeOp: command.flags & 2 ? "store" : "discard",
               clearValue: command.clearColor,
@@ -1971,6 +2056,10 @@ class GpuEngine {
     this.resources = next;
     this.handleSlots = validated.slots;
     this.lastSequence = batch.sequence;
+    if (backgrounded && surfaceTexture === this.backgroundTexture) {
+      this.backgroundTextureValid = surfaceStored;
+      this.backgroundTextureSequence = batch.sequence;
+    }
     removed.forEach(entry => entry.value?.destroy?.());
     shaders.forEach(([entry, handle]) =>
       this.watchShader(entry, handle, batch.sequence)
@@ -1987,7 +2076,9 @@ class GpuEngine {
       postMessage({ type: "test-readback", samples });
     }
     postBytes("event", makeEvent(5, batch.sequence));
-    postMessage({ type: "presented", sequence: batch.sequence });
+    if (!backgrounded && !this.backgrounded) {
+      postMessage({ type: "presented", sequence: batch.sequence });
+    }
     if (this.testDeviceLossPending && surfaceTexture) {
       this.testDeviceLossPending = false;
       this.device.destroy();
@@ -2063,6 +2154,7 @@ class GpuEngine {
         }
         this.resources.clear();
         this.handleSlots.clear();
+        this.destroyBackgroundTexture();
         this.pendingResize = null;
         this.lastSequence = 0;
       })
@@ -2078,6 +2170,7 @@ class GpuEngine {
     for (const entry of this.resources.values()) {
       entry.value?.destroy?.();
     }
+    this.destroyBackgroundTexture();
     this.pendingResize = null;
     this.resources.clear();
     this.handleSlots.clear();
@@ -2123,6 +2216,7 @@ function postBytes(type, bytes) {
 }
 
 let engine = null;
+let backgrounded = false;
 
 onmessage = event => {
   const message = event.data;
@@ -2136,6 +2230,7 @@ onmessage = event => {
     )
       .then(created => {
         engine = created;
+        engine.setBackground(backgrounded);
         postBytes("capabilities", engine.capabilities());
       })
       .catch(error =>
@@ -2145,6 +2240,9 @@ onmessage = event => {
     engine.submit(new Uint8Array(message.bytes));
   } else if (message?.type === "resize" && engine) {
     engine.scheduleResize(message.dimensions);
+  } else if (message?.type === "background") {
+    backgrounded = message.backgrounded === true;
+    engine?.setBackground(backgrounded);
   } else if (message?.type === "reset" && engine) {
     engine.reset();
   } else if (message?.type === "stop" && engine) {

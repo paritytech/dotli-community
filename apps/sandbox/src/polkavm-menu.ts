@@ -39,11 +39,12 @@ export function installPolkaVmMenu(
   const heading = document.createElement("h2");
   heading.id = "dotli-polkavm-menu-title";
   heading.textContent =
-    options.error === undefined ? "Paused" : "Unable to run app";
+    options.error === undefined ? "App menu" : "Unable to run app";
   const message = document.createElement("p");
   message.setAttribute("role", "status");
   message.textContent =
-    options.error ?? "Gameplay is paused while this menu is open.";
+    options.error ??
+    "Display, sound and controls are paused. Network updates continue.";
   const resume = button("Resume");
   resume.hidden = options.error !== undefined;
   const help = document.createElement("details");

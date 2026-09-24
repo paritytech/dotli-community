@@ -940,37 +940,37 @@ test("a consented file restarts the same PolkaVM iframe", async ({ page }) => {
     .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(2);
 
+  const originalCanvas = await canvas.elementHandle();
+  const originalIframe = await page
+    .locator("#polkavm-file-product")
+    .elementHandle();
+  if (originalCanvas === null || originalIframe === null) {
+    throw new Error("PolkaVM surface is unavailable before file replacement");
+  }
   await product.locator('input[type="file"]').setInputFiles({
     name: "game.sfc",
     mimeType: "application/octet-stream",
     buffer: Buffer.alloc(64, 0xa5),
   });
-  const consent = product.locator(".dotli-file-consent");
-  await expect(consent).toContainText("Give this file to the app?");
+  const consent = product.locator(
+    ".dotli-file-consent-backdrop .dotli-file-consent",
+  );
   await expect(consent).toContainText("game.sfc · 0.1 KiB");
   await expect(consent).toContainText("SNES cartridge image");
-  await expect(product.locator("#dotli-polkavm-file-open")).toBeEnabled();
   await consent.locator(".dotli-file-consent-approve").click();
 
   await expect
-    .poll(
-      async () =>
-        page.evaluate(
-          () =>
-            (
-              window as typeof window & {
-                __dotliTestPortsIssued?: number;
-              }
-            ).__dotliTestPortsIssued,
-        ),
-      { timeout: 30_000 },
-    )
-    .toBe(2);
+    .poll(() => originalCanvas.evaluate((element) => element.isConnected))
+    .toBe(false);
+  expect(await originalIframe.evaluate((element) => element.isConnected)).toBe(
+    true,
+  );
   await expect(canvas).toHaveAttribute("data-polkavm-ready", "true", {
     timeout: 30_000,
   });
   await expect
     .poll(async () => Number(await canvas.getAttribute("data-polkavm-frames")))
     .toBeGreaterThan(2);
-  await expect(product.locator("#dotli-polkavm-file-open")).toBeVisible();
+  await product.locator("#dotli-polkavm-menu-open").click();
+  await expect(product.locator("#dotli-polkavm-file-open")).toBeEnabled();
 });

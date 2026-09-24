@@ -2831,6 +2831,9 @@ function installInput(
         syncFocus();
         clearPointerMotion();
         releasePointerLock();
+      } else {
+        // Menu focus may return before the worker's foreground acknowledgement.
+        syncFocus();
       }
       updateTouchControls();
     },
@@ -3099,7 +3102,11 @@ async function startPolkaVmApplication(
   const audioSources = new Set<AudioBufferSourceNode>();
   let menuPaused = false;
   let paused = false;
-  let pauseAcknowledged = false;
+  let backgroundPending = false;
+  let backgroundSequence = 0;
+  let pendingFrame: WorkerFrame | null = null;
+  let pendingUiOutput: UiPlatformOutput | null = null;
+  let pendingPointerCapture: boolean | null = null;
   let firstFrame = false;
   let frameWindowStarted = performance.now();
   let frameWindowCount = 0;
@@ -3177,7 +3184,7 @@ async function startPolkaVmApplication(
   };
 
   const resumeAudio = (): void => {
-    if (paused || pauseAcknowledged || !descriptor.audioEnabled) {
+    if (paused || backgroundPending || !descriptor.audioEnabled) {
       return;
     }
     audioContext ??= new AudioContext({ sampleRate: 48_000 });
@@ -3188,7 +3195,7 @@ async function startPolkaVmApplication(
   const playAudio = (message: WorkerAudio): void => {
     if (
       paused ||
-      pauseAcknowledged ||
+      backgroundPending ||
       !descriptor.audioEnabled ||
       !Number.isInteger(message.channels) ||
       message.channels < 1 ||
@@ -3285,7 +3292,11 @@ async function startPolkaVmApplication(
       event: (bytes) => {
         worker.postMessage({ type: "gpu-event", bytes }, [bytes.buffer]);
       },
-      presented: presentedFrame,
+      presented: () => {
+        if (!paused && !backgroundPending) {
+          presentedFrame();
+        }
+      },
       error: (error) => {
         failRuntime(error);
       },
@@ -3347,7 +3358,7 @@ async function startPolkaVmApplication(
     }
   };
   const sendMotion = (bytes: Uint8Array): void => {
-    if (paused || pauseAcknowledged) {
+    if (paused || backgroundPending) {
       return;
     }
     const flags = new DataView(
@@ -3479,7 +3490,7 @@ async function startPolkaVmApplication(
     descriptor.graphicsProfile,
     descriptor.inputFeatures,
     (bytes) => {
-      if (paused) {
+      if (paused || backgroundPending) {
         return;
       }
       worker.postMessage({ type: "input", bytes }, [bytes.buffer]);
@@ -3507,6 +3518,9 @@ async function startPolkaVmApplication(
       return;
     }
     stopped = true;
+    pendingFrame = null;
+    pendingUiOutput = null;
+    pendingPointerCapture = null;
     cleanupFileInputControls();
     menu.cleanup();
     document.removeEventListener("visibilitychange", visibilityChanged);
@@ -3567,15 +3581,24 @@ async function startPolkaVmApplication(
     if (next === paused || stopped) {
       return;
     }
-    // Release records must precede pause; the worker drains them before freezing.
+    // Backgrounding keeps host responses flowing; it is not a hard guest pause.
+    // Release controls before closing the input gate.
     if (next) {
       setInputPaused(true);
     }
     paused = next;
     canvas.dataset.polkavmPaused = String(paused);
     // Old audio may already be in flight; only a resume ack reopens playback.
-    pauseAcknowledged = true;
-    worker.postMessage({ type: "pause", paused });
+    backgroundPending = true;
+    if (paused) {
+      tri2d?.setBackgrounded(true);
+      webGpu?.setBackgrounded(true);
+    }
+    worker.postMessage({
+      type: "background",
+      backgrounded: paused,
+      seq: ++backgroundSequence,
+    });
     if (paused) {
       window.clearTimeout(timer);
       for (const source of audioSources) {
@@ -3588,11 +3611,9 @@ async function startPolkaVmApplication(
         void audioContext.suspend();
       }
     } else {
-      setInputPaused(false);
       if (!firstFrame) {
         timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
       }
-      resumeAudio();
     }
   };
   const visibilityChanged = (): void => {
@@ -3617,21 +3638,53 @@ async function startPolkaVmApplication(
   });
   document.addEventListener("visibilitychange", visibilityChanged);
 
-  worker.onmessage = (event: MessageEvent<unknown>): void => {
+  const handleWorkerMessage = (data: unknown): void => {
     if (stopped) {
       return;
     }
-    const message = object(event.data);
+    const message = object(data);
     if (hostFrameQueue.handleMessage(message)) {
       return;
     }
     switch (message?.type) {
-      case "pause-state": {
-        if (typeof message.paused === "boolean") {
-          pauseAcknowledged = message.paused;
-          if (!paused && !pauseAcknowledged) {
-            resumeAudio();
+      case "background-state": {
+        if (
+          message.seq !== backgroundSequence ||
+          message.backgrounded !== paused
+        ) {
+          break;
+        }
+        backgroundPending = false;
+        if (!paused) {
+          try {
+            if (tri2d?.setBackgrounded(false) === true) {
+              presentedFrame();
+            }
+          } catch (error) {
+            recoverTri2d(
+              error instanceof Error ? error : new Error("Tri2D resume failed"),
+            );
+            return;
           }
+          webGpu?.setBackgrounded(false);
+          setInputPaused(false);
+          // Resize events can arrive while the foreground acknowledgement is pending.
+          sendSurfaceMetrics();
+          if (pendingPointerCapture !== null) {
+            setPointerCaptureRequest(pendingPointerCapture);
+            pendingPointerCapture = null;
+          }
+          if (pendingFrame !== null) {
+            const frame = pendingFrame;
+            pendingFrame = null;
+            handleWorkerMessage(frame);
+          }
+          if (pendingUiOutput !== null) {
+            const output = pendingUiOutput;
+            pendingUiOutput = null;
+            handleWorkerMessage({ type: "ui-output", output });
+          }
+          resumeAudio();
         }
         break;
       }
@@ -3710,7 +3763,6 @@ async function startPolkaVmApplication(
         canvas.dataset.polkavmReady = "true";
         updateMetrics();
         workerReady = true;
-        worker.postMessage({ type: "pause", paused });
         postViewInsets(INPUT_SAFE_AREA_INSETS, {
           left: 0,
           top: 0,
@@ -3746,6 +3798,13 @@ async function startPolkaVmApplication(
           );
           return;
         }
+        if (paused || backgroundPending) {
+          pendingPointerCapture = message.capture;
+          if (!message.capture) {
+            setPointerCaptureRequest(false);
+          }
+          break;
+        }
         setPointerCaptureRequest(message.capture);
         break;
       }
@@ -3772,6 +3831,15 @@ async function startPolkaVmApplication(
             ),
           );
           return;
+        }
+        if (paused || backgroundPending) {
+          // Interactive requests cannot open a camera while the app is inactive.
+          worker.postMessage({
+            type: "mediated-input-result",
+            handle,
+            status: 4,
+          });
+          break;
         }
         activeMediatedInput = {
           handle,
@@ -3846,6 +3914,10 @@ async function startPolkaVmApplication(
           failRuntime(new Error("PolkaVM guest emitted a shared framebuffer"));
           return;
         }
+        if (paused || backgroundPending) {
+          pendingFrame = frame;
+          break;
+        }
         const resized =
           canvas.width !== frame.width || canvas.height !== frame.height;
         if (resized) {
@@ -3890,7 +3962,9 @@ async function startPolkaVmApplication(
           canvas.dataset.polkavmTri2dDraws = String(metadata.drawCount);
           canvas.dataset.polkavmTri2dVertices = String(metadata.vertexCount);
           canvas.dataset.polkavmTri2dIndices = String(metadata.indexCount);
-          presentedFrame();
+          if (!paused && !backgroundPending) {
+            presentedFrame();
+          }
         } catch (error) {
           const runtimeError =
             error instanceof Error
@@ -3905,15 +3979,19 @@ async function startPolkaVmApplication(
         break;
       }
       case "ui-output": {
-        if (paused || pauseAcknowledged) {
-          break;
-        }
         const output = validatedUiPlatformOutput(message.output);
         if (output === null) {
           failRuntime(
             new Error("PolkaVM guest emitted an invalid UI platform output"),
           );
           return;
+        }
+        if (paused || backgroundPending) {
+          // Cursor/IME are replaceable state. Clipboard/navigation are actions
+          // and must neither run in the background nor replay on return.
+          output.commands = [];
+          pendingUiOutput = output;
+          break;
         }
         applyUiOutput(output);
         canvas.dataset.polkavmCursor = output.cursorIcon;
@@ -3994,6 +4072,9 @@ async function startPolkaVmApplication(
         break;
       }
     }
+  };
+  worker.onmessage = (event: MessageEvent<unknown>): void => {
+    handleWorkerMessage(event.data);
   };
   worker.onerror = (event: ErrorEvent): void => {
     failRuntime(
