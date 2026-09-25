@@ -63,9 +63,9 @@ flag `VITE_APP_DEBUG`:
 
 When the panel isn't mounted, the bus stays in a null-stub state and
 every `emitDotliDebugEvent(...)` call site scattered through `main.ts`,
-`bridge.ts`, and `container.ts` is a cheap early-return. The panel's
-UI chunk (`panel-*.js`) is a dynamic import — it isn't fetched until
-the panel mounts.
+`bridge.ts`, and `container.ts` is a cheap early-return. The panel UI
+(`packages/ui/src/components/truapi-debug/mount.tsx`, a Solid tree)
+is a dynamic import — it isn't fetched until the panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 

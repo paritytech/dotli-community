@@ -926,7 +926,7 @@ async function main(): Promise<void> {
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
-    void import("@dotli/truapi-debug/panel").then(
+    void import("@dotli/ui/components/truapi-debug/mount").then(
       ({ setupTruapiDebugPanel }) => {
         setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
         log.warn(`[dot.li] TrUAPI debug panel enabled`);

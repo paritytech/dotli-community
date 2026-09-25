@@ -229,10 +229,6 @@
     "packages/sandbox-checker": {
       "name": "@dotli/sandbox-checker",
       "version": "0.6.0",
-      "dependencies": {
-        "@solidjs/web": "2.0.0-rc.9",
-        "solid-js": "2.0.0-rc.9",
-      },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",
         "@dotli/typescript-config": "workspace:*",
@@ -283,9 +279,7 @@
       "dependencies": {
         "@dotli/config": "workspace:*",
         "@dotli/shared": "workspace:*",
-        "@solidjs/web": "2.0.0-rc.9",
         "nanoevents": "^10.0.0",
-        "solid-js": "2.0.0-rc.9",
       },
       "devDependencies": {
         "@dotli/eslint-config": "workspace:*",

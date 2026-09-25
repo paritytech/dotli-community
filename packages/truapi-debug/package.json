@@ -21,8 +21,6 @@
   "dependencies": {
     "@dotli/config": "workspace:*",
     "@dotli/shared": "workspace:*",
-    "@solidjs/web": "2.0.0-rc.9",
-    "nanoevents": "^10.0.0",
-    "solid-js": "2.0.0-rc.9"
+    "nanoevents": "^10.0.0"
   }
 }

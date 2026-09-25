@@ -17,9 +17,5 @@
     "eslint": "^10.11.0",
     "typescript": "~6.0.3",
     "vite": "^8.3.1"
-  },
-  "dependencies": {
-    "@solidjs/web": "2.0.0-rc.9",
-    "solid-js": "2.0.0-rc.9"
   }
 }
