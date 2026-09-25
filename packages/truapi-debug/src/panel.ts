@@ -19,14 +19,14 @@ import {
   type ResolutionRecorder,
 } from "./resolution-view.ts";
 import {
-  decodeChainAnnotations,
-  formatChainLabel,
-  type ChainAnnotations,
-} from "./chain-decode.ts";
-import { summariseChainMessage } from "./chain-summary.ts";
-import { getSystemExplanation } from "./system-explanations.ts";
-import { summariseSystemEvent } from "./system-summary.ts";
+  formatLatency,
+  formatTime,
+  renderGroupDetail,
+  renderSingleDetail,
+} from "./detail-html.ts";
 import { onDotliDebugEvent } from "./dotli-debug-bus.ts";
+import { readStoredDock, writeStoredDock } from "./dock-storage.ts";
+import type { DockPosition } from "./dock-storage.ts";
 import {
   correlationKeyOf,
   type EventSeq,
@@ -44,13 +44,14 @@ import {
   type DirectionFilter,
   type FilterState,
 } from "./filters.ts";
-import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
+import { adjustIframeForPanel, restoreIframeLayout } from "./iframe-layout.ts";
 import {
   formatPending,
   openCalls,
   pendingKeyOf,
   SLOW_AFTER_MS,
 } from "./pending.ts";
+import { truapiRowData, systemRowData } from "./row-format.ts";
 import {
   applyTimelineSelection,
   buildTimelineContainer,
@@ -63,38 +64,13 @@ const DEFAULT_CAPACITY = 2000;
 const RESOLUTION_TICK_MS = 500;
 const STYLE_ID = "truapi-debug-styles";
 const PANEL_ID = "truapi-debug-panel";
-const DOCK_STORAGE_KEY = "truapi-debug:dock";
 const DEBUG_SESSION_KEY = "dotli:truapi-debug";
 const PENDING_TICK_MS = 1000;
-
-type DockPosition = "bottom" | "right";
 
 function isTruapiDebugEvent(
   ev: DotliDebugBusEvent,
 ): ev is Extract<DotliDebugBusEvent, { kind: "truapi" }> {
   return "kind" in ev;
-}
-
-function readStoredDock(): DockPosition {
-  try {
-    const raw = localStorage.getItem(DOCK_STORAGE_KEY);
-    if (raw === "right") {
-      return "right";
-    }
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may throw in Safari private mode; default to bottom dock.
-  } catch {
-    /* swallow */
-  }
-  return "bottom";
-}
-
-function writeStoredDock(dock: DockPosition): void {
-  try {
-    localStorage.setItem(DOCK_STORAGE_KEY, dock);
-    // eslint-disable-next-line no-restricted-syntax -- localStorage may throw on quota/private mode; persistence is best-effort.
-  } catch {
-    /* swallow */
-  }
 }
 
 export interface SetupOptions {
@@ -156,7 +132,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   // When a new product iframe is mounted, re-apply the iframe height
   // adjustment so the panel doesn't cover freshly-rendered app content.
   const onProductLoaded = (): void => {
-    adjustIframeForPanel(ui.panel, state);
+    adjustIframeForPanel(iframeLayoutInputFor(ui, state));
   };
   window.addEventListener("dotli:product-loaded", onProductLoaded);
 
@@ -220,7 +196,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   // Initial render + iframe adjustment.
   render(ui, state, store, { fullList: true });
-  adjustIframeForPanel(ui.panel, state);
+  adjustIframeForPanel(iframeLayoutInputFor(ui, state));
 
   return () => {
     window.clearInterval(resolutionTick);
@@ -233,40 +209,17 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   };
 }
 
-/** Adjust the currently-mounted product iframe so the panel doesn't overlay it. */
-function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
-  if (iframe === null) {
-    return;
-  }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? 56 : 0;
-  if (state.dock === "right") {
-    iframe.style.height = `calc(100dvh - ${String(topOffset)}px)`;
-    // When collapsed, the 32px header bar overlays the top-right corner
-    // of the iframe rather than reserving a full-height column. Mirrors
-    // how bottom-dock collapse overlays only the bottom 32px.
-    iframe.style.width = state.collapsed
-      ? "100%"
-      : `calc(100vw - ${String(panel.offsetWidth)}px)`;
-  } else {
-    // Host's renderIframe sets inline width:100%. Restore
-    // that explicitly. Clearing to "" falls back to the HTML iframe
-    // default of 300px and breaks the layout.
-    iframe.style.width = "100%";
-    const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
-    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
-  }
-}
-
-function restoreIframeLayout(): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
-  if (iframe === null) {
-    return;
-  }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  iframe.style.height = hasTopbar ? "calc(100dvh - 56px)" : "100dvh";
-  iframe.style.width = "100%";
+/** Build the plain-data input `adjustIframeForPanel` needs from live panel/state. */
+function iframeLayoutInputFor(
+  ui: { panel: HTMLElement },
+  state: PanelState,
+): Parameters<typeof adjustIframeForPanel>[0] {
+  return {
+    collapsed: state.collapsed,
+    dock: state.dock,
+    width: ui.panel.offsetWidth,
+    height: ui.panel.offsetHeight,
+  };
 }
 
 type PanelView = "list" | "timeline" | "resolution";
@@ -550,7 +503,7 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     }
     ui.panel.classList.toggle("collapsed", state.collapsed);
     ui.collapseBtn.textContent = state.collapsed ? "▲" : "▼";
-    adjustIframeForPanel(ui.panel, state);
+    adjustIframeForPanel(iframeLayoutInputFor(ui, state));
   });
   ui.dockBtn.addEventListener("click", () => {
     state.dock = state.dock === "bottom" ? "right" : "bottom";
@@ -614,7 +567,7 @@ function applyDockPosition(
   if (opts.persist) {
     writeStoredDock(state.dock);
   }
-  adjustIframeForPanel(ui.panel, state);
+  adjustIframeForPanel(iframeLayoutInputFor(ui, state));
 }
 
 function wireFilters(ui: PanelUI, state: PanelState, store: EventStore): void {
@@ -687,7 +640,7 @@ function wireResize(ui: PanelUI, state: PanelState): void {
       );
       ui.panel.style.height = `${String(clamped)}px`;
     }
-    adjustIframeForPanel(ui.panel, state);
+    adjustIframeForPanel(iframeLayoutInputFor(ui, state));
   };
   const onPointerUp = (): void => {
     if (!dragging) {
@@ -1380,30 +1333,25 @@ function renderTruapiRow(
   delta: string,
   pendingKey: string | null,
 ): string {
+  const data = truapiRowData(ev, pendingKey);
   const arrow =
-    ev.direction === "outgoing"
+    data.direction === "outgoing"
       ? `<span class="td-arrow-out">▶</span>`
       : `<span class="td-arrow-in">◀</span>`;
   const product =
-    ev.productId === undefined
+    data.productId === undefined
       ? `<span class="td-product anon">(no id)</span>`
-      : `<span class="td-product" title="${escapeHtml(ev.productId)}">${escapeHtml(ev.productId)}</span>`;
-  const ridShort = ev.requestId.slice(0, 6);
-  const ridStyle = `color:${ridColor(ev.requestId)}`;
-  const ridBadge = `<span class="td-rid" style="${ridStyle}" title="requestId: ${escapeHtml(ev.requestId)}">${escapeHtml(ridShort)}</span>`;
-
-  const chain = decodeChainAnnotations(ev.tag, ev.payload);
-  const displayTag = chain === null ? ev.tag : formatChainLabel(chain);
-  const summary =
-    chain === null ? formatPayloadSummary(ev.payload) : chainSummary(chain);
+      : `<span class="td-product" title="${escapeHtml(data.productId)}">${escapeHtml(data.productId)}</span>`;
+  const ridStyle = `color:${data.ridColor}`;
+  const ridBadge = `<span class="td-rid" style="${ridStyle}" title="requestId: ${escapeHtml(data.requestId)}">${escapeHtml(data.ridShort)}</span>`;
 
   // Rendered empty and filled in by `syncPending`, which also removes it once
   // the reply lands. Emitting it here keeps the badge inside the row the
   // append-only list path already built, so the tick never re-renders a row.
   const pending =
-    pendingKey === null
+    data.pendingKey === null
       ? ""
-      : `<span class="td-pending" data-pending-key="${escapeHtml(pendingKey)}" hidden></span>`;
+      : `<span class="td-pending" data-pending-key="${escapeHtml(data.pendingKey)}" hidden></span>`;
 
   return (
     `<div class="${classes}" data-seq="${String(ev.seq)}" data-rid="${escapeHtml(ev.requestId)}" role="listitem">` +
@@ -1412,9 +1360,9 @@ function renderTruapiRow(
     product +
     ridBadge +
     `<span class="td-tag-and-summary">` +
-    `<span class="${tagClass(ev.tag)}">${escapeHtml(displayTag)}</span>${delta}${pending}` +
-    (summary !== ""
-      ? `<span class="td-summary">${escapeHtml(summary)}</span>`
+    `<span class="${data.tagClassName}">${escapeHtml(data.displayTag)}</span>${delta}${pending}` +
+    (data.summary !== ""
+      ? `<span class="td-summary">${escapeHtml(data.summary)}</span>`
       : "") +
     `</span>` +
     `</div>`
@@ -1427,89 +1375,20 @@ function renderSystemRow(
   time: string,
   delta: string,
 ): string {
-  const layerBadge = `<span class="td-layer-badge td-layer-${ev.layer}" title="source: ${ev.source}">${escapeHtml(ev.layer)}</span>`;
-  const color = ridColor(ev.flowId);
-  const flowBadge = `<span class="td-rid" style="color:${color}" title="flowId: ${escapeHtml(ev.flowId)}">${escapeHtml(ev.flowId.slice(0, 6))}</span>`;
-  const summary = summariseSystemEvent(ev);
-  const eventText = `${ev.layer}.${ev.event}`;
+  const data = systemRowData(ev);
+  const layerBadge = `<span class="td-layer-badge td-layer-${data.layer}" title="source: ${data.source}">${escapeHtml(data.layer)}</span>`;
+  const flowBadge = `<span class="td-rid" style="color:${data.ridColor}" title="flowId: ${escapeHtml(data.flowId)}">${escapeHtml(data.flowIdShort)}</span>`;
   return (
     `<div class="${classes}" data-seq="${String(ev.seq)}" data-rid="${escapeHtml(ev.flowId)}" role="listitem">` +
     `<span class="td-time">${time}</span>` +
     layerBadge +
     flowBadge +
     `<span class="td-tag-and-summary">` +
-    `<span class="td-tag td-tag-sys">${escapeHtml(eventText)}</span>${delta}` +
-    `<span class="td-summary">${escapeHtml(summary)}</span>` +
+    `<span class="td-tag td-tag-sys">${escapeHtml(data.eventText)}</span>${delta}` +
+    `<span class="td-summary">${escapeHtml(data.summary)}</span>` +
     `</span>` +
     `</div>`
   );
-}
-
-/**
- * Compact summary rendered in the list row for a decoded chain message.
- * Prioritises the correlation keys that distinguish similar rows:
- * block hash for head operations, operationId for started/received ops,
- * outcome for responses, error message for failures.
- */
-function chainSummary(ann: ChainAnnotations): string {
-  const parts: string[] = [];
-  if (ann.chainEventTag !== undefined && ann.operationId !== undefined) {
-    parts.push(`op ${shortHex(ann.operationId)}`);
-  } else if (ann.operationId !== undefined) {
-    parts.push(`op ${shortHex(ann.operationId)}`);
-  }
-  if (ann.blockHash !== undefined) {
-    parts.push(`blk ${shortHex(ann.blockHash)}`);
-  }
-  if (ann.outcome === "error") {
-    parts.push(`err: ${ann.errorMessage ?? "?"}`);
-  } else if (ann.outcome === "limit-reached") {
-    parts.push("limit-reached");
-  }
-  return parts.join(" · ");
-}
-
-/** Trim a 0x-prefixed hash or a long id down to a glance-friendly token. */
-function shortHex(v: string): string {
-  if (v.startsWith("0x") && v.length > 12) {
-    return `${v.slice(0, 8)}…${v.slice(-4)}`;
-  }
-  if (v.length > 10) {
-    return `${v.slice(0, 8)}…`;
-  }
-  return v;
-}
-
-/** Deterministic hue for a requestId. The same id yields the same color on every row. */
-function ridColor(rid: string): string {
-  let h = 0;
-  for (let i = 0; i < rid.length; i++) {
-    h = (h * 31 + rid.charCodeAt(i)) | 0;
-  }
-  const hue = ((h % 360) + 360) % 360;
-  return `hsl(${String(hue)}, 65%, 65%)`;
-}
-
-function tagClass(tag: string): string {
-  if (
-    tag.endsWith("_request") ||
-    tag.endsWith("_start") ||
-    tag.endsWith("_submit")
-  ) {
-    return "td-tag td-tag-req";
-  }
-  if (tag.endsWith("_response")) {
-    return "td-tag td-tag-res";
-  }
-  if (
-    tag.endsWith("_receive") ||
-    tag.endsWith("_interrupt") ||
-    tag.endsWith("_stop") ||
-    tag.endsWith("_subscribe")
-  ) {
-    return "td-tag td-tag-sub";
-  }
-  return "td-tag";
 }
 
 function renderDetail(ui: PanelUI, state: PanelState, store: EventStore): void {
@@ -1528,356 +1407,6 @@ function renderDetail(ui: PanelUI, state: PanelState, store: EventStore): void {
     return;
   }
   ui.detail.innerHTML = renderSingleDetail(ev, store);
-}
-
-/**
- * List-view detail: one event's full detail, with clickable pill links
- * to sibling events in the same requestId group so the user can jump
- * between request, response, or subscription receives.
- */
-function renderSingleDetail(ev: StoredEvent, store: EventStore): string {
-  if (ev.kind === "truapi") {
-    return renderTruapiSingleDetail(ev, store);
-  }
-  return renderSystemSingleDetail(ev, store);
-}
-
-function renderTruapiSingleDetail(
-  ev: StoredTruapiEvent,
-  store: EventStore,
-): string {
-  const key = ev.requestId;
-  const group = store.eventsInGroup(key);
-  const first = store.firstInGroup(key);
-  const siblings = group.filter((g) => g.seq !== ev.seq);
-  const groupHtml = renderSiblingsHtml(ev, first, siblings);
-
-  const ridBadge = `<span class="td-rid" style="color:${ridColor(ev.requestId)}">${escapeHtml(ev.requestId.slice(0, 6))}</span>`;
-  const chain = decodeChainAnnotations(ev.tag, ev.payload);
-  const summarySection = renderSummarySection(chain, ev.payload);
-  const chainSection = chain === null ? "" : renderChainSection(chain);
-
-  return (
-    `<dl class="td-detail-head">` +
-    `<dt>time</dt><dd>${formatTime(ev.receivedAt)}</dd>` +
-    `<dt>direction</dt><dd>${ev.direction}</dd>` +
-    `<dt>product</dt><dd>${ev.productId === undefined ? "(no id)" : escapeHtml(ev.productId)}</dd>` +
-    `<dt>tag</dt><dd>${escapeHtml(ev.tag)}</dd>` +
-    `<dt>requestId</dt><dd>${ridBadge} <code>${escapeHtml(ev.requestId)}</code></dd>` +
-    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? "" : "s"}${siblings.length > 0 ? ` — ${groupHtml}` : ""}</dd>` +
-    `</dl>` +
-    summarySection +
-    chainSection +
-    `<pre class="td-detail-pre">${escapeHtml(formatPayloadDetail(ev.payload))}</pre>`
-  );
-}
-
-function renderSystemSingleDetail(
-  ev: StoredSystemEvent,
-  store: EventStore,
-): string {
-  const key = ev.flowId;
-  const group = store.eventsInGroup(key);
-  const first = store.firstInGroup(key);
-  const siblings = group.filter((g) => g.seq !== ev.seq);
-  const groupHtml = renderSiblingsHtml(ev, first, siblings);
-  const flowBadge = `<span class="td-rid" style="color:${ridColor(ev.flowId)}">${escapeHtml(ev.flowId.slice(0, 6))}</span>`;
-  const summary = summariseSystemEvent(ev);
-
-  return (
-    `<dl class="td-detail-head">` +
-    `<dt>time</dt><dd>${formatTime(ev.receivedAt)}</dd>` +
-    `<dt>source</dt><dd>${ev.source}</dd>` +
-    `<dt>layer</dt><dd>${escapeHtml(ev.layer)}</dd>` +
-    `<dt>event</dt><dd>${escapeHtml(ev.event)}</dd>` +
-    `<dt>flowId</dt><dd>${flowBadge} <code>${escapeHtml(ev.flowId)}</code></dd>` +
-    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? "" : "s"}${siblings.length > 0 ? ` — ${groupHtml}` : ""}</dd>` +
-    `</dl>` +
-    `<div class="td-detail-section-title">Summary</div>` +
-    `<div class="td-detail-summary">${escapeHtml(summary)}</div>` +
-    renderExplanationSection(ev) +
-    `<pre class="td-detail-pre">${escapeHtml(formatPayloadDetail(ev.payload))}</pre>`
-  );
-}
-
-/**
- * Collapsible "What is this?" section rendered under the one-line
- * summary. Uses native `<details>`/`<summary>` so keyboard + assistive
- * tech work out of the box; CSS styles the disclosure without
- * replacing the native behaviour.
- */
-function renderExplanationSection(ev: StoredSystemEvent): string {
-  const explanation = getSystemExplanation(ev.layer, ev.event);
-  if (explanation === undefined) {
-    return "";
-  }
-  return (
-    `<details class="td-detail-explanation">` +
-    `<summary>What is this? — ${escapeHtml(explanation.title)}</summary>` +
-    `<div class="td-detail-explanation-body">${renderExplanationBody(explanation.body)}</div>` +
-    `</details>`
-  );
-}
-
-/**
- * Render an explanation body string as HTML. Preserves paragraph
- * breaks (blank lines) and keeps `code` spans with backticks so the
- * prose can reference identifiers without being mistaken for literal
- * text. Plain text otherwise, with no Markdown engine dependency.
- */
-function renderExplanationBody(body: string): string {
-  const paragraphs = body.split(/\n\n+/);
-  return paragraphs.map(renderExplanationParagraph).join("");
-}
-
-function renderExplanationParagraph(paragraph: string): string {
-  // Backticked `identifiers` become <code>identifiers</code>. Bullet lines
-  // (`• ` prefix) become list items.
-  const lines = paragraph.split("\n");
-  const isBulletList = lines.every(
-    (l) => l.trim().startsWith("• ") || l.trim() === "",
-  );
-  if (isBulletList) {
-    const items = lines
-      .filter((l) => l.trim() !== "")
-      .map((l) => {
-        const content = l.trim().slice(2);
-        return `<li>${formatInlineCode(content)}</li>`;
-      })
-      .join("");
-    return `<ul class="td-detail-explanation-list">${items}</ul>`;
-  }
-  return `<p>${formatInlineCode(paragraph)}</p>`;
-}
-
-function formatInlineCode(text: string): string {
-  // Escape first, then turn escaped backtick runs into <code> spans.
-  // Because escaping produces `&#39;`/`&amp;` sequences we keep the
-  // backtick search on the escaped string. It still identifies the
-  // literal `\`…\`` boundaries.
-  const escaped = escapeHtml(text);
-  return escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
-}
-
-/** Shared rendering of sibling pills for the single-event detail view. */
-function renderSiblingsHtml(
-  ev: StoredEvent,
-  first: StoredEvent | undefined,
-  siblings: StoredEvent[],
-): string {
-  if (siblings.length === 0) {
-    return "(no siblings in buffer)";
-  }
-  return siblings
-    .map((s) => {
-      const deltaMs = first === undefined ? 0 : s.receivedAt - first.receivedAt;
-      const sign = ev.receivedAt > s.receivedAt ? "−" : "+";
-      const deltaRelToSelected = Math.abs(s.receivedAt - ev.receivedAt);
-      const label =
-        s.kind === "truapi"
-          ? `${escapeHtml(s.tag)} ${sign}${formatLatency(deltaRelToSelected)}`
-          : `${escapeHtml(s.layer)}.${escapeHtml(s.event)} ${sign}${formatLatency(deltaRelToSelected)}`;
-      return (
-        `<span class="td-detail-pair" data-seq="${String(s.seq)}"` +
-        ` title="seq ${String(s.seq)} · +${formatLatency(deltaMs)} from start">` +
-        label +
-        `</span>`
-      );
-    })
-    .join(" · ");
-}
-
-/**
- * Human-readable one-liner describing what a chain message does. Shown
- * at the top of the detail pane so the reader doesn't have to parse
- * the JSON payload to understand the message intent.
- */
-function renderSummarySection(
-  chain: ChainAnnotations | null,
-  payload: unknown,
-): string {
-  if (chain === null) {
-    return "";
-  }
-  const summary = summariseChainMessage(chain, payload);
-  if (summary === null) {
-    return "";
-  }
-  return (
-    `<div class="td-detail-section-title">Summary</div>` +
-    `<div class="td-detail-summary">${escapeHtml(summary)}</div>`
-  );
-}
-
-/**
- * Timeline-view detail: every member of the clicked box's requestId
- * group, stacked chronologically. Each member shows its decoded chain
- * annotations (if any) and its payload. Since all siblings are visible
- * together, no cross-link pills are needed. Clicking a box is a
- * "show me the whole handshake" action, not a "pick one message" one.
- */
-function renderGroupDetail(ev: StoredEvent, store: EventStore): string {
-  const key = correlationKeyOf(ev);
-  const group = store.eventsInGroup(key);
-  const first = store.firstInGroup(key);
-  const keyBadge = `<span class="td-rid" style="color:${ridColor(key)}">${escapeHtml(key.slice(0, 6))}</span>`;
-
-  const last = group.length > 0 ? group[group.length - 1] : undefined;
-  const durationRow =
-    first !== undefined && last !== undefined && first.seq !== last.seq
-      ? `<dt>duration</dt><dd>${formatLatency(last.receivedAt - first.receivedAt)}</dd>`
-      : "";
-
-  const headerRows: string[] = [];
-  if (ev.kind === "truapi") {
-    headerRows.push(
-      `<dt>requestId</dt><dd>${keyBadge} <code>${escapeHtml(ev.requestId)}</code></dd>`,
-      `<dt>product</dt><dd>${ev.productId === undefined ? "(no id)" : escapeHtml(ev.productId)}</dd>`,
-    );
-  } else {
-    headerRows.push(
-      `<dt>flowId</dt><dd>${keyBadge} <code>${escapeHtml(ev.flowId)}</code></dd>`,
-      `<dt>source</dt><dd>${ev.source}</dd>`,
-      `<dt>layer</dt><dd>${escapeHtml(ev.layer)}</dd>`,
-    );
-  }
-  headerRows.push(
-    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? "" : "s"}</dd>`,
-  );
-  if (durationRow !== "") {
-    headerRows.push(durationRow);
-  }
-  const header = `<dl class="td-detail-head">${headerRows.join("")}</dl>`;
-
-  const members = group
-    .map((m) => {
-      const deltaMs = first === undefined ? 0 : m.receivedAt - first.receivedAt;
-      const deltaLabel =
-        first !== undefined && first.seq !== m.seq
-          ? `<span class="td-latency">+${formatLatency(deltaMs)}</span>`
-          : "";
-      return m.kind === "truapi"
-        ? renderTruapiMemberBlock(m, deltaLabel)
-        : renderSystemMemberBlock(m, deltaLabel);
-    })
-    .join("");
-
-  return header + members;
-}
-
-function renderTruapiMemberBlock(
-  m: StoredTruapiEvent,
-  deltaLabel: string,
-): string {
-  const arrow =
-    m.direction === "outgoing"
-      ? `<span class="td-arrow-out">▶</span>`
-      : `<span class="td-arrow-in">◀</span>`;
-  const chain = decodeChainAnnotations(m.tag, m.payload);
-  const summaryBlock = renderSummarySection(chain, m.payload);
-  const chainBlock = chain === null ? "" : renderChainSection(chain);
-  return (
-    `<div class="td-detail-member" data-seq="${String(m.seq)}">` +
-    `<div class="td-detail-member-header">` +
-    `<span class="td-time">${formatTime(m.receivedAt)}</span> ` +
-    arrow +
-    ` <span class="${tagClass(m.tag)}">${escapeHtml(m.tag)}</span> ` +
-    deltaLabel +
-    `</div>` +
-    summaryBlock +
-    chainBlock +
-    `<pre class="td-detail-pre">${escapeHtml(formatPayloadDetail(m.payload))}</pre>` +
-    `</div>`
-  );
-}
-
-function renderSystemMemberBlock(
-  m: StoredSystemEvent,
-  deltaLabel: string,
-): string {
-  const summary = summariseSystemEvent(m);
-  return (
-    `<div class="td-detail-member" data-seq="${String(m.seq)}">` +
-    `<div class="td-detail-member-header">` +
-    `<span class="td-time">${formatTime(m.receivedAt)}</span> ` +
-    `<span class="td-layer-badge td-layer-${m.layer}">${escapeHtml(m.layer)}</span> ` +
-    `<span class="td-tag td-tag-sys">${escapeHtml(m.event)}</span> ` +
-    deltaLabel +
-    `</div>` +
-    `<div class="td-detail-summary">${escapeHtml(summary)}</div>` +
-    renderExplanationSection(m) +
-    `<pre class="td-detail-pre">${escapeHtml(formatPayloadDetail(m.payload))}</pre>` +
-    `</div>`
-  );
-}
-
-/**
- * Chain-specific annotation block rendered above the raw payload in
- * the detail pane. Exists to surface the JSON-RPC correlation keys
- * (genesisHash, followSubscriptionId, operationId, blockHash, event
- * tag, outcome) that are buried inside the payload and would otherwise
- * require the reader to mentally parse the pretty-printed JSON.
- */
-function renderChainSection(ann: ChainAnnotations): string {
-  const rows: string[] = [];
-  rows.push(`<dt>method</dt><dd>${escapeHtml(formatChainLabel(ann))}</dd>`);
-  if (ann.chainEventTag !== undefined) {
-    rows.push(`<dt>event</dt><dd>${escapeHtml(ann.chainEventTag)}</dd>`);
-  }
-  if (ann.genesisHash !== undefined) {
-    rows.push(
-      `<dt>genesis</dt><dd><code>${escapeHtml(ann.genesisHash)}</code></dd>`,
-    );
-  }
-  if (ann.followSubscriptionId !== undefined) {
-    rows.push(
-      `<dt>followSub</dt><dd><code>${escapeHtml(ann.followSubscriptionId)}</code></dd>`,
-    );
-  }
-  if (ann.operationId !== undefined) {
-    rows.push(
-      `<dt>opId</dt><dd><code>${escapeHtml(ann.operationId)}</code></dd>`,
-    );
-  }
-  if (ann.blockHash !== undefined) {
-    rows.push(
-      `<dt>blockHash</dt><dd><code>${escapeHtml(ann.blockHash)}</code></dd>`,
-    );
-  }
-  if (ann.outcome !== undefined) {
-    const outcomeClass =
-      ann.outcome === "error" ? "td-outcome-err" : "td-outcome-ok";
-    const outcomeText =
-      ann.outcome === "error" && ann.errorMessage !== undefined
-        ? `error: ${ann.errorMessage}`
-        : ann.outcome;
-    rows.push(
-      `<dt>outcome</dt><dd class="${outcomeClass}">${escapeHtml(outcomeText)}</dd>`,
-    );
-  }
-  return (
-    `<div class="td-detail-section-title">Chain</div>` +
-    `<dl class="td-detail-head td-chain-head">${rows.join("")}</dl>`
-  );
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const hh = d.getHours().toString().padStart(2, "0");
-  const mm = d.getMinutes().toString().padStart(2, "0");
-  const ss = d.getSeconds().toString().padStart(2, "0");
-  const ms = d.getMilliseconds().toString().padStart(3, "0");
-  return `${hh}:${mm}:${ss}.${ms}`;
-}
-
-function formatLatency(ms: number): string {
-  if (ms < 1) {
-    return "<1ms";
-  }
-  if (ms < 1000) {
-    return `${String(Math.round(ms))}ms`;
-  }
-  return `${(ms / 1000).toFixed(2)}s`;
 }
 
 function injectStyles(): void {

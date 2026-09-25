@@ -65,6 +65,8 @@ export class EventStore {
   private paused = false;
   private nextSeq = 0;
   private droppedCount = 0;
+  /** Backing counter for `version()`. */
+  private versionCount = 0;
   /** Correlation key mapped to the first event observed with that key. */
   private readonly firstByKey = new Map<string, StoredEvent>();
   private readonly listeners = new Set<Listener>();
@@ -208,7 +210,18 @@ export class EventStore {
     return () => this.listeners.delete(l);
   }
 
+  /**
+   * Monotonic counter bumped every time subscribers are notified (insert,
+   * clear, prune, pause/resume). Lets a consumer snapshot `list()` cheaply
+   * by comparing versions rather than diffing the array on every render.
+   * A paused insert returns before `notify()` runs, so it never bumps this.
+   */
+  version(): number {
+    return this.versionCount;
+  }
+
   private notify(): void {
+    this.versionCount++;
     for (const l of this.listeners) {
       try {
         l();
