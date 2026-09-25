@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
   "upstreamBranch": "feat/wallet-allowance-monitor",
-  "upstreamRevision": "56fc126802336d8fbb26a00dacbc850e58a85818",
+  "upstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -13,13 +13,13 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.20.0",
-      "sourceArchiveSha256": "0a376f36a569487ad457b4d48982f5ab23595a4121bb9c7630a3c765099a3f19",
+      "sourceArchiveSha256": "31f0e048d38dec57e139d4a12ac44897a1a87014c7e2cc33c828af571df0b6f6",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "057abafef99a358941b57073e47deafeef73b055dc6f4b453c895a7031ce2b64",
+      "wasmSha256": "a9b0e08d94577c5692990cc48ea599db0beb38c69d160a071caf6e2749be7c6d",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "56fc126802336d8fbb26a00dacbc850e58a85818"
+  "wasmUpstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f"
 }
