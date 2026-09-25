@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { labelToProductId } from "@dotli/ui/runtime-config";
 import { setChatCapability } from "@dotli/shared/chat-capability";
 import type {
@@ -75,6 +75,12 @@ describe("chat panel", () => {
   beforeEach(() => {
     localStorage.clear();
     installChatDom();
+    // Prefetch fires a real idle timer that outlives the test otherwise.
+    vi.stubGlobal("requestIdleCallback", () => 0);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("As a user, the chat button appears only for chat-capable products", async () => {
@@ -677,11 +683,153 @@ describe("chat panel", () => {
     expect(byId("chat-panel-rooms").textContent).not.toContain("First room");
   });
 
+  it("As a user, a failed reply keeps the message and shows why", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-composer-error");
+    const productId = labelToProductId("chatty-composer-error");
+    let denied = true;
+    service.registerChatConnection(productId, {
+      publish: async () => {
+        throw denied ? new Error("request denied") : new Error("boom");
+      },
+      publishRendererAction: async () => undefined,
+      render: () => () => undefined,
+    });
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle(() => byId("chat-panel-rooms").hidden);
+
+    const input = byId<HTMLInputElement>("chat-panel-input");
+    const composer = byId<HTMLFormElement>("chat-panel-composer");
+    input.value = "hello";
+    composer.requestSubmit();
+    await settle(() => !byId("chat-panel-hint").hidden);
+    expect(byId("chat-panel-hint").textContent).toBe(
+      "Log in to chat with this app.",
+    );
+    expect(byId("chat-panel-messages").textContent).toContain("hello");
+
+    denied = false;
+    input.value = "again";
+    composer.requestSubmit();
+    await settle(
+      () =>
+        byId("chat-panel-hint").textContent ===
+        "Message saved, but the app could not be reached.",
+    );
+    expect(byId("chat-panel-messages").textContent).toContain("again");
+  });
+
+  it("As a user, opening a room focuses the composer", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-focus");
+    const productId = labelToProductId("chatty-focus");
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle(() => document.activeElement === byId("chat-panel-input"));
+    expect(document.activeElement).toBe(byId("chat-panel-input"));
+  });
+
+  it("As a user, a messages read that finishes after I closed the panel leaves the room unread", async () => {
+    const { panel, service } = await loadChatModules();
+    const state = await import("@dotli/ui/state/chat-panel");
+    panel.initChatPanel();
+    loadProduct("chatty-late-read");
+    const productId = labelToProductId("chatty-late-read");
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "ping" },
+    });
+    expect(state.chatPanelStore.get().unreadByRoom.main).toBe(1);
+
+    // Gate the room's message read so it resolves only after the panel has
+    // already closed, the way a slow IndexedDB read would.
+    const original = service.chatMessages;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const readSpy = vi
+      .spyOn(service, "chatMessages")
+      .mockImplementation(async (readProductId, readRoomId) => {
+        await gate;
+        return original(readProductId, readRoomId);
+      });
+    try {
+      byId("chat-button").click();
+      await settle(() => document.querySelector(".chat-room-item") !== null);
+      document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+      await settle(() => byId("chat-panel-rooms").hidden);
+
+      byId("chat-panel-close").click();
+      expect(byId("chat-panel").hidden).toBe(true);
+
+      release?.();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // The read resolved after the panel closed: it must not have marked
+      // the room seen behind the user's back.
+      expect(state.chatPanelStore.get().unreadByRoom.main).toBe(1);
+    } finally {
+      readSpy.mockRestore();
+    }
+  });
+
+  it("As a user, a render error closes the panel and the next open recovers it", async () => {
+    const { panel } = await loadChatModules();
+    const manifest = await import("@dotli/shared/active-manifest");
+    panel.initChatPanel();
+    loadProduct("chatty-broken-render");
+
+    // ChatPanel's title() reads this only when no room is open; failing it
+    // once throws synchronously during the panel's first render, the same
+    // way the overlays render-error test fails a top-level store read.
+    const manifestSpy = vi
+      .spyOn(manifest, "getActiveRootManifest")
+      .mockImplementationOnce(() => {
+        throw new Error("render boom");
+      });
+    try {
+      byId("chat-button").click();
+      await settle(() => byId("chat-panel").hidden);
+      expect(byId("chat-panel").hidden).toBe(true);
+
+      byId("chat-button").click();
+      await settle(() => document.getElementById("chat-panel-close") !== null);
+      expect(byId("chat-panel-close")).not.toBeNull();
+    } finally {
+      manifestSpy.mockRestore();
+    }
+  });
+
   // This test resets the module registry via vi.doMock, so it must stay last
   // in this describe block.
   it("As a user, if the chat code cannot load, the panel closes and the next open retries", async () => {
     vi.resetModules();
+    let calls = 0;
     vi.doMock("@dotli/ui/components/chat/mount", () => {
+      calls += 1;
       throw new Error("chunk failed");
     });
     try {
@@ -692,7 +840,12 @@ describe("chat panel", () => {
 
       byId("chat-button").click();
       await load.ensureChatPanel();
+      expect(byId("chat-panel").hidden).toBe(true);
+      expect(calls).toBe(1);
 
+      byId("chat-button").click();
+      await load.ensureChatPanel();
+      expect(calls).toBe(2);
       expect(byId("chat-panel").hidden).toBe(true);
     } finally {
       vi.doUnmock("@dotli/ui/components/chat/mount");

@@ -93,6 +93,12 @@ function PanelBody(): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
   let messagesEl: HTMLDivElement | undefined;
   let inputEl: HTMLInputElement | undefined;
+  // A contacts/messages read started before the panel closed must not act
+  // on a store that has moved on (e.g. marking a room seen after leaving).
+  let disposed = false;
+  onCleanup(() => {
+    disposed = true;
+  });
 
   const timer = setInterval(() => {
     setNow(Date.now());
@@ -122,9 +128,10 @@ function PanelBody(): JSX.Element {
       chatBots(productId),
       chatLatestMessageTimes(productId),
     ]).then(([rooms, bots, times]) => {
-      if (pass === contactsPass) {
-        setContacts(contactEntries(rooms, bots, times));
+      if (disposed || pass !== contactsPass) {
+        return;
       }
+      setContacts(contactEntries(rooms, bots, times));
     });
   });
 
@@ -187,6 +194,7 @@ function PanelBody(): JSX.Element {
     const pass = ++messagesPass;
     void chatMessages(productId, roomId).then((records) => {
       if (
+        disposed ||
         pass !== messagesPass ||
         chatPanelStore.get().activeRoomId !== roomId
       ) {

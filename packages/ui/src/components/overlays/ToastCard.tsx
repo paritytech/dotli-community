@@ -1,7 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Show,
+  untrack,
+} from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { dismissToast, removeToast, type ToastEntry } from "../../state/toasts";
 
@@ -16,8 +22,7 @@ export function ToastCard(props: {
   depth: number;
 }): JSX.Element {
   // The id never changes for a card (the stack keys cards by id).
-  // eslint-disable-next-line solid/reactivity -- stable key, read once
-  const id = props.entry.id;
+  const id = untrack(() => props.entry.id);
   const [entering, setEntering] = createSignal(true);
   // A leaving card keeps the layout it had when it started to leave.
   const hidden = createMemo<boolean>((prev) =>

@@ -89,7 +89,7 @@ export function prefetchOverlays(): void {
     void ensureOverlays();
   };
   if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(run);
+    window.requestIdleCallback(run, { timeout: PREFETCH_FALLBACK_MS });
   } else {
     setTimeout(run, PREFETCH_FALLBACK_MS);
   }

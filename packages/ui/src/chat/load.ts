@@ -50,14 +50,8 @@ export function prefetchChatPanel(): void {
     void ensureChatPanel();
   };
   if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(run);
+    window.requestIdleCallback(run, { timeout: PREFETCH_FALLBACK_MS });
   } else {
     setTimeout(run, PREFETCH_FALLBACK_MS);
   }
-}
-
-/** Tests only. */
-export function resetChatPanelLoaderForTests(): void {
-  loading = null;
-  dispose = null;
 }
