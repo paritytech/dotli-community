@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
-  "upstreamBranch": "feat/wallet-allowance-monitor",
+  "upstreamBranch": "feat/pvm-app-runtime",
   "upstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f",
   "packages": {
     "vendor/truapi": {
@@ -21,5 +21,6 @@
       ]
     }
   },
-  "wasmUpstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f"
+  "wasmUpstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f",
+  "pullRequest": "https://github.com/paritytech/host-rust-core/pull/540"
 }
