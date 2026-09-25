@@ -271,6 +271,51 @@ describe("createChainBrokerManager", () => {
     });
   });
 
+  it("routes legacy author_submitAndWatchExtrinsic updates and unwatch", () => {
+    const harness = createProviderHarness();
+    const manager = createChainBrokerManager(() => harness.provider);
+    const messages: string[] = [];
+    const connection = manager.connectRemote("people", "conn-a", (message) =>
+      messages.push(message),
+    );
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "author_submitAndWatchExtrinsic",
+        params: ["0x0102"],
+      }),
+    );
+    const upstreamRequest = harness.sent[0] as { id: string };
+    harness.emit({ jsonrpc: "2.0", id: upstreamRequest.id, result: "up-ext" });
+    const response = JSON.parse(messages[0] ?? "{}") as { result: string };
+    const localToken = response.result;
+
+    harness.emit({
+      jsonrpc: "2.0",
+      method: "author_extrinsicUpdate",
+      params: { subscription: "up-ext", result: { inBlock: "0xabc" } },
+    });
+    expect(JSON.parse(messages[1] ?? "{}")).toEqual({
+      jsonrpc: "2.0",
+      method: "author_extrinsicUpdate",
+      params: { subscription: localToken, result: { inBlock: "0xabc" } },
+    });
+
+    connection?.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "author_unwatchExtrinsic",
+        params: [localToken],
+      }),
+    );
+    const release = harness.sent[1] as { method: string; params: string[] };
+    expect(release.method).toBe("author_unwatchExtrinsic");
+    expect(release.params[0]).toBe("up-ext");
+  });
+
   it("fans out same-token statement notifications to every local owner", () => {
     const harness = createProviderHarness();
     const manager = createChainBrokerManager(() => harness.provider);
