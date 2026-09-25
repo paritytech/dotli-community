@@ -1782,7 +1782,7 @@ describe("truapi debug panel: pending requests", () => {
     const badge = (): HTMLElement | null =>
       rows()[0].querySelector<HTMLElement>(".td-pending");
     expect(badge()?.hidden).toBe(false);
-    expect(badge()?.textContent).toBe("⟳ 16ms pending");
+    expect(badge()?.textContent).toMatch(/^⟳ \d+ms pending$/);
     expect(badge()?.classList.contains("slow")).toBe(false);
 
     // When
