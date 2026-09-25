@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "462dacb6e0d1f504";
+export const TRUAPI_WIRE_SCHEMA_HASH = "87a3b34c06a7c823";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -243,6 +243,39 @@ export class AccountClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostAccountRingVrfSignResponse, S.CallError(T.VersionedHostAccountRingVrfSignError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Use a non-exportable Host Chat device for native cryptographic operations
+     * and reviewed main-purse payments. The product owns native lifecycle frames,
+     * subscriptions, delivery, retries, history, and acknowledgments.
+     *
+     * `Bind` resolves the peer independently. `Prepare` validates native plaintext
+     * and returns signed ciphertext for product submission. `Open` authenticates
+     * complete external statements and rejects reflected local output; it is not
+     * an arbitrary decryption primitive. Incoming plaintext can contain incoming
+     * bearer coin keys: persist the import intent securely and use generic payment
+     * top-up before acknowledging. Wallet/device keys and outgoing main-purse
+     * coin secrets never leave the Host.
+     *
+     * `Initialize` also advances private file transfers. Persist any legacy
+     * migration view and ordinary prepared statements before `CommitMigration`.
+     * `ContinueOpen` retrieves the next bounded page of an authenticated batch.
+     * `ContinueState` retrieves remaining pages of a stable public state snapshot;
+     * persist every page before committing its migration.
+     *
+     * Method 11 (the former raw-crypto interface) and method 12's former V1 actor
+     * operations are retired, not forwarded. This boundary uses V2 payloads.
+     */
+    deviceChat(request, options) {
+        return this.#transport.request({
+            ids: W.ACCOUNT_PRODUCT_DEVICE_CHAT,
+            payload: T.VersionedHostProductDeviceChatRequest.enc({ tag: "V2", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProductDeviceChatResponse, S.CallError(T.VersionedHostProductDeviceChatError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });

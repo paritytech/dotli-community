@@ -3,4 +3,6 @@ export { createIframeHost } from "./create-iframe-host.js";
 export type { CreateWebWorkerPairingHostRuntimeOptions, CreateWebWorkerSigningHostRuntimeOptions, WebWorkerHostConfig, WebWorkerSigningHostConfig, WebWorkerHostCallbacks, WorkerPairingHostRuntime, WorkerSigningHostRuntime, } from "./create-worker-host-runtime.js";
 export { createWebWorkerPairingHostRuntime, createWebWorkerSigningHostRuntime, } from "./create-worker-host-runtime.js";
 export type { LocalIdentity, LocalIdentityProgress, } from "../worker-protocol.js";
+export { createBrowserNativeChatFilesHost } from "./native-chat-files.js";
+export type { BrowserNativeChatFilesHost, BrowserNativeChatFileSourceStore, } from "./native-chat-files.js";
 export type { AllowanceCollection, AllowanceObservation, AllowanceSection, AllowanceSlot, AllowancePool, AllowanceClaims, StatementAllowanceSnapshot, PgasClaimsSnapshot, PgasBalancesSnapshot, BulletinQuota, WalletAllowanceSnapshot, } from "../wallet-allowances.js";

@@ -1,6 +1,6 @@
 import type { GenericError, NotificationId } from "@parity/truapi";
 import type { RequiredHostCallbacks } from "./host-callbacks.js";
-import type { ChainConnect } from "../runtime.js";
+import type { ChainConnect, HopConnect } from "../runtime.js";
 /**
  * Byte-oriented callback surface the WASM core invokes. Members of an
  * optional capability are absent when the host omits the capability;
@@ -13,12 +13,23 @@ export interface RawCallbacks {
     registerChatBot?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     postChatMessage?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     subscribeChatRooms?(product: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    nativeCoinage?(request: Uint8Array): Promise<Uint8Array>;
     readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
     writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
     clearCoreStorage(key: Uint8Array): Promise<void>;
     featureSupported(request: Uint8Array): Promise<Uint8Array>;
     supportedChains(): Promise<Uint8Array>;
+    allowedHopEndpoints(bulletinGenesisHash: Uint8Array): Promise<Uint8Array>;
+    hopConnect: HopConnect;
+    identityUsernameCandidates?(username: string, peopleChainGenesisHash: Uint8Array): Promise<Uint8Array>;
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    pickChatFiles(request: Uint8Array): Promise<Uint8Array>;
+    readChatFile(sourceId: string, offset: bigint, length: number): Promise<Uint8Array>;
+    releaseChatFile(sourceId: string): Promise<void>;
+    beginChatFileExport(request: Uint8Array): Promise<string | null | undefined>;
+    writeChatFileExport(exportId: string, offset: bigint, data: Uint8Array): Promise<void>;
+    finishChatFileExport(exportId: string): Promise<void>;
+    cancelChatFileExport(exportId: string): Promise<void>;
     navigateTo(url: string): Promise<void>;
     pushNotification(notification: Uint8Array): Promise<Uint8Array>;
     cancelNotification(id: NotificationId): Promise<void>;

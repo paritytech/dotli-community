@@ -25,6 +25,8 @@ import type {
   SharedWalletState,
 } from "@dotli/protocol/wallet-storage";
 import { handleWalletOperation } from "../../../apps/protocol/src/wallet-storage";
+import { handleCoreCustody } from "../../../apps/protocol/src/core-custody";
+import type { CoreCustodyOperation } from "@dotli/protocol/core-custody";
 
 const buildFlags = vi.hoisted(() => ({ debug: false }));
 vi.mock("@dotli/config/config", async (importOriginal) => ({
@@ -44,6 +46,8 @@ const sharedAuth = vi.hoisted(() => ({
 }));
 
 vi.mock("@dotli/protocol/client", () => ({
+  requestCoreCustody: (operation: CoreCustodyOperation) =>
+    handleCoreCustody(operation),
   requestSharedWallet: async (
     _siteId: string,
     operation: SharedWalletOperation,
@@ -119,9 +123,28 @@ const CONNECTED_DETAIL = {
 };
 
 const walletLockTails = new Map<string, Promise<void>>();
+let custodyLease: string | undefined;
+
+async function experimentalStore(factory = createSessionStoreAdapters) {
+  if (custodyLease !== undefined) {
+    await handleCoreCustody({ action: "release", lease: custodyLease });
+  }
+  const wallet = await handleWalletOperation({ action: "state" }, () => {});
+  const acquired = await handleCoreCustody({
+    action: "acquire",
+    walletRevision: wallet.state.revision,
+  });
+  if (typeof acquired !== "string") throw new Error("Custody was not acquired");
+  custodyLease = acquired;
+  return factory(acquired);
+}
 
 describe("session-store host callbacks", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    if (custodyLease !== undefined) {
+      await handleCoreCustody({ action: "release", lease: custodyLease });
+      custodyLease = undefined;
+    }
     buildFlags.debug = false;
     localStorage.clear();
     sharedAuth.storage.clear();
@@ -131,9 +154,15 @@ describe("session-store host callbacks", () => {
     Object.defineProperty(navigator, "locks", {
       configurable: true,
       value: {
-        request<T>(name: string, callback: () => Promise<T>): Promise<T> {
+        request<T>(
+          name: string,
+          options: LockOptions | (() => Promise<T>),
+          callback?: (lock: object | null) => Promise<T>,
+        ): Promise<T> {
+          const run =
+            typeof options === "function" ? options : () => callback!({});
           const result = (walletLockTails.get(name) ?? Promise.resolve()).then(
-            callback,
+            run,
           );
           walletLockTails.set(
             name,
@@ -513,7 +542,7 @@ describe("session-store host callbacks", () => {
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
     await setLocalWalletEnabled(true);
-    const experimental = createSessionStoreAdapters();
+    const experimental = await experimentalStore();
     await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
     await experimental.writeCoreStorage(grant, new Uint8Array([4]));
     const stopWorkers = vi.fn();
@@ -544,16 +573,19 @@ describe("session-store host callbacks", () => {
       const imported = await readLocalWalletSecret();
       expect(imported).toEqual(new Uint8Array(16));
       imported?.fill(0);
-      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
-      expect(
-        await experimental.readCoreStorage(AUTH_SESSION_KEY),
-      ).toBeUndefined();
-      const replacement = otherTab.createSessionStoreAdapters();
+      await expect(experimental.readCoreStorage(grant)).rejects.toThrow();
+      await expect(
+        experimental.readCoreStorage(AUTH_SESSION_KEY),
+      ).rejects.toThrow();
+      const replacement = await experimentalStore(
+        otherTab.createSessionStoreAdapters,
+      );
       await replacement.writeCoreStorage(grant, new Uint8Array([6]));
-      // A retired worker cannot write its old grant back after replacement.
-      await experimental.writeCoreStorage(grant, new Uint8Array([5]));
-      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
-      await experimental.clearCoreStorage(grant);
+      // A retired worker cannot acknowledge a discarded write as durable.
+      await expect(
+        experimental.writeCoreStorage(grant, new Uint8Array([5])),
+      ).rejects.toThrow();
+      await expect(experimental.clearCoreStorage(grant)).rejects.toThrow();
       expect(await replacement.readCoreStorage(grant)).toEqual(
         new Uint8Array([6]),
       );
@@ -607,7 +639,7 @@ describe("session-store host callbacks", () => {
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
     await setLocalWalletEnabled(true);
-    const experimental = createSessionStoreAdapters();
+    const experimental = await experimentalStore();
     expect(
       await experimental.readCoreStorage(AUTH_SESSION_KEY),
     ).toBeUndefined();
@@ -626,11 +658,45 @@ describe("session-store host callbacks", () => {
     );
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
-    expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+    await expect(experimental.readCoreStorage(grant)).rejects.toThrow();
     expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
     expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
       new Uint8Array([1]),
     );
+  });
+
+  it("hands native custody to one signer at a time without losing its purse on release", async () => {
+    buildFlags.debug = true;
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    const first = await experimentalStore();
+    const purse = {
+      tag: "MainPurseCoinage",
+      value: {
+        rootPublicKey: new Uint8Array(32).fill(7),
+        genesisHash: new Uint8Array(32).fill(8),
+      },
+    } satisfies CoreStorageKey;
+    await first.writeCoreStorage(purse, new Uint8Array([1, 2, 3]));
+    const wallet = await handleWalletOperation({ action: "state" }, () => {});
+    await expect(
+      handleCoreCustody({
+        action: "acquire",
+        walletRevision: wallet.state.revision,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      createSessionStoreAdapters().writeCoreStorage(purse, new Uint8Array([9])),
+    ).rejects.toThrow();
+    const replacement = await experimentalStore();
+    await expect(
+      first.writeCoreStorage(purse, new Uint8Array([9])),
+    ).rejects.toThrow();
+    expect(await replacement.readCoreStorage(purse)).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+    await replacement.clearCoreStorage(purse);
   });
 
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {

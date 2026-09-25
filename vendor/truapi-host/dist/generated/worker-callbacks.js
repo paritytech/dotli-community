@@ -9,11 +9,21 @@ export const CALLBACK_NAMES = [
     "createChatRoom",
     "registerChatBot",
     "postChatMessage",
+    "nativeCoinage",
     "readCoreStorage",
     "writeCoreStorage",
     "clearCoreStorage",
     "featureSupported",
     "supportedChains",
+    "allowedHopEndpoints",
+    "identityUsernameCandidates",
+    "pickChatFiles",
+    "readChatFile",
+    "releaseChatFile",
+    "beginChatFileExport",
+    "writeChatFileExport",
+    "finishChatFileExport",
+    "cancelChatFileExport",
     "navigateTo",
     "pushNotification",
     "cancelNotification",
@@ -45,6 +55,14 @@ function rawCallbacks(bridge) {
         clearCoreStorage: (key) => bridge.callbackRequest("clearCoreStorage", [key]),
         featureSupported: (request) => bridge.callbackRequest("featureSupported", [request]),
         supportedChains: () => bridge.callbackRequest("supportedChains", []),
+        allowedHopEndpoints: (bulletinGenesisHash) => bridge.callbackRequest("allowedHopEndpoints", [bulletinGenesisHash]),
+        pickChatFiles: (request) => bridge.callbackRequest("pickChatFiles", [request]),
+        readChatFile: (sourceId, offset, length) => bridge.callbackRequest("readChatFile", [sourceId, offset, length]),
+        releaseChatFile: (sourceId) => bridge.callbackRequest("releaseChatFile", [sourceId]),
+        beginChatFileExport: (request) => bridge.callbackRequest("beginChatFileExport", [request]),
+        writeChatFileExport: (exportId, offset, data) => bridge.callbackRequest("writeChatFileExport", [exportId, offset, data]),
+        finishChatFileExport: (exportId) => bridge.callbackRequest("finishChatFileExport", [exportId]),
+        cancelChatFileExport: (exportId) => bridge.callbackRequest("cancelChatFileExport", [exportId]),
         navigateTo: (url) => bridge.callbackRequest("navigateTo", [url]),
         pushNotification: (notification) => bridge.callbackRequest("pushNotification", [notification]),
         cancelNotification: (id) => bridge.callbackRequest("cancelNotification", [id]),
@@ -75,6 +93,16 @@ function chatRawCallbacks(bridge) {
         subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", product, sendItem, sendError),
     };
 }
+function coinageWalletRawCallbacks(bridge) {
+    return {
+        nativeCoinage: (request) => bridge.callbackRequest("nativeCoinage", [request]),
+    };
+}
+function identityBackendRawCallbacks(bridge) {
+    return {
+        identityUsernameCandidates: (username, peopleChainGenesisHash) => bridge.callbackRequest("identityUsernameCandidates", [username, peopleChainGenesisHash]),
+    };
+}
 function permissionStatusRawCallbacks(bridge) {
     return {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
@@ -91,9 +119,14 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         ...rawCallbacks(bridge),
         ...subscriptionRawCallbacks(bridge),
         chainConnect: bridge.chainConnect,
+        hopConnect: bridge.hopConnect,
     };
     if (capabilities.chat)
         Object.assign(callbacks, chatRawCallbacks(bridge));
+    if (capabilities.coinageWallet)
+        Object.assign(callbacks, coinageWalletRawCallbacks(bridge));
+    if (capabilities.identityBackend)
+        Object.assign(callbacks, identityBackendRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)

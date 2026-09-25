@@ -44,6 +44,8 @@ export interface ChainService {
 
 export interface BulletinService extends ChainService {
   readonly ipfsGateways: readonly string[];
+  /** Host-private HOP endpoints; never inferred from ordinary chain RPC URLs. */
+  readonly hopEndpoints?: readonly string[];
 }
 
 export interface ServicesConfig {
@@ -54,6 +56,12 @@ export interface ServicesConfig {
   readonly assethub: ChainService;
   readonly bulletin: BulletinService;
   readonly people: ChainService;
+  /** Trusted People-chain Coinage asset; absent where payments are not configured. */
+  readonly coinage?: {
+    readonly instanceId: number;
+    readonly symbol: string;
+    readonly decimals: number;
+  };
   readonly dotns: DotnsContracts;
 }
 
@@ -86,6 +94,10 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       rpcs: ["wss://paseo-bulletin-next-rpc.polkadot.io"],
       blockTimeMs: 6000,
       ipfsGateways: ["https://paseo-bulletin-next-ipfs.polkadot.io"],
+      hopEndpoints: [
+        "wss://paseo-hop-next-0.polkadot.io",
+        "wss://paseo-hop-next-1.polkadot.io",
+      ],
     },
     people: {
       genesis:
@@ -93,6 +105,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       rpcs: ["wss://paseo-people-next-system-rpc.polkadot.io"],
       blockTimeMs: 2000,
     },
+    coinage: { instanceId: 0, symbol: "pUSD", decimals: 6 },
     dotns: {
       DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
       DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",

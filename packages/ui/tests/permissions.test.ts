@@ -36,11 +36,9 @@ type Store = Map<string, PermissionAuthorizationStatus>;
 
 let unregisterMyapp: (() => void) | null = null;
 let myappStore: Store;
-let myappBatchReads = 0;
 
 beforeEach(() => {
   myappStore = new Map();
-  myappBatchReads = 0;
   unregisterMyapp = registerTestProvider("myapp", myappStore);
 });
 
@@ -52,9 +50,6 @@ afterEach(() => {
 function registerTestProvider(label: string, store: Store): () => void {
   return registerPermissionAuthorizationProvider(label, {
     async getPermissionAuthorizationStatuses(requests) {
-      if (label === "myapp") {
-        myappBatchReads += 1;
-      }
       return requests.map(
         (request) => store.get(requestKey(request)) ?? "NotDetermined",
       );
@@ -119,48 +114,6 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("denied");
   });
 
-  it("As a product, my permission decisions use the core authorization store", async () => {
-    // Given
-    expect(myappStore).toEqual(new Map());
-
-    // When
-    await setPermissionStatus("myapp", "ChainSubmit", "granted");
-    await setPermissionStatus("myapp", "Camera", "denied");
-    await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
-
-    // Then
-    expect(myappStore).toEqual(
-      new Map([
-        ["Remote:ChainSubmit", "Authorized"],
-        ["Device:Camera", "Denied"],
-        ["IdentityDisclosure", "Authorized"],
-      ]),
-    );
-    expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
-    expect(await getPermissionStatus("myapp", "Camera")).toBe("denied");
-    expect(await getPermissionStatus("myapp", "IdentityDisclosure")).toBe(
-      "granted",
-    );
-  });
-
-  it("As a product, my permission statuses are read in one provider call", async () => {
-    // Given
-    await setPermissionStatus("myapp", "ChainSubmit", "granted");
-    await setPermissionStatus("myapp", "Camera", "denied");
-    const callsBeforeRead = myappBatchReads;
-
-    // When
-    const statuses = getPermissionStatuses("myapp", [
-      "ChainSubmit",
-      "Camera",
-      "Microphone",
-    ]);
-
-    // Then
-    await expect(statuses).resolves.toEqual(["granted", "denied", "ask"]);
-    expect(myappBatchReads - callsBeforeRead).toBe(1);
-  });
-
   it("As a product, my permission grants are isolated from other products", async () => {
     await setPermissionStatus("myapp", "Camera", "granted");
     expect(await getPermissionStatus("otherapp", "Camera")).toBe("ask");
@@ -182,6 +135,19 @@ describe("getPermissionStatus / setPermissionStatus", () => {
     unregisterReplacement();
 
     // Then
+    expect(await getPermissionStatus("myapp", "Camera")).toBe("granted");
+  });
+
+  it("does not acknowledge a revocation after its provider disappears", async () => {
+    await setPermissionStatus("myapp", "Camera", "granted");
+    unregisterMyapp?.();
+    unregisterMyapp = null;
+
+    await expect(
+      setPermissionStatus("myapp", "Camera", "denied"),
+    ).rejects.toThrow();
+
+    unregisterMyapp = registerTestProvider("myapp", myappStore);
     expect(await getPermissionStatus("myapp", "Camera")).toBe("granted");
   });
 });

@@ -1,5 +1,6 @@
 // Dynamic imports intentionally reload bridge state after vi.resetModules().
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as HostWeb from "@parity/truapi-host/web";
 import {
   MESSAGE_TYPE_REQUEST,
   MESSAGE_TYPE_RESPONSE,
@@ -77,7 +78,8 @@ vi.mock("@parity/truapi-host", () => ({
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
-vi.mock("@parity/truapi-host/web", () => ({
+vi.mock("@parity/truapi-host/web", async (importOriginal) => ({
+  ...(await importOriginal<typeof HostWeb>()),
   createWebWorkerPairingHostRuntime: mocks.createWebWorkerPairingHostRuntime,
   createWebWorkerSigningHostRuntime: mocks.createWebWorkerSigningHostRuntime,
   createIframeHost: mocks.createIframeHost,

@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "462dacb6e0d1f504";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -36,6 +36,29 @@ export declare class AccountClient {
     listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest, options?: CallOptions): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
     /** Sign bytes directly with a registered ring-VRF member key. */
     ringVrfSign(request: T.HostAccountRingVrfSignRequest, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRingVrfSignError>>;
+    /**
+     * Use a non-exportable Host Chat device for native cryptographic operations
+     * and reviewed main-purse payments. The product owns native lifecycle frames,
+     * subscriptions, delivery, retries, history, and acknowledgments.
+     *
+     * `Bind` resolves the peer independently. `Prepare` validates native plaintext
+     * and returns signed ciphertext for product submission. `Open` authenticates
+     * complete external statements and rejects reflected local output; it is not
+     * an arbitrary decryption primitive. Incoming plaintext can contain incoming
+     * bearer coin keys: persist the import intent securely and use generic payment
+     * top-up before acknowledging. Wallet/device keys and outgoing main-purse
+     * coin secrets never leave the Host.
+     *
+     * `Initialize` also advances private file transfers. Persist any legacy
+     * migration view and ordinary prepared statements before `CommitMigration`.
+     * `ContinueOpen` retrieves the next bounded page of an authenticated batch.
+     * `ContinueState` retrieves remaining pages of a stable public state snapshot;
+     * persist every page before committing its migration.
+     *
+     * Method 11 (the former raw-crypto interface) and method 12's former V1 actor
+     * operations are retired, not forwarded. This boundary uses V2 payloads.
+     */
+    deviceChat(request: T.HostProductDeviceChatRequest, options?: CallOptions): ResultAsync<T.HostProductDeviceChatResponse, S.CallErrorValue<T.VersionedHostProductDeviceChatError>>;
     /**
      * List non-product accounts the user owns.
      *

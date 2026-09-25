@@ -1,6 +1,7 @@
 name: Deploy
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [labeled, synchronize]
   push:
@@ -34,6 +35,11 @@ jobs:
           # Environments a PR label is allowed to target (development only).
           ALLOWED='["paseoli.dev","paseo.fyi"]'
           case "$EVENT_NAME" in
+            workflow_dispatch)
+              echo 'environments=["westendli.dev"]' >> "$GITHUB_OUTPUT"
+              echo 'smoke_environments=["westendli.dev"]' >> "$GITHUB_OUTPUT"
+              echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+              ;;
             release)
               echo 'environments=["paseo.li","testnet.li"]' >> "$GITHUB_OUTPUT"
               echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -75,6 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.ref || github.sha }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -125,7 +133,7 @@ jobs:
         env:
           VITE_APP_URL: ${{ vars.APP_URL }}
           VITE_APP_DEBUG: ${{ vars.APP_DEBUG }}
-          VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_COMMIT_SHA: ${{ needs.plan.outputs.ref || github.sha }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_METRICS: ${{ secrets.VITE_METRICS }}
           VITE_NETWORKS: ${{ vars.NETWORKS }}

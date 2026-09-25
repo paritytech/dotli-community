@@ -18,6 +18,7 @@ import {
   writeSharedAuthStorage,
   requestSharedWallet,
   subscribeSharedWallet,
+  requestCoreCustody,
 } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
 import type { SharedWalletState } from "@dotli/protocol/wallet-storage";
@@ -400,38 +401,92 @@ export async function emitPersistedSessionUiState(): Promise<void> {
   });
 }
 
-export function createSessionStoreAdapters(): CoreStorage {
+export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
   // Capture the mode for the lifetime of these callbacks. Switching modes
   // reloads the page; pending writes must not cross into the other identity.
   const experimental = isExperimentalWalletActive();
   const generation = experimental ? localWalletStorageGeneration() : null;
+  const custodyKey = (key: CoreStorageKey): string => {
+    if (
+      !experimental ||
+      custodyLease === undefined ||
+      custodyLease === "" ||
+      walletMutationPending ||
+      generation !== localWalletStorageGeneration()
+    ) {
+      throw new Error("Private wallet custody is unavailable or changed");
+    }
+    const encoded = hexNoPrefix(encodeCoreStorageKey(key));
+    // These slots carry their own immutable wallet/network scope, unlike grants.
+    switch (key.tag) {
+      case "MainPurseCoinage":
+      case "NativeChatDevice":
+      case "NativeChatFileChunk":
+      case "NativeChatProducts":
+      case "DeviceEncryptionKey":
+        return encoded;
+      case "AuthSession":
+      case "PairingDeviceIdentity":
+      case "PermissionAuthorization":
+      case "AllowanceKeys":
+      case "LastProcessedPairingStatement":
+      case "AutoSigningKey":
+      case "AutoSigningKeys":
+      case "RingVrfRegistry":
+      case "StatementRenewalTargets":
+      case "ProductSubtree":
+      case "SsoResponderRequestLedger":
+      case "ProductManifest":
+        return (
+          hexNoPrefix(new TextEncoder().encode(`${generation}:`)) + encoded
+        );
+    }
+  };
   return {
     async readCoreStorage(key) {
-      return readCoreStorageValue(key, experimental, generation);
+      if (experimental) {
+        const result = await requestCoreCustody({
+          action: "read",
+          lease: custodyLease ?? "",
+          key: custodyKey(key),
+        });
+        if (result !== undefined && !(result instanceof Uint8Array)) {
+          throw new Error("Invalid private custody record");
+        }
+        return result;
+      }
+      return readCoreStorageValue(key);
     },
     async writeCoreStorage(key, value) {
-      await writeCoreStorageValue(key, value, experimental, generation);
+      if (experimental) {
+        await requestCoreCustody({
+          action: "write",
+          lease: custodyLease ?? "",
+          key: custodyKey(key),
+          value,
+        });
+        return;
+      }
+      await writeCoreStorageValue(key, value);
     },
     async clearCoreStorage(key) {
-      if (!experimental || generation === localWalletStorageGeneration()) {
-        await clearCoreStorageValue(key, experimental, generation);
+      if (experimental) {
+        await requestCoreCustody({
+          action: "clear",
+          lease: custodyLease ?? "",
+          key: custodyKey(key),
+        });
+        return;
       }
+      await clearCoreStorageValue(key);
     },
   };
 }
 
 async function readCoreStorageValue(
   key: CoreStorageKey,
-  experimental = false,
-  generation: string | null = null,
 ): Promise<Uint8Array | undefined> {
-  if (
-    experimental &&
-    (walletMutationPending || generation !== localWalletStorageGeneration())
-  ) {
-    return undefined;
-  }
-  if (key.tag === "AuthSession" && !experimental) {
+  if (key.tag === "AuthSession") {
     let raw: string | null;
     try {
       raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
@@ -444,12 +499,8 @@ async function readCoreStorageValue(
     }
     return decodeStoredBytes(raw, "shared auth session");
   }
-  const raw = localStorage.getItem(
-    coreLocalStorageKey(key, experimental, generation),
-  );
-  return raw === null
-    ? undefined
-    : await decodeCoreStorageValue(key, raw, experimental, generation);
+  const raw = localStorage.getItem(coreLocalStorageKey(key));
+  return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
 }
 
 function decodeStoredBytes(
@@ -467,10 +518,8 @@ function decodeStoredBytes(
 async function writeCoreStorageValue(
   key: CoreStorageKey,
   value: Uint8Array,
-  experimental = false,
-  generation: string | null = null,
 ): Promise<void> {
-  if (key.tag === "AuthSession" && !experimental) {
+  if (key.tag === "AuthSession") {
     await writeSharedAuthStorage(
       SITE_ID,
       SHARED_CORE_SESSION_KEY,
@@ -480,43 +529,20 @@ async function writeCoreStorageValue(
     return;
   }
   const encoded = await encodeCoreStorageValue(key, value);
-  if (
-    !experimental ||
-    (!walletMutationPending && generation === localWalletStorageGeneration())
-  ) {
-    localStorage.setItem(
-      coreLocalStorageKey(key, experimental, generation),
-      encoded,
-    );
-  }
+  localStorage.setItem(coreLocalStorageKey(key), encoded);
 }
 
-async function clearCoreStorageValue(
-  key: CoreStorageKey,
-  experimental = false,
-  generation: string | null = null,
-): Promise<void> {
-  if (key.tag === "AuthSession" && !experimental) {
+async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
+  if (key.tag === "AuthSession") {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
     emitLocalChange();
     return;
   }
-  localStorage.removeItem(coreLocalStorageKey(key, experimental, generation));
+  localStorage.removeItem(coreLocalStorageKey(key));
 }
 
-function coreLocalStorageKey(
-  key: CoreStorageKey,
-  experimental = false,
-  generation: string | null = null,
-): string {
-  if (experimental) {
-    return (
-      EXPERIMENTAL_CORE_STORAGE_PREFIX +
-      (generation === null ? "" : `${generation}:`) +
-      hexNoPrefix(encodeCoreStorageKey(key))
-    );
-  }
+function coreLocalStorageKey(key: CoreStorageKey): string {
   switch (key.tag) {
     case "PairingDeviceIdentity":
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
@@ -567,6 +593,11 @@ function coreLocalStorageKey(
     // grant expires without touching the others.
     case "ProductManifest":
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
+    case "MainPurseCoinage":
+    case "NativeChatDevice":
+    case "NativeChatFileChunk":
+    case "NativeChatProducts":
+      throw new Error("Native Chat custody requires the local signing wallet");
   }
 }
 
@@ -605,8 +636,6 @@ async function encodeCoreStorageValue(
 async function decodeCoreStorageValue(
   key: CoreStorageKey,
   raw: string,
-  experimental = false,
-  generation: string | null = null,
 ): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
@@ -620,7 +649,7 @@ async function decodeCoreStorageValue(
       return undefined;
     }
     log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
-    await writeCoreStorageValue(key, bytes, experimental, generation);
+    await writeCoreStorageValue(key, bytes);
     return bytes;
   }
   const bytes = decodeStoredBytes(
@@ -644,7 +673,7 @@ async function decodeCoreStorageValue(
     // key) or the bytes are corrupt. Drop it: returning the raw bytes
     // would hand ciphertext to the core as key material.
     log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
-    localStorage.removeItem(coreLocalStorageKey(key, experimental, generation));
+    localStorage.removeItem(coreLocalStorageKey(key));
     return undefined;
   }
 }

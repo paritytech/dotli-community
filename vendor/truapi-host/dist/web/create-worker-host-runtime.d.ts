@@ -5,6 +5,8 @@ export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId" | "exec
 export type WebWorkerSigningHostConfig = WebWorkerHostConfig & {
     /** Bare dotNS network suffix (`dot`, `paseo`, or `testnet`). */
     networkSuffix: string;
+    /** Trusted u32 asset instance, required for instance-scoped Coinage runtimes. */
+    coinageInstanceId?: number;
 };
 export interface WorkerPairingHostRuntime {
     /**
@@ -20,7 +22,7 @@ export interface WorkerPairingHostRuntime {
     createProvider(product: {
         productId: string;
         executionKind?: ProductExecutionKind;
-    }): Promise<TrUApiProductProvider>;
+    }, callbacks?: WebWorkerHostCallbacks): Promise<TrUApiProductProvider>;
     disconnectSession(): Promise<void>;
     cancelPairing(): void;
     notifySessionStoreChanged(): void;

@@ -33,7 +33,7 @@ export interface WorkerProductRuntime {
 export type WorkerTransition = "Start" | "Stop";
 /** Runtime operations shared by paired and browser-local signing hosts. */
 export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
-    productRuntime(product: unknown, coreCallbacks: unknown): WorkerProductRuntime;
+    productRuntime(product: unknown, coreCallbacks: unknown, platformCallbacks?: unknown): WorkerProductRuntime;
     disconnectSession(): Promise<void>;
     sessionChatIdentityKey(): Uint8Array | undefined;
     deviceStatementKey(): Uint8Array | undefined;

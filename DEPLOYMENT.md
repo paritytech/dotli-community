@@ -168,3 +168,67 @@ It requires successful HTTP status and a JSON object containing a 32-byte hex
 with status 200 fails. No authentication challenge, token, or username is
 created by the smoke check. Unset `DEPLOY_NGINX` to return to dist-only CI;
 this does not remove an already installed proxy.
+
+## Qualify and deploy Chat on paseo.fyi
+
+Chat-specific browser integration belongs to `paritytech/dotli-community#255`,
+head `feat/chat-v2-host-runtime`, base `feat/pvm-wasm`. Keep its
+`deploy: paseo.fyi` label and its base; neither publishing artifacts nor deploying
+this branch requires merging the wallet, runtime, or Chat PRs.
+
+Before publishing this layer:
+
+1. Build `@parity/truapi` and `@parity/truapi-host` from the same committed
+   `host-rust-core#709` source, including codegen and the browser WASM build.
+   Version `0.17.0` alone is not proof of the method-12 native Chat actor API.
+   Replace the two vendored package archives together, retain
+   `@parity/truapi=file:../truapi` in the vendored host package, and update
+   `vendor/truapi-host.lock.json` with the actual source and WASM revision,
+   archive SHA-256 values, the hash of
+   `vendor/truapi/dist/generated/client.js`, and the uncompressed
+   `vendor/truapi-host/dist/wasm/web/truapi_server_bg.wasm` hash.
+   If package dependency metadata changes, refresh `bun.lock` with `bun install`;
+   otherwise retain the existing lock. Never invent pins.
+2. Run the repository quality gate against the candidate head and verify the
+   vendored generated client exposes `account.deviceChat` (method 12),
+   `MainPurseChatPayment` review, private storage slots through
+   `NativeChatProducts`, and per-product platform callbacks on the shared
+   signing runtime. The independent PolkaVM renderer/runtime asset lock is not
+   a substitute for the Host WASM pin.
+3. Use a debug build with `NETWORKS=paseo-next-v2`. Confirm People genesis
+   `0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48`,
+   Coinage instance `0` (`pUSD`, six chain decimals), and bare identity suffix
+   `paseo`. Inspect the configured chain metadata rather than inferring an asset
+   from a UI name. The browser uses the inherited experimental wallet, not a
+   product-owned wallet; it does not claim hardware-backed spending approval.
+4. In the actual browser surface, qualify invitation/acceptance, text and
+   attachments, then a rejected payment. Every spend must show the exact
+   requesting product, recipient identity, amount, maximum debit, chain, asset
+   instance and operation. A prior Chat grant must not skip this review.
+   Only an explicitly authorized real-funds exercise may approve a payment;
+   check actual settlement in both directions, not merely a sent message.
+5. Close the product view while keeping the wallet host open; receive in the
+   background. Reload and verify authorized native Chat devices resume without
+   prompting. Verify pending payments reconcile rather than being displayed as
+   cleared. Open a competing wallet tab: it must fail unavailable, not create a
+   second signer or overwrite inventory. Test storage/crypto failures in an
+   isolated profile, never by clearing an existing wallet's storage.
+   The wallet owner is exclusive across host subdomains/tabs. Private core
+   records are authenticated-encrypted in the root-origin store; immutable
+   attachment source Blobs remain host-private but are not encrypted at rest,
+   matching the SDK source store's existing policy.
+
+After verifying the repository, PR number, head, base and deployment label,
+publish the approved candidate to **#255's existing head branch**. Its
+`pull_request/synchronize` event selects `paseo.fyi` from that label and deploys
+the PR head SHA after the quality gate. Confirm that no other deployment label
+is present before triggering a synchronization. Observe both published-product
+and TrUAPI smoke jobs, then repeat the Chat surface checks on paseo.fyi with the
+payment-capable product release. The older `egui-chat` 0.2.0 does not exercise
+payments; publish the separately qualified payment-capable product first.
+
+Do not use `workflow_dispatch` for this operation: this workflow routes manual
+dispatch to **westendli.dev**, not paseo.fyi. Do not fall back to another
+environment if paseo.fyi qualification or deployment fails. The deployment is
+frontend-only there: the wallet's same-origin identity proxy must already be
+configured; the workflow's NGINX opt-in does not select paseo.fyi.

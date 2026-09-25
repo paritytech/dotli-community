@@ -89,6 +89,11 @@ export const ACCOUNT_RING_VRF_SIGN = {
     method: 10,
     kind: "request",
 };
+export const ACCOUNT_PRODUCT_DEVICE_CHAT = {
+    trait: 2,
+    method: 12,
+    kind: "request",
+};
 export const CHAIN_FOLLOW_HEAD_SUBSCRIBE = {
     trait: 3,
     method: 0,

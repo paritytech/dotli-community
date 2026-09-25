@@ -115,6 +115,17 @@ export const services = [
                 exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst result = await truapi.account.ringVrfSign({\n  keyHandle: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n  message: "0x48656c6c6f",\n});\nassert(result.isOk(), "ringVrfSign failed:", result);\nconsole.log("ring VRF signature:", result.value);',
                 requestType: "host-account-ring-vrf-sign-request",
             },
+            {
+                name: "product_device_chat",
+                type: "unary",
+                signature: "deviceChat(request: HostProductDeviceChatRequest): Promise<Result<HostProductDeviceChatResponse, S.CallErrorValue<VersionedHostProductDeviceChatError>>>",
+                docUrl: "api/account/trait.Account.html#method.product_device_chat",
+                description: "Use a non-exportable Host Chat device for native cryptographic operations\nand reviewed main-purse payments. The product owns native lifecycle frames,\nsubscriptions, delivery, retries, history, and acknowledgments.\n\n`Bind` resolves the peer independently. `Prepare` validates native plaintext\nand returns signed ciphertext for product submission. `Open` authenticates\ncomplete external statements and rejects reflected local output; it is not\nan arbitrary decryption primitive. Incoming plaintext can contain incoming\nbearer coin keys: persist the import intent securely and use generic payment\ntop-up before acknowledging. Wallet/device keys and outgoing main-purse\ncoin secrets never leave the Host.\n\n`Initialize` also advances private file transfers. Persist any legacy\nmigration view and ordinary prepared statements before `CommitMigration`.\n`ContinueOpen` retrieves the next bounded page of an authenticated batch.\n`ContinueState` retrieves remaining pages of a stable public state snapshot;\npersist every page before committing its migration.\n\nMethod 11 (the former raw-crypto interface) and method 12's former V1 actor\noperations are retired, not forwarded. This boundary uses V2 payloads.",
+                requestDescription: "HostProductDeviceChatRequest",
+                exampleSource: 'const result = await truapi.account.deviceChat({ tag: "Initialize" });\nassert(result.isOk(), "deviceChat failed:", result);\nconsole.log("Host-owned Chat device:", result.value.device);',
+                requestType: "host-product-device-chat-request",
+                responseType: "host-product-device-chat-response",
+            },
         ],
     },
     {

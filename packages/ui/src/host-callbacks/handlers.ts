@@ -19,7 +19,7 @@ import {
 } from "./LocalStorage";
 import { createProductOperations } from "./ProductOperations";
 import { createPreimageAdapters } from "./Preimage";
-import { createChainConnect } from "./Chain";
+import { createChainConnect, createHopProvider } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
 import { createSupportedChains } from "./SupportedChains";
 import { createThemeSubscribe } from "./Theme";
@@ -39,6 +39,7 @@ export interface CreateHostCallbacksOptions {
   pairingDotSuffix?: boolean;
   pairingHostGlobal?: boolean;
   blockingModalScope?: BlockingModalScope;
+  custodyLease?: string;
 }
 
 export function createHostCallbacks(
@@ -50,6 +51,7 @@ export function createHostCallbacks(
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
+    custodyLease,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -66,7 +68,7 @@ export function createHostCallbacks(
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: createSessionStoreAdapters(),
+    coreStorage: createSessionStoreAdapters(custodyLease),
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
         dotSuffix: pairingDotSuffix,
@@ -78,6 +80,7 @@ export function createHostCallbacks(
     locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
+    hop: createHopProvider(),
     // Always served; the core itself denies chat calls on non-Chat
     // executions and without an active session.
     chat: createChatPlatform(),

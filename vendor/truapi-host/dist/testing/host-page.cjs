@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -53,7 +53,8 @@ var init_host_callbacks = __esm({
     AccountAccessReview = S.lazy(() => S.Struct({ requestingProductId: S.str, targetProductId: S.str }));
     AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation }));
     AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
-    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }) }));
+    ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
+    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: import_truapi.ProductAccountTxPayload, LegacyAccount: import_truapi.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
@@ -61,7 +62,19 @@ var init_host_callbacks = __esm({
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
-    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }) }));
+    MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
+    NativeChatFileExportRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), metadata: import_truapi.HostNativeChatAttachmentMetadata }));
+    NativeChatFilePickRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), maxFiles: S.u32 }));
+    NativeChatPickedFile = S.lazy(() => S.Struct({ sourceId: S.str, metadata: import_truapi.HostNativeChatAttachmentMetadata }));
+    NativeCoinageFailure = S.lazy(() => S.Status("Unavailable", "InvalidRequest", "InvalidSource", "OperationConflict", "OperationNotFound", "InsufficientBalance", "UserRejected"));
+    NativeCoinageMemo = S.lazy(() => S.Struct({ secretKeys: S.Vector(S.Bytes()), totalValueRaw: S.str }));
+    NativeCoinageOperation = S.lazy(() => S.TaggedUnion({ Denomination: S._void, PreparePayment: S.Struct({ intent: NativeCoinagePaymentIntent }), CommitHandoff: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), Views: S.Struct({ productId: S.str }), PendingHandoffs: S.Struct({ productId: S.str, acceptedOperations: S.Vector(S.Bytes(32)) }), ReadHandoff: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), NoteDelivery: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), Reconcile: S._void, TopUp: S.Struct({ productId: S.str, operationId: S.Bytes(32), minimumAmountRaw: S.str, secretKeys: S.Vector(S.Bytes()) }) }));
+    NativeCoinagePaymentIntent = S.lazy(() => S.Struct({ operationId: S.Bytes(32), productId: S.str, requestId: S.str, peerIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64 }));
+    NativeCoinageRequest = S.lazy(() => S.Struct({ scope: NativeCoinageScope, operation: NativeCoinageOperation }));
+    NativeCoinageResponse = S.lazy(() => S.TaggedUnion({ Denomination: S.Struct({ centsUnitRaw: S.str }), Prepared: S.Struct({ payment: import_truapi.HostNativeChatPayment, memo: S.Option(NativeCoinageMemo) }), Payments: S.Struct({ payments: S.Vector(import_truapi.HostNativeChatPayment) }), TopUp: S.Struct({ outcome: NativeCoinageTopUpOutcome }), Done: S._void, Failed: S.Struct({ reason: NativeCoinageFailure }) }));
+    NativeCoinageScope = S.lazy(() => S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32) }));
+    NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S._void, Partial: S.Struct({ creditedAmountRaw: S.str }), Pending: S._void, NotClaimed: S._void }));
+    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi.DerivationIndex) }) }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
@@ -74,7 +87,7 @@ var init_host_callbacks = __esm({
     SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ request: import_truapi.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
     SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, request: import_truapi.HostAccountSignVrfRequest }));
     StatementStoreProductSignReview = S.lazy(() => S.Struct({ account: import_truapi.ProductAccountId, payload: S.Bytes() }));
-    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview }));
+    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview }));
   }
 });
 
@@ -122,51 +135,158 @@ function toAsyncIterator(stream) {
   }
   return asyncIterator;
 }
-function pumpIterator(iterator, onItem, label, onError) {
+function pumpIterator(iterator, onItem, label, onError, onComplete) {
   let stopped = false;
   void (async () => {
     try {
       while (!stopped) {
         const next = await iterator.next();
-        if (next.done)
+        if (stopped || next.done)
           return;
         onItem(next.value);
       }
     } catch (err2) {
-      console.error(`[truapi host callbacks] ${label} failed:`, err2);
-      onError?.({ reason: errorMessage(err2) });
+      if (!stopped) {
+        console.error(`[truapi host callbacks] ${label} failed`);
+        onError?.({ reason: errorMessage(err2) });
+      }
+    } finally {
+      if (!stopped)
+        onComplete?.();
     }
   })();
   return () => {
+    if (stopped)
+      return;
     stopped = true;
-    void iterator.return?.();
+    try {
+      void Promise.resolve(iterator.return?.()).catch(() => {
+        console.error(`[truapi host callbacks] ${label} cleanup failed`);
+      });
+    } catch {
+      console.error(`[truapi host callbacks] ${label} cleanup failed`);
+    }
   };
 }
 function driveResultStream(stream, sendItem, sendError) {
   return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError);
 }
 function chainConnectAdapter(host) {
-  return async (genesisHash, onResponse) => {
-    const connection = await host.connect((0, import_scale.hexToBytes)(genesisHash));
-    const iterator = connection.responses()[Symbol.asyncIterator]();
-    const stopResponses = pumpIterator(iterator, onResponse, "chain responses");
-    return {
-      send(request) {
-        connection.send(request);
-      },
-      close() {
-        stopResponses();
-        connection.close();
+  return async (genesisHash, onResponse, onClosed) => rpcConnectionAdapter(await host.connect((0, import_scale.hexToBytes)(genesisHash)), onResponse, onClosed);
+}
+function coinageWalletHostAdapter(host) {
+  if (host === void 0)
+    return void 0;
+  let nativeCoinage;
+  try {
+    nativeCoinage = host.nativeCoinage.bind(host);
+  } catch {
+    throw new Error("Native Coinage wallet callback is unavailable");
+  }
+  return {
+    async nativeCoinage(request) {
+      try {
+        return await nativeCoinage(request);
+      } catch {
+        throw new Error("Native Coinage wallet operation failed");
       }
-    };
+    }
   };
 }
-var import_scale;
+function hopConnectAdapter(host) {
+  return async (genesisHash, endpoint, onResponse, onClosed) => {
+    const genesis = (0, import_scale.hexToBytes)(genesisHash);
+    const allowed = await host.allowedHopEndpoints(genesis);
+    if (!allowed.includes(endpoint) || !endpoint.startsWith("wss://") || /[\s\u0000-\u001f\u007f-\u009f#\\]/u.test(endpoint) || endpoint.slice(6).split(/[/?]/u, 1)[0].includes("@")) {
+      throw new Error("HOP endpoint is not an allowed secure WebSocket URL");
+    }
+    const url = new URL(endpoint);
+    if (!url.hostname || url.username || url.password || url.hash) {
+      throw new Error("HOP endpoint is not an allowed secure WebSocket URL");
+    }
+    return rpcConnectionAdapter(await host.connectHop(genesis, endpoint), onResponse, onClosed);
+  };
+}
+function rpcConnectionAdapter(connection, onResponse, onClosed) {
+  let closed = false;
+  let stopResponses;
+  const close = (notify) => {
+    if (closed)
+      return;
+    closed = true;
+    stopResponses?.();
+    try {
+      connection.close();
+    } finally {
+      if (notify)
+        onClosed?.();
+    }
+  };
+  try {
+    stopResponses = pumpIterator(connection.responses()[Symbol.asyncIterator](), onResponse, "JSON-RPC responses", void 0, () => {
+      try {
+        close(true);
+      } catch {
+        console.error("[truapi host callbacks] JSON-RPC close failed");
+      }
+    });
+    if (closed)
+      stopResponses();
+  } catch (err2) {
+    close(false);
+    throw err2;
+  }
+  return {
+    send(request) {
+      if (closed)
+        throw new Error("JSON-RPC connection is closed");
+      try {
+        connection.send(request);
+      } catch (err2) {
+        close(true);
+        throw err2;
+      }
+    },
+    close: () => close(false)
+  };
+}
+var import_scale, unavailableHopProvider, unavailableNativeChatFilesHost;
 var init_adapter_support = __esm({
   "dist/adapter-support.js"() {
     "use strict";
     import_scale = require("@parity/truapi/scale");
     init_error();
+    unavailableHopProvider = {
+      async allowedHopEndpoints() {
+        return [];
+      },
+      async connectHop() {
+        throw new Error("HOP provider is unavailable");
+      }
+    };
+    unavailableNativeChatFilesHost = {
+      async pickChatFiles() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async readChatFile() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async releaseChatFile() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async beginChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async writeChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async finishChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async cancelChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      }
+    };
   }
 });
 
@@ -177,8 +297,12 @@ __export(host_callbacks_adapter_exports, {
 });
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
+  const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
+  const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
+  const hop = callbacks.hop ?? unavailableHopProvider;
+  const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
     authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
     chainConnect: chainConnectAdapter(callbacks.chain),
@@ -188,12 +312,27 @@ function createWasmRawCallbacks(callbacks) {
       postChatMessage: async (product, request) => import_truapi2.HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), import_truapi2.HostChatPostMessageRequest.dec(request))),
       subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(import_truapi2.HostChatListSubscribeItem.enc(item)), sendError)
     } : {},
+    ...coinageWallet ? {
+      nativeCoinage: async (request) => NativeCoinageResponse.enc(await coinageWallet.nativeCoinage(NativeCoinageRequest.dec(request)))
+    } : {},
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi2.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi2.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+    allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
+    hopConnect: hopConnectAdapter(hop),
+    ...identityBackend ? {
+      identityUsernameCandidates: async (username, peopleChainGenesisHash) => identityUsernameCandidatesResultCodec.enc(await identityBackend.identityUsernameCandidates(username, peopleChainGenesisHash))
+    } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi2.HostLocaleSubscribeItem.enc(item)), sendError),
+    pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
+    readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
+    releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
+    beginChatFileExport: async (request) => await nativeChatFiles.beginChatFileExport(NativeChatFileExportRequest.dec(request)),
+    writeChatFileExport: async (exportId, offset, data) => await nativeChatFiles.writeChatFileExport(exportId, offset, data),
+    finishChatFileExport: async (exportId) => await nativeChatFiles.finishChatFileExport(exportId),
+    cancelChatFileExport: async (exportId) => await nativeChatFiles.cancelChatFileExport(exportId),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) => import_truapi2.HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(import_truapi2.HostPushNotificationRequest.dec(notification))),
     cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
@@ -218,13 +357,17 @@ function createWasmRawCallbacks(callbacks) {
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
   };
 }
-var import_truapi2;
+var S2, import_truapi2, allowedHopEndpointsResultCodec, identityUsernameCandidatesResultCodec, pickChatFilesResultCodec;
 var init_host_callbacks_adapter = __esm({
   "dist/generated/host-callbacks-adapter.js"() {
     "use strict";
+    S2 = __toESM(require("@parity/truapi/scale"), 1);
     import_truapi2 = require("@parity/truapi");
     init_host_callbacks();
     init_adapter_support();
+    allowedHopEndpointsResultCodec = S2.Vector(S2.str);
+    identityUsernameCandidatesResultCodec = S2.Vector(S2.Bytes(32));
+    pickChatFilesResultCodec = S2.Vector(NativeChatPickedFile);
   }
 });
 
@@ -825,7 +968,15 @@ function createIframeHost(options) {
 var import_truapi3 = require("@parity/truapi");
 init_host_callbacks();
 init_host_callbacks_adapter();
-var import_scale2 = require("@parity/truapi/scale");
+
+// dist/worker-protocol.js
+var MAX_JSON_RPC_CONNECTIONS = 64;
+var COINAGE_WALLET_CALLBACKS = {
+  nativeCoinage: true
+};
+
+// dist/web/create-worker-host-runtime.js
+var import_scale3 = require("@parity/truapi/scale");
 
 // dist/generated/worker-callbacks.js
 function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
@@ -863,6 +1014,741 @@ function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
 
 // dist/web/create-worker-host-runtime.js
 init_error();
+
+// dist/web/native-chat-files.js
+var import_scale2 = require("@parity/truapi/scale");
+
+// dist/web/native-chat-media.js
+var HEADER_LIMIT = 65536;
+var VIDEO_TIMEOUT_MS = 5e3;
+var U32_MAX = 4294967295;
+var MP4_BRANDS = [
+  "isom",
+  "iso2",
+  "iso3",
+  "iso4",
+  "iso5",
+  "iso6",
+  "mp41",
+  "mp42",
+  "avc1",
+  "M4V ",
+  "M4VH",
+  "M4VP"
+];
+var PNG_DEPTHS = {
+  0: [1, 2, 4, 8, 16],
+  2: [8, 16],
+  3: [1, 2, 4, 8],
+  4: [8, 16],
+  6: [8, 16]
+};
+function matches(bytes2, offset, signature) {
+  if (offset + signature.length > bytes2.length)
+    return false;
+  for (let i = 0; i < signature.length; i++) {
+    if (bytes2[offset + i] !== signature.charCodeAt(i))
+      return false;
+  }
+  return true;
+}
+function imageHeader(bytes2, fileSize) {
+  const view = new DataView(bytes2.buffer, bytes2.byteOffset, bytes2.byteLength);
+  if (bytes2.length >= 33 && matches(bytes2, 0, "\x89PNG\r\n\n") && view.getUint32(8) === 13 && matches(bytes2, 12, "IHDR")) {
+    const width = view.getUint32(16);
+    const height = view.getUint32(20);
+    if (width > 0 && height > 0 && width <= 2147483647 && height <= 2147483647 && PNG_DEPTHS[bytes2[25]]?.includes(bytes2[24]) && bytes2[26] === 0 && bytes2[27] === 0 && bytes2[28] <= 1) {
+      return { mimeType: "image/png", width, height };
+    }
+    return void 0;
+  }
+  if (bytes2.length >= 13 && (matches(bytes2, 0, "GIF87a") || matches(bytes2, 0, "GIF89a"))) {
+    const width = view.getUint16(6, true);
+    const height = view.getUint16(8, true);
+    if (width && height)
+      return { mimeType: "image/gif", width, height };
+    return void 0;
+  }
+  if (bytes2.length >= 4 && bytes2[0] === 255 && bytes2[1] === 216) {
+    let offset = 2;
+    while (offset + 4 <= bytes2.length) {
+      if (bytes2[offset++] !== 255)
+        return void 0;
+      while (offset < bytes2.length && bytes2[offset] === 255)
+        offset++;
+      const marker = bytes2[offset++];
+      if (marker === void 0 || marker === 218 || marker === 217 || marker === 0)
+        return void 0;
+      if (marker === 1 || marker >= 208 && marker <= 215)
+        continue;
+      if (offset + 2 > bytes2.length)
+        return void 0;
+      const length = view.getUint16(offset);
+      if (length < 2 || offset + length > bytes2.length)
+        return void 0;
+      if (marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204) {
+        if (length < 8)
+          return void 0;
+        const height = view.getUint16(offset + 3);
+        const width = view.getUint16(offset + 5);
+        const components = bytes2[offset + 7];
+        if (width && height && components > 0 && length === 8 + 3 * components) {
+          return { mimeType: "image/jpeg", width, height };
+        }
+        return void 0;
+      }
+      offset += length;
+    }
+    return void 0;
+  }
+  if (bytes2.length >= 30 && matches(bytes2, 0, "RIFF") && matches(bytes2, 8, "WEBP") && view.getUint32(4, true) + 8 === fileSize) {
+    const chunkSize = view.getUint32(16, true);
+    if (20 + chunkSize + (chunkSize & 1) > fileSize)
+      return void 0;
+    if (matches(bytes2, 12, "VP8X") && chunkSize === 10) {
+      const width = 1 + bytes2[24] + (bytes2[25] << 8) + (bytes2[26] << 16);
+      const height = 1 + bytes2[27] + (bytes2[28] << 8) + (bytes2[29] << 16);
+      return { mimeType: "image/webp", width, height };
+    }
+    if (matches(bytes2, 12, "VP8 ") && chunkSize >= 10 && (bytes2[20] & 1) === 0 && matches(bytes2, 23, "\x9D*")) {
+      const width = view.getUint16(26, true) & 16383;
+      const height = view.getUint16(28, true) & 16383;
+      if (width && height)
+        return { mimeType: "image/webp", width, height };
+    }
+  }
+  if (bytes2.length >= 25 && matches(bytes2, 0, "RIFF") && matches(bytes2, 8, "WEBP") && matches(bytes2, 12, "VP8L") && view.getUint32(4, true) + 8 === fileSize) {
+    const chunkSize = view.getUint32(16, true);
+    if (chunkSize >= 5 && 20 + chunkSize + (chunkSize & 1) <= fileSize && bytes2[20] === 47 && bytes2[24] >> 5 === 0) {
+      const width = 1 + bytes2[21] + ((bytes2[22] & 63) << 8);
+      const height = 1 + (bytes2[22] >> 6) + (bytes2[23] << 2) + ((bytes2[24] & 15) << 10);
+      return { mimeType: "image/webp", width, height };
+    }
+  }
+  return void 0;
+}
+function ebmlInteger(bytes2, offset, id) {
+  const first = bytes2[offset];
+  if (first === void 0 || first === 0)
+    return void 0;
+  let marker = 128;
+  let length = 1;
+  while ((first & marker) === 0) {
+    marker >>= 1;
+    length++;
+  }
+  if (length > (id ? 4 : 8) || offset + length > bytes2.length)
+    return void 0;
+  let value = id ? first : first & marker - 1;
+  for (let i = 1; i < length; i++)
+    value = value * 256 + bytes2[offset + i];
+  if (!Number.isSafeInteger(value) || !id && value === 2 ** (7 * length) - 1)
+    return void 0;
+  return { value, next: offset + length };
+}
+function videoMime(bytes2, fileSize) {
+  if (bytes2.length >= 16 && matches(bytes2, 4, "ftyp")) {
+    const size = new DataView(bytes2.buffer, bytes2.byteOffset, bytes2.byteLength).getUint32(0);
+    if (size < 16 || size > bytes2.length || size > fileSize || size % 4 !== 0)
+      return void 0;
+    if (matches(bytes2, 8, "qt  "))
+      return "video/quicktime";
+    for (const brand of MP4_BRANDS) {
+      if (matches(bytes2, 8, brand))
+        return "video/mp4";
+    }
+    return void 0;
+  }
+  if (!matches(bytes2, 0, "E\xDF\xA3"))
+    return void 0;
+  const header = ebmlInteger(bytes2, 4, false);
+  if (!header || header.value > bytes2.length - header.next)
+    return void 0;
+  const end = header.next + header.value;
+  if (!matches(bytes2, end, "S\x80g"))
+    return void 0;
+  let offset = header.next;
+  let webm = false;
+  while (offset < end) {
+    const id = ebmlInteger(bytes2, offset, true);
+    if (!id || id.next > end)
+      return void 0;
+    const size = ebmlInteger(bytes2, id.next, false);
+    if (!size || size.next > end || size.value > end - size.next)
+      return void 0;
+    if (id.value === 17026) {
+      if (webm || size.value !== 4 || !matches(bytes2, size.next, "webm"))
+        return void 0;
+      webm = true;
+    }
+    offset = size.next + size.value;
+  }
+  return webm ? "video/webm" : void 0;
+}
+async function inspectNativeChatFileMetadata(blob, signal) {
+  if (!Number.isInteger(blob.size) || blob.size < 0 || blob.size > U32_MAX)
+    throw new Error("Chat file size exceeds the supported range");
+  const fallback = {
+    mimeType: "application/octet-stream",
+    sizeBytes: blob.size,
+    kind: { tag: "File" }
+  };
+  if (signal?.aborted)
+    return fallback;
+  const bytes2 = new Uint8Array(await blob.slice(0, HEADER_LIMIT).arrayBuffer());
+  if (signal?.aborted)
+    return fallback;
+  const image = imageHeader(bytes2, blob.size);
+  if (image) {
+    return {
+      mimeType: image.mimeType,
+      sizeBytes: blob.size,
+      kind: {
+        tag: "Image",
+        value: {
+          width: image.width,
+          height: image.height,
+          thumbnail: void 0
+        }
+      }
+    };
+  }
+  const mimeType = videoMime(bytes2, blob.size);
+  if (!mimeType || typeof document === "undefined")
+    return fallback;
+  let video;
+  let url;
+  try {
+    video = document.createElement("video");
+    video.preload = "metadata";
+    video.autoplay = false;
+    video.muted = true;
+    video.playsInline = true;
+    url = URL.createObjectURL(blob.slice(0, blob.size, mimeType));
+  } catch {
+    return fallback;
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (metadata) => {
+      if (settled)
+        return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      video.onloadedmetadata = video.onerror = null;
+      try {
+        video.removeAttribute("src");
+        video.load();
+      } catch {
+      } finally {
+        URL.revokeObjectURL(url);
+        resolve(metadata);
+      }
+    };
+    const abort = () => finish(fallback);
+    const timer = setTimeout(abort, VIDEO_TIMEOUT_MS);
+    signal?.addEventListener("abort", abort, { once: true });
+    video.onerror = abort;
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      if (!Number.isFinite(duration) || duration < 0 || duration > U32_MAX || video.videoWidth <= 0 || video.videoHeight <= 0) {
+        finish(fallback);
+      } else {
+        finish({
+          mimeType,
+          sizeBytes: blob.size,
+          kind: {
+            tag: "Video",
+            value: {
+              durationSeconds: Math.floor(duration),
+              thumbnail: void 0
+            }
+          }
+        });
+      }
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    try {
+      video.src = url;
+      video.load();
+    } catch {
+      abort();
+    }
+  });
+}
+var IMAGE_EXTENSIONS = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp"
+};
+var VIDEO_EXTENSIONS = {
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm"
+};
+function nativeChatExportFilename(metadata) {
+  let extension = "bin";
+  if (metadata.kind.tag === "Image") {
+    const { width, height } = metadata.kind.value;
+    if (Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && width <= U32_MAX && height <= U32_MAX && Object.hasOwn(IMAGE_EXTENSIONS, metadata.mimeType)) {
+      extension = IMAGE_EXTENSIONS[metadata.mimeType];
+    }
+  } else if (metadata.kind.tag === "Video") {
+    const { durationSeconds } = metadata.kind.value;
+    if (Number.isInteger(durationSeconds) && durationSeconds >= 0 && durationSeconds <= U32_MAX && Object.hasOwn(VIDEO_EXTENSIONS, metadata.mimeType)) {
+      extension = VIDEO_EXTENSIONS[metadata.mimeType];
+    }
+  }
+  return `chat-attachment.${extension}`;
+}
+
+// dist/web/native-chat-files.js
+var MAX_FILE_SIZE = 4294967295;
+var MAX_READ_SIZE = 2e6;
+var DATABASE_NAME = "truapi-native-chat-files";
+var SOURCE_STORE = "sources";
+function checkedSize(size) {
+  if (!Number.isInteger(size) || size < 0 || size > MAX_FILE_SIZE) {
+    throw new Error("Chat file size exceeds the supported range");
+  }
+}
+function safeLabel(value) {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, " ").slice(0, 200);
+}
+function createBrowserNativeChatFilesHost(sourceStore) {
+  let disposed = false;
+  let database;
+  const dialogs = /* @__PURE__ */ new Set();
+  const exports2 = /* @__PURE__ */ new Map();
+  const mediaAbort = new AbortController();
+  function available() {
+    if (disposed)
+      throw new Error("Native Chat files are unavailable");
+  }
+  function openDatabase(cleanup = false) {
+    if (!cleanup)
+      available();
+    if (!database) {
+      database = new Promise((resolve, reject) => {
+        if (!globalThis.indexedDB) {
+          reject(new Error("Durable Chat file storage is unavailable"));
+          return;
+        }
+        const request = indexedDB.open(DATABASE_NAME, 1);
+        let blocked = false;
+        request.onupgradeneeded = () => request.result.createObjectStore(SOURCE_STORE);
+        request.onerror = () => reject(new Error("Durable Chat file storage is unavailable"));
+        request.onblocked = () => {
+          blocked = true;
+          reject(new Error("Durable Chat file storage is blocked"));
+        };
+        request.onsuccess = () => {
+          const db = request.result;
+          if (blocked || disposed && !cleanup) {
+            db.close();
+            reject(new Error("Native Chat files are unavailable"));
+            return;
+          }
+          db.onversionchange = () => {
+            db.close();
+            database = void 0;
+          };
+          resolve(db);
+        };
+      }).catch((error) => {
+        database = void 0;
+        throw error;
+      });
+    }
+    return database;
+  }
+  async function store(mode, action, cleanup = false) {
+    const db = await openDatabase(cleanup);
+    if (!cleanup)
+      available();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(SOURCE_STORE, mode, {
+        durability: "strict"
+      });
+      const request = action(transaction.objectStore(SOURCE_STORE));
+      transaction.oncomplete = () => {
+        if (disposed) {
+          db.close();
+          database = void 0;
+        }
+        resolve(request.result);
+      };
+      transaction.onerror = transaction.onabort = () => reject(new Error("Chat file storage failed"));
+    });
+  }
+  function prompt(title, context, actionLabel, configure) {
+    available();
+    if (typeof document === "undefined" || !document.body || window.top !== window) {
+      return Promise.reject(new Error("Trusted Chat file presentation is unavailable"));
+    }
+    return new Promise((resolve, reject) => {
+      const dialog = document.createElement("dialog");
+      const heading = document.createElement("h2");
+      heading.textContent = title;
+      const summary = document.createElement("p");
+      summary.textContent = `Product: ${safeLabel(context.productId)}
+Peer: ${safeLabel(context.peerUsername ?? "Chat contact")}
+Identity: ${(0, import_scale2.bytesToHex)(context.peerIdentity)}`;
+      summary.style.whiteSpace = "pre-wrap";
+      summary.style.overflowWrap = "anywhere";
+      const content = document.createElement("div");
+      const accept = document.createElement("button");
+      accept.type = "button";
+      accept.textContent = actionLabel;
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      dialog.setAttribute("aria-label", title);
+      dialog.style.maxWidth = "min(36rem, 90vw)";
+      dialog.append(heading, summary, content, accept, cancel);
+      let settled = false;
+      let busy = false;
+      const close = () => {
+        dialogs.delete(abort);
+        dialog.close();
+        dialog.remove();
+      };
+      const abort = () => {
+        if (settled)
+          return;
+        close();
+        if (busy && disposed)
+          return;
+        settled = true;
+        resolve(void 0);
+      };
+      dialogs.add(abort);
+      cancel.onclick = abort;
+      dialog.oncancel = (event) => {
+        event.preventDefault();
+        if (!busy)
+          abort();
+      };
+      try {
+        const run = configure(content);
+        accept.onclick = () => {
+          if (busy || settled)
+            return;
+          busy = true;
+          accept.disabled = cancel.disabled = true;
+          let result;
+          try {
+            result = run();
+          } catch (error) {
+            result = Promise.reject(error);
+          }
+          Promise.resolve(result).then((value) => {
+            if (!settled) {
+              settled = true;
+              close();
+              resolve(value);
+            }
+          }, (error) => {
+            if (settled)
+              return;
+            busy = false;
+            if (error instanceof DOMException && error.name === "AbortError") {
+              abort();
+              return;
+            }
+            settled = true;
+            close();
+            reject(new Error("Chat file selection or export failed"));
+          });
+        };
+        document.body.append(dialog);
+        dialog.showModal();
+      } catch {
+        settled = true;
+        close();
+        reject(new Error("Trusted Chat file presentation is unavailable"));
+      }
+    });
+  }
+  async function abortExport(id, entry) {
+    exports2.delete(id);
+    try {
+      await entry.writer.abort();
+    } catch {
+    }
+    await entry.removePartial();
+  }
+  function withExport(id, action) {
+    const entry = exports2.get(id);
+    if (!entry)
+      return Promise.reject(new Error("Chat file export is unavailable"));
+    const operation = entry.queue.then(async () => {
+      if (exports2.get(id) !== entry)
+        throw new Error("Chat file export is unavailable");
+      await action(entry);
+    });
+    entry.queue = operation.catch(() => {
+    });
+    return operation;
+  }
+  const host = {
+    async pickChatFiles(request) {
+      checkedSize(request.maxFiles);
+      if (request.maxFiles === 0)
+        throw new Error("Chat file selection is unavailable");
+      if (!sourceStore)
+        await openDatabase();
+      const files = await prompt("Send Chat attachments", request, "Attach files", (content) => {
+        const label = document.createElement("label");
+        label.textContent = `Choose up to ${request.maxFiles} files. The Host keeps a private copy until the transfer is released.`;
+        const input = document.createElement("input");
+        input.type = "file";
+        input.multiple = request.maxFiles > 1;
+        label.append(input);
+        content.append(label);
+        return () => {
+          const selected = Array.from(input.files ?? []);
+          if (selected.length > request.maxFiles)
+            throw new Error("Too many Chat attachments");
+          for (const file of selected)
+            checkedSize(file.size);
+          return selected;
+        };
+      });
+      if (!files?.length)
+        return [];
+      available();
+      const picked = files.map((file) => ({
+        sourceId: crypto.randomUUID(),
+        metadata: {
+          // Initial safe metadata is refined only from the committed immutable Blob.
+          mimeType: "application/octet-stream",
+          sizeBytes: file.size,
+          kind: { tag: "File" }
+        }
+      }));
+      if (sourceStore) {
+        await sourceStore.putSources(files.map((file, index) => ({
+          sourceId: picked[index].sourceId,
+          blob: file.slice(0, file.size, "application/octet-stream")
+        })));
+      } else {
+        const db = await openDatabase();
+        available();
+        await new Promise((resolve, reject) => {
+          const transaction = db.transaction(SOURCE_STORE, "readwrite", {
+            durability: "strict"
+          });
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = transaction.onabort = () => reject(new Error("Chat file snapshot failed"));
+          const sources = transaction.objectStore(SOURCE_STORE);
+          try {
+            files.forEach((file, index) => {
+              sources.add({
+                blob: file.slice(0, file.size, "application/octet-stream")
+              }, picked[index].sourceId);
+            });
+          } catch {
+            transaction.abort();
+          }
+        });
+      }
+      try {
+        for (const file of picked) {
+          if (disposed)
+            break;
+          const record = sourceStore ? { blob: await sourceStore.readSource(file.sourceId) } : await store("readonly", (sources) => sources.get(file.sourceId));
+          if (!record || !(record.blob instanceof Blob))
+            throw new Error("Chat file snapshot is unavailable");
+          file.metadata = await inspectNativeChatFileMetadata(record.blob, mediaAbort.signal);
+        }
+        if (!disposed)
+          return picked;
+      } catch {
+        await Promise.all(picked.map((file) => host.releaseChatFile(file.sourceId)));
+        if (!disposed)
+          throw new Error("Chat file snapshot inspection failed");
+        return [];
+      }
+      await Promise.all(picked.map((file) => host.releaseChatFile(file.sourceId)));
+      return [];
+    },
+    async readChatFile(sourceId, offset, length) {
+      checkedSize(length);
+      if (length > MAX_READ_SIZE || offset < 0n || offset > BigInt(MAX_FILE_SIZE)) {
+        throw new Error("Chat file read is out of bounds");
+      }
+      const record = sourceStore ? { blob: await sourceStore.readSource(sourceId) } : await store("readonly", (sources) => sources.get(sourceId));
+      if (!record || !(record.blob instanceof Blob))
+        throw new Error("Chat file source is unavailable");
+      checkedSize(record.blob.size);
+      if (offset + BigInt(length) > BigInt(record.blob.size))
+        throw new Error("Chat file read is out of bounds");
+      const start = Number(offset);
+      const bytes2 = new Uint8Array(await record.blob.slice(start, start + length).arrayBuffer());
+      if (bytes2.byteLength !== length)
+        throw new Error("Chat file snapshot read failed");
+      return bytes2;
+    },
+    async releaseChatFile(sourceId) {
+      if (sourceStore) {
+        await sourceStore.releaseSource(sourceId);
+        return;
+      }
+      await store("readwrite", (sources) => sources.delete(sourceId), true);
+    },
+    async beginChatFileExport(request) {
+      available();
+      checkedSize(request.metadata.sizeBytes);
+      const id = crypto.randomUUID();
+      const filename = nativeChatExportFilename(request.metadata);
+      const entry = await prompt("Save Chat attachment", request, "Choose destination", (content) => {
+        const description = document.createElement("p");
+        description.textContent = `${request.metadata.sizeBytes} bytes. Saved as a download, never opened or executed automatically.`;
+        content.append(description);
+        return async () => {
+          const picker = window.showSaveFilePicker;
+          let writer;
+          let removePartial = async () => {
+          };
+          let presentCompleted;
+          if (picker) {
+            const handle = await picker.call(window, {
+              suggestedName: filename
+            });
+            writer = await handle.createWritable();
+          } else {
+            if (!navigator.storage?.getDirectory)
+              throw new Error("Streaming Chat file export is unavailable");
+            const root = await navigator.storage.getDirectory();
+            const directory = await root.getDirectoryHandle("truapi-chat-exports", { create: true });
+            const handle = await directory.getFileHandle(id, {
+              create: true
+            });
+            removePartial = () => directory.removeEntry(id);
+            try {
+              writer = await handle.createWritable();
+            } catch (error) {
+              await removePartial();
+              throw error;
+            }
+            presentCompleted = async () => {
+              const file = await handle.getFile();
+              const url = URL.createObjectURL(file.slice(0, file.size, "application/octet-stream"));
+              let downloaded = false;
+              try {
+                await prompt("Chat attachment ready", request, "Done", (body) => {
+                  const link = document.createElement("a");
+                  link.textContent = "Download attachment";
+                  link.href = url;
+                  link.download = filename;
+                  link.onclick = () => {
+                    downloaded = true;
+                  };
+                  body.append(link);
+                  return () => void 0;
+                });
+              } finally {
+                URL.revokeObjectURL(url);
+                if (downloaded)
+                  await removePartial();
+              }
+            };
+          }
+          const result = {
+            writer,
+            size: request.metadata.sizeBytes,
+            written: 0,
+            queue: Promise.resolve(),
+            removePartial,
+            presentCompleted
+          };
+          if (disposed) {
+            try {
+              await writer.abort();
+            } finally {
+              await removePartial();
+            }
+            return void 0;
+          }
+          return result;
+        };
+      });
+      if (!entry)
+        return void 0;
+      if (disposed) {
+        await abortExport(id, entry);
+        return void 0;
+      }
+      exports2.set(id, entry);
+      return id;
+    },
+    async writeChatFileExport(exportId, offset, data) {
+      available();
+      await withExport(exportId, async (entry) => {
+        if (data.byteLength > MAX_READ_SIZE || offset !== BigInt(entry.written) || BigInt(data.byteLength) + offset > BigInt(entry.size)) {
+          throw new Error("Chat file export write is out of bounds or not contiguous");
+        }
+        try {
+          await entry.writer.write(data);
+          entry.written += data.byteLength;
+        } catch {
+          await abortExport(exportId, entry);
+          throw new Error("Chat file export write failed");
+        }
+      });
+    },
+    async finishChatFileExport(exportId) {
+      available();
+      await withExport(exportId, async (entry) => {
+        if (entry.written !== entry.size)
+          throw new Error("Chat file export is incomplete");
+        try {
+          await entry.writer.close();
+        } catch {
+          await abortExport(exportId, entry);
+          throw new Error("Chat file export could not be saved");
+        }
+        exports2.delete(exportId);
+        if (entry.presentCompleted && !disposed)
+          await entry.presentCompleted();
+      });
+    },
+    async cancelChatFileExport(exportId) {
+      const entry = exports2.get(exportId);
+      if (!entry)
+        return;
+      const operation = entry.queue.then(async () => {
+        if (exports2.get(exportId) === entry)
+          await abortExport(exportId, entry);
+      });
+      entry.queue = operation.catch(() => {
+      });
+      await operation;
+    },
+    dispose() {
+      if (disposed)
+        return;
+      disposed = true;
+      mediaAbort.abort();
+      for (const abort of dialogs)
+        abort();
+      for (const id of exports2.keys())
+        void host.cancelChatFileExport(id).catch(() => {
+        });
+      const opening = database;
+      database = void 0;
+      void opening?.then((db) => db.close(), () => {
+      });
+    }
+  };
+  return host;
+}
 
 // dist/wallet-allowances.js
 function validateAllowanceProductIds(value) {
@@ -949,6 +1835,26 @@ function persistLogLevel(level) {
 }
 var devLogLevelOverride = readPersistedLogLevel();
 var devGlobalTargets = /* @__PURE__ */ new Set();
+var NATIVE_CHAT_FILE_CALLBACKS = {
+  pickChatFiles: true,
+  readChatFile: true,
+  releaseChatFile: true,
+  beginChatFileExport: true,
+  writeChatFileExport: true,
+  finishChatFileExport: true,
+  cancelChatFileExport: true
+};
+async function discardChatFileCallback(state, name, value) {
+  try {
+    if (name === "pickChatFiles" && value instanceof Uint8Array) {
+      await Promise.all((0, import_scale3.Vector)(NativeChatPickedFile).dec(value).map((file) => state.rawCallbacks.releaseChatFile(file.sourceId)));
+    } else if (name === "beginChatFileExport" && typeof value === "string") {
+      state.chatFileExports.delete(value);
+      await state.rawCallbacks.cancelChatFileExport(value);
+    }
+  } catch {
+  }
+}
 function operationIdFrom(value) {
   if (!(value instanceof Uint8Array))
     return null;
@@ -968,7 +1874,11 @@ function operationHold(encodedProduct, id) {
   }
 }
 function handleCallbackRequest(state, msg) {
-  const fn = Object.hasOwn(state.rawCallbacks, msg.name) ? state.rawCallbacks[msg.name] : void 0;
+  if (state.disposed)
+    return;
+  const hostWalletCallback = COINAGE_WALLET_CALLBACKS[msg.name] === true;
+  const callbacks = msg.coreId === void 0 || hostWalletCallback ? state.rawCallbacks : state.coreCallbacks.get(msg.coreId);
+  const fn = callbacks && Object.hasOwn(callbacks, msg.name) ? callbacks[msg.name] : void 0;
   if (!fn) {
     state.worker.postMessage({
       kind: "callbackResponse",
@@ -978,7 +1888,17 @@ function handleCallbackRequest(state, msg) {
     });
     return;
   }
-  Promise.resolve().then(() => fn(...msg.args)).then((value) => {
+  Promise.resolve().then(() => {
+    if (state.disposed)
+      throw new Error("Host runtime is unavailable");
+    if (!hostWalletCallback && msg.coreId !== void 0 && !state.coreCallbacks.has(msg.coreId))
+      throw new Error("Product callbacks are unavailable");
+    return fn(...msg.args);
+  }).then(async (value) => {
+    if (state.disposed) {
+      await discardChatFileCallback(state, msg.name, value);
+      return;
+    }
     if (msg.name === "beginOperation") {
       const id = operationIdFrom(value);
       const hold = id === null ? null : operationHold(msg.args[0], id);
@@ -995,19 +1915,46 @@ function handleCallbackRequest(state, msg) {
         teardown(state, new Error("runtime disposed"), false);
       }
     }
-    state.worker.postMessage({
-      kind: "callbackResponse",
-      requestId: msg.requestId,
-      ok: true,
-      value
-    });
+    if (msg.name === "beginChatFileExport" && typeof value === "string") {
+      state.chatFileExports.add(value);
+    } else if (msg.name === "finishChatFileExport" || msg.name === "cancelChatFileExport") {
+      state.chatFileExports.delete(msg.args[0]);
+    }
+    try {
+      state.worker.postMessage({
+        kind: "callbackResponse",
+        requestId: msg.requestId,
+        ok: true,
+        value
+      });
+    } catch {
+      await discardChatFileCallback(state, msg.name, value);
+      if (state.disposed)
+        return;
+      try {
+        state.worker.postMessage({
+          kind: "callbackResponse",
+          requestId: msg.requestId,
+          ok: false,
+          error: "Host callback result could not be serialized"
+        });
+      } catch {
+        teardown(state, new Error("Host callback transport is unavailable"), true);
+      }
+    }
   }, (err2) => {
-    state.worker.postMessage({
-      kind: "callbackResponse",
-      requestId: msg.requestId,
-      ok: false,
-      error: errorMessage(err2)
-    });
+    if (state.disposed)
+      return;
+    try {
+      state.worker.postMessage({
+        kind: "callbackResponse",
+        requestId: msg.requestId,
+        ok: false,
+        error: hostWalletCallback ? "Native Coinage wallet operation failed" : NATIVE_CHAT_FILE_CALLBACKS[msg.name] ? "Native Chat file operation failed" : errorMessage(err2)
+      });
+    } catch {
+      teardown(state, new Error("Host callback transport is unavailable"), true);
+    }
   });
 }
 function handleSubscriptionStart(state, msg) {
@@ -1031,9 +1978,12 @@ function handleSubscriptionStart(state, msg) {
   };
   let dispose = void 0;
   try {
-    dispose = startRawSubscription(state.rawCallbacks, msg.name, msg.payload, sendItem, sendError);
+    const callbacks = msg.coreId === void 0 ? state.rawCallbacks : state.coreCallbacks.get(msg.coreId);
+    if (!callbacks)
+      throw new Error("Product callbacks are unavailable");
+    dispose = startRawSubscription(callbacks, msg.name, msg.payload, sendItem, sendError);
   } catch (err2) {
-    console.error(`[truapi worker] ${msg.name} threw on start:`, err2);
+    sendError({ reason: errorMessage(err2) });
     return;
   }
   if (typeof dispose === "function") {
@@ -1052,9 +2002,21 @@ function handleSubscriptionStop(state, msg) {
   }
 }
 async function handleChainConnectStart(state, msg) {
-  const chainConnect = state.rawCallbacks.chainConnect;
+  if (state.disposed)
+    return;
+  if (state.chainConnections.has(msg.connId) || state.chainConnections.size >= MAX_JSON_RPC_CONNECTIONS) {
+    state.worker.postMessage({
+      kind: "chainConnectAck",
+      connId: msg.connId,
+      ok: false,
+      error: "JSON-RPC connection limit reached or duplicate connection id"
+    });
+    return;
+  }
+  const entry = { connection: null, closed: false };
+  state.chainConnections.set(msg.connId, entry);
   const onResponse = (json) => {
-    if (state.disposed)
+    if (state.disposed || entry.closed)
       return;
     state.worker.postMessage({
       kind: "chainResponse",
@@ -1062,54 +2024,84 @@ async function handleChainConnectStart(state, msg) {
       json
     });
   };
+  const onClosed = () => {
+    if (state.disposed || entry.closed)
+      return;
+    handleChainClose(state, msg);
+    state.worker.postMessage({
+      kind: "chainClosed",
+      connId: msg.connId
+    });
+  };
   try {
-    const conn = await chainConnect(msg.genesisHash, onResponse);
-    if (!conn) {
-      state.worker.postMessage({
-        kind: "chainConnectAck",
-        connId: msg.connId,
-        ok: false,
-        error: `chainConnect returned null for genesisHash ${msg.genesisHash}`
-      });
+    const conn = await (msg.kind === "hopConnectStart" ? state.rawCallbacks.hopConnect(msg.genesisHash, msg.endpoint, onResponse, onClosed) : state.rawCallbacks.chainConnect(msg.genesisHash, onResponse, onClosed));
+    if (state.disposed || entry.closed) {
+      state.chainConnections.delete(msg.connId);
+      conn?.close();
       return;
     }
-    state.chainConnections.set(msg.connId, conn);
+    if (!conn)
+      throw new Error(`${msg.kind} returned no connection`);
+    entry.connection = conn;
     state.worker.postMessage({
       kind: "chainConnectAck",
       connId: msg.connId,
       ok: true
     });
   } catch (err2) {
-    state.worker.postMessage({
-      kind: "chainConnectAck",
-      connId: msg.connId,
-      ok: false,
-      error: errorMessage(err2)
-    });
+    state.chainConnections.delete(msg.connId);
+    const report = !state.disposed && !entry.closed;
+    entry.closed = true;
+    try {
+      entry.connection?.close();
+    } catch {
+      console.warn("[truapi worker] JSON-RPC close failed");
+    } finally {
+      if (report) {
+        state.worker.postMessage({
+          kind: "chainConnectAck",
+          connId: msg.connId,
+          ok: false,
+          error: msg.kind === "hopConnectStart" ? "HOP connection unavailable" : errorMessage(err2)
+        });
+      }
+    }
   }
 }
 function handleChainSend(state, msg) {
-  const conn = state.chainConnections.get(msg.connId);
-  if (!conn)
+  const entry = state.chainConnections.get(msg.connId);
+  if (!entry?.connection || entry.closed)
     return;
   try {
     if (debugLoggingEnabled(state)) {
-      console.debug("[truapi worker] chainSend", msg.connId, msg.request);
+      console.debug("[truapi worker] chainSend", msg.connId);
     }
-    conn.send(msg.request);
-  } catch (err2) {
-    console.warn("[truapi worker] chain send threw:", err2);
+    entry.connection.send(msg.request);
+  } catch {
+    console.warn("[truapi worker] JSON-RPC send failed");
+    if (!entry.closed) {
+      handleChainClose(state, msg);
+      if (!state.disposed) {
+        state.worker.postMessage({
+          kind: "chainClosed",
+          connId: msg.connId
+        });
+      }
+    }
   }
 }
 function handleChainClose(state, msg) {
-  const conn = state.chainConnections.get(msg.connId);
-  if (!conn)
+  const entry = state.chainConnections.get(msg.connId);
+  if (!entry || entry.closed)
+    return;
+  entry.closed = true;
+  if (!entry.connection)
     return;
   state.chainConnections.delete(msg.connId);
   try {
-    conn.close();
-  } catch (err2) {
-    console.warn("[truapi worker] chain close threw:", err2);
+    entry.connection.close();
+  } catch {
+    console.warn("[truapi worker] JSON-RPC close failed");
   }
 }
 function settlePending(map, requestId, result) {
@@ -1303,6 +2295,7 @@ function teardown(state, error, fault) {
     closeCoreState(core, error);
   }
   state.cores.clear();
+  state.coreCallbacks.clear();
   for (const fn of state.subscriptionDisposers.values()) {
     try {
       fn();
@@ -1310,13 +2303,20 @@ function teardown(state, error, fault) {
     }
   }
   state.subscriptionDisposers.clear();
-  for (const conn of state.chainConnections.values()) {
+  for (const entry of state.chainConnections.values()) {
+    entry.closed = true;
     try {
-      conn.close();
+      entry.connection?.close();
     } catch {
     }
   }
   state.chainConnections.clear();
+  for (const id of state.chatFileExports) {
+    void state.rawCallbacks.cancelChatFileExport(id).catch(() => {
+    });
+  }
+  state.chatFileExports.clear();
+  state.disposeNativeChatFiles();
   for (const productId of [...state.wantedWorkers]) {
     handleWorkerDemandChanged(state, productId, false);
   }
@@ -1338,7 +2338,11 @@ function createWebWorkerSigningHostRuntime(worker, host, options) {
   });
 }
 function createWebWorkerHostRuntime(worker, host, options) {
-  const callbacks = createWasmRawCallbacks(host);
+  const browserFiles = host.nativeChatFiles ? void 0 : createBrowserNativeChatFilesHost();
+  const callbacks = createWasmRawCallbacks({
+    ...host,
+    nativeChatFiles: host.nativeChatFiles ?? browserFiles
+  });
   return new Promise((resolve, reject) => {
     const state = {
       worker,
@@ -1348,6 +2352,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
       identityGeneration: 0,
       pendingAllowanceSnapshots: /* @__PURE__ */ new Map(),
       rawCallbacks: callbacks,
+      coreCallbacks: /* @__PURE__ */ new Map(),
       cores: /* @__PURE__ */ new Map(),
       pendingCores: /* @__PURE__ */ new Map(),
       subscriptionDisposers: /* @__PURE__ */ new Map(),
@@ -1356,6 +2361,8 @@ function createWebWorkerHostRuntime(worker, host, options) {
       disposeGraceTimer: void 0,
       operationGraceMs: options.operationGraceMs ?? 3e4,
       chainConnections: /* @__PURE__ */ new Map(),
+      chatFileExports: /* @__PURE__ */ new Set(),
+      disposeNativeChatFiles: () => browserFiles?.dispose(),
       pendingDisconnects: /* @__PURE__ */ new Map(),
       pendingSessionActivations: /* @__PURE__ */ new Map(),
       pendingLocalIdentities: /* @__PURE__ */ new Map(),
@@ -1407,7 +2414,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
           if (!core || core.disposed)
             break;
           if (debugLoggingEnabled(state)) {
-            console.debug("[truapi worker] frame <-", (0, import_scale2.bytesToHex)(msg.bytes));
+            console.debug("[truapi worker] frame <-", (0, import_scale3.bytesToHex)(msg.bytes));
           }
           for (const listener of [...core.listeners])
             listener(msg.bytes);
@@ -1507,8 +2514,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
           handleSubscriptionStop(state, msg);
           break;
         case "chainConnectStart":
+        case "hopConnectStart":
           if (debugLoggingEnabled(state)) {
-            console.debug("[truapi worker] chainConnectStart", msg.connId);
+            console.debug("[truapi worker]", msg.kind, msg.connId);
           }
           void handleChainConnectStart(state, msg);
           break;
@@ -1554,7 +2562,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
           capabilities: {
             chat: host.chat !== void 0,
             permissionStatus: host.permissionStatus !== void 0,
-            pocket: host.pocket !== void 0
+            pocket: host.pocket !== void 0,
+            identityBackend: host.identityBackend !== void 0,
+            coinageWallet: callbacks.nativeCoinage !== void 0
           },
           debuggerUrl: debuggerEnablement.url
         });
@@ -1611,6 +2621,7 @@ function handleCoreError(state, coreId, error) {
   if (!pending)
     return;
   state.pendingCores.delete(coreId);
+  state.coreCallbacks.delete(coreId);
   pending.reject(new Error(error));
 }
 function handleFrameError(state, coreId, error) {
@@ -1621,6 +2632,7 @@ function handleFrameError(state, coreId, error) {
   const failure = new Error(`worker frame error: ${error}`);
   closeCoreState(core, failure);
   state.cores.delete(coreId);
+  state.coreCallbacks.delete(coreId);
   failRendersForCore(state, coreId, failure);
   try {
     state.worker.postMessage({
@@ -1633,12 +2645,14 @@ function handleFrameError(state, coreId, error) {
 function buildRuntime(state) {
   const runtime = {
     coreWireSchemaHash: state.coreWireSchemaHash,
-    createProvider(product) {
+    createProvider(product, callbacks) {
       if (state.disposed) {
         return Promise.reject(state.closedError ?? new Error("runtime disposed"));
       }
       return new Promise((resolve, reject) => {
         const coreId = ++state.nextCoreId;
+        if (callbacks)
+          state.coreCallbacks.set(coreId, createWasmRawCallbacks(callbacks));
         state.pendingCores.set(coreId, {
           productId: product.productId,
           resolve,
@@ -1648,10 +2662,20 @@ function buildRuntime(state) {
           state.worker.postMessage({
             kind: "createCore",
             coreId,
-            product
+            product,
+            ...callbacks === void 0 ? {} : {
+              capabilities: {
+                chat: callbacks.chat !== void 0,
+                permissionStatus: callbacks.permissionStatus !== void 0,
+                pocket: callbacks.pocket !== void 0,
+                identityBackend: callbacks.identityBackend !== void 0,
+                coinageWallet: state.rawCallbacks.nativeCoinage !== void 0
+              }
+            }
           });
         } catch (err2) {
           state.pendingCores.delete(coreId);
+          state.coreCallbacks.delete(coreId);
           reject(err2 instanceof Error ? err2 : new Error(String(err2)));
         }
       });
@@ -1888,7 +2912,7 @@ function buildProvider(state, core, runtime) {
       if (state.disposed || core.disposed)
         return;
       if (debugLoggingEnabled(state)) {
-        console.debug("[truapi worker] frame ->", (0, import_scale2.bytesToHex)(bytes2));
+        console.debug("[truapi worker] frame ->", (0, import_scale3.bytesToHex)(bytes2));
       }
       state.worker.postMessage({
         kind: "frame",
@@ -1923,7 +2947,7 @@ function buildProvider(state, core, runtime) {
       if (core.disposed)
         return void 0;
       const key = await runtime.getSessionChatIdentityKey();
-      return key && (0, import_scale2.bytesToHex)(key);
+      return key && (0, import_scale3.bytesToHex)(key);
     },
     async getDeviceStatementKey() {
       if (core.disposed)
@@ -1934,13 +2958,13 @@ function buildProvider(state, core, runtime) {
       if (core.disposed) {
         throw new Error("product connection is closed");
       }
-      return (0, import_scale2.bytesToHex)(await runtime.getDeviceEncryptionKey());
+      return (0, import_scale3.bytesToHex)(await runtime.getDeviceEncryptionKey());
     },
     async getProductSubtreePublicKey(productId, timeoutMs) {
       if (core.disposed)
         return void 0;
       const key = await runtime.getProductSubtreePublicKey(productId, timeoutMs);
-      return key && (0, import_scale2.bytesToHex)(key);
+      return key && (0, import_scale3.bytesToHex)(key);
     },
     getPermissionAuthorizationStatus(request) {
       if (core.disposed)
@@ -1954,8 +2978,9 @@ function buildProvider(state, core, runtime) {
       return runtime.getPermissionAuthorizationStatuses(core.productId, requests);
     },
     setPermissionAuthorizationStatus(request, status) {
-      if (core.disposed)
-        return Promise.resolve();
+      if (core.disposed) {
+        return Promise.reject(core.closedError ?? new Error("product connection is closed"));
+      }
       return runtime.setPermissionAuthorizationStatus(core.productId, request, status);
     },
     setLogLevel(level) {
@@ -2018,6 +3043,7 @@ function buildProvider(state, core, runtime) {
         return;
       closeCoreState(core, new Error("provider disposed"));
       state.cores.delete(core.coreId);
+      state.coreCallbacks.delete(core.coreId);
       failRendersForCore(state, core.coreId, new Error("provider disposed"));
       state.worker.postMessage({
         kind: "disposeCore",
@@ -2094,7 +3120,7 @@ function aoutput(out, instance) {
     throw new RangeError('"digestInto() output" expected to be of length >=' + min);
   }
 }
-function u32(arr) {
+function u322(arr) {
   return new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
 }
 function clean(...arrays) {
@@ -2493,7 +3519,7 @@ var _BLAKE2 = class {
     this.blockLen = blockLen;
     this.outputLen = outputLen;
     this.buffer = new Uint8Array(blockLen);
-    this.buffer32 = u32(this.buffer);
+    this.buffer32 = u322(this.buffer);
   }
   update(data) {
     aexists(this);
@@ -2540,7 +3566,7 @@ var _BLAKE2 = class {
     if (out.byteOffset & 3)
       throw new RangeError('"digestInto() output" expected 4-byte aligned byteOffset, got ' + out.byteOffset);
     const state = this.get();
-    const out32 = u32(out);
+    const out32 = u322(out);
     const full = Math.floor(this.outputLen / 4);
     for (let i = 0; i < full; i++)
       out32[i] = swap8IfBE(state[i]);
@@ -2606,7 +3632,7 @@ var _BLAKE2b = class extends _BLAKE2 {
     this.v0l ^= this.outputLen | keyLength << 8 | 1 << 16 | 1 << 24;
     if (salt !== void 0) {
       abytes(salt, void 0, "salt");
-      const slt = u32(salt);
+      const slt = u322(salt);
       this.v4l ^= swap8IfBE(slt[0]);
       this.v4h ^= swap8IfBE(slt[1]);
       this.v5l ^= swap8IfBE(slt[2]);
@@ -2614,7 +3640,7 @@ var _BLAKE2b = class extends _BLAKE2 {
     }
     if (personalization !== void 0) {
       abytes(personalization, void 0, "personalization");
-      const pers = u32(personalization);
+      const pers = u322(personalization);
       this.v6l ^= swap8IfBE(pers[0]);
       this.v6h ^= swap8IfBE(pers[1]);
       this.v7l ^= swap8IfBE(pers[2]);
@@ -2748,7 +3774,7 @@ function parseFilter(raw) {
   }
   return { kind: "MatchAll", topics: [] };
 }
-function matches(subscription, topics) {
+function matches2(subscription, topics) {
   if (subscription.topics.length === 0 || topics === void 0)
     return true;
   return subscription.kind === "MatchAll" ? subscription.topics.every((topic) => topics.includes(topic)) : subscription.topics.some((topic) => topics.includes(topic));
@@ -2761,7 +3787,7 @@ function createLoopbackStatements() {
     const topics = topicsOf(encoded);
     let delivered = 0;
     for (const subscription of subscriptions) {
-      if (!matches(subscription, topics))
+      if (!matches2(subscription, topics))
         continue;
       subscription.notify(JSON.stringify({
         jsonrpc: "2.0",

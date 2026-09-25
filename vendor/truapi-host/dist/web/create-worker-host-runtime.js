@@ -1,9 +1,11 @@
 import { HostChatActionSubscribeItem as HostChatActionSubscribeItemCodec, HostRendererActionSubscribeItem as HostRendererActionSubscribeItemCodec, HostWorkerBeginOperationResponse as HostWorkerBeginOperationResponseCodec, ProductRendererRenderRequest as ProductRendererRenderRequestCodec, RendererNode as RendererNodeCodec, } from "@parity/truapi";
-import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec, ProductContext as ProductContextCodec, } from "../generated/host-callbacks.js";
+import { NativeChatPickedFile, PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec, ProductContext as ProductContextCodec, } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
-import { bytesToHex } from "@parity/truapi/scale";
+import { COINAGE_WALLET_CALLBACKS, MAX_JSON_RPC_CONNECTIONS, } from "../worker-protocol.js";
+import { bytesToHex, Vector } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
 import { errorMessage, toError } from "../error.js";
+import { createBrowserNativeChatFilesHost } from "./native-chat-files.js";
 import { validateAllowanceProductIds, } from "../wallet-allowances.js";
 function debugLoggingEnabled(state) {
     return state.logLevel === "debug" || state.logLevel === "trace";
@@ -132,12 +134,32 @@ function persistLogLevel(level) {
 }
 let devLogLevelOverride = readPersistedLogLevel();
 const devGlobalTargets = new Set();
-/**
- * Key one pending-operation hold. `OperationId` is unique per product, not per
- * worker, so the product a `beginOperation`/`endOperation` arrived for has to be
- * part of the key. Returns null if the encoded product will not decode, which
- * drops the hold rather than letting it pin the worker forever.
- */
+const NATIVE_CHAT_FILE_CALLBACKS = {
+    pickChatFiles: true,
+    readChatFile: true,
+    releaseChatFile: true,
+    beginChatFileExport: true,
+    writeChatFileExport: true,
+    finishChatFileExport: true,
+    cancelChatFileExport: true,
+};
+/** Reclaim only undelivered selections; delivered sources belong to durable Host state. */
+async function discardChatFileCallback(state, name, value) {
+    try {
+        if (name === "pickChatFiles" && value instanceof Uint8Array) {
+            await Promise.all(Vector(NativeChatPickedFile)
+                .dec(value)
+                .map((file) => state.rawCallbacks.releaseChatFile(file.sourceId)));
+        }
+        else if (name === "beginChatFileExport" && typeof value === "string") {
+            state.chatFileExports.delete(value);
+            await state.rawCallbacks.cancelChatFileExport(value);
+        }
+    }
+    catch {
+        // A closed/failed backing store is unavailable; never log private handles or payloads.
+    }
+}
 /**
  * Read the host-assigned id out of a `beginOperation` response. Returns null if
  * the response will not decode, so a hold that cannot be keyed is dropped
@@ -170,8 +192,14 @@ function operationHold(encodedProduct, id) {
     }
 }
 function handleCallbackRequest(state, msg) {
-    const fn = Object.hasOwn(state.rawCallbacks, msg.name)
-        ? state.rawCallbacks[msg.name]
+    if (state.disposed)
+        return;
+    const hostWalletCallback = COINAGE_WALLET_CALLBACKS[msg.name] === true;
+    const callbacks = msg.coreId === undefined || hostWalletCallback
+        ? state.rawCallbacks
+        : state.coreCallbacks.get(msg.coreId);
+    const fn = callbacks && Object.hasOwn(callbacks, msg.name)
+        ? callbacks[msg.name]
         : undefined;
     if (!fn) {
         state.worker.postMessage({
@@ -183,8 +211,20 @@ function handleCallbackRequest(state, msg) {
         return;
     }
     Promise.resolve()
-        .then(() => fn(...msg.args))
-        .then((value) => {
+        .then(() => {
+        if (state.disposed)
+            throw new Error("Host runtime is unavailable");
+        if (!hostWalletCallback &&
+            msg.coreId !== undefined &&
+            !state.coreCallbacks.has(msg.coreId))
+            throw new Error("Product callbacks are unavailable");
+        return fn(...msg.args);
+    })
+        .then(async (value) => {
+        if (state.disposed) {
+            await discardChatFileCallback(state, msg.name, value);
+            return;
+        }
         // Tracked in the success arm only: a rejected begin must not leave a
         // hold that nothing will ever release.
         if (msg.name === "beginOperation") {
@@ -204,19 +244,55 @@ function handleCallbackRequest(state, msg) {
                 teardown(state, new Error("runtime disposed"), false);
             }
         }
-        state.worker.postMessage({
-            kind: "callbackResponse",
-            requestId: msg.requestId,
-            ok: true,
-            value,
-        });
+        if (msg.name === "beginChatFileExport" && typeof value === "string") {
+            state.chatFileExports.add(value);
+        }
+        else if (msg.name === "finishChatFileExport" ||
+            msg.name === "cancelChatFileExport") {
+            state.chatFileExports.delete(msg.args[0]);
+        }
+        try {
+            state.worker.postMessage({
+                kind: "callbackResponse",
+                requestId: msg.requestId,
+                ok: true,
+                value,
+            });
+        }
+        catch {
+            await discardChatFileCallback(state, msg.name, value);
+            if (state.disposed)
+                return;
+            try {
+                state.worker.postMessage({
+                    kind: "callbackResponse",
+                    requestId: msg.requestId,
+                    ok: false,
+                    error: "Host callback result could not be serialized",
+                });
+            }
+            catch {
+                teardown(state, new Error("Host callback transport is unavailable"), true);
+            }
+        }
     }, (err) => {
-        state.worker.postMessage({
-            kind: "callbackResponse",
-            requestId: msg.requestId,
-            ok: false,
-            error: errorMessage(err),
-        });
+        if (state.disposed)
+            return;
+        try {
+            state.worker.postMessage({
+                kind: "callbackResponse",
+                requestId: msg.requestId,
+                ok: false,
+                error: hostWalletCallback
+                    ? "Native Coinage wallet operation failed"
+                    : NATIVE_CHAT_FILE_CALLBACKS[msg.name]
+                        ? "Native Chat file operation failed"
+                        : errorMessage(err),
+            });
+        }
+        catch {
+            teardown(state, new Error("Host callback transport is unavailable"), true);
+        }
     });
 }
 function handleSubscriptionStart(state, msg) {
@@ -240,10 +316,15 @@ function handleSubscriptionStart(state, msg) {
     };
     let dispose = undefined;
     try {
-        dispose = startRawSubscription(state.rawCallbacks, msg.name, msg.payload, sendItem, sendError);
+        const callbacks = msg.coreId === undefined
+            ? state.rawCallbacks
+            : state.coreCallbacks.get(msg.coreId);
+        if (!callbacks)
+            throw new Error("Product callbacks are unavailable");
+        dispose = startRawSubscription(callbacks, msg.name, msg.payload, sendItem, sendError);
     }
     catch (err) {
-        console.error(`[truapi worker] ${msg.name} threw on start:`, err);
+        sendError({ reason: errorMessage(err) });
         return;
     }
     if (typeof dispose === "function") {
@@ -263,9 +344,22 @@ function handleSubscriptionStop(state, msg) {
     }
 }
 async function handleChainConnectStart(state, msg) {
-    const chainConnect = state.rawCallbacks.chainConnect;
+    if (state.disposed)
+        return;
+    if (state.chainConnections.has(msg.connId) ||
+        state.chainConnections.size >= MAX_JSON_RPC_CONNECTIONS) {
+        state.worker.postMessage({
+            kind: "chainConnectAck",
+            connId: msg.connId,
+            ok: false,
+            error: "JSON-RPC connection limit reached or duplicate connection id",
+        });
+        return;
+    }
+    const entry = { connection: null, closed: false };
+    state.chainConnections.set(msg.connId, entry);
     const onResponse = (json) => {
-        if (state.disposed)
+        if (state.disposed || entry.closed)
             return;
         state.worker.postMessage({
             kind: "chainResponse",
@@ -273,18 +367,27 @@ async function handleChainConnectStart(state, msg) {
             json,
         });
     };
+    const onClosed = () => {
+        if (state.disposed || entry.closed)
+            return;
+        handleChainClose(state, msg);
+        state.worker.postMessage({
+            kind: "chainClosed",
+            connId: msg.connId,
+        });
+    };
     try {
-        const conn = await chainConnect(msg.genesisHash, onResponse);
-        if (!conn) {
-            state.worker.postMessage({
-                kind: "chainConnectAck",
-                connId: msg.connId,
-                ok: false,
-                error: `chainConnect returned null for genesisHash ${msg.genesisHash}`,
-            });
+        const conn = await (msg.kind === "hopConnectStart"
+            ? state.rawCallbacks.hopConnect(msg.genesisHash, msg.endpoint, onResponse, onClosed)
+            : state.rawCallbacks.chainConnect(msg.genesisHash, onResponse, onClosed));
+        if (state.disposed || entry.closed) {
+            state.chainConnections.delete(msg.connId);
+            conn?.close();
             return;
         }
-        state.chainConnections.set(msg.connId, conn);
+        if (!conn)
+            throw new Error(`${msg.kind} returned no connection`);
+        entry.connection = conn;
         state.worker.postMessage({
             kind: "chainConnectAck",
             connId: msg.connId,
@@ -292,38 +395,66 @@ async function handleChainConnectStart(state, msg) {
         });
     }
     catch (err) {
-        state.worker.postMessage({
-            kind: "chainConnectAck",
-            connId: msg.connId,
-            ok: false,
-            error: errorMessage(err),
-        });
+        state.chainConnections.delete(msg.connId);
+        const report = !state.disposed && !entry.closed;
+        entry.closed = true;
+        try {
+            entry.connection?.close();
+        }
+        catch {
+            console.warn("[truapi worker] JSON-RPC close failed");
+        }
+        finally {
+            if (report) {
+                state.worker.postMessage({
+                    kind: "chainConnectAck",
+                    connId: msg.connId,
+                    ok: false,
+                    error: msg.kind === "hopConnectStart"
+                        ? "HOP connection unavailable"
+                        : errorMessage(err),
+                });
+            }
+        }
     }
 }
 function handleChainSend(state, msg) {
-    const conn = state.chainConnections.get(msg.connId);
-    if (!conn)
+    const entry = state.chainConnections.get(msg.connId);
+    if (!entry?.connection || entry.closed)
         return;
     try {
         if (debugLoggingEnabled(state)) {
-            console.debug("[truapi worker] chainSend", msg.connId, msg.request);
+            console.debug("[truapi worker] chainSend", msg.connId);
         }
-        conn.send(msg.request);
+        entry.connection.send(msg.request);
     }
-    catch (err) {
-        console.warn("[truapi worker] chain send threw:", err);
+    catch {
+        console.warn("[truapi worker] JSON-RPC send failed");
+        if (!entry.closed) {
+            handleChainClose(state, msg);
+            if (!state.disposed) {
+                state.worker.postMessage({
+                    kind: "chainClosed",
+                    connId: msg.connId,
+                });
+            }
+        }
     }
 }
 function handleChainClose(state, msg) {
-    const conn = state.chainConnections.get(msg.connId);
-    if (!conn)
+    const entry = state.chainConnections.get(msg.connId);
+    if (!entry || entry.closed)
+        return;
+    entry.closed = true;
+    // Keep a closed opening entry counted until its late handle can be closed.
+    if (!entry.connection)
         return;
     state.chainConnections.delete(msg.connId);
     try {
-        conn.close();
+        entry.connection.close();
     }
-    catch (err) {
-        console.warn("[truapi worker] chain close threw:", err);
+    catch {
+        console.warn("[truapi worker] JSON-RPC close failed");
     }
 }
 function settlePending(map, requestId, result) {
@@ -534,6 +665,7 @@ function teardown(state, error, fault) {
         closeCoreState(core, error);
     }
     state.cores.clear();
+    state.coreCallbacks.clear();
     for (const fn of state.subscriptionDisposers.values()) {
         try {
             fn();
@@ -543,15 +675,21 @@ function teardown(state, error, fault) {
         }
     }
     state.subscriptionDisposers.clear();
-    for (const conn of state.chainConnections.values()) {
+    for (const entry of state.chainConnections.values()) {
+        entry.closed = true;
         try {
-            conn.close();
+            entry.connection?.close();
         }
         catch {
             // ignore during teardown
         }
     }
     state.chainConnections.clear();
+    for (const id of state.chatFileExports) {
+        void state.rawCallbacks.cancelChatFileExport(id).catch(() => { });
+    }
+    state.chatFileExports.clear();
+    state.disposeNativeChatFiles();
     // A worker nothing can call any more is not wanted.
     for (const productId of [...state.wantedWorkers]) {
         handleWorkerDemandChanged(state, productId, false);
@@ -583,7 +721,13 @@ export function createWebWorkerSigningHostRuntime(worker, host, options) {
     });
 }
 function createWebWorkerHostRuntime(worker, host, options) {
-    const callbacks = createWasmRawCallbacks(host);
+    const browserFiles = host.nativeChatFiles
+        ? undefined
+        : createBrowserNativeChatFilesHost();
+    const callbacks = createWasmRawCallbacks({
+        ...host,
+        nativeChatFiles: host.nativeChatFiles ?? browserFiles,
+    });
     return new Promise((resolve, reject) => {
         const state = {
             worker,
@@ -595,6 +739,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             identityGeneration: 0,
             pendingAllowanceSnapshots: new Map(),
             rawCallbacks: callbacks,
+            coreCallbacks: new Map(),
             cores: new Map(),
             pendingCores: new Map(),
             subscriptionDisposers: new Map(),
@@ -603,6 +748,8 @@ function createWebWorkerHostRuntime(worker, host, options) {
             disposeGraceTimer: undefined,
             operationGraceMs: options.operationGraceMs ?? 30_000,
             chainConnections: new Map(),
+            chatFileExports: new Set(),
+            disposeNativeChatFiles: () => browserFiles?.dispose(),
             pendingDisconnects: new Map(),
             pendingSessionActivations: new Map(),
             pendingLocalIdentities: new Map(),
@@ -769,8 +916,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     handleSubscriptionStop(state, msg);
                     break;
                 case "chainConnectStart":
+                case "hopConnectStart":
                     if (debugLoggingEnabled(state)) {
-                        console.debug("[truapi worker] chainConnectStart", msg.connId);
+                        console.debug("[truapi worker]", msg.kind, msg.connId);
                     }
                     void handleChainConnectStart(state, msg);
                     break;
@@ -817,6 +965,8 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         chat: host.chat !== undefined,
                         permissionStatus: host.permissionStatus !== undefined,
                         pocket: host.pocket !== undefined,
+                        identityBackend: host.identityBackend !== undefined,
+                        coinageWallet: callbacks.nativeCoinage !== undefined,
                     },
                     debuggerUrl: debuggerEnablement.url,
                 });
@@ -875,6 +1025,7 @@ function handleCoreError(state, coreId, error) {
     if (!pending)
         return;
     state.pendingCores.delete(coreId);
+    state.coreCallbacks.delete(coreId);
     pending.reject(new Error(error));
 }
 function handleFrameError(state, coreId, error) {
@@ -885,6 +1036,7 @@ function handleFrameError(state, coreId, error) {
     const failure = new Error(`worker frame error: ${error}`);
     closeCoreState(core, failure);
     state.cores.delete(coreId);
+    state.coreCallbacks.delete(coreId);
     // Renders left registered would never settle: the worker cancels them with
     // the core, so nothing further arrives to complete the sink.
     failRendersForCore(state, coreId, failure);
@@ -901,12 +1053,14 @@ function handleFrameError(state, coreId, error) {
 function buildRuntime(state) {
     const runtime = {
         coreWireSchemaHash: state.coreWireSchemaHash,
-        createProvider(product) {
+        createProvider(product, callbacks) {
             if (state.disposed) {
                 return Promise.reject(state.closedError ?? new Error("runtime disposed"));
             }
             return new Promise((resolve, reject) => {
                 const coreId = ++state.nextCoreId;
+                if (callbacks)
+                    state.coreCallbacks.set(coreId, createWasmRawCallbacks(callbacks));
                 state.pendingCores.set(coreId, {
                     productId: product.productId,
                     resolve,
@@ -917,10 +1071,22 @@ function buildRuntime(state) {
                         kind: "createCore",
                         coreId,
                         product,
+                        ...(callbacks === undefined
+                            ? {}
+                            : {
+                                capabilities: {
+                                    chat: callbacks.chat !== undefined,
+                                    permissionStatus: callbacks.permissionStatus !== undefined,
+                                    pocket: callbacks.pocket !== undefined,
+                                    identityBackend: callbacks.identityBackend !== undefined,
+                                    coinageWallet: state.rawCallbacks.nativeCoinage !== undefined,
+                                },
+                            }),
                     });
                 }
                 catch (err) {
                     state.pendingCores.delete(coreId);
+                    state.coreCallbacks.delete(coreId);
                     reject(err instanceof Error ? err : new Error(String(err)));
                 }
             });
@@ -1249,8 +1415,9 @@ function buildProvider(state, core, runtime) {
             return runtime.getPermissionAuthorizationStatuses(core.productId, requests);
         },
         setPermissionAuthorizationStatus(request, status) {
-            if (core.disposed)
-                return Promise.resolve();
+            if (core.disposed) {
+                return Promise.reject(core.closedError ?? new Error("product connection is closed"));
+            }
             return runtime.setPermissionAuthorizationStatus(core.productId, request, status);
         },
         setLogLevel(level) {
@@ -1316,6 +1483,7 @@ function buildProvider(state, core, runtime) {
                 return;
             closeCoreState(core, new Error("provider disposed"));
             state.cores.delete(core.coreId);
+            state.coreCallbacks.delete(core.coreId);
             // Renders left registered would never settle: the worker cancels them
             // with the core, so nothing further arrives to complete the sink.
             failRendersForCore(state, core.coreId, new Error("provider disposed"));
