@@ -424,3 +424,8 @@ export const WORKER_END_OPERATION = {
     method: 1,
     kind: "request",
 };
+export const PROFILE_PRESENT = {
+    trait: 20,
+    method: 0,
+    kind: "request",
+};

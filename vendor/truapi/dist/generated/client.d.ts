@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "c8972ad11436a788";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -306,6 +306,24 @@ export declare class PreimageClient {
     /** Submit a preimage. Returns the preimage key (hash) on success. */
     submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
+/**
+ * Profiles shown in host-owned UI.
+ *
+ * The product hands over an opaque reference; the host resolves, decrypts and
+ * renders it. Profile bytes never return to the product.
+ */
+export declare class ProfileClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Show the referenced profile in host-owned UI.
+     *
+     * Resolves once the host has taken the presentation, not when the user
+     * dismisses it. Loading and fetch failures are shown to the user, not
+     * returned; a reference this host cannot parse is `InvalidReference`.
+     */
+    present(request: T.HostProfilePresentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentError>>;
+}
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {
     #private;
@@ -495,6 +513,7 @@ export interface TrUApiClient {
     readonly permissions: PermissionsClient;
     readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
+    readonly profile: ProfileClient;
     readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
     readonly signing: SigningClient;

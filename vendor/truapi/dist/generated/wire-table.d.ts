@@ -413,3 +413,8 @@ export declare const WORKER_END_OPERATION: {
     readonly method: 1;
     readonly kind: "request";
 };
+export declare const PROFILE_PRESENT: {
+    readonly trait: 20;
+    readonly method: 0;
+    readonly kind: "request";
+};

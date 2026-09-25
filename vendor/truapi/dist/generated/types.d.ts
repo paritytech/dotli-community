@@ -1897,6 +1897,30 @@ export type VersionedHostProductDeviceChatResponse =
     value: HostProductDeviceChatResponse;
 };
 export declare const VersionedHostProductDeviceChatResponse: S.Codec<VersionedHostProductDeviceChatResponse>;
+/** Versioned envelope for [`HostProfilePresentError`]. */
+export type VersionedHostProfilePresentError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentError;
+};
+export declare const VersionedHostProfilePresentError: S.Codec<VersionedHostProfilePresentError>;
+/** Versioned envelope for [`HostProfilePresentRequest`]. */
+export type VersionedHostProfilePresentRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentRequest;
+};
+export declare const VersionedHostProfilePresentRequest: S.Codec<VersionedHostProfilePresentRequest>;
+/** Versioned envelope for [`HostProfilePresentResponse`]. */
+export type VersionedHostProfilePresentResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfilePresentResponse: S.Codec<VersionedHostProfilePresentResponse>;
 /** Versioned envelope for [`HostPushNotificationCancelError`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -4448,6 +4472,33 @@ export interface HostPocketRemoveCardRequest {
     cardId: string;
 }
 export declare const HostPocketRemoveCardRequest: S.Codec<HostPocketRemoveCardRequest>;
+/** Profile presentation failure. */
+export type HostProfilePresentError = 
+/** The reference is malformed or names a format this host cannot open. */
+{
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfilePresentError: S.Codec<HostProfilePresentError>;
+/**
+ * Request to show a profile the calling product references in host-owned UI.
+ *
+ * The reference is a bearer capability: whoever holds it can read the profile
+ * it names. The host resolves and renders it itself, so profile bytes, the
+ * avatar image included, never reach the product.
+ */
+export interface HostProfilePresentRequest {
+    /** Opaque profile reference, e.g. a Seity `<cid>#<key>` blob reference. */
+    reference: string;
+}
+export declare const HostProfilePresentRequest: S.Codec<HostProfilePresentRequest>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [`HostPushNotificationResponse`]. */

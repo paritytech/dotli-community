@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "87a3b34c06a7c823";
+export const TRUAPI_WIRE_SCHEMA_HASH = "c8972ad11436a788";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -991,6 +991,36 @@ export class PreimageClient {
         });
     }
 }
+/**
+ * Profiles shown in host-owned UI.
+ *
+ * The product hands over an opaque reference; the host resolves, decrypts and
+ * renders it. Profile bytes never return to the product.
+ */
+export class ProfileClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Show the referenced profile in host-owned UI.
+     *
+     * Resolves once the host has taken the presentation, not when the user
+     * dismisses it. Loading and fetch failures are shown to the user, not
+     * returned; a reference this host cannot parse is `InvalidReference`.
+     */
+    present(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PRESENT,
+            payload: T.VersionedHostProfilePresentRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePresentResponse, S.CallError(T.VersionedHostProfilePresentError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
 /** Product-rendered bodies and the actions triggered inside them. */
 export class RendererClient {
     #transport;
@@ -1418,6 +1448,7 @@ export function createClient(transport) {
         permissions: new PermissionsClient(transport),
         pocket: new PocketClient(transport),
         preimage: new PreimageClient(transport),
+        profile: new ProfileClient(transport),
         renderer: new RendererClient(transport),
         resourceAllocation: new ResourceAllocationClient(transport),
         signing: new SigningClient(transport),

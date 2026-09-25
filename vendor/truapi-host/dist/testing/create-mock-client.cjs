@@ -801,6 +801,7 @@ function createWasmRawCallbacks(callbacks) {
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
+  const profile = callbacks.profile;
   const hop = callbacks.hop ?? unavailableHopProvider;
   const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
@@ -852,6 +853,9 @@ function createWasmRawCallbacks(callbacks) {
     write: async (key, value) => await callbacks.productStorage.write(key, value),
     clear: async (key) => await callbacks.productStorage.clear(key),
     subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(import_truapi4.HostLocalStorageChangeItem.enc(item)), sendError),
+    ...profile ? {
+      presentProfile: async (product, request) => await profile.presentProfile(ProductContext.dec(product), import_truapi4.HostProfilePresentRequest.dec(request))
+    } : {},
     subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(import_truapi4.HostThemeSubscribeItem.enc(item)), sendError),
     confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
