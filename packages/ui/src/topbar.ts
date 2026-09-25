@@ -17,7 +17,7 @@ import {
   type BlockSource,
   type ChainStatus,
 } from "@dotli/ui/network-monitor";
-import { setLoggedIn } from "@dotli/ui/state/auth";
+import { setLoggedIn } from "./state/auth";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
@@ -75,8 +75,8 @@ import {
 } from "./blocking-modal-queue";
 import { ERRORS } from "./errors";
 import { recordPermissionChange } from "./state/permissions";
-import { setTheme, type ThemePref } from "@dotli/ui/state/theme";
-import { setChainsButtonVisibleState } from "@dotli/ui/state/topbar";
+import { setTheme, type ThemePref } from "./state/theme";
+import { setChainsButtonVisibleState } from "./state/topbar";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
