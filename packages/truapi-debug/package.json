@@ -21,6 +21,7 @@
   "dependencies": {
     "@dotli/config": "workspace:*",
     "@dotli/shared": "workspace:*",
+    "@parity/truapi-host": "file:../../vendor/truapi-host",
     "nanoevents": "^10.0.0"
   }
 }

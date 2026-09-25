@@ -9,6 +9,7 @@ import { createWorkerRawCallbacks, } from "./generated/worker-callbacks.js";
 import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, } from "./worker-permission-authorization.js";
 import { errorMessage } from "./error.js";
 import { resolveLocalIdentity } from "./worker-local-identity.js";
+import { validateAllowanceProductIds, validateWalletAllowanceSnapshot, } from "./wallet-allowances.js";
 import { CHAT_ACTION_ENTRY_POINT, RENDERER_ACTION_ENTRY_POINT, handlePublishAction, } from "./worker-actions.js";
 import { handleRenderStart, stopRender, stopRendersForCore, } from "./worker-renderer.js";
 import { dispatchChainResponse, dispatchSubscriptionError, dispatchSubscriptionItem, } from "./worker-dispatch.js";
@@ -585,6 +586,45 @@ const renders = new Map();
 let wasm = null;
 let identityAbort = null;
 const identityOperations = new Set();
+let allowanceNetworkSuffix = null;
+let allowanceGeneration = 0;
+const allowanceOperations = new Set();
+function handleWalletAllowanceSnapshot(requestId, input) {
+    const rt = runtime;
+    const generation = allowanceGeneration;
+    const operation = (async () => {
+        try {
+            if (!rt || !isSigningRuntime(rt) || allowanceNetworkSuffix === null) {
+                throw new Error("wallet allowance inspection requires a signing runtime");
+            }
+            const productIds = validateAllowanceProductIds(input);
+            const context = rt.localIdentityContext();
+            const snapshot = await rt.getWalletAllowanceSnapshot(context.activationId, productIds);
+            if (runtime !== rt ||
+                generation !== allowanceGeneration ||
+                rt.localIdentityContext().activationId !== context.activationId) {
+                throw new Error("local identity activation changed during allowance inspection");
+            }
+            validateWalletAllowanceSnapshot(snapshot, context.identityAccountId, allowanceNetworkSuffix, productIds);
+            postToMain({
+                kind: "walletAllowanceSnapshotResponse",
+                requestId,
+                ok: true,
+                snapshot,
+            });
+        }
+        catch (error) {
+            postToMain({
+                kind: "walletAllowanceSnapshotResponse",
+                requestId,
+                ok: false,
+                error: errorMessage(error),
+            });
+        }
+    })();
+    allowanceOperations.add(operation);
+    void operation.finally(() => allowanceOperations.delete(operation));
+}
 function handleLocalIdentity(requestId, registration) {
     const rt = runtime;
     if (!rt || !isSigningRuntime(rt) || identityAbort) {
@@ -687,6 +727,10 @@ ctx.addEventListener("message", (ev) => {
                                 "`testing` bundle, which is built with `wasm-signing-host`.",
                         });
                         break;
+                    }
+                    const hostConfig = msg.hostConfig;
+                    if (typeof hostConfig?.networkSuffix === "string") {
+                        allowanceNetworkSuffix = hostConfig.networkSuffix;
                     }
                     runtime = new SigningRuntime(buildRawCallbacks(msg.capabilities), msg.hostConfig);
                 }
@@ -804,7 +848,7 @@ ctx.addEventListener("message", (ev) => {
                 }
                 signing.setGrantAllowancesUnchecked(granted);
                 return Promise.resolve();
-            });
+            }, false);
             break;
         }
         case "resetSessionState":
@@ -825,6 +869,9 @@ ctx.addEventListener("message", (ev) => {
             break;
         case "registerLocalLiteUsername":
             handleLocalIdentity(msg.requestId, msg);
+            break;
+        case "getWalletAllowanceSnapshot":
+            handleWalletAllowanceSnapshot(msg.requestId, msg.productIds);
             break;
         case "getPermissionAuthorizationStatus":
             void handleGetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request);
@@ -892,6 +939,7 @@ ctx.addEventListener("message", (ev) => {
             // down; free the captured handle after the cores finish disposing.
             const disposing = runtime;
             runtime = null;
+            allowanceGeneration++;
             identityAbort?.abort(new Error("runtime disposed"));
             connectionsDisposed = true;
             for (const settle of pendingCallbacks.values()) {
@@ -907,6 +955,7 @@ ctx.addEventListener("message", (ev) => {
                     if (disposing && isSigningRuntime(disposing))
                         await disposing.disconnectSession();
                     await Promise.allSettled(identityOperations);
+                    await Promise.allSettled(allowanceOperations);
                     await Promise.all([...cores.keys()].map((coreId) => disposeCore(coreId)));
                     disposing?.free();
                 }
@@ -936,7 +985,7 @@ async function disposeCore(coreId) {
         postToMain({ kind: "disposeError", error: errorMessage(err) });
     }
 }
-async function handleSessionActivation(requestId, label, activate) {
+async function handleSessionActivation(requestId, label, activate, changesIdentity = true) {
     if (!runtime) {
         postToMain({
             kind: "sessionActivationResponse",
@@ -945,6 +994,10 @@ async function handleSessionActivation(requestId, label, activate) {
             error: `${label} received before runtime is ready`,
         });
         return;
+    }
+    if (changesIdentity) {
+        allowanceGeneration++;
+        identityAbort?.abort(new Error("local identity activation changed"));
     }
     try {
         await activate(runtime);
@@ -969,6 +1022,8 @@ async function handleDisconnectSession(requestId) {
         });
         return;
     }
+    allowanceGeneration++;
+    identityAbort?.abort(new Error("local identity disconnected"));
     try {
         await runtime.disconnectSession();
         postToMain({ kind: "disconnectSessionResponse", requestId, ok: true });

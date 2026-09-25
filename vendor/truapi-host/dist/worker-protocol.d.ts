@@ -1,5 +1,6 @@
 import type { OptionalCapabilities } from "./generated/worker-callbacks.js";
 import type { LogLevel, PermissionAuthorizationStatus } from "./runtime.js";
+import type { WalletAllowanceSnapshot } from "./wallet-allowances.js";
 import type { CallbackName, SubscriptionName } from "./generated/worker-callbacks.js";
 /**
  * Generated callback-name unions used by the worker transport. They keep the
@@ -120,6 +121,10 @@ export type MainToWorker = {
 } | {
     kind: "refreshLocalIdentity";
     requestId: number;
+} | {
+    kind: "getWalletAllowanceSnapshot";
+    requestId: number;
+    productIds: string[];
 } | {
     kind: "registerLocalLiteUsername";
     requestId: number;
@@ -284,6 +289,16 @@ export type WorkerToMain = {
     identity: LocalIdentity;
 } | {
     kind: "localIdentityResponse";
+    requestId: number;
+    ok: false;
+    error: string;
+} | {
+    kind: "walletAllowanceSnapshotResponse";
+    requestId: number;
+    ok: true;
+    snapshot: WalletAllowanceSnapshot;
+} | {
+    kind: "walletAllowanceSnapshotResponse";
     requestId: number;
     ok: false;
     error: string;

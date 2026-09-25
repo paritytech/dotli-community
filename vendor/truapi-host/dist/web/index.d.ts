@@ -5,3 +5,4 @@ export { createWebWorkerPairingHostRuntime, createWebWorkerSigningHostRuntime, }
 export type { LocalIdentity, LocalIdentityProgress, } from "../worker-protocol.js";
 export { createBrowserNativeChatFilesHost } from "./native-chat-files.js";
 export type { BrowserNativeChatFilesHost, BrowserNativeChatFileSourceStore, } from "./native-chat-files.js";
+export type { AllowanceCollection, AllowanceObservation, AllowanceSection, AllowanceSlot, AllowancePool, AllowanceClaims, StatementAllowanceSnapshot, PgasClaimsSnapshot, PgasBalancesSnapshot, BulletinQuota, WalletAllowanceSnapshot, } from "../wallet-allowances.js";

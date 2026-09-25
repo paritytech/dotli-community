@@ -3,6 +3,7 @@ import type { AuthState, RequiredHostCallbacks } from "@parity/truapi-host";
 import type {
   LocalIdentity,
   LocalIdentityProgress,
+  WalletAllowanceSnapshot,
 } from "@parity/truapi-host/web";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
 import type * as BridgeModule from "@dotli/ui/bridge";
@@ -26,6 +27,8 @@ const wallet = vi.hoisted(() => ({
   refreshGate: undefined as Promise<void> | undefined,
   claimGate: undefined as Promise<void> | undefined,
   claimStarted: false,
+  snapshotGate: undefined as Promise<void> | undefined,
+  snapshotStarted: false,
   failNextProduct: false,
   closeNextProvider: false,
   sessions: [] as {
@@ -128,6 +131,29 @@ vi.mock("@parity/truapi-host/web", () => ({
         publish(wallet.username);
         return identity();
       },
+      getWalletAllowanceSnapshot: async (
+        productIds: string[],
+      ): Promise<WalletAllowanceSnapshot> => {
+        assertLive();
+        const identityAccountId = wallet.account;
+        wallet.snapshotStarted = true;
+        await wallet.snapshotGate;
+        const unavailable = {
+          status: "unavailable" as const,
+          reason: "No chain connection in this lifecycle scenario",
+        };
+        return {
+          schemaVersion: 1,
+          identityAccountId,
+          networkSuffix: "paseo",
+          productIds,
+          statementStore: unavailable,
+          pgasClaims: unavailable,
+          pgasBalances: unavailable,
+          bulletinClaims: unavailable,
+          bulletinQuotas: unavailable,
+        };
+      },
       registerLocalLiteUsername: async (
         name: string,
         _backend: string,
@@ -223,6 +249,8 @@ describe("host-owned experimental identity", () => {
     wallet.refreshGate = undefined;
     wallet.claimGate = undefined;
     wallet.claimStarted = false;
+    wallet.snapshotGate = undefined;
+    wallet.snapshotStarted = false;
     wallet.failNextProduct = false;
     wallet.closeNextProvider = false;
     wallet.sessions.length = 0;
@@ -435,6 +463,32 @@ describe("host-owned experimental identity", () => {
     expect(auth.some((state) => state.tag === "LoginFailed")).toBe(false);
     expect(wallet.sessions[0].disposed).toBe(true);
     expect(wallet.cachedUsername).toBe("forged.westend");
+  });
+
+  it("rejects an allowance snapshot completed after the wallet was replaced", async () => {
+    const { experimentalWalletControls: controls } = boot();
+    const gate = deferred<void>();
+    wallet.snapshotGate = gate.promise;
+    const request = controls.getAllowanceSnapshot();
+    const rejected = expect(request).rejects.toThrow("test identity changed");
+    await vi.waitFor(() => expect(wallet.snapshotStarted).toBe(true));
+    wallet.revision = "replacement";
+    gate.resolve();
+    await rejected;
+  });
+
+  it("rejects an allowance snapshot completed after the selected product changed", async () => {
+    const { experimentalWalletControls: controls, renderIframe } = boot();
+    const gate = deferred<void>();
+    wallet.snapshotGate = gate.promise;
+    const request = controls.getAllowanceSnapshot();
+    const rejected = expect(request).rejects.toThrow(
+      "inspection context changed",
+    );
+    await vi.waitFor(() => expect(wallet.snapshotStarted).toBe(true));
+    await renderIframe("https://next.example/", "next");
+    gate.resolve();
+    await rejected;
   });
 
   it("rejects a late claim and native callback from a replaced identity", async () => {
