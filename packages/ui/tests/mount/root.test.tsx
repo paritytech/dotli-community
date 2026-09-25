@@ -72,6 +72,39 @@ describe("mountRoot", () => {
     expect(document.body.contains(good)).toBe(true);
   });
 
+  it("As a user, the same error object is reported to Sentry once per root, but a different error is reported again", async () => {
+    // Given
+    const { reportRootErrorOnce } = await import("@dotli/ui/mount/root");
+    const err = new Error("boom");
+    const otherErr = new Error("boom again");
+
+    // When
+    reportRootErrorOnce(err, "dup-error-root");
+    reportRootErrorOnce(err, "dup-error-root");
+    reportRootErrorOnce(otherErr, "dup-error-root");
+
+    // Then
+    expect(sentry.captureException).toHaveBeenCalledTimes(2);
+    expect(sentry.captureException).toHaveBeenNthCalledWith(1, err, {
+      root: "dup-error-root",
+    });
+    expect(sentry.captureException).toHaveBeenNthCalledWith(2, otherErr, {
+      root: "dup-error-root",
+    });
+  });
+
+  it("As a user, a non-object thrown value is always reported since it cannot be tracked in a WeakSet", async () => {
+    // Given
+    const { reportRootErrorOnce } = await import("@dotli/ui/mount/root");
+
+    // When
+    reportRootErrorOnce("boom", "string-error-root");
+    reportRootErrorOnce("boom", "string-error-root");
+
+    // Then
+    expect(sentry.captureException).toHaveBeenCalledTimes(2);
+  });
+
   it("As a sub-project, mounting the same name twice disposes the first root", async () => {
     // Given
     const { mountRoot } = await import("@dotli/ui/mount/root");
