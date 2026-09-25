@@ -13,5 +13,5 @@ export interface PanelModule {
 }
 
 export function loadPanel(): Promise<PanelModule> {
-  return import("@dotli/truapi-debug/panel");
+  return import("@dotli/ui/components/truapi-debug/mount");
 }
