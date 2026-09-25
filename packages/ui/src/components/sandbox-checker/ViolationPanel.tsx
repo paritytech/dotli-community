@@ -7,7 +7,7 @@
 // them in a collapsible panel at the bottom of the viewport. Violation fields
 // come from the product, so they only ever render as text.
 
-import { createEffect, createSignal, For, onCleanup } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 
 interface Violation {
@@ -56,6 +56,12 @@ export function ViolationPanel(props: {
   const [violations, setViolations] = createSignal<Violation[]>([]);
   const [collapsed, setCollapsed] = createSignal(false);
   const [height, setHeight] = createSignal<number | null>(null);
+  // Read once: the iframe never changes for the panel's lifetime, and both
+  // `adjustIframe` and `onMessage` run outside a tracking scope (an effect's
+  // untracked callback and a native `message` listener), where reading
+  // `props.iframe` directly would trip the `STRICT_READ_UNTRACKED` dev
+  // diagnostic.
+  const iframe = untrack(() => props.iframe);
   let panel: HTMLDivElement | undefined;
   let log: HTMLDivElement | undefined;
   let handle: HTMLDivElement | undefined;
@@ -63,15 +69,15 @@ export function ViolationPanel(props: {
   let dragging = false;
   const topbarOffset = document.getElementById("topbar") !== null ? 56 : 0;
 
-  const adjustIframe = (): void => {
-    const panelHeight = collapsed()
+  const adjustIframe = (isCollapsed: boolean): void => {
+    const panelHeight = isCollapsed
       ? COLLAPSED_HEIGHT
       : (panel?.offsetHeight ?? 0);
-    props.iframe.style.height = `calc(100dvh - ${String(topbarOffset)}px - ${String(panelHeight)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topbarOffset)}px - ${String(panelHeight)}px)`;
   };
 
   const onMessage = (event: MessageEvent): void => {
-    if (event.source !== props.iframe.contentWindow) {
+    if (event.source !== iframe.contentWindow) {
       return;
     }
     const violation = parseViolation(event.data);
@@ -138,9 +144,9 @@ export function ViolationPanel(props: {
   // Refit iframe on every new violation on purpose (the log grows until its max-height).
   createEffect(
     () => [violations().length > 0, collapsed(), height()] as const,
-    ([visible]) => {
+    ([visible, isCollapsed]) => {
       if (visible) {
-        adjustIframe();
+        adjustIframe(isCollapsed);
       }
     },
   );
