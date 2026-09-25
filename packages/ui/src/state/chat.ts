@@ -11,7 +11,7 @@ import {
   CHAT_ROOMS_CHANGED_EVENT,
   type ChatMessageEventDetail,
 } from "../chat/service";
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export interface ChatState {
   availability: ChatAvailabilityDetail | null;
@@ -27,7 +27,7 @@ const chat = createSyncStore<ChatState>({
   lastMessage: null,
 });
 
-export const chatState = chat.read;
+export const chatStore: ReadableStore<ChatState> = chat;
 export const getChatState = chat.get;
 
 function emit(name: string, detail: unknown): void {

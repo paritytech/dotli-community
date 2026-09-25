@@ -7,7 +7,7 @@ import {
   setBlockingModalActive,
   setChainsButtonVisibleState,
   setTopbarVisible,
-  topbarState,
+  topbarStore,
 } from "@dotli/ui/state/topbar";
 import { resetStores, settle } from "../helpers/solid";
 
@@ -38,7 +38,7 @@ describe("topbar store", () => {
 
     // Then
     expect(details).toEqual([false]);
-    expect(topbarState().visible).toBe(false);
+    expect(topbarStore.get().visible).toBe(false);
     window.removeEventListener("topbar:visibility", listener);
   });
 

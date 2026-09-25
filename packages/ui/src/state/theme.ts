@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export type ThemePref = "light" | "dark" | "system";
 
@@ -14,7 +14,7 @@ export interface ThemeState {
 // topbar, which reads localStorage and matchMedia.
 const theme = createSyncStore<ThemeState>({ pref: "system", resolved: "dark" });
 
-export const themeState = theme.read;
+export const themeStore: ReadableStore<ThemeState> = theme;
 export const getThemeState = theme.get;
 
 /** Also dispatches `dotli:theme-changed`, which the TrUAPI theme bridge forwards. */

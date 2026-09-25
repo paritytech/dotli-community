@@ -12,7 +12,7 @@ import {
   getNetwork,
   type Network,
 } from "@dotli/config/network";
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export interface SettingsState {
   backend: Backend;
@@ -25,7 +25,7 @@ export interface SettingsState {
 // or during build-time rendering.
 const settings = createSyncStore<SettingsState | null>(null);
 
-export const settingsState = settings.read;
+export const settingsStore: ReadableStore<SettingsState | null> = settings;
 export const getSettingsState = settings.get;
 
 /**

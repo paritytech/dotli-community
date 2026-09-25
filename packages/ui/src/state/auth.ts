@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { DotliAuthState } from "../host-callbacks/AuthState";
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 const auth = createSyncStore<DotliAuthState>({ tag: "Disconnected" });
 const session = createSyncStore<boolean>(false);
 
-export const authState = auth.read;
+export const authStore: ReadableStore<DotliAuthState> = auth;
 export const getAuthState = auth.get;
 
 /**
@@ -23,7 +23,7 @@ export function setAuthState(next: DotliAuthState): void {
   );
 }
 
-export const loggedIn = session.read;
+export const loggedInStore: ReadableStore<boolean> = session;
 export const getLoggedIn = session.get;
 
 /** Also dispatches `dotli:authenticated` or `dotli:logged-out`, as the topbar did. */

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export interface TopbarState {
   visible: boolean;
@@ -15,7 +15,7 @@ const topbar = createSyncStore<TopbarState>({
   chainsButtonVisible: false,
 });
 
-export const topbarState = topbar.read;
+export const topbarStore: ReadableStore<TopbarState> = topbar;
 export const getTopbarState = topbar.get;
 
 /** Also dispatches `topbar:visibility` with the boolean as detail. */

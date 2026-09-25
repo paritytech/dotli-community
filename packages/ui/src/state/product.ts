@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export type ProductState =
   | { status: "none" }
@@ -10,7 +10,7 @@ export type ProductState =
 
 const product = createSyncStore<ProductState>({ status: "none" });
 
-export const productState = product.read;
+export const productStore: ReadableStore<ProductState> = product;
 export const getProductState = product.get;
 
 /** Also dispatches `dotli:product-loaded` with `{ label, productId }`. */

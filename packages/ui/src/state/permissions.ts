@@ -6,7 +6,7 @@
  * store only counts changes so components know when to re-read them.
  */
 
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export type PermissionChange =
   | { kind: "grant"; label: string; permission?: string }
@@ -22,7 +22,7 @@ const permissions = createSyncStore<PermissionsState>({
   last: null,
 });
 
-export const permissionsState = permissions.read;
+export const permissionsStore: ReadableStore<PermissionsState> = permissions;
 export const getPermissionsState = permissions.get;
 
 /**

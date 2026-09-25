@@ -7,7 +7,7 @@ import {
   subscribeNetwork,
   type ChainStatus,
 } from "../network-monitor";
-import { createSyncStore } from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
 export interface NetworkState {
   chains: ChainStatus[];
@@ -19,7 +19,7 @@ const network = createSyncStore<NetworkState>({
   transfer: { bytesPerSecond: null, fetched: null, total: null },
 });
 
-export const networkState = network.read;
+export const networkStore: ReadableStore<NetworkState> = network;
 export const getNetworkState = network.get;
 
 /**

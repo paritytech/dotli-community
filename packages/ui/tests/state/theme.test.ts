@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { getThemeState, setTheme, themeState } from "@dotli/ui/state/theme";
+import { getThemeState, setTheme, themeStore } from "@dotli/ui/state/theme";
 import { resetStores, settle } from "../helpers/solid";
 
 describe("theme store", () => {
@@ -28,7 +28,7 @@ describe("theme store", () => {
 
     // Then
     expect(fired).toBe(1);
-    expect(themeState()).toEqual({ pref: "light", resolved: "light" });
+    expect(themeStore.get()).toEqual({ pref: "light", resolved: "light" });
     window.removeEventListener("dotli:theme-changed", listener);
   });
 });

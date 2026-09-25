@@ -3,10 +3,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  authState,
+  authStore,
   getAuthState,
   getLoggedIn,
-  loggedIn,
+  loggedInStore,
   setAuthState,
   setLoggedIn,
 } from "@dotli/ui/state/auth";
@@ -43,7 +43,7 @@ describe("auth store", () => {
     expect(seen).toEqual([
       { detail: { tag: "Authenticating" }, storeTag: "Authenticating" },
     ]);
-    expect(authState()).toEqual({ tag: "Authenticating" });
+    expect(authStore.get()).toEqual({ tag: "Authenticating" });
     window.removeEventListener("dotli:truapi-auth-state", listener);
   });
 
@@ -70,8 +70,26 @@ describe("auth store", () => {
 
     // Then
     expect(events).toEqual(["authenticated", "logged-out"]);
-    expect(loggedIn()).toBe(false);
+    expect(loggedInStore.get()).toBe(false);
     window.removeEventListener("dotli:authenticated", onAuth);
     window.removeEventListener("dotli:logged-out", onOut);
+  });
+
+  it("As a component, my store listener runs before dotli:truapi-auth-state is dispatched", () => {
+    // Given
+    const order: string[] = [];
+    const unsubscribe = authStore.subscribe(() => order.push("listener"));
+    const onEvent = (): void => {
+      order.push("event");
+    };
+    window.addEventListener("dotli:truapi-auth-state", onEvent);
+
+    // When
+    setAuthState({ tag: "Authenticating" });
+
+    // Then
+    expect(order).toEqual(["listener", "event"]);
+    unsubscribe();
+    window.removeEventListener("dotli:truapi-auth-state", onEvent);
   });
 });

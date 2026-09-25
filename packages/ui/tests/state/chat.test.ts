@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  chatState,
+  chatStore,
   getChatState,
   initChatStore,
   recordBotsChanged,
@@ -63,7 +63,7 @@ describe("chat store", () => {
     expect(rooms.details).toEqual([{ productId: "p" }]);
     expect(bots.details).toEqual([{ productId: "p" }]);
     expect(messages.details).toEqual([msg]);
-    expect(chatState()).toMatchObject({
+    expect(chatStore.get()).toMatchObject({
       roomsVersion: 1,
       botsVersion: 1,
       lastMessage: msg,

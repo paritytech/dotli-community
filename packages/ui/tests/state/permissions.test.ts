@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getPermissionsState,
-  permissionsState,
+  permissionsStore,
   recordPermissionChange,
 } from "@dotli/ui/state/permissions";
 import { resetStores, settle } from "../helpers/solid";
@@ -43,7 +43,7 @@ describe("permissions store", () => {
     // Then
     expect(events.details).toEqual([{ label: "myapp" }]);
     expect("permission" in (events.details[0] as object)).toBe(false);
-    expect(permissionsState()).toEqual({
+    expect(permissionsStore.get()).toEqual({
       version: 1,
       last: { kind: "grant", label: "myapp" },
     });
@@ -64,7 +64,7 @@ describe("permissions store", () => {
 
     // Then
     expect(events.details).toEqual([{ label: "myapp", permission: "camera" }]);
-    expect(permissionsState()).toEqual({
+    expect(permissionsStore.get()).toEqual({
       version: 1,
       last: { kind: "grant", label: "myapp", permission: "camera" },
     });

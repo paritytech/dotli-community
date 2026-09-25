@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getProductState,
-  productState,
+  productStore,
   setProductError,
   setProductLoaded,
 } from "@dotli/ui/state/product";
@@ -33,7 +33,7 @@ describe("product store", () => {
 
     // Then
     expect(details).toEqual([{ label: "myapp", productId: "myapp.dot" }]);
-    expect(productState()).toEqual({
+    expect(productStore.get()).toEqual({
       status: "loaded",
       label: "myapp",
       productId: "myapp.dot",

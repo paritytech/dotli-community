@@ -2,24 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A value held twice: in a plain variable for non-UI code, and in a Solid
- * signal for components.
- *
- * Solid 2 batches signal writes, so reading a signal right after writing it
- * outside a reactive scope returns the old value until the next flush. Non-UI
- * code (the bridge, host callbacks) writes then reads within one call, so it
- * reads `get()`, which is always current. Components read `read()` and see the
- * change after the flush.
+ * A value plus the listeners that want to hear when it changes. Deliberately
+ * free of Solid: stores are imported by boot-path code (bridge, topbar, host
+ * callbacks, the sandbox's error screen), and Solid's reactive core would
+ * otherwise ship on those eager paths before any component reads a store.
+ * Components bridge a store to a signal with `useStore` from
+ * `components/use-store.ts`.
  */
 
-import { createSignal } from "solid-js";
+import { captureException } from "@dotli/metrics/sentry";
 
-export interface SyncStore<T> {
-  /** Reactive accessor. Components only. */
-  read: () => T;
-  /** Latest written value, immediately. For non-UI code. */
+export interface ReadableStore<T> {
+  /** Latest written value, immediately. */
   get: () => T;
-  /** The only writer. */
+  /** Called synchronously after every set. Returns the unsubscribe. */
+  subscribe: (listener: () => void) => () => void;
+}
+
+export interface SyncStore<T> extends ReadableStore<T> {
+  /** The only writer: updates the value, then notifies listeners in order. */
   set: (next: T) => void;
   /** Restore the initial value. Tests only. */
   reset: () => void;
@@ -29,21 +30,35 @@ const registry = new Set<() => void>();
 
 export function createSyncStore<T>(initial: T): SyncStore<T> {
   let current = initial;
-  // Value form, not a compute function: in Solid 2 a function first argument
-  // makes a derived signal. The cast is needed because the value overload
-  // excludes function types; stores never hold functions.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- mirrors createSignal's own overload
-  const [read, write] = createSignal<T>(initial as Exclude<T, Function>);
+  const listeners = new Set<() => void>();
+
   const set = (next: T): void => {
     current = next;
-    // Wrapped so a function-valued T is stored, not called as an updater.
-    write(() => next);
+    // Snapshot so a listener that unsubscribes (itself or another) during
+    // notification neither skips nor repeats anyone in this round.
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch (err) {
+        // A broken UI listener must not stop the producer's event dispatch.
+        captureException(err, { kind: "store_listener_error" });
+      }
+    }
   };
+
+  const subscribe = (listener: () => void): (() => void) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  };
+
   const reset = (): void => {
     set(initial);
   };
   registry.add(reset);
-  return { read, get: () => current, set, reset };
+
+  return { get: () => current, set, subscribe, reset };
 }
 
 /** Restore every store created so far to its initial value. Tests only. */
