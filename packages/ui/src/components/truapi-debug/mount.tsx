@@ -79,18 +79,13 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const disposeView = mountRoot(ROOT, container, () => (
-    <Panel
-      store={store}
-      resolution={resolution}
-      startCollapsed={options.startCollapsed ?? false}
-    />
-  ));
-  // The panel, its layout and the iframe fit are in place when setup returns.
-  flush();
 
-  // Subscribed after the panel so it sees the early-buffer replay this
-  // triggers; the replayed events render on the next animation frame.
+  // Subscribed before the panel mounts so the synchronous early-buffer
+  // replay this subscription triggers lands in the store first: the
+  // panel's own store subscription sees inserts regardless of subscribe
+  // order, but subscribing first means buffered boot events are already in
+  // `store` for the panel's initial snapshot, so they render immediately
+  // instead of waiting for the next animation frame.
   const unsubscribe = onDotliDebugEvent((ev) => {
     if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
@@ -103,6 +98,16 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
       store.insertDotli(ev);
     }
   });
+
+  const disposeView = mountRoot(ROOT, container, () => (
+    <Panel
+      store={store}
+      resolution={resolution}
+      startCollapsed={options.startCollapsed ?? false}
+    />
+  ));
+  // The panel, its layout and the iframe fit are in place when setup returns.
+  flush();
 
   return () => {
     unsubscribe();
