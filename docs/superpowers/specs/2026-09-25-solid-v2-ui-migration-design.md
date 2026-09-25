@@ -166,6 +166,8 @@ Baselines are recorded on `main` in sub-project 0 (`docs/perf/solid-migration-ba
 | Cold start `dotli:main:start` → `:end` (median of 10, `test:perf`) | no regression beyond 5% |
 | First paint (sub-project 4) | topbar and loading screen present with JS disabled (Playwright) |
 
+Known conflict (recorded 2026-09-25): Solid 2's runtime alone is about 15.5 KB gzip (minimal `render` + signals + `For`/`Show`, production build). Sub-project 4 puts it on the host startup path, which by itself reaches the +15 KB host limit. Sub-project 1 avoids it by loading overlays lazily; sub-project 4's spec decides the host limit with real measurements.
+
 The bundle-size workflow stays warning-only; the gate is checked in the PR
 description from its comment and a `test:perf:compare` run.
 
@@ -183,7 +185,7 @@ description from its comment and a `test:perf:compare` run.
 | # | Name | Contents |
 |---|---|---|
 | 0 | Foundation | Pinned deps, JSX tooling, stores fed by current producers, overlay-mount and test helpers, baselines, delete `alias-permission-modal.ts`. No user-visible change. Spec: `2026-09-25-solid-v2-sp0-foundation-design.md` |
-| 1 | Modals and toasts | `permission-modal`, `preimage-modal`, `password-prompt`, `UserConfirmation`, `notification` → components in the `overlays` root |
+| 1 | Modals and toasts | `permission-modal`, `preimage-modal`, `password-prompt`, `UserConfirmation`, `notification` → components in the `overlays` root, loaded lazily (no Solid on either startup path). Spec: `2026-09-25-solid-v2-sp1-overlays-design.md` |
 | 2 | Chat | `chat/panel`, `custom-renderer`, `custom-message`; chat shell markup leaves `index.html` |
 | 3 | Pages in `#app` | loading screen driver, error pages, landing; sandbox error / retry; `activateHost` switches to root disposers |
 | 4 | Shell + prerender | topbar split into components (auth/QR, user, theme, more, permissions, network, settings/diagnostics), autohide, verification shield, URL pill, offline banner, `product-frame-layout.ts`, prerender plugin and hydration; unify the `dotli:permission-changed` detail to `{ label, permission }` for both producers (today `PromptPermission` sends `{ label }` and the topbar permissions popover sends `{ label, permission }`) |
