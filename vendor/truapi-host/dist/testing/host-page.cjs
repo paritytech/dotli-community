@@ -301,6 +301,7 @@ function createWasmRawCallbacks(callbacks) {
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
+  const profile = callbacks.profile;
   const hop = callbacks.hop ?? unavailableHopProvider;
   const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
@@ -352,6 +353,9 @@ function createWasmRawCallbacks(callbacks) {
     write: async (key, value) => await callbacks.productStorage.write(key, value),
     clear: async (key) => await callbacks.productStorage.clear(key),
     subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(import_truapi2.HostLocalStorageChangeItem.enc(item)), sendError),
+    ...profile ? {
+      presentProfile: async (product, request) => await profile.presentProfile(ProductContext.dec(product), import_truapi2.HostProfilePresentRequest.dec(request))
+    } : {},
     subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(import_truapi2.HostThemeSubscribeItem.enc(item)), sendError),
     confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
@@ -2563,6 +2567,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             chat: host.chat !== void 0,
             permissionStatus: host.permissionStatus !== void 0,
             pocket: host.pocket !== void 0,
+            profile: host.profile !== void 0,
             identityBackend: host.identityBackend !== void 0,
             coinageWallet: callbacks.nativeCoinage !== void 0
           },
@@ -2668,6 +2673,7 @@ function buildRuntime(state) {
                 chat: callbacks.chat !== void 0,
                 permissionStatus: callbacks.permissionStatus !== void 0,
                 pocket: callbacks.pocket !== void 0,
+                profile: callbacks.profile !== void 0,
                 identityBackend: callbacks.identityBackend !== void 0,
                 coinageWallet: state.rawCallbacks.nativeCoinage !== void 0
               }

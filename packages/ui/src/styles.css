@@ -11,6 +11,7 @@
 @import "./styles/topbar.css";
 @import "./styles/modals.css";
 @import "./styles/signing.css";
+@import "./styles/profile-drawer.css";
 @import "./styles/password-prompt.css";
 @import "./styles/toasts.css";
 @import "./styles/landing.css";

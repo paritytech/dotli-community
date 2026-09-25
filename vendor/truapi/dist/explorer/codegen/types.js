@@ -3762,6 +3762,39 @@ export const types = [
         ],
     },
     {
+        id: "host-profile-present-error",
+        name: "HostProfilePresentError",
+        category: "profile",
+        definition: 'export type HostProfilePresentError =\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Profile presentation failure.",
+        variants: [
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The reference is malformed or names a format this host cannot open.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-request",
+        name: "HostProfilePresentRequest",
+        category: "profile",
+        definition: "export interface HostProfilePresentRequest {\n  reference: string;\n}",
+        description: "Request to show a profile the calling product references in host-owned UI.\n\nThe reference is a bearer capability: whoever holds it can read the profile\nit names. The host resolves and renders it itself, so profile bytes, the\navatar image included, never reach the product.",
+        fields: [
+            {
+                name: "reference",
+                type: "string",
+                description: "Opaque profile reference, e.g. a Seity `<cid>#<key>` blob reference.",
+            },
+        ],
+    },
+    {
         id: "host-push-notification-cancel-request",
         name: "HostPushNotificationCancelRequest",
         category: "notifications",

@@ -673,6 +673,21 @@ export const services = [
         ],
     },
     {
+        name: "Profile",
+        methods: [
+            {
+                name: "present",
+                type: "unary",
+                signature: "present(request: HostProfilePresentRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostProfilePresentError>>>",
+                docUrl: "api/profile/trait.Profile.html#method.present",
+                description: "Show the referenced profile in host-owned UI.\n\nResolves once the host has taken the presentation, not when the user\ndismisses it. Loading and fetch failures are shown to the user, not\nreturned; a reference this host cannot parse is `InvalidReference`.",
+                requestDescription: "HostProfilePresentRequest",
+                exampleSource: 'const result = await truapi.profile.present({\n  reference: "bafkreigh2akiscaildc6ybwhxslp6rx2u4m2vpbhgvzhpsfkyzxiezxcnq#" + "00".repeat(44),\n});\nconsole.log("profile presentation:", result);',
+                requestType: "host-profile-present-request",
+            },
+        ],
+    },
+    {
         name: "Renderer",
         requiredExecution: "Worker",
         methods: [

@@ -2433,6 +2433,30 @@ export type VersionedHostProductDeviceChatResponse =
     value: HostProductDeviceChatResponse;
 };
 export const VersionedHostProductDeviceChatResponse: Codec<VersionedHostProductDeviceChatResponse>;
+/** Versioned envelope for [\`HostProfilePresentError\`]. */
+export type VersionedHostProfilePresentError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentError;
+};
+export const VersionedHostProfilePresentError: Codec<VersionedHostProfilePresentError>;
+/** Versioned envelope for [\`HostProfilePresentRequest\`]. */
+export type VersionedHostProfilePresentRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentRequest;
+};
+export const VersionedHostProfilePresentRequest: Codec<VersionedHostProfilePresentRequest>;
+/** Versioned envelope for [\`HostProfilePresentResponse\`]. */
+export type VersionedHostProfilePresentResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfilePresentResponse: Codec<VersionedHostProfilePresentResponse>;
 /** Versioned envelope for [\`HostPushNotificationCancelError\`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -4984,6 +5008,33 @@ export interface HostPocketRemoveCardRequest {
     cardId: string;
 }
 export const HostPocketRemoveCardRequest: Codec<HostPocketRemoveCardRequest>;
+/** Profile presentation failure. */
+export type HostProfilePresentError = 
+/** The reference is malformed or names a format this host cannot open. */
+{
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProfilePresentError: Codec<HostProfilePresentError>;
+/**
+ * Request to show a profile the calling product references in host-owned UI.
+ *
+ * The reference is a bearer capability: whoever holds it can read the profile
+ * it names. The host resolves and renders it itself, so profile bytes, the
+ * avatar image included, never reach the product.
+ */
+export interface HostProfilePresentRequest {
+    /** Opaque profile reference, e.g. a Seity \`<cid>#<key>\` blob reference. */
+    reference: string;
+}
+export const HostProfilePresentRequest: Codec<HostProfilePresentRequest>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [\`HostPushNotificationResponse\`]. */
@@ -6078,6 +6129,9 @@ export import VersionedHostPocketRemoveCardResponse = T.VersionedHostPocketRemov
 export import VersionedHostProductDeviceChatError = T.VersionedHostProductDeviceChatError;
 export import VersionedHostProductDeviceChatRequest = T.VersionedHostProductDeviceChatRequest;
 export import VersionedHostProductDeviceChatResponse = T.VersionedHostProductDeviceChatResponse;
+export import VersionedHostProfilePresentError = T.VersionedHostProfilePresentError;
+export import VersionedHostProfilePresentRequest = T.VersionedHostProfilePresentRequest;
+export import VersionedHostProfilePresentResponse = T.VersionedHostProfilePresentResponse;
 export import VersionedHostPushNotificationCancelError = T.VersionedHostPushNotificationCancelError;
 export import VersionedHostPushNotificationCancelRequest = T.VersionedHostPushNotificationCancelRequest;
 export import VersionedHostPushNotificationCancelResponse = T.VersionedHostPushNotificationCancelResponse;
@@ -6309,6 +6363,8 @@ export import HostPaymentTopUpRequest = T.HostPaymentTopUpRequest;
 export import HostPocketListSubscribeItem = T.HostPocketListSubscribeItem;
 export import HostPocketRemoveCardError = T.HostPocketRemoveCardError;
 export import HostPocketRemoveCardRequest = T.HostPocketRemoveCardRequest;
+export import HostProfilePresentError = T.HostProfilePresentError;
+export import HostProfilePresentRequest = T.HostProfilePresentRequest;
 export import HostPushNotificationCancelRequest = T.HostPushNotificationCancelRequest;
 export import HostPushNotificationError = T.HostPushNotificationError;
 export import HostPushNotificationRequest = T.HostPushNotificationRequest;
@@ -6828,7 +6884,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "c8972ad11436a788";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -7126,6 +7182,24 @@ export declare class PreimageClient {
     /** Submit a preimage. Returns the preimage key (hash) on success. */
     submit(request: HexString, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedRemotePreimageSubmitError>>;
 }
+/**
+ * Profiles shown in host-owned UI.
+ *
+ * The product hands over an opaque reference; the host resolves, decrypts and
+ * renders it. Profile bytes never return to the product.
+ */
+export declare class ProfileClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Show the referenced profile in host-owned UI.
+     *
+     * Resolves once the host has taken the presentation, not when the user
+     * dismisses it. Loading and fetch failures are shown to the user, not
+     * returned; a reference this host cannot parse is \`InvalidReference\`.
+     */
+    present(request: T.HostProfilePresentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentError>>;
+}
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {
     #private;
@@ -7315,6 +7389,7 @@ export interface TrUApiClient {
     readonly permissions: PermissionsClient;
     readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
+    readonly profile: ProfileClient;
     readonly renderer: RendererClient;
     readonly resourceAllocation: ResourceAllocationClient;
     readonly signing: SigningClient;

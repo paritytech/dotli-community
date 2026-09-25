@@ -778,3 +778,33 @@
 [data-theme="light"] .more-popover.chains-popover {
   background: rgb(245, 245, 245);
 }
+
+/* Profile drawer */
+[data-theme="light"] .profile-drawer {
+  background: #fff;
+  border-color: #ddd;
+  color: #333;
+}
+[data-theme="light"] .profile-drawer-header h2 {
+  color: #111;
+}
+[data-theme="light"] .profile-drawer-close {
+  border-color: #ddd;
+  color: #555;
+}
+[data-theme="light"] .profile-drawer-close:hover {
+  background: #f2f2f2;
+}
+[data-theme="light"] .profile-drawer-avatar {
+  background: #f5f5f5;
+  border-color: #ddd;
+}
+[data-theme="light"] .profile-drawer-status {
+  color: #555;
+}
+[data-theme="light"] .profile-drawer-status-error {
+  color: #9a6a00;
+}
+[data-theme="light"] .profile-drawer-attribution {
+  color: #777;
+}

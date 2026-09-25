@@ -36,6 +36,7 @@ export const CALLBACK_NAMES = [
     "read",
     "write",
     "clear",
+    "presentProfile",
     "confirmPermission",
     "confirmUserAction",
 ];
@@ -114,6 +115,11 @@ function pocketRawCallbacks(bridge) {
         removePocketCard: (product, request) => bridge.callbackRequest("removePocketCard", [product, request]),
     };
 }
+function profileRawCallbacks(bridge) {
+    return {
+        presentProfile: (product, request) => bridge.callbackRequest("presentProfile", [product, request]),
+    };
+}
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
     const callbacks = {
         ...rawCallbacks(bridge),
@@ -131,6 +137,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)
         Object.assign(callbacks, pocketRawCallbacks(bridge));
+    if (capabilities.profile)
+        Object.assign(callbacks, profileRawCallbacks(bridge));
     return callbacks;
 }
 export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {

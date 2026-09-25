@@ -5,7 +5,7 @@
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
-import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
+import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
 import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, coinageWalletHostAdapter, driveResultStream, hopConnectAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
@@ -19,6 +19,7 @@ export function createWasmRawCallbacks(callbacks) {
     const identityBackend = callbacks.identityBackend;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
+    const profile = callbacks.profile;
     const hop = callbacks.hop ?? unavailableHopProvider;
     const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
     return {
@@ -80,6 +81,11 @@ export function createWasmRawCallbacks(callbacks) {
         write: async (key, value) => await callbacks.productStorage.write(key, value),
         clear: async (key) => await callbacks.productStorage.clear(key),
         subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(HostLocalStorageChangeItem.enc(item)), sendError),
+        ...(profile
+            ? {
+                presentProfile: async (product, request) => await profile.presentProfile(ProductContext.dec(product), HostProfilePresentRequest.dec(request)),
+            }
+            : {}),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),
         confirmPermission: async (review) => PermissionDecision.enc(await callbacks.userConfirmation.confirmPermission(UserConfirmationReview.dec(review))),
         confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),

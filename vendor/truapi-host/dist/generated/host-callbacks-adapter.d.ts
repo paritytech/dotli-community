@@ -45,6 +45,7 @@ export interface RawCallbacks {
     write(key: string, value: Uint8Array): Promise<void>;
     clear(key: string): Promise<void>;
     subscribeStorage(key: string, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    presentProfile?(product: Uint8Array, request: Uint8Array): Promise<void>;
     subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     confirmPermission(review: Uint8Array): Promise<Uint8Array>;
     confirmUserAction(review: Uint8Array): Promise<boolean>;
