@@ -16,7 +16,7 @@ import {
   subscribeNetwork,
   type BlockSource,
   type ChainStatus,
-} from "@dotli/ui/network-monitor";
+} from "./network-monitor";
 import { setLoggedIn } from "./state/auth";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
