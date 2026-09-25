@@ -22,7 +22,10 @@ import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
-import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
+import {
+  createPromptPermission,
+  decidePromptPermission,
+} from "@dotli/ui/host-callbacks/PromptPermission";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -470,6 +473,19 @@ describe("three-way permission prompts", () => {
     expect(promptButtonTexts()).toEqual(["Deny", "Allow"]);
     await clickPromptButton("Deny");
     await expect(response).resolves.toBe("Deny");
+  });
+
+  it("As a mediated camera user, I can allow one scan without making the grant durable", async () => {
+    const response = decidePromptPermission("myapp", "Camera", {
+      kind: "Device",
+      limiter: { allow: () => true },
+      gatedByIframe: false,
+    });
+
+    await clickPromptButton("Allow once");
+
+    await expect(response).resolves.toBe("AllowOnce");
+    expect(await getPermissionStatus("myapp", "Camera")).toBe("ask");
   });
 
   it("As a product, an existing grant is answered without being upgraded to a lasting one", async () => {

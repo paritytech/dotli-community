@@ -5,15 +5,15 @@
 
 .notif-stack {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: calc(20px + var(--safe-bottom));
+  right: calc(20px + var(--safe-right));
   z-index: 900;
   width: 380px;
 }
 @media (max-width: 480px) {
   .notif-stack {
-    right: 16px;
-    left: 16px;
+    right: calc(16px + var(--safe-right));
+    left: calc(16px + var(--safe-left));
     width: auto;
   }
 }

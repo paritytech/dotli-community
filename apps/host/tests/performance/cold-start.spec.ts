@@ -619,7 +619,7 @@ async function runWarmIterations(
  *
  * "Lukewarm" means a different .dot site in the same browser session. The
  * browser has already compiled WASM, cached JS chunks (HTTP cache), and
- * warmed up network stacks, but DOMAIN_B has no CID cache, no SW archive,
+ * warmed up network stacks, but DOMAIN_B has no installed-executable record, no SW archive,
  * and a separate SW/IDB origin. This measures the benefit of infrastructure
  * reuse across different .dot sites.
  */

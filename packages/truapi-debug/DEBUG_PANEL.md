@@ -41,6 +41,8 @@ users who never see the panel pay zero download cost.
 A resizable, dockable panel at the bottom of the viewport. It mounts
 visible whenever debug mode is on; the panel's `×` button exits debug
 mode entirely (see [Enabling and disabling](#enabling-and-disabling)).
+For PolkaVM products, a live header badge and **Runtime** view show backend,
+startup, frame, update, translation, cache, and audio diagnostics.
 The **List** and **Timeline** tabs share a detail inspector for the selected
 event, with a draggable splitter between the panes. **Resolution** and the
 debug-build-only **Wallet** tab use the full pane width.
@@ -62,11 +64,10 @@ flag `VITE_APP_DEBUG`:
 - **Staging / production** (`VITE_APP_DEBUG` unset): the panel is off
   until the user explicitly opts in.
 
-When the panel isn't mounted, the bus stays in a null-stub state and
-every `emitDotliDebugEvent(...)` call site scattered through `main.ts`,
-`bridge.ts`, and `container.ts` is a cheap early-return. The panel's
-UI chunk (`panel-*.js`) is a dynamic import — it isn't fetched until
-the panel mounts.
+When the panel isn't mounted, the debug bus stays in a null-stub state:
+`emitDotliDebugEvent(...)` and PolkaVM snapshot publication are cheap
+early-returns. The panel's UI chunk (`panel-*.js`) is a dynamic import — it
+isn't fetched until the panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 
@@ -133,8 +134,8 @@ Dotli-internal host-side orchestration, captured by
 `onDotliDebugEvent` from `@dotli/truapi-debug/dotli-debug-bus`.
 
 - `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`,
-  `url_parsed`, `cid_cache_checked`, `landing_page_shown`, `ready`,
-  `failed`.
+  `url_parsed`, `installed_executable_cache_checked`, `landing_page_shown`,
+  `ready`, `failed`.
 - `resolve:*` — `started`, `phase`, `storage_read`, `completed`,
   `failed`.
 - `render:*` — `iframe_begin`, `iframe_ready`.
@@ -145,8 +146,9 @@ Dotli-internal host-side orchestration, captured by
 ## Views
 
 List and Timeline operate on the same filtered slice of the event store.
-Clicking an event in one view pins the same event in the detail
-pane regardless of which view is active.
+Clicking an event in either view pins the same event in the detail pane.
+Runtime is a live snapshot and does not add sampled FPS values to the event
+ring buffer.
 
 ### List view
 
@@ -180,6 +182,24 @@ Each swimlane has its own horizontal scroll, so a chain with many
 concurrent operations can grow wide without pushing the whole view.
 Vertical scroll is shared across all swimlanes, so events at the
 same Y in different swimlanes occurred at the same moment.
+
+### Runtime view
+
+PolkaVM products publish their latest runtime snapshot from the product
+sandbox to the authenticated host frame. The panel exposes the current
+backend (**JIT**, **Interpreter**, or **Starting**) and first-frame latency in
+its header badge. Clicking the badge opens the Runtime view with:
+
+- startup stage and total startup / first-frame latency;
+- translation-cache result, translation time, compilation time, and translated
+  Wasm size;
+- current FPS, presented frame count, and update count;
+- update p50, p95, and maximum latency;
+- emitted audio chunk and sample counts.
+
+The snapshot is replaced in place rather than appended to List or Timeline.
+Loading another product clears it. PolkaVM no longer renders a separate
+diagnostics overlay over product content.
 
 ### Wallet view
 
@@ -226,7 +246,7 @@ activation, claim confirmation, custody risks, and recovery behavior.
 
 ## Filters
 
-The filter bar at the top of the panel applies to both views:
+The filter bar at the top of the panel applies to the two event views:
 
 - **TrUAPI / System checkboxes** — coarse kind toggle. Unchecking
   hides events of that kind from both views, and the affected

@@ -94,13 +94,14 @@ export function createPromptPermission(
 interface PromptOptions {
   kind: "Device" | "Remote";
   limiter: { allow: () => boolean };
+  gatedByIframe?: boolean;
 }
 
-function decidePromptPermission(
+export function decidePromptPermission(
   label: string,
   name: EnforceablePermissionName,
   options: PromptOptions,
-  modalScope: BlockingModalScope,
+  modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Promise<PermissionDecision> {
   return modalScope.enqueue((signal) =>
     decidePromptPermissionWhenActive(label, name, options, signal),
@@ -113,9 +114,8 @@ async function decidePromptPermissionWhenActive(
   options: PromptOptions,
   signal: AbortSignal,
 ): Promise<PermissionDecision> {
-  const { kind, limiter } = options;
-  // Gated by the iframe `allow` attribute: a grant reloads the product.
-  const gatedByIframe = isDevicePermission(name);
+  const { kind, limiter, gatedByIframe = isDevicePermission(name) } = options;
+  // Grants enforced by the iframe `allow` attribute require a reload.
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
   if (status === "granted") {

@@ -3,5 +3,8 @@
     "@dotli/typescript-config/base.json",
     "@dotli/typescript-config/paths.json"
   ],
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
   "include": ["src"]
 }

@@ -176,49 +176,30 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders legacy raw signing as structured sign-message fields", async () => {
-    // Given
+  it("shows protected signing bytes without double-wrapping an existing watermark", async () => {
     const { confirmUserAction } =
       createUserConfirmationAdapters("localhost:3000");
-    const review: UserConfirmationReview = {
-      tag: "SignRaw",
-      value: {
-        tag: "LegacyAccount",
+    const signedBytes = "0x3c42797465733e68693c2f42797465733e";
+    for (const bytes of ["0x6869", signedBytes] as const) {
+      const confirmation = confirmUserAction({
+        tag: "SignRaw",
         value: {
-          request: {
-            signer:
-              "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
-            payload: {
-              tag: "Bytes",
-              value: { bytes: "0x48656c6c6f2c20776f726c6421" },
+          tag: "LegacyAccount",
+          value: {
+            request: {
+              signer:
+                "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
+              payload: { tag: "Bytes", value: { bytes } },
             },
+            watermarked: true,
           },
-          watermarked: true,
         },
-      },
-    };
-
-    // When
-    const confirmation = confirmUserAction(review);
-
-    // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Sign Message",
-    );
-    expect(modalFields()).toEqual({
-      App: "localhost:3000",
-      Signer:
-        "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
-      Message: "0x48656c6c6f2c20776f726c6421",
-    });
-    expect(document.body.textContent).not.toContain("Request");
-    expect(document.querySelector(".signing-field-warning")).toBeNull();
-
-    // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
-
-    // Then
-    await expect(confirmation).resolves.toBe(true);
+      });
+      expect(modalFields().Message).toBe(signedBytes);
+      expect(document.querySelector(".signing-field-warning")).toBeNull();
+      document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+      await expect(confirmation).resolves.toBe(true);
+    }
   });
 
   it("As a dotli integrator, the host warns before an unwatermarked raw signature", async () => {

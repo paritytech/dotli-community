@@ -15,6 +15,13 @@ import type { ResolverErrorName } from "@dotli/resolver/errors";
 // over postMessage, so only the name survives.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = "NetworkSyncTimeoutError";
 
+export class InvalidAppExecutableManifestError extends Error {
+  constructor(errors: readonly string[]) {
+    super(`Invalid app executable manifest: ${errors.join("; ")}`);
+    this.name = "InvalidAppExecutableManifestError";
+  }
+}
+
 export const HOST_ERRORS = {
   FATAL_PANIC: "The light client (smoldot) crashed unexpectedly.",
   SW_FAILED_TO_START: "The light client failed to start on the shared worker.",
@@ -151,6 +158,7 @@ export type ErrorKind =
   | "protocol-init-failed"
   | "chain-spec-rejected"
   | "module-fetch-failed"
+  | "executable-manifest-invalid"
   | "contenthash-unsupported"
   | "chainhead-disjointed"
   | "bitswap-no-peers"
@@ -280,6 +288,15 @@ function classifyError(
       kind: "contenthash-unsupported",
       message: HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
       recovery: "none",
+    };
+  }
+  if (err instanceof InvalidAppExecutableManifestError) {
+    return {
+      kind: "executable-manifest-invalid",
+      title: ERROR_TITLES.APP_UNUSABLE,
+      message: err.message,
+      recovery: "none",
+      tips: MAINTAINER_TIPS,
     };
   }
   // polkadot-api's `DisjointError`, matched on its message because the error

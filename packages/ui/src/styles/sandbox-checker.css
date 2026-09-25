@@ -14,6 +14,7 @@
   z-index: 900;
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
   font-size: 0.75rem;
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 #sandbox-checker-panel.visible {
   display: block;

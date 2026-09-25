@@ -27,7 +27,10 @@ import {
 import { summariseChainMessage } from "./chain-summary.ts";
 import { getSystemExplanation } from "./system-explanations.ts";
 import { summariseSystemEvent } from "./system-summary.ts";
-import { onDotliDebugEvent } from "./dotli-debug-bus.ts";
+import {
+  onDotliDebugEvent,
+  onPolkaVmDebugSnapshot,
+} from "./dotli-debug-bus.ts";
 import {
   correlationKeyOf,
   type EventSeq,
@@ -37,6 +40,7 @@ import {
 } from "./event-store.ts";
 import { EventStore } from "./event-store.ts";
 import type { DotliDebugBusEvent } from "./dotli-debug-bus.ts";
+import type { PolkaVmDebugSnapshot } from "./dotli-debug-types.ts";
 import { buildExport, exportFilename, type ExportMeta } from "./export.ts";
 import {
   compileQuery,
@@ -204,6 +208,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     filters: initialFilterState(),
     view: "list",
     dock: readStoredDock(),
+    runtimeSnapshot: null,
     resolution: createResolutionRecorder(),
   };
 
@@ -229,7 +234,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   // adjustment so the panel doesn't cover freshly-rendered app content.
   let geometryFrame = 0;
   let observedTopbar: HTMLElement | null = null;
-  const onProductLoaded = (): void => {
+  const updatePanelGeometry = (): void => {
     const topbar =
       document.getElementById("landing-auth") ??
       document.getElementById("topbar");
@@ -256,21 +261,29 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     ) {
       geometryFrame = requestAnimationFrame(() => {
         geometryFrame = 0;
-        onProductLoaded();
+        updatePanelGeometry();
       });
     }
   };
+  const onProductLoaded = (): void => {
+    state.runtimeSnapshot = null;
+    renderRuntime(ui, state);
+    if (state.view === "runtime") {
+      setPanelView(ui, state, store, "list");
+    }
+    updatePanelGeometry();
+  };
   window.addEventListener("dotli:product-loaded", onProductLoaded);
-  const layoutObserver = new ResizeObserver(onProductLoaded);
-  const chromeObserver = new MutationObserver(onProductLoaded);
+  const layoutObserver = new ResizeObserver(updatePanelGeometry);
+  const chromeObserver = new MutationObserver(updatePanelGeometry);
   layoutObserver.observe(ui.panel);
   const onTopbarTransition = (event: TransitionEvent): void => {
     if (event.target instanceof HTMLElement && event.target.id === "topbar") {
-      onProductLoaded();
+      updatePanelGeometry();
     }
   };
-  window.addEventListener("resize", onProductLoaded);
-  window.addEventListener("topbar:visibility", onProductLoaded);
+  window.addEventListener("resize", updatePanelGeometry);
+  window.addEventListener("topbar:visibility", updatePanelGeometry);
   document.addEventListener("transitionend", onTopbarTransition);
 
   ui.closeBtn.addEventListener("click", () => {
@@ -319,6 +332,10 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
       store.insertDotli(ev);
     }
   });
+  const unsubscribePolkaVm = onPolkaVmDebugSnapshot((snapshot) => {
+    state.runtimeSnapshot = snapshot;
+    renderRuntime(ui, state);
+  });
 
   // The block a chain is still sitting in has to keep growing toward now, and
   // a chain that has gone quiet emits nothing to re-render on. A collapsed
@@ -340,13 +357,14 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     window.clearInterval(resolutionTick);
     clearInterval(pendingTick);
     unsubscribeDotli();
+    unsubscribePolkaVm();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
     layoutObserver.disconnect();
     chromeObserver.disconnect();
     cancelAnimationFrame(geometryFrame);
-    window.removeEventListener("resize", onProductLoaded);
-    window.removeEventListener("topbar:visibility", onProductLoaded);
+    window.removeEventListener("resize", updatePanelGeometry);
+    window.removeEventListener("topbar:visibility", updatePanelGeometry);
     document.removeEventListener("transitionend", onTopbarTransition);
     disposeWalletControls?.();
     ui.panel.remove();
@@ -409,7 +427,7 @@ function restoreIframeLayout(): void {
     "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
 }
 
-type PanelView = "list" | "timeline" | "resolution" | "wallet";
+type PanelView = "list" | "timeline" | "resolution" | "runtime" | "wallet";
 
 interface PanelState {
   collapsed: boolean;
@@ -419,6 +437,7 @@ interface PanelState {
   filters: FilterState;
   view: PanelView;
   dock: DockPosition;
+  runtimeSnapshot: PolkaVmDebugSnapshot | null;
   /** Kept apart from the ring buffer so a busy session cannot evict the head
    *  of the load the Resolution view is drawing. */
   resolution: ResolutionRecorder;
@@ -426,8 +445,10 @@ interface PanelState {
 
 interface PanelUI {
   panel: HTMLDivElement;
+  body: HTMLDivElement;
   resizeHandle: HTMLDivElement;
   counts: HTMLSpanElement;
+  runtimeBadge: HTMLButtonElement;
   pauseBtn: HTMLButtonElement;
   clearBtn: HTMLButtonElement;
   exportBtn: HTMLButtonElement;
@@ -440,6 +461,7 @@ interface PanelUI {
   tagInput: HTMLInputElement;
   excludeInput: HTMLInputElement;
   tabs: Record<PanelView, HTMLButtonElement>;
+  runtime: HTMLDivElement;
   list: HTMLDivElement;
   timeline: HTMLDivElement;
   resolution: HTMLDivElement;
@@ -457,8 +479,9 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
     <div class="td-resize-handle" role="separator" aria-orientation="horizontal"></div>
     <div class="td-header">
       <div class="td-header-tools">
-      <span class="td-title">TrUAPI Debug</span>
+      <span class="td-title">Debug</span>
       <span class="td-counts">0 events</span>
+      <button class="td-runtime-badge hidden" type="button" title="Open PolkaVM runtime diagnostics"></button>
       <span class="td-spacer"></span>
       <button class="td-btn td-pause" type="button">Pause</button>
       <button class="td-btn td-clear" type="button">Clear</button>
@@ -500,9 +523,11 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
           <button class="td-tab active" role="tab" data-view="list" type="button">List</button>
           <button class="td-tab" role="tab" data-view="timeline" type="button">Timeline</button>
           <button class="td-tab" role="tab" data-view="resolution" type="button">Resolution</button>
+          <button class="td-tab td-runtime-tab hidden" role="tab" data-view="runtime" type="button">Runtime</button>
           <button class="td-tab" id="td-tab-wallet" role="tab" aria-controls="td-wallet-view" data-view="wallet" type="button">Wallet</button>
         </div>
         <div class="td-list" role="list" tabindex="0"></div>
+        <div class="td-runtime hidden" role="tabpanel" aria-label="PolkaVM runtime diagnostics"></div>
         <!-- timeline mount point — populated at setup time -->
       </div>
       <div class="td-body-splitter" role="separator" aria-orientation="vertical" tabindex="-1" title="Drag to resize"></div>
@@ -522,8 +547,10 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
 
   const ui: PanelUI = {
     panel,
+    body: panel.querySelector(".td-body") as HTMLDivElement,
     resizeHandle: panel.querySelector(".td-resize-handle") as HTMLDivElement,
     counts: panel.querySelector(".td-counts") as HTMLSpanElement,
+    runtimeBadge: panel.querySelector(".td-runtime-badge") as HTMLButtonElement,
     pauseBtn: panel.querySelector(".td-pause") as HTMLButtonElement,
     clearBtn: panel.querySelector(".td-clear") as HTMLButtonElement,
     exportBtn: panel.querySelector(".td-export") as HTMLButtonElement,
@@ -554,6 +581,9 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       timeline: panel.querySelector(
         '.td-tab[data-view="timeline"]',
       ) as HTMLButtonElement,
+      runtime: panel.querySelector(
+        '.td-tab[data-view="runtime"]',
+      ) as HTMLButtonElement,
       resolution: panel.querySelector(
         '.td-tab[data-view="resolution"]',
       ) as HTMLButtonElement,
@@ -563,6 +593,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
     },
     list: panel.querySelector(".td-list") as HTMLDivElement,
     timeline,
+    runtime: panel.querySelector(".td-runtime") as HTMLDivElement,
     resolution,
     detail: panel.querySelector(".td-detail") as HTMLDivElement,
     bodySplitter: panel.querySelector(".td-body-splitter") as HTMLDivElement,
@@ -1454,6 +1485,10 @@ function flashButton(btn: HTMLButtonElement, html: string): void {
 }
 
 function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
+  ui.runtimeBadge.addEventListener("click", () => {
+    setPanelCollapsed(ui, state, false);
+    setPanelView(ui, state, store, "runtime");
+  });
   ui.pauseBtn.addEventListener("click", () => {
     const paused = !store.isPaused();
     store.setPaused(paused);
@@ -1507,20 +1542,7 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     );
   });
   ui.collapseBtn.addEventListener("click", () => {
-    state.collapsed = !state.collapsed;
-    if (state.collapsed) {
-      // An inline drag-resize height would override the collapsed 32px
-      // rule and leave an empty panel-sized box. Stash it while collapsed
-      // and restore it on expand.
-      state.expandedHeight = ui.panel.style.height;
-      ui.panel.style.height = "";
-    } else if (state.expandedHeight !== "") {
-      ui.panel.style.height = state.expandedHeight;
-    }
-    ui.panel.classList.toggle("collapsed", state.collapsed);
-    ui.collapseBtn.textContent = state.collapsed ? "▲" : "▼";
-    ui.walletView?.setVisible(state.view === "wallet" && !state.collapsed);
-    adjustIframeForPanel(ui.panel, state);
+    setPanelCollapsed(ui, state, !state.collapsed);
   });
   ui.dockBtn.addEventListener("click", () => {
     state.dock = state.dock === "bottom" ? "right" : "bottom";
@@ -1809,34 +1831,14 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
     HTMLButtonElement,
   ][]) {
     btn.addEventListener("click", () => {
-      if (state.view === view) {
-        return;
-      }
-      state.view = view;
-      // `display: none` on the pane under the cursor is not guaranteed to fire
-      // a boundary event, which would strand the tooltip over the page.
-      ui.tooltip.classList.remove("visible");
-      for (const [name, tab] of Object.entries(ui.tabs) as [
-        PanelView,
-        HTMLButtonElement,
-      ][]) {
-        tab.classList.toggle("active", name === view);
-        tab.setAttribute("aria-selected", String(name === view));
-        tab.tabIndex = name === view ? 0 : -1;
-      }
-      ui.list.classList.toggle("hidden", view !== "list");
-      ui.timeline.classList.toggle("hidden", view !== "timeline");
-      ui.resolution.classList.toggle("hidden", view !== "resolution");
-      ui.panel.classList.toggle("res-view", view === "resolution");
-      ui.panel.classList.toggle("wallet-view", view === "wallet");
-      ui.walletView?.content.classList.toggle("hidden", view !== "wallet");
-      ui.walletView?.setVisible(view === "wallet" && !state.collapsed);
-      render(ui, state, store, { fullList: true });
+      setPanelView(ui, state, store, view);
     });
     btn.setAttribute("aria-selected", String(state.view === view));
     btn.tabIndex = state.view === view ? 0 : -1;
     btn.addEventListener("keydown", (event) => {
-      const tabs = Object.values(ui.tabs).filter((tab) => tab.hidden === false);
+      const tabs = Object.values(ui.tabs).filter(
+        (tab) => tab.hidden === false && !tab.classList.contains("hidden"),
+      );
       const index = tabs.indexOf(btn);
       const next =
         event.key === "ArrowRight"
@@ -1855,6 +1857,126 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
       }
     });
   }
+}
+
+function setPanelCollapsed(
+  ui: PanelUI,
+  state: PanelState,
+  collapsed: boolean,
+): void {
+  if (state.collapsed === collapsed) {
+    return;
+  }
+  state.collapsed = collapsed;
+  if (collapsed) {
+    state.expandedHeight = ui.panel.style.height;
+    ui.panel.style.height = "";
+  } else if (state.expandedHeight !== "") {
+    ui.panel.style.height = state.expandedHeight;
+  }
+  ui.panel.classList.toggle("collapsed", collapsed);
+  ui.collapseBtn.textContent = collapsed ? "▲" : "▼";
+  ui.walletView?.setVisible(state.view === "wallet" && !collapsed);
+  adjustIframeForPanel(ui.panel, state);
+}
+
+function setPanelView(
+  ui: PanelUI,
+  state: PanelState,
+  store: EventStore,
+  view: PanelView,
+): void {
+  if (view === "runtime" && state.runtimeSnapshot === null) {
+    return;
+  }
+  state.view = view;
+  // Hiding the pane under the cursor need not fire a pointer boundary event.
+  ui.tooltip.classList.remove("visible");
+  for (const [candidate, btn] of Object.entries(ui.tabs) as [
+    PanelView,
+    HTMLButtonElement,
+  ][]) {
+    btn.classList.toggle("active", candidate === view);
+    btn.setAttribute("aria-selected", String(candidate === view));
+    btn.tabIndex = candidate === view ? 0 : -1;
+  }
+  ui.list.classList.toggle("hidden", view !== "list");
+  ui.timeline.classList.toggle("hidden", view !== "timeline");
+  ui.runtime.classList.toggle("hidden", view !== "runtime");
+  ui.resolution.classList.toggle("hidden", view !== "resolution");
+  ui.panel.classList.toggle("res-view", view === "resolution");
+  ui.panel.classList.toggle("wallet-view", view === "wallet");
+  ui.walletView?.content.classList.toggle("hidden", view !== "wallet");
+  ui.walletView?.setVisible(view === "wallet" && !state.collapsed);
+  ui.body.classList.toggle("runtime-only", view === "runtime");
+  render(ui, state, store, { fullList: true });
+  if (view === "runtime") {
+    renderRuntime(ui, state);
+  }
+}
+
+function renderRuntime(ui: PanelUI, state: PanelState): void {
+  const snapshot = state.runtimeSnapshot;
+  const available = snapshot !== null;
+  ui.runtimeBadge.classList.toggle("hidden", !available);
+  ui.tabs.runtime.classList.toggle("hidden", !available);
+  if (snapshot === null) {
+    ui.runtimeBadge.textContent = "";
+    ui.runtime.replaceChildren();
+    return;
+  }
+
+  const backend =
+    snapshot.backend === "compiler"
+      ? "JIT"
+      : snapshot.backend === "interpreter"
+        ? "Interpreter"
+        : "Starting";
+  const firstFrame =
+    snapshot.firstFrameMs > 0
+      ? `${snapshot.firstFrameMs.toFixed(1)} ms`
+      : "pending";
+  ui.runtimeBadge.textContent = `PVM ${backend} · ${snapshot.fps.toFixed(1)} FPS`;
+  ui.runtimeBadge.title = `PolkaVM / ${backend} · first frame ${firstFrame}`;
+
+  if (state.view !== "runtime") {
+    return;
+  }
+
+  const translatedWasm =
+    snapshot.translatedWasmBytes === 0
+      ? "—"
+      : `${(snapshot.translatedWasmBytes / 1024).toFixed(1)} KiB`;
+  ui.runtime.innerHTML = `
+    <div class="td-runtime-heading">
+      <span class="td-runtime-kicker">PolkaVM runtime</span>
+      <strong data-runtime-metric="backend">${backend}</strong>
+      <span class="td-runtime-stage">${escapeHtml(snapshot.startupStage.replaceAll("-", " "))}</span>
+    </div>
+    <dl class="td-runtime-grid">
+      ${
+        snapshot.backend === "interpreter" &&
+        snapshot.compilerFallbackReason !== undefined
+          ? `<div><dt>Compiler fallback stage</dt><dd>${escapeHtml(snapshot.compilerFallbackStage ?? "unknown")}</dd></div>
+      <div><dt>Compiler fallback reason</dt><dd>${escapeHtml(snapshot.compilerFallbackReason)}</dd></div>`
+          : ""
+      }
+      <div><dt>First frame</dt><dd data-runtime-metric="first-frame">${firstFrame}</dd></div>
+      <div><dt>Startup</dt><dd>${snapshot.startupMs.toFixed(1)} ms</dd></div>
+      <div><dt>Translation cache</dt><dd>${snapshot.cacheHit ? "Hit" : "Miss"}</dd></div>
+      <div><dt>Translated Wasm</dt><dd>${translatedWasm}</dd></div>
+      <div><dt>Translate</dt><dd>${snapshot.translationMs.toFixed(1)} ms</dd></div>
+      <div><dt>Compile</dt><dd>${snapshot.compilationMs.toFixed(1)} ms</dd></div>
+      <div><dt>Frame rate</dt><dd data-runtime-metric="fps">${snapshot.fps.toFixed(1)} FPS</dd></div>
+      <div><dt>Frames</dt><dd>${String(snapshot.frames)}</dd></div>
+      <div><dt>Updates</dt><dd>${String(snapshot.updates)}</dd></div>
+      <div><dt>Update p50</dt><dd>${snapshot.updateP50Ms.toFixed(2)} ms</dd></div>
+      <div><dt>Update p95</dt><dd>${snapshot.updateP95Ms.toFixed(2)} ms</dd></div>
+      <div><dt>Update max</dt><dd>${snapshot.updateMaxMs.toFixed(2)} ms</dd></div>
+      <div><dt>Audio chunks</dt><dd>${String(snapshot.audioChunks)}</dd></div>
+      <div><dt>Audio samples</dt><dd>${String(snapshot.audioSamples)}</dd></div>
+    </dl>
+  `;
 }
 
 /**
