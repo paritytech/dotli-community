@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getTopbarState,
   setBlockingModalActive,
-  setChainsButtonVisibleState,
+  recordChainsButtonVisible,
   setTopbarVisible,
   topbarStore,
 } from "@dotli/ui/state/topbar";
@@ -61,7 +61,7 @@ describe("topbar store", () => {
 
   it("As the host, chains button visibility is recorded without an event", () => {
     // When
-    setChainsButtonVisibleState(true);
+    recordChainsButtonVisible(true);
 
     // Then
     expect(getTopbarState().chainsButtonVisible).toBe(true);

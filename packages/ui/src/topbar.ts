@@ -76,7 +76,7 @@ import {
 import { ERRORS } from "./errors";
 import { recordPermissionChange } from "./state/permissions";
 import { setTheme, type ThemePref } from "./state/theme";
-import { setChainsButtonVisibleState } from "./state/topbar";
+import { recordChainsButtonVisible } from "./state/topbar";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -1729,7 +1729,7 @@ function describeLiveNetwork(): { text: string; tone: string } {
  * screen, so the icon appears with the app rather than during the load.
  */
 export function setChainsButtonVisible(visible: boolean): void {
-  setChainsButtonVisibleState(visible);
+  recordChainsButtonVisible(visible);
   document
     .getElementById("chains-button")
     ?.classList.toggle("visible", visible);

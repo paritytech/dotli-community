@@ -34,6 +34,6 @@ export function setBlockingModalActive(active: boolean): void {
   );
 }
 
-export function setChainsButtonVisibleState(visible: boolean): void {
+export function recordChainsButtonVisible(visible: boolean): void {
   topbar.set({ ...topbar.get(), chainsButtonVisible: visible });
 }
