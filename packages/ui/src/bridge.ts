@@ -66,6 +66,7 @@ import {
   registerPermissionAuthorizationProvider,
 } from "./permissions";
 import { createHostCallbacks } from "./host-callbacks/handlers";
+import { installProfileDebugTrigger } from "./host-callbacks/Profile";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import {
   CameraInputCancelledError,
@@ -1418,6 +1419,7 @@ export function initBridgeEventListeners(
     window as typeof window & { __dotliTruapiBridgeReady?: boolean }
   ).__dotliTruapiBridgeReady = true;
   if (DEBUG) {
+    installProfileDebugTrigger();
     window.addEventListener("storage", (event) => {
       if (
         event.key === LOCAL_WALLET_ENABLED_KEY ||

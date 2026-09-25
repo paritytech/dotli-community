@@ -1,0 +1,101 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — Host-owned profile drawer (bottom sheet) */
+
+.profile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2900;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+}
+.profile-drawer {
+  background: #151515;
+  border: 1px solid #2a2a2a;
+  border-bottom: none;
+  color: #e0e0e0;
+  border-radius: 16px 16px 0 0;
+  padding: 16px 24px calc(24px + var(--safe-bottom));
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100dvh - var(--safe-top) - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: profile-drawer-in 0.18s ease-out;
+}
+@keyframes profile-drawer-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-drawer {
+    animation: none;
+  }
+}
+.profile-drawer-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.profile-drawer-header h2 {
+  font-size: 1rem;
+  color: #fff;
+}
+.profile-drawer-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: transparent;
+  color: #aaa;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.profile-drawer-close:hover {
+  background: #1a1a1a;
+}
+.profile-drawer-avatar {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: #0d0d0d;
+  border: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.profile-drawer-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.profile-drawer-avatar-empty {
+  border-style: dashed;
+}
+.profile-drawer-status {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: #aaa;
+  text-align: center;
+}
+.profile-drawer-status-error {
+  color: #f0c060;
+}
+.profile-drawer-attribution {
+  font-size: 0.75rem;
+  color: #777;
+  text-align: center;
+  line-height: 1.4;
+}

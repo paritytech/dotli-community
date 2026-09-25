@@ -26,6 +26,7 @@ import { createThemeSubscribe } from "./Theme";
 import { createLocaleSubscribe } from "./Locale";
 import { createAuthStateChanged } from "./AuthState";
 import { createChatPlatform } from "./Chat";
+import { createProfilePlatform } from "./Profile";
 import { createSessionStoreAdapters } from "./SessionStore";
 import { createUserConfirmationAdapters } from "./UserConfirmation";
 import {
@@ -84,5 +85,8 @@ export function createHostCallbacks(
     // Always served; the core itself denies chat calls on non-Chat
     // executions and without an active session.
     chat: createChatPlatform(),
+    // Any product may ask the host to show a profile it references; the
+    // drawer attributes it to the product and returns nothing to it.
+    profile: createProfilePlatform(),
   };
 }
