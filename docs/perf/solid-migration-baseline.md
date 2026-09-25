@@ -360,3 +360,31 @@ built with the same command and measured back to back on the same idle machine
 Δ p50: +1.5%. `compare.ts` End-to-end: z=1.00, not significant.
 Gate (no regression beyond 5%): **pass**. This replaces the
 provisional verdict in "After Solid-free stores" above.
+
+## After sub-project 1 (modals and toasts)
+
+Overlays (toasts, permission, preimage, password and confirmation dialogs) are
+Solid components in a lazily loaded chunk, prefetched when the browser is idle.
+Measured on `feat/solid-v2-foundation` at `e3157a8d` against the
+branch before sub-project 1 (`31c67a34`), same build command, eager path via
+`bun scripts/eager-path-size.ts`.
+
+| Eager path | Before SP1 gzip | After SP1 gzip | Δ gzip | Gate (≤ +2 KB) |
+|---|---:|---:|---:|---|
+| host | 76,786 | 76,912 | +126 | pass |
+| sandbox | 45,140 | 44,778 | -362 | pass |
+
+Solid in startup chunks (sourcemap `sources`): none. Every startup chunk in
+both apps' eager sets checked `ok []`, save one: `host
+rolldown-runtime-hePW80VL.js` ships with no emitted `.js.map` (a tiny rolldown
+runtime helper, present in both the before and after builds), so it was
+checked with a raw-text `grep` for `solid-js`/`@solidjs` instead of its
+sourcemap `sources` — also negative.
+
+Overlays chunk: host `mount-CHtjaFkV.js` 55,155 B raw / 20,540 B gzip; sandbox
+`mount-CmyWESjc.js` 53,588 B raw / 19,908 B gzip.
+
+Cold start (20 runs each, back to back): before p50 2,666 ms, after p50
+2,693 ms, Δ +1.0%; `compare.ts` End-to-end p50 3.72s → 3.76s (+1.2%),
+Mann-Whitney z=0.66, not significant.
+Gate (no regression beyond 5%): **pass**.
