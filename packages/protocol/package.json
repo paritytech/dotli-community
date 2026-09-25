@@ -16,6 +16,7 @@
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
     "eslint": "^10.11.0",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
     "typescript": "~6.0.3",
     "vite": "^8.3.1",

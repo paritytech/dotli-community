@@ -2,22 +2,63 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import { SITE_ID } from "@dotli/config/config";
+import type * as Config from "@dotli/config/config";
+import * as network from "@dotli/config/network";
 import {
+  createLocalWalletSecret,
   createSessionStoreAdapters,
+  deleteLocalWalletSecret,
   emitPersistedSessionUiState,
+  exportLocalWalletMnemonic,
+  importLocalWalletMnemonic,
+  LOCAL_WALLET_ENABLED_KEY,
   onStoredSessionChanged,
+  readLocalWalletDisplay,
+  readLocalWalletSecret,
+  setLocalWalletEnabled,
+  writeUiStateCache,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
 import type { CoreStorageKey } from "@parity/truapi-host";
+import type {
+  SharedWalletOperation,
+  SharedWalletState,
+} from "@dotli/protocol/wallet-storage";
+import { handleWalletOperation } from "../../../apps/protocol/src/wallet-storage";
+
+const buildFlags = vi.hoisted(() => ({ debug: false }));
+vi.mock("@dotli/config/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof Config>()),
+  get DEBUG() {
+    return buildFlags.debug;
+  },
+}));
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
   listeners: new Set<
     (change: { siteId: string; key: string; value: string | null }) => void
   >(),
+  walletListeners: new Set<(state: SharedWalletState) => void>(),
+  walletError: undefined as Error | undefined,
 }));
 
 vi.mock("@dotli/protocol/client", () => ({
+  requestSharedWallet: async (
+    _siteId: string,
+    operation: SharedWalletOperation,
+  ) => {
+    if (sharedAuth.walletError !== undefined) {
+      throw sharedAuth.walletError;
+    }
+    return handleWalletOperation(operation, (state) => {
+      for (const listener of sharedAuth.walletListeners) listener(state);
+    });
+  },
+  subscribeSharedWallet: (listener: (state: SharedWalletState) => void) => {
+    sharedAuth.walletListeners.add(listener);
+    return () => sharedAuth.walletListeners.delete(listener);
+  },
   readSharedAuthStorage: async (siteId: string, key: string) => {
     return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
   },
@@ -77,12 +118,55 @@ const CONNECTED_DETAIL = {
   primaryUsername: "pgherveou.04",
 };
 
+const walletLockTails = new Map<string, Promise<void>>();
+
 describe("session-store host callbacks", () => {
   beforeEach(() => {
+    buildFlags.debug = false;
     localStorage.clear();
     sharedAuth.storage.clear();
     sharedAuth.listeners.clear();
+    sharedAuth.walletError = undefined;
     vi.restoreAllMocks();
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request<T>(name: string, callback: () => Promise<T>): Promise<T> {
+          const result = (walletLockTails.get(name) ?? Promise.resolve()).then(
+            callback,
+          );
+          walletLockTails.set(
+            name,
+            result.then(
+              () => undefined,
+              () => undefined,
+            ),
+          );
+          return result;
+        },
+      },
+    });
+  });
+
+  it("does not report restoration failure before a wallet is configured", async () => {
+    // Given
+    buildFlags.debug = true;
+    sharedAuth.walletError = new Error("shared wallet unavailable");
+
+    // When / Then
+    await expect(emitPersistedSessionUiState()).resolves.toBeUndefined();
+  });
+
+  it("preserves restoration failures for a configured wallet", async () => {
+    // Given
+    buildFlags.debug = true;
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
+    sharedAuth.walletError = new Error("shared wallet unavailable");
+
+    // When / Then
+    await expect(emitPersistedSessionUiState()).rejects.toThrow(
+      "shared wallet unavailable",
+    );
   });
 
   it("As a dotli integrator, the host round-trips the host core session blob", async () => {
@@ -347,6 +431,186 @@ describe("session-store host callbacks", () => {
     expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
   });
 
+  it("keeps the shared wallet stable across reads and removes custody on deletion", async () => {
+    // Given
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+
+    // When
+    const first = await createLocalWalletSecret();
+    const firstBytes = Array.from(first.secret);
+
+    // Then
+    expect(first.created).toBe(true);
+
+    // When
+    first.secret.fill(0);
+    const second = await createLocalWalletSecret();
+
+    // Then
+    expect(second.created).toBe(false);
+    expect(Array.from(second.secret)).toEqual(firstBytes);
+
+    // When
+    second.secret.fill(0);
+    await deleteLocalWalletSecret();
+
+    // Then
+    await expect(readLocalWalletSecret()).resolves.toBeUndefined();
+  });
+
+  it("exports an existing 32-byte identity as a phrase and restores exactly the native activation entropy", async () => {
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    try {
+      const mnemonic = await exportLocalWalletMnemonic();
+      expect(mnemonic.split(" ")).toHaveLength(24);
+      await deleteLocalWalletSecret();
+      await importLocalWalletMnemonic(mnemonic);
+      const restored = await readLocalWalletSecret();
+      try {
+        // Native root and product/identity keys are deterministic from these
+        // bytes; converting to a BIP-39 seed instead would fail this contract.
+        expect(restored).toEqual(secret);
+      } finally {
+        restored?.fill(0);
+      }
+    } finally {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("rejects an invalid import without replacing custody and resets only experimental grants on valid import", async () => {
+    const mobile = createSessionStoreAdapters();
+    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
+    await mobile.writeCoreStorage(grant, new Uint8Array([2]));
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    await setLocalWalletEnabled(true);
+    const experimental = createSessionStoreAdapters();
+    await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
+    await experimental.writeCoreStorage(grant, new Uint8Array([4]));
+    const stopWorkers = vi.fn();
+    try {
+      // Twelve known English words with an invalid checksum must not pass.
+      await expect(
+        importLocalWalletMnemonic("abandon ".repeat(12), stopWorkers),
+      ).rejects.toThrow();
+      expect(stopWorkers).not.toHaveBeenCalled();
+      const unchanged = await readLocalWalletSecret();
+      expect(unchanged).toEqual(secret);
+      unchanged?.fill(0);
+      expect(await experimental.readCoreStorage(grant)).toEqual(
+        new Uint8Array([4]),
+      );
+      expect(await experimental.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+        new Uint8Array([3]),
+      );
+
+      // A second tab has its own module state but shares origin storage.
+      vi.resetModules();
+      const otherTab = await import("@dotli/ui/host-callbacks/SessionStore");
+      // Public BIP-39 test vector, not a real user's phrase.
+      await otherTab.importLocalWalletMnemonic(
+        "abandon ".repeat(11) + "about",
+        stopWorkers,
+      );
+      const imported = await readLocalWalletSecret();
+      expect(imported).toEqual(new Uint8Array(16));
+      imported?.fill(0);
+      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+      expect(
+        await experimental.readCoreStorage(AUTH_SESSION_KEY),
+      ).toBeUndefined();
+      const replacement = otherTab.createSessionStoreAdapters();
+      await replacement.writeCoreStorage(grant, new Uint8Array([6]));
+      // A retired worker cannot write its old grant back after replacement.
+      await experimental.writeCoreStorage(grant, new Uint8Array([5]));
+      expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+      await experimental.clearCoreStorage(grant);
+      expect(await replacement.readCoreStorage(grant)).toEqual(
+        new Uint8Array([6]),
+      );
+      expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
+      expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+        new Uint8Array([1]),
+      );
+    } finally {
+      secret.fill(0);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("ignores but preserves an existing experimental wallet in production", async () => {
+    buildFlags.debug = true;
+    const { secret } = await createLocalWalletSecret();
+    const expected = Array.from(secret);
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    buildFlags.debug = false;
+    const events: unknown[] = [];
+    const onState = (event: Event) =>
+      events.push((event as CustomEvent).detail);
+    window.addEventListener("dotli:truapi-auth-state", onState);
+    try {
+      await expect(readLocalWalletSecret()).resolves.toBeUndefined();
+      await expect(createLocalWalletSecret()).rejects.toThrow();
+      await expect(deleteLocalWalletSecret()).rejects.toThrow();
+      await expect(exportLocalWalletMnemonic()).rejects.toThrow();
+      await expect(
+        importLocalWalletMnemonic("abandon ".repeat(11) + "about"),
+      ).rejects.toThrow();
+      await emitPersistedSessionUiState();
+      expect(events).toEqual([]);
+      buildFlags.debug = true;
+      const restored = await readLocalWalletSecret();
+      expect(Array.from(restored ?? [])).toEqual(expected);
+      restored?.fill(0);
+      await deleteLocalWalletSecret();
+    } finally {
+      window.removeEventListener("dotli:truapi-auth-state", onState);
+    }
+  });
+
+  it("isolates experimental sessions and signing grants from mobile custody, including deletion", async () => {
+    const mobile = createSessionStoreAdapters();
+    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
+    await mobile.writeCoreStorage(grant, new Uint8Array([2]));
+    buildFlags.debug = true;
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    const experimental = createSessionStoreAdapters();
+    expect(
+      await experimental.readCoreStorage(AUTH_SESSION_KEY),
+    ).toBeUndefined();
+    expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+    await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
+    await experimental.writeCoreStorage(grant, new Uint8Array([4]));
+    // Even callbacks finishing after the mode switch retain their namespace.
+    buildFlags.debug = false;
+    await experimental.writeCoreStorage(grant, new Uint8Array([5]));
+    const production = createSessionStoreAdapters();
+    expect(await production.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+      new Uint8Array([1]),
+    );
+    expect(await production.readCoreStorage(grant)).toEqual(
+      new Uint8Array([2]),
+    );
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    expect(await experimental.readCoreStorage(grant)).toBeUndefined();
+    expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
+    expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
+      new Uint8Array([1]),
+    );
+  });
+
   it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
     // Given
     const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
@@ -599,8 +863,7 @@ describe("session-store host callbacks", () => {
       UI_STATE_CACHE_KEY,
       JSON.stringify(CONNECTED_DETAIL),
     );
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
     expect(events).toEqual([]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
@@ -613,11 +876,231 @@ describe("session-store host callbacks", () => {
     await flushMicrotasks();
     events.length = 0;
 
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
 
     // Then
     expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+  });
+
+  it("does not publish an experimental session from a stored secret or Mobile UI cache", async () => {
+    // Given
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    sharedAuth.storage.set(
+      UI_STATE_CACHE_KEY,
+      JSON.stringify(CONNECTED_DETAIL),
+    );
+    const events: unknown[] = [];
+    window.addEventListener("dotli:truapi-auth-state", (event) => {
+      events.push((event as CustomEvent).detail);
+    });
+
+    // When
+    await emitPersistedSessionUiState();
+
+    // Only the persistent signing owner can publish a native identity.
+    expect(events).toEqual([]);
+    await deleteLocalWalletSecret();
+  });
+
+  it("restores experimental display synchronously after reload without publishing auth", async () => {
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    const authStateChanged = createAuthStateChanged("Wallet");
+    authStateChanged({
+      tag: "Connected",
+      value: connectedSessionUiInfo(),
+    });
+    const display = {
+      publicKey: SESSION_PUBLIC_KEY,
+      identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
+      liteUsername: "pgherveou.04",
+      primaryUsername: "pgherveou.04",
+    };
+    expect(readLocalWalletDisplay()).toEqual(display);
+
+    // A fresh module models page startup; a static import retains hydrated state.
+    vi.resetModules();
+    const reloaded = await import("@dotli/ui/host-callbacks/SessionStore");
+    const events: unknown[] = [];
+    const onAuth = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    window.addEventListener("dotli:truapi-auth-state", onAuth);
+    try {
+      expect(reloaded.readLocalWalletDisplay()).toEqual(display);
+      expect(events).toEqual([]);
+      await reloaded.emitPersistedSessionUiState();
+      expect(events).toEqual([]);
+    } finally {
+      window.removeEventListener("dotli:truapi-auth-state", onAuth);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("replaces cached names with native absence or a different identity and clears on disconnect", async () => {
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    const authStateChanged = createAuthStateChanged("Wallet");
+    try {
+      authStateChanged({ tag: "Connected", value: connectedSessionUiInfo() });
+      expect(readLocalWalletDisplay()?.primaryUsername).toBe("pgherveou.04");
+      authStateChanged({
+        tag: "Connected",
+        value: {
+          publicKey: SESSION_PUBLIC_KEY,
+          identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
+        },
+      });
+      expect(readLocalWalletDisplay()).toEqual({
+        publicKey: SESSION_PUBLIC_KEY,
+        identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
+      });
+      authStateChanged({
+        tag: "Connected",
+        value: {
+          publicKey: SESSION_PUBLIC_KEY,
+          identityAccountId: SESSION_PUBLIC_KEY,
+          liteUsername: "replacement.01",
+        },
+      });
+      expect(readLocalWalletDisplay()).toEqual({
+        publicKey: SESSION_PUBLIC_KEY,
+        identityAccountId: SESSION_PUBLIC_KEY,
+        liteUsername: "replacement.01",
+        primaryUsername: "replacement.01",
+      });
+      authStateChanged({ tag: "Disconnected" });
+      expect(readLocalWalletDisplay()).toBeUndefined();
+    } finally {
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("hides experimental display outside its network and invalidates it during replacement and deletion", async () => {
+    const getNetwork = vi.spyOn(network, "getNetwork");
+    getNetwork.mockReturnValue(network.NetworkName.PASEO);
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    try {
+      await writeUiStateCache(CONNECTED_DETAIL);
+      expect(readLocalWalletDisplay()?.identityAccountId).toBe(
+        SESSION_IDENTITY_ACCOUNT_ID,
+      );
+      getNetwork.mockReturnValue(network.NetworkName.PREVIEWNET);
+      expect(readLocalWalletDisplay()).toBeUndefined();
+      getNetwork.mockReturnValue(network.NetworkName.PASEO);
+      expect(readLocalWalletDisplay()?.identityAccountId).toBe(
+        SESSION_IDENTITY_ACCOUNT_ID,
+      );
+      await importLocalWalletMnemonic("abandon ".repeat(11) + "about", () => {
+        expect(readLocalWalletDisplay()).toBeUndefined();
+        void writeUiStateCache(CONNECTED_DETAIL);
+      });
+      expect(readLocalWalletDisplay()).toBeUndefined();
+      await writeUiStateCache(CONNECTED_DETAIL);
+      await deleteLocalWalletSecret();
+      const replacement = await createLocalWalletSecret();
+      replacement.secret.fill(0);
+      await setLocalWalletEnabled(true);
+      expect(readLocalWalletDisplay()).toBeUndefined();
+    } finally {
+      getNetwork.mockRestore();
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("treats corrupt experimental display and denied storage as unavailable without auth errors", async () => {
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    await writeUiStateCache(CONNECTED_DETAIL);
+    const storedDisplay = JSON.stringify(CONNECTED_DETAIL);
+    const getItem = localStorage.getItem.bind(localStorage);
+    const storageRead = vi.spyOn(localStorage, "getItem");
+    const events: unknown[] = [];
+    const onAuth = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    window.addEventListener("dotli:truapi-auth-state", onAuth);
+    try {
+      for (const corrupt of [
+        "not-json",
+        JSON.stringify({ ...CONNECTED_DETAIL, identityAccountId: "0x1234" }),
+        JSON.stringify({ ...CONNECTED_DETAIL, identityAccountId: undefined }),
+        JSON.stringify({ ...CONNECTED_DETAIL, liteUsername: null }),
+        JSON.stringify({ ...CONNECTED_DETAIL, connected: false }),
+      ]) {
+        storageRead.mockImplementation((key) => {
+          const value = getItem(key);
+          return value === storedDisplay ? corrupt : value;
+        });
+        expect(readLocalWalletDisplay()).toBeUndefined();
+      }
+      storageRead.mockImplementation(() => {
+        throw new DOMException("Storage unavailable", "SecurityError");
+      });
+      expect(readLocalWalletDisplay()).toBeUndefined();
+      expect(events).toEqual([]);
+    } finally {
+      storageRead.mockRestore();
+      window.removeEventListener("dotli:truapi-auth-state", onAuth);
+      await deleteLocalWalletSecret();
+    }
+  });
+
+  it("preserves Mobile rehydration across experimental display writes and disconnects", async () => {
+    const authStateChanged = createAuthStateChanged("Mobile");
+    await createSessionStoreAdapters().writeCoreStorage(
+      AUTH_SESSION_KEY,
+      new Uint8Array([1, 2, 3]),
+    );
+    authStateChanged({ tag: "Connected", value: connectedSessionUiInfo() });
+    await flushMicrotasks();
+    expect(readLocalWalletDisplay()).toBeUndefined();
+    buildFlags.debug = true;
+    await deleteLocalWalletSecret();
+    const { secret } = await createLocalWalletSecret();
+    secret.fill(0);
+    await setLocalWalletEnabled(true);
+    const events: unknown[] = [];
+    const onAuth = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    try {
+      await writeUiStateCache({
+        connected: true,
+        identityAccountId: SESSION_PUBLIC_KEY,
+        liteUsername: "wallet.01",
+      });
+      expect(readLocalWalletDisplay()?.liteUsername).toBe("wallet.01");
+      buildFlags.debug = false;
+      expect(readLocalWalletDisplay()).toBeUndefined();
+      buildFlags.debug = true;
+      await writeUiStateCache({ connected: false });
+      expect(readLocalWalletDisplay()).toBeUndefined();
+      await setLocalWalletEnabled(false);
+      window.addEventListener("dotli:truapi-auth-state", onAuth);
+      await emitPersistedSessionUiState();
+      expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+    } finally {
+      window.removeEventListener("dotli:truapi-auth-state", onAuth);
+      await deleteLocalWalletSecret();
+    }
   });
 
   it("As a dotli integrator, the host rehydrates a bare connected state when no cache exists", async () => {
@@ -630,8 +1113,7 @@ describe("session-store host callbacks", () => {
 
     // When
     await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
 
     // Then
     expect(events).toEqual([
@@ -654,8 +1136,7 @@ describe("session-store host callbacks", () => {
     );
 
     // When
-    emitPersistedSessionUiState();
-    await flushMicrotasks();
+    await emitPersistedSessionUiState();
 
     // Then: the malformed cache is discarded instead of being laundered into
     // a typed session state with non-string fields.

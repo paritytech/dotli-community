@@ -45,6 +45,7 @@ import {
   type FilterState,
 } from "./filters.ts";
 import { formatPayloadDetail, formatPayloadSummary } from "./format.ts";
+import { createWalletView, type WalletView } from "./wallet-view.ts";
 import {
   formatPending,
   openCalls,
@@ -97,6 +98,39 @@ function writeStoredDock(dock: DockPosition): void {
   }
 }
 
+export interface InspectorIdentity {
+  network: string;
+  identityAccountId: string;
+  liteUsername?: string;
+  fullUsername?: string;
+  publicKey?: string;
+}
+
+export interface InspectorResource {
+  id: string;
+  label: string;
+  request: unknown;
+}
+
+export interface InspectorProduct {
+  id: string;
+  name: string;
+  origin: string;
+  accountPublicKey?: string;
+  accountError?: string;
+  derivation: string;
+  permissions: {
+    id: string;
+    label: string;
+    status: "ask" | "granted" | "denied";
+  }[];
+  resources: InspectorResource[];
+}
+
+export type LocalIdentityProgress =
+  | { stage: "checking" | "authenticating" | "submitting" | "confirming" }
+  | { stage: "retrying"; error: string };
+
 export interface SetupOptions {
   /** Hard cap on retained events before oldest are evicted. */
   capacity?: number;
@@ -107,6 +141,32 @@ export interface SetupOptions {
    * mount expanded.
    */
   startCollapsed?: boolean;
+  /** Supplied only by debug builds, never by the runtime panel opt-in. */
+  experimentalWallet?: {
+    isActive(): boolean;
+    networkLabel(): string;
+    getCachedIdentity(): InspectorIdentity | undefined;
+    getIdentity(): Promise<InspectorIdentity>;
+    getProduct(): Promise<InspectorProduct | null>;
+    describeResource(resource: unknown): InspectorResource | null;
+    requestResource(
+      productId: string,
+      resource: unknown,
+    ): Promise<"Allocated" | "Rejected" | "NotAvailable">;
+    refreshUsername(): Promise<{
+      identityAccountId: string;
+      liteUsername?: string;
+    }>;
+    claimLiteUsername(
+      baseUsername: string,
+      onProgress?: (progress: LocalIdentityProgress) => void,
+    ): Promise<{ identityAccountId: string; liteUsername?: string }>;
+    activate(): Promise<void>;
+    disconnect(): Promise<void>;
+    deleteWallet(): Promise<void>;
+    exportMnemonic(): Promise<string>;
+    importMnemonic(mnemonic: string): Promise<void>;
+  };
 }
 
 /**
@@ -146,6 +206,16 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   };
 
   const ui = buildPanel(state, store);
+  ui.tabs.wallet.hidden = options.experimentalWallet === undefined;
+  const disposeWalletControls =
+    options.experimentalWallet === undefined
+      ? undefined
+      : installExperimentalWalletControls(
+          ui,
+          state,
+          options.experimentalWallet,
+          store,
+        );
   document.body.appendChild(ui.panel);
   applyDockPosition(ui, state, { persist: false });
   if (state.collapsed) {
@@ -155,12 +225,54 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   // When a new product iframe is mounted, re-apply the iframe height
   // adjustment so the panel doesn't cover freshly-rendered app content.
+  let geometryFrame = 0;
+  let observedTopbar: HTMLElement | null = null;
   const onProductLoaded = (): void => {
+    const topbar =
+      document.getElementById("landing-auth") ??
+      document.getElementById("topbar");
+    if (topbar !== observedTopbar) {
+      if (observedTopbar !== null) {
+        layoutObserver.unobserve(observedTopbar);
+      }
+      chromeObserver.disconnect();
+      observedTopbar = topbar;
+      if (topbar !== null) {
+        layoutObserver.observe(topbar);
+        chromeObserver.observe(topbar, {
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden"],
+        });
+      }
+    }
     adjustIframeForPanel(ui.panel, state);
+    if (
+      geometryFrame === 0 &&
+      topbar
+        ?.getAnimations()
+        .some((animation) => animation.playState === "running") === true
+    ) {
+      geometryFrame = requestAnimationFrame(() => {
+        geometryFrame = 0;
+        onProductLoaded();
+      });
+    }
   };
   window.addEventListener("dotli:product-loaded", onProductLoaded);
+  const layoutObserver = new ResizeObserver(onProductLoaded);
+  const chromeObserver = new MutationObserver(onProductLoaded);
+  layoutObserver.observe(ui.panel);
+  const onTopbarTransition = (event: TransitionEvent): void => {
+    if (event.target instanceof HTMLElement && event.target.id === "topbar") {
+      onProductLoaded();
+    }
+  };
+  window.addEventListener("resize", onProductLoaded);
+  window.addEventListener("topbar:visibility", onProductLoaded);
+  document.addEventListener("transitionend", onTopbarTransition);
 
   ui.closeBtn.addEventListener("click", () => {
+    ui.walletView?.setVisible(false);
     // Exit debug mode entirely: the panel is bound to debug mode, and
     // re-entry is via the host Settings "Open in debug mode" button.
     try {
@@ -220,7 +332,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
   // Initial render + iframe adjustment.
   render(ui, state, store, { fullList: true });
-  adjustIframeForPanel(ui.panel, state);
+  onProductLoaded();
 
   return () => {
     window.clearInterval(resolutionTick);
@@ -228,6 +340,13 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     unsubscribeDotli();
     unsubscribeStore();
     window.removeEventListener("dotli:product-loaded", onProductLoaded);
+    layoutObserver.disconnect();
+    chromeObserver.disconnect();
+    cancelAnimationFrame(geometryFrame);
+    window.removeEventListener("resize", onProductLoaded);
+    window.removeEventListener("topbar:visibility", onProductLoaded);
+    document.removeEventListener("transitionend", onTopbarTransition);
+    disposeWalletControls?.();
     ui.panel.remove();
     restoreIframeLayout();
   };
@@ -235,41 +354,60 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
 
 /** Adjust the currently-mounted product iframe so the panel doesn't overlay it. */
 function adjustIframeForPanel(panel: HTMLElement, state: PanelState): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+  const topbar =
+    document.getElementById("landing-auth") ??
+    document.getElementById("topbar");
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty(
+    "--debug-content-top",
+    `${String(Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0))}px`,
+  );
+  const rect = panel.getBoundingClientRect();
+  rootStyle.setProperty(
+    "--debug-panel-width",
+    `${String(state.dock === "right" && !state.collapsed && rect.height > 0 ? rect.width : 0)}px`,
+  );
+  const iframe = document.querySelector<HTMLIFrameElement>(
+    'iframe:not([aria-hidden="true"])',
+  );
   if (iframe === null) {
     return;
   }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? 56 : 0;
+  const topOffset = Math.max(0, iframe.getBoundingClientRect().top);
   if (state.dock === "right") {
-    iframe.style.height = `calc(100dvh - ${String(topOffset)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - var(--safe-bottom, 0px))`;
     // When collapsed, the 32px header bar overlays the top-right corner
     // of the iframe rather than reserving a full-height column. Mirrors
     // how bottom-dock collapse overlays only the bottom 32px.
-    iframe.style.width = state.collapsed
-      ? "100%"
-      : `calc(100vw - ${String(panel.offsetWidth)}px)`;
+    iframe.style.width =
+      "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px) - var(--debug-panel-width, 0px))";
   } else {
     // Host's renderIframe sets inline width:100%. Restore
     // that explicitly. Clearing to "" falls back to the HTML iframe
     // default of 300px and breaks the layout.
-    iframe.style.width = "100%";
+    iframe.style.width =
+      "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
     const panelHeight = state.collapsed ? 32 : panel.offsetHeight;
-    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
+    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px - var(--safe-bottom, 0px))`;
   }
 }
 
 function restoreIframeLayout(): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+  document.documentElement.style.removeProperty("--debug-content-top");
+  document.documentElement.style.removeProperty("--debug-panel-width");
+  const iframe = document.querySelector<HTMLIFrameElement>(
+    'iframe:not([aria-hidden="true"])',
+  );
   if (iframe === null) {
     return;
   }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  iframe.style.height = hasTopbar ? "calc(100dvh - 56px)" : "100dvh";
-  iframe.style.width = "100%";
+  const topOffset = Math.max(0, iframe.getBoundingClientRect().top);
+  iframe.style.height = `calc(100dvh - ${String(topOffset)}px - var(--safe-bottom, 0px))`;
+  iframe.style.width =
+    "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
 }
 
-type PanelView = "list" | "timeline" | "resolution";
+type PanelView = "list" | "timeline" | "resolution" | "wallet";
 
 interface PanelState {
   collapsed: boolean;
@@ -306,6 +444,7 @@ interface PanelUI {
   detail: HTMLDivElement;
   bodySplitter: HTMLDivElement;
   tooltip: HTMLDivElement;
+  walletView?: WalletView;
 }
 
 function buildPanel(state: PanelState, store: EventStore): PanelUI {
@@ -315,6 +454,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   panel.innerHTML = `
     <div class="td-resize-handle" role="separator" aria-orientation="horizontal"></div>
     <div class="td-header">
+      <div class="td-header-tools">
       <span class="td-title">TrUAPI Debug</span>
       <span class="td-counts">0 events</span>
       <span class="td-spacer"></span>
@@ -322,6 +462,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       <button class="td-btn td-clear" type="button">Clear</button>
       <button class="td-btn td-btn-icon td-export" type="button" title="Download as JSON" aria-label="Download as JSON">${EXPORT_ICON_SVG}</button>
       <button class="td-btn td-btn-icon td-copy" type="button" title="Copy to clipboard" aria-label="Copy to clipboard">${COPY_ICON_SVG}</button>
+      </div>
       <button class="td-btn td-btn-icon td-dock" type="button" title="Dock to right" aria-label="Dock to right"></button>
       <button class="td-btn td-btn-icon td-collapse" type="button" title="Collapse">▼</button>
       <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)">×</button>
@@ -357,6 +498,7 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
           <button class="td-tab active" role="tab" data-view="list" type="button">List</button>
           <button class="td-tab" role="tab" data-view="timeline" type="button">Timeline</button>
           <button class="td-tab" role="tab" data-view="resolution" type="button">Resolution</button>
+          <button class="td-tab" id="td-tab-wallet" role="tab" aria-controls="td-wallet-view" data-view="wallet" type="button">Wallet</button>
         </div>
         <div class="td-list" role="list" tabindex="0"></div>
         <!-- timeline mount point — populated at setup time -->
@@ -413,6 +555,9 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
       resolution: panel.querySelector(
         '.td-tab[data-view="resolution"]',
       ) as HTMLButtonElement,
+      wallet: panel.querySelector(
+        '.td-tab[data-view="wallet"]',
+      ) as HTMLButtonElement,
     },
     list: panel.querySelector(".td-list") as HTMLDivElement,
     timeline,
@@ -434,6 +579,828 @@ function buildPanel(state: PanelState, store: EventStore): PanelUI {
   wireBodySplitter(ui, state);
 
   return ui;
+}
+
+function installExperimentalWalletControls(
+  ui: PanelUI,
+  state: PanelState,
+  wallet: NonNullable<SetupOptions["experimentalWallet"]>,
+  store: EventStore,
+): () => void {
+  const walletView = createWalletView(wallet, store);
+  ui.walletView = walletView;
+  const { content, overview, recovery } = walletView;
+  ui.panel.querySelector(".td-views")?.append(content);
+  ui.panel.querySelector(".td-header")?.prepend(walletView.entry);
+  const openWallet = (): void => {
+    if (state.collapsed) {
+      ui.collapseBtn.click();
+    }
+    ui.tabs.wallet.click();
+    content.focus();
+  };
+  walletView.entry.addEventListener("click", openWallet);
+  window.addEventListener("dotli:wallet-open", openWallet);
+  const status = document.createElement("p");
+  status.className = "td-wallet-status";
+  status.textContent = wallet.isActive() ? "Connected" : "Not connected";
+  const warning = document.createElement("p");
+  warning.className = "td-wallet-warning";
+  warning.textContent =
+    "Test wallet only. Never use valuable funds or your main wallet.";
+  const safety = document.createElement("p");
+  safety.textContent =
+    "Without a recovery phrase backup, deleting this wallet or clearing site data permanently loses access. " +
+    "Scripts on this and other trusted host origins can access your shared wallet keys despite storage encryption. Real transactions remain possible.";
+  overview.append(status);
+  const network = document.createElement("p");
+  network.textContent = `Network: ${wallet.networkLabel()}`;
+  const identity = document.createElement("p");
+  identity.className = "td-wallet-identity";
+  const accountDetails = document.createElement("details");
+  accountDetails.className = "td-wallet-details";
+  const accountSummary = document.createElement("summary");
+  accountSummary.textContent = "Account details";
+  accountDetails.append(accountSummary, identity);
+  const registeredName = document.createElement("p");
+  registeredName.className = "td-wallet-username";
+  registeredName.setAttribute("role", "status");
+  registeredName.setAttribute("aria-live", "polite");
+  registeredName.setAttribute("aria-atomic", "true");
+  const nameState = document.createElement("strong");
+  const nameDetail = document.createElement("span");
+  const knownName = document.createElement("span");
+  knownName.className = "td-wallet-known-name";
+  registeredName.append(nameState, nameDetail, knownName);
+  const elapsed = document.createElement("span");
+  elapsed.className = "td-wallet-elapsed";
+  elapsed.hidden = true;
+  const errorDetails = document.createElement("details");
+  errorDetails.className = "td-wallet-details td-wallet-error";
+  errorDetails.hidden = true;
+  const errorSummary = document.createElement("summary");
+  errorSummary.textContent = "Technical details";
+  const errorText = document.createElement("p");
+  errorDetails.append(errorSummary, errorText);
+  const usernameLabel = document.createElement("label");
+  usernameLabel.textContent = "Username";
+  const username = document.createElement("input");
+  username.type = "text";
+  username.className = "td-input td-wallet-username-input";
+  username.autocomplete = "off";
+  username.autocapitalize = "off";
+  username.spellcheck = false;
+  username.setAttribute("aria-label", "Base Lite username to claim");
+  username.setAttribute("aria-describedby", "td-wallet-username-hint");
+  usernameLabel.appendChild(username);
+  const claim = document.createElement("button");
+  claim.type = "button";
+  claim.className = "td-btn td-wallet-claim td-wallet-primary";
+  claim.textContent = "Claim username";
+  const refresh = document.createElement("button");
+  refresh.type = "button";
+  refresh.className = "td-btn td-wallet-refresh";
+  refresh.textContent = "Check username";
+  const usernameHint = document.createElement("p");
+  usernameHint.id = "td-wallet-username-hint";
+  usernameHint.className = "td-wallet-hint";
+  const usernameActions = document.createElement("div");
+  usernameActions.className = "td-wallet-actions";
+  usernameActions.append(claim, refresh);
+  const activate = document.createElement("button");
+  activate.type = "button";
+  activate.className = "td-btn td-wallet-primary";
+  activate.textContent = "Use test wallet";
+  const disconnect = document.createElement("button");
+  disconnect.type = "button";
+  disconnect.className = "td-btn";
+  disconnect.textContent = "Switch back to Mobile";
+  const reveal = document.createElement("button");
+  reveal.type = "button";
+  reveal.className = "td-btn";
+  reveal.textContent = "Reveal recovery phrase";
+  const phrase = document.createElement("textarea");
+  phrase.className = "td-wallet-phrase";
+  phrase.readOnly = true;
+  phrase.rows = 5;
+  phrase.hidden = true;
+  phrase.setAttribute("aria-label", "Test wallet recovery phrase");
+  phrase.autocomplete = "off";
+  phrase.spellcheck = false;
+  const hide = document.createElement("button");
+  hide.type = "button";
+  hide.className = "td-btn";
+  hide.textContent = "Hide recovery phrase";
+  hide.hidden = true;
+  const importLabel = document.createElement("label");
+  importLabel.textContent = "Import test recovery phrase";
+  const input = document.createElement("textarea");
+  input.className = "td-wallet-phrase";
+  input.rows = 4;
+  input.autocomplete = "off";
+  input.autocapitalize = "off";
+  input.spellcheck = false;
+  input.setAttribute("aria-label", "Recovery phrase to import");
+  importLabel.appendChild(input);
+  const scope = document.createElement("p");
+  scope.textContent =
+    "English BIP-39: 12, 15, 18, 21 or 24 words. No passphrase or custom derivation path. " +
+    "Uses native Polkadot host/Substrate account derivation, not Bitcoin/Ethereum seed derivation. " +
+    "Restores keys, not permissions. Check username after import. Keep the phrase private; anyone with it controls the wallet.";
+  const importButton = document.createElement("button");
+  importButton.type = "button";
+  importButton.className = "td-btn";
+  importButton.textContent = "Import / replace test wallet";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "td-btn td-wallet-delete";
+  remove.textContent = "Delete test wallet";
+  const message = document.createElement("p");
+  message.className = "td-wallet-message";
+  message.setAttribute("role", "alert");
+  message.hidden = true;
+  const walletActions = document.createElement("div");
+  walletActions.className = "td-wallet-actions";
+  walletActions.append(activate, disconnect);
+  overview.append(
+    network,
+    walletActions,
+    registeredName,
+    elapsed,
+    errorDetails,
+    usernameLabel,
+    usernameActions,
+    usernameHint,
+    warning,
+    accountDetails,
+    walletView.productDetails,
+  );
+  recovery.append(safety);
+  recovery.append(
+    reveal,
+    phrase,
+    hide,
+    importLabel,
+    scope,
+    importButton,
+    remove,
+  );
+  content.append(message);
+
+  let pending = false;
+  let activating = false;
+  let disposed = false;
+  const isDisposed = (): boolean => disposed;
+  let sensitiveGeneration = 0;
+  let currentIdentity: InspectorIdentity | undefined;
+  let displayIdentity = wallet.isActive()
+    ? wallet.getCachedIdentity()
+    : undefined;
+  let identityReadGeneration = 0;
+  let identityLoading = wallet.isActive();
+  let identityUnavailable = false;
+  let identityGeneration = 0;
+  let usernameStatus: {
+    kind: "unknown" | "claimed" | "unclaimed" | "failed";
+    title: string;
+    detail: string;
+  } = {
+    kind: "unknown",
+    title: "Username not checked",
+    detail: "",
+  };
+  let usernameOperation:
+    | {
+        register: boolean;
+        identity: InspectorIdentity;
+        generation: number;
+        progress?: LocalIdentityProgress;
+        startedAt: number;
+      }
+    | undefined;
+  let claimTimer: number | undefined;
+  const stopClaimTimer = (): void => {
+    if (claimTimer !== undefined) {
+      window.clearInterval(claimTimer);
+      claimTimer = undefined;
+    }
+  };
+  const renderElapsed = (): void => {
+    if (usernameOperation?.register !== true || disposed) {
+      return;
+    }
+    elapsed.textContent = `${String(Math.floor((Date.now() - usernameOperation.startedAt) / 1000))}s elapsed`;
+  };
+  const renderUsername = (): void => {
+    const operation = usernameOperation;
+    const active = wallet.isActive() && !activating;
+    const fullName = active ? (displayIdentity?.fullUsername ?? "") : "";
+    const liteName = active ? (displayIdentity?.liteUsername ?? "") : "";
+    const hasLiteUsername =
+      liteName !== "" || usernameStatus.kind === "claimed";
+    const showClaim =
+      active && currentIdentity !== undefined && !hasLiteUsername;
+    status.textContent = !active
+      ? "Not connected"
+      : identityLoading
+        ? "Connecting…"
+        : identityUnavailable
+          ? "Connection unavailable"
+          : "Connected";
+    network.textContent = `Network: ${active ? (displayIdentity?.network ?? wallet.networkLabel()) : wallet.networkLabel()}`;
+    identity.textContent =
+      active && displayIdentity !== undefined
+        ? `${identityLoading || identityUnavailable ? "Last known identity account" : "Identity account"}: ${displayIdentity.identityAccountId}${displayIdentity.publicKey !== undefined ? ` · Public key: ${displayIdentity.publicKey}` : ""}`
+        : active
+          ? identityLoading
+            ? "Identity account: verifying…"
+            : "Identity account unavailable"
+          : "Identity: connect the experimental wallet to view";
+    activate.hidden = active;
+    activate.textContent = activating ? "Connecting…" : "Use test wallet";
+    disconnect.hidden = !active;
+    usernameLabel.hidden = !showClaim;
+    claim.hidden = !showClaim;
+    usernameActions.hidden = !active;
+    refresh.hidden = !active;
+    usernameHint.hidden = !showClaim || operation !== undefined;
+    usernameHint.textContent = "Choose a base name; the network adds a suffix.";
+    const sameIdentity =
+      operation?.identity.identityAccountId ===
+        currentIdentity?.identityAccountId &&
+      operation?.identity.network === currentIdentity?.network &&
+      operation?.identity.network === wallet.networkLabel() &&
+      operation.generation === identityGeneration &&
+      active;
+    registeredName.dataset.state =
+      operation !== undefined
+        ? "pending"
+        : activating || identityLoading
+          ? "checking"
+          : usernameStatus.kind;
+    let title = usernameStatus.title;
+    let detail = usernameStatus.detail;
+    let technicalError = "";
+    if (operation !== undefined) {
+      if (!sameIdentity) {
+        title = "Wallet changed";
+        detail = "The previous request cannot update this wallet.";
+      } else if (!operation.register) {
+        title = "Checking username…";
+        detail = "";
+      } else {
+        const progress = operation.progress;
+        registeredName.dataset.stage = progress?.stage ?? "checking";
+        switch (progress?.stage) {
+          case "authenticating":
+            title = "Authenticating…";
+            detail = "";
+            break;
+          case "submitting":
+            title = "Submitting claim…";
+            detail = "";
+            break;
+          case "confirming":
+            title = "Waiting for confirmation…";
+            detail = "Submitted. Keep this page open.";
+            break;
+          case "retrying":
+            title = "Retrying confirmation…";
+            detail =
+              "Chain check unavailable. Retrying automatically; your claim is still pending.";
+            technicalError = progress.error;
+            break;
+          case "checking":
+          case undefined:
+            title = "Checking username…";
+            detail = "";
+        }
+      }
+    } else if (activating || identityLoading) {
+      title = "Checking wallet…";
+      detail = "";
+    } else if (!active) {
+      title = "";
+      detail = "";
+    } else if (usernameStatus.kind === "failed") {
+      technicalError = detail;
+      detail = "Open details for the error.";
+    } else if (usernameStatus.kind === "unknown" && (fullName || liteName)) {
+      title = fullName || liteName;
+      detail = "";
+    }
+    if (operation?.register !== true || !sameIdentity) {
+      delete registeredName.dataset.stage;
+    }
+    registeredName.hidden = title === "";
+    nameDetail.hidden = detail === "";
+    elapsed.hidden = operation?.register !== true || !sameIdentity;
+    errorDetails.hidden = technicalError === "";
+    if (errorText.textContent !== technicalError) {
+      errorText.textContent = technicalError;
+    }
+    if (technicalError === "") {
+      errorDetails.open = false;
+    }
+    // Input changes also synchronize controls; do not re-announce unchanged
+    // live status on every keystroke.
+    if (nameState.textContent !== title) {
+      nameState.textContent = title;
+    }
+    if (nameDetail.textContent !== detail) {
+      nameDetail.textContent = detail;
+    }
+    const staleName =
+      (identityLoading || identityUnavailable) && (fullName || liteName)
+        ? `Cached: ${fullName || liteName} · not verified`
+        : "";
+    if (knownName.textContent !== staleName) {
+      knownName.textContent = staleName;
+    }
+    knownName.hidden = staleName === "";
+    claim.textContent =
+      operation?.register === true ? "Claim pending…" : "Claim username";
+    refresh.textContent =
+      operation?.register === false
+        ? "Checking…"
+        : identityUnavailable
+          ? "Retry wallet verification"
+          : "Check username";
+    walletView.setUsername(fullName || liteName);
+  };
+  const isVisible = (): boolean => !disposed && walletView.isOpen();
+  const clearSensitive = (): void => {
+    sensitiveGeneration++;
+    phrase.value = "";
+    phrase.hidden = true;
+    hide.hidden = true;
+    input.value = "";
+  };
+  walletView.onVisibilityChange(() => {
+    if (!walletView.isRecoveryVisible()) {
+      clearSensitive();
+      message.hidden = true;
+    }
+    if (!walletView.isOpen()) {
+      message.hidden = true;
+    }
+  });
+  hide.addEventListener("click", () => {
+    clearSensitive();
+    message.hidden = true;
+  });
+  const syncButtons = (): void => {
+    activate.disabled = pending || wallet.isActive();
+    disconnect.disabled = pending || !wallet.isActive();
+    reveal.disabled = pending;
+    importButton.disabled = pending;
+    remove.disabled = pending;
+    input.disabled = pending;
+    username.disabled =
+      pending || !wallet.isActive() || identityLoading || identityUnavailable;
+    claim.disabled =
+      pending ||
+      !wallet.isActive() ||
+      identityLoading ||
+      identityUnavailable ||
+      usernameStatus.kind === "claimed" ||
+      currentIdentity === undefined ||
+      (currentIdentity.liteUsername ?? "") !== "" ||
+      username.value.trim() === "";
+    refresh.disabled = pending || identityLoading || !wallet.isActive();
+    renderUsername();
+  };
+  syncButtons();
+
+  const markIdentityUnavailable = (reason: string): void => {
+    identityReadGeneration++;
+    identityGeneration++;
+    identityLoading = false;
+    identityUnavailable = true;
+    currentIdentity = undefined;
+    clearSensitive();
+    walletView.setIdentity(undefined);
+    // A failed provider is not evidence that its public identity disappeared.
+    usernameStatus = {
+      kind: "failed",
+      title: "Identity check failed",
+      detail: reason,
+    };
+    syncButtons();
+  };
+
+  const loadIdentity = async (): Promise<void> => {
+    const generation = ++identityReadGeneration;
+    identityLoading = wallet.isActive();
+    // Re-read the display cache so network, wallet revision, and Mobile mode
+    // changes cannot carry a previous selection's display into this check.
+    displayIdentity = wallet.isActive()
+      ? wallet.getCachedIdentity()
+      : undefined;
+    // Never publish cached display as product authority. Keep an already verified
+    // selection during routine reads so its observed resource outcomes survive.
+    if (
+      currentIdentity === undefined ||
+      displayIdentity?.identityAccountId !==
+        currentIdentity.identityAccountId ||
+      displayIdentity.network !== currentIdentity.network
+    ) {
+      walletView.setIdentity(undefined);
+      if (currentIdentity !== undefined) {
+        identityGeneration++;
+      }
+    }
+    if (!wallet.isActive()) {
+      if (currentIdentity !== undefined) {
+        identityGeneration++;
+        clearSensitive();
+      }
+      currentIdentity = undefined;
+      identityUnavailable = false;
+      usernameStatus = {
+        kind: "unknown",
+        title: "Username not checked",
+        detail: "",
+      };
+      syncButtons();
+      return;
+    }
+    syncButtons();
+    try {
+      const result = await wallet.getIdentity();
+      if (disposed || generation !== identityReadGeneration) {
+        return;
+      }
+      if (
+        currentIdentity?.identityAccountId !== result.identityAccountId ||
+        currentIdentity.network !== result.network ||
+        currentIdentity.liteUsername !== result.liteUsername ||
+        currentIdentity.fullUsername !== result.fullUsername
+      ) {
+        if (
+          currentIdentity?.identityAccountId !== result.identityAccountId ||
+          currentIdentity.network !== result.network
+        ) {
+          clearSensitive();
+          identityGeneration++;
+        }
+        username.value = "";
+        usernameStatus = {
+          kind: "unknown",
+          title: "Username not checked",
+          detail: "",
+        };
+      }
+      currentIdentity = result;
+      displayIdentity = result;
+      if (identityUnavailable) {
+        usernameStatus = {
+          kind: "unknown",
+          title: "Username not checked",
+          detail: "",
+        };
+      }
+      identityUnavailable = false;
+      walletView.setIdentity(currentIdentity);
+      if (
+        usernameStatus.kind === "unclaimed" &&
+        (currentIdentity.liteUsername ?? "") !== ""
+      ) {
+        usernameStatus = {
+          kind: "unknown",
+          title: "Username not checked",
+          detail: "",
+        };
+      }
+    } catch (error) {
+      if (!disposed && generation === identityReadGeneration) {
+        markIdentityUnavailable(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    } finally {
+      if (!disposed && generation === identityReadGeneration) {
+        identityLoading = false;
+        syncButtons();
+      }
+    }
+  };
+  const onIdentityChanged = (event: Event): void => {
+    const state = (event as CustomEvent<{ tag: string; reason?: string }>)
+      .detail;
+    if (state.tag === "Connected") {
+      clearSensitive();
+      void loadIdentity();
+      return;
+    }
+    if (state.tag !== "WalletUnavailable" && state.tag !== "Disconnected") {
+      return;
+    }
+    displayIdentity = wallet.isActive()
+      ? (wallet.getCachedIdentity() ??
+        (displayIdentity?.network === wallet.networkLabel()
+          ? displayIdentity
+          : undefined))
+      : undefined;
+    if (wallet.isActive()) {
+      markIdentityUnavailable(
+        state.reason ?? "The native wallet is disconnected.",
+      );
+      return;
+    }
+    identityReadGeneration++;
+    identityGeneration++;
+    identityLoading = false;
+    identityUnavailable = false;
+    currentIdentity = undefined;
+    clearSensitive();
+    walletView.setIdentity(undefined);
+    syncButtons();
+  };
+  window.addEventListener("dotli:truapi-auth-state", onIdentityChanged);
+  username.addEventListener("input", syncButtons);
+  const runUsername = async (register: boolean): Promise<void> => {
+    if (pending || disposed || identityLoading || !wallet.isActive()) {
+      return;
+    }
+    if (currentIdentity === undefined || identityUnavailable) {
+      await loadIdentity();
+      if (
+        isDisposed() ||
+        currentIdentity === undefined ||
+        identityUnavailable
+      ) {
+        return;
+      }
+    }
+    const baseUsername = username.value.trim();
+    if (
+      register &&
+      (usernameStatus.kind === "claimed" ||
+        (currentIdentity.liteUsername ?? "") !== "" ||
+        baseUsername === "")
+    ) {
+      return;
+    }
+    if (
+      register &&
+      !window.confirm(
+        `Claim the Lite username "${baseUsername}" on ${wallet.networkLabel()}?\n\n` +
+          `Identity: ${currentIdentity.identityAccountId}\n\n` +
+          "This submits a real registration. A backend response alone is not success; the wallet will wait for chain ownership confirmation.",
+      )
+    ) {
+      return;
+    }
+    pending = true;
+    const selectedIdentity = currentIdentity;
+    const selectedGeneration = identityGeneration;
+    const isCurrentIdentity = (): boolean =>
+      !disposed &&
+      wallet.isActive() &&
+      wallet.networkLabel() === selectedIdentity.network &&
+      identityGeneration === selectedGeneration &&
+      currentIdentity?.identityAccountId ===
+        selectedIdentity.identityAccountId &&
+      currentIdentity.network === selectedIdentity.network;
+    const operation = {
+      register,
+      identity: selectedIdentity,
+      generation: selectedGeneration,
+      startedAt: Date.now(),
+    };
+    usernameOperation = operation;
+    if (register) {
+      renderElapsed();
+      claimTimer = window.setInterval(renderElapsed, 1000);
+    }
+    clearSensitive();
+    syncButtons();
+    message.hidden = true;
+    try {
+      const result = register
+        ? await wallet.claimLiteUsername(baseUsername, (progress) => {
+            if (usernameOperation !== operation || !isCurrentIdentity()) {
+              return;
+            }
+            usernameOperation.progress = progress;
+            renderUsername();
+          })
+        : await wallet.refreshUsername();
+      if (!isCurrentIdentity()) {
+        return;
+      }
+      if (result.identityAccountId !== selectedIdentity.identityAccountId) {
+        throw new Error(
+          "The chain result belongs to a different wallet identity; it was not applied.",
+        );
+      }
+      if (register && (result.liteUsername ?? "") === "") {
+        throw new Error(
+          "The claim returned without a chain-confirmed username.",
+        );
+      }
+      currentIdentity = {
+        ...currentIdentity,
+        ...result,
+        liteUsername: result.liteUsername,
+        network: selectedIdentity.network,
+      };
+      displayIdentity = currentIdentity;
+      walletView.setIdentity(currentIdentity);
+      usernameStatus =
+        result.liteUsername !== undefined && result.liteUsername !== ""
+          ? {
+              kind: "claimed",
+              title: result.liteUsername,
+              detail: "Ownership confirmed",
+            }
+          : {
+              kind: "unclaimed",
+              title: "No username registered",
+              detail: "Checked on this network.",
+            };
+      message.hidden = true;
+      if ((result.liteUsername ?? "") !== "") {
+        username.value = "";
+      }
+    } catch (error) {
+      if (isCurrentIdentity()) {
+        usernameStatus = {
+          kind: "failed",
+          title: register
+            ? `Claim not confirmed: ${baseUsername}`
+            : "Username check failed",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+        // Reconcile any identity metadata updated before the callback failed.
+        await loadIdentity();
+      }
+    } finally {
+      stopClaimTimer();
+      elapsed.hidden = true;
+      pending = false;
+      usernameOperation = undefined;
+      if (!isDisposed()) {
+        content.removeAttribute("aria-busy");
+        syncButtons();
+      }
+    }
+  };
+  claim.addEventListener("click", () => {
+    void runUsername(true);
+  });
+  refresh.addEventListener("click", () => {
+    if (identityUnavailable && !pending && !identityLoading) {
+      void loadIdentity();
+    } else {
+      void runUsername(false);
+    }
+  });
+
+  const run = async (
+    operation:
+      | "activate"
+      | "disconnect"
+      | "deleteWallet"
+      | "exportMnemonic"
+      | "importMnemonic",
+  ): Promise<void> => {
+    if (
+      (operation === "exportMnemonic" ||
+        operation === "importMnemonic" ||
+        operation === "deleteWallet") &&
+      !walletView.isRecoveryVisible()
+    ) {
+      return;
+    }
+    if (pending || disposed) {
+      return;
+    }
+    if (
+      operation === "activate" &&
+      !window.confirm(
+        "Experimental browser wallet — testing only.\n\n" +
+          "Do not use valuable funds. Without a recovery phrase backup, deleting the wallet or clearing this site's data permanently loses access.\n\n" +
+          "Malicious scripts running on this origin can recover your keys. Encryption in browser storage does not protect against them.\n\n" +
+          "Real networks and real transactions remain possible; this is not a test-network sandbox.\n\n" +
+          "Enable / use this test wallet?",
+      )
+    ) {
+      return;
+    }
+    if (
+      operation === "deleteWallet" &&
+      !window.confirm(
+        "Permanently delete this test wallet from this browser?\n\n" +
+          "Without a recovery phrase backup, access to this account and any funds will be permanently lost. This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    if (
+      operation === "exportMnemonic" &&
+      !window.confirm(
+        "Reveal this test wallet's recovery phrase on screen?\n\n" +
+          "Anyone who sees it can control the wallet. Check for screen sharing and people nearby. " +
+          "Store a backup privately and offline. Nothing will be copied or downloaded automatically.",
+      )
+    ) {
+      return;
+    }
+    if (
+      operation === "importMnemonic" &&
+      !window.confirm(
+        "Import this phrase and replace the browser's test wallet?\n\n" +
+          "Testing only: never import a real wallet or one holding valuable funds. Scripts on this origin can access its keys.\n\n" +
+          "Back up the current test wallet's phrase first or lose access to it. " +
+          "Successful import replaces the shared test wallet for all trusted product hosts, resets wallet-bound permissions, activates the imported wallet and reloads the page. Mobile pairing is preserved.",
+      )
+    ) {
+      return;
+    }
+    activating = operation === "activate";
+    pending = true;
+    syncButtons();
+    content.setAttribute("aria-busy", "true");
+    message.hidden = false;
+    message.textContent =
+      operation === "exportMnemonic"
+        ? "Reading recovery phrase…"
+        : "Updating test wallet; the page will reload…";
+    const generation = sensitiveGeneration;
+    try {
+      if (operation === "exportMnemonic") {
+        const mnemonic = await wallet.exportMnemonic();
+        if (
+          !isDisposed() &&
+          walletView.isRecoveryVisible() &&
+          generation === sensitiveGeneration
+        ) {
+          phrase.value = mnemonic;
+          phrase.hidden = false;
+          hide.hidden = false;
+          message.textContent =
+            "Select the phrase to back it up privately. Hide it when finished.";
+        }
+      } else if (operation === "importMnemonic") {
+        const importing = input.value;
+        clearSensitive();
+        await wallet.importMnemonic(importing);
+      } else {
+        clearSensitive();
+        await wallet[operation]();
+        if (!isDisposed()) {
+          await loadIdentity();
+        }
+      }
+    } catch (error) {
+      if (isVisible()) {
+        // Import/export errors can originate in crypto libraries: never echo
+        // arbitrary error details containing a phrase into diagnostics or DOM.
+        message.textContent =
+          error instanceof Error && error.name === "WalletConflictError"
+            ? "A different test wallet is already stored, or another product changed the wallet. Reveal the recovery phrase to back up this origin's preserved wallet, then explicitly import it to replace the shared wallet. Delete removes both the shared wallet and any preserved origin-local copy."
+            : operation === "importMnemonic"
+              ? "Import failed. Use 12, 15, 18, 21 or 24 English BIP-39 words with a valid checksum, no passphrase/path, and ensure browser storage is available."
+              : operation === "exportMnemonic"
+                ? "Could not reveal a phrase. Enable or import a test wallet first and ensure browser storage is available."
+                : `Could not ${operation === "deleteWallet" ? "delete" : operation} the test wallet. Check browser storage and retry.`;
+      }
+    } finally {
+      pending = false;
+      activating = false;
+      if (!isDisposed()) {
+        content.removeAttribute("aria-busy");
+        syncButtons();
+      }
+    }
+  };
+  activate.addEventListener("click", () => {
+    void run("activate");
+  });
+  disconnect.addEventListener("click", () => {
+    void run("disconnect");
+  });
+  reveal.addEventListener("click", () => {
+    void run("exportMnemonic");
+  });
+  importButton.addEventListener("click", () => {
+    void run("importMnemonic");
+  });
+  remove.addEventListener("click", () => {
+    void run("deleteWallet");
+  });
+  void loadIdentity();
+  return () => {
+    disposed = true;
+    stopClaimTimer();
+    clearSensitive();
+    identityReadGeneration++;
+    window.removeEventListener("dotli:truapi-auth-state", onIdentityChanged);
+    window.removeEventListener("dotli:wallet-open", openWallet);
+    walletView.dispose();
+  };
 }
 
 const COPY_FLASH_MS = 1200;
@@ -550,6 +1517,7 @@ function wireHeader(ui: PanelUI, state: PanelState, store: EventStore): void {
     }
     ui.panel.classList.toggle("collapsed", state.collapsed);
     ui.collapseBtn.textContent = state.collapsed ? "▲" : "▼";
+    ui.walletView?.setVisible(state.view === "wallet" && !state.collapsed);
     adjustIframeForPanel(ui.panel, state);
   });
   ui.dockBtn.addEventListener("click", () => {
@@ -593,15 +1561,6 @@ function applyDockPosition(
   state.expandedHeight = "";
   ui.panel.style.removeProperty("--td-left-width");
   ui.panel.style.removeProperty("--td-top-height");
-  // Right-dock sits below the host topbar (40px) so the dock toggle and
-  // session controls remain reachable. Bottom-dock clears the override
-  // since it pins to the viewport bottom edge.
-  if (state.dock === "right") {
-    const hasTopbar = document.getElementById("topbar") !== null;
-    ui.panel.style.top = hasTopbar ? "40px" : "0";
-  } else {
-    ui.panel.style.top = "";
-  }
   if (state.dock === "right") {
     ui.dockBtn.innerHTML = DOCK_BOTTOM_SVG;
     ui.dockBtn.title = "Dock to bottom";
@@ -860,12 +1819,38 @@ function wireTabs(ui: PanelUI, state: PanelState, store: EventStore): void {
         HTMLButtonElement,
       ][]) {
         tab.classList.toggle("active", name === view);
+        tab.setAttribute("aria-selected", String(name === view));
+        tab.tabIndex = name === view ? 0 : -1;
       }
       ui.list.classList.toggle("hidden", view !== "list");
       ui.timeline.classList.toggle("hidden", view !== "timeline");
       ui.resolution.classList.toggle("hidden", view !== "resolution");
       ui.panel.classList.toggle("res-view", view === "resolution");
+      ui.panel.classList.toggle("wallet-view", view === "wallet");
+      ui.walletView?.content.classList.toggle("hidden", view !== "wallet");
+      ui.walletView?.setVisible(view === "wallet" && !state.collapsed);
       render(ui, state, store, { fullList: true });
+    });
+    btn.setAttribute("aria-selected", String(state.view === view));
+    btn.tabIndex = state.view === view ? 0 : -1;
+    btn.addEventListener("keydown", (event) => {
+      const tabs = Object.values(ui.tabs).filter((tab) => tab.hidden === false);
+      const index = tabs.indexOf(btn);
+      const next =
+        event.key === "ArrowRight"
+          ? tabs[(index + 1) % tabs.length]
+          : event.key === "ArrowLeft"
+            ? tabs[(index + tabs.length - 1) % tabs.length]
+            : event.key === "Home"
+              ? tabs[0]
+              : event.key === "End"
+                ? tabs.at(-1)
+                : undefined;
+      if (next !== undefined) {
+        event.preventDefault();
+        next.click();
+        next.focus();
+      }
     });
   }
 }
@@ -1081,7 +2066,7 @@ function render(
       ui.resolution,
       buildResolution(state.resolution.events(), Date.now()),
     );
-  } else {
+  } else if (state.view === "timeline") {
     // The timeline is cheap enough to always full-rebuild for now;
     // a future phase can switch to incremental geometry updates if
     // needed. Re-rendered on every new event (rAF-throttled) so

@@ -118,8 +118,12 @@ async function clickHostDialogs(
       // wait for a button that never returns and never reach the next dialog
       // (e.g. "Sign"), so bound it and let the next pass move on.
       console.log(`[signed] dialog "${name}" — clicking`);
+      // The paired fixture can approve the same permission and remove this
+      // button first. Bound the action so cancellation can finish promptly.
       await btn.click({ timeout: 2_000 }).catch((e: Error) => {
-        console.log(`[signed] dialog "${name}" click skipped: ${e.message}`);
+        if (!signal.aborted) {
+          console.log(`[signed] dialog "${name}" click failed: ${e.message}`);
+        }
       });
       seen.add(name);
       lastSeenAt = Date.now();

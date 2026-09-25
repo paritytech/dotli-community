@@ -660,7 +660,11 @@ export function initChatPanel(): void {
     const state = (event as CustomEvent<{ tag: string }>).detail;
     // Pairing/Authenticating/LoginFailed are transitional login-flow states,
     // not a session change; acting on them would close an open panel mid-flow.
-    if (state.tag !== "Connected" && state.tag !== "Disconnected") {
+    if (
+      state.tag !== "Connected" &&
+      state.tag !== "Disconnected" &&
+      state.tag !== "WalletUnavailable"
+    ) {
       return;
     }
     const next = state.tag === "Connected";

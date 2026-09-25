@@ -11,6 +11,10 @@ import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
+import {
+  handleNodeIdentityProxy,
+  IDENTITY_PROXY_PREFIX,
+} from "../../scripts/identity-proxy";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -250,6 +254,27 @@ export default defineConfig({
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
+    {
+      name: "dotli-identity-proxy",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.startsWith(IDENTITY_PROXY_PREFIX)) {
+            void handleNodeIdentityProxy(req, res);
+          } else {
+            next();
+          }
+        });
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url?.startsWith(IDENTITY_PROXY_PREFIX)) {
+            void handleNodeIdentityProxy(req, res);
+          } else {
+            next();
+          }
+        });
+      },
+    },
     wasm(),
     runtimeNetworkConfigScript(),
     socialMetaTags({

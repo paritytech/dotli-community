@@ -20,6 +20,7 @@ import {
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
+import { showNotification } from "./notification";
 import {
   formatAppVersion,
   getActiveAppManifest,
@@ -65,6 +66,8 @@ import { initChatPanel } from "./chat/panel";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
 import {
   emitPersistedSessionUiState,
+  isExperimentalWalletActive,
+  readLocalWalletDisplay,
   type TruapiSessionUiState,
 } from "./host-callbacks/SessionStore";
 import {
@@ -117,6 +120,7 @@ let productErrored = false;
 
 // User icon for the logged-out state
 const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+const EXPERIMENTAL_WALLET_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v7l-5.4 8.6A2 2 0 0 0 6.3 22h11.4a2 2 0 0 0 1.7-3.4L14 10V3M8 16h8"/></svg>`;
 
 // Track the current QR payload to prevent stale canvas appends
 let currentQrPayload: string | null = null;
@@ -307,6 +311,8 @@ export function initTopBar(
   userPopoverUsername = getElement("user-popover-username");
   userPopoverDisconnect = getElement("user-popover-disconnect");
 
+  syncExperimentalWalletPresentation();
+
   modalBackdrop.setAttribute("role", "dialog");
   modalBackdrop.setAttribute("aria-modal", "true");
   modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
@@ -462,13 +468,23 @@ export function initTopBar(
     moreButton?.setAttribute("aria-expanded", "false");
   });
 
-  // Show default logged-out state
+  // Restore display metadata without authenticating before the native owner boots.
   renderLoggedOut();
 
-  // Rehydrate the persisted same-origin session on idle so a reload shows
-  // the logged-in badge before any core instance boots.
+  // Rehydrate the persisted Mobile session before its core boots.
+  // Experimental identity is published only by its native wallet owner.
   scheduleIdle(() => {
-    emitPersistedSessionUiState();
+    void emitPersistedSessionUiState().catch((error: unknown) => {
+      showNotification({
+        label: "Wallet restoration",
+        text:
+          error instanceof Error && error.name === "WalletConflictError"
+            ? "A different test wallet is already stored. Open Debug → Wallet → Recovery to reveal and back up the preserved recovery phrase before explicitly importing or deleting."
+            : "Could not restore the wallet session. Check browser storage access; test-wallet recovery controls remain available in Debug → Wallet → Recovery.",
+        browserNotification: false,
+        dismissMs: 0,
+      });
+    });
   });
 }
 
@@ -485,7 +501,8 @@ function scheduleIdle(callback: () => void): void {
 /**
  * Render one auth state. The modal lifecycle is state-driven: `Pairing`
  * opens it with the QR, `Authenticating` replaces the QR with progress,
- * `Connected` closes it, `LoginFailed` shows a retryable error, and
+ * `Connected` closes it, and `LoginFailed` shows a retryable Mobile error.
+ * `WalletUnavailable` revokes authentication without entering Mobile pairing.
  * `Disconnected` only updates the badge so an unrelated disconnect signal
  * can never close an active pairing modal.
  */
@@ -494,6 +511,10 @@ function renderAuthState(state: DotliAuthState): void {
   switch (state.tag) {
     case "Disconnected":
       renderLoggedOut();
+      break;
+    case "WalletUnavailable":
+      userPopover.classList.remove("open");
+      renderLoggedOut(state.reason);
       break;
     case "Pairing":
       openModal(
@@ -508,7 +529,8 @@ function renderAuthState(state: DotliAuthState): void {
       break;
     case "Connected":
       closeModal({ skipTruapiCancel: true });
-      renderTruapiLoggedIn(state.session);
+      renderSessionBadge(state.session);
+      window.dispatchEvent(new Event("dotli:authenticated"));
       break;
     case "LoginFailed":
       openModal();
@@ -517,36 +539,109 @@ function renderAuthState(state: DotliAuthState): void {
   }
 }
 
-function renderLoggedOut(): void {
-  authButton.innerHTML = USER_SVG;
-  authButton.title = "Login with Polkadot Mobile";
-  authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
+function syncExperimentalWalletPresentation(): void {
+  const experimental = isExperimentalWalletActive();
+  document.documentElement.classList.toggle(
+    "experimental-wallet-active",
+    experimental,
+  );
+  const label = userPopover.querySelector(".label");
+  if (label) {
+    label.textContent = experimental
+      ? "Experimental test wallet"
+      : "Welcome back";
+  }
+  const disconnectLabel = userPopoverDisconnect.querySelector("span");
+  if (disconnectLabel) {
+    disconnectLabel.textContent = experimental
+      ? "Disconnect test wallet"
+      : "Log out";
+  }
+  const existing = document.getElementById("experimental-wallet-hint");
+  if (!experimental) {
+    existing?.remove();
+  } else if (existing === null) {
+    const hint = document.createElement("div");
+    hint.id = "experimental-wallet-hint";
+    hint.className = "user-popover-hint";
+    hint.textContent =
+      "Testing only. Open Debug → Wallet for username, allowances and Recovery settings. Disconnect to sign in with Polkadot Mobile.";
+    userPopoverUsername.insertAdjacentElement("afterend", hint);
+  }
+}
+
+function renderLoggedOut(unavailableReason?: string): void {
+  syncExperimentalWalletPresentation();
+  if (isExperimentalWalletActive()) {
+    const display = readLocalWalletDisplay();
+    if (display === undefined) {
+      renderExperimentalWalletBadge();
+    } else {
+      renderSessionBadge(display);
+    }
+    if (unavailableReason !== undefined) {
+      authButton.title += ` — wallet unavailable, last known identity only: ${unavailableReason}`;
+    } else if (display !== undefined) {
+      authButton.title += " — last known identity, verifying";
+    }
+  } else {
+    authButton.innerHTML = USER_SVG;
+    authButton.title = "Login with Polkadot Mobile";
+    authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
+  }
   setUserPopoverNoUsernameHint(false);
   window.dispatchEvent(new Event("dotli:logged-out"));
 }
 
-function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
-  const initials = truapiSessionInitials(state);
-  authButton.innerHTML =
-    initials !== undefined
-      ? `<div class="user-badge">${escapeHtml(initials)}</div>`
-      : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
-  authButton.title = "Account";
-  authButton.setAttribute("aria-label", "Account");
+function renderExperimentalWalletBadge(): void {
+  authButton.innerHTML = `<div class="user-badge user-badge-experimental">${EXPERIMENTAL_WALLET_SVG}</div>`;
+  authButton.title = "Open Wallet tab — experimental test wallet, testing only";
+  authButton.setAttribute(
+    "aria-label",
+    "Open Wallet tab — experimental test wallet",
+  );
+}
+
+function renderSessionBadge(
+  state: Omit<TruapiSessionUiState, "connected">,
+): void {
+  syncExperimentalWalletPresentation();
+  const experimental = isExperimentalWalletActive();
+  if (experimental) {
+    renderExperimentalWalletBadge();
+  } else {
+    const initials = truapiSessionInitials(state);
+    authButton.innerHTML =
+      initials !== undefined
+        ? `<div class="user-badge">${escapeHtml(initials)}</div>`
+        : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
+    authButton.title = "Account";
+    authButton.setAttribute("aria-label", "Account");
+  }
   const username =
     state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
+  if (experimental) {
+    authButton.title = `Experimental test wallet — ${getActiveServicesConfig().label}${username !== undefined && username !== "" ? ` — ${username}` : " — no username loaded"}`;
+    userPopoverUsername.title =
+      state.identityAccountId ?? state.publicKey ?? "";
+  } else {
+    userPopoverUsername.removeAttribute("title");
+  }
   userPopoverUsername.textContent =
     username ??
     shortenAccount(state.identityAccountId ?? state.publicKey) ??
-    "Connected with Polkadot Mobile";
-  setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
-  window.dispatchEvent(new Event("dotli:authenticated"));
+    (experimental
+      ? "Browser-local test identity"
+      : "Connected with Polkadot Mobile");
+  setUserPopoverNoUsernameHint(
+    !experimental && (username === undefined || username.length === 0),
+  );
 }
 
 // A session can install without any username (the account has no dotNS record
 // on this network), so initials only come from real names, never account hex.
 function truapiSessionInitials(
-  state: TruapiSessionUiState,
+  state: Omit<TruapiSessionUiState, "connected">,
 ): string | undefined {
   const fullName = state.fullUsername;
   if (fullName !== undefined && fullName.length > 0) {
@@ -845,7 +940,10 @@ function renderError(message: string, kind: LoginFailureKind): void {
 }
 
 function handleAuthButtonClick(): void {
-  if (truapiSessionConnected) {
+  if (isExperimentalWalletActive()) {
+    userPopover.classList.remove("open");
+    window.dispatchEvent(new Event("dotli:wallet-open"));
+  } else if (truapiSessionConnected) {
     userPopover.classList.toggle("open");
   } else {
     openModal();

@@ -75,7 +75,7 @@ function startAutoAllow(page: Page): () => void {
  * Identified by its `<h1>` heading rather than URL because the frame URL
  * lives on a per-CID subdomain that varies between builds.
  */
-async function waitForHostPlaygroundFrame(
+export async function waitForHostPlaygroundFrame(
   page: Page,
   timeoutMs: number,
 ): Promise<Frame> {

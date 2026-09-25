@@ -30,7 +30,12 @@ import {
   MESSAGE_TYPE_STOP,
   type MethodIds,
 } from "@parity/truapi";
-import { CallError, Result, type Codec } from "@parity/truapi/scale";
+import {
+  CallError,
+  Result,
+  indexedTaggedUnion,
+  type Codec,
+} from "@parity/truapi/scale";
 
 interface WireCodec {
   dec: (bytes: Uint8Array) => unknown;
@@ -250,6 +255,16 @@ function buildGenericNames(): Map<number, GenericEntry> {
 let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
 
+const allocationResponseCodec = indexedTaggedUnion({
+  V1: [
+    0,
+    Result(
+      generated.HostRequestResourceAllocationResponse,
+      CallError(generated.VersionedHostRequestResourceAllocationError),
+    ),
+  ],
+});
+
 export function describeWireFrame(
   frame: WireFrameId,
   bytes: Uint8Array,
@@ -258,6 +273,55 @@ export function describeWireFrame(
   genericNames ??= buildGenericNames();
 
   const wireId = wireFrameKey(frame);
+
+  // Only allocation resource selectors and outcomes are inspector metadata.
+  // Never retain arbitrary native error reasons or malformed raw payloads.
+  const allocationIds =
+    WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST as unknown as MethodIds;
+  const allocationRequestKey = wireFrameKey(
+    wireFrameId(allocationIds, MESSAGE_TYPE_REQUEST),
+  );
+  const allocationResponseKey = wireFrameKey(
+    wireFrameId(allocationIds, MESSAGE_TYPE_RESPONSE),
+  );
+  if (wireId === allocationRequestKey || wireId === allocationResponseKey) {
+    const isRequest = wireId === allocationRequestKey;
+    const tag = isRequest
+      ? "resource_allocation_request_request"
+      : "resource_allocation_request_response";
+    try {
+      if (isRequest) {
+        const request =
+          generated.VersionedHostRequestResourceAllocationRequest.dec(bytes);
+        const encoded =
+          generated.VersionedHostRequestResourceAllocationRequest.enc(request);
+        if (
+          encoded.length === bytes.length &&
+          encoded.every((byte, index) => byte === bytes[index])
+        ) {
+          return { tag, value: { resources: request.value.resources } };
+        }
+      } else {
+        const response = allocationResponseCodec.dec(bytes);
+        const encoded = allocationResponseCodec.enc(response);
+        if (
+          encoded.length === bytes.length &&
+          encoded.every((byte, index) => byte === bytes[index])
+        ) {
+          return {
+            tag,
+            value: response.value.success
+              ? { outcomes: response.value.value.outcomes }
+              : { failed: true },
+          };
+        }
+      }
+    } catch {
+      // Invalid metadata must not affect transport delivery or reveal bytes.
+      return { tag, value: { redacted: true, byteLength: bytes.length } };
+    }
+    return { tag, value: { redacted: true, byteLength: bytes.length } };
+  }
   const chain = chainEntries.get(wireId);
   if (chain !== undefined) {
     if (chain.codec === null) {

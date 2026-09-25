@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   encodeWireMessage,
+  HostRequestResourceAllocationResponse,
   MESSAGE_TYPE_INTERRUPT,
   MESSAGE_TYPE_REQUEST,
   MESSAGE_TYPE_RESPONSE,
   MESSAGE_TYPE_START,
   MESSAGE_TYPE_STOP,
+  RemoteChainHeadHeaderResponse,
+  VersionedHostRequestResourceAllocationError,
+  VersionedHostRequestResourceAllocationRequest,
   VersionedRemoteChainHeadFollowRequest,
   VersionedRemoteChainHeadHeaderError,
   VersionedRemoteChainHeadHeaderRequest,
@@ -13,7 +17,7 @@ import {
   VersionedRemoteChainHeadUnpinError,
   VersionedRemoteChainHeadUnpinResponse,
 } from "@parity/truapi";
-import { CallError, Result } from "@parity/truapi/scale";
+import { CallError, Result, indexedTaggedUnion } from "@parity/truapi/scale";
 import * as WIRE_TABLE from "@parity/truapi/wire-table";
 import {
   CHAIN_FOLLOW_HEAD_SUBSCRIBE,
@@ -38,6 +42,89 @@ function payloadBytes(
 }
 
 describe("describeWireFrame", () => {
+  it("preserves batched resource outcomes in request order", () => {
+    const resources = [
+      { tag: "StatementStoreAllowance", value: undefined },
+      { tag: "BulletinAllowance", value: undefined },
+    ];
+    const request = payloadBytes(
+      VersionedHostRequestResourceAllocationRequest,
+      {
+        tag: "V1",
+        value: { resources },
+      },
+    );
+    const response = payloadBytes(
+      indexedTaggedUnion({
+        V1: [
+          0,
+          Result(
+            HostRequestResourceAllocationResponse,
+            CallError(VersionedHostRequestResourceAllocationError),
+          ),
+        ],
+      }),
+      {
+        tag: "V1",
+        value: {
+          success: true,
+          value: { outcomes: ["Rejected", "Allocated"] },
+        },
+      },
+    );
+    expect(
+      describeWireFrame(
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_REQUEST,
+        ),
+        request,
+      ).value,
+    ).toEqual({ resources });
+    expect(
+      describeWireFrame(
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_RESPONSE,
+        ),
+        response,
+      ).value,
+    ).toEqual({ outcomes: ["Rejected", "Allocated"] });
+  });
+
+  it("redacts malformed allocation data instead of retaining unexpected payloads", () => {
+    const request = payloadBytes(
+      VersionedHostRequestResourceAllocationRequest,
+      {
+        tag: "V1",
+        value: {
+          resources: [{ tag: "StatementStoreAllowance", value: undefined }],
+        },
+      },
+    );
+    const privatePayload = new TextEncoder().encode("not-for-the-activity-log");
+    const trailingPayload = new Uint8Array([...request, ...privatePayload]);
+    const malformedResponse = new Uint8Array([255, ...privatePayload]);
+    expect(
+      describeWireFrame(
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_REQUEST,
+        ),
+        trailingPayload,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: trailingPayload.length });
+    expect(
+      describeWireFrame(
+        wireFrameId(
+          WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST,
+          MESSAGE_TYPE_RESPONSE,
+        ),
+        malformedResponse,
+      ).value,
+    ).toEqual({ redacted: true, byteLength: malformedResponse.length });
+  });
+
   it("As a dotli integrator, the host tags chain frames with the panel's legacy names and decodes their payloads", () => {
     // Given
     const bytes = payloadBytes(VersionedRemoteChainHeadFollowRequest, {
@@ -163,7 +250,6 @@ describe("describeWireFrame", () => {
     // Then: sanity check that the envelope encodes. The tap decodes it with decodeWireMessage.
     expect(framed).toBeInstanceOf(Uint8Array);
   });
-
   it("As a dotli integrator, the host decodes a real chainHead.header Ok response using the generated client's wire composition", () => {
     // Given: the exact composition `ChainClient#getHeadHeader` decodes with,
     // Result(<versioned response>, CallError(<versioned error>)). A bare

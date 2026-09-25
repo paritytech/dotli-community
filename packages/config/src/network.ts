@@ -49,6 +49,7 @@ export interface BulletinService extends ChainService {
 export interface ServicesConfig {
   readonly label: string;
   readonly description: string;
+  readonly identityBackendBaseUrl: string;
   readonly relay: ChainService;
   readonly assethub: ChainService;
   readonly bulletin: BulletinService;
@@ -60,6 +61,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PASEO]: {
     label: "Paseo",
     description: "Paseo Next Network",
+    // Same-origin proxy to https://identity.dotspark.app/api/v1.
+    identityBackendBaseUrl: "/__dotli-identity/paseo",
     relay: {
       genesis:
         "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
@@ -100,6 +103,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PREVIEWNET]: {
     label: "Previewnet",
     description: "Product Preview Network",
+    // Same-origin proxy to https://identity-previewnet.dotspark.app/api/v1.
+    identityBackendBaseUrl: "/__dotli-identity/testnet",
     relay: {
       genesis:
         "0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e",
@@ -151,15 +156,14 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  *
  * Three deliberate limits keep this small and safe:
  *
- *   * **Endpoints only** — `label`, `rpcs` and `ipfsGateways`. Never `genesis` or
- *     `dotns`, which are the trust root for name resolution: an override that
- *     could repoint the DotNS registry would let anything running in the page
- *     redirect every dotNS lookup while `isVerifiedSession()` still reported
- *     "verified". Limiting it to endpoints means the worst an override can do is
- *     move you to a different node for the *same* chain identity, which the light
- *     client verifies against the compiled-in genesis anyway. It is also why only
- *     documents need this: the protocol SharedWorker reads solely `genesis` and
- *     `dotns`, so it needs no runtime config and none is plumbed to it.
+ *   * **Endpoints only** — `label`, `rpcs`, `ipfsGateways` and
+ *     `identityBackendBaseUrl`. Never `genesis` or `dotns`, which are the trust
+ *     root for name resolution. Chain identity is still verified against the
+ *     compiled-in genesis; identity registration must confirm chain ownership,
+ *     never trust an HTTP acceptance response. Backend overrides receive public
+ *     account proofs, not wallet entropy. Same-origin root-relative proxy paths,
+ *     HTTPS, and HTTP on loopback are allowed. The protocol SharedWorker reads solely
+ *     `genesis` and `dotns`, so it needs no runtime config.
  *   * **Patches existing networks** — no new names, so `NetworkName` stays a
  *     closed union. Use `label` to say what a repointed network really is.
  *   * **Arrays replace, never concatenate.** Appending would leave the fork's
@@ -270,6 +274,26 @@ function asString(value: unknown, path: string): string {
   return value;
 }
 
+function asIdentityBackendUrl(value: unknown, path: string): string {
+  const raw = asString(value, path);
+  const relative =
+    raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\");
+  const url = relative ? new URL(raw, "https://dotli.invalid") : new URL(raw);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (
+    (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error(
+      `${path} must be a root-relative proxy path or HTTPS base URL (HTTP only on loopback), without credentials, query or fragment.`,
+    );
+  }
+  return (relative ? url.pathname : url.toString()).replace(/\/+$/, "");
+}
+
 // The merges below are written out field by field rather than as a generic deep
 // merge. With this few fields it is shorter, it cannot walk the prototype chain,
 // and the exact set of things an override may reach is legible at a glance —
@@ -314,11 +338,29 @@ function mergeNetwork(
   path: string,
 ): ServicesConfig {
   const p = asObject(patch, path);
-  checkFields(p, ["label", "relay", "assethub", "bulletin", "people"], path);
+  checkFields(
+    p,
+    [
+      "label",
+      "identityBackendBaseUrl",
+      "relay",
+      "assethub",
+      "bulletin",
+      "people",
+    ],
+    path,
+  );
   return {
     ...base,
     label:
       p.label === undefined ? base.label : asString(p.label, `${path}.label`),
+    identityBackendBaseUrl:
+      p.identityBackendBaseUrl === undefined
+        ? base.identityBackendBaseUrl
+        : asIdentityBackendUrl(
+            p.identityBackendBaseUrl,
+            `${path}.identityBackendBaseUrl`,
+          ),
     relay:
       p.relay === undefined
         ? base.relay
