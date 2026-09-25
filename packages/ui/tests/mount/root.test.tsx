@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JSX } from "@solidjs/web";
 import { settle } from "../helpers/solid";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -119,5 +120,24 @@ describe("mountRoot", () => {
     // Then
     expect(first.childNodes.length).toBe(0);
     expect(second.textContent).toBe("2");
+  });
+
+  it("As a dotli developer, a root's onError runs after a render error is reported", async () => {
+    // Given
+    const { disposeRoot, mountRoot } = await import("@dotli/ui/mount/root");
+    const el = container("broken-with-hook");
+    const onError = vi.fn();
+    const boom = new Error("render failed");
+    const Broken = (): JSX.Element => {
+      throw boom;
+    };
+
+    // When
+    mountRoot("broken-with-hook", el, () => <Broken />, { onError });
+    await settle();
+
+    // Then
+    expect(onError).toHaveBeenCalledWith(boom);
+    disposeRoot("broken-with-hook");
   });
 });

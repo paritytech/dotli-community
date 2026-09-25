@@ -35,24 +35,33 @@ export function reportRootErrorOnce(err: unknown, name: string): void {
   captureException(err, { root: name });
 }
 
+export interface MountRootOptions {
+  /** Called after a render error has been reported. */
+  onError?: (err: unknown) => void;
+}
+
 /**
  * Render `view` into `container` as the named root. A throwing view is caught
  * by an error boundary, reported to Sentry with `{ root: name }` (once per
  * distinct error object), and renders nothing, so other roots and the page
  * keep working. Mounting a name that is already mounted disposes the old
- * root first.
+ * root first. `options.onError` runs after the report, so a root can settle
+ * work that depended on it.
  */
 export function mountRoot(
   name: string,
   container: HTMLElement,
   view: () => JSX.Element,
+  options: MountRootOptions = {},
 ): () => void {
   disposeRoot(name);
   const dispose = render(
     () =>
       createComponent(Errored, {
         fallback: (err: () => unknown) => {
-          reportRootErrorOnce(err(), name);
+          const error = err();
+          reportRootErrorOnce(error, name);
+          options.onError?.(error);
           return null;
         },
         get children() {
