@@ -42,7 +42,7 @@ plugin (sub-project 4), `apps/protocol`.
 
 - New `packages/typescript-config/solid.json`:
   ```json
-  { "compilerOptions": { "jsx": "preserve", "jsxImportSource": "solid-js" } }
+  { "compilerOptions": { "jsx": "preserve", "jsxImportSource": "@solidjs/web" } }
   ```
 - `packages/ui`, `packages/truapi-debug`, `packages/sandbox-checker`,
   `apps/host`, and `apps/sandbox` tsconfigs add it to `extends`.
@@ -119,12 +119,12 @@ Rules:
 | Store | State | Fed by | Events the setter dispatches |
 |---|---|---|---|
 | `auth` | `DotliAuthState` (moved from `host-callbacks/AuthState.ts`), `loggedIn: boolean` | `dispatchAuthState` in `AuthState.ts` calls `setAuthState`; `topbar.ts:525` / `:543` call `setLoggedIn` | `dotli:truapi-auth-state`, `dotli:logged-out`, `dotli:authenticated` |
-| `product` | `{ status: "none" \| "loaded" \| "error", label?: string }` | `bridge.ts:1068`, `:1244`; `ui.ts:782`, `:833` | `dotli:product-loaded`, `dotli:product-error` |
-| `permissions` | `Record<Permission, PermissionStatus>` plus `version` counter | `host-callbacks/PromptPermission.ts:168`, `:177` | `dotli:device-permission-changed`, `dotli:permission-changed` |
+| `product` | `{ status: "none" } \| { status: "loaded", label, productId } \| { status: "error" }` | `bridge.ts:1068`, `:1244`; `ui.ts:782`, `:833` | `dotli:product-loaded`, `dotli:product-error` |
+| `permissions` | change counter `version` plus the last change `{ kind: "grant" \| "device", label, permission? }` (statuses stay in `permissions.ts`; components re-read them when `version` changes) | `host-callbacks/PromptPermission.ts:168`, `:177` | `dotli:device-permission-changed`, `dotli:permission-changed` |
 | `chat` | availability `{ label, chat }`, rooms / bots / message change counters | `chat/service.ts:77` (setter replaces the dispatch helper); availability via a listener on `CHAT_AVAILABILITY_EVENT` (producer lives in `packages/shared`, which must not import `packages/ui`) | `dotli:chat-*` (unchanged names and details) |
-| `network` | mirror of `getNetworkStatus()` and `getTransfer()` | subscribes to `subscribeNetwork` lazily on first accessor use | none |
+| `network` | mirror of `getNetworkStatus()` and `getTransfer()` | `startNetworkStore()` subscribes to `subscribeNetwork` and returns the unsubscribe; not called by production code until sub-project 4 | none |
 | `settings` | `{ backend, cache, network, enabledNetworks }` | `initSettingsStore()` reads the `config/mode` and `config/network` getters once; called from host `main.ts` boot | none |
-| `theme` | `{ pref: "light" \| "dark" \| "system", resolved: "light" \| "dark" }` | `topbar.ts:169` path calls `setTheme`; `matchMedia` listener installed by `initThemeStore()` | `dotli:theme-changed` |
+| `theme` | `{ pref: "light" \| "dark" \| "system", resolved: "light" \| "dark" }` | `applyThemePref` in `topbar.ts` calls `setTheme` (it already runs on the `matchMedia` change) | `dotli:theme-changed` |
 | `topbar` | `{ visible: boolean, blockingModalActive: boolean, chainsButtonVisible: boolean }` | `topbar-autohide.ts:130`, `blocking-modal-queue.ts:168`, `setChainsButtonVisible` in `topbar.ts` | `topbar:visibility`, `dotli:blocking-modal-active` |
 
 Command events (`dotli:request-login`, `dotli:truapi-login-request`,

@@ -31,7 +31,7 @@ features.
 ### Tooling
 
 - `packages/typescript-config/solid.json` adds `"jsx": "preserve"` and
-  `"jsxImportSource": "solid-js"`. Only UI-rendering packages extend it.
+  `"jsxImportSource": "@solidjs/web"` (the JSX runtime ships in `@solidjs/web` in Solid 2). Only UI-rendering packages extend it.
 - Host and sandbox `vite.config.ts` and the `packages/ui`, `apps/host`, and
   `apps/sandbox` Vitest configs add the Solid plugin.
 - `packages/eslint-config` gets a `**/*.tsx` block (Solid lint rules where the
