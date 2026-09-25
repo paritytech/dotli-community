@@ -52,6 +52,7 @@ import type { AuthState, PairingHostAdmin } from "@parity/truapi-host";
 import type {
   LocalIdentity,
   LocalIdentityProgress,
+  WalletAllowanceSnapshot,
   WorkerPairingHostRuntime,
   WorkerSigningHostRuntime,
 } from "@parity/truapi-host/web";
@@ -693,6 +694,48 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
   };
 }
 
+async function getInspectorAllowanceSnapshot(): Promise<WalletAllowanceSnapshot> {
+  const product = currentProduct;
+  const generation = renderGeneration;
+  const network = getNetwork();
+  const networkSuffix = getActiveServicesConfig().dotns.TLD;
+  const productIds =
+    product === null
+      ? []
+      : [
+          product.mode === "iframe"
+            ? (product.productId ?? labelToProductId(product.label))
+            : labelToProductId(product.label),
+        ];
+  const wallet = await activeLocalWallet();
+  const assertCurrent = (): void => {
+    assertInspectorWallet(wallet);
+    if (
+      product !== currentProduct ||
+      generation !== renderGeneration ||
+      network !== getNetwork()
+    ) {
+      throw new Error(
+        "The wallet inspection context changed. Refresh the Wallet tab.",
+      );
+    }
+  };
+  assertCurrent();
+  const snapshot = await wallet.runtime.getWalletAllowanceSnapshot(productIds);
+  assertCurrent();
+  if (
+    snapshot.identityAccountId !== wallet.binding.identityAccountId ||
+    snapshot.networkSuffix !== networkSuffix ||
+    snapshot.productIds.length !== productIds.length ||
+    snapshot.productIds.some((id, index) => id !== productIds[index])
+  ) {
+    throw new Error(
+      "Native allowance inspection returned a different wallet or product scope.",
+    );
+  }
+  return snapshot;
+}
+
 async function requestInspectorResource(
   productId: string,
   resource: unknown,
@@ -764,6 +807,7 @@ export const experimentalWalletControls = {
     };
   },
   getProduct: getInspectorProduct,
+  getAllowanceSnapshot: getInspectorAllowanceSnapshot,
   describeResource,
   requestResource: requestInspectorResource,
   refreshUsername(): Promise<LocalIdentity> {

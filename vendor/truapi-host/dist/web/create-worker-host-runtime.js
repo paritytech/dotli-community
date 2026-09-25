@@ -4,6 +4,7 @@ import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import { bytesToHex } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
 import { errorMessage, toError } from "../error.js";
+import { validateAllowanceProductIds, } from "../wallet-allowances.js";
 function debugLoggingEnabled(state) {
     return state.logLevel === "debug" || state.logLevel === "trace";
 }
@@ -15,6 +16,7 @@ let nextDeviceEncryptionKeyRequestId = 0;
 let nextProductSubtreePublicKeyRequestId = 0;
 let nextSessionActivationRequestId = 0;
 let nextLocalIdentityRequestId = 0;
+let nextAllowanceSnapshotRequestId = 0;
 let nextActionRequestId = 0;
 let nextRenderId = 0;
 function encodePermissionAuthorizationRequest(request) {
@@ -373,6 +375,7 @@ function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingDisconnects, error);
     rejectAll(state.pendingSessionActivations, error);
     rejectAll(state.pendingLocalIdentities, error);
+    rejectAll(state.pendingAllowanceSnapshots, error);
     rejectAll(state.pendingPermissionAuthorizationStatuses, error);
     rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
     rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
@@ -412,25 +415,94 @@ function sendWorkerRequest(state, pending, nextId, disposedFallback, buildMessag
  * in, so a silent success after a worker fault would route it as if the
  * activation had run.
  */
-function sendSessionActivationRequest(state, buildMessage) {
+function sendSessionActivationRequest(state, buildMessage, changesIdentity = true) {
     if (state.disposed) {
         return Promise.reject(state.closedError ?? new Error("runtime disposed"));
     }
+    if (changesIdentity)
+        invalidateAllowanceIdentity(state);
     return sendWorkerRequest(state, state.pendingSessionActivations, () => ++nextSessionActivationRequestId, undefined, buildMessage);
 }
 function sendLocalIdentityRequest(state, buildMessage, onProgress) {
     if (state.disposed) {
         return Promise.reject(state.closedError ?? new Error("runtime disposed"));
     }
+    const generation = state.identityGeneration;
     const { promise, resolve, reject } = Promise.withResolvers();
     const requestId = ++nextLocalIdentityRequestId;
-    state.pendingLocalIdentities.set(requestId, { resolve, reject, onProgress });
+    state.pendingLocalIdentities.set(requestId, {
+        resolve(identity) {
+            if (generation !== state.identityGeneration || state.disposePending) {
+                reject(new Error("local identity activation changed"));
+                return;
+            }
+            state.identityAccountId = identity.identityAccountId;
+            resolve(identity);
+        },
+        reject,
+        onProgress,
+    });
     try {
         state.worker.postMessage(buildMessage(requestId));
     }
     catch (error) {
         state.pendingLocalIdentities.delete(requestId);
         reject(error);
+    }
+    return promise;
+}
+function invalidateAllowanceIdentity(state) {
+    state.identityGeneration++;
+    state.identityAccountId = null;
+    rejectAll(state.pendingAllowanceSnapshots, new Error("local identity activation changed"));
+}
+async function getWalletAllowanceSnapshot(state, input) {
+    if (state.disposed || state.disposePending) {
+        throw state.closedError ?? new Error("runtime disposed");
+    }
+    if (state.role !== "signing" ||
+        state.pendingSessionActivations.size > 0 ||
+        state.pendingDisconnects.size > 0) {
+        throw new Error("allowance inspection requires a current local signing identity");
+    }
+    const productIds = validateAllowanceProductIds(input);
+    const accountId = state.identityAccountId;
+    const generation = state.identityGeneration;
+    const requestId = ++nextAllowanceSnapshotRequestId;
+    const { promise, resolve, reject } = Promise.withResolvers();
+    const timeout = setTimeout(() => {
+        state.pendingAllowanceSnapshots.delete(requestId);
+        reject(new Error("wallet allowance inspection timed out after 30000ms"));
+    }, 30_000);
+    state.pendingAllowanceSnapshots.set(requestId, {
+        resolve(snapshot) {
+            clearTimeout(timeout);
+            if (generation !== state.identityGeneration ||
+                snapshot?.schemaVersion !== 1 ||
+                (accountId !== null && snapshot.identityAccountId !== accountId) ||
+                snapshot.networkSuffix !== state.networkSuffix) {
+                reject(new Error("wallet allowance snapshot does not match the current identity"));
+                return;
+            }
+            resolve(snapshot);
+        },
+        reject(error) {
+            clearTimeout(timeout);
+            reject(error);
+        },
+    });
+    try {
+        state.worker.postMessage({
+            kind: "getWalletAllowanceSnapshot",
+            requestId,
+            productIds,
+        });
+    }
+    catch (error) {
+        settlePending(state.pendingAllowanceSnapshots, requestId, {
+            ok: false,
+            error: errorMessage(error),
+        });
     }
     return promise;
 }
@@ -515,6 +587,13 @@ function createWebWorkerHostRuntime(worker, host, options) {
     return new Promise((resolve, reject) => {
         const state = {
             worker,
+            role: options.role ?? "pairing",
+            networkSuffix: "networkSuffix" in options.hostConfig
+                ? options.hostConfig.networkSuffix
+                : undefined,
+            identityAccountId: null,
+            identityGeneration: 0,
+            pendingAllowanceSnapshots: new Map(),
             rawCallbacks: callbacks,
             cores: new Map(),
             pendingCores: new Map(),
@@ -602,6 +681,11 @@ function createWebWorkerHostRuntime(worker, host, options) {
                 case "localIdentityResponse":
                     settlePending(state.pendingLocalIdentities, msg.requestId, msg.ok
                         ? { ok: true, value: msg.identity }
+                        : { ok: false, error: msg.error });
+                    break;
+                case "walletAllowanceSnapshotResponse":
+                    settlePending(state.pendingAllowanceSnapshots, msg.requestId, msg.ok
+                        ? { ok: true, value: msg.snapshot }
                         : { ok: false, error: msg.error });
                     break;
                 case "permissionAuthorizationStatusResponse":
@@ -842,6 +926,7 @@ function buildRuntime(state) {
             });
         },
         disconnectSession() {
+            invalidateAllowanceIdentity(state);
             return sendWorkerRequest(state, state.pendingDisconnects, () => ++nextDisconnectRequestId, undefined, (requestId) => ({ kind: "disconnectSession", requestId }));
         },
         cancelPairing() {
@@ -926,7 +1011,7 @@ function buildRuntime(state) {
                 kind: "setGrantAllowancesUnchecked",
                 requestId,
                 granted,
-            }));
+            }), false);
         },
         resetSessionState() {
             return sendSessionActivationRequest(state, (requestId) => ({
@@ -947,6 +1032,9 @@ function buildRuntime(state) {
                 kind: "refreshLocalIdentity",
                 requestId,
             }));
+        },
+        getWalletAllowanceSnapshot(productIds) {
+            return getWalletAllowanceSnapshot(state, productIds);
         },
         registerLocalLiteUsername(baseUsername, identityBackendBaseUrl, onProgress) {
             return sendLocalIdentityRequest(state, (requestId) => ({
@@ -991,6 +1079,7 @@ function buildRuntime(state) {
             });
         },
         dispose() {
+            invalidateAllowanceIdentity(state);
             devGlobalTargets.delete(runtime);
             // Let a background task (e.g. a funding transaction) finish; the last
             // endOperation runs the teardown. Fault teardown is never deferred.

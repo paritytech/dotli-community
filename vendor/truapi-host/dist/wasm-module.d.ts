@@ -1,5 +1,6 @@
 import type { PermissionAuthorizationRuntime } from "./worker-permission-authorization.js";
 import type { LocalIdentity } from "./worker-protocol.js";
+import type { WalletAllowanceSnapshot } from "./wallet-allowances.js";
 /** Cancellable handle on one live render stream inside the core. */
 export interface WorkerRendererSubscription {
     cancel(): void;
@@ -82,6 +83,7 @@ export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     localIdentityAuthProof(activationId: string, challenge: Uint8Array): Uint8Array;
     localLiteRegistrationBody(activationId: string, usernameBase: string, verifier: Uint8Array): Promise<string>;
     refreshLocalIdentity(activationId: string): Promise<LocalIdentity>;
+    getWalletAllowanceSnapshot(activationId: string, productIds: string[]): Promise<WalletAllowanceSnapshot>;
 }
 /** Module surface the wasm-pack glue exports. */
 export interface WasmModuleShape {
