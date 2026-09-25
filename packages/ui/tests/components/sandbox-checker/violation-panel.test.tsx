@@ -181,4 +181,31 @@ describe("sandbox checker violation panel", () => {
     expect(document.getElementById("sandbox-checker-panel")).toBeNull();
     expect(iframe.style.height).toBe("calc(100dvh - 56px)");
   });
+
+  it("As a dotli developer, disposing while dragging cleans up the drag state", async () => {
+    // Given
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "x",
+      details: {},
+      timestamp: 0,
+    });
+    await settle();
+    const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
+
+    // When
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
+    await settle();
+
+    // Then
+    expect(document.body.style.userSelect).toBe("none");
+
+    // When
+    dispose();
+    dispose = () => undefined;
+    await settle();
+
+    // Then
+    expect(document.body.style.userSelect).toBe("");
+  });
 });

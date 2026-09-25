@@ -3,7 +3,7 @@
 
 // Imported dynamically by bridge.ts, only in VITE_SANDBOX_CHECKER builds.
 
-import { disposeRoot, mountRoot } from "../../mount/root";
+import { mountRoot } from "../../mount/root";
 import { ViolationPanel } from "./ViolationPanel";
 
 const ROOT = "sandbox-checker";
@@ -12,9 +12,11 @@ const ROOT = "sandbox-checker";
 export function mountViolationPanel(iframe: HTMLIFrameElement): () => void {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  mountRoot(ROOT, container, () => <ViolationPanel iframe={iframe} />);
+  const disposeView = mountRoot(ROOT, container, () => (
+    <ViolationPanel iframe={iframe} />
+  ));
   return () => {
-    disposeRoot(ROOT);
+    disposeView();
     container.remove();
     iframe.style.height =
       document.getElementById("topbar") !== null

@@ -120,6 +120,10 @@ export function ViolationPanel(props: {
     window.removeEventListener("message", onMessage);
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    if (dragging) {
+      dragging = false;
+      document.body.style.userSelect = "";
+    }
   });
 
   // New entry: scroll to it. Visible, collapsed or resized: refit the frame.
@@ -131,6 +135,7 @@ export function ViolationPanel(props: {
       }
     },
   );
+  // Refit iframe on every new violation on purpose (the log grows until its max-height).
   createEffect(
     () => [violations().length > 0, collapsed(), height()] as const,
     ([visible]) => {
