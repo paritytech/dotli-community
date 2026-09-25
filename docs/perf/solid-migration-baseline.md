@@ -413,7 +413,7 @@ sourcemap `sources` — also negative.
 Chat chunk (hash from the measurement build): host `mount-KOUcVPS6.js`
 16,982 B raw / 6,035 B gzip.
 
-Cold start (20 runs each, back to back): before p50 3,850 ms, after p50
-3,690 ms, Δ -4.2%; `compare.ts` End-to-end p50 3.85s → 3.69s (-4.2%),
+Cold start (20 runs each, back to back): before p50 2,647 ms, after p50
+2,686 ms, Δ +1.5%; `compare.ts` End-to-end p50 3.85s → 3.69s (-4.2%),
 Mann-Whitney z=0.76, not significant.
 Gate (no regression beyond 5%): **pass**.
