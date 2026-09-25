@@ -6,6 +6,7 @@ import { defineConfig, type Plugin } from "vite";
 import { readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
+import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
@@ -250,6 +251,9 @@ export default defineConfig({
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
+    // Hydratable client output. Nothing renders a component yet; the
+    // prerender step that uses it arrives in sub-project 4.
+    solid({ ssr: true }),
     wasm(),
     runtimeNetworkConfigScript(),
     socialMetaTags({

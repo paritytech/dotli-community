@@ -1,7 +1,8 @@
 {
   "extends": [
     "@dotli/typescript-config/base.json",
-    "@dotli/typescript-config/paths.json"
+    "@dotli/typescript-config/paths.json",
+    "@dotli/typescript-config/solid.json"
   ],
   "include": ["src"]
 }

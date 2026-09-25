@@ -39,6 +39,7 @@
     "@parity/truapi": "0.21.0"
   },
   "overrides": {
+    "@solidjs/signals": "2.0.0-rc.9",
     "fast-uri": "3.1.7",
     "browserslist": "^4.28.7",
     "smoldot": "3.4.1",

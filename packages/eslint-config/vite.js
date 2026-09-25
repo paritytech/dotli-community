@@ -3,6 +3,7 @@
 
 import js from "@eslint/js";
 import eslintConfigPrettier from "eslint-config-prettier";
+import solid from "eslint-plugin-solid";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
 /**
@@ -134,5 +135,15 @@ export const config = [
   },
   {
     ignores: ["dist/**", "node_modules/**", "*.js", "*.cjs"],
+  },
+  {
+    files: ["**/*.tsx"],
+    plugins: { solid },
+    rules: {
+      ...solid.configs["flat/typescript"].rules,
+      // Components return JSX.Element by inference; annotating every one adds
+      // noise without catching anything.
+      "@typescript-eslint/explicit-function-return-type": "off",
+    },
   },
 ];
