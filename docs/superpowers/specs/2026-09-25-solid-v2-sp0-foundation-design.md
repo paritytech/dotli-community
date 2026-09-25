@@ -77,37 +77,62 @@ plugin (sub-project 4), `apps/protocol`.
 
 ### Module contract
 
-Each store module in `packages/ui/src/state/` follows this shape:
+Amended 2026-09-25: stores are Solid-free. The first implementation backed each
+store with a Solid signal, which put `@solidjs/signals` on the host and sandbox
+eager paths (+9.8 KB / +9.5 KB gzip) before any component used it. The owner
+chose to keep Solid out of the stores until a component needs it.
+
+`packages/ui/src/state/create-store.ts` (no `solid-js` import):
+
+```ts
+export interface ReadableStore<T> {
+  /** Latest written value, immediately. */
+  get: () => T;
+  /** Called synchronously after every set. Returns the unsubscribe. */
+  subscribe: (listener: () => void) => () => void;
+}
+
+export interface SyncStore<T> extends ReadableStore<T> {
+  /** The only writer: updates the value, then notifies listeners in order. */
+  set: (next: T) => void;
+  /** Restore the initial value. Tests only. */
+  reset: () => void;
+}
+
+export function createSyncStore<T>(initial: T): SyncStore<T>;
+export function resetAllStoresForTests(): void;
+```
+
+A listener that throws is reported through `captureException` and does not stop
+the other listeners, the setter, or the event dispatch that follows.
+
+Each store module exports its readable store, a getter, and setters:
 
 ```ts
 // state/auth.ts
-import { createSignal } from "solid-js";
-
-let current: DotliAuthState = { tag: "Disconnected" };
-const [read, write] = createSignal<DotliAuthState>(current);
-
-/** Reactive accessor. Components only. */
-export const authState = read;
-
-/** Synchronous read for non-UI code. Always the latest written value. */
-export function getAuthState(): DotliAuthState {
-  return current;
-}
-
-/** The only writer. Also dispatches any window events still required. */
+const auth = createSyncStore<DotliAuthState>({ tag: "Disconnected" });
+export const authStore: ReadableStore<DotliAuthState> = auth;
+export const getAuthState = auth.get;
 export function setAuthState(next: DotliAuthState): void {
-  current = next;
-  write(() => next);
-  dispatchAuthStateEvent(next);
+  auth.set(next);               // state and listeners first
+  window.dispatchEvent(…);      // then the unchanged event
 }
-
-/** Test-only: restore the default. */
-export function resetAuthStateForTests(): void { … }
 ```
+
+Components read a store through `packages/ui/src/components/use-store.ts`:
+
+```ts
+export function useStore<T>(store: ReadableStore<T>): Accessor<T>;
+```
+
+It creates a Solid signal seeded with `store.get()`, subscribes, writes the
+signal on each notification, and unsubscribes with `onCleanup`. It must be
+called inside a component or another reactive owner.
 
 Rules:
 
-- Non-UI code imports only the getter and setter, never `solid-js`.
+- Nothing under `packages/ui/src/state/` imports `solid-js`. Non-UI code uses
+  getters and setters only.
 - The default value is fixed and does not read `window`, `localStorage`, or
   `matchMedia`. That keeps the stores safe for build-time rendering in
   sub-project 4.
@@ -133,14 +158,6 @@ and are not touched.
 
 `SessionStore.ts`'s `LOCAL_CHANGE_EVENT` stays as is; session data is owned by
 the TrUAPI host.
-
-### Why the plain `current` variable
-
-Solid 2 batches signal writes: a signal read right after a write outside a
-reactive scope returns the old value until the next flush. Non-UI code such as
-`bridge.ts` writes and then reads within one call. The plain variable makes
-`getX()` correct in that case; components read the signal and see the update
-after the flush.
 
 ## 3. Mount and test helpers
 
@@ -175,11 +192,11 @@ plugin, Vitest, and ESLint setup, and is deleted in sub-project 1 once real
 components exist.
 
 The host and sandbox builds prove the Vite side: `bun run build` must succeed
-with the plugin enabled. Because host code imports the stores, the Solid
-reactive core (`@solidjs/signals`) lands in the host eager chunk; the DOM
-runtime (`@solidjs/web`) must not, since no app code renders a component yet.
-The plan checks this by grepping the built chunks, and the size delta is
-recorded against the baseline (section 5).
+with the plugin enabled. No Solid package may reach a host or sandbox chunk
+(neither `@solidjs/signals` nor `@solidjs/web`), since the stores are Solid-free
+and no app code renders a component yet. The plan checks this by grepping the
+built chunks' sourcemaps, and the size delta is recorded against the baseline
+(section 5).
 
 ## 5. Baselines
 
@@ -194,9 +211,9 @@ to `docs/perf/solid-migration-baseline.md`:
 - Exact Solid package versions (the bump checklist).
 
 After the sub-project, the same measurements are repeated and appended. The
-gate for this sub-project: host eager chunk grows by no more than the store
-modules (expected under 3 KB gzip, since `createSignal` pulls the Solid
-reactive core into the eager chunk), cold-start median within 5%.
+gate for this sub-project: the host and sandbox eager paths (the entry chunk
+plus every chunk it statically imports) each grow by less than 3 KB gzip;
+cold-start median shows no regression beyond 5%.
 
 ## 6. Dead code
 
@@ -208,14 +225,15 @@ only it uses (verified by grep for `alias-permission-modal`,
 
 - One test file per store in `packages/ui/tests/state/`:
   - default value;
-  - setter updates the sync getter immediately;
-  - accessor reflects the value after `settle()`;
+  - setter updates the sync getter immediately and notifies subscribers;
   - each still-required event is dispatched with the same `detail` shape as
     before.
 - Existing test suites pass unchanged. In particular `topbar.test.ts`,
   `chat-panel.test.ts`, `bridge.test.ts`, `topbar-autohide.test.ts`, and
   `permission-modal.test.ts`, which listen to the events now dispatched from
   setters.
+- `useStore` test: a component reading a store re-renders after `set` and
+  `settle()`, and unmounting unsubscribes.
 - `mountRoot` test: renders into a container, disposer empties it, a throwing
   view triggers the Sentry report and leaves sibling roots intact.
 - Proof component test (section 4).

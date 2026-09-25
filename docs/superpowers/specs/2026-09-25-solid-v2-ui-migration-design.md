@@ -56,11 +56,18 @@ moves.
 One module per area: `auth`, `product`, `permissions`, `chat`, `network`,
 `settings`, `theme`, `topbar`. Each exports:
 
-- a reactive accessor for components,
-- a synchronous getter backed by a plain variable, for non-UI code (Solid 2
-  batches writes, so a signal read right after a write outside a component
-  returns the old value until `flush()`),
+- a readable store object `{ get, subscribe }` (e.g. `authStore`),
+- a synchronous getter, for non-UI code,
 - a setter, which is the only writer.
+
+Stores are **Solid-free** (amended 2026-09-25 after sub-project 0 measured
++9.8 KB gzip on the host and +9.5 KB on the sandbox eager paths from
+`@solidjs/signals`): `createSyncStore` is a plain value plus a listener set.
+Components turn a store into a Solid accessor with
+`useStore(store)` from `packages/ui/src/components/use-store.ts`, which creates a
+signal, subscribes, and unsubscribes on cleanup. Solid therefore enters a bundle
+only with the first component that reads a store. Reading `get()` is always
+current; a component's accessor updates after Solid's flush.
 
 Non-UI code never imports `solid-js`. `network-monitor.ts` keeps
 `subscribeNetwork`; the network store subscribes to it. The settings store is
@@ -192,7 +199,7 @@ Order: 0 → 1 → 2 → 3 → 4 → 5. Sub-projects 1 and 2 may run in parallel
 - **Hydration mismatch** from browser-only reads during the first render.
   Mitigation: fixed store defaults, post-hydrate writes, hydration tests,
   production remount fallback.
-- **Batched updates** breaking sync write-then-read code. Mitigation: plain
-  sync getters in every store; non-UI code never reads signals.
+- **Batched updates** breaking sync write-then-read code. Mitigation: stores
+  are plain values with synchronous getters; only components hold signals.
 - **Cold-start cost** of the runtime on the eager path. Mitigation: the gates
   above, measured from sub-project 0.
