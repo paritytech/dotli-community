@@ -117,6 +117,29 @@ describe("overlays loader", () => {
     expect(document.getElementById("overlay-root")).not.toBeNull();
   });
 
+  it("As a dotli user, the overlays keep the toast store in sync with what is shown", async () => {
+    // Given
+    presentToast({
+      text: "One",
+      label: "A",
+      icon: "<svg></svg>",
+      dismissMs: 0,
+    });
+
+    // When
+    await overlaysReady();
+
+    // Then
+    expect(toastsStore.get().items.map((t) => t.label)).toEqual(["A"]);
+    expect(
+      document.querySelector("#overlay-root .notif-title")?.textContent,
+    ).toBe("A");
+  });
+
+  // Must stay last: it replaces the module registry (vi.resetModules() +
+  // vi.doMock), so any test after it would mount a fresh
+  // components/overlays/mount tree bound to re-imported store instances
+  // instead of the ones this file imported statically at the top.
   it("As a dotli user, when the overlay code cannot load, action toasts fall back to a confirm and dialogs settle with their fallback", async () => {
     // Given
     vi.resetModules();
@@ -157,21 +180,5 @@ describe("overlays loader", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
     await expect(outcome).resolves.toEqual({ result: "dismissed" });
     expect(toasts.toastsStore.get().items).toEqual([]);
-  });
-
-  it("As a dotli user, the overlays keep the toast store in sync with what is shown", async () => {
-    // Given
-    presentToast({
-      text: "One",
-      label: "A",
-      icon: "<svg></svg>",
-      dismissMs: 0,
-    });
-
-    // When
-    await overlaysReady();
-
-    // Then
-    expect(toastsStore.get().items.map((t) => t.label)).toEqual(["A"]);
   });
 });
