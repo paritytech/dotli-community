@@ -87,7 +87,7 @@ Measured on `feat/solid-v2-foundation` after Tasks 1-11 (stores, `createSyncStor
 through the eight stores; none of the mount/probe files are imported by an
 app entry yet). Build command and method identical to "Before sub-project 0"
 above (`VITE_NETWORKS=paseo-next-v2,previewnet bun run build`; raw `wc -c`
-and `gzip -c | wc -c` over every `apps/{host,sandbox}/dist/assets/*.js`, hash
+and `gzip -c <file> | wc -c` over every `apps/{host,sandbox}/dist/assets/*.js`, hash
 stripped from the name).
 
 ### Chunk sizes (bytes)
@@ -225,7 +225,7 @@ of `index-*.js`.
 Stores no longer import Solid; components will use `useStore` (not yet
 imported by app code). Measured with the same build command and method
 (`VITE_NETWORKS=paseo-next-v2,previewnet bun run build`; raw `wc -c` and
-`gzip -c | wc -c` over every `apps/{host,sandbox}/dist/assets/*.js`) on
+`gzip -c <file> | wc -c` over every `apps/{host,sandbox}/dist/assets/*.js`) on
 `feat/solid-v2-foundation` at `df56a565` (commit "refactor(ui): make stores
 Solid-free and add useStore for components").
 
@@ -313,7 +313,9 @@ CI now measures this eager path on every PR with
 `bun scripts/eager-path-size.ts <distDir>` (see `.github/workflows/bundle-size.yml`,
 `host-eager-path` / `sandbox-eager-path`, warn-only budgets 90,009 B and
 55,255 B gzip). The script measures gzip with the `gzip` CLI, the same method
-as the tables above, so its numbers are directly comparable to them.
+as the tables above; its numbers match the tables exactly on macOS, and CI
+(GNU gzip, and `build:prod` without `VITE_NETWORKS`) can differ slightly —
+close enough for the budget check, not byte-identical.
 
 ### Cold start
 

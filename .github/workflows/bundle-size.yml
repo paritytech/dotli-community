@@ -386,7 +386,7 @@ jobs:
             done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
           done
           for app in host sandbox; do
-            json=$(bun scripts/eager-path-size.ts "apps/${app}/dist")
+            json=$(bun scripts/eager-path-size.ts "apps/${app}/dist") || { echo "::warning::${app}: could not measure the eager path for the baseline"; continue; }
             printf ',\n  "%s/(eager path)": %s' "$app" \
               "$(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'raw': d['raw'], 'br': d['br'], 'gz': d['gz']}))")" \
               >> /tmp/bundle-baseline.json

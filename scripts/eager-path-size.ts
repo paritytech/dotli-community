@@ -15,12 +15,16 @@ import { brotliCompressSync } from "node:zlib";
 
 // gzip goes through the `gzip` CLI, not zlib.gzipSync: the CI budgets and
 // docs/perf/solid-migration-baseline.md were both measured with the CLI,
-// and Node's/Bun's zlib bindings produce output hundreds of bytes larger
-// per chunk, which would make this script's numbers incomparable to them.
-// The file path (not piped stdin bytes) is passed to `gzip -c`, matching
-// the baseline's method exactly: `gzip -c <file>` stores the original
-// filename in the gzip header, which stdin piping omits, so piping bytes
-// undercounts by ~20 B per file (confirmed against the baseline).
+// and Node's/Bun's zlib bindings produce output that was up to ~2% larger
+// in total on the measured builds, which would make this script's numbers
+// incomparable to them. The file path (not piped stdin bytes) is passed to
+// `gzip -c`, matching the baseline's method exactly: `gzip -c <file>` stores
+// the original filename in the gzip header, which stdin piping omits, so
+// piping bytes undercounts by ~20 B per file (confirmed against the
+// baseline). The CLI match is exact with the macOS (Apple) gzip that
+// produced the baseline tables; GNU gzip on the CI runner may differ by a
+// few bytes to a few hundred in total, which is small against the budgets'
+// headroom.
 function gzipCliSize(filePath: string): number {
   const result = spawnSync("gzip", ["-c", filePath]);
   if (result.error) {
