@@ -23,7 +23,7 @@ import type {
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
-import { resetOverlays } from "./helpers/overlays";
+import { overlaysReady, resetOverlays } from "./helpers/overlays";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -502,6 +502,7 @@ describe("three-way permission prompts", () => {
     // Then
     await expect(response).resolves.toBe("Deny");
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    await overlaysReady();
     expect(document.body.textContent).toContain(
       "Notifications access is blocked. Use the permissions menu in the top bar to change this.",
     );

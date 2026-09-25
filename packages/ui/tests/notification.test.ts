@@ -51,6 +51,9 @@ describe("notification host callbacks", () => {
       deeplink: null,
       scheduledAt: null,
     });
+    const { ensureOverlays } = await import("@dotli/ui/overlays/load");
+    await ensureOverlays();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
       [...document.querySelectorAll(".notif-body")].map((node) =>
         node.textContent?.trim(),
