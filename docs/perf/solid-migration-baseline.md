@@ -208,6 +208,11 @@ note above); cold start: -9.15% (faster) → **pass** (no regression; likely
 partly noise at 10 vs 20 runs — re-run with `PERF_RUNS=20` before relying on
 the speed-up).
 
+Sandbox eager `index-*.js` Δ gzip: +9,462 B (≈95% of the +10 KB
+whole-migration budget; cause: `ui.ts` → `state/product` → Solid reactive
+core) → over budget for sub-project 0; decision pending with the owner (same
+question as the host gate).
+
 Largest single contributing chunk to the size-gate failure: `host
 scheduled-notifications-*.js` (new, 88,890 B raw / 30,811 B gzip) — see
 note³: only ~4% of that chunk is the store modules themselves, ~29% is
