@@ -74,6 +74,7 @@ import {
   type ShieldState,
 } from "@dotli/ui/verification-shield";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
+import { initChatStore } from "@dotli/ui/state/chat";
 import {
   bitswapGet,
   listenForSandboxBitswap,
@@ -1033,6 +1034,7 @@ async function main(): Promise<void> {
 
   // Initialize top bar UI.
   const t0 = performance.now();
+  initChatStore();
   initTopBar(blockingModalCoordinator);
   log.warn(`[dot.li perf] initTopBar() done (${dur(t0)})`);
   emitDotliDebugEvent({
