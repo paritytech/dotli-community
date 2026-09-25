@@ -79,3 +79,108 @@ p99 3292 ms, mean 2819 ms, stddev 257 ms, cv 0.09, min 2405 ms, max 3303 ms, 0
 discarded outliers. Results saved by the harness to
 `apps/host/tests/performance/results/base.json` (and `last.json`); Task 12
 reruns `test:perf:compare` against a fresh `test:perf:base` run to diff.
+
+## After sub-project 0
+
+Measured on `feat/solid-v2-foundation` after Tasks 1-11 (stores, `createSyncStore`,
+`mount/root.ts` + `mount/overlay-root.ts`, `SolidProbe`, producers routed
+through the eight stores; none of the mount/probe files are imported by an
+app entry yet). Build command and method identical to "Before sub-project 0"
+above (`VITE_NETWORKS=paseo-next-v2,previewnet bun run build`; raw `wc -c`
+and `gzip -c | wc -c` over every `apps/{host,sandbox}/dist/assets/*.js`, hash
+stripped from the name).
+
+### Chunk sizes (bytes)
+
+| Chunk | Raw | Gzip | Δ gzip vs before |
+|---|---:|---:|---:|
+| host _md.js | 6,434 | 2,901 | -1 |
+| host blake2.js | 13,490 | 5,560 | +737 |
+| host bridge.js | 161,271 | 45,332 | -75 |
+| host browser.js | 23,475 | 8,772 | +0 |
+| host chain-sync.js | 4,355 | 1,867 | +139 |
+| host client.js | 12,661 | 4,684 | +4 |
+| host dist.js | 4,965 | 2,260 | +17 (renamed from `scale-ts.js`; now also bundles `@polkadot-api/json-rpc-provider`) |
+| host dotli-debug-bus.js | 186 | 173 | see note¹ |
+| host dotli-debug-bus.js | 629 | 399 | see note¹ |
+| host hex.js | 160 | 170 | +0 |
+| host html.js | 574 | 332 | new chunk, no before equivalent |
+| host index.js | 128,737 | 41,035 | -20,978 (see gate note below) |
+| host manifest.js | 24,228 | 8,547 | +231 |
+| host network.js | 6,003 | 2,445 | +0 |
+| host panel.js | 93,276 | 28,785 | +11 |
+| host perf.js | 148 | 139 | new chunk, no before equivalent |
+| host proofs.js | 28,069 | 8,925 | -658 |
+| host resolve.js | 3,810 | 1,656 | +1,492 (`substrate-client.js` content merged in, see note²) |
+| host rolldown-runtime.js | 716 | 459 | +0 |
+| host rpc-resolve.js | 2,472 | 1,212 | -172 |
+| host scheduled-notifications.js | 88,890 | 30,811 | new chunk, no before equivalent (holds `packages/ui/src/state/*` stores + `@solidjs/signals`; statically imported and `modulepreload`ed from `index-*.js`, so it is on the eager path) |
+| host shared-mode.js | 103 | 131 | new chunk, no before equivalent |
+| host shared-mode.js | 1,874 | 888 | new chunk, no before equivalent |
+| host spans.js | 2,624 | 1,283 | +46 |
+| host src.js | 82,662 | 28,784 | -47 |
+| host truapi_verifiable.js | 14,623 | 3,266 | +0 |
+| host twoX.js | 8,711 | 3,427 | +2,258 (`substrate-client.js` content merged in, see note²) |
+| host utils.js | 3,618 | 1,572 | +0 |
+| host web.js | 25,388 | 7,501 | +11 |
+| host worker-runtime.js | 106 | 143 | +0 (matched by size) |
+| host worker-runtime.js | 36,640 | 10,132 | +0 (matched by size) |
+| host ws.js | 26,730 | 9,512 | -13 |
+| sandbox bitswap-bridge.js | 1,092 | 660 | -1 |
+| sandbox fetch.js | 3,525 | 1,442 | -1 |
+| sandbox index.js | 158,815 | 53,034 | +9,462 (now bundles `@solidjs/signals` + `state/create-store.ts` + `state/product.ts`, reachable from `packages/ui/src/ui.ts`) |
+
+¹ The build emits two `dotli-debug-bus` chunks after this sub-project (186 B
+and 629 B gzip-173/399), where before there was one (708 B raw / 438 B gzip).
+Combined after total: 815 B raw / 572 B gzip, a **+134 B gzip** increase
+versus the single before chunk.
+
+² `host substrate-client.js` (5,953 B raw / 2,562 B gzip before) has no
+standalone chunk after this sub-project; rolldown merged its module into
+`resolve.js`, `twoX.js`, `manifest.js`, `rpc-resolve.js`, and `src.js`
+instead, per the sourcemaps. This, plus the `scale-ts.js` → `dist.js` rename,
+account for the chunk-name churn above; confirmed via
+`grep -l substrate-client apps/host/dist/assets/*.js.map` and the two
+chunks' `sources` arrays.
+
+**Gate note on `host index.js`:** matched by name alone, `index-*.js` gzip
+*dropped* by 20,978 B, which trivially satisfies "Δ gzip < 3 KB". That
+comparison is misleading: `index-*.js` statically imports the new
+`scheduled-notifications-*.js` chunk (the state-store bundle) and
+`index.html` `modulepreload`s it, so both ship on the same eager path that
+`index.js` alone used to cover. Combined eager cost
+(`index.js` + `scheduled-notifications.js`): 62,013 B gzip before →
+41,035 + 30,811 = 71,846 B gzip after, a **+9,833 B gzip** increase. That is
+the number the gate is meant to catch, and it exceeds the 3 KB budget.
+
+### Cold start
+
+| Mark pair | Before median ms | After median ms | Δ % |
+|---|---:|---:|---:|
+| dotli:main:start → dotli:main:end | 2787 | 2532 | -9.15% |
+
+After numbers from a fresh `bun run --cwd apps/host test:perf` (10
+iterations, cold phase, `apps/host/tests/performance/results/last.json`,
+phase `Host total`); before numbers from the saved
+`apps/host/tests/performance/results/base.json` (20 iterations, matches the
+"Before sub-project 0" section above). `test:perf:compare`'s own summary
+(different phase, "End-to-end", browse→browse-only) reported cold start
+4.39s → 4.72s (+7.7%, Mann-Whitney z=0.37, not significant) and warm/lukewarm
+starts within noise. The `Host total` mark-pair drop of 9.15% is a
+*speed-up*, not a regression, but it exceeds the ±5% "no unexplained change"
+budget for this gate, likely a mix of real improvement (see chunking note
+above — some of the eagerly-loaded `index.js` bytes moved into
+`scheduled-notifications.js`, which is also eager, so this doesn't fully
+explain a speed-up) and sampling noise (10 runs after vs. 20 runs before; cv
+0.10 after vs 0.09 before).
+
+Gates: host eager `index-*.js` Δ gzip < 3 KB → **fail** (true eager-path
+delta, including `scheduled-notifications.js`, is +9,833 B gzip; the
+`index-*.js` row alone reads as a pass but is not a fair comparison, see gate
+note above); cold start Δ within 5% → **fail** (-9.15%, a speed-up, not a
+regression, but outside the ±5% budget — see explanation above).
+
+Largest single contributing chunk to the size-gate failure: `host
+scheduled-notifications-*.js` (new, 88,890 B raw / 30,811 B gzip), which
+holds the eight Solid stores (`packages/ui/src/state/*.ts`) and
+`@solidjs/signals`.
