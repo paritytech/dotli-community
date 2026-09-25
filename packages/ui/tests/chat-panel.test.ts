@@ -28,19 +28,8 @@ function installChatDom(): void {
       <span id="chat-unread-badge" hidden></span>
     </button>
     <button id="more-row-chat" hidden></button>
-    <aside id="chat-panel" hidden>
-      <div id="chat-panel-resize"></div>
-      <button id="chat-panel-back" hidden></button>
-      <span id="chat-panel-title"></span>
-      <button id="chat-panel-close"></button>
-      <div id="chat-panel-rooms" hidden></div>
-      <div id="chat-panel-messages"></div>
-      <p id="chat-panel-hint" hidden></p>
-      <form id="chat-panel-composer">
-        <input id="chat-panel-input" type="text" />
-        <button type="submit" id="chat-panel-send"></button>
-      </form>
-    </aside>
+    <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
+    <div id="app"><iframe></iframe></div>
   `;
 }
 
@@ -567,5 +556,147 @@ describe("chat panel", () => {
     byId("chat-panel-close").click();
     expect(badge.hidden).toBe(false);
     expect(badge.textContent).toBe("1");
+  });
+
+  it("As a user, opening the panel narrows the app and closing restores it", async () => {
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-iframe");
+    const iframe = document.querySelector<HTMLIFrameElement>("#app iframe")!;
+
+    byId("chat-button").click();
+    expect(byId("chat-panel").hidden).toBe(false);
+    expect(byId("chat-button").getAttribute("aria-expanded")).toBe("true");
+    expect(byId("chat-button").classList.contains("active")).toBe(true);
+    expect(byId("chat-panel").style.width).toBe("360px");
+    expect(iframe.style.width.startsWith("calc(100vw - ")).toBe(true);
+
+    await settle(() => document.getElementById("chat-panel-close") !== null);
+    byId("chat-panel-close").click();
+    expect(byId("chat-panel").hidden).toBe(true);
+    expect(byId("chat-button").getAttribute("aria-expanded")).toBe("false");
+    expect(iframe.style.width).toBe("100%");
+  });
+
+  it("As a user, Escape closes the panel and returns focus to the chat button", async () => {
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-escape");
+
+    byId("chat-button").click();
+    await settle(() => document.getElementById("chat-panel-close") !== null);
+    byId("chat-panel-close").focus();
+    byId("chat-panel").dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+
+    expect(byId("chat-panel").hidden).toBe(true);
+    expect(document.activeElement).toBe(byId("chat-button"));
+  });
+
+  it("As a user, a message for another room does not reload the conversation I am reading", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    try {
+      const { panel, service } = await loadChatModules();
+      panel.initChatPanel();
+      loadProduct("chatty-steady");
+      const productId = labelToProductId("chatty-steady");
+      const render = vi.fn(() => () => undefined);
+      service.registerChatConnection(productId, {
+        publish: async () => undefined,
+        publishRendererAction: async () => undefined,
+        render,
+      });
+      await service.productCreateRoom(productId, {
+        roomId: "main",
+        name: "Main",
+        icon: "",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      await service.productCreateRoom(productId, {
+        roomId: "side",
+        name: "Side",
+        icon: "",
+      });
+      await service.productPostMessage(productId, "main", {
+        tag: "Custom",
+        value: { messageType: "poll", payload: "0x01" },
+      });
+
+      byId("chat-button").click();
+      await settle(
+        () => document.querySelectorAll(".chat-room-item").length === 2,
+      );
+      [...document.querySelectorAll<HTMLButtonElement>(".chat-room-item")]
+        .find((row) => row.textContent?.includes("Main"))
+        ?.click();
+      await settle(() => render.mock.calls.length === 1);
+
+      await service.productPostMessage(productId, "side", {
+        tag: "Text",
+        value: { text: "elsewhere" },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(byId("chat-panel-title").textContent).toBe("Main");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("As a user, loading another product while the panel is open shows that product's contacts", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("first-app");
+    await service.productCreateRoom(labelToProductId("first-app"), {
+      roomId: "a",
+      name: "First room",
+      icon: "",
+    });
+    await service.productCreateRoom(labelToProductId("second-app"), {
+      roomId: "b",
+      name: "Second room",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle(
+      () =>
+        byId("chat-panel-rooms").textContent?.includes("First room") === true,
+    );
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle(() => byId("chat-panel-rooms").hidden);
+
+    loadProduct("second-app");
+    await settle(
+      () =>
+        byId("chat-panel-rooms").textContent?.includes("Second room") === true,
+    );
+    expect(byId("chat-panel-rooms").hidden).toBe(false);
+    expect(byId("chat-panel-rooms").textContent).not.toContain("First room");
+  });
+
+  // This test resets the module registry via vi.doMock, so it must stay last
+  // in this describe block.
+  it("As a user, if the chat code cannot load, the panel closes and the next open retries", async () => {
+    vi.resetModules();
+    vi.doMock("@dotli/ui/components/chat/mount", () => {
+      throw new Error("chunk failed");
+    });
+    try {
+      const panel = await import("@dotli/ui/chat/panel");
+      const load = await import("@dotli/ui/chat/load");
+      panel.initChatPanel();
+      loadProduct("chatty-broken");
+
+      byId("chat-button").click();
+      await load.ensureChatPanel();
+
+      expect(byId("chat-panel").hidden).toBe(true);
+    } finally {
+      vi.doUnmock("@dotli/ui/components/chat/mount");
+      vi.resetModules();
+    }
   });
 });

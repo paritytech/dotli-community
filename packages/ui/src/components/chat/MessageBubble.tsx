@@ -5,7 +5,7 @@
 // inject markup; custom messages go through custom-message.ts, whose
 // renderer maps a closed token vocabulary to DOM.
 
-import { For, onCleanup, onSettled, Show } from "solid-js";
+import { For, onCleanup, onSettled, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { ChatMessageContent } from "@parity/truapi";
 import { mountCustomMessage } from "../../chat/custom-message";
@@ -17,9 +17,10 @@ export function MessageBubble(props: {
   now: number;
   onActionError: () => void;
 }): JSX.Element {
-  // Records are immutable and the list keys rows by seq, so read once.
-  // eslint-disable-next-line solid/reactivity -- immutable keyed record
-  const record = props.record;
+  // Records are immutable and the list keys rows by seq, so read once;
+  // untrack both satisfies solid/reactivity and tells Solid's dev-mode
+  // strict checks this one-time snapshot is intentional.
+  const record = untrack(() => props.record);
   const content = record.content as ChatMessageContent;
 
   const time = (
@@ -98,6 +99,7 @@ export function MessageBubble(props: {
                       void userTriggerAction(record.productId, record.roomId, {
                         messageId: record.messageId,
                         actionId: action.actionId,
+                        // eslint-disable-next-line solid/reactivity -- props read at call time inside the promise callback
                       }).catch(() => {
                         props.onActionError();
                       });

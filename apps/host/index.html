@@ -310,41 +310,9 @@
         </div>
 
         <!-- Chat Panel (docked right; the panel runtime shrinks the product
-             iframe while open, mirroring the debug panel's right dock) -->
-        <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden>
-            <div class="chat-panel-resize" id="chat-panel-resize" aria-hidden="true"></div>
-            <div class="chat-panel-header">
-                <button class="chat-panel-back" id="chat-panel-back" title="Back to rooms" aria-label="Back to rooms" hidden>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="15 18 9 12 15 6"/>
-                    </svg>
-                </button>
-                <span class="chat-panel-title" id="chat-panel-title">Chat</span>
-                <button class="chat-panel-close" id="chat-panel-close" title="Close chat" aria-label="Close chat">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="chat-panel-rooms" id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden></div>
-            <div class="chat-panel-messages" id="chat-panel-messages" aria-live="polite"></div>
-            <p class="chat-panel-hint" id="chat-panel-hint" hidden></p>
-            <form class="chat-panel-composer" id="chat-panel-composer">
-                <input
-                    id="chat-panel-input"
-                    class="chat-panel-input"
-                    type="text"
-                    placeholder="Message"
-                    autocomplete="off"
-                    maxlength="4000"
-                />
-                <button type="submit" class="chat-panel-send" id="chat-panel-send" title="Send" aria-label="Send">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                    </svg>
-                </button>
-            </form>
-        </aside>
+             iframe while open, mirroring the debug panel's right dock).
+             Contents are rendered by components/chat/ChatPanel.tsx. -->
+        <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
 
         <!-- App Content -->
         <div id="app">
