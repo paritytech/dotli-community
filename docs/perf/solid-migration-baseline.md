@@ -211,10 +211,125 @@ the speed-up).
 Sandbox eager `index-*.js` Δ gzip: +9,462 B (≈95% of the +10 KB
 whole-migration budget; cause: `ui.ts` → `state/product` → Solid reactive
 core) → over budget for sub-project 0; decision pending with the owner (same
-question as the host gate).
+question as the host gate) — resolved by the Solid-free stores addendum
+below.
 
 Largest single contributing chunk to the size-gate failure: `host
 scheduled-notifications-*.js` (new, 88,890 B raw / 30,811 B gzip) — see
 note³: only ~4% of that chunk is the store modules themselves, ~29% is
 `@solidjs/signals`, and ~67% is pre-existing app code the bundler moved out
 of `index-*.js`.
+
+## After Solid-free stores (sub-project 0 addendum)
+
+Stores no longer import Solid; components will use `useStore` (not yet
+imported by app code). Measured with the same build command and method
+(`VITE_NETWORKS=paseo-next-v2,previewnet bun run build`; raw `wc -c` and
+`gzip -c | wc -c` over every `apps/{host,sandbox}/dist/assets/*.js`) on
+`feat/solid-v2-foundation` at `df56a565` (commit "refactor(ui): make stores
+Solid-free and add useStore for components").
+
+Eager path = the entry `index-*.js` plus every chunk statically imported
+by it, per the `<link rel="modulepreload">` tags in the built
+`dist/index.html`. The "before migration" eager set was re-derived (not
+just reused from the "Before sub-project 0" table above, which never
+computed a combined eager figure for these chunks) by building `main` at
+`d8f0167` fresh in a temporary git worktree
+(`git worktree add <scratchpad>/wt-before d8f0167`, `bun install
+--frozen-lockfile`, then the same build command), reading its
+`dist/index.html` modulepreload tags, and measuring with the same `wc -c`
+/ `gzip -c` method; the resulting chunk sizes matched the existing "Before
+sub-project 0" table within ±2 B gzip (non-deterministic gzip framing
+noise), confirming the table's rows are still valid for this comparison.
+The worktree was removed afterwards (`git worktree remove`).
+
+Host eager set:
+- Before (main @ `d8f0167`, `dist/index.html` modulepreload: rolldown-runtime,
+  spans, network, client, scale-ts, utils): `index.js` 62,013 + `rolldown-runtime.js`
+  459 + `spans.js` 1,237 + `network.js` 2,445 + `client.js` 4,680 +
+  `scale-ts.js` 2,243 + `utils.js` 1,572 = **74,649 B gzip**.
+- Now (`df56a565`, `dist/index.html` modulepreload: rolldown-runtime, spans,
+  network, client, dist, utils, scheduled-notifications, html, shared-mode,
+  perf): `index.js` 41,025 + `rolldown-runtime.js` 459 + `spans.js` 1,283 +
+  `network.js` 2,445 + `client.js` 4,684 + `dist.js` 2,260 (renamed from
+  `scale-ts.js`) + `utils.js` 1,572 + `scheduled-notifications.js` 21,700 +
+  `html.js` 332 + `shared-mode.js` 888 + `perf.js` 139 = **76,787 B gzip**.
+  (`scheduled-notifications.js`, `html.js`, `shared-mode.js`, and `perf.js`
+  are the same new/renamed chunks noted in the "After sub-project 0" section
+  above — pre-existing from Tasks 1-11, not newly introduced by this
+  addendum. `scheduled-notifications.js` itself dropped from 30,811 B gzip
+  to 21,700 B gzip now that the stores it bundles are Solid-free — a
+  **-9,111 B gzip** drop, which is the main effect of this addendum.)
+
+Sandbox eager set:
+- Before (main @ `d8f0167`, modulepreload: fetch): `index.js` 43,572 +
+  `fetch.js` 1,443 = **45,015 B gzip**.
+- Now (`df56a565`, modulepreload: fetch): `index.js` 43,701 + `fetch.js`
+  1,443 = **45,144 B gzip**.
+
+| Eager path | Before migration gzip | Now gzip | Δ gzip | Gate (< 3 KB) |
+|---|---|---|---|---|
+| host (index + static imports) | 74,649 | 76,787 | +2,138 | pass |
+| sandbox (index + static imports) | 45,015 | 45,144 | +129 | pass |
+
+Both gates pass now (host: +2,138 B < 3 KB; sandbox: +129 B < 3 KB),
+reversing the two "over budget" verdicts recorded in the "After
+sub-project 0" section above. The remaining host eager delta (+2,138 B) is
+attributable to the pre-existing chunk churn from Tasks 1-11 (see note³
+above: `html.js`, `shared-mode.js`, `perf.js` on the eager path,
+`scale-ts.js` → `dist.js` rename with a merged-in dependency), not to
+Solid — `@solidjs/signals` is no longer on either app's eager path.
+
+Solid packages in app sourcemaps:
+
+```
+$ grep -l '@solidjs/signals\|@solidjs/web\|solid-js' apps/host/dist/assets/*.js.map apps/sandbox/dist/assets/*.js.map || echo "solid: absent from app bundles"
+solid: absent from app bundles
+
+$ grep -l 'use-store\|SolidProbe\|mount/root' apps/host/dist/assets/*.js.map apps/sandbox/dist/assets/*.js.map || echo "ui-only modules: absent"
+apps/host/dist/assets/scheduled-notifications-DRa2aD5n.js.map
+apps/sandbox/dist/assets/index-bBo73gYt.js.map
+```
+
+**Absent** (no Solid package source appears in any app sourcemap). The
+second grep is a false positive, not an actual import: both matches trace
+to the same JSDoc comment in `packages/ui/src/state/create-store.ts`
+("Components bridge a store to a signal with `useStore` from
+`components/use-store.ts`."), whose text is embedded verbatim in the maps'
+`sourcesContent`. Neither map's `sources` array contains
+`components/use-store.ts`, `SolidProbe`, or `mount/root` — the module
+itself is not reachable from either app entry, matching Task 1's note that
+`use-store.ts` is "not imported by apps." Confirmed with:
+
+```
+$ python3 -c "import json; m=json.load(open('apps/host/dist/assets/scheduled-notifications-DRa2aD5n.js.map')); print([s for s in m['sources'] if 'use-store' in s or 'SolidProbe' in s or 'mount/root' in s])"
+[]
+```
+
+### Cold start
+
+Ran `bun run --cwd apps/host test:perf && bun run --cwd apps/host
+test:perf:compare` three times (10 iterations each, cold phase) against
+the same `base.json` (20 iterations, pre-migration) used in the "Before
+sub-project 0" section. The three runs disagreed:
+
+| Run | Host total p50 | Δ % vs base (2787 ms) | cv | discarded | `test:perf:compare` "COLD START"/End-to-end |
+|---|---:|---:|---:|---:|---|
+| 1 | 3450 ms | +23.8% (slower) | 0.18 | 1 | +26.0%, Mann-Whitney z=2.78, **significant** |
+| 2 | 2642 ms | -5.2% (faster) | 0.27 | 5 | +7.7%, z=0.57, not significant |
+| 3 | 2417 ms | -13.3% (faster) | 0.12 | 0 | -8.7%, z=1.84, not significant |
+
+Run 1 immediately followed the git-worktree `bun install` + production
+build used to re-derive the "before" eager set above, so the machine was
+under extra CPU/disk load during it; runs 2 and 3, taken back-to-back
+afterwards on an otherwise idle machine, agree with each other (both
+faster than base) and with the interim -9.15% result recorded in the
+"After sub-project 0" section. Median of the three `Host total` p50s is
+run 2's **2642 ms, Δ -5.2%** — a speed-up outside the ±5% band, which per
+the umbrella spec's "no regression beyond 5%" gate is not a failure →
+**pass**. Given the spread (cv 0.12-0.27 here vs 0.09 for the 20-run base,
+and run 1's disagreement with runs 2-3), this is not a high-confidence
+number; a dedicated `PERF_RUNS=20` run on an otherwise-idle machine would
+be needed to firm it up, as the "Before sub-project 0" section already
+recommends. No run showed a statistically significant regression by
+Mann-Whitney on the End-to-end phase.
