@@ -186,7 +186,7 @@ description from its comment and a `test:perf:compare` run.
 | 1 | Modals and toasts | `permission-modal`, `preimage-modal`, `password-prompt`, `UserConfirmation`, `notification` → components in the `overlays` root |
 | 2 | Chat | `chat/panel`, `custom-renderer`, `custom-message`; chat shell markup leaves `index.html` |
 | 3 | Pages in `#app` | loading screen driver, error pages, landing; sandbox error / retry; `activateHost` switches to root disposers |
-| 4 | Shell + prerender | topbar split into components (auth/QR, user, theme, more, permissions, network, settings/diagnostics), autohide, verification shield, URL pill, offline banner, `product-frame-layout.ts`, prerender plugin and hydration |
+| 4 | Shell + prerender | topbar split into components (auth/QR, user, theme, more, permissions, network, settings/diagnostics), autohide, verification shield, URL pill, offline banner, `product-frame-layout.ts`, prerender plugin and hydration; unify the `dotli:permission-changed` detail to `{ label, permission }` for both producers (today `PromptPermission` sends `{ label }` and the topbar permissions popover sends `{ label, permission }`) |
 | 5 | Dev tools | truapi-debug panel (resolution view, timeline), sandbox-checker panel |
 
 Order: 0 → 1 → 2 → 3 → 4 → 5. Sub-projects 1 and 2 may run in parallel after 0.
