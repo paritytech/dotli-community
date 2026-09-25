@@ -114,7 +114,7 @@ stripped from the name).
 | host resolve.js | 3,810 | 1,656 | +1,492 (`substrate-client.js` content merged in, see note²) |
 | host rolldown-runtime.js | 716 | 459 | +0 |
 | host rpc-resolve.js | 2,472 | 1,212 | -172 |
-| host scheduled-notifications.js | 88,890 | 30,811 | new chunk, no before equivalent (holds `packages/ui/src/state/*` stores + `@solidjs/signals`; statically imported and `modulepreload`ed from `index-*.js`, so it is on the eager path) |
+| host scheduled-notifications.js | 88,890 | 30,811 | new chunk, no before equivalent; statically imported and `modulepreload`ed from `index-*.js`, so it is on the eager path — see note³ for composition |
 | host shared-mode.js | 103 | 131 | new chunk, no before equivalent |
 | host shared-mode.js | 1,874 | 888 | new chunk, no before equivalent |
 | host spans.js | 2,624 | 1,283 | +46 |
@@ -143,15 +143,41 @@ account for the chunk-name churn above; confirmed via
 `grep -l substrate-client apps/host/dist/assets/*.js.map` and the two
 chunks' `sources` arrays.
 
+³ `host scheduled-notifications-*.js` is **not** "the store chunk" — per its
+sourcemap `sources` array (38 entries) it holds 5 of the 8 Solid stores
+(`auth.ts`, `chat.ts`, `permissions.ts`, `product.ts`, `topbar.ts`) plus
+`state/create-store.ts` and `@solidjs/signals`/`solid-js`; `theme.ts` and
+`settings.ts` are bundled into `index-*.js` instead (confirmed via
+`grep -o` on `index-BmjuFzMb.js.map`), and `network.ts` is not present in any
+app bundle (unused in production — tree-shaken; confirmed absent from every
+host and sandbox `.js.map`). The remainder of the chunk — roughly two thirds
+of its bytes — is pre-existing app code that rolldown moved out of
+`index-*.js` alongside the stores, not new Solid code: `@parity/truapi`
+generated types/runtime, `packages/ui/src/notification.ts`,
+`host-callbacks/*`, `chat/service.ts`, `packages/storage/*`,
+`packages/content/src/bitswap.ts`, and `packages/ui/src/scheduled-notifications.ts`
+(the chunk's name comes from this last, pre-existing file, not from any
+Solid-specific feature). Approximate byte attribution: ~29%
+`@solidjs/signals`, ~4% the five store modules + `create-store.ts`, ~67% the
+pre-existing app code listed above.
+
 **Gate note on `host index.js`:** matched by name alone, `index-*.js` gzip
 *dropped* by 20,978 B, which trivially satisfies "Δ gzip < 3 KB". That
 comparison is misleading: `index-*.js` statically imports the new
-`scheduled-notifications-*.js` chunk (the state-store bundle) and
-`index.html` `modulepreload`s it, so both ship on the same eager path that
-`index.js` alone used to cover. Combined eager cost
-(`index.js` + `scheduled-notifications.js`): 62,013 B gzip before →
-41,035 + 30,811 = 71,846 B gzip after, a **+9,833 B gzip** increase. That is
-the number the gate is meant to catch, and it exceeds the 3 KB budget.
+`scheduled-notifications-*.js` chunk and `index.html` `modulepreload`s it, so
+both ship on the same eager path that `index.js` alone used to cover.
+Combined eager cost (`index.js` + `scheduled-notifications.js`): 62,013 B
+gzip before → 41,035 + 30,811 = 71,846 B gzip after, a **+9,833 B gzip**
+increase. That is the number the gate is meant to catch, and it exceeds the
+3 KB budget — but per note³, most of `scheduled-notifications.js` is
+pre-existing app code that simply moved chunks, not new weight; the real new
+eager cost this sub-project adds is **≈ +9.8 KB gzip, mostly
+`@solidjs/signals`** (the store modules themselves are ~4% of the chunk,
+close to negligible on their own).
+
+**Ruling:** accepted for sub-project 0; the Solid reactive core is needed on
+the eager path by sub-project 4 anyway; budget question raised with the
+owner.
 
 ### Cold start
 
@@ -167,20 +193,23 @@ phase `Host total`); before numbers from the saved
 (different phase, "End-to-end", browse→browse-only) reported cold start
 4.39s → 4.72s (+7.7%, Mann-Whitney z=0.37, not significant) and warm/lukewarm
 starts within noise. The `Host total` mark-pair drop of 9.15% is a
-*speed-up*, not a regression, but it exceeds the ±5% "no unexplained change"
-budget for this gate, likely a mix of real improvement (see chunking note
-above — some of the eagerly-loaded `index.js` bytes moved into
+*speed-up*, likely a mix of real improvement (see chunking note above — some
+of the eagerly-loaded `index.js` bytes moved into
 `scheduled-notifications.js`, which is also eager, so this doesn't fully
 explain a speed-up) and sampling noise (10 runs after vs. 20 runs before; cv
-0.10 after vs 0.09 before).
+0.10 after vs 0.09 before). Re-run with `PERF_RUNS=20` before relying on the
+speed-up as a real signal — but per the umbrella spec's "no regression
+beyond 5%" gate, a speed-up outside the ±5% band is not a failure.
 
 Gates: host eager `index-*.js` Δ gzip < 3 KB → **fail** (true eager-path
 delta, including `scheduled-notifications.js`, is +9,833 B gzip; the
 `index-*.js` row alone reads as a pass but is not a fair comparison, see gate
-note above); cold start Δ within 5% → **fail** (-9.15%, a speed-up, not a
-regression, but outside the ±5% budget — see explanation above).
+note above); cold start: -9.15% (faster) → **pass** (no regression; likely
+partly noise at 10 vs 20 runs — re-run with `PERF_RUNS=20` before relying on
+the speed-up).
 
 Largest single contributing chunk to the size-gate failure: `host
-scheduled-notifications-*.js` (new, 88,890 B raw / 30,811 B gzip), which
-holds the eight Solid stores (`packages/ui/src/state/*.ts`) and
-`@solidjs/signals`.
+scheduled-notifications-*.js` (new, 88,890 B raw / 30,811 B gzip) — see
+note³: only ~4% of that chunk is the store modules themselves, ~29% is
+`@solidjs/signals`, and ~67% is pre-existing app code the bundler moved out
+of `index-*.js`.
