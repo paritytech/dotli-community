@@ -17,6 +17,7 @@ import {
   type BlockSource,
   type ChainStatus,
 } from "@dotli/ui/network-monitor";
+import { setLoggedIn } from "@dotli/ui/state/auth";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
@@ -522,7 +523,7 @@ function renderLoggedOut(): void {
   authButton.title = "Login with Polkadot Mobile";
   authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
   setUserPopoverNoUsernameHint(false);
-  window.dispatchEvent(new Event("dotli:logged-out"));
+  setLoggedIn(false);
 }
 
 function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
@@ -540,7 +541,7 @@ function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
     shortenAccount(state.identityAccountId ?? state.publicKey) ??
     "Connected with Polkadot Mobile";
   setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
-  window.dispatchEvent(new Event("dotli:authenticated"));
+  setLoggedIn(true);
 }
 
 // A session can install without any username (the account has no dotNS record

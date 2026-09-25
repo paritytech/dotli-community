@@ -8,6 +8,7 @@ import {
   writeUiStateCache,
   type TruapiSessionUiState,
 } from "./SessionStore";
+import { setAuthState } from "../state/auth";
 
 /**
  * UI-level auth state dispatched on `dotli:truapi-auth-state`. Mirrors the
@@ -27,13 +28,9 @@ export type DotliAuthState =
   | { tag: "Connected"; session: TruapiSessionUiState }
   | { tag: "LoginFailed"; kind: LoginFailureKind; reason: string };
 
-/** Dispatch a `dotli:truapi-auth-state` event for the topbar to render. */
+/** Record the auth state; the store dispatches `dotli:truapi-auth-state`. */
 export function dispatchAuthState(state: DotliAuthState): void {
-  window.dispatchEvent(
-    new CustomEvent<DotliAuthState>("dotli:truapi-auth-state", {
-      detail: state,
-    }),
-  );
+  setAuthState(state);
 }
 
 /**
