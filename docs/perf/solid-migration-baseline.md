@@ -177,7 +177,7 @@ close to negligible on their own).
 
 **Ruling:** accepted for sub-project 0; the Solid reactive core is needed on
 the eager path by sub-project 4 anyway; budget question raised with the
-owner.
+owner — superseded by the Solid-free stores addendum below.
 
 ### Cold start
 
@@ -306,6 +306,9 @@ $ python3 -c "import json; m=json.load(open('apps/host/dist/assets/scheduled-not
 []
 ```
 
+Future bundle checks should inspect each map's `sources` array, not the raw
+map text (comments live in `sourcesContent`).
+
 ### Cold start
 
 Ran `bun run --cwd apps/host test:perf && bun run --cwd apps/host
@@ -327,7 +330,8 @@ faster than base) and with the interim -9.15% result recorded in the
 "After sub-project 0" section. Median of the three `Host total` p50s is
 run 2's **2642 ms, Δ -5.2%** — a speed-up outside the ±5% band, which per
 the umbrella spec's "no regression beyond 5%" gate is not a failure →
-**pass**. Given the spread (cv 0.12-0.27 here vs 0.09 for the 20-run base,
+**pass (provisional; confirm with `PERF_RUNS=20`)**. Given the spread (cv
+0.12-0.27 here vs 0.09 for the 20-run base,
 and run 1's disagreement with runs 2-3), this is not a high-confidence
 number; a dedicated `PERF_RUNS=20` run on an otherwise-idle machine would
 be needed to firm it up, as the "Before sub-project 0" section already

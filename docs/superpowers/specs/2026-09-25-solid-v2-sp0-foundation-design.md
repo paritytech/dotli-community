@@ -105,6 +105,9 @@ export function resetAllStoresForTests(): void;
 
 A listener that throws is reported through `captureException` and does not stop
 the other listeners, the setter, or the event dispatch that follows.
+Notifications are synchronous. Listeners must not call store setters: a
+nested set notifies and dispatches its window event before the outer one
+does.
 
 Each store module exports its readable store, a getter, and setters:
 
@@ -127,7 +130,12 @@ export function useStore<T>(store: ReadableStore<T>): Accessor<T>;
 
 It creates a Solid signal seeded with `store.get()`, subscribes, writes the
 signal on each notification, and unsubscribes with `onCleanup`. It must be
-called inside a component or another reactive owner.
+called inside a component or another reactive owner: `useStore` throws
+outside an owner rather than leaking a subscription. Its mirror signal is
+created with `{ ownedWrite: true }` so a store set dispatched from an owner
+other than the signal's own (e.g. a `createRoot` scope) still reaches the
+accessor instead of Solid 2's dev build throwing
+`REACTIVE_WRITE_IN_OWNED_SCOPE`.
 
 Rules:
 

@@ -6,8 +6,7 @@
  * free of Solid: stores are imported by boot-path code (bridge, topbar, host
  * callbacks, the sandbox's error screen), and Solid's reactive core would
  * otherwise ship on those eager paths before any component reads a store.
- * Components bridge a store to a signal with `useStore` from
- * `components/use-store.ts`.
+ * Components read a store through the `useStore` helper in `components/`.
  */
 
 import { captureException } from "@dotli/metrics/sentry";
@@ -15,7 +14,12 @@ import { captureException } from "@dotli/metrics/sentry";
 export interface ReadableStore<T> {
   /** Latest written value, immediately. */
   get: () => T;
-  /** Called synchronously after every set. Returns the unsubscribe. */
+  /**
+   * Called synchronously after every set. Returns the unsubscribe.
+   * Notifications are synchronous. Listeners must not call store setters: a
+   * nested set notifies and dispatches its window event before the outer one
+   * does.
+   */
   subscribe: (listener: () => void) => () => void;
 }
 
