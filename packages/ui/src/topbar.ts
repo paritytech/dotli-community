@@ -75,6 +75,8 @@ import {
 } from "./blocking-modal-queue";
 import { ERRORS } from "./errors";
 import { recordPermissionChange } from "./state/permissions";
+import { setTheme, type ThemePref } from "@dotli/ui/state/theme";
+import { setChainsButtonVisibleState } from "@dotli/ui/state/topbar";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -130,8 +132,6 @@ let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
 let releaseAuthModal: (() => void) | null = null;
 
-type ThemePref = "light" | "dark" | "system";
-
 const THEME_KEY = "dotli-theme";
 
 /**
@@ -163,12 +163,13 @@ const THEME_TITLE: Record<ThemePref, string> = {
 };
 
 function applyThemePref(pref: ThemePref): void {
+  const resolved = resolveTheme(pref);
   // data-theme-pref drives the toggle icon, data-theme the actual colours.
   document.documentElement.setAttribute("data-theme-pref", pref);
-  document.documentElement.setAttribute("data-theme", resolveTheme(pref));
-  // Notify the Rust bridge to forward the new theme to the
+  document.documentElement.setAttribute("data-theme", resolved);
+  // The store notifies the Rust bridge to forward the new theme to the
   // embedded dApp.
-  window.dispatchEvent(new Event("dotli:theme-changed"));
+  setTheme({ pref, resolved });
 }
 
 function themePopoverOptions(): HTMLButtonElement[] {
@@ -1728,6 +1729,7 @@ function describeLiveNetwork(): { text: string; tone: string } {
  * screen, so the icon appears with the app rather than during the load.
  */
 export function setChainsButtonVisible(visible: boolean): void {
+  setChainsButtonVisibleState(visible);
   document
     .getElementById("chains-button")
     ?.classList.toggle("visible", visible);

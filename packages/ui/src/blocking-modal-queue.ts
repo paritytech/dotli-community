@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { setBlockingModalActive } from "./state/topbar";
+
 type BlockingModalTask<T> = (signal: AbortSignal) => Promise<T> | T;
 
 interface QueueEntry {
@@ -165,11 +167,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
   }
 
   private emitActiveChanged(active: boolean): void {
-    window.dispatchEvent(
-      new CustomEvent("dotli:blocking-modal-active", {
-        detail: { active },
-      }),
-    );
+    setBlockingModalActive(active);
   }
 }
 

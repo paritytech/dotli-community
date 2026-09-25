@@ -9,6 +9,7 @@
 //
 import { isMobileDevice } from "@dotli/shared/device";
 import { productIframeBox } from "./product-iframe-box";
+import { setTopbarVisible } from "./state/topbar";
 
 const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
 const SAFE_TOP = "var(--safe-top, 0px)";
@@ -127,9 +128,7 @@ function setVisible(next: boolean): void {
   if (appFrameTracking) {
     applyAppFrameGeometry();
   }
-  window.dispatchEvent(
-    new CustomEvent<boolean>("topbar:visibility", { detail: next }),
-  );
+  setTopbarVisible(next);
 }
 
 function cancelHide(): void {
