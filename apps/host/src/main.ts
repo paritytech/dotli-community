@@ -75,6 +75,7 @@ import {
 } from "@dotli/ui/verification-shield";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import { initChatStore } from "@dotli/ui/state/chat";
+import { initSettingsStore } from "@dotli/ui/state/settings";
 import {
   bitswapGet,
   listenForSandboxBitswap,
@@ -966,6 +967,7 @@ async function main(): Promise<void> {
   // reload. The reload then replaces the page, so anything below it never
   // runs.
   await applyUrlSettings();
+  initSettingsStore();
 
   const chainBackend = getBackend();
   const cacheSettings = getCacheSettings();
