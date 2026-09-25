@@ -336,10 +336,25 @@ faster than base) and with the interim -9.15% result recorded in the
 "After sub-project 0" section. Median of the three `Host total` p50s is
 run 2's **2642 ms, Δ -5.2%** — a speed-up outside the ±5% band, which per
 the umbrella spec's "no regression beyond 5%" gate is not a failure →
-**pass (provisional; confirm with `PERF_RUNS=20`)**. Given the spread (cv
+**pass (provisional; superseded by "Cold start A/B" below)**. Given the spread (cv
 0.12-0.27 here vs 0.09 for the 20-run base,
 and run 1's disagreement with runs 2-3), this is not a high-confidence
 number; a dedicated `PERF_RUNS=20` run on an otherwise-idle machine would
 be needed to firm it up, as the "Before sub-project 0" section already
 recommends. No run showed a statistically significant regression by
 Mann-Whitney on the End-to-end phase.
+
+## Cold start A/B (20 runs each)
+
+`main` at `d8f0167a` and `feat/solid-v2-foundation` at `41180839`,
+built with the same command and measured back to back on the same idle machine
+(`PERF_RUNS=20`, Playwright called directly because `test:perf` pins 10 runs).
+
+| Build | Host total p50 | p95 | cv |
+|---|---:|---:|---:|
+| main | 2492 ms | 3117 ms | 0.10 |
+| branch | 2530 ms | 3161 ms | 0.12 |
+
+Δ p50: +1.5%. `compare.ts` End-to-end: z=1.00, not significant.
+Gate (no regression beyond 5%): **pass**. This replaces the
+provisional verdict in "After Solid-free stores" above.
