@@ -82,6 +82,29 @@ jobs:
                 "apps/host/dist/assets/index-*.js" \
                 $((600 * 1024))
 
+          # Eager path = module entry + every modulepreloaded chunk, gzip.
+          # Budgets are the Solid migration's whole-migration limits
+          # (docs/superpowers/specs/2026-09-25-solid-v2-ui-migration-design.md):
+          # pre-migration 74,649 B + 15 KB (host), 45,015 B + 10 KB (sandbox).
+          check_eager() {
+            local label=$1 dist=$2 max=$3
+            local json gz
+            if ! json=$(bun scripts/eager-path-size.ts "$dist"); then
+              echo "::warning::${label}: could not measure the eager path in ${dist}"
+              echo "- \`${label}\`: could not measure the eager path in \`${dist}\`" >> /tmp/budget-warnings.md
+              return
+            fi
+            gz=$(echo "$json" | python3 -c "import json,sys; print(json.load(sys.stdin)['gz'])")
+            if (( gz > max )); then
+              echo "::warning::${label} exceeded budget: ${gz} B gzip > ${max} B"
+              echo "- \`${label}\` exceeded budget: **${gz} B gzip** > ${max} B" >> /tmp/budget-warnings.md
+            else
+              echo "${label}: ${gz} B gzip (budget ${max} B) — ok"
+            fi
+          }
+          check_eager "host-eager-path" apps/host/dist 90009
+          check_eager "sandbox-eager-path" apps/sandbox/dist 55255
+
       # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
         if: github.event_name == 'pull_request'
@@ -236,6 +259,15 @@ jobs:
           total_gz_fmt="$(fmt $total_gz)${total_gz_diff}"
           br_pct=$(awk "BEGIN {printf \"%.0f\", (1 - $total_br/$total_raw) * 100}")
 
+          eager_rows=""
+          for app in host sandbox; do
+            json=$(bun scripts/eager-path-size.ts "apps/${app}/dist") || continue
+            read -r e_raw e_br e_gz < <(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['raw'], d['br'], d['gz'])")
+            name="${app}/(eager path)"
+            e_row="| \`${name}\` | $(fmt $e_raw)$(fmt_diff $e_raw "$(baseline_val "$name" raw)") | $(fmt $e_br)$(fmt_diff $e_br "$(baseline_val "$name" br)") | $(fmt $e_gz)$(fmt_diff $e_gz "$(baseline_val "$name" gz)") |"
+            eager_rows="${eager_rows}${e_row}"$'\n'
+          done
+
           {
             echo "## Bundle Size Report"
             echo ""
@@ -248,6 +280,15 @@ jobs:
             fi
             if ! $HAS_BASELINE; then
               echo "> No baseline found on \`main\`. Merge to \`main\` to establish a baseline."
+              echo ""
+            fi
+
+            if [[ -n "$eager_rows" ]]; then
+              echo "**Eager path** (module entry + modulepreloaded chunks):"
+              echo ""
+              echo "| Path | Raw | Brotli | Gzip |"
+              echo "|------|----:|-------:|-----:|"
+              echo -n "$eager_rows"
               echo ""
             fi
 
@@ -343,6 +384,12 @@ jobs:
               first=false
               printf '  "%s": {"raw": %d, "br": %d, "gz": %d}' "$name" "$raw" "$br" "$gz" >> /tmp/bundle-baseline.json
             done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
+          done
+          for app in host sandbox; do
+            json=$(bun scripts/eager-path-size.ts "apps/${app}/dist")
+            printf ',\n  "%s/(eager path)": %s' "$app" \
+              "$(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'raw': d['raw'], 'br': d['br'], 'gz': d['gz']}))")" \
+              >> /tmp/bundle-baseline.json
           done
           echo "" >> /tmp/bundle-baseline.json
           echo "}" >> /tmp/bundle-baseline.json

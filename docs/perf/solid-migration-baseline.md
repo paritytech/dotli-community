@@ -309,6 +309,12 @@ $ python3 -c "import json; m=json.load(open('apps/host/dist/assets/scheduled-not
 Future bundle checks should inspect each map's `sources` array, not the raw
 map text (comments live in `sourcesContent`).
 
+CI now measures this eager path on every PR with
+`bun scripts/eager-path-size.ts <distDir>` (see `.github/workflows/bundle-size.yml`,
+`host-eager-path` / `sandbox-eager-path`, warn-only budgets 90,009 B and
+55,255 B gzip). The script measures gzip with the `gzip` CLI, the same method
+as the tables above, so its numbers are directly comparable to them.
+
 ### Cold start
 
 Ran `bun run --cwd apps/host test:perf && bun run --cwd apps/host
