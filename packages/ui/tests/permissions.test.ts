@@ -23,6 +23,7 @@ import type {
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
+import { resetOverlays } from "./helpers/overlays";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -44,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   unregisterMyapp?.();
   unregisterMyapp = null;
+  resetOverlays();
 });
 
 function registerTestProvider(label: string, store: Store): () => void {

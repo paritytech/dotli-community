@@ -1,12 +1,14 @@
 import type { UserConfirmation } from "@parity/truapi-host";
 import { afterEach, describe, expect, it } from "vitest";
 import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
+import { overlaysReady, resetOverlays } from "./helpers/overlays";
 
 type UserConfirmationReview = Parameters<
   Required<UserConfirmation>["confirmUserAction"]
 >[0];
 
 afterEach(() => {
+  resetOverlays();
   document.body.replaceChildren();
 });
 
@@ -624,6 +626,7 @@ describe("user confirmation modal", () => {
       tag: "PreimageSubmit",
       value: { size: 2048n },
     });
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -647,6 +650,7 @@ describe("user confirmation modal", () => {
       tag: "PreimageSubmit",
       value: { size: 512n },
     });
+    await overlaysReady();
 
     // When
     document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();

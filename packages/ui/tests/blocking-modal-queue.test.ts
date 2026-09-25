@@ -5,6 +5,7 @@ import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserCon
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
 import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
+import { resetOverlays } from "./helpers/overlays";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -12,6 +13,7 @@ const PRODUCT: ProductContext = {
 };
 
 afterEach(() => {
+  resetOverlays();
   document.body.replaceChildren();
 });
 
