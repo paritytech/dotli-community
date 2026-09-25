@@ -19,7 +19,16 @@
 # cert at /etc/letsencrypt/live/${DOMAIN}/). Web roots live under ${WEBROOT}/*.
 
 # Rate-limiting zone (only enabled on the production domains).
-${RL}limit_req_zone $binary_remote_addr zone=${ZONE}:10m rate=15r/s;
+#
+# /assets/ is exempt: requests with an empty key are not counted. Those files
+# are static and content-hashed, and one cold page load fetches more of them at
+# once than the burst allows, so limiting them 503s the app's own chunks. The
+# map variable is per domain because every site config shares one http block.
+${RL}map $uri $${ZONE}_key {
+${RL}    ~^/assets/ "";
+${RL}    default    $binary_remote_addr;
+${RL}}
+${RL}limit_req_zone $${ZONE}_key zone=${ZONE}:10m rate=15r/s;
 
 # ────────────────────────────────────────────────────────────
 # HTTP → HTTPS redirect
