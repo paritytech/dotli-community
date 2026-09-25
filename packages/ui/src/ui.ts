@@ -11,6 +11,7 @@ import { BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
 import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
 import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
 import type { DotLabelResult } from "@dotli/shared/html";
+import { setProductError } from "./state/product";
 
 const app = document.getElementById("app") ?? document.body;
 
@@ -779,7 +780,7 @@ export function showErrorPage(page: ErrorPage): void {
   // with another in place.
   app.querySelector<HTMLElement>(".error-page-title")?.focus();
 
-  window.dispatchEvent(new CustomEvent("dotli:product-error"));
+  setProductError();
 }
 
 /**
@@ -830,7 +831,7 @@ export function showNoContentError(label: string): void {
     </div>
   `;
 
-  window.dispatchEvent(new CustomEvent("dotli:product-error"));
+  setProductError();
 }
 
 const LANDING_PLACEHOLDER_NAMES = ["browse", "mark3t", "playground"] as const;

@@ -50,6 +50,7 @@ import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
 import { productIframeBox } from "./product-iframe-box";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
+import { setProductLoaded } from "./state/product";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
 import {
@@ -1065,14 +1066,7 @@ export async function renderIframe(
 
   // Carry the runtime productId so listeners key chat data the same way
   // storage does when the debug path overrides the label-derived id.
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: {
-        label,
-        productId: options.productId ?? labelToProductId(label),
-      },
-    }),
-  );
+  setProductLoaded(label, options.productId ?? labelToProductId(label));
   emitDotliDebugEvent({
     layer: "render",
     event: "iframe_ready",
@@ -1241,11 +1235,7 @@ export async function renderAppSubdomain(
   stopSetup();
   document.title = withActiveTld(label);
 
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: { label, productId: labelToProductId(label) },
-    }),
-  );
+  setProductLoaded(label, labelToProductId(label));
   emitDotliDebugEvent({
     layer: "render",
     event: "iframe_ready",
