@@ -30,9 +30,8 @@ describe("network store", () => {
 
   it("As the chains popover, the store mirrors the monitor on every change after start", async () => {
     // Given
-    const { getNetworkState, startNetworkStore } = await import(
-      "@dotli/ui/state/network"
-    );
+    const { getNetworkState, startNetworkStore } =
+      await import("@dotli/ui/state/network");
     const stop = startNetworkStore();
     monitor.status = [{ role: "relay", label: "Relay" }];
 
@@ -42,7 +41,9 @@ describe("network store", () => {
     }
 
     // Then
-    expect(getNetworkState().chains).toEqual([{ role: "relay", label: "Relay" }]);
+    expect(getNetworkState().chains).toEqual([
+      { role: "relay", label: "Relay" },
+    ]);
     stop();
     expect(monitor.listeners.size).toBe(0);
   });

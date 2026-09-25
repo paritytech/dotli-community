@@ -76,8 +76,16 @@ describe("permissions store", () => {
     const events = capture("dotli:device-permission-changed");
 
     // When
-    recordPermissionChange({ kind: "device", label: "myapp", permission: "camera" });
-    recordPermissionChange({ kind: "device", label: "myapp", permission: "camera" });
+    recordPermissionChange({
+      kind: "device",
+      label: "myapp",
+      permission: "camera",
+    });
+    recordPermissionChange({
+      kind: "device",
+      label: "myapp",
+      permission: "camera",
+    });
 
     // Then
     expect(events.details).toEqual([
