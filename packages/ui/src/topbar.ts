@@ -1082,7 +1082,11 @@ async function renderPermissionsPopoverAsync(token: number): Promise<void> {
               permission: perm.name,
             });
           } else {
-            recordPermissionChange({ kind: "grant", label: productLabel });
+            recordPermissionChange({
+              kind: "grant",
+              label: productLabel,
+              permission: perm.name,
+            });
           }
         })().catch(() => {
           renderPermissionsPopover();

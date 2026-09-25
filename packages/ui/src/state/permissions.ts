@@ -9,7 +9,7 @@
 import { createSyncStore } from "./create-store";
 
 export type PermissionChange =
-  | { kind: "grant"; label: string }
+  | { kind: "grant"; label: string; permission?: string }
   | { kind: "device"; label: string; permission: string };
 
 export interface PermissionsState {
@@ -28,14 +28,21 @@ export const getPermissionsState = permissions.get;
 /**
  * Also dispatches the event the topbar and bridge listen for:
  * `dotli:permission-changed` for grants, `dotli:device-permission-changed`
- * for device permissions (the bridge reloads the iframe on it).
+ * for device permissions (the bridge reloads the iframe on it). A grant's
+ * `permission` is optional: PromptPermission never has one to report, so its
+ * detail is `{ label }`; the topbar dropdown always names the permission it
+ * changed, so its detail is `{ label, permission }`. The key is omitted
+ * entirely, not set to `undefined`, when absent.
  */
 export function recordPermissionChange(change: PermissionChange): void {
   permissions.set({ version: permissions.get().version + 1, last: change });
   if (change.kind === "grant") {
     window.dispatchEvent(
       new CustomEvent("dotli:permission-changed", {
-        detail: { label: change.label },
+        detail:
+          change.permission === undefined
+            ? { label: change.label }
+            : { label: change.label, permission: change.permission },
       }),
     );
     return;
