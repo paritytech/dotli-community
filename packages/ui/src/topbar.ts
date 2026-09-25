@@ -74,6 +74,7 @@ import {
   type BlockingModalScope,
 } from "./blocking-modal-queue";
 import { ERRORS } from "./errors";
+import { recordPermissionChange } from "./state/permissions";
 
 function getElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -1074,14 +1075,15 @@ async function renderPermissionsPopoverAsync(token: number): Promise<void> {
           }
           // Device permissions need iframe reload (allow attribute changes).
           // Non-device permissions just update the UI.
-          const event = isDevicePermission(perm.name)
-            ? "dotli:device-permission-changed"
-            : "dotli:permission-changed";
-          window.dispatchEvent(
-            new CustomEvent(event, {
-              detail: { label: productLabel, permission: perm.name },
-            }),
-          );
+          if (isDevicePermission(perm.name)) {
+            recordPermissionChange({
+              kind: "device",
+              label: productLabel,
+              permission: perm.name,
+            });
+          } else {
+            recordPermissionChange({ kind: "grant", label: productLabel });
+          }
         })().catch(() => {
           renderPermissionsPopover();
         });

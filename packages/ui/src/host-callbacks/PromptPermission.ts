@@ -32,6 +32,7 @@ import {
 } from "../blocking-modal-queue";
 import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
 import { ERRORS } from "../errors";
+import { recordPermissionChange } from "../state/permissions";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
@@ -165,18 +166,12 @@ async function decidePromptPermissionWhenActive(
       if (signal.aborted) {
         return;
       }
-      window.dispatchEvent(
-        new CustomEvent("dotli:device-permission-changed", {
-          detail: { label, permission: name },
-        }),
-      );
+      recordPermissionChange({ kind: "device", label, permission: name });
     }, 0);
   } else {
     // No browser-level gate, so the grant takes effect as is. The event keeps
     // the topbar in sync.
-    window.dispatchEvent(
-      new CustomEvent("dotli:permission-changed", { detail: { label } }),
-    );
+    recordPermissionChange({ kind: "grant", label });
   }
   return decision === "granted-once" ? "AllowOnce" : "AllowAlways";
 }
