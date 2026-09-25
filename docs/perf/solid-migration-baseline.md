@@ -389,3 +389,31 @@ Cold start (20 runs each, back to back): before p50 2,666 ms, after p50
 2,693 ms, Δ +1.0%; `compare.ts` End-to-end p50 3.72s → 3.76s (+1.2%),
 Mann-Whitney z=0.66, not significant.
 Gate (no regression beyond 5%): **pass**.
+
+## After sub-project 2 (chat)
+
+The chat panel's contents are Solid components in a lazily loaded chunk,
+prefetched when the chat button first appears. Measured on
+`feat/solid-v2-foundation` at `e125140c` against the branch before
+sub-project 2 (`30d41161`), same build command, eager path via
+`bun scripts/eager-path-size.ts`.
+
+| Eager path | Before SP2 gzip | After SP2 gzip | Δ gzip | Gate |
+|---|---:|---:|---:|---|
+| host | 76,956 | 75,039 | -1,917 | no increase: pass |
+| sandbox | 44,825 | 44,824 | -1 | unchanged: pass |
+
+Solid in startup chunks (sourcemap `sources`): none. Every startup chunk in
+both apps' eager sets checked `ok []`, save one: `host
+rolldown-runtime-hePW80VL.js` ships with no emitted `.js.map` (a tiny rolldown
+runtime helper, present in both the before and after builds), so it was
+checked with a raw-text `grep` for `solid-js`/`@solidjs` instead of its
+sourcemap `sources` — also negative.
+
+Chat chunk (hash from the measurement build): host `mount-KOUcVPS6.js`
+16,982 B raw / 6,035 B gzip.
+
+Cold start (20 runs each, back to back): before p50 3,850 ms, after p50
+3,690 ms, Δ -4.2%; `compare.ts` End-to-end p50 3.85s → 3.69s (-4.2%),
+Mann-Whitney z=0.76, not significant.
+Gate (no regression beyond 5%): **pass**.
