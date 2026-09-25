@@ -1,0 +1,184 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { fireEvent } from "@solidjs/testing-library";
+import { mountViolationPanel } from "@dotli/ui/components/sandbox-checker/mount";
+import { settle } from "../../helpers/solid";
+
+let iframe: HTMLIFrameElement;
+let dispose: () => void = () => undefined;
+
+function violation(
+  data: unknown,
+  source: MessageEventSource | null = iframe.contentWindow,
+): void {
+  window.dispatchEvent(new MessageEvent("message", { data, source }));
+}
+
+function panel(): HTMLElement {
+  return document.getElementById("sandbox-checker-panel")!;
+}
+
+beforeEach(() => {
+  document.body.innerHTML = '<div id="topbar"></div>';
+  iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  dispose = mountViolationPanel(iframe);
+});
+
+afterEach(() => {
+  dispose();
+  document.body.replaceChildren();
+});
+
+describe("sandbox checker violation panel", () => {
+  it("As a dotli developer, the panel stays hidden until the first violation, then counts them", async () => {
+    // Given
+    await settle();
+
+    // Then
+    expect(panel().classList.contains("visible")).toBe(false);
+    expect(panel().querySelector(".sc-badge")?.textContent).toBe("0");
+    expect(panel().querySelector(".sc-label")?.textContent).toBe(
+      "API Violations",
+    );
+
+    // When
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "localStorage.getItem",
+      details: { key: "x", n: 1 },
+      timestamp: 0,
+    });
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "fetch",
+      details: {},
+      timestamp: 0,
+    });
+    await settle();
+
+    // Then
+    expect(panel().classList.contains("visible")).toBe(true);
+    expect(panel().querySelector(".sc-badge")?.textContent).toBe("2");
+    const entries = [...panel().querySelectorAll(".sc-entry")];
+    expect(entries).toHaveLength(2);
+    expect(entries[0].querySelector(".sc-api")?.textContent).toBe(
+      "localStorage.getItem",
+    );
+    expect(entries[0].querySelector(".sc-details")?.textContent).toBe(
+      "key=x n=1",
+    );
+    expect(entries[0].querySelector(".sc-time")?.textContent).toBe(
+      new Date(0).toLocaleTimeString(),
+    );
+    expect(entries[1].querySelector(".sc-details")).toBeNull();
+  });
+
+  it("As a dotli developer, markup in a violation shows as text", async () => {
+    // When
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "<img src=x onerror=alert(1)>",
+      details: { a: "<b>bold</b>" },
+      timestamp: 0,
+    });
+    await settle();
+
+    // Then
+    const entry = panel().querySelector(".sc-entry")!;
+    expect(entry.querySelector("img")).toBeNull();
+    expect(entry.querySelector("b")).toBeNull();
+    expect(entry.querySelector(".sc-api")?.textContent).toBe(
+      "<img src=x onerror=alert(1)>",
+    );
+    expect(entry.querySelector(".sc-details")?.textContent).toBe(
+      "a=<b>bold</b>",
+    );
+  });
+
+  it("As a dotli developer, messages from other windows or of other types are ignored", async () => {
+    // When
+    violation(
+      { type: "DOTLI_API_VIOLATION", api: "x", details: {}, timestamp: 0 },
+      window,
+    );
+    violation({ type: "SOMETHING_ELSE", api: "x", details: {}, timestamp: 0 });
+    violation("not an object");
+    await settle();
+
+    // Then
+    expect(panel().querySelectorAll(".sc-entry")).toHaveLength(0);
+    expect(panel().classList.contains("visible")).toBe(false);
+  });
+
+  it("As a dotli developer, showing, collapsing and expanding the panel resizes the app frame", async () => {
+    // Given
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "x",
+      details: {},
+      timestamp: 0,
+    });
+    await settle();
+    const toggle = panel().querySelector<HTMLButtonElement>(".sc-toggle")!;
+
+    // Then
+    expect(toggle.getAttribute("aria-label")).toBe("Toggle panel");
+    expect(toggle.textContent).toBe("▼");
+    expect(iframe.style.height.startsWith("calc(100dvh - 56px - ")).toBe(true);
+
+    // When
+    fireEvent.click(toggle);
+    await settle();
+
+    // Then
+    expect(panel().classList.contains("collapsed")).toBe(true);
+    expect(toggle.textContent).toBe("▲");
+    expect(iframe.style.height).toBe("calc(100dvh - 56px - 32px)");
+
+    // When: resizing while collapsed does nothing
+    const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
+    fireEvent.pointerMove(window, { clientY: 100 });
+    await settle();
+
+    // Then
+    expect(panel().style.height).toBe("");
+
+    // When
+    fireEvent.click(toggle);
+    await settle();
+
+    // Then
+    expect(panel().classList.contains("collapsed")).toBe(false);
+    expect(toggle.textContent).toBe("▼");
+  });
+
+  it("As a dotli developer, disposing removes the panel, stops listening and restores the frame height", async () => {
+    // Given
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "x",
+      details: {},
+      timestamp: 0,
+    });
+    await settle();
+
+    // When
+    dispose();
+    dispose = () => undefined;
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "y",
+      details: {},
+      timestamp: 0,
+    });
+    await settle();
+
+    // Then
+    expect(document.getElementById("sandbox-checker-panel")).toBeNull();
+    expect(iframe.style.height).toBe("calc(100dvh - 56px)");
+  });
+});
