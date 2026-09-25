@@ -52,6 +52,9 @@ export function Dialog(props: DialogProps): JSX.Element {
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
       event.preventDefault();
+      // Handled in the capture phase, ahead of any other document Escape
+      // handler (e.g. a host page's own shortcut), so it never also fires.
+      event.stopPropagation();
       props.onDismiss();
     } else if (event.key === "Tab") {
       trapTab(event, dialog);
@@ -61,9 +64,9 @@ export function Dialog(props: DialogProps): JSX.Element {
   onSettled(() => {
     (props.initialFocus?.() ?? dialog).focus();
   });
-  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("keydown", onKeyDown, true);
   onCleanup(() => {
-    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("keydown", onKeyDown, true);
     if (previouslyFocused?.isConnected === true) {
       previouslyFocused.focus();
     }

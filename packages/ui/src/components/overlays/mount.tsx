@@ -5,12 +5,16 @@
 
 import { ensureOverlayRoot } from "../../mount/overlay-root";
 import { mountRoot } from "../../mount/root";
-import { failAllModals } from "../../state/modals";
-import { clearToasts } from "../../state/toasts";
 import { ModalOutlet } from "./ModalOutlet";
 import { ToastStack } from "./ToastStack";
 
-export function mountOverlays(): () => void {
+/**
+ * Mount the toast and modal trees as the "overlays" root. `onBroken` runs
+ * after a render error has been reported, so the loader can recover the
+ * root (see `overlays/load.ts`, which is where settling the queued work now
+ * happens, since this file must not decide it alone).
+ */
+export function mountOverlays(onBroken: () => void): () => void {
   return mountRoot(
     "overlays",
     ensureOverlayRoot(),
@@ -21,11 +25,7 @@ export function mountOverlays(): () => void {
       </>
     ),
     {
-      // A render error must not leave a permission or signing promise hanging.
-      onError: () => {
-        failAllModals();
-        clearToasts();
-      },
+      onError: onBroken,
     },
   );
 }

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
 import { ModalOutlet } from "@dotli/ui/components/overlays/ModalOutlet";
 import {
@@ -158,6 +158,24 @@ describe("signing dialog", () => {
 
     // Then
     await expect(second).resolves.toEqual({ result: "dismissed" });
+  });
+
+  it("As a dotli user, Escape does not also reach another document keydown listener", async () => {
+    // Given
+    void openModal(permissionLike());
+    await mountOutlet();
+    const modal = document.querySelector<HTMLElement>(".signing-modal")!;
+    const bubbleListener = vi.fn();
+    document.addEventListener("keydown", bubbleListener);
+
+    // When
+    fireEvent.keyDown(modal, { key: "Escape" });
+    await settle();
+
+    // Then
+    expect(bubbleListener).not.toHaveBeenCalled();
+    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    document.removeEventListener("keydown", bubbleListener);
   });
 
   it("As a dotli user, the backdrop and Escape do nothing on a dialog that must be answered", async () => {

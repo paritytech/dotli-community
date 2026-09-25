@@ -381,8 +381,9 @@ runtime helper, present in both the before and after builds), so it was
 checked with a raw-text `grep` for `solid-js`/`@solidjs` instead of its
 sourcemap `sources` — also negative.
 
-Overlays chunk: host `mount-CHtjaFkV.js` 55,155 B raw / 20,540 B gzip; sandbox
-`mount-CmyWESjc.js` 53,588 B raw / 19,908 B gzip.
+Overlays chunk: host `mount-CHtjaFkV.js` (hash from the measurement build)
+55,155 B raw / 20,540 B gzip; sandbox `mount-CmyWESjc.js` (hash from the
+measurement build) 53,588 B raw / 19,908 B gzip.
 
 Cold start (20 runs each, back to back): before p50 2,666 ms, after p50
 2,693 ms, Δ +1.0%; `compare.ts` End-to-end p50 3.72s → 3.76s (+1.2%),

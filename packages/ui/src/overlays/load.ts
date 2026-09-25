@@ -22,11 +22,13 @@ import {
 const PREFETCH_FALLBACK_MS = 2000;
 
 let loading: Promise<void> | null = null;
+let dispose: (() => void) | null = null;
 
 /**
- * When the chunk cannot load: action toasts ("Reload") become a native
- * confirm, other toasts are dropped unseen, and dialogs settle with their
- * fallback result so no caller waits forever.
+ * When the chunk cannot load, or the mounted root later throws while
+ * rendering: action toasts ("Reload") become a native confirm, other toasts
+ * are dropped unseen, and dialogs settle with their fallback result so no
+ * caller waits forever.
  */
 function fallBack(): void {
   for (const toast of toastsStore.get().items) {
@@ -42,11 +44,36 @@ function fallBack(): void {
   failAllModals();
 }
 
+/**
+ * Build a one-shot `onBroken` for a single mount attempt. `mountRoot`'s
+ * `Errored` boundary can re-invoke its fallback more than once for the same
+ * underlying error, so this guards against running the recovery twice for
+ * that mount.
+ */
+function createOnBroken(): () => void {
+  let handled = false;
+  return () => {
+    if (handled) {
+      return;
+    }
+    handled = true;
+    // A render error must not leave a permission or signing promise hanging,
+    // but the root cannot be disposed from inside its own error fallback, so
+    // the cleanup is deferred one microtask.
+    queueMicrotask(() => {
+      loading = null;
+      dispose?.();
+      dispose = null;
+      fallBack();
+    });
+  };
+}
+
 /** Import and mount the overlays root once. Never rejects. */
 export function ensureOverlays(): Promise<void> {
   loading ??= import("../components/overlays/mount")
     .then(({ mountOverlays }) => {
-      mountOverlays();
+      dispose = mountOverlays(createOnBroken());
     })
     .catch((err: unknown) => {
       loading = null;
@@ -89,4 +116,5 @@ export function presentToast(input: ToastInput): void {
 /** Tests only. */
 export function resetOverlayLoaderForTests(): void {
   loading = null;
+  dispose = null;
 }

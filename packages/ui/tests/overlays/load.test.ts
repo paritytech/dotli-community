@@ -136,6 +136,60 @@ describe("overlays loader", () => {
     ).toBe("A");
   });
 
+  it("As a dotli user, a render error settles the open dialog and lets the overlays recover for what comes next", async () => {
+    // Given: a one-time render error that is not tied to any single
+    // dialog's own data. (A throw scoped to one dialog's view, e.g. a
+    // `fields` getter, would not tell this test apart from the pre-fix
+    // behaviour: Solid's own <Show keyed> in ModalOutlet already disposes
+    // and retries that per-dialog subtree as soon as a *different* dialog is
+    // queued next, so it self-heals either way. A throw here, in
+    // ToastStack's own top-level store read, is not nested under anything
+    // Solid recreates on its own, so — without this task's fix — it stays
+    // broken forever: nothing ever disposes and remounts the root.)
+    const getSpy = vi.spyOn(toastsStore, "get").mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const broken = presentModal(VIEW);
+
+    try {
+      // When
+      await overlaysReady();
+
+      // Then
+      await expect(broken).resolves.toEqual({ result: "dismissed" });
+      expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+        root: "overlays",
+      });
+
+      // When: a dialog queued after the error still renders and settles
+      // from its own button, instead of hanging forever.
+      const recovered = presentModal(VIEW);
+      await overlaysReady();
+      document
+        .querySelector<HTMLButtonElement>("#overlay-root .signing-btn-sign")
+        ?.click();
+
+      // Then
+      await expect(recovered).resolves.toEqual({ result: "yes" });
+
+      // When: a toast pushed after the recovery is shown too.
+      presentToast({
+        text: "After the error",
+        label: "Recovered",
+        icon: "<svg></svg>",
+        dismissMs: 0,
+      });
+      await overlaysReady();
+
+      // Then
+      expect(
+        document.querySelector("#overlay-root .notif-title")?.textContent,
+      ).toBe("Recovered");
+    } finally {
+      getSpy.mockRestore();
+    }
+  });
+
   // Must stay last: it replaces the module registry (vi.resetModules() +
   // vi.doMock), so any test after it would mount a fresh
   // components/overlays/mount tree bound to re-imported store instances
