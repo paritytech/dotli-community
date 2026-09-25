@@ -3,12 +3,12 @@
 
 // Pure list-row summary helpers for TrUAPI/system debug events.
 //
-// Solid-free: reused by both the imperative panel and (eventually) a
-// Solid adapter, so it must not import `@dotli/ui` or `solid-js`. These
-// functions return plain data, never markup — callers that render to
-// `innerHTML` are responsible for `escapeHtml`-guarding every field
-// before it reaches the DOM; callers that render via JSX get automatic
-// text escaping instead.
+// Solid-free: consumed by the Solid truapi-debug components in
+// `packages/ui/src/components/truapi-debug/`, so it must not import
+// `@dotli/ui` or `solid-js`. These functions return plain data, never
+// markup — callers that render to `innerHTML` are responsible for
+// `escapeHtml`-guarding every field before it reaches the DOM; callers
+// that render via JSX get automatic text escaping instead.
 
 import {
   decodeChainAnnotations,

@@ -9,7 +9,10 @@
 //   once per animation frame from `store.subscribe`, and synchronously on a
 //   user action that re-reads the store (filter change, tab swap).
 // - User actions apply synchronously (`flush`), as the imperative panel did:
-//   the DOM reflects a click or keypress before the handler returns.
+//   the DOM reflects a click or keypress before the handler returns. Never
+//   call `flush()` from an effect, a memo, or `onSettled` — those already
+//   run inside Solid's own update pass, and forcing a nested flush there
+//   would re-enter it.
 // - The detail pane is rebuilt only on user actions (`detailRevision`), never
 //   because traffic arrived.
 

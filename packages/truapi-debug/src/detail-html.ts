@@ -4,10 +4,10 @@
 // Detail-pane HTML builders for the TrUAPI debug panel: single-event
 // detail (list/resolution views) and group detail (timeline view).
 //
-// Solid-free: reused by both the imperative panel and (eventually) a
-// Solid adapter, so it must not import `@dotli/ui` or `solid-js`. Every
-// product/network value threaded into these strings goes through
-// `escapeHtml` before it reaches `innerHTML`.
+// Solid-free: consumed by the Solid truapi-debug components in
+// `packages/ui/src/components/truapi-debug/`, so it must not import
+// `@dotli/ui` or `solid-js`. Every product/network value threaded into
+// these strings goes through `escapeHtml` before it reaches `innerHTML`.
 
 import { escapeHtml } from "@dotli/shared/html";
 import {

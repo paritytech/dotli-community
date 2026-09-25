@@ -3,8 +3,9 @@
 
 // TrUAPI debug panel dock-position persistence.
 //
-// Solid-free: reused by both the imperative panel and (eventually) a
-// Solid adapter, so it must not import `@dotli/ui` or `solid-js`.
+// Solid-free: consumed by the Solid truapi-debug components in
+// `packages/ui/src/components/truapi-debug/`, so it must not import
+// `@dotli/ui` or `solid-js`.
 
 export type DockPosition = "bottom" | "right";
 

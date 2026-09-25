@@ -4,8 +4,9 @@
 // Product-iframe layout adjustment so the TrUAPI debug panel never
 // overlays the host's rendered content.
 //
-// Solid-free: reused by both the imperative panel and (eventually) a
-// Solid adapter, so it must not import `@dotli/ui` or `solid-js`.
+// Solid-free: consumed by the Solid truapi-debug components in
+// `packages/ui/src/components/truapi-debug/`, so it must not import
+// `@dotli/ui` or `solid-js`.
 
 import type { DockPosition } from "./dock-storage.ts";
 
