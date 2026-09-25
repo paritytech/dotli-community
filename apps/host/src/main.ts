@@ -122,6 +122,7 @@ import { dotNsUrl } from "@dotli/shared/dotns-url";
 import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
 import { showNotification } from "@dotli/ui/notification";
+import { prefetchOverlays } from "@dotli/ui/overlays/load";
 import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
 import {
   BACKEND_KEY,
@@ -180,6 +181,10 @@ window.addEventListener("vite:preloadError", (event) => {
     },
   });
 });
+
+// Fetch the toast/modal chunk while the browser is idle, so it is in memory
+// before a deploy could make later chunk loads fail.
+prefetchOverlays();
 
 const errorIcon = (paths: string): string =>
   `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
