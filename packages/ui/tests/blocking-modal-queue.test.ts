@@ -5,7 +5,7 @@ import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserCon
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
 import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
-import { resetOverlays } from "./helpers/overlays";
+import { overlaysReady, resetOverlays } from "./helpers/overlays";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -35,6 +35,7 @@ describe("blocking modal queue", () => {
       },
     });
     const camera = callbacks.permissions.devicePermission(PRODUCT, "Camera");
+    await overlaysReady();
 
     // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -49,6 +50,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
+    await overlaysReady();
     await vi.waitFor(() => {
       expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
         "Permission Request",
@@ -63,6 +65,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(camera).resolves.toEqual("AllowAlways");
+    await overlaysReady();
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     scope.dispose();
   });
@@ -86,6 +89,7 @@ describe("blocking modal queue", () => {
     // When
     const first = devicePermission(PRODUCT, "Notifications");
     const second = devicePermission(PRODUCT, "Notifications");
+    await overlaysReady();
     await vi.waitFor(() => {
       expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
         1,
@@ -103,6 +107,7 @@ describe("blocking modal queue", () => {
       "AllowAlways",
       "AllowOnce",
     ]);
+    await overlaysReady();
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     expect(status).toBe("Authorized");
     scope.dispose();
@@ -128,6 +133,7 @@ describe("blocking modal queue", () => {
       tag: "IdentityDisclosure",
       value: { productId: "second.dot" },
     });
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-field-value")?.textContent).toBe(
@@ -139,6 +145,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await overlaysReady();
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
       1,
     );

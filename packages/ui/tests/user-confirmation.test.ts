@@ -40,6 +40,7 @@ describe("user confirmation modal", () => {
       tag: "IdentityDisclosure",
       value: { productId: "truapi-playground.dot" },
     });
+    await overlaysReady();
 
     // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -54,6 +55,7 @@ describe("user confirmation modal", () => {
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
+    await overlaysReady();
 
     // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -68,6 +70,7 @@ describe("user confirmation modal", () => {
 
     // Then
     await expect(identityDisclosure).resolves.toBe(true);
+    await overlaysReady();
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
   });
 
@@ -103,6 +106,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -160,6 +164,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(modalFields()).toEqual({
@@ -202,6 +207,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -246,6 +252,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(modalFields()).toEqual({
@@ -290,6 +297,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -333,6 +341,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -367,6 +376,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -408,6 +418,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -459,6 +470,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -495,6 +507,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -532,6 +545,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -568,6 +582,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
@@ -607,6 +622,7 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // When
     document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
@@ -659,7 +675,7 @@ describe("user confirmation modal", () => {
     await expect(confirmation).resolves.toBe(false);
   });
 
-  it("As a dotli user, an account access prompt highlights Allow once", () => {
+  it("As a dotli user, an account access prompt highlights Allow once", async () => {
     // When
     void createUserConfirmationAdapters("localhost:3000").confirmPermission({
       tag: "AccountAccess",
@@ -668,6 +684,7 @@ describe("user confirmation modal", () => {
         targetProductId: "other-product.dot",
       },
     });
+    await overlaysReady();
 
     // Then
     expect(footerButtons()).toEqual([
@@ -688,6 +705,7 @@ describe("user confirmation modal", () => {
         targetProductId: "other-product.dot",
       },
     });
+    await overlaysReady();
 
     // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
@@ -707,6 +725,7 @@ describe("user confirmation modal", () => {
         targetProductId: "other-product.dot",
       },
     });
+    await overlaysReady();
 
     // When
     document
@@ -728,6 +747,7 @@ describe("user confirmation modal", () => {
         targetProductId: "other-product.dot",
       },
     });
+    await overlaysReady();
 
     // When
     document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
@@ -744,6 +764,7 @@ describe("user confirmation modal", () => {
       tag: "IdentityDisclosure",
       value: { productId: "truapi-playground.dot" },
     });
+    await overlaysReady();
 
     // When
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
@@ -760,6 +781,7 @@ describe("user confirmation modal", () => {
       tag: "IdentityDisclosure",
       value: { productId: "truapi-playground.dot" },
     });
+    await overlaysReady();
 
     // When
     document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
@@ -770,7 +792,7 @@ describe("user confirmation modal", () => {
     );
   });
 
-  it("As a dotli user, a per-action confirmation keeps two buttons", () => {
+  it("As a dotli user, a per-action confirmation keeps two buttons", async () => {
     // When
     void createUserConfirmationAdapters("localhost:3000").confirmUserAction({
       tag: "AccountAccess",
@@ -779,9 +801,32 @@ describe("user confirmation modal", () => {
         targetProductId: "other-product.dot",
       },
     });
+    await overlaysReady();
 
     // Then
     expect(footerButtons().map(({ text }) => text)).toEqual(["Deny", "Allow"]);
+  });
+
+  it("As a dotli user, the confirmation dialog is announced as a dialog and dismissed with Escape", async () => {
+    // Given
+    const { confirmUserAction } =
+      createUserConfirmationAdapters("localhost:3000");
+    const accepted = confirmUserAction({
+      tag: "AccountAccess",
+      value: { requestingProductId: "a.dot", targetProductId: "b.dot" },
+    });
+    await overlaysReady();
+
+    // Then
+    expect(document.querySelector(".signing-modal")?.getAttribute("role")).toBe(
+      "dialog",
+    );
+
+    // When
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    // Then
+    await expect(accepted).resolves.toBe(false);
   });
 });
 

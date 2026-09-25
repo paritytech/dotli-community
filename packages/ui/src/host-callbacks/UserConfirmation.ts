@@ -26,11 +26,12 @@ import type {
 import { showPreimageSubmitModal } from "../preimage-modal";
 import { ERRORS } from "../errors";
 import {
-  blockingModalAbortError,
   createBlockingModalScope,
   throwIfAborted,
   type BlockingModalScope,
 } from "../blocking-modal-queue";
+import { presentModal } from "../overlays/load";
+import type { ModalButton, ModalField } from "../state/modals";
 
 interface ConfirmationCopy {
   title: string;
@@ -38,12 +39,7 @@ interface ConfirmationCopy {
   cancelAction?: string;
 }
 
-interface ConfirmationField {
-  label: string;
-  value: string;
-  mono?: boolean;
-  warning?: boolean;
-}
+type ConfirmationField = ModalField;
 
 type ConfirmationDecision =
   "accepted" | "accepted-once" | "rejected" | "dismissed";
@@ -55,123 +51,42 @@ type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;
  * With `allowOnce`, "Allow once" is offered and highlighted, and the lasting
  * grant is labelled "Always allow".
  */
-function showConfirmationModal(
+async function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
   review: ModalReview,
   signal: AbortSignal,
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
-  throwIfAborted(signal);
-  return new Promise((resolve, reject) => {
-    const display = confirmationDisplay(label, review);
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
-
-    const modal = document.createElement("div");
-    modal.className = "signing-modal";
-
-    const heading = document.createElement("h2");
-    heading.textContent = copy.title;
-    modal.appendChild(heading);
-
-    const fields = document.createElement("div");
-    fields.className = "signing-fields";
-
-    for (const field of display.fields) {
-      fields.appendChild(createField(field));
-    }
-
-    modal.appendChild(fields);
-
-    const footer = document.createElement("div");
-    footer.className = "signing-modal-footer";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "signing-btn-cancel";
-    cancelBtn.textContent = copy.cancelAction ?? "Cancel";
-    footer.appendChild(cancelBtn);
-
-    const allowBtn = document.createElement("button");
-    allowBtn.className = allowOnce
-      ? "signing-btn-secondary"
-      : "signing-btn-sign";
-    allowBtn.textContent = allowOnce ? "Always allow" : copy.action;
-    footer.appendChild(allowBtn);
-
-    const onceBtn = allowOnce ? document.createElement("button") : null;
-    if (onceBtn !== null) {
-      onceBtn.className = "signing-btn-sign";
-      onceBtn.textContent = "Allow once";
-      footer.appendChild(onceBtn);
-    }
-
-    modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
-
-    let settled = false;
-    const cleanup = (): void => {
-      signal.removeEventListener("abort", onAbort);
-      backdrop.remove();
-    };
-    const finish = (decision: ConfirmationDecision): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      resolve(decision);
-    };
-    const onAbort = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      reject(blockingModalAbortError(signal.reason));
-    };
-
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    cancelBtn.addEventListener("click", () => {
-      finish("rejected");
+  const buttons: ModalButton<ConfirmationDecision>[] = [
+    {
+      label: copy.cancelAction ?? "Cancel",
+      variant: "cancel",
+      result: "rejected",
+    },
+    allowOnce
+      ? { label: "Always allow", variant: "secondary", result: "accepted" }
+      : { label: copy.action, variant: "primary", result: "accepted" },
+  ];
+  if (allowOnce) {
+    buttons.push({
+      label: "Allow once",
+      variant: "primary",
+      result: "accepted-once",
     });
-    allowBtn.addEventListener("click", () => {
-      finish("accepted");
-    });
-    onceBtn?.addEventListener("click", () => {
-      finish("accepted-once");
-    });
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        finish("dismissed");
-      }
-    });
-  });
-}
-
-function createField(field: ConfirmationField): HTMLDivElement {
-  const group = document.createElement("div");
-  group.className = "signing-field";
-  if (field.warning === true) {
-    group.classList.add("signing-field-warning");
   }
-
-  const label = document.createElement("div");
-  label.className = "signing-field-label";
-  label.textContent = field.label;
-  group.appendChild(label);
-
-  const value = document.createElement("div");
-  value.className = "signing-field-value";
-  if (field.mono === true) {
-    value.classList.add("mono");
-  }
-  value.textContent = field.value;
-  group.appendChild(value);
-
-  return group;
+  const { result } = await presentModal<ConfirmationDecision>(
+    {
+      title: copy.title,
+      fields: confirmationDisplay(label, review).fields,
+      buttons,
+      dismissOnBackdrop: true,
+      dismissResult: "dismissed",
+      fallbackResult: "dismissed",
+    },
+    signal,
+  );
+  return result;
 }
 
 function formatBytes(value: Uint8Array): string {
