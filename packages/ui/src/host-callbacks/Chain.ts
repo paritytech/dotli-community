@@ -29,6 +29,7 @@ import {
 } from "@dotli/resolver/rpc-chain";
 import { log } from "@dotli/shared/log";
 import { ERRORS } from "../errors";
+import { withTrustedSubmitFallback } from "./light-client-submit-fallback";
 
 // `createSmoldotChainProvider` returns wrappers around singleton smoldot
 // chains. Every wrapper drains the same response queue, so independent core
@@ -134,8 +135,18 @@ export function createChainConnect(): ChainProvider["connect"] {
       );
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
+    const lightClient = smoldotChainBroker.getLocalProvider(genesisHash);
+    // TEMPORARY: see light-client-submit-fallback.ts and ADR 0002.
     return Promise.resolve(
-      toConnection(smoldotChainBroker.getLocalProvider(genesisHash)),
+      toConnection(
+        lightClient !== null && isCoreRpcChainSupported(genesisHash)
+          ? withTrustedSubmitFallback(
+              lightClient,
+              () => createCoreRpcChainProvider(genesisHash),
+              genesisHash,
+            )
+          : lightClient,
+      ),
     );
   };
 }

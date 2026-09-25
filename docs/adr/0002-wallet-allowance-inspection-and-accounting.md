@@ -231,6 +231,43 @@ binding and Wasm package set with recorded provenance. The browser must not
 advertise an inspection API backed by an older Wasm binary. No application
 runtime ABI change or product capability expansion is necessary.
 
+## Temporary light-client submission fallback
+
+**Status: temporary workaround. Remove when smoldot validates these calls.**
+
+In light-client mode, smoldot validates a transaction locally before
+broadcasting it, from a call proof a full node returns. For the Asset Hub PGAS
+`claim_pgas` general extrinsic, smoldot rejects every proof with
+`MissingProofEntry`, bans the serving peer for 40 seconds, and after about 27
+seconds reports the watch as `"dropped"`. The same bytes validate against the
+trusted Asset Hub RPC node (`TaggedTransactionQueue_validate_transaction`
+returns `Ok`) and are included within two seconds when submitted there.
+pallet-revive dry-runs of failing calls (the playground's payable `deposit`
+without native balance) hit the same `MissingProofEntry` through
+`chainHead_v1_call`, which papi then retries forever.
+
+This is a smoldot fault, not a usage error: it reproduces with stock smoldot
+3.4.1 (the shipped version) and 3.6.0 (the latest), outside dot.li, using only
+`chainHead_v1_call` against the embedded Paseo Next chain specs; the control
+call `Metadata_metadata_versions` succeeds on the same peers. The proof comes
+back (12.7 KiB), so it is not the oversized-proof substream reset in
+smol-dot/smoldot#2089. The open paritytech/smoldot#3374 (`ext_storage_clear_prefix`
+ignores keys written earlier in the same call) is one known way smoldot's
+local execution can diverge from the node's and read keys the proof never
+recorded; it has not been confirmed as this cause.
+
+`packages/ui/src/host-callbacks/light-client-submit-fallback.ts` therefore
+watches legacy `author_submitAndWatchExtrinsic` submissions on light-client
+connections. Only when the light client reports `"dropped"` does it resend the
+unchanged signed bytes to the network's trusted RPC node and relay that node's
+updates on the original subscription. An inclusion update is held until smoldot
+itself returns the block header, because the core verifies the outcome from
+light-client state at that block. The trusted node can observe or censor the
+transaction but cannot forge it. Every use logs a `TEMPORARY` warning.
+
+Remove the module and its `Chain.ts` wiring once the reproduction in this section
+passes on the smoldot version dot.li ships.
+
 ## Alternatives rejected
 
 - **Count debug events:** captures are incomplete and allocation responses are
