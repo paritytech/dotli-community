@@ -1052,13 +1052,13 @@ export async function renderIframe(
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
+    const { mountViolationPanel } =
+      await import("./components/sandbox-checker/mount");
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
     }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
@@ -1223,13 +1223,13 @@ export async function renderAppSubdomain(
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
+    const { mountViolationPanel } =
+      await import("./components/sandbox-checker/mount");
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
     }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
