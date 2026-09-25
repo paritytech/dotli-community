@@ -18,8 +18,23 @@
 # SSL cert covers ${DOMAIN}, *.${DOMAIN}, *.app.${DOMAIN} (single multi-SAN
 # cert at /etc/letsencrypt/live/${DOMAIN}/). Web roots live under ${WEBROOT}/*.
 
-# Rate-limiting zone (only enabled on the production domains).
-${RL}limit_req_zone $binary_remote_addr zone=${ZONE}:10m rate=15r/s;
+# Rate-limiting zones (only enabled on the production domains).
+#
+# /assets/ has its own zone with a larger burst: one cold page load fetches
+# more hashed chunks at once than the page burst allows. Each map leaves the
+# other zone's paths with an empty key, which nginx does not count, so every
+# request counts against exactly one zone. The map variables are per domain
+# because every site config shares one http block.
+${RL}map $uri $${ZONE}_key {
+${RL}    ~^/assets/ "";
+${RL}    default    $binary_remote_addr;
+${RL}}
+${RL}map $uri $${ZONE}_assets_key {
+${RL}    ~^/assets/ $binary_remote_addr;
+${RL}    default    "";
+${RL}}
+${RL}limit_req_zone $${ZONE}_key        zone=${ZONE}:10m        rate=15r/s;
+${RL}limit_req_zone $${ZONE}_assets_key zone=${ZONE}_assets:10m rate=15r/s;
 
 # ────────────────────────────────────────────────────────────
 # HTTP → HTTPS redirect
@@ -73,7 +88,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    ${RL}limit_req zone=${ZONE} burst=128 nodelay;
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=128 nodelay;
     set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN}";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
@@ -105,7 +121,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    ${RL}limit_req zone=${ZONE} burst=128 nodelay;
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=128 nodelay;
     set $csp_ancestors "${DOMAIN} *.${DOMAIN} *.app.${DOMAIN} revx.dev stg.revx.dev http://localhost:*";
     include /etc/nginx/snippets/dotli-headers-iframeable.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
@@ -136,7 +153,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     include /etc/nginx/snippets/dotli-ssl.conf;
 
-    ${RL}limit_req zone=${ZONE} burst=128 nodelay;
+    ${RL}limit_req zone=${ZONE} burst=30 nodelay;
+    ${RL}limit_req zone=${ZONE}_assets burst=128 nodelay;
     include /etc/nginx/snippets/dotli-headers-host.conf;
     include /etc/nginx/snippets/dotli-precompressed.conf;
 
