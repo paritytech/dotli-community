@@ -34,7 +34,7 @@ ${RL}    ~^/assets/ $binary_remote_addr;
 ${RL}    default    "";
 ${RL}}
 ${RL}limit_req_zone $${ZONE}_key        zone=${ZONE}:10m        rate=15r/s;
-${RL}limit_req_zone $${ZONE}_assets_key zone=${ZONE}_assets:10m rate=15r/s;
+${RL}limit_req_zone $${ZONE}_assets_key zone=${ZONE}_assets:10m rate=64r/s;
 
 # ────────────────────────────────────────────────────────────
 # HTTP → HTTPS redirect
