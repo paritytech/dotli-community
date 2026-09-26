@@ -18,6 +18,7 @@ import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
 import { AuthButton } from "./AuthButton";
 import { AuthModal } from "./AuthModal";
 import { OfflineBanner } from "./OfflineBanner";
+import { PermissionsPopover } from "./PermissionsPopover";
 import { ThemeToggle } from "./ThemeToggle";
 import { UrlPill } from "./UrlPill";
 import { UserPopover } from "./UserPopover";
@@ -158,4 +159,11 @@ export function mountIslands(): void {
   mountIsolated("auth-button", () => <AuthButton />, ["auth-button"]);
   mountIsolated("user-popover", () => <UserPopover />, ["user-popover"]);
   mountIsolated("auth-modal", () => <AuthModal />, ["auth-modal-backdrop"]);
+  // The static permissions button is enabled, so a click on it before this
+  // swap is held back and replayed by the loader (one of its triggers).
+  mountIsolated("permissions", () => <PermissionsPopover />, [
+    "permissions-button",
+    "permissions-popover-backdrop",
+    "permissions-popover",
+  ]);
 }

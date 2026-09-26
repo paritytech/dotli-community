@@ -53,9 +53,6 @@ function installTopbarDom(): void {
     <button id="mode-button"></button>
     <div id="mode-popover"><div id="mode-popover-content"></div></div>
     <div id="mode-popover-backdrop"></div>
-    <button id="permissions-button"></button>
-    <div id="permissions-popover"><div id="permissions-popover-list"></div></div>
-    <div id="permissions-popover-backdrop"></div>
   `;
 }
 
@@ -72,7 +69,9 @@ beforeEach(() => {
 
 // The auth button, the user popover and the pairing modal are islands now:
 // their tests are tests/components/shell/auth-button, user-popover and
-// auth-modal, and the controller's are tests/auth-controller.test.ts.
+// auth-modal, and the controller's are tests/auth-controller.test.ts. The
+// permissions popover is an island too: tests/components/shell/
+// permissions-popover.test.tsx.
 
 describe("topbar boot rehydration", () => {
   it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {
@@ -140,53 +139,6 @@ describe("topbar boot rehydration", () => {
   });
 });
 
-describe("topbar permissions", () => {
-  it("As a dotli integrator, the host renders one row per permission after changing a dropdown", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } =
-      await import("@dotli/ui/permissions");
-    const setPermissionAuthorizationStatus = vi.fn(async () => {});
-    registerPermissionAuthorizationProvider("localhost:3000", {
-      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
-        requests.map(() => "NotDetermined" as const),
-      ),
-      setPermissionAuthorizationStatus,
-    });
-    initTopBar();
-
-    // When
-    window.dispatchEvent(
-      new CustomEvent("dotli:product-loaded", {
-        detail: { label: "localhost:3000" },
-      }),
-    );
-    document.getElementById("permissions-button")?.click();
-    await flushMicrotasks();
-
-    // When
-    document
-      .querySelector<HTMLButtonElement>(".permissions-popover-select")
-      ?.click();
-    const allow = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(
-        ".permissions-popover-menu-item",
-      ),
-    ).find((item) => item.textContent === "Allowed");
-    allow?.click();
-    await vi.waitFor(() => {
-      expect(setPermissionAuthorizationStatus).toHaveBeenCalledTimes(1);
-    });
-    await flushMicrotasks();
-
-    // Then
-    expect(document.querySelectorAll(".permissions-popover-row")).toHaveLength(
-      ALL_PERMISSIONS.length,
-    );
-  });
-});
-
 describe("topbar popover keyboard access", () => {
   it("As a dotli integrator, the host closes the settings popover on Escape and restores trigger focus", async () => {
     // Given
@@ -243,155 +195,6 @@ describe("topbar popover keyboard access", () => {
     expect(document.activeElement).toBe(focusables[focusables.length - 1]);
 
     // Close so the trap's document listener doesn't leak into other tests.
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  });
-
-  it("As a dotli integrator, the host lets Escape close the permission dropdown before the popover", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { registerPermissionAuthorizationProvider } =
-      await import("@dotli/ui/permissions");
-    registerPermissionAuthorizationProvider("localhost:3000", {
-      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
-        requests.map(() => "NotDetermined" as const),
-      ),
-      setPermissionAuthorizationStatus: vi.fn(async () => {}),
-    });
-    initTopBar();
-    window.dispatchEvent(
-      new CustomEvent("dotli:product-loaded", {
-        detail: { label: "localhost:3000" },
-      }),
-    );
-    const permissionsButton = document.getElementById("permissions-button");
-    const permissionsPopover = document.getElementById("permissions-popover");
-    permissionsButton?.click();
-    await flushMicrotasks();
-    document
-      .querySelector<HTMLButtonElement>(".permissions-popover-select")
-      ?.click();
-    expect(document.querySelector(".permissions-popover-menu")).not.toBeNull();
-
-    // When
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    // Then
-    expect(document.querySelector(".permissions-popover-menu")).toBeNull();
-    expect(permissionsPopover?.classList.contains("open")).toBe(true);
-
-    // When
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    // Then
-    expect(permissionsPopover?.classList.contains("open")).toBe(false);
-    expect(permissionsButton?.getAttribute("aria-expanded")).toBe("false");
-    expect(document.activeElement).toBe(permissionsButton);
-  });
-
-  it("As a dotli integrator, the host names each permission select for screen readers", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { registerPermissionAuthorizationProvider } =
-      await import("@dotli/ui/permissions");
-    registerPermissionAuthorizationProvider("localhost:3000", {
-      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
-        requests.map(() => "NotDetermined" as const),
-      ),
-      setPermissionAuthorizationStatus: vi.fn(async () => {}),
-    });
-    initTopBar();
-    window.dispatchEvent(
-      new CustomEvent("dotli:product-loaded", {
-        detail: { label: "localhost:3000" },
-      }),
-    );
-    document.getElementById("permissions-button")?.click();
-    await flushMicrotasks();
-
-    // Then
-    const select = document.querySelector<HTMLButtonElement>(
-      ".permissions-popover-select",
-    );
-    const labelIds = select?.getAttribute("aria-labelledby")?.split(" ") ?? [];
-    const labelText = labelIds
-      .map((id) => document.getElementById(id)?.textContent)
-      .join(" ");
-    expect(labelText).toBe("Notifications Ask (Default)");
-
-    // When
-    select?.click();
-
-    // Then
-    const menu = document.querySelector<HTMLElement>(
-      ".permissions-popover-menu",
-    );
-    expect(menu?.getAttribute("aria-label")).toBe("Notifications permission");
-    const selected = menu?.querySelector<HTMLButtonElement>(
-      '[aria-selected="true"]',
-    );
-    expect(document.activeElement).toBe(selected);
-
-    // When
-    document.activeElement?.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
-    );
-
-    // Then
-    expect(document.activeElement?.textContent).toBe("Allowed");
-
-    // When
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    // Then
-    expect(document.activeElement).toBe(select);
-
-    // Cleanup
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  });
-
-  it("As a dotli integrator, the host keeps focus on the row select after changing a permission", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { registerPermissionAuthorizationProvider } =
-      await import("@dotli/ui/permissions");
-    const setPermissionAuthorizationStatus = vi.fn(async () => {});
-    registerPermissionAuthorizationProvider("localhost:3000", {
-      getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
-        requests.map(() => "NotDetermined" as const),
-      ),
-      setPermissionAuthorizationStatus,
-    });
-    initTopBar();
-    window.dispatchEvent(
-      new CustomEvent("dotli:product-loaded", {
-        detail: { label: "localhost:3000" },
-      }),
-    );
-    document.getElementById("permissions-button")?.click();
-    await flushMicrotasks();
-
-    // When
-    const selectId = "permissions-popover-select-Camera";
-    document.getElementById(selectId)?.click();
-    const allow = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(
-        ".permissions-popover-menu-item",
-      ),
-    ).find((item) => item.textContent === "Allowed");
-    allow?.click();
-    await vi.waitFor(() => {
-      expect(setPermissionAuthorizationStatus).toHaveBeenCalledTimes(1);
-    });
-
-    // Then
-    await vi.waitFor(() => {
-      expect(document.activeElement?.id).toBe(selectId);
-    });
-
-    // Cleanup
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 

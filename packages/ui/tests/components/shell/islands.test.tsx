@@ -35,6 +35,13 @@ import {
   oldUserPopover,
 } from "./old-auth-markup";
 import {
+  oldPermissionsBackdrop,
+  oldPermissionsButton,
+  oldPermissionsPopover,
+} from "./old-permissions-markup";
+import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
+import { setProductLoaded } from "@dotli/ui/state/product";
+import {
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
@@ -62,6 +69,11 @@ vi.mock("@dotli/ui/components/shell/ThemeToggle", async (importOriginal) => {
 
 const THEME_IDS = ["theme-toggle", "theme-popover"];
 const AUTH_IDS = ["auth-button", "user-popover", "auth-modal-backdrop"];
+const PERMISSIONS_IDS = [
+  "permissions-button",
+  "permissions-popover-backdrop",
+  "permissions-popover",
+];
 
 let serverHtml = "";
 
@@ -144,6 +156,7 @@ describe("shell islands", () => {
     disposeRoot("island:auth-button");
     disposeRoot("island:user-popover");
     disposeRoot("island:auth-modal");
+    disposeRoot("island:permissions");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -687,5 +700,100 @@ describe("shell islands", () => {
     // Then
     expect(byId("user-popover").classList.contains("open")).toBe(true);
     expect(document.activeElement).toBe(byId("user-popover"));
+  });
+
+  it("As a dotli user, the permissions button, backdrop and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning", async () => {
+    // Given
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const before = PERMISSIONS_IDS.map((id) => {
+      const el = byId(id);
+      return { el, place: placeOf(el) };
+    });
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    for (const [i, id] of PERMISSIONS_IDS.entries()) {
+      const fresh = byId(id);
+      expect(countById(id)).toBe(1);
+      expect(fresh).not.toBe(before[i].el);
+      expect(before[i].el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(before[i].place);
+    }
+    expect(
+      normalized(byId("permissions-button")).isEqualNode(
+        normalized(oldPermissionsButton({ open: false, hasGrants: false })),
+      ),
+    ).toBe(true);
+    expect(
+      normalized(byId("permissions-popover-backdrop")).isEqualNode(
+        normalized(oldPermissionsBackdrop(false)),
+      ),
+    ).toBe(true);
+    expect(
+      normalized(byId("permissions-popover")).isEqualNode(
+        normalized(
+          oldPermissionsPopover({ open: false, list: { kind: "empty" } }),
+        ),
+      ),
+    ).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a mobile user, the More menu's Permissions row opens the swapped-in popover, and an app loaded before the islands shows its grants", async () => {
+    // Given: an app with a grant, loaded before the islands; and topbar.ts's
+    // More menu, which forwards a row tap as a click on the button it looks
+    // up by id at click time.
+    const unregister = registerPermissionAuthorizationProvider("app.dot", {
+      getPermissionAuthorizationStatuses: async (requests) =>
+        requests.map((request) =>
+          request.tag === "Device" && request.value === "Camera"
+            ? "Authorized"
+            : "NotDetermined",
+        ),
+      setPermissionAuthorizationStatus: async () => {},
+    });
+    setProductLoaded("app.dot", "app.dot");
+    const row = document.querySelector(
+      '#more-popover .more-row[data-target="permissions-button"]',
+    ) as HTMLElement;
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.getElementById(row.dataset.target ?? "")?.click();
+    });
+
+    try {
+      // When
+      mountIslands();
+      await flushAll();
+      await flushAll();
+
+      // Then
+      expect(byId("permissions-button").classList.contains("has-grants")).toBe(
+        true,
+      );
+
+      // When
+      row.click();
+      await flushAll();
+      await flushAll();
+
+      // Then
+      expect(byId("permissions-popover").classList.contains("open")).toBe(true);
+      expect(
+        byId("permissions-popover-backdrop").classList.contains("open"),
+      ).toBe(true);
+      expect(document.activeElement).toBe(byId("permissions-popover"));
+      expect(byId("permissions-popover-status-Camera").textContent).toBe(
+        "Allowed",
+      );
+    } finally {
+      unregister();
+    }
   });
 });

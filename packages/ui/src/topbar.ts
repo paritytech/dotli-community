@@ -3,10 +3,11 @@
 
 // dot.li Top bar UI
 //
-// Wires the topbar's imperative pieces: the mode (settings), chains and
-// permissions popovers, the mobile "more" flyout, and the product chat. The
-// auth button, the user popover and the QR pairing modal are shell islands
-// (components/shell/), driven by auth-controller.ts, which this starts.
+// Wires the topbar's imperative pieces: the mode (settings) and chains
+// popovers, the mobile "more" flyout, and the product chat. The auth button,
+// the user popover, the QR pairing modal and the permissions popover are
+// shell islands (components/shell/); the auth ones are driven by
+// auth-controller.ts, which this starts.
 // All plain DOM manipulation, no framework.
 //
 import { getActiveChainRoles, type ChainRole } from "@dotli/config/network";
@@ -53,15 +54,7 @@ import {
 } from "@dotli/config/network";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { writeSettingsToSearch } from "@dotli/config/url-settings";
-import {
-  ALL_PERMISSIONS,
-  getPermissionStatuses,
-  hasAnyGrant,
-  isDevicePermission,
-  resetPermission,
-  setPermissionStatus,
-  type PermissionStatus,
-} from "./permissions";
+import { ALL_PERMISSIONS, getPermissionStatuses } from "./permissions";
 import { initChatPanel } from "./chat/panel";
 import { emitPersistedSessionUiState } from "./host-callbacks/SessionStore";
 import {
@@ -69,7 +62,7 @@ import {
   type BlockingModalCoordinator,
 } from "./blocking-modal-queue";
 import { initAuthController } from "./auth-controller";
-import { recordPermissionChange } from "./state/permissions";
+import { getProductState } from "./state/product";
 import { recordChainsButtonVisible } from "./state/topbar";
 import { initTheme, THEME_KEY } from "./theme-controller";
 
@@ -87,17 +80,6 @@ let modeButton: HTMLElement;
 let modePopover: HTMLElement;
 let modePopoverContent: HTMLElement;
 let modePopoverBackdrop: HTMLElement | null = null;
-
-let permissionsButton: HTMLElement;
-let permissionsPopover: HTMLElement;
-let permissionsPopoverList: HTMLElement;
-let permissionsPopoverBackdrop: HTMLElement | null = null;
-
-/** The label of the currently loaded product (set via dotli:product-loaded event). */
-let currentProductLabel: string | null = null;
-
-/** True once the host has rendered an error page; no product will load. */
-let productErrored = false;
 
 export function initTopBar(
   modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator(),
@@ -162,13 +144,6 @@ export function initTopBar(
     ) {
       setModePopoverOpen(false);
     }
-    if (
-      permissionsPopover.classList.contains("open") &&
-      !permissionsPopover.contains(e.target as Node) &&
-      !permissionsButton.contains(e.target as Node)
-    ) {
-      setPermissionsPopoverOpen(false);
-    }
   });
 
   // Set logo home link from VITE_APP_URL (defaults to /)
@@ -187,9 +162,6 @@ export function initTopBar(
   setBlockSource(createBlockSource());
   initChainsPopover();
 
-  // Permissions
-  initPermissions();
-
   // Product chat button + docked panel
   initChatPanel();
 
@@ -199,7 +171,6 @@ export function initTopBar(
       return;
     }
     setModePopoverOpen(false);
-    setPermissionsPopoverOpen(false);
     morePopover?.classList.remove("open");
     moreButton?.setAttribute("aria-expanded", "false");
   });
@@ -219,367 +190,6 @@ function scheduleIdle(callback: () => void): void {
   } else {
     window.setTimeout(callback, 0);
   }
-}
-
-const PERM_ICONS: Record<string, string> = {
-  Camera:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
-  Microphone:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
-  Location:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
-  Bluetooth:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg>',
-  Notifications:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
-  NFC: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7a7 7 0 0 1 0 10"/><path d="M13 9a4 4 0 0 1 0 6"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/></svg>',
-  Clipboard:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>',
-  OpenUrl:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
-  Biometrics:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0v-2a4 4 0 0 0-4-4z"/><path d="M6 11a6 6 0 0 1 12 0"/><path d="M4 11a8 8 0 0 1 16 0"/></svg>',
-  IdentityDisclosure:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4h4"/></svg>',
-  ChainSubmit:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
-  PreimageSubmit:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
-  StatementSubmit:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>',
-};
-
-function initPermissions(): void {
-  permissionsButton = getElement("permissions-button");
-  permissionsPopover = getElement("permissions-popover");
-  permissionsPopoverList = getElement("permissions-popover-list");
-  // Backdrop is optional. Older host shells that haven't added the element
-  // still work, the popover just doesn't get a modal overlay there.
-  permissionsPopoverBackdrop = document.getElementById(
-    "permissions-popover-backdrop",
-  );
-
-  permissionsButton.setAttribute("aria-haspopup", "dialog");
-  permissionsButton.setAttribute("aria-expanded", "false");
-  permissionsButton.setAttribute("aria-controls", permissionsPopover.id);
-  permissionsPopover.setAttribute("role", "dialog");
-  permissionsPopover.setAttribute("aria-label", "Permissions");
-  permissionsPopover.tabIndex = -1;
-
-  permissionsButton.addEventListener("click", () => {
-    const willOpen = !permissionsPopover.classList.contains("open");
-    setPermissionsPopoverOpen(willOpen);
-  });
-
-  // Clicking the backdrop dismisses the popover (same as clicking outside).
-  permissionsPopoverBackdrop?.addEventListener("click", () => {
-    setPermissionsPopoverOpen(false);
-  });
-
-  // Update when a product is loaded
-  window.addEventListener("dotli:product-loaded", (e) => {
-    const { label } = (e as CustomEvent<{ label: string }>).detail;
-    currentProductLabel = label;
-    productErrored = false;
-    updatePermissionsButtonState();
-    if (permissionsPopover.classList.contains("open")) {
-      renderPermissionsPopover();
-    }
-  });
-
-  // Re-render the popover hint when the host swaps in an error page.
-  // Clear the label too so any previously loaded product's grants stop
-  // showing. The error page means no product is mounted.
-  window.addEventListener("dotli:product-error", () => {
-    productErrored = true;
-    currentProductLabel = null;
-    updatePermissionsButtonState();
-    if (permissionsPopover.classList.contains("open")) {
-      renderPermissionsPopover();
-    }
-  });
-
-  // Update after permission changes
-  window.addEventListener("dotli:device-permission-changed", () => {
-    updatePermissionsButtonState();
-    if (permissionsPopover.classList.contains("open")) {
-      renderPermissionsPopover();
-    }
-  });
-
-  window.addEventListener("dotli:permission-changed", () => {
-    updatePermissionsButtonState();
-    if (permissionsPopover.classList.contains("open")) {
-      renderPermissionsPopover();
-    }
-  });
-}
-
-/** Update the shield icon to reflect whether any permissions are active. */
-function updatePermissionsButtonState(): void {
-  const productLabel = currentProductLabel;
-  if (productLabel === null) {
-    permissionsButton.classList.remove("has-grants");
-    return;
-  }
-  void (async () => {
-    const hasGrant = await hasAnyGrant(productLabel);
-    if (currentProductLabel === productLabel) {
-      permissionsButton.classList.toggle("has-grants", hasGrant);
-    }
-  })().catch(() => {
-    if (currentProductLabel === productLabel) {
-      permissionsButton.classList.remove("has-grants");
-    }
-  });
-}
-
-const STATUS_LABELS: Record<PermissionStatus, string> = {
-  ask: "Ask (Default)",
-  granted: "Allowed",
-  denied: "Denied",
-};
-
-const STATUS_ORDER: readonly PermissionStatus[] = ["ask", "granted", "denied"];
-
-let openDropdownCleanup: (() => void) | null = null;
-let permissionsRenderToken = 0;
-
-function closeOpenDropdown(): void {
-  openDropdownCleanup?.();
-  openDropdownCleanup = null;
-}
-
-function renderPermissionsPopover(): void {
-  const token = ++permissionsRenderToken;
-  void renderPermissionsPopoverAsync(token).catch(() => {
-    if (token !== permissionsRenderToken) {
-      return;
-    }
-    permissionsPopoverList.innerHTML = "";
-    const hint = document.createElement("div");
-    hint.className = "permissions-popover-footer";
-    hint.textContent = "Permissions are unavailable for this app.";
-    permissionsPopoverList.appendChild(hint);
-  });
-}
-
-async function renderPermissionsPopoverAsync(token: number): Promise<void> {
-  closeOpenDropdown();
-  // A re-render replaces the focused control. Remember it by id so focus
-  // can be restored below, keeping keyboard users anchored.
-  const prevFocusId = permissionsPopoverList.contains(document.activeElement)
-    ? (document.activeElement?.id ?? "")
-    : "";
-  permissionsPopoverList.innerHTML = "";
-
-  const productLabel = currentProductLabel;
-  if (productLabel === null) {
-    const hint = document.createElement("div");
-    hint.className = "permissions-popover-footer";
-    hint.textContent = productErrored
-      ? "No app is loaded on this domain."
-      : "Wait for the app to finish loading to change its permissions.";
-    permissionsPopoverList.appendChild(hint);
-    return;
-  }
-
-  const statuses = await getPermissionStatuses(
-    productLabel,
-    ALL_PERMISSIONS.map(({ name }) => name),
-  );
-
-  for (const [index, perm] of ALL_PERMISSIONS.entries()) {
-    const status = statuses[index] ?? "ask";
-    if (
-      token !== permissionsRenderToken ||
-      currentProductLabel !== productLabel
-    ) {
-      return;
-    }
-
-    const row = document.createElement("div");
-    row.className = "permissions-popover-row";
-
-    const icon = document.createElement("span");
-    icon.className = "permissions-popover-icon";
-    icon.innerHTML = PERM_ICONS[perm.name] ?? "";
-    row.appendChild(icon);
-
-    const nameEl = document.createElement("span");
-    nameEl.className = "permissions-popover-name";
-    nameEl.id = `permissions-popover-name-${perm.name}`;
-    nameEl.textContent = perm.label;
-    row.appendChild(nameEl);
-
-    row.appendChild(
-      createPermissionDropdown(perm, status, (next) => {
-        void (async () => {
-          if (next === "ask") {
-            await resetPermission(productLabel, perm.name);
-          } else {
-            await setPermissionStatus(productLabel, perm.name, next);
-          }
-          // Device permissions need iframe reload (allow attribute changes).
-          // Non-device permissions just update the UI.
-          if (isDevicePermission(perm.name)) {
-            recordPermissionChange({
-              kind: "device",
-              label: productLabel,
-              permission: perm.name,
-            });
-          } else {
-            recordPermissionChange({
-              kind: "grant",
-              label: productLabel,
-              permission: perm.name,
-            });
-          }
-        })().catch(() => {
-          renderPermissionsPopover();
-        });
-      }),
-    );
-
-    permissionsPopoverList.appendChild(row);
-  }
-
-  // Footer notice
-  const footer = document.createElement("div");
-  footer.className = "permissions-popover-footer";
-  footer.textContent = "Changing permissions will reload the app.";
-  permissionsPopoverList.appendChild(footer);
-
-  if (prevFocusId !== "") {
-    document.getElementById(prevFocusId)?.focus();
-  }
-}
-
-function createPermissionDropdown(
-  perm: (typeof ALL_PERMISSIONS)[number],
-  currentStatus: PermissionStatus,
-  onChange: (status: PermissionStatus) => void,
-): HTMLElement {
-  const wrap = document.createElement("div");
-  wrap.className = "permissions-popover-select-wrap";
-
-  const trigger = document.createElement("button");
-  trigger.type = "button";
-  trigger.className = "permissions-popover-select";
-  trigger.id = `permissions-popover-select-${perm.name}`;
-  trigger.setAttribute("aria-haspopup", "listbox");
-  trigger.setAttribute("aria-expanded", "false");
-
-  const triggerLabel = document.createElement("span");
-  triggerLabel.className = "permissions-popover-select-label";
-  triggerLabel.id = `permissions-popover-status-${perm.name}`;
-  triggerLabel.textContent = STATUS_LABELS[currentStatus];
-  trigger.appendChild(triggerLabel);
-
-  // Name the control "<permission> <status>" so screen readers announce
-  // which permission this select changes, not just its current value.
-  trigger.setAttribute(
-    "aria-labelledby",
-    `permissions-popover-name-${perm.name} ${triggerLabel.id}`,
-  );
-
-  const caret = document.createElement("span");
-  caret.className = "permissions-popover-select-caret";
-  caret.innerHTML =
-    '<svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">' +
-    '<path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  trigger.appendChild(caret);
-
-  wrap.appendChild(trigger);
-
-  trigger.addEventListener("click", (e) => {
-    e.stopPropagation();
-    // Clicking the trigger while this row's menu is open should close it.
-    if (wrap.querySelector(".permissions-popover-menu") !== null) {
-      closeOpenDropdown();
-      return;
-    }
-    closeOpenDropdown();
-
-    const menu = document.createElement("div");
-    menu.className = "permissions-popover-menu";
-    menu.setAttribute("role", "listbox");
-    menu.setAttribute("aria-label", `${perm.label} permission`);
-
-    menu.addEventListener("keydown", (ev) => {
-      if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") {
-        return;
-      }
-      ev.preventDefault();
-      const options = Array.from(
-        menu.querySelectorAll<HTMLButtonElement>('[role="option"]'),
-      );
-      const active = document.activeElement;
-      const index = options.findIndex((option) => option === active);
-      const step = ev.key === "ArrowDown" ? 1 : -1;
-      options[(index + step + options.length) % options.length].focus();
-    });
-
-    for (const status of STATUS_ORDER) {
-      const item = document.createElement("button");
-      item.type = "button";
-      const selected = status === currentStatus;
-      item.className = `permissions-popover-menu-item${selected ? " selected" : ""}`;
-      item.setAttribute("role", "option");
-      item.setAttribute("aria-selected", String(selected));
-
-      const text = document.createElement("span");
-      text.textContent = STATUS_LABELS[status];
-      item.appendChild(text);
-
-      if (selected) {
-        const check = document.createElement("span");
-        check.className = "permissions-popover-menu-check";
-        check.innerHTML =
-          '<svg viewBox="0 0 12 10" width="12" height="10" aria-hidden="true">' +
-          '<path d="M1 5l3.5 3.5L11 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-        item.appendChild(check);
-      }
-
-      item.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        closeOpenDropdown();
-        onChange(status);
-      });
-
-      menu.appendChild(item);
-    }
-
-    wrap.appendChild(menu);
-    trigger.setAttribute("aria-expanded", "true");
-    menu.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
-
-    function onDocClick(ev: MouseEvent): void {
-      if (!wrap.contains(ev.target as Node)) {
-        closeOpenDropdown();
-      }
-    }
-    function onKeyDown(ev: KeyboardEvent): void {
-      if (ev.key === "Escape") {
-        closeOpenDropdown();
-      }
-    }
-    document.addEventListener("click", onDocClick);
-    document.addEventListener("keydown", onKeyDown);
-
-    openDropdownCleanup = (): void => {
-      const menuHadFocus = menu.contains(document.activeElement);
-      menu.remove();
-      trigger.setAttribute("aria-expanded", "false");
-      document.removeEventListener("click", onDocClick);
-      document.removeEventListener("keydown", onKeyDown);
-      if (menuHadFocus) {
-        trigger.focus();
-      }
-    };
-  });
-
-  return wrap;
 }
 
 let unsubscribeNetwork: (() => void) | null = null;
@@ -979,7 +589,7 @@ function renderChainsPopover(parent: HTMLElement): void {
     // Speed and size describe the load. Once the product is on screen they
     // describe history, so the footer empties rather than sitting at its
     // final numbers forever.
-    if (currentProductLabel !== null) {
+    if (getProductState().status === "loaded") {
       speedRow.textContent = "";
       sizeRow.textContent = "";
       return;
@@ -1166,7 +776,6 @@ function initModeToggle(): void {
 }
 
 let modePopoverFocusTrap: (() => void) | null = null;
-let permissionsPopoverFocusTrap: (() => void) | null = null;
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -1178,8 +787,8 @@ const FOCUSABLE_SELECTOR = [
 ].join(", ");
 
 /**
- * Escape, Tab containment, and focus restore for an open popover. Same
- * lifecycle as the permission dropdowns: attach on open, cleanup on close.
+ * Escape, Tab containment, and focus restore for an open popover: attach on
+ * open, cleanup on close.
  */
 function trapPopoverFocus(
   popover: HTMLElement,
@@ -1211,11 +820,7 @@ function trapPopoverFocus(
       return;
     }
     if (ev.key === "Escape") {
-      // An open permission dropdown consumes Escape first. Its own
-      // document handler closes it right after this one returns.
-      if (openDropdownCleanup === null) {
-        close();
-      }
+      close();
       return;
     }
     if (ev.key !== "Tab") {
@@ -1278,31 +883,6 @@ function setModePopoverOpen(open: boolean): void {
   } else {
     modePopoverFocusTrap?.();
     modePopoverFocusTrap = null;
-  }
-}
-
-/**
- * Single source of truth for the permissions popover. Keeps the backdrop
- * in sync so "the rest of the page is blocked while permissions are open"
- * holds the same way it does for settings.
- */
-function setPermissionsPopoverOpen(open: boolean): void {
-  permissionsPopover.classList.toggle("open", open);
-  permissionsPopoverBackdrop?.classList.toggle("open", open);
-  permissionsButton.setAttribute("aria-expanded", String(open));
-  if (open) {
-    renderPermissionsPopover();
-    permissionsPopoverFocusTrap ??= trapPopoverFocus(
-      permissionsPopover,
-      permissionsButton,
-      () => {
-        setPermissionsPopoverOpen(false);
-      },
-    );
-  } else {
-    permissionsPopoverFocusTrap?.();
-    permissionsPopoverFocusTrap = null;
-    closeOpenDropdown();
   }
 }
 
@@ -1989,8 +1569,9 @@ async function formatDiagnosticsReport(
   );
 
   // Permissions, only when we know which product label to scope against.
-  const productLabel = currentProductLabel;
-  if (productLabel !== null) {
+  const product = getProductState();
+  if (product.status === "loaded") {
+    const productLabel = product.label;
     lines.push("", "Permissions:");
     const statuses = await getPermissionStatuses(
       productLabel,
