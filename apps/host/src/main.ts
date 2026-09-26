@@ -19,7 +19,6 @@ if (typeof globalThis.requestIdleCallback !== "function") {
 // other module can query it (see boot.ts).
 import "./boot";
 import "./pwa";
-import "./offline";
 import "@dotli/ui/styles.css";
 import * as Sentry from "@sentry/browser";
 import { captureException } from "@dotli/metrics/sentry";

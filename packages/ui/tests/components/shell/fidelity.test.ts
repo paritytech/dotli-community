@@ -11,6 +11,14 @@
 // not part of that contract, so both are stripped before comparing.
 //
 // The rendered side is the real SSR output (see helpers/shell-ssr.ts).
+//
+// One deliberate change to the fixture since it was frozen (spec decision 7
+// of sub-project 4b): `#offline-banner`, the last child of `#topbar`. It used
+// to be appended to `#topbar` at runtime by apps/host/src/offline.ts; it is
+// now prerendered, hidden (`display: none`) with offline.ts's role, live
+// region, text and inline style (written the way Solid's compiler emits a
+// static style string, without spaces), and the offline-banner island shows
+// it. Every other node is still the original block.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

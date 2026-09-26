@@ -25,6 +25,7 @@ import { hydrateShell } from "@dotli/ui/mount/hydrate-shell";
 import { disposeRoot } from "@dotli/ui/mount/root";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
+import { setTopbarVisible } from "@dotli/ui/state/topbar";
 import {
   setVerificationShieldState,
   showLocalhostPill,
@@ -95,6 +96,11 @@ function withoutStoreState(el: Element): Element {
     if (node.hasAttribute("aria-checked")) {
       node.setAttribute("aria-checked", "false");
     }
+    // The island sets its style property by property, the prerender as one
+    // string: compare the declarations, not how they are spelled.
+    if (node instanceof HTMLElement && node.hasAttribute("style")) {
+      node.setAttribute("style", node.style.cssText);
+    }
   }
   return copy;
 }
@@ -125,6 +131,7 @@ describe("shell islands", () => {
   afterEach(() => {
     disposeRoot("island:theme");
     disposeRoot("island:url-pill");
+    disposeRoot("island:offline-banner");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -378,5 +385,70 @@ describe("shell islands", () => {
     expect(byId("verification-shield").getAttribute("aria-expanded")).toBe(
       "true",
     );
+  });
+
+  it("As a dotli user online, the offline banner's hidden static markup is swapped in place, as the topbar's last child, for the live banner, with no warning", async () => {
+    // Given
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const staticBanner = byId("offline-banner");
+    expect(staticBanner.parentElement).toBe(byId("topbar"));
+    expect(staticBanner.style.display).toBe("none");
+    const place = placeOf(staticBanner);
+    const markup = withoutStoreState(staticBanner);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    const liveBanner = byId("offline-banner");
+    expect(countById("offline-banner")).toBe(1);
+    expect(liveBanner).not.toBe(staticBanner);
+    expect(staticBanner.isConnected).toBe(false);
+    expect(placeOf(liveBanner)).toEqual(place);
+    expect(byId("topbar").lastElementChild).toBe(liveBanner);
+    expect(withoutStoreState(liveBanner).isEqualNode(markup)).toBe(true);
+    expect(liveBanner.style.display).toBe("none");
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a user offline when the islands mount, the swapped-in banner shows, follows the connection and hides with the topbar", async () => {
+    // Given
+    let online = false;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(byId("offline-banner").style.display).toBe("block");
+
+    // When
+    setTopbarVisible(false);
+    await flushAll();
+
+    // Then
+    expect(byId("offline-banner").style.display).toBe("none");
+
+    // When
+    setTopbarVisible(true);
+    online = true;
+    window.dispatchEvent(new Event("online"));
+    await flushAll();
+
+    // Then
+    expect(byId("offline-banner").style.display).toBe("none");
+
+    // When
+    online = false;
+    window.dispatchEvent(new Event("offline"));
+    await flushAll();
+
+    // Then
+    expect(byId("offline-banner").style.display).toBe("block");
   });
 });

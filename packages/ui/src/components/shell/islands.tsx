@@ -14,6 +14,7 @@
 
 import type { JSX } from "@solidjs/web";
 import { mountRoot } from "../../mount/root";
+import { OfflineBanner } from "./OfflineBanner";
 import { ThemeToggle } from "./ThemeToggle";
 import { UrlPill } from "./UrlPill";
 
@@ -69,4 +70,5 @@ export function mountIslands(): void {
   // The URL bar element itself is swapped (main.ts only checks that
   // `#topbar-url` exists and writes the url-pill store, never the element).
   mountIsland("url-pill", () => <UrlPill />, ["topbar-url"]);
+  mountIsland("offline-banner", () => <OfflineBanner />, ["offline-banner"]);
 }

@@ -105,10 +105,12 @@ beforeEach(() => {
     '<div id="theme-popover" class="more-popover theme-popover"></div>',
     '<button id="other" type="button">Other</button>',
     '<button class="more-row" data-target="theme-toggle">Theme</button>',
+    '<div id="offline-banner" role="status" aria-live="polite" style="position:absolute;display:none">You are offline</div>',
   ].join("");
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.doUnmock(ISLANDS_CHUNK);
   sentry.captureException.mockReset();
@@ -289,5 +291,103 @@ describe("ensureIslands", () => {
     // Then
     expect(after.defaultPrevented).toBe(false);
     expect(staticClicks).toHaveBeenCalledTimes(2);
+  });
+
+  it("As a user who is offline when the page boots, so the islands chunk cannot load, I still see the static offline banner, and it follows the connection and the topbar", async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let online = false;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    // The loader's instance of the store (modules are reset per test).
+    const { setTopbarVisible } = await import("@dotli/ui/state/topbar");
+    const staticBanner = byId("offline-banner");
+    const loading = ensureIslands();
+
+    // When: the first load fails; the banner waits for the retry.
+    await chunk.fail(new Error("offline"));
+
+    // Then
+    expect(staticBanner.style.display).toBe("none");
+
+    // When: the retry fails too.
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    await chunk.fail(new Error("still offline"));
+    await loading;
+
+    // Then
+    expect(byId("offline-banner")).toBe(staticBanner);
+    expect(staticBanner.style.display).toBe("block");
+    expect(staticBanner.style.position).toBe("absolute");
+
+    // When
+    online = true;
+    window.dispatchEvent(new Event("online"));
+
+    // Then
+    expect(staticBanner.style.display).toBe("none");
+
+    // When
+    online = false;
+    window.dispatchEvent(new Event("offline"));
+
+    // Then
+    expect(staticBanner.style.display).toBe("block");
+
+    // When
+    setTopbarVisible(false);
+
+    // Then
+    expect(staticBanner.style.display).toBe("none");
+
+    // When
+    setTopbarVisible(true);
+
+    // Then
+    expect(staticBanner.style.display).toBe("block");
+  });
+
+  it("As a dotli user online whose islands chunk cannot load, the static offline banner stays hidden until the connection drops", async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let online = true;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const loading = ensureIslands();
+
+    // When
+    await chunk.fail(new Error("chunk failed"));
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    await chunk.fail(new Error("chunk failed again"));
+    await loading;
+
+    // Then
+    expect(byId("offline-banner").style.display).toBe("none");
+
+    // When
+    online = false;
+    window.dispatchEvent(new Event("offline"));
+
+    // Then
+    expect(byId("offline-banner").style.display).toBe("block");
+  });
+
+  it("As a dotli user, when the islands mount, the offline banner is the island's alone: the loader does not touch it", async () => {
+    // Given
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const loading = ensureIslands();
+
+    // When
+    await chunk.arrive();
+    await loading;
+    window.dispatchEvent(new Event("offline"));
+
+    // Then: the stand-in chunk has no banner island, so the static banner
+    // would only show if the loader drove it.
+    expect(byId("offline-banner").style.display).toBe("none");
   });
 });

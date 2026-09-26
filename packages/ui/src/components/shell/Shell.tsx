@@ -9,11 +9,11 @@
 // hydration (mount/hydrate-shell.tsx) claims the prerendered markup, and the
 // imperative code in topbar.ts wires up against the hydrated DOM, exactly
 // like it did against the static HTML before. The reactive pieces (the theme
-// toggle, ...) stay static here too: after boot, the lazily loaded islands
-// chunk (components/shell/islands.tsx) client-renders each one and swaps it
-// in for its static nodes by id. This file therefore stays free of
-// components and control flow, since its client templates are stripped
-// (mount/strip-client-templates-plugin.ts).
+// toggle, the URL bar, the offline banner) stay static here too: after boot,
+// the lazily loaded islands chunk (components/shell/islands.tsx)
+// client-renders each one and swaps it in for its static nodes by id. This
+// file therefore stays free of components and control flow, since its client
+// templates are stripped (mount/strip-client-templates-plugin.ts).
 //
 // The section comments below (Top Bar, QR Pairing Modal, ...) mirror the
 // original HTML comments. They're written as JSX comments on purpose: a JSX
@@ -476,6 +476,28 @@ export function Shell(): JSX.Element {
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </button>
+        </div>
+        <div
+          id="offline-banner"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: "0",
+            right: "0",
+            "z-index": "999",
+            background: "#b45309",
+            color: "#fff",
+            "font-size": "0.75rem",
+            "font-weight": "500",
+            "text-align": "center",
+            padding: "4px 12px",
+            "letter-spacing": "0.02em",
+            display: "none",
+          }}
+        >
+          You are offline
         </div>
       </div>
 

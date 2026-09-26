@@ -9,6 +9,7 @@
 
 import { captureException } from "@dotli/metrics/sentry";
 import type * as Islands from "../components/shell/islands";
+import { topbarStore } from "../state/topbar";
 
 /**
  * The islands' triggers: the static buttons users can click before the
@@ -27,6 +28,26 @@ const importIslands = (): Promise<typeof Islands> =>
 let loading: Promise<void> | null = null;
 
 /**
+ * Without the islands chunk, drive the static `#offline-banner` the way the
+ * offline-banner island would: shown while offline and the topbar is
+ * visible. Being offline at boot is the likeliest reason the chunk failed.
+ */
+function followOfflineWithoutIslands(): void {
+  const banner = document.getElementById("offline-banner");
+  if (banner === null) {
+    return;
+  }
+  const update = (): void => {
+    banner.style.display =
+      !navigator.onLine && topbarStore.get().visible ? "block" : "none";
+  };
+  window.addEventListener("online", update);
+  window.addEventListener("offline", update);
+  topbarStore.subscribe(update);
+  update();
+}
+
+/**
  * Import the islands chunk and mount the islands, once; called by the host
  * right after hydrateShell(). Never rejects.
  *
@@ -36,7 +57,8 @@ let loading: Promise<void> | null = null;
  * once, after about a second, with clicks still held back. When the retry
  * fails too, or mounting the islands throws, the static shell stays, the
  * failure is reported to Sentry once (`islands_load_error` or
- * `islands_mount_error`) and nothing is replayed.
+ * `islands_mount_error`) and nothing is replayed. When the chunk cannot
+ * load, the static offline banner still follows the connection.
  */
 export function ensureIslands(): Promise<void> {
   if (loading !== null) {
@@ -77,6 +99,7 @@ export function ensureIslands(): Promise<void> {
       (err: unknown) => {
         stopHoldingBack();
         captureException(err, { kind: "islands_load_error" });
+        followOfflineWithoutIslands();
       },
     );
   return loading;
