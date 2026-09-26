@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onSettled, untrack } from "solid-js";
+import { createEffect, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { themeStore, type ThemePref } from "../../state/theme";
 import { selectThemePref } from "../../theme-controller";
 import { useStore } from "../use-store";
-import { createPopover } from "./popover";
+import { createPopover, focusTrigger } from "./popover";
 
 const THEME_LABEL: Record<ThemePref, string> = {
   light: "Light",
@@ -16,35 +16,26 @@ const THEME_LABEL: Record<ThemePref, string> = {
 
 /**
  * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`),
- * a shell island (see Island.tsx). The menu follows the menu-button pattern:
+ * a shell island (see islands.tsx): Shell.tsx prerenders the same markup
+ * statically (title "Theme", no option checked), and this component is
+ * swapped in for it after boot. The menu follows the menu-button pattern:
  * opening focuses the checked option, ArrowUp/ArrowDown (wrapping), Home and
  * End move between options, Escape closes and hands focus back to the
  * button, and Tab closes so focus moves on. Picking an option applies it
- * through theme-controller.ts, closes the menu and focuses the button.
+ * through theme-controller.ts, closes the menu and focuses the button (or
+ * the "More" button, when the theme button is hidden on narrow screens).
  *
  * The button's icon comes from CSS on `<html data-theme-pref>`, which the
  * inline bootstrap script and theme-controller.ts own, never this component.
- *
- * The prerender and the hydration pass render today's static markup (title
- * "Theme", no option checked) whatever the store holds, so both match; the
- * store's preference shows once the island has settled. theme-controller.ts
- * writes the stored preference at initTopBar(), after hydration. The mobile
- * "More" menu's Theme row opens this menu by calling `.click()` on the button.
+ * The mobile "More" menu's Theme row opens this menu by calling `.click()`
+ * on the button.
  */
 export function ThemeToggle(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const theme = useStore(themeStore);
-  const [settled, setSettled] = createSignal(false);
-  onSettled(() => {
-    setSettled(true);
-  });
-  const pref = (): ThemePref | undefined =>
-    settled() ? theme().pref : undefined;
-  const title = (): string => {
-    const current = pref();
-    return current === undefined ? "Theme" : `Theme: ${THEME_LABEL[current]}`;
-  };
+  const pref = (): ThemePref => theme().pref;
+  const title = (): string => `Theme: ${THEME_LABEL[pref()]}`;
 
   const menu = createPopover({
     trigger: () => button,
@@ -71,8 +62,9 @@ export function ThemeToggle(): JSX.Element {
   });
 
   // Native listeners (added in the refs below), not Solid's onClick/onKeyDown:
-  // Solid 2 delegates those to the root's container (`#shell`), and the
-  // landing page (ui.ts) moves the button and the menu out of it.
+  // Solid 2 delegates those to the root's container, which is the detached
+  // element the island renders into before it is swapped in (islands.tsx).
+  // The landing page (ui.ts) also moves the button and the menu around.
   const onKeyDown = (e: KeyboardEvent): void => {
     // Escape is the popover's (createPopover): it closes and returns focus.
     const all = options();
@@ -103,7 +95,7 @@ export function ThemeToggle(): JSX.Element {
     if (next === "light" || next === "dark" || next === "system") {
       selectThemePref(next);
       menu.setOpen(false);
-      button?.focus();
+      focusTrigger(button);
     }
   };
 

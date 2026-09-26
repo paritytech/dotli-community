@@ -344,6 +344,26 @@ describe("ThemeToggle", () => {
     row.remove();
   });
 
+  it("As a mobile user, picking a theme while the theme button is hidden hands focus to the More button", async () => {
+    // Given: on narrow screens CSS hides the theme button, so it cannot
+    // take focus; the menu is reached through the More button.
+    await openThemeMenu("dark", "dark");
+    const more = document.createElement("button");
+    more.id = "more-button";
+    document.body.append(more);
+    themeButton().focus = () => undefined;
+
+    // When
+    themeOption("light")?.click();
+    await settle();
+
+    // Then
+    expect(localStorage.getItem("dotli-theme")).toBe("light");
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(more);
+    more.remove();
+  });
+
   it("As a visitor on the landing page, the theme menu still works after the page moves the button and menu out of the shell", async () => {
     // Given: ui.ts moves both into the landing page's top-right corner,
     // outside the root Solid rendered them in.

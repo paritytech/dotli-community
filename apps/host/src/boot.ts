@@ -6,11 +6,15 @@
 // they load (offline.ts appends its banner to `#topbar`). Hydrating here
 // runs before any of them, so every reference imperative code takes into the
 // shell is to a node Solid has claimed. Sentry starts first so that a failed
-// hydration, reported by hydrateShell(), reaches it.
+// hydration, reported by hydrateShell(), reaches it. The shell's islands
+// (its reactive pieces) start loading right after, off the startup bundle;
+// they mount over the static markup when their chunk arrives.
 
 import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
 import { hydrateShell } from "@dotli/ui/mount/hydrate-shell";
+import { ensureIslands } from "@dotli/ui/mount/load-islands";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
 hydrateShell();
+void ensureIslands();

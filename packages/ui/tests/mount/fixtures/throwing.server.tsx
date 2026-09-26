@@ -4,8 +4,8 @@
 // Server entries whose components throw at different depths, and one that
 // renders cleanly, for render-hydratable.test.ts.
 
+import { Errored } from "solid-js";
 import { renderHydratableToString } from "@dotli/ui/mount/render-hydratable";
-import { Island } from "@dotli/ui/components/shell/Island";
 import type { JSX } from "@solidjs/web";
 
 function Broken(): never {
@@ -44,19 +44,29 @@ export function renderBrokenChild(): string {
   );
 }
 
-/** An island's child throws, inside the island's own boundary. */
-export function renderBrokenIsland(): string {
+/**
+ * Wraps its children in an error boundary of its own that renders nothing,
+ * so an error below it never reaches the render's root boundary.
+ */
+function Contained(props: { children: JSX.Element }) {
+  return <Errored fallback={() => null}>{props.children}</Errored>;
+}
+
+/** A nested child throws, inside a boundary of its own. */
+export function renderBrokenInBoundary(): string {
   return renderHydratableToString(
     () => (
       <div id="bar">
         <span>before</span>
-        <Island name="broken">
-          <BrokenChild />
-        </Island>
+        <Contained>
+          <Frame>
+            <BrokenChild />
+          </Frame>
+        </Contained>
         <span>after</span>
       </div>
     ),
-    "broken-island",
+    "broken-in-boundary",
   );
 }
 
@@ -64,15 +74,20 @@ function Fine() {
   return <span>fine</span>;
 }
 
-/** Nothing throws: a static root with a child component and an island. */
+/**
+ * Nothing throws: a static root with a child component and a nested one
+ * inside a boundary.
+ */
 export function renderClean(): string {
   return renderHydratableToString(
     () => (
       <div id="bar">
         <Fine />
-        <Island name="fine">
-          <Fine />
-        </Island>
+        <Contained>
+          <Frame>
+            <Fine />
+          </Frame>
+        </Contained>
       </div>
     ),
     "clean",

@@ -91,7 +91,7 @@ function focusLostOrInside(surface: HTMLElement | undefined): boolean {
  * "more" menu) cannot take focus, so the "more" button gets it instead, as in
  * topbar.ts's trapPopoverFocus.
  */
-function focusTrigger(trigger: HTMLElement | undefined): void {
+export function focusTrigger(trigger: HTMLElement | undefined): void {
   trigger?.focus();
   if (trigger !== undefined && document.activeElement !== trigger) {
     document.getElementById("more-button")?.focus();

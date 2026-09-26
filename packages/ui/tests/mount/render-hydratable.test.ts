@@ -78,7 +78,11 @@ describe("renderHydratableToString", () => {
   for (const [posture, render] of Object.entries(POSTURES)) {
     it.each([
       ["a child component", "renderBrokenChild", "broken-child"],
-      ["an island", "renderBrokenIsland", "broken-island"],
+      [
+        "a nested child inside its own boundary",
+        "renderBrokenInBoundary",
+        "broken-in-boundary",
+      ],
     ])(
       `As a developer (${posture} build), a prerender where %s throws below the root fails with that error instead of shipping a serialized one`,
       async (_what, name, renderId) => {

@@ -154,13 +154,13 @@ function resolvedNodes(value: unknown, into: Node[] = []): Node[] {
  * nothing) and reported once with `{ root: name, kind: "render_error" }`,
  * followed by `options.onError`.
  *
- * That snapshot fallback is valid only while `view` is static (the 4a host
+ * That snapshot fallback is valid only while `view` is static (the host
  * shell): the restored nodes are plain DOM that Solid does not own, so any
  * reactive part would be dead. It is also what lets the shell ship without
  * its client templates (mount/strip-client-templates-plugin.ts), which only
- * a client render would use. Sub-project 4b must replace it before the shell
- * gets reactive components, e.g. by keeping the snapshot for the static parts
- * and lazily client-rendering the islands on this failure path.
+ * a client render would use. The shell's reactive pieces are islands mounted
+ * separately over its static markup (mount/load-islands.ts), whichever way
+ * this went.
  */
 export function hydrateRoot(
   name: string,

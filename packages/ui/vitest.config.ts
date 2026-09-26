@@ -11,11 +11,13 @@ import { stripClientTemplatesPlugin } from "./src/mount/strip-client-templates-p
 // mode @solidjs/vite-plugin always compiles non-hydratable, so the hydration
 // project runs under its own mode. It also drops the shell's client templates
 // the way the host build does, so the tests hydrate the module that ships.
+// The islands swap test runs here too: it hydrates the real shell first, as
+// the host boots, and client-renders islands compiled the way the host
+// compiles them.
 const HYDRATION_TESTS = [
   "tests/mount/hydrate-shell.test.tsx",
   "tests/mount/hydrate-root.test.tsx",
-  "tests/components/shell/island.test.tsx",
-  "tests/components/shell/theme-toggle.hydration.test.tsx",
+  "tests/components/shell/islands.test.tsx",
 ];
 
 const shared = {
@@ -56,11 +58,6 @@ export default defineConfig({
           stripClientTemplatesPlugin({
             files: [
               resolve(import.meta.dirname, "src/components/shell/Shell.tsx"),
-              // island.test.tsx's Shell look-alike.
-              resolve(
-                import.meta.dirname,
-                "tests/mount/fixtures/IslandShell.tsx",
-              ),
             ],
           }),
         ],

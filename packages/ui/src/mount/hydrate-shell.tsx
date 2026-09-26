@@ -10,10 +10,10 @@
 // The shell's client module carries no DOM templates (the host build strips
 // them, see mount/strip-client-templates-plugin.ts), so it can only be
 // hydrated, never client-rendered. A failed hydration therefore restores a
-// snapshot of the prerendered markup (see hydrateRoot). That is valid only
-// while the shell is static: sub-project 4b must replace it before the shell
-// gets reactive components (e.g. lazily client-render the islands on the
-// failure path).
+// snapshot of the prerendered markup (see hydrateRoot). That is valid
+// because the shell is static: its reactive pieces are islands that
+// mount/load-islands.ts swaps in over the static markup after boot, on the
+// hydrated and the restored shell alike.
 
 import { hydrateRoot } from "./root";
 import { SHELL_RENDER_ID, Shell } from "../components/shell/Shell";
