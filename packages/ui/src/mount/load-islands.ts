@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Loads the shell's islands after boot. The prerendered shell hydrates fully
-// static (mount/hydrate-shell.tsx); its reactive pieces (the theme toggle,
-// ...) come from one lazily loaded chunk, components/shell/islands.tsx,
-// which client-renders each and swaps it in for its static markup. Keeping
+// static (mount/hydrate-shell.tsx); its reactive pieces (listed in
+// mountIslands()) come from one lazily loaded chunk,
+// components/shell/islands.tsx, which client-renders each and swaps it in
+// for its static markup. Keeping
 // them off the startup bundle is the point, so everything here is Solid-free.
 
 import { captureException } from "@dotli/metrics/sentry";
@@ -48,9 +49,10 @@ function followOfflineWithoutIslands(banner: HTMLElement | null): void {
  *
  * Until the islands mount, a click on a trigger is held back (its default
  * prevented) and replayed on the live trigger afterwards, at most once per
- * trigger, so an early click is not lost. When the chunk cannot load, or
- * mounting the islands throws, the static shell stays, the failure is
- * reported to Sentry (`islands_load_error` or `islands_mount_error`) and
+ * trigger, so an early click is not lost. Each island mounts on its own
+ * (mountIslands reports one that fails and goes on). When the chunk cannot
+ * load, or mountIslands itself throws, the static shell stays, the failure
+ * is reported to Sentry (`islands_load_error` or `islands_mount_error`) and
  * nothing is replayed. Whenever the banner island is not mounted, the static
  * offline banner still follows the connection.
  *

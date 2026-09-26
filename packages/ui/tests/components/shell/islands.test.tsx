@@ -242,25 +242,30 @@ describe("shell islands", () => {
     expect(document.activeElement).toBe(byId("theme-toggle"));
   });
 
-  it("As a keyboard user focused inside a static island node, focus moves to the element with the same id in the live island", async () => {
-    // Given: any element with an id, e.g. Task 3's shield button inside the
-    // URL pill; the theme button's icon stands in for it here.
-    const staticIcon = byId("theme-icon-moon");
-    staticIcon.setAttribute("tabindex", "-1");
-    staticIcon.focus();
-    expect(document.activeElement).toBe(staticIcon);
+  it("As a keyboard user focused on a static element with an id, focus moves to the live element with that id, wherever it sits", async () => {
+    // Given: a focusable static element whose live counterpart sits
+    // elsewhere in the island (here the shield button, which the live pill
+    // nests inside `#url-pill`).
+    showProductPill("app", ".dot.li");
+    setVerificationShieldState("verified");
+    const staticShield = document.createElement("button");
+    staticShield.id = "verification-shield";
+    byId("topbar-url").append(staticShield);
+    staticShield.focus();
+    expect(document.activeElement).toBe(staticShield);
 
     // When
     mountIslands();
     await flushAll();
 
     // Then
-    expect(byId("theme-icon-moon")).not.toBe(staticIcon);
-    expect(document.activeElement).toBe(byId("theme-icon-moon"));
+    expect(staticShield.isConnected).toBe(false);
+    expect(byId("verification-shield")).not.toBe(staticShield);
+    expect(document.activeElement).toBe(byId("verification-shield"));
   });
 
-  it("As a keyboard user focused inside a static island node on an element without an id, focus moves to the live node that replaced its container", async () => {
-    // Given
+  it("As a keyboard user focused on a static element without an id, focus moves to the live element at the same place", async () => {
+    // Given: the options are buttons with tabindex="-1".
     const staticOption = themeOption("dark") as HTMLElement;
     staticOption.focus();
     expect(document.activeElement).toBe(staticOption);
@@ -271,7 +276,43 @@ describe("shell islands", () => {
 
     // Then
     expect(staticOption.isConnected).toBe(false);
-    expect(document.activeElement).toBe(byId("theme-popover"));
+    expect(document.activeElement).toBe(themeOption("dark"));
+    expect(document.activeElement?.tagName).toBe("BUTTON");
+  });
+
+  it("As a keyboard user focused on a static node whose live counterpart is not focusable, focus moves to the first focusable element in it", async () => {
+    // Given: the live `#theme-popover` is a plain div, not focusable.
+    const staticPopover = byId("theme-popover");
+    staticPopover.setAttribute("tabindex", "-1");
+    staticPopover.focus();
+    expect(document.activeElement).toBe(staticPopover);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(staticPopover.isConnected).toBe(false);
+    expect(byId("theme-popover").hasAttribute("tabindex")).toBe(false);
+    expect(document.activeElement).toBe(themeOption("light"));
+  });
+
+  it("As a keyboard user focused on a static node whose live counterpart has nothing focusable, the unfocusable live node is not focused", async () => {
+    // Given: the live banner is a status region with nothing to focus.
+    const staticBanner = byId("offline-banner");
+    staticBanner.setAttribute("tabindex", "-1");
+    staticBanner.focus();
+    expect(document.activeElement).toBe(staticBanner);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    const liveBanner = byId("offline-banner");
+    expect(liveBanner).not.toBe(staticBanner);
+    expect(document.activeElement).not.toBe(liveBanner);
+    expect(liveBanner.contains(document.activeElement)).toBe(false);
   });
 
   it("As a dotli user, a theme island that throws while rendering leaves the static markup in place and is reported once", async () => {
@@ -297,9 +338,65 @@ describe("shell islands", () => {
     );
   });
 
-  it("As a dotli user, a click on the theme button while the islands are still loading opens the menu once they mount", async () => {
+  it("As a dotli user, an island that throws outside its error boundary is reported once, keeps its static markup and does not stop the other islands", async () => {
+    // Given
+    const staticBar = byId("topbar-url");
+    const staticBanner = byId("offline-banner");
+    const failure = new Error("the swap broke");
+    vi.spyOn(staticBar, "replaceWith").mockImplementation(() => {
+      throw failure;
+    });
+    const staticToggle = byId("theme-toggle");
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(byId("topbar-url")).toBe(staticBar);
+    expect(countById("topbar-url")).toBe(1);
+    expect(byId("theme-toggle")).not.toBe(staticToggle);
+    expect(byId("offline-banner")).not.toBe(staticBanner);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(failure, {
+      root: "island:url-pill",
+      kind: "island_mount_error",
+    });
+  });
+
+  it("As a dotli user, an island whose static node is missing from the page is reported once and the other islands still mount", async () => {
+    // Given
+    byId("offline-banner").remove();
+    const staticToggle = byId("theme-toggle");
+    const staticBar = byId("topbar-url");
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(countById("offline-banner")).toBe(0);
+    expect(byId("theme-toggle")).not.toBe(staticToggle);
+    expect(byId("topbar-url")).not.toBe(staticBar);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          "[islands] island:offline-banner has no #offline-banner on the page",
+      }),
+      { root: "island:offline-banner", kind: "island_missing_node" },
+    );
+  });
+
+  // ensureIslands mounts once per module, and reloading the module would
+  // load a second Solid, so this is the file's only ensureIslands test.
+  it("As a dotli user, a click on the theme button while the islands are still loading opens the menu once they mount, even when another island throws while mounting", async () => {
     // Given
     const { ensureIslands } = await import("@dotli/ui/mount/load-islands");
+    const staticBar = byId("topbar-url");
+    vi.spyOn(staticBar, "replaceWith").mockImplementation(() => {
+      throw new Error("the swap broke");
+    });
     const staticButton = byId("theme-toggle");
 
     // When
@@ -309,9 +406,15 @@ describe("shell islands", () => {
     await flushAll();
 
     // Then
+    expect(byId("topbar-url")).toBe(staticBar);
     expect(byId("theme-toggle")).not.toBe(staticButton);
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
     expect(byId("theme-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      root: "island:url-pill",
+      kind: "island_mount_error",
+    });
   });
 
   it("As a dotli user, the URL bar's static markup is swapped in place for the live pill, which matches it, with no warning", async () => {
