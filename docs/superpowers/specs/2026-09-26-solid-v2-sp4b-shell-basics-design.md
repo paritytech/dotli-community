@@ -52,3 +52,15 @@ The four pieces render from components, their imperative code is gone
 (`offline.ts` deleted, theme code out of `topbar.ts`, shield DOM code out of
 `verification-shield.ts`, `innerHTML` writes to `#topbar-url` out of
 `main.ts`), all tests and gates pass, results recorded.
+
+## Amendment (2026-09-26): lazy islands
+
+Written by the controller while the owner was away. After Task 2, the theme island hydrated eagerly put host startup at 99,189 B, leaving 1,060 B under the owner's +25 KB limit. Each further eager island costs about 1–3 KB. A throwaway spike (branch `spike/lazy-islands`) measured the alternative at 97,619 B for startup plus a 2,273 B lazy chunk. The owner can reverse this by raising the limit instead; see Q-SP4b-1 in `SOLID_MIGRATION_QUESTIONS.md`.
+
+| # | Topic | Decision (overrides 6, 8, 10, 11 where they conflict) |
+|---|---|---|
+| 14 | Lazy islands | `Shell.tsx` stays fully static: every 4b piece keeps its static markup there, prerendered and matching the fidelity fixture. A Solid-free loader, `packages/ui/src/mount/load-islands.ts` (`ensureIslands(): Promise<void>`), is memoized and never rejects. It is called from `apps/host/src/boot.ts` right after `hydrateShell()`, not at idle. It imports one lazy chunk, `packages/ui/src/components/shell/islands.tsx`. For each island, the chunk renders the component with `mountRoot("island:<name>", detached, View)` and swaps the static nodes for the rendered ones by id, with `replaceWith`, synchronously and in the same task. If an island fails to mount, its static nodes stay. Focus moves to the replacement when the static node had it |
+| 15 | Early clicks | Until the islands mount, the loader captures clicks on island trigger ids in the document's capture phase: at most one pending click per id, and the default is prevented. After the swap it replays them with `getElementById(id).click()`. If the chunk fails to load, capturing stops and nothing is replayed |
+| 16 | Guard stays strict | `Island.tsx` is removed, and the strip allowlist goes back to the 4a set (`template`/`getNextElement`/`claimElement`), because `Shell.tsx` no longer contains components. `mountRoot` supplies each island's Errored boundary and its once-only Sentry report (`root: "island:<name>"`). The `<script` guard from Task 1's fix round stays |
+| 17 | Fallback | On the hydration fallback path (snapshot restore), the lazy swap still runs, so islands work there without any special code. Task 5 becomes a test of exactly that |
+| 18 | Hydration tests | The per-island hydration tests become swap tests: the static nodes are replaced in place; there is exactly one element per id; the island reacts to its store; a moved node (landing page) is swapped where it now is |

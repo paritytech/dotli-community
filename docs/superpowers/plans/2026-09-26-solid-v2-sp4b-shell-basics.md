@@ -77,3 +77,63 @@ After 4a's size fix, a failed shell hydration restores a snapshot of the prerend
 - [ ] Build (`VITE_NETWORKS=paseo-next-v2,previewnet bun run build`), functional suite (background, port 5173 freed): all pass (including the theme, offline, QR and hydration tests in `ui-smoke.spec.ts`).
 - [ ] Sizes vs the end of 4a (build the 4a end commit in a temporary worktree): host startup ≤ +1,024 B gzip and the running total under +25,600 B over the pre-migration 74,649 B; sandbox unchanged. Cold start 20-run A/B: ≤ +5% on `Host total`.
 - [ ] Record an "After sub-project 4b" section in `docs/perf/solid-migration-baseline.md`; commit `docs(perf): record sub-project 4b sizes and cold start`.
+
+---
+
+## Amendment (2026-09-26): lazy islands (spec decisions 14–18)
+
+Tasks 1 and 2 are done (665540bb, f4c9109f, 322ff937). The remaining work is below; where Tasks 3–5 above conflict with it, this section wins.
+
+### Task 2b: Switch to lazy islands
+
+**Files:**
+- **Create:** `packages/ui/src/mount/load-islands.ts`, `packages/ui/src/components/shell/islands.tsx`, and tests `packages/ui/tests/mount/load-islands.test.ts` and `packages/ui/tests/components/shell/islands.test.tsx`.
+- **Modify:**
+  - `Shell.tsx`: restore the static theme markup exactly as at f4c9109f.
+  - `apps/host/src/boot.ts`: add `void ensureIslands()` after `hydrateShell()`.
+  - `strip-client-templates-plugin.ts`: revert the allowlist to the 4a set, and delete the island-only fixtures and tests. Keep the `<Show>`/`<For>` rejection tests, and keep the `<script` guard in `render-hydratable.ts` with its tests.
+  - `packages/ui/vitest.config.ts`.
+- **Delete:** `Island.tsx` and the theme-toggle hydration test. Replace the hydration test with swap tests per spec decision 18.
+
+Reference: throwaway spike commit 17e94b82 on branch `spike/lazy-islands`. Read it, but do not cherry-pick blindly.
+
+**The loader:**
+- It is memoized and never rejects.
+- It installs the early-click capture for trigger ids (decision 15) and replays after the swap.
+- On a chunk failure it removes the capture and reports once to Sentry, as `overlays/load.ts` does.
+
+**The chunk:**
+- It exports `mountIslands(): void`, which mounts the theme island and swaps `#theme-toggle` and `#theme-popover`.
+- Focus is carried over.
+- Failures leave the static nodes in place.
+
+**Tests:**
+- Swap in place, including after a node has moved outside `#shell`.
+- Exactly one element per id.
+- Early click replay: a click before the mount opens the popover after it.
+- Chunk failure leaves the static nodes and captures nothing afterwards.
+- An island render error keeps the static nodes and reports once.
+
+**Also** fix the Task 2 review's surviving Minor findings (`.superpowers/sdd/.../task-2-review.md`).
+
+**Measure host startup:** it must stay ≤ 97,512 + 200 B.
+
+- [ ] Tests first; implement; checks; commit `refactor(ui): mount shell islands lazily after boot`.
+
+### Tasks 3–4 (amended)
+
+- Each component is added to `islands.tsx`'s mount list. `Shell.tsx` keeps (or, for the offline banner, gains) the static markup. There are no hydration tests; write swap tests instead.
+- Task 3: `main.ts` may write the url-pill store before the island mounts. The island must render the store's current value on mount.
+- Task 3: the store's default must match the static markup, so the swap shows no flash.
+- Task 4: the offline banner's static markup is hidden (`display: none`). The island applies the real state on mount.
+
+### Task 5 (amended)
+
+- Force a hydration mismatch.
+- Then run `ensureIslands()`.
+- Assert that the theme toggle, URL pill, shield and offline banner all work.
+- No other production change is expected.
+
+### Task 6
+
+This task is unchanged, except for the budget: host startup must be ≤ 97,512 + 1,024 B.
