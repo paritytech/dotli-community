@@ -25,6 +25,11 @@ import { hydrateShell } from "@dotli/ui/mount/hydrate-shell";
 import { disposeRoot } from "@dotli/ui/mount/root";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
+import {
+  setVerificationShieldState,
+  showLocalhostPill,
+  showProductPill,
+} from "@dotli/ui/state/url-pill";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -119,6 +124,7 @@ describe("shell islands", () => {
 
   afterEach(() => {
     disposeRoot("island:theme");
+    disposeRoot("island:url-pill");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -299,5 +305,78 @@ describe("shell islands", () => {
     expect(byId("theme-toggle")).not.toBe(staticButton);
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
     expect(byId("theme-toggle").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("As a dotli user, the URL bar's static markup is swapped in place for the live pill, which matches it, with no warning", async () => {
+    // Given
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const staticBar = byId("topbar-url");
+    const place = placeOf(staticBar);
+    const markup = withoutStoreState(staticBar);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    const liveBar = byId("topbar-url");
+    expect(countById("topbar-url")).toBe(1);
+    expect(liveBar).not.toBe(staticBar);
+    expect(staticBar.isConnected).toBe(false);
+    expect(placeOf(liveBar)).toEqual(place);
+    expect(withoutStoreState(liveBar).isEqualNode(markup)).toBe(true);
+    expect(liveBar.matches(":empty")).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a visitor of a product resolved before the islands loaded, the swapped-in pill shows it with its shield state", async () => {
+    // Given: main.ts writes the store before the chunk arrives.
+    showProductPill("app", ".dot.li");
+    setVerificationShieldState("verified");
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(countById("topbar-url")).toBe(1);
+    expect(countById("url-pill")).toBe(1);
+    expect(byId("topbar-url").querySelector(".dot-domain")?.textContent).toBe(
+      "app",
+    );
+    expect(byId("verification-shield").classList.contains("verified")).toBe(
+      true,
+    );
+  });
+
+  it("As a dotli user, the swapped-in pill follows the store and its shield opens", async () => {
+    // Given
+    mountIslands();
+    await flushAll();
+
+    // When
+    showLocalhostPill("localhost:3000");
+    await flushAll();
+
+    // Then
+    expect(byId("url-pill").classList.contains("localhost-pill")).toBe(true);
+    expect(byId("topbar-url").querySelector(".dot-domain")?.textContent).toBe(
+      "localhost:3000",
+    );
+
+    // When
+    showProductPill("app", ".dot.li");
+    await flushAll();
+    byId("verification-shield").click();
+    await flushAll();
+
+    // Then
+    expect(byId("verification-tooltip").classList.contains("open")).toBe(true);
+    expect(byId("verification-shield").getAttribute("aria-expanded")).toBe(
+      "true",
+    );
   });
 });

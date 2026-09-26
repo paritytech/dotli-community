@@ -67,11 +67,10 @@ import {
 } from "@dotli/ui/topbar";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
 import {
-  bindVerificationShield,
   setVerificationShieldState,
-  verificationShieldMarkup,
   type ShieldState,
 } from "@dotli/ui/verification-shield";
+import { showLocalhostPill, showProductPill } from "@dotli/ui/state/url-pill";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import { initChatStore } from "@dotli/ui/state/chat";
 import { initSettingsStore } from "@dotli/ui/state/settings";
@@ -118,7 +117,7 @@ import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
-import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
+import { isValidDotLabel } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
 import { showNotification } from "@dotli/ui/notification";
 import { prefetchOverlays } from "@dotli/ui/overlays/load";
@@ -1057,10 +1056,7 @@ async function main(): Promise<void> {
 
     initScheduledNotifications({ label: host });
 
-    const urlBar = document.getElementById("topbar-url");
-    if (urlBar !== null) {
-      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
-    }
+    showLocalhostPill(host);
 
     // Local products carry no worker manifest to read the chat flag from,
     // so the debug paths enable chat unconditionally for product testing.
@@ -1099,10 +1095,7 @@ async function main(): Promise<void> {
 
     initScheduledNotifications({ label: host });
 
-    const urlBar = document.getElementById("topbar-url");
-    if (urlBar !== null) {
-      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
-    }
+    showLocalhostPill(host);
 
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
@@ -1197,8 +1190,7 @@ async function main(): Promise<void> {
     });
     return;
   }
-  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill">${verificationShieldMarkup()}<span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
-  bindVerificationShield();
+  showProductPill(label, getActiveTldSuffix());
 
   // Listen for status messages from the sandbox iframe so the loading
   // UI continues seamlessly from resolution into content fetching.

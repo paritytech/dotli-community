@@ -15,6 +15,7 @@
 import type { JSX } from "@solidjs/web";
 import { mountRoot } from "../../mount/root";
 import { ThemeToggle } from "./ThemeToggle";
+import { UrlPill } from "./UrlPill";
 
 /**
  * Render `view` as the root `island:<name>` and swap each of its top-level
@@ -65,4 +66,7 @@ export function mountIslands(): void {
     "theme-toggle",
     "theme-popover",
   ]);
+  // The URL bar element itself is swapped (main.ts only checks that
+  // `#topbar-url` exists and writes the url-pill store, never the element).
+  mountIsland("url-pill", () => <UrlPill />, ["topbar-url"]);
 }
