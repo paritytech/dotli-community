@@ -2762,6 +2762,329 @@ export const types = [
         ],
     },
     {
+        id: "host-peer-transport-close-error",
+        name: "HostPeerTransportCloseError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportCloseError = "Closed";',
+        description: "Failure to close a connection.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The connection is unknown or already closed.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-close-request",
+        name: "HostPeerTransportCloseRequest",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportCloseRequest {\n  conn: number;\n}",
+        description: "Close a connection and every stream on it.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Connection to close.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-dial-error",
+        name: "HostPeerTransportDialError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportDialError = "NotGranted" | "Refused" | "Limit" | "Unreachable";',
+        description: "Failure to dial a JAM peer.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant for the requested genesis.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "The peer refused the connection or presented a certificate that does\nnot match the requested identity.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The connection cap for this execution is exhausted.",
+            },
+            {
+                name: "Unreachable",
+                type: '{ tag: "Unreachable"; value?: undefined }',
+                description: "The endpoint could not be reached.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-dial-request",
+        name: "HostPeerTransportDialRequest",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportDialRequest {\n  genesis: HexString;\n  ip: HexString;\n  port: number;\n  ed25519: HexString;\n  p256?: HexString;\n}",
+        description: "Dial one JAM peer over JAMNP-S (QUIC) or WebTransport.",
+        fields: [
+            {
+                name: "genesis",
+                type: "HexString",
+                description: "Genesis header hash; the host derives the ALPN from it and requires a\nmatching manifest grant.",
+            },
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Peer IP address, IPv6 or v4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Peer UDP port.",
+            },
+            {
+                name: "ed25519",
+                type: "HexString",
+                description: "Ed25519 key the peer's TLS certificate must carry.",
+            },
+            {
+                name: "p256",
+                type: "HexString | undefined",
+                description: "Compressed P-256 peer key for WebTransport certificate hashes.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-dial-response",
+        name: "HostPeerTransportDialResponse",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportDialResponse {\n  conn: number;\n}",
+        description: "An open connection handle.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Execution-local connection id.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-events-error",
+        name: "HostPeerTransportEventsError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportEventsError = "NotGranted";',
+        description: "Failure to drain events.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-events-response",
+        name: "HostPeerTransportEventsResponse",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportEventsResponse {\n  events: Array<PeerTransportEvent>;\n}",
+        description: "Events in arrival order.",
+        fields: [
+            {
+                name: "events",
+                type: "Array<PeerTransportEvent>",
+                description: "Pending events; empty when nothing happened.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-open-error",
+        name: "HostPeerTransportOpenError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";',
+        description: "Failure to open a stream.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant.",
+            },
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The connection is closed or unknown.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The stream cap for this connection is exhausted.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-open-request",
+        name: "HostPeerTransportOpenRequest",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportOpenRequest {\n  conn: number;\n  kind: number;\n}",
+        description: "Open a bidirectional stream and send its kind byte.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Connection returned by `dial`.",
+            },
+            {
+                name: "kind",
+                type: "number",
+                description: "JAMNP-S stream kind (UP 0, CE 128, ...).",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-open-response",
+        name: "HostPeerTransportOpenResponse",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportOpenResponse {\n  stream: number;\n}",
+        description: "An open stream handle.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-local stream id.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-recv-error",
+        name: "HostPeerTransportRecvError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportRecvError = "Closed";',
+        description: "Failure to receive from a stream.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already fully consumed.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-recv-request",
+        name: "HostPeerTransportRecvRequest",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportRecvRequest {\n  stream: number;\n  max: number;\n}",
+        description: "Poll one complete framed message without blocking.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream to read from.",
+            },
+            {
+                name: "max",
+                type: "number",
+                description: "Largest message the caller accepts.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-recv-response",
+        name: "HostPeerTransportRecvResponse",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportRecvResponse {\n  message?: HexString;\n  fin: boolean;\n  reset: boolean;\n}",
+        description: "One unframed message, or none available yet.",
+        fields: [
+            {
+                name: "message",
+                type: "HexString | undefined",
+                description: "Complete message bytes without length prefix, or `None` when nothing\nhas arrived yet.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "The peer finished its send side; no further messages will arrive.",
+            },
+            {
+                name: "reset",
+                type: "boolean",
+                description: "The peer reset the stream; buffered data may be incomplete.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-reset-error",
+        name: "HostPeerTransportResetError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportResetError = "Closed";',
+        description: "Failure to reset a stream.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already closed.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-reset-request",
+        name: "HostPeerTransportResetRequest",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportResetRequest {\n  stream: number;\n}",
+        description: "Abort both directions of a stream.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream to reset.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-send-error",
+        name: "HostPeerTransportSendError",
+        category: "peer_transport",
+        definition: 'export type HostPeerTransportSendError = "Closed" | "TooLarge" | "Limit";',
+        description: "Failure to send a message.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is closed, finished or unknown.",
+            },
+            {
+                name: "TooLarge",
+                type: '{ tag: "TooLarge"; value?: undefined }',
+                description: "The message exceeds the host's message limit.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The per-connection buffer is full.",
+            },
+        ],
+    },
+    {
+        id: "host-peer-transport-send-request",
+        name: "HostPeerTransportSendRequest",
+        category: "peer_transport",
+        definition: "export interface HostPeerTransportSendRequest {\n  stream: number;\n  message: HexString;\n  fin: boolean;\n}",
+        description: "Send one framed message; the host adds the `u32` little-endian length.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream returned by `open` or reported by an `Accepted` event.",
+            },
+            {
+                name: "message",
+                type: "HexString",
+                description: "Message bytes without length prefix.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Finish the send side after this message.",
+            },
+        ],
+    },
+    {
         id: "host-platform",
         name: "HostPlatform",
         category: "system",
@@ -3558,6 +3881,30 @@ export const types = [
                 name: "Coins",
                 type: '{ tag: "Coins"; value: { sr25519SecretKeys: Array<HexString> } }',
                 description: "Fund directly from coin secret keys. Each key is an sr25519 secret\ncontrolling a single coin.",
+            },
+        ],
+    },
+    {
+        id: "peer-transport-event",
+        name: "PeerTransportEvent",
+        category: "peer_transport",
+        definition: 'export type PeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n;',
+        description: "Asynchronous transport notification.",
+        variants: [
+            {
+                name: "ConnClosed",
+                type: '{ tag: "ConnClosed"; value: { conn: number } }',
+                description: "The connection was closed by the peer or the host.",
+            },
+            {
+                name: "StreamFin",
+                type: '{ tag: "StreamFin"; value: { stream: number } }',
+                description: "The peer finished its send side of a stream.",
+            },
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value: { conn: number; stream: number; kind: number } }',
+                description: "The peer opened a stream to us on a dialed connection.",
             },
         ],
     },

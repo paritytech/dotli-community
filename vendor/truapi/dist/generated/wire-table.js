@@ -419,3 +419,38 @@ export const WORKER_END_OPERATION = {
     method: 1,
     kind: "request",
 };
+export const PEER_TRANSPORT_DIAL = {
+    trait: 21,
+    method: 0,
+    kind: "request",
+};
+export const PEER_TRANSPORT_OPEN = {
+    trait: 21,
+    method: 1,
+    kind: "request",
+};
+export const PEER_TRANSPORT_SEND = {
+    trait: 21,
+    method: 2,
+    kind: "request",
+};
+export const PEER_TRANSPORT_RECV = {
+    trait: 21,
+    method: 3,
+    kind: "request",
+};
+export const PEER_TRANSPORT_RESET = {
+    trait: 21,
+    method: 4,
+    kind: "request",
+};
+export const PEER_TRANSPORT_CLOSE = {
+    trait: 21,
+    method: 5,
+    kind: "request",
+};
+export const PEER_TRANSPORT_EVENTS = {
+    trait: 21,
+    method: 6,
+    kind: "request",
+};

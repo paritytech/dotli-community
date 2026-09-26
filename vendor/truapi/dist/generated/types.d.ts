@@ -1483,6 +1483,174 @@ export type VersionedHostPaymentTopUpResponse =
     value?: undefined;
 };
 export declare const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopUpResponse>;
+/** Versioned envelope for [`HostPeerTransportCloseError`]. */
+export type VersionedHostPeerTransportCloseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportCloseError;
+};
+export declare const VersionedHostPeerTransportCloseError: S.Codec<VersionedHostPeerTransportCloseError>;
+/** Versioned envelope for [`HostPeerTransportCloseRequest`]. */
+export type VersionedHostPeerTransportCloseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportCloseRequest;
+};
+export declare const VersionedHostPeerTransportCloseRequest: S.Codec<VersionedHostPeerTransportCloseRequest>;
+/** Versioned envelope for [`HostPeerTransportCloseResponse`]. */
+export type VersionedHostPeerTransportCloseResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPeerTransportCloseResponse: S.Codec<VersionedHostPeerTransportCloseResponse>;
+/** Versioned envelope for [`HostPeerTransportDialError`]. */
+export type VersionedHostPeerTransportDialError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportDialError;
+};
+export declare const VersionedHostPeerTransportDialError: S.Codec<VersionedHostPeerTransportDialError>;
+/** Versioned envelope for [`HostPeerTransportDialRequest`]. */
+export type VersionedHostPeerTransportDialRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportDialRequest;
+};
+export declare const VersionedHostPeerTransportDialRequest: S.Codec<VersionedHostPeerTransportDialRequest>;
+/** Versioned envelope for [`HostPeerTransportDialResponse`]. */
+export type VersionedHostPeerTransportDialResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportDialResponse;
+};
+export declare const VersionedHostPeerTransportDialResponse: S.Codec<VersionedHostPeerTransportDialResponse>;
+/** Versioned envelope for [`HostPeerTransportEventsError`]. */
+export type VersionedHostPeerTransportEventsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportEventsError;
+};
+export declare const VersionedHostPeerTransportEventsError: S.Codec<VersionedHostPeerTransportEventsError>;
+/** Versioned envelope for [`HostPeerTransportEventsRequest`]. */
+export type VersionedHostPeerTransportEventsRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPeerTransportEventsRequest: S.Codec<VersionedHostPeerTransportEventsRequest>;
+/** Versioned envelope for [`HostPeerTransportEventsResponse`]. */
+export type VersionedHostPeerTransportEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportEventsResponse;
+};
+export declare const VersionedHostPeerTransportEventsResponse: S.Codec<VersionedHostPeerTransportEventsResponse>;
+/** Versioned envelope for [`HostPeerTransportOpenError`]. */
+export type VersionedHostPeerTransportOpenError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportOpenError;
+};
+export declare const VersionedHostPeerTransportOpenError: S.Codec<VersionedHostPeerTransportOpenError>;
+/** Versioned envelope for [`HostPeerTransportOpenRequest`]. */
+export type VersionedHostPeerTransportOpenRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportOpenRequest;
+};
+export declare const VersionedHostPeerTransportOpenRequest: S.Codec<VersionedHostPeerTransportOpenRequest>;
+/** Versioned envelope for [`HostPeerTransportOpenResponse`]. */
+export type VersionedHostPeerTransportOpenResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportOpenResponse;
+};
+export declare const VersionedHostPeerTransportOpenResponse: S.Codec<VersionedHostPeerTransportOpenResponse>;
+/** Versioned envelope for [`HostPeerTransportRecvError`]. */
+export type VersionedHostPeerTransportRecvError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportRecvError;
+};
+export declare const VersionedHostPeerTransportRecvError: S.Codec<VersionedHostPeerTransportRecvError>;
+/** Versioned envelope for [`HostPeerTransportRecvRequest`]. */
+export type VersionedHostPeerTransportRecvRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportRecvRequest;
+};
+export declare const VersionedHostPeerTransportRecvRequest: S.Codec<VersionedHostPeerTransportRecvRequest>;
+/** Versioned envelope for [`HostPeerTransportRecvResponse`]. */
+export type VersionedHostPeerTransportRecvResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportRecvResponse;
+};
+export declare const VersionedHostPeerTransportRecvResponse: S.Codec<VersionedHostPeerTransportRecvResponse>;
+/** Versioned envelope for [`HostPeerTransportResetError`]. */
+export type VersionedHostPeerTransportResetError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportResetError;
+};
+export declare const VersionedHostPeerTransportResetError: S.Codec<VersionedHostPeerTransportResetError>;
+/** Versioned envelope for [`HostPeerTransportResetRequest`]. */
+export type VersionedHostPeerTransportResetRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportResetRequest;
+};
+export declare const VersionedHostPeerTransportResetRequest: S.Codec<VersionedHostPeerTransportResetRequest>;
+/** Versioned envelope for [`HostPeerTransportResetResponse`]. */
+export type VersionedHostPeerTransportResetResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPeerTransportResetResponse: S.Codec<VersionedHostPeerTransportResetResponse>;
+/** Versioned envelope for [`HostPeerTransportSendError`]. */
+export type VersionedHostPeerTransportSendError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportSendError;
+};
+export declare const VersionedHostPeerTransportSendError: S.Codec<VersionedHostPeerTransportSendError>;
+/** Versioned envelope for [`HostPeerTransportSendRequest`]. */
+export type VersionedHostPeerTransportSendRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostPeerTransportSendRequest;
+};
+export declare const VersionedHostPeerTransportSendRequest: S.Codec<VersionedHostPeerTransportSendRequest>;
+/** Versioned envelope for [`HostPeerTransportSendResponse`]. */
+export type VersionedHostPeerTransportSendResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostPeerTransportSendResponse: S.Codec<VersionedHostPeerTransportSendResponse>;
 /** Platform category a host runs on. */
 export type HostPlatform = "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
 export declare const HostPlatform: S.Codec<HostPlatform>;
@@ -2057,6 +2225,32 @@ export type PaymentTopUpSource =
     };
 };
 export declare const PaymentTopUpSource: S.Codec<PaymentTopUpSource>;
+/** Asynchronous transport notification. */
+export type PeerTransportEvent = 
+/** The connection was closed by the peer or the host. */
+{
+    tag: "ConnClosed";
+    value: {
+        conn: number;
+    };
+}
+/** The peer finished its send side of a stream. */
+ | {
+    tag: "StreamFin";
+    value: {
+        stream: number;
+    };
+}
+/** The peer opened a stream to us on a dialed connection. */
+ | {
+    tag: "Accepted";
+    value: {
+        conn: number;
+        stream: number;
+        kind: number;
+    };
+};
+export declare const PeerTransportEvent: S.Codec<PeerTransportEvent>;
 /** One of the calling product's Pocket cards. */
 export interface PocketCard {
     /** Card label declared by the product, unique within the product. */
@@ -4058,6 +4252,113 @@ export interface HostPaymentTopUpRequest {
     source: PaymentTopUpSource;
 }
 export declare const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest>;
+/** Failure to close a connection. */
+export type HostPeerTransportCloseError = "Closed";
+export declare const HostPeerTransportCloseError: S.Codec<HostPeerTransportCloseError>;
+/** Close a connection and every stream on it. */
+export interface HostPeerTransportCloseRequest {
+    /** Connection to close. */
+    conn: number;
+}
+export declare const HostPeerTransportCloseRequest: S.Codec<HostPeerTransportCloseRequest>;
+/** Failure to dial a JAM peer. */
+export type HostPeerTransportDialError = "NotGranted" | "Refused" | "Limit" | "Unreachable";
+export declare const HostPeerTransportDialError: S.Codec<HostPeerTransportDialError>;
+/** Dial one JAM peer over JAMNP-S (QUIC) or WebTransport. */
+export interface HostPeerTransportDialRequest {
+    /**
+     * Genesis header hash; the host derives the ALPN from it and requires a
+     * matching manifest grant.
+     */
+    genesis: HexString;
+    /** Peer IP address, IPv6 or v4-mapped IPv6. */
+    ip: HexString;
+    /** Peer UDP port. */
+    port: number;
+    /** Ed25519 key the peer's TLS certificate must carry. */
+    ed25519: HexString;
+    /** Compressed P-256 peer key for WebTransport certificate hashes. */
+    p256?: HexString;
+}
+export declare const HostPeerTransportDialRequest: S.Codec<HostPeerTransportDialRequest>;
+/** An open connection handle. */
+export interface HostPeerTransportDialResponse {
+    /** Execution-local connection id. */
+    conn: number;
+}
+export declare const HostPeerTransportDialResponse: S.Codec<HostPeerTransportDialResponse>;
+/** Failure to drain events. */
+export type HostPeerTransportEventsError = "NotGranted";
+export declare const HostPeerTransportEventsError: S.Codec<HostPeerTransportEventsError>;
+/** Events in arrival order. */
+export interface HostPeerTransportEventsResponse {
+    /** Pending events; empty when nothing happened. */
+    events: Array<PeerTransportEvent>;
+}
+export declare const HostPeerTransportEventsResponse: S.Codec<HostPeerTransportEventsResponse>;
+/** Failure to open a stream. */
+export type HostPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";
+export declare const HostPeerTransportOpenError: S.Codec<HostPeerTransportOpenError>;
+/** Open a bidirectional stream and send its kind byte. */
+export interface HostPeerTransportOpenRequest {
+    /** Connection returned by `dial`. */
+    conn: number;
+    /** JAMNP-S stream kind (UP 0, CE 128, ...). */
+    kind: number;
+}
+export declare const HostPeerTransportOpenRequest: S.Codec<HostPeerTransportOpenRequest>;
+/** An open stream handle. */
+export interface HostPeerTransportOpenResponse {
+    /** Execution-local stream id. */
+    stream: number;
+}
+export declare const HostPeerTransportOpenResponse: S.Codec<HostPeerTransportOpenResponse>;
+/** Failure to receive from a stream. */
+export type HostPeerTransportRecvError = "Closed";
+export declare const HostPeerTransportRecvError: S.Codec<HostPeerTransportRecvError>;
+/** Poll one complete framed message without blocking. */
+export interface HostPeerTransportRecvRequest {
+    /** Stream to read from. */
+    stream: number;
+    /** Largest message the caller accepts. */
+    max: number;
+}
+export declare const HostPeerTransportRecvRequest: S.Codec<HostPeerTransportRecvRequest>;
+/** One unframed message, or none available yet. */
+export interface HostPeerTransportRecvResponse {
+    /**
+     * Complete message bytes without length prefix, or `None` when nothing
+     * has arrived yet.
+     */
+    message?: HexString;
+    /** The peer finished its send side; no further messages will arrive. */
+    fin: boolean;
+    /** The peer reset the stream; buffered data may be incomplete. */
+    reset: boolean;
+}
+export declare const HostPeerTransportRecvResponse: S.Codec<HostPeerTransportRecvResponse>;
+/** Failure to reset a stream. */
+export type HostPeerTransportResetError = "Closed";
+export declare const HostPeerTransportResetError: S.Codec<HostPeerTransportResetError>;
+/** Abort both directions of a stream. */
+export interface HostPeerTransportResetRequest {
+    /** Stream to reset. */
+    stream: number;
+}
+export declare const HostPeerTransportResetRequest: S.Codec<HostPeerTransportResetRequest>;
+/** Failure to send a message. */
+export type HostPeerTransportSendError = "Closed" | "TooLarge" | "Limit";
+export declare const HostPeerTransportSendError: S.Codec<HostPeerTransportSendError>;
+/** Send one framed message; the host adds the `u32` little-endian length. */
+export interface HostPeerTransportSendRequest {
+    /** Stream returned by `open` or reported by an `Accepted` event. */
+    stream: number;
+    /** Message bytes without length prefix. */
+    message: HexString;
+    /** Finish the send side after this message. */
+    fin: boolean;
+}
+export declare const HostPeerTransportSendRequest: S.Codec<HostPeerTransportSendRequest>;
 /** The calling product's cards: the whole set on subscribe and after every change. */
 export interface HostPocketListSubscribeItem {
     /** Cards currently in Pocket for the calling product. */
