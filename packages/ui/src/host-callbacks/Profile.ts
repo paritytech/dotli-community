@@ -11,7 +11,14 @@
 
 import type { ProfilePlatform } from "@parity/truapi-host";
 import { fromHex } from "@dotli/shared/hex";
-import { showProfileDrawer } from "../profile/drawer";
+import { showProfileDrawer, type LoadedProfile } from "../profile/drawer";
+import {
+  isContactsReference,
+  openContactsRecord,
+  parseContactsReference,
+  type SeityContactsReference,
+} from "../profile/contacts-reference";
+import { decodeProfileRecord } from "../profile/profile-record";
 import {
   openSeityBlob,
   parseSeityBlobReference,
@@ -74,12 +81,54 @@ export function presentProfileReference(
   productId: string,
   reference: string,
 ): void {
+  showProfileDrawer({ productId, loadProfile: profileLoader(reference) });
+}
+
+/**
+ * Parse a reference into the loader the drawer runs. Throws for a reference
+ * this host cannot parse, so no UI appears for it.
+ *
+ * - `seity-contacts:v1:…` names a registry slot: read it, fetch and open the
+ *   sealed record, then fetch and open the avatar the record names.
+ * - A bare `cid#key` names one avatar blob (the #287 path, unchanged).
+ */
+function profileLoader(
+  reference: string,
+): (signal: AbortSignal) => Promise<LoadedProfile> {
+  if (isContactsReference(reference)) {
+    const parsed = parseContactsReference(reference);
+    return (signal) => loadContactsProfile(parsed, signal);
+  }
   const parsed = parseSeityBlobReference(reference);
-  showProfileDrawer({
-    productId,
-    loadAvatar: async (signal) =>
-      openSeityBlob(await fetchCiphertext(parsed.preimageKey, signal), parsed),
+  return async (signal) => ({
+    avatar: await openSeityBlob(
+      await fetchCiphertext(parsed.preimageKey, signal),
+      parsed,
+    ),
   });
+}
+
+async function loadContactsProfile(
+  reference: SeityContactsReference,
+  signal: AbortSignal,
+): Promise<LoadedProfile> {
+  const { resolveSeitySlot } = await import("@dotli/resolver/resolve");
+  const slot = await resolveSeitySlot(reference.lookupKey);
+  // Never anchored, revoked (zero digest) or no registry: nothing to show.
+  if (slot === null || slot.version === 0n || /^0x0{64}$/.test(slot.cidDigest)) {
+    return { avatar: null };
+  }
+  const sealed = await fetchCiphertext(slot.cidDigest, signal);
+  const record = decodeProfileRecord(await openContactsRecord(sealed, reference));
+  if (record.avatarReference === undefined) {
+    return { avatar: null, mood: record.mood };
+  }
+  const avatarRef = parseSeityBlobReference(record.avatarReference);
+  const avatar = await openSeityBlob(
+    await fetchCiphertext(avatarRef.preimageKey, signal),
+    avatarRef,
+  );
+  return { avatar, mood: record.mood };
 }
 
 export function createProfilePlatform(): Required<ProfilePlatform> {

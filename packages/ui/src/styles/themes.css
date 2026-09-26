@@ -808,3 +808,6 @@
 [data-theme="light"] .profile-drawer-attribution {
   color: #777;
 }
+[data-theme="light"] .profile-drawer-mood {
+  color: #333;
+}

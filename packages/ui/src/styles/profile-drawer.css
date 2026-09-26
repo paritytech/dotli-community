@@ -99,3 +99,39 @@
   text-align: center;
   line-height: 1.4;
 }
+.profile-drawer-portrait {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 240px;
+  height: 240px;
+}
+.profile-mood-ring {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
+}
+.profile-mood-ring canvas {
+  width: 100%;
+  height: 100%;
+}
+/* No WebGL: a still ring from the same three colours. */
+.profile-mood-ring-static {
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--ring-a),
+    var(--ring-b),
+    var(--ring-c),
+    var(--ring-a)
+  );
+  -webkit-mask: radial-gradient(circle, transparent 54%, #000 55%, #000 60%, transparent 61%);
+  mask: radial-gradient(circle, transparent 54%, #000 55%, #000 60%, transparent 61%);
+}
+.profile-drawer-mood {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: #ddd;
+  text-align: center;
+}
