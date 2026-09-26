@@ -72,6 +72,9 @@ let dispose: (() => void) | null = null;
 async function loadAutoHide(): Promise<
   typeof import("@dotli/ui/topbar-autohide")
 > {
+  // Logged in, as the auth controller records it (state/auth.ts).
+  const { setLoggedIn } = await import("@dotli/ui/state/auth");
+  setLoggedIn(true);
   const mod = await import("@dotli/ui/topbar-autohide");
   dispose = mod.disposeTopbarAutoHide;
   return mod;
@@ -91,6 +94,20 @@ afterEach(() => {
 });
 
 describe("topbar auto-hide reveal", () => {
+  it("As a user who just logged in, the bar arms from the session before the badge renders", async () => {
+    // Given: the auth button island renders the badge on Solid's next flush,
+    // after the dotli:authenticated listener has armed the auto-hide.
+    document.querySelector(".user-badge")?.remove();
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
   it("As a dotli integrator, the host hides the bar once the session settles", async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
@@ -355,6 +372,8 @@ describe("topbar auto-hide motion and layout", () => {
     expect(isHidden()).toBe(true);
 
     // When
+    const { setLoggedIn } = await import("@dotli/ui/state/auth");
+    setLoggedIn(false);
     document.querySelector(".user-badge")?.remove();
     pinTopbarVisible();
     vi.advanceTimersByTime(HIDE_DELAY_MS * 2);

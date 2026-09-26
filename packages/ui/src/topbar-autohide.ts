@@ -9,6 +9,7 @@
 //
 import { isMobileDevice } from "@dotli/shared/device";
 import { productIframeBox } from "./product-iframe-box";
+import { getLoggedIn } from "./state/auth";
 import { setTopbarVisible } from "./state/topbar";
 
 const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
@@ -60,8 +61,11 @@ function getAppFrame(): HTMLIFrameElement | null {
   );
 }
 
+// The session store, not the `.user-badge` it renders: the badge island
+// renders on Solid's next flush, after `dotli:authenticated`, whose listener
+// arms the auto-hide, and not at all before the islands chunk arrives.
 function isLoggedIn(): boolean {
-  return document.querySelector(".user-badge") !== null;
+  return getLoggedIn();
 }
 
 function reducedMotionQuery(): MediaQueryList | null {

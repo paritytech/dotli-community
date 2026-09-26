@@ -56,7 +56,7 @@ function focusables(surface: HTMLElement): HTMLElement[] {
 }
 
 /** Keeps Tab and Shift+Tab inside `surface`. */
-function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
+export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
   const items = focusables(surface);
   if (items.length === 0) {
     ev.preventDefault();
@@ -77,7 +77,7 @@ function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
 }
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
-function focusLostOrInside(surface: HTMLElement | undefined): boolean {
+export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
   const active = document.activeElement;
   return (
     active === null ||

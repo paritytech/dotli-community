@@ -26,6 +26,14 @@ import { disposeRoot } from "@dotli/ui/mount/root";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
 import { setTopbarVisible } from "@dotli/ui/state/topbar";
+import { setAuthState, setLoggedIn } from "@dotli/ui/state/auth";
+import { updateAuthModal } from "@dotli/ui/state/auth-modal";
+import {
+  normalized,
+  oldAuthButton,
+  oldModal,
+  oldUserPopover,
+} from "./old-auth-markup";
 import {
   setVerificationShieldState,
   showLocalhostPill,
@@ -53,6 +61,7 @@ vi.mock("@dotli/ui/components/shell/ThemeToggle", async (importOriginal) => {
 });
 
 const THEME_IDS = ["theme-toggle", "theme-popover"];
+const AUTH_IDS = ["auth-button", "user-popover", "auth-modal-backdrop"];
 
 let serverHtml = "";
 
@@ -132,6 +141,9 @@ describe("shell islands", () => {
     disposeRoot("island:theme");
     disposeRoot("island:url-pill");
     disposeRoot("island:offline-banner");
+    disposeRoot("island:auth-button");
+    disposeRoot("island:user-popover");
+    disposeRoot("island:auth-modal");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -553,5 +565,127 @@ describe("shell islands", () => {
 
     // Then
     expect(byId("offline-banner").style.display).toBe("block");
+  });
+
+  it("As a dotli user, the auth button, user popover and pairing modal are swapped in place for live islands matching what the topbar rendered, one element per id, with no warning", async () => {
+    // Given: the static button says it is connecting, disabled.
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const staticButton = byId("auth-button");
+    expect(staticButton.hasAttribute("disabled")).toBe(true);
+    expect(staticButton.getAttribute("aria-busy")).toBe("true");
+    expect(staticButton.title).toBe("Connecting...");
+    const before = AUTH_IDS.map((id) => {
+      const el = byId(id);
+      return { el, place: placeOf(el) };
+    });
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    for (const [i, id] of AUTH_IDS.entries()) {
+      const fresh = byId(id);
+      expect(countById(id)).toBe(1);
+      expect(fresh).not.toBe(before[i].el);
+      expect(before[i].el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(before[i].place);
+    }
+    const liveButton = byId("auth-button");
+    expect(liveButton.hasAttribute("disabled")).toBe(false);
+    expect(liveButton.hasAttribute("aria-busy")).toBe(false);
+    expect(
+      normalized(liveButton).isEqualNode(
+        normalized(oldAuthButton("logged-out")),
+      ),
+    ).toBe(true);
+    // The popover gains the tabindex its focus trap needs.
+    const popover = oldUserPopover({ username: "", hint: false, open: false });
+    popover.setAttribute("tabindex", "-1");
+    expect(
+      normalized(byId("user-popover")).isEqualNode(normalized(popover)),
+    ).toBe(true);
+    expect(
+      normalized(byId("auth-modal-backdrop")).isEqualNode(
+        normalized(
+          oldModal({
+            open: false,
+            hint: "Scan with Polkadot Mobile to connect",
+            getAppHidden: true,
+            body: { kind: "empty" },
+          }),
+        ),
+      ),
+    ).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a returning user whose session and login came before the islands loaded, the swapped-in islands show them", async () => {
+    // Given: what the eager auth controller keeps from boot on.
+    setAuthState({
+      tag: "Connected",
+      session: {
+        connected: true,
+        primaryUsername: "alice",
+        liteUsername: "alice",
+      },
+    });
+    setLoggedIn(true);
+    updateAuthModal({
+      open: true,
+      productLabel: "app.dot",
+      reason: null,
+      view: { kind: "spinner" },
+    });
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(byId("auth-button").querySelector(".user-badge")?.textContent).toBe(
+      "AL",
+    );
+    expect(byId("user-popover-username").textContent).toBe("alice");
+    expect(byId("auth-modal-backdrop").classList.contains("open")).toBe(true);
+    expect(byId("auth-modal-title").textContent).toBe(
+      "app.dot is asking you to sign in",
+    );
+    expect(document.activeElement).toBe(byId("auth-modal-backdrop"));
+  });
+
+  it("As a visitor on the landing page, the auth button is swapped in where the page moved it, and opens the user popover there", async () => {
+    // Given: ui.ts moves the button into the landing page's corner.
+    const landingAuth = document.createElement("div");
+    landingAuth.id = "landing-auth";
+    document.body.append(landingAuth);
+    landingAuth.append(byId("auth-button"));
+    setAuthState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
+    setLoggedIn(true);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(countById("auth-button")).toBe(1);
+    expect(placeOf(byId("auth-button"))).toEqual({
+      parent: landingAuth,
+      index: 0,
+    });
+
+    // When
+    byId("auth-button").click();
+    await flushAll();
+
+    // Then
+    expect(byId("user-popover").classList.contains("open")).toBe(true);
+    expect(document.activeElement).toBe(byId("user-popover"));
   });
 });

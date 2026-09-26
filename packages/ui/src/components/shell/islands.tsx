@@ -15,9 +15,12 @@
 
 import type { JSX } from "@solidjs/web";
 import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
+import { AuthButton } from "./AuthButton";
+import { AuthModal } from "./AuthModal";
 import { OfflineBanner } from "./OfflineBanner";
 import { ThemeToggle } from "./ThemeToggle";
 import { UrlPill } from "./UrlPill";
+import { UserPopover } from "./UserPopover";
 
 /** What a browser can focus (hidden and inert elements aside). */
 const FOCUSABLE =
@@ -149,4 +152,10 @@ export function mountIslands(): void {
   // `#topbar-url` exists and writes the url-pill store, never the element).
   mountIsolated("url-pill", () => <UrlPill />, ["topbar-url"]);
   mountIsolated("offline-banner", () => <OfflineBanner />, ["offline-banner"]);
+  // The static auth button stays disabled until this swap (it is none of
+  // the loader's click triggers). The popover and the modal render the auth
+  // stores, which the eager auth controller has kept since boot.
+  mountIsolated("auth-button", () => <AuthButton />, ["auth-button"]);
+  mountIsolated("user-popover", () => <UserPopover />, ["user-popover"]);
+  mountIsolated("auth-modal", () => <AuthModal />, ["auth-modal-backdrop"]);
 }

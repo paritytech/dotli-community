@@ -3,7 +3,10 @@
 
 // dot.li Top bar UI
 //
-// Manages the auth button, QR pairing modal, and user popover.
+// Wires the topbar's imperative pieces: the mode (settings), chains and
+// permissions popovers, the mobile "more" flyout, and the product chat. The
+// auth button, the user popover and the QR pairing modal are shell islands
+// (components/shell/), driven by auth-controller.ts, which this starts.
 // All plain DOM manipulation, no framework.
 //
 import { getActiveChainRoles, type ChainRole } from "@dotli/config/network";
@@ -17,10 +20,8 @@ import {
   type BlockSource,
   type ChainStatus,
 } from "./network-monitor";
-import { authStore } from "./state/auth";
 import { log } from "@dotli/shared/log";
 import { escapeHtml } from "@dotli/shared/html";
-import { isMobileDevice } from "@dotli/shared/device";
 import {
   formatAppVersion,
   getActiveAppManifest,
@@ -62,26 +63,12 @@ import {
   type PermissionStatus,
 } from "./permissions";
 import { initChatPanel } from "./chat/panel";
-import {
-  emitPersistedSessionUiState,
-  type TruapiSessionUiState,
-} from "./host-callbacks/SessionStore";
+import { emitPersistedSessionUiState } from "./host-callbacks/SessionStore";
 import {
   createBlockingModalCoordinator,
   type BlockingModalCoordinator,
 } from "./blocking-modal-queue";
-import {
-  closeAuthModal,
-  initAuthController,
-  requestTruapiDisconnect,
-  retryLogin,
-  startLogin,
-} from "./auth-controller";
-import {
-  authModalStore,
-  type AuthModalState,
-  type AuthModalView,
-} from "./state/auth-modal";
+import { initAuthController } from "./auth-controller";
 import { recordPermissionChange } from "./state/permissions";
 import { recordChainsButtonVisible } from "./state/topbar";
 import { initTheme, THEME_KEY } from "./theme-controller";
@@ -96,18 +83,6 @@ function getElement(id: string): HTMLElement {
 
 // DOM refs are resolved lazily inside initTopBar() to avoid throwing
 // at module scope if the HTML IDs change or the script loads early.
-let authButton: HTMLElement;
-let modalBackdrop: HTMLElement;
-let modalTitle: HTMLElement;
-let modalQr: HTMLElement;
-let modalReason: HTMLElement;
-let modalHint: HTMLElement;
-let modalClose: HTMLElement;
-let modalGetApp: HTMLAnchorElement;
-let userPopover: HTMLElement;
-let userPopoverUsername: HTMLElement;
-let userPopoverDisconnect: HTMLElement;
-
 let modeButton: HTMLElement;
 let modePopover: HTMLElement;
 let modePopoverContent: HTMLElement;
@@ -124,70 +99,12 @@ let currentProductLabel: string | null = null;
 /** True once the host has rendered an error page; no product will load. */
 let productErrored = false;
 
-// User icon for the logged-out state
-const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
-
-// Track the current QR payload to prevent stale canvas appends
-let currentQrPayload: string | null = null;
-
-// Lists the current Polkadot Mobile store listings for phones without the app.
-const POLKADOT_MOBILE_DOWNLOAD_URL = "https://docs.polkadot.com/apps/";
-
 export function initTopBar(
   modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator(),
 ): void {
+  // The login and auth-state listeners, from boot on: the auth islands
+  // mount later and render what the controller has kept.
   initAuthController(modalCoordinator);
-  authButton = getElement("auth-button");
-  modalBackdrop = getElement("auth-modal-backdrop");
-  modalTitle = getElement("auth-modal-title");
-  modalQr = getElement("auth-modal-qr");
-  modalReason = getElement("auth-modal-reason");
-  modalHint = getElement("auth-modal-hint");
-  modalClose = getElement("auth-modal-close");
-  modalGetApp = getElement("auth-modal-get-app") as HTMLAnchorElement;
-  modalGetApp.href = POLKADOT_MOBILE_DOWNLOAD_URL;
-  userPopover = getElement("user-popover");
-  userPopoverUsername = getElement("user-popover-username");
-  userPopoverDisconnect = getElement("user-popover-disconnect");
-
-  modalBackdrop.setAttribute("role", "dialog");
-  modalBackdrop.setAttribute("aria-modal", "true");
-  modalBackdrop.setAttribute("aria-labelledby", "auth-modal-title");
-  modalBackdrop.tabIndex = -1;
-
-  // Auth button: opens modal (logged out) or popover (logged in)
-  authButton.addEventListener("click", handleAuthButtonClick);
-  authButton.removeAttribute("disabled");
-  authButton.removeAttribute("aria-busy");
-
-  // Modal close button
-  modalClose.addEventListener("click", () => {
-    closeAuthModal();
-  });
-
-  // Clicking backdrop (outside modal) closes modal
-  modalBackdrop.addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) {
-      closeAuthModal();
-    }
-  });
-
-  // Disconnect button
-  userPopoverDisconnect.addEventListener("click", handleDisconnect);
-
-  // The controller owns the modal and login state; these only render it.
-  authModalStore.subscribe(() => {
-    renderAuthModal(authModalStore.get());
-  });
-  authStore.subscribe(() => {
-    // Only Connected and Disconnected change the button; the rest keep it.
-    const state = authStore.get();
-    if (state.tag === "Connected") {
-      renderTruapiLoggedIn(state.session);
-    } else if (state.tag === "Disconnected") {
-      renderLoggedOut();
-    }
-  });
 
   // Mobile-only "more" menu: collapses Permissions / Theme / Settings into a
   // single flyout. Each row delegates to .click() on the real button so the
@@ -239,13 +156,6 @@ export function initTopBar(
       moreButton.setAttribute("aria-expanded", "false");
     }
     if (
-      userPopover.classList.contains("open") &&
-      !userPopover.contains(e.target as Node) &&
-      !authButton.contains(e.target as Node)
-    ) {
-      userPopover.classList.remove("open");
-    }
-    if (
       modePopover.classList.contains("open") &&
       !modePopover.contains(e.target as Node) &&
       !modeButton.contains(e.target as Node)
@@ -288,15 +198,11 @@ export function initTopBar(
     if (!active) {
       return;
     }
-    userPopover.classList.remove("open");
     setModePopoverOpen(false);
     setPermissionsPopoverOpen(false);
     morePopover?.classList.remove("open");
     moreButton?.setAttribute("aria-expanded", "false");
   });
-
-  // Show default logged-out state
-  renderLoggedOut();
 
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
@@ -313,269 +219,6 @@ function scheduleIdle(callback: () => void): void {
   } else {
     window.setTimeout(callback, 0);
   }
-}
-
-// Interim imperative rendering of the auth button and the QR pairing modal
-// from authStore and authModalStore. The state machine lives in
-// auth-controller.ts. Sub-project 4c Task 3 replaces this with islands.
-
-function renderLoggedOut(): void {
-  authButton.innerHTML = USER_SVG;
-  authButton.title = "Login with Polkadot Mobile";
-  authButton.setAttribute("aria-label", "Login with Polkadot Mobile");
-  setUserPopoverNoUsernameHint(false);
-}
-
-function renderTruapiLoggedIn(state: TruapiSessionUiState): void {
-  const initials = truapiSessionInitials(state);
-  authButton.innerHTML =
-    initials !== undefined
-      ? `<div class="user-badge">${escapeHtml(initials)}</div>`
-      : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
-  authButton.title = "Account";
-  authButton.setAttribute("aria-label", "Account");
-  const username =
-    state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
-  userPopoverUsername.textContent =
-    username ??
-    shortenAccount(state.identityAccountId ?? state.publicKey) ??
-    "Connected with Polkadot Mobile";
-  setUserPopoverNoUsernameHint(username === undefined || username.length === 0);
-}
-
-// A session can install without any username (the account has no dotNS record
-// on this network), so initials only come from real names, never account hex.
-function truapiSessionInitials(
-  state: TruapiSessionUiState,
-): string | undefined {
-  const fullName = state.fullUsername;
-  if (fullName !== undefined && fullName.length > 0) {
-    const parts = fullName.split(" ").filter((part) => part.length > 0);
-    if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
-    }
-    if (parts.length > 1) {
-      return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
-    }
-  }
-  const liteName = state.liteUsername;
-  if (liteName !== undefined && liteName.length > 0) {
-    return liteName.slice(0, 2).toUpperCase();
-  }
-  return undefined;
-}
-
-// Explains the username-less state in the popover instead of leaving a bare
-// address that reads as a rendering bug.
-function setUserPopoverNoUsernameHint(show: boolean): void {
-  const existing = document.getElementById("user-popover-hint");
-  if (!show) {
-    existing?.remove();
-    return;
-  }
-  if (existing !== null) {
-    return;
-  }
-  const hint = document.createElement("div");
-  hint.id = "user-popover-hint";
-  hint.className = "user-popover-hint";
-  hint.textContent = "No username found for this account on this network.";
-  userPopoverUsername.insertAdjacentElement("afterend", hint);
-}
-
-function shortenAccount(account: string | undefined): string | undefined {
-  if (account === undefined || account.length < 12) {
-    return undefined;
-  }
-  return `${account.slice(0, 8)}...${account.slice(-4)}`;
-}
-
-function renderAuthModal(state: AuthModalState): void {
-  modalTitle.innerHTML =
-    state.productLabel !== null
-      ? `${escapeHtml(state.productLabel)} is asking you <span class="auth-modal-title-nowrap">to sign in</span>`
-      : "Login with Polkadot Mobile";
-  if (state.reason !== null) {
-    modalReason.textContent = state.reason;
-    modalReason.hidden = false;
-  } else {
-    modalReason.textContent = "";
-    modalReason.hidden = true;
-  }
-
-  if (!state.open) {
-    modalBackdrop.classList.remove("open");
-    authModalFocusTrap?.();
-    authModalFocusTrap = null;
-    currentQrPayload = null;
-    modalQr.innerHTML = "";
-    return;
-  }
-
-  // Every write while open is a new view or the lease opening the modal.
-  renderAuthModalView(state.view);
-  modalBackdrop.classList.add("open");
-  authModalFocusTrap ??= trapPopoverFocus(modalBackdrop, authButton, () => {
-    closeAuthModal();
-  });
-}
-
-function renderAuthModalView(view: AuthModalView): void {
-  // Desktop users scan with a phone that already has the app, so the install
-  // link only helps on the phone itself, and not once pairing is past the QR.
-  modalGetApp.hidden =
-    !isMobileDevice() ||
-    view.kind === "authenticating" ||
-    view.kind === "error";
-  // A fresh presentation (opening, or re-primed with the spinner) resets the hint.
-  if (view.kind === "spinner" || !modalBackdrop.classList.contains("open")) {
-    // Mobile leads with the deeplink button. The QR toggle swaps this copy later.
-    modalHint.textContent = isMobileDevice()
-      ? "Sign in with the Polkadot app on this device"
-      : "Scan with Polkadot Mobile to connect";
-  }
-  // Invalidates an in-flight lazy QR render unless it is for this payload.
-  currentQrPayload = view.kind === "pairing" ? view.payload : null;
-  switch (view.kind) {
-    case "spinner":
-    case "pairing":
-      // The QR replaces the spinner once the lazy qrcode render resolves.
-      modalQr.innerHTML = `<div class="spinner"></div>`;
-      if (view.kind === "pairing") {
-        renderPairingQr(view.payload);
-      }
-      break;
-    case "authenticating":
-      modalQr.innerHTML = `
-    <div class="attesting">
-      <div class="spinner"></div>
-      <p>Logging in...</p>
-    </div>
-  `;
-      break;
-    case "error":
-      renderErrorView(view);
-      break;
-  }
-}
-
-function renderPairingQr(payload: string): void {
-  // Render QR code (lazy-load qrcode lib, guard against stale appends)
-  const canvas = document.createElement("canvas");
-  canvas.dataset.qrPayload = payload;
-  const capturedPayload = payload;
-  void import("qrcode")
-    .then((QRCode) =>
-      QRCode.default.toCanvas(canvas, payload, {
-        width: 200,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-      }),
-    )
-    .then(() => {
-      // Only append if this payload is still current
-      if (currentQrPayload !== capturedPayload) {
-        return;
-      }
-      modalQr.innerHTML = "";
-
-      if (isMobileDevice()) {
-        // No second device to scan with, so the deeplink button leads and the
-        // QR is opt-in behind "Show QR instead" for pairing from another device.
-        modalQr.classList.add("auth-modal-qr-mobile");
-
-        const qrLink = document.createElement("a");
-        qrLink.href = payload;
-        qrLink.className = "auth-modal-qr-link";
-        qrLink.appendChild(canvas);
-        qrLink.hidden = true;
-
-        const openApp = document.createElement("a");
-        openApp.href = payload;
-        openApp.className = "auth-modal-open-app";
-        openApp.textContent = "Login With Polkadot App";
-
-        const showQr = document.createElement("button");
-        showQr.type = "button";
-        showQr.className = "auth-modal-qr-toggle";
-        showQr.textContent = "Show QR instead";
-        showQr.addEventListener("click", () => {
-          qrLink.hidden = false;
-          openApp.classList.add("auth-modal-open-app-link");
-          showQr.hidden = true;
-          // Re-append to put the QR on top and the demoted deeplink below it.
-          modalQr.append(qrLink, openApp);
-          modalHint.textContent = "Scan with Polkadot Mobile to connect";
-        });
-
-        modalQr.append(openApp, showQr, qrLink);
-      } else {
-        modalQr.classList.remove("auth-modal-qr-mobile");
-        modalQr.appendChild(canvas);
-      }
-    })
-    .catch((err: unknown) => {
-      log.error("[dot.li] QR render failed:", err);
-    });
-}
-
-// Clock glyph for the "account still being set up" state.
-const PENDING_ICON_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
-
-function renderErrorView(
-  view: Extract<AuthModalView, { kind: "error" }>,
-): void {
-  const container = document.createElement("div");
-  container.className = "auth-modal-error-view";
-
-  const icon = document.createElement("div");
-  icon.className = "auth-modal-pending-icon";
-  icon.innerHTML = PENDING_ICON_SVG;
-  container.appendChild(icon);
-
-  const title = document.createElement("div");
-  title.className = "auth-modal-pending-title";
-  title.textContent = view.title;
-  container.appendChild(title);
-
-  const subtitle = document.createElement("div");
-  subtitle.className = "auth-modal-pending-subtitle";
-  subtitle.textContent = view.subtitle;
-  container.appendChild(subtitle);
-
-  if (view.detail !== undefined && view.detail.length > 0) {
-    const detail = document.createElement("p");
-    detail.className = "auth-modal-error";
-    detail.textContent = view.detail;
-    container.appendChild(detail);
-  }
-
-  if (view.retry) {
-    const retry = document.createElement("button");
-    retry.className = "auth-modal-retry";
-    retry.textContent = "Retry";
-    retry.addEventListener("click", () => {
-      retryLogin();
-    });
-    container.appendChild(retry);
-  }
-
-  modalQr.innerHTML = "";
-  modalQr.appendChild(container);
-}
-
-function handleAuthButtonClick(): void {
-  if (authStore.get().tag === "Connected") {
-    userPopover.classList.toggle("open");
-  } else {
-    startLogin();
-  }
-}
-
-function handleDisconnect(): void {
-  userPopover.classList.remove("open");
-  requestTruapiDisconnect();
 }
 
 const PERM_ICONS: Record<string, string> = {
@@ -1524,7 +1167,6 @@ function initModeToggle(): void {
 
 let modePopoverFocusTrap: (() => void) | null = null;
 let permissionsPopoverFocusTrap: (() => void) | null = null;
-let authModalFocusTrap: (() => void) | null = null;
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
