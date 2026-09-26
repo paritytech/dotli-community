@@ -15,6 +15,7 @@ const HYDRATION_TESTS = [
   "tests/mount/hydrate-shell.test.tsx",
   "tests/mount/hydrate-root.test.tsx",
   "tests/components/shell/island.test.tsx",
+  "tests/components/shell/theme-toggle.hydration.test.tsx",
 ];
 
 const shared = {

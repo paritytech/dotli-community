@@ -11,7 +11,8 @@ export interface ThemeState {
 }
 
 // Dark is the stylesheet default; the real value is written at boot by the
-// topbar, which reads localStorage and matchMedia.
+// theme-controller.ts (initTheme, called from initTopBar), which reads
+// localStorage and matchMedia.
 const theme = createSyncStore<ThemeState>({ pref: "system", resolved: "dark" });
 
 export const themeStore: ReadableStore<ThemeState> = theme;

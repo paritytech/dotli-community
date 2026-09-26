@@ -58,7 +58,9 @@ async function buildClient(
 }
 
 /** Markup that only a template string (or the SSR output) contains. */
-const SHELL_MARKUP = ["topbar-logo", "<svg", "auth-modal-backdrop"];
+// Markup only Shell.tsx's own templates hold. Not "<svg": the shell's
+// islands (ThemeToggle.tsx, ...) keep their templates and ship SVG.
+const SHELL_MARKUP = ["topbar-logo", "topbar-brand", "auth-modal-backdrop"];
 const ISLAND_SHELL_MARKUP = ["fixture-static-bar", "<svg", "static panel"];
 
 describe("stripClientTemplatesPlugin", () => {
@@ -161,6 +163,8 @@ describe("stripClientTemplatesPlugin in a production build", () => {
     for (const markup of SHELL_MARKUP) {
       expect(code).not.toContain(markup);
     }
+    // The theme island renders after hydration, so its templates ship.
+    expect(code).toContain("theme-popover-option");
   });
 
   it("As the host's startup bundle, a shell with an island ships none of its static markup, while the island's child keeps its templates", async () => {

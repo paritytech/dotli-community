@@ -5,11 +5,14 @@
 // apps/host/index.html (see tests/components/shell/original-shell.html for
 // the frozen fixture this must match). Every id, class, attribute and SVG
 // path here is part of the DOM contract: packages/ui/src/topbar.ts and the
-// Playwright suite select these nodes by id/class, and the imperative shell
-// code isn't touched in this sub-project. No behavior lives here - hydration
-// (mount/hydrate-shell.tsx) is what makes the prerendered markup interactive;
-// the unchanged imperative code in topbar.ts wires up against the hydrated
-// DOM, exactly like it did against the static HTML before.
+// Playwright suite select these nodes by id/class. No behavior lives here -
+// hydration (mount/hydrate-shell.tsx) is what makes the prerendered markup
+// interactive; the imperative code in topbar.ts wires up against the
+// hydrated DOM, exactly like it did against the static HTML before. The
+// reactive pieces are islands (Island.tsx) rendered as child components, each
+// with its markup in its own module: this file stays free of control flow,
+// since its client templates are stripped (mount/strip-client-templates-
+// plugin.ts).
 //
 // The section comments below (Top Bar, QR Pairing Modal, ...) mirror the
 // original HTML comments. They're written as JSX comments on purpose: a JSX
@@ -17,6 +20,8 @@
 // comments aren't part of it either.
 
 import type { JSX } from "@solidjs/web";
+import { Island } from "./Island";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * Hydration id namespace of the shell: shell.server.tsx renders with it and
@@ -148,190 +153,9 @@ export function Shell(): JSX.Element {
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
           </button>
-          <button
-            id="theme-toggle"
-            class="topbar-btn"
-            title="Theme"
-            aria-label="Theme"
-            aria-haspopup="menu"
-            aria-expanded="false"
-            aria-controls="theme-popover"
-          >
-            <svg
-              id="theme-icon-sun"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="5" />
-              <line x1="12" y1="1" x2="12" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="23" />
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-              <line x1="1" y1="12" x2="3" y2="12" />
-              <line x1="21" y1="12" x2="23" y2="12" />
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-            </svg>
-            <svg
-              id="theme-icon-moon"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-            <svg
-              id="theme-icon-system"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-          </button>
-          <div
-            class="more-popover theme-popover"
-            id="theme-popover"
-            role="menu"
-            aria-label="Theme"
-          >
-            <button
-              class="more-row theme-popover-option"
-              role="menuitemradio"
-              aria-checked="false"
-              data-theme-option="light"
-              tabindex="-1"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-              <span>Light</span>
-              <svg
-                class="theme-popover-check"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-            <button
-              class="more-row theme-popover-option"
-              role="menuitemradio"
-              aria-checked="false"
-              data-theme-option="dark"
-              tabindex="-1"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-              <span>Dark</span>
-              <svg
-                class="theme-popover-check"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-            <button
-              class="more-row theme-popover-option"
-              role="menuitemradio"
-              aria-checked="false"
-              data-theme-option="system"
-              tabindex="-1"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-              <span>System</span>
-              <svg
-                class="theme-popover-check"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-          </div>
+          <Island name="theme">
+            <ThemeToggle />
+          </Island>
           <button
             id="more-button"
             class="topbar-btn topbar-more-btn"
