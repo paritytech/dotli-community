@@ -22,20 +22,25 @@ const OTHER_COMPONENT = resolve(
   UI_ROOT,
   "src/components/chat/ResizeHandle.tsx",
 );
+// Shell look-alikes: one with an island, two with control flow of their own.
+const ISLAND_SHELL = resolve(import.meta.dirname, "fixtures/IslandShell.tsx");
+const ISLAND_CHILD = resolve(import.meta.dirname, "fixtures/Counter.tsx");
+const SHOW_SHELL = resolve(import.meta.dirname, "fixtures/ShowShell.tsx");
+const FOR_SHELL = resolve(import.meta.dirname, "fixtures/ForShell.tsx");
 
 /**
- * Production client build of `entry` with the shell plugins; returns the
- * bundled JavaScript.
+ * Production client build of `entry` with the shell plugins stripping
+ * `files`; returns the bundled JavaScript.
  */
-async function buildClient(entry: string): Promise<string> {
+async function buildClient(
+  entry: string,
+  files: string[] = [SHELL],
+): Promise<string> {
   const output = (await build({
     configFile: false,
     root: UI_ROOT,
     logLevel: "silent",
-    plugins: [
-      solid({ ssr: true }),
-      stripClientTemplatesPlugin({ files: [SHELL] }),
-    ],
+    plugins: [solid({ ssr: true }), stripClientTemplatesPlugin({ files })],
     resolve: { alias: { "@dotli/ui": resolve(UI_ROOT, "src") } },
     build: {
       write: false,
@@ -54,6 +59,7 @@ async function buildClient(entry: string): Promise<string> {
 
 /** Markup that only a template string (or the SSR output) contains. */
 const SHELL_MARKUP = ["topbar-logo", "<svg", "auth-modal-backdrop"];
+const ISLAND_SHELL_MARKUP = ["fixture-static-bar", "<svg", "static panel"];
 
 describe("stripClientTemplatesPlugin", () => {
   let server: ViteDevServer;
@@ -68,7 +74,9 @@ describe("stripClientTemplatesPlugin", () => {
       server: { middlewareMode: true, hmr: false, ws: false, watch: null },
       plugins: [
         solid({ ssr: true }),
-        stripClientTemplatesPlugin({ files: [SHELL] }),
+        stripClientTemplatesPlugin({
+          files: [SHELL, ISLAND_SHELL, SHOW_SHELL, FOR_SHELL],
+        }),
       ],
       resolve: { alias: { "@dotli/ui": resolve(UI_ROOT, "src") } },
     });
@@ -109,6 +117,31 @@ describe("stripClientTemplatesPlugin", () => {
     }
   });
 
+  it("As a shell with an island, my static templates are still stripped, and my island's child keeps its own", async () => {
+    // When
+    const code = await compile("client", ISLAND_SHELL);
+    const child = await compile("client", ISLAND_CHILD);
+
+    // Then
+    for (const markup of ISLAND_SHELL_MARKUP) {
+      expect(code).not.toContain(markup);
+    }
+    expect(code).not.toMatch(/_\$template\(/);
+    expect(code).toMatch(/_\$insert\(_el\$, _\$createComponent\(Island,/);
+    expect(child).toMatch(/_\$template\(`<button id=fixture-counter/);
+  });
+
+  it("As a build, a shell with control flow in its own markup fails instead of losing the templates it renders from", async () => {
+    // When / Then
+    await expect(compile("client", SHOW_SHELL)).rejects.toThrow(
+      /ShowShell\.tsx: imports "Show" from solid-js/,
+    );
+    // A <For> item callback is wrapped in `scope` before For is imported.
+    await expect(compile("client", FOR_SHELL)).rejects.toThrow(
+      /ForShell\.tsx: imports "scope" from @solidjs\/web/,
+    );
+  });
+
   it("As any other component, my client templates are left alone", async () => {
     // When
     const code = await compile("client", OTHER_COMPONENT);
@@ -130,6 +163,28 @@ describe("stripClientTemplatesPlugin in a production build", () => {
     }
   });
 
+  it("As the host's startup bundle, a shell with an island ships none of its static markup, while the island's child keeps its templates", async () => {
+    // When
+    const code = await buildClient(ISLAND_SHELL, [ISLAND_SHELL]);
+
+    // Then
+    expect(code).toMatch(/function IslandShell\(/);
+    for (const markup of ISLAND_SHELL_MARKUP) {
+      expect(code).not.toContain(markup);
+    }
+    expect(code).toContain("<button id=fixture-counter");
+  });
+
+  it("As a build, a shell with a <Show> or <For> in its own markup fails the build", async () => {
+    // When / Then
+    await expect(buildClient(SHOW_SHELL, [SHOW_SHELL])).rejects.toThrow(
+      /ShowShell\.tsx: imports "Show" from solid-js/,
+    );
+    await expect(buildClient(FOR_SHELL, [FOR_SHELL])).rejects.toThrow(
+      /ForShell\.tsx: imports "scope" from @solidjs\/web/,
+    );
+  });
+
   it("As a build, a listed file the client build never compiles fails the build instead of shipping its templates again", async () => {
     // When / Then
     await expect(buildClient("fixtures/plain-entry.ts")).rejects.toThrow(
@@ -142,15 +197,13 @@ describe("stripClientTemplates", () => {
   it("As a build, a component with reactive Solid imports fails instead of losing the templates it renders from", () => {
     // Given
     const code = [
-      'import { template as _$template, getNextElement as _$getNextElement, insert as _$insert } from "@solidjs/web";',
-      "var _tmpl$ = _$template(`<p>`);",
-      "export const P = (props) => { const el = _$getNextElement(_tmpl$); _$insert(el, () => props.text); return el; };",
+      'import { template as _$template, getNextElement as _$getNextElement, insert as _$insert, memo as _$memo } from "@solidjs/web";',
+      "var _tmpl$ = _$template(`<p>`), _tmpl$2 = _$template(`<b>`);",
+      "export const P = (props) => { const el = _$getNextElement(_tmpl$); _$insert(el, _$memo(() => props.on && _$getNextElement(_tmpl$2))); return el; };",
     ].join("\n");
 
     // When / Then
-    expect(() => stripClientTemplates(code, "P.tsx")).toThrow(
-      /imports "insert"/,
-    );
+    expect(() => stripClientTemplates(code, "P.tsx")).toThrow(/imports "memo"/);
   });
 
   it("As a build, reactive imports from a Solid subpath export fail too, while HMR registration is allowed", () => {

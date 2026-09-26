@@ -16,11 +16,13 @@
 // boundary (mount/hydration-boundary.ts) catches it and hydrateRoot restores
 // the snapshot.
 //
-// This is sound only while the component is static: a reactive part (a
-// `<Show>` flipping, a list growing) creates nodes from its templates after
-// hydration. The transform therefore fails the build if the module imports
-// anything from Solid beyond the static-hydration helpers; sub-project 4b
-// must replace it for components with reactive islands.
+// This is sound only while the component's own markup is static: a reactive
+// part (a `<Show>` flipping, a list growing) creates nodes from its templates
+// after hydration. Reactive parts live in child components instead, the
+// shell's islands (components/shell/Island.tsx), whose modules keep their
+// templates. The transform therefore fails the build if the module imports
+// anything from Solid beyond the static-hydration helpers and what inserting
+// a child component compiles to.
 //
 // Only the client compile is touched; the SSR compile that prerenders the
 // markup is left alone. The host applies it to `vite build` only, so `vite
@@ -33,7 +35,12 @@ import { parseSync, Visitor, type ESTree, type Plugin } from "vite";
 /**
  * Solid runtime imports a static hydratable compile uses: claiming the
  * prerendered nodes and walking to the ones that need claiming (the dev
- * posture walks with getFirstChild/getNextSibling instead of `.firstChild`).
+ * posture walks with getFirstChild/getNextSibling instead of `.firstChild`),
+ * plus what an island insertion (`<Island name="x"><Child /></Island>`
+ * between static siblings) compiles to: createComponent for the components,
+ * getNextMarker to claim the insertion point's `<!$><!/>` markers, and
+ * insert to place the component there. Control flow (`Show`, `For`, ...) and
+ * reactive expressions (`memo`, `effect`, ...) stay out.
  */
 const STATIC_HYDRATION_IMPORTS = new Set([
   "template",
@@ -41,6 +48,9 @@ const STATIC_HYDRATION_IMPORTS = new Set([
   "claimElement",
   "getFirstChild",
   "getNextSibling",
+  "createComponent",
+  "getNextMarker",
+  "insert",
 ]);
 
 /** The Solid runtime packages; their subpath exports count too. */

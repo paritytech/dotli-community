@@ -14,6 +14,7 @@ import { stripClientTemplatesPlugin } from "./src/mount/strip-client-templates-p
 const HYDRATION_TESTS = [
   "tests/mount/hydrate-shell.test.tsx",
   "tests/mount/hydrate-root.test.tsx",
+  "tests/components/shell/island.test.tsx",
 ];
 
 const shared = {
@@ -54,6 +55,11 @@ export default defineConfig({
           stripClientTemplatesPlugin({
             files: [
               resolve(import.meta.dirname, "src/components/shell/Shell.tsx"),
+              // island.test.tsx's Shell look-alike.
+              resolve(
+                import.meta.dirname,
+                "tests/mount/fixtures/IslandShell.tsx",
+              ),
             ],
           }),
         ],
