@@ -24,7 +24,7 @@ describe("topbar store", () => {
     });
   });
 
-  it("As the offline banner and chat panel, topbar:visibility still carries a boolean detail", async () => {
+  it("As the chat panel, topbar:visibility still carries a boolean detail", async () => {
     // Given
     const details: unknown[] = [];
     const listener = (e: Event): void => {

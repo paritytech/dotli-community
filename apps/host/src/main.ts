@@ -65,11 +65,12 @@ import {
   wipeOriginState,
 } from "@dotli/ui/topbar";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
+import type { ShieldState } from "@dotli/ui/verification-shield";
 import {
   setVerificationShieldState,
-  type ShieldState,
-} from "@dotli/ui/verification-shield";
-import { showLocalhostPill, showProductPill } from "@dotli/ui/state/url-pill";
+  showLocalhostPill,
+  showProductPill,
+} from "@dotli/ui/state/url-pill";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import { initChatStore } from "@dotli/ui/state/chat";
 import { initSettingsStore } from "@dotli/ui/state/settings";
