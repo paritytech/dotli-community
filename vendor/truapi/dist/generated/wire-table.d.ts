@@ -418,3 +418,18 @@ export declare const PROFILE_PRESENT: {
     readonly method: 0;
     readonly kind: "request";
 };
+export declare const PROFILE_DISCLOSE: {
+    readonly trait: 20;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const PROFILE_RETRACT: {
+    readonly trait: 20;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const PROFILE_PRESENT_CONTACT: {
+    readonly trait: 20;
+    readonly method: 3;
+    readonly kind: "request";
+};

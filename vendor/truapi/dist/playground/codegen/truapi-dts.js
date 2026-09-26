@@ -2433,6 +2433,54 @@ export type VersionedHostProductDeviceChatResponse =
     value: HostProductDeviceChatResponse;
 };
 export const VersionedHostProductDeviceChatResponse: Codec<VersionedHostProductDeviceChatResponse>;
+/** Versioned envelope for [\`HostProfileDiscloseError\`]. */
+export type VersionedHostProfileDiscloseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileDiscloseError;
+};
+export const VersionedHostProfileDiscloseError: Codec<VersionedHostProfileDiscloseError>;
+/** Versioned envelope for [\`HostProfileDiscloseRequest\`]. */
+export type VersionedHostProfileDiscloseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileDiscloseRequest;
+};
+export const VersionedHostProfileDiscloseRequest: Codec<VersionedHostProfileDiscloseRequest>;
+/** Versioned envelope for [\`HostProfileDiscloseResponse\`]. */
+export type VersionedHostProfileDiscloseResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfileDiscloseResponse: Codec<VersionedHostProfileDiscloseResponse>;
+/** Versioned envelope for [\`HostProfilePresentContactError\`]. */
+export type VersionedHostProfilePresentContactError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentContactError;
+};
+export const VersionedHostProfilePresentContactError: Codec<VersionedHostProfilePresentContactError>;
+/** Versioned envelope for [\`HostProfilePresentContactRequest\`]. */
+export type VersionedHostProfilePresentContactRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentContactRequest;
+};
+export const VersionedHostProfilePresentContactRequest: Codec<VersionedHostProfilePresentContactRequest>;
+/** Versioned envelope for [\`HostProfilePresentContactResponse\`]. */
+export type VersionedHostProfilePresentContactResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfilePresentContactResponse: Codec<VersionedHostProfilePresentContactResponse>;
 /** Versioned envelope for [\`HostProfilePresentError\`]. */
 export type VersionedHostProfilePresentError = 
 /** Version 1 payload. */
@@ -2457,6 +2505,30 @@ export type VersionedHostProfilePresentResponse =
     value?: undefined;
 };
 export const VersionedHostProfilePresentResponse: Codec<VersionedHostProfilePresentResponse>;
+/** Versioned envelope for [\`HostProfileRetractError\`]. */
+export type VersionedHostProfileRetractError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileRetractError;
+};
+export const VersionedHostProfileRetractError: Codec<VersionedHostProfileRetractError>;
+/** Versioned envelope for [\`HostProfileRetractRequest\`]. */
+export type VersionedHostProfileRetractRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfileRetractRequest: Codec<VersionedHostProfileRetractRequest>;
+/** Versioned envelope for [\`HostProfileRetractResponse\`]. */
+export type VersionedHostProfileRetractResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfileRetractResponse: Codec<VersionedHostProfileRetractResponse>;
 /** Versioned envelope for [\`HostPushNotificationCancelError\`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -5008,6 +5080,64 @@ export interface HostPocketRemoveCardRequest {
     cardId: string;
 }
 export const HostPocketRemoveCardRequest: Codec<HostPocketRemoveCardRequest>;
+/** Profile disclosure failure. */
+export type HostProfileDiscloseError = 
+/** The reference is empty, too long, or not printable ASCII. */
+{
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProfileDiscloseError: Codec<HostProfileDiscloseError>;
+/**
+ * Request to give the user's chat contacts a profile reference.
+ *
+ * The reference is a bearer capability for everyone the host relays it to.
+ * The host stores it as the user's own and never parses it.
+ */
+export interface HostProfileDiscloseRequest {
+    /** Opaque profile reference, e.g. a Seity contacts reference. */
+    reference: string;
+}
+export const HostProfileDiscloseRequest: Codec<HostProfileDiscloseRequest>;
+/** Contact profile presentation failure. */
+export type HostProfilePresentContactError = 
+/** This contact has not shared a profile with the user. */
+{
+    tag: "NotShared";
+    value?: undefined;
+}
+/** The host holds a reference it cannot parse. */
+ | {
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProfilePresentContactError: Codec<HostProfilePresentContactError>;
+/**
+ * Request to show a chat contact's profile in host-owned UI.
+ *
+ * The product names the contact, never a reference: the host looks up the
+ * reference that contact's host sent, so the product cannot read, keep or
+ * substitute it.
+ */
+export interface HostProfilePresentContactRequest {
+    /** The contact's authenticated root identity, as the chat API names it. */
+    peerIdentity: HexString;
+}
+export const HostProfilePresentContactRequest: Codec<HostProfilePresentContactRequest>;
 /** Profile presentation failure. */
 export type HostProfilePresentError = 
 /** The reference is malformed or names a format this host cannot open. */
@@ -5035,6 +5165,21 @@ export interface HostProfilePresentRequest {
     reference: string;
 }
 export const HostProfilePresentRequest: Codec<HostProfilePresentRequest>;
+/** Profile retraction failure. */
+export type HostProfileRetractError = 
+/** Another product disclosed the reference the host holds. */
+{
+    tag: "NotDiscloser";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProfileRetractError: Codec<HostProfileRetractError>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [\`HostPushNotificationResponse\`]. */
@@ -6129,9 +6274,18 @@ export import VersionedHostPocketRemoveCardResponse = T.VersionedHostPocketRemov
 export import VersionedHostProductDeviceChatError = T.VersionedHostProductDeviceChatError;
 export import VersionedHostProductDeviceChatRequest = T.VersionedHostProductDeviceChatRequest;
 export import VersionedHostProductDeviceChatResponse = T.VersionedHostProductDeviceChatResponse;
+export import VersionedHostProfileDiscloseError = T.VersionedHostProfileDiscloseError;
+export import VersionedHostProfileDiscloseRequest = T.VersionedHostProfileDiscloseRequest;
+export import VersionedHostProfileDiscloseResponse = T.VersionedHostProfileDiscloseResponse;
+export import VersionedHostProfilePresentContactError = T.VersionedHostProfilePresentContactError;
+export import VersionedHostProfilePresentContactRequest = T.VersionedHostProfilePresentContactRequest;
+export import VersionedHostProfilePresentContactResponse = T.VersionedHostProfilePresentContactResponse;
 export import VersionedHostProfilePresentError = T.VersionedHostProfilePresentError;
 export import VersionedHostProfilePresentRequest = T.VersionedHostProfilePresentRequest;
 export import VersionedHostProfilePresentResponse = T.VersionedHostProfilePresentResponse;
+export import VersionedHostProfileRetractError = T.VersionedHostProfileRetractError;
+export import VersionedHostProfileRetractRequest = T.VersionedHostProfileRetractRequest;
+export import VersionedHostProfileRetractResponse = T.VersionedHostProfileRetractResponse;
 export import VersionedHostPushNotificationCancelError = T.VersionedHostPushNotificationCancelError;
 export import VersionedHostPushNotificationCancelRequest = T.VersionedHostPushNotificationCancelRequest;
 export import VersionedHostPushNotificationCancelResponse = T.VersionedHostPushNotificationCancelResponse;
@@ -6363,8 +6517,13 @@ export import HostPaymentTopUpRequest = T.HostPaymentTopUpRequest;
 export import HostPocketListSubscribeItem = T.HostPocketListSubscribeItem;
 export import HostPocketRemoveCardError = T.HostPocketRemoveCardError;
 export import HostPocketRemoveCardRequest = T.HostPocketRemoveCardRequest;
+export import HostProfileDiscloseError = T.HostProfileDiscloseError;
+export import HostProfileDiscloseRequest = T.HostProfileDiscloseRequest;
+export import HostProfilePresentContactError = T.HostProfilePresentContactError;
+export import HostProfilePresentContactRequest = T.HostProfilePresentContactRequest;
 export import HostProfilePresentError = T.HostProfilePresentError;
 export import HostProfilePresentRequest = T.HostProfilePresentRequest;
+export import HostProfileRetractError = T.HostProfileRetractError;
 export import HostPushNotificationCancelRequest = T.HostPushNotificationCancelRequest;
 export import HostPushNotificationError = T.HostPushNotificationError;
 export import HostPushNotificationRequest = T.HostPushNotificationRequest;
@@ -6884,7 +7043,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "c8972ad11436a788";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "5e0d5318926dc17f";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -7199,6 +7358,28 @@ export declare class ProfileClient {
      * returned; a reference this host cannot parse is \`InvalidReference\`.
      */
     present(request: T.HostProfilePresentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentError>>;
+    /**
+     * Give the user's chat contacts this reference to their profile.
+     *
+     * The host stores it as the user's own and relays it to each contact,
+     * replacing whatever it sent before; the product never learns who they
+     * are. App executions only. A reference this core cannot screen is
+     * \`InvalidReference\`.
+     */
+    disclose(request: T.HostProfileDiscloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfileDiscloseError>>;
+    /**
+     * Withdraw the reference this product disclosed. Contacts are told to
+     * drop what they hold. A product that did not disclose it is refused.
+     */
+    retract(options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfileRetractError>>;
+    /**
+     * Show a chat contact's profile in host-owned UI.
+     *
+     * The product names the contact; the host looks up the reference that
+     * contact shared and presents it as \`present\` would. The reference never
+     * reaches the product. A contact who shared nothing is \`NotShared\`.
+     */
+    presentContact(request: T.HostProfilePresentContactRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentContactError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {

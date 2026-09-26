@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "c8972ad11436a788";
+export const TRUAPI_WIRE_SCHEMA_HASH = "5e0d5318926dc17f";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -1016,6 +1016,58 @@ export class ProfileClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProfilePresentResponse, S.CallError(T.VersionedHostProfilePresentError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Give the user's chat contacts this reference to their profile.
+     *
+     * The host stores it as the user's own and relays it to each contact,
+     * replacing whatever it sent before; the product never learns who they
+     * are. App executions only. A reference this core cannot screen is
+     * `InvalidReference`.
+     */
+    disclose(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_DISCLOSE,
+            payload: T.VersionedHostProfileDiscloseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfileDiscloseResponse, S.CallError(T.VersionedHostProfileDiscloseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Withdraw the reference this product disclosed. Contacts are told to
+     * drop what they hold. A product that did not disclose it is refused.
+     */
+    retract(options) {
+        return this.#transport.request({
+            ids: W.PROFILE_RETRACT,
+            payload: T.VersionedHostProfileRetractRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfileRetractResponse, S.CallError(T.VersionedHostProfileRetractError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Show a chat contact's profile in host-owned UI.
+     *
+     * The product names the contact; the host looks up the reference that
+     * contact shared and presents it as `present` would. The reference never
+     * reaches the product. A contact who shared nothing is `NotShared`.
+     */
+    presentContact(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PRESENT_CONTACT,
+            payload: T.VersionedHostProfilePresentContactRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePresentContactResponse, S.CallError(T.VersionedHostProfilePresentContactError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
