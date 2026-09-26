@@ -469,6 +469,7 @@ checked `ok []` via sourcemap `sources`.
 |---|---:|---:|
 | Pre-migration (`d8f0167`) | 74,649 | — |
 | After sub-project 4a (`96265dfb`) | 101,689 | **+27,040** |
+| After the sub-project 4a size fix | 97,470 | **+22,821** |
 
 Amended whole-migration host limit: **+25,600 B (+25 KB) gzip** over the
 pre-migration baseline. The running total after sub-project 4a is **+27,040 B,
@@ -485,6 +486,25 @@ Flagged here for the owner's attention; sub-project 4a's task list is
 recording-only and does not call for remediation (e.g. trimming
 `topbar-autohide.ts`/`topbar.ts` once later sub-projects fold the shell's
 imperative behavior into Solid) — that is out of scope for this task.
+
+**Size fix (sub-project 4a, Task 5): +22,821 B, within the +25,600 B limit
+(2,779 B of margin).** The shell's client module no longer carries its DOM
+templates: a build-only plugin (`mount/strip-client-templates-plugin.ts`)
+replaces every `template(...)` call in the client compile of
+`components/shell/Shell.tsx` with `undefined` (the SSR compile that
+prerenders it is untouched). Hydration claims the prerendered nodes by key and
+never reads those strings; only a client render would. So a failed hydration
+now restores a `cloneNode(true)` snapshot of the prerendered markup
+(`data-hydrated="fallback"`, still reported to Sentry) instead of
+client-rendering the shell. Both sides now render the shell inside the same
+`Errored` boundary (`mount/hydration-boundary.ts`), so a key miss is caught
+instead of halting Solid's reactive system for every root on the page. The
+snapshot fallback holds only while the shell is static; sub-project 4b has to
+replace it before the shell gets reactive parts. Measured with the same build
+command and `bun scripts/eager-path-size.ts`: host 101,689 → **97,470 B**
+(−4,219 B, the `index-*.js` chunk). Sandbox eager path 44,837 B (+2 B vs the
+table above, within ±50 B; its eager chunks don't include the shell or
+`mount/`).
 
 ### Cold start A/B (20 runs each)
 
