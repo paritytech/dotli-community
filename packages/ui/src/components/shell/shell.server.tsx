@@ -6,17 +6,8 @@
 // bundled into the client.
 
 import { renderToString } from "@solidjs/web";
-
-// Temporary stand-in that proves the prerender plumbing; replaced by the
-// real Shell component.
-function PrerenderPlaceholder() {
-  return (
-    <span class="shell-prerender-placeholder" hidden>
-      prerendered
-    </span>
-  );
-}
+import { Shell } from "./Shell";
 
 export function renderShell(): string {
-  return renderToString(() => <PrerenderPlaceholder />, { renderId: "shell" });
+  return renderToString(() => <Shell />, { renderId: "shell" });
 }

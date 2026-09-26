@@ -13,6 +13,7 @@
 // Imported by apps/host/vite.config.ts, alongside `prodNoAnalyticsAliases`.
 
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
 
 export interface PrerenderOptions {
@@ -22,6 +23,13 @@ export interface PrerenderOptions {
   entry: string;
   /** Export of `entry` that returns the rendered HTML string. */
   exportName: string;
+  /**
+   * Basename of the HTML entry to transform, e.g. `index.html`. A build or
+   * dev server can process several HTML entries (this monorepo's other apps,
+   * for instance); every other one is returned unchanged.
+   * @default "index.html"
+   */
+  filter?: string;
 }
 
 /**
@@ -65,6 +73,11 @@ async function renderWith(
       `[prerender] ${options.exportName}() in ${options.entry} did not return a string`,
     );
   }
+  if (rendered.trim() === "") {
+    throw new Error(
+      `[prerender] ${options.exportName}() in ${options.entry} returned an empty string; shipping an empty shell must never be silent`,
+    );
+  }
   return rendered;
 }
 
@@ -105,12 +118,21 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
         throw new Error(`[prerender] entry not found: ${options.entry}`);
       }
       if (config.command === "build") {
+        if (config.configFile === undefined) {
+          // Without a config file, the inner server below would start with
+          // only `disableClientDepsOptimizer()` in its plugin list: no
+          // solid(), no aliases. It would "succeed" at rendering something,
+          // silently wrong, rather than fail loudly.
+          throw new Error(
+            "[prerender] no configFile resolved for this build; the inner SSR render server needs it to load the same plugins (solid(), aliases, ...) as the build itself",
+          );
+        }
         // The same config file (plugins, aliases, defines) and mode as this
         // build, as an SSR-only middleware server: no HTTP listener, HMR or
         // file watching.
         buildServerConfig = {
           ...config.inlineConfig,
-          configFile: config.configFile ?? false,
+          configFile: config.configFile,
           root: config.root,
           mode: config.mode,
           logLevel: "warn",
@@ -124,6 +146,9 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
       // After Vite's own HTML processing, so the markup lands verbatim.
       order: "post",
       async handler(html, ctx) {
+        if (basename(ctx.filename) !== (options.filter ?? "index.html")) {
+          return html;
+        }
         let rendered: string;
         if (ctx.server) {
           rendered = await renderWith(ctx.server, options);
@@ -134,9 +159,20 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
           const server = await createServer(buildServerConfig);
           try {
             rendered = await renderWith(server, options);
-          } finally {
-            await server.close();
+          } catch (renderError) {
+            try {
+              await server.close();
+            } catch (closeError) {
+              // The render error is the one worth surfacing; a close
+              // failure on top of it would otherwise silently replace it.
+              console.error(
+                "[prerender] server.close() also failed after a render error",
+                closeError,
+              );
+            }
+            throw renderError;
           }
+          await server.close();
         }
         return injectPrerendered(html, options.placeholder, rendered);
       },
