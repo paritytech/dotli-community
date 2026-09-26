@@ -12,6 +12,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
+import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -251,8 +252,8 @@ export default defineConfig({
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
-    // Hydratable client output. Nothing renders a component yet; the
-    // prerender step that uses it arrives in sub-project 4.
+    // Hydratable client output, plus the SSR transform that prerenderPlugin
+    // (below) uses to server-render the shell.
     solid({ ssr: true }),
     wasm(),
     runtimeNetworkConfigScript(),
@@ -265,6 +266,11 @@ export default defineConfig({
       imageAlt: "Polkadot logo",
     }),
     preloadCriticalAssets(),
+    prerenderPlugin({
+      placeholder: "<!--ssr:shell-->",
+      entry: resolve(PACKAGES, "ui/src/components/shell/shell.server.tsx"),
+      exportName: "renderShell",
+    }),
     previewCoepHeaders(),
     sentry(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
