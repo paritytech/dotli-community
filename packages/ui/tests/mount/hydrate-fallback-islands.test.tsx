@@ -106,6 +106,20 @@ describe("shell islands after a hydration fallback", () => {
       kind: "hydration_failed",
     });
 
+    // The static nodes from the restored (fallback) snapshot, captured
+    // before the swap: proves the swap actually ran (node identity), not
+    // just that the observed behaviour matches what a swap would produce.
+    // load-islands.ts's offline-banner failsafe in particular reproduces
+    // the same offline/online behaviour from the static node when the
+    // banner island itself fails to swap, so behaviour alone can't tell the
+    // two apart.
+    const staleIslandNodes = {
+      "theme-toggle": byId("theme-toggle"),
+      "theme-popover": byId("theme-popover"),
+      "topbar-url": byId("topbar-url"),
+      "offline-banner": byId("offline-banner"),
+    };
+
     // When: the host boots the islands over the restored snapshot, exactly
     // as apps/host/src/boot.ts calls ensureIslands() right after
     // hydrateShell().
@@ -114,14 +128,12 @@ describe("shell islands after a hydration fallback", () => {
 
     // Then: each island's static markup was replaced by its live component,
     // one element per id, over the restored (not the originally hydrated)
-    // snapshot.
-    for (const id of [
-      "theme-toggle",
-      "theme-popover",
-      "topbar-url",
-      "offline-banner",
-    ]) {
+    // snapshot. The pre-swap static node for each is detached and a
+    // different, live node now carries the id.
+    for (const [id, stale] of Object.entries(staleIslandNodes)) {
       expect(countById(id)).toBe(1);
+      expect(byId(id)).not.toBe(stale);
+      expect(stale.isConnected).toBe(false);
     }
 
     // Theme toggle: opens its popover and applies a selected option.
