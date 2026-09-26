@@ -18,6 +18,12 @@
 
 import type { JSX } from "@solidjs/web";
 
+/**
+ * Hydration id namespace of the shell: shell.server.tsx renders with it and
+ * mount/hydrate-shell.tsx hydrates with it, so the keys line up.
+ */
+export const SHELL_RENDER_ID = "shell";
+
 export function Shell(): JSX.Element {
   return (
     <>

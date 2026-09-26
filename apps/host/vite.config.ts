@@ -12,7 +12,10 @@ import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
-import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
+import {
+  PRERENDER_BUILD_SERVER_ENV,
+  prerenderPlugin,
+} from "../../packages/ui/src/mount/prerender-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -253,8 +256,16 @@ export default defineConfig({
     : "/",
   plugins: [
     // Hydratable client output, plus the SSR transform that prerenderPlugin
-    // (below) uses to server-render the shell.
-    solid({ ssr: true }),
+    // (below) uses to server-render the shell. The build-time render server
+    // is a `serve` server, which would compile in dev posture; it is forced
+    // to production posture so the prerendered HTML is what the production
+    // client bundle hydrates.
+    solid({
+      ssr: true,
+      ...(process.env[PRERENDER_BUILD_SERVER_ENV] === "1"
+        ? { dev: false }
+        : {}),
+    }),
     wasm(),
     runtimeNetworkConfigScript(),
     socialMetaTags({

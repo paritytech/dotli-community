@@ -16,6 +16,36 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
 
+/**
+ * Set to `"1"` in `process.env` while the build-time render server loads its
+ * config. The config reads it to compile Solid in production posture there
+ * (`solid({ dev: false })`, no `development` resolve condition): that server
+ * is a `serve`-command server, so `@solidjs/vite-plugin` would otherwise pick
+ * dev posture, while the client bundle it has to match is a production build.
+ */
+export const PRERENDER_BUILD_SERVER_ENV = "DOTLI_PRERENDER_BUILD_SERVER";
+
+/**
+ * Creates the build-time render server with {@link PRERENDER_BUILD_SERVER_ENV}
+ * set while its config file is loaded and resolved, then restores the
+ * variable, so nothing else in this process sees it.
+ */
+async function createBuildRenderServer(
+  config: Parameters<typeof createServer>[0],
+): Promise<ViteDevServer> {
+  const previous = process.env[PRERENDER_BUILD_SERVER_ENV];
+  process.env[PRERENDER_BUILD_SERVER_ENV] = "1";
+  try {
+    return await createServer(config);
+  } finally {
+    if (previous === undefined) {
+      Reflect.deleteProperty(process.env, PRERENDER_BUILD_SERVER_ENV);
+    } else {
+      process.env[PRERENDER_BUILD_SERVER_ENV] = previous;
+    }
+  }
+}
+
 export interface PrerenderOptions {
   /** Marker in the HTML replaced by the rendered markup, e.g. `<!--ssr:shell-->`. */
   placeholder: string;
@@ -156,7 +186,7 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
           if (!buildServerConfig) {
             throw new Error("[prerender] no dev server and not a build");
           }
-          const server = await createServer(buildServerConfig);
+          const server = await createBuildRenderServer(buildServerConfig);
           try {
             rendered = await renderWith(server, options);
           } catch (renderError) {

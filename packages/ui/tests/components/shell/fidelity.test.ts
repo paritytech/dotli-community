@@ -10,21 +10,14 @@
 // same order. Solid's hydration markers (`_hk=...`) and HTML comments are
 // not part of that contract, so both are stripped before comparing.
 //
-// renderShell() calls @solidjs/web's renderToString, which throws when
-// resolved through Vitest's own (browser-conditioned) module graph - the
-// same reason apps/host/vite.config.ts's prerender plugin needs a real Vite
-// SSR server rather than a plain `import`. This test builds that same kind
-// of throwaway SSR-only server directly, so it exercises the real
-// @solidjs/vite-plugin SSR compile, not a stand-in.
+// The rendered side is the real SSR output (see helpers/shell-ssr.ts).
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import solid from "@solidjs/vite-plugin";
 import { Window } from "happy-dom";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createServer, type ViteDevServer } from "vite";
+import { beforeAll, describe, expect, it } from "vitest";
+import { renderShellOnServer } from "../../helpers/shell-ssr";
 
-const UI_ROOT = resolve(import.meta.dirname, "../../..");
 const FIXTURE_PATH = resolve(import.meta.dirname, "original-shell.html");
 
 const ELEMENT_NODE = 1;
@@ -99,32 +92,10 @@ function normalizeFragment(html: string): NormalizedChild[] {
 }
 
 describe("Shell prerender fidelity", () => {
-  let server: ViteDevServer;
   let rendered: string;
 
   beforeAll(async () => {
-    // A middleware-mode-only Vite server, never listening on a port: just
-    // enough to load shell.server.tsx through the real SSR-mode Solid JSX
-    // compile, the same way apps/host/vite.config.ts's prerender plugin
-    // does at build time.
-    server = await createServer({
-      configFile: false,
-      root: UI_ROOT,
-      logLevel: "warn",
-      appType: "custom",
-      server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-      plugins: [solid({ ssr: true })],
-      resolve: { alias: { "@dotli/ui": resolve(UI_ROOT, "src") } },
-    });
-    const mod = await server.ssrLoadModule(
-      resolve(UI_ROOT, "src/components/shell/shell.server.tsx"),
-    );
-    const renderShell = mod.renderShell as () => string;
-    rendered = renderShell();
-  });
-
-  afterAll(async () => {
-    await server.close();
+    rendered = await renderShellOnServer();
   });
 
   it("As the prerendered shell, every element, attribute and text node of the original shell block survives, in order", () => {

@@ -6,8 +6,8 @@
 // bundled into the client.
 
 import { renderToString } from "@solidjs/web";
-import { Shell } from "./Shell";
+import { SHELL_RENDER_ID, Shell } from "./Shell";
 
 export function renderShell(): string {
-  return renderToString(() => <Shell />, { renderId: "shell" });
+  return renderToString(() => <Shell />, { renderId: SHELL_RENDER_ID });
 }

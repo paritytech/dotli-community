@@ -5,21 +5,53 @@ import { defineConfig } from "vitest/config";
 import solid from "@solidjs/vite-plugin";
 import { resolve } from "node:path";
 
-export default defineConfig({
-  plugins: [solid()],
+// Hydration tests need components compiled hydratable, the way the host build
+// compiles them (`solid({ ssr: true })` in apps/host/vite.config.ts). In test
+// mode @solidjs/vite-plugin always compiles non-hydratable, so the hydration
+// project runs under its own mode.
+const HYDRATION_TESTS = ["tests/mount/hydrate-shell.test.tsx"];
+
+const shared = {
   resolve: {
     alias: {
       "@dotli/ui": resolve(import.meta.dirname, "src"),
     },
   },
-  test: {
-    include: ["tests/**/*.test.{ts,tsx}"],
-    environment: "happy-dom",
-    globals: false,
-  },
   define: {
     // getEnabledNetworks() requires VITE_NETWORKS (no default by design); the
     // test build supplies it the same way a deployment does.
     "import.meta.env.VITE_NETWORKS": '"paseo-next-v2,previewnet"',
+  },
+};
+
+export default defineConfig({
+  test: {
+    projects: [
+      {
+        ...shared,
+        plugins: [solid()],
+        test: {
+          name: "ui",
+          include: ["tests/**/*.test.{ts,tsx}"],
+          exclude: HYDRATION_TESTS,
+          environment: "happy-dom",
+          globals: false,
+        },
+      },
+      {
+        ...shared,
+        mode: "hydration",
+        // Outside test mode the plugin no longer adds the `browser`
+        // condition itself.
+        resolve: { ...shared.resolve, conditions: ["browser"] },
+        plugins: [solid({ ssr: true })],
+        test: {
+          name: "hydration",
+          include: HYDRATION_TESTS,
+          environment: "happy-dom",
+          globals: false,
+        },
+      },
+    ],
   },
 });

@@ -15,15 +15,14 @@ if (typeof globalThis.requestIdleCallback !== "function") {
     }, 1) as unknown as number;
 }
 
+// Must stay the first import: it hydrates the prerendered shell before any
+// other module can query it (see boot.ts).
+import "./boot";
 import "./pwa";
 import "./offline";
 import "@dotli/ui/styles.css";
 import * as Sentry from "@sentry/browser";
-import {
-  initSentry,
-  installGlobalErrorHandlers,
-  captureException,
-} from "@dotli/metrics/sentry";
+import { captureException } from "@dotli/metrics/sentry";
 import {
   SETTINGS_GLYPH,
   showError,
@@ -218,9 +217,6 @@ if (!isMobileDevice()) {
     });
   }
 }
-
-initSentry("host");
-installGlobalErrorHandlers("host");
 
 import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";

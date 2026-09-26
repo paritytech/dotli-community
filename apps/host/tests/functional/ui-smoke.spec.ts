@@ -50,6 +50,35 @@ test.describe("Shell UI smoke", () => {
     await expect(page).toHaveURL(/\/\/browse\./);
   });
 
+  test("As a user, the prerendered shell is hydrated in place and its login button opens the QR modal", async ({
+    page,
+  }) => {
+    // Given
+    const consoleMessages: string[] = [];
+    page.on("console", (message) => {
+      consoleMessages.push(message.text());
+    });
+
+    // When
+    await page.goto(LANDING_URL);
+
+    // Then
+    // Set by hydrateShell() only when Solid claimed every prerendered node;
+    // a mismatch client-renders the shell and sets "fallback" instead.
+    await expect(page.locator("#shell")).toHaveAttribute(
+      "data-hydrated",
+      "shell",
+    );
+    expect(consoleMessages.filter((text) => /hydrat/i.test(text))).toEqual([]);
+
+    // When
+    await page.locator("#auth-button").click();
+
+    // Then
+    await expect(page.locator("#auth-modal-backdrop")).toHaveClass(/\bopen\b/);
+    await expect(page.locator("#auth-modal-title")).toBeVisible();
+  });
+
   test("As a user, I can open the login QR modal and close it again", async ({
     page,
   }) => {
