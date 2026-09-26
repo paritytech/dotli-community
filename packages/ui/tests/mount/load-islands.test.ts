@@ -12,27 +12,42 @@ vi.mock("@dotli/metrics/sentry", () => sentry);
 
 const ISLANDS_CHUNK = "@dotli/ui/components/shell/islands";
 
+/** How long the loader waits before retrying a failed chunk load. */
+const RETRY_DELAY_MS = 1000;
+
 interface Chunk {
-  /** The chunk finishes loading. */
-  arrive: () => void;
-  /** The chunk fails to load. */
-  fail: (err: unknown) => void;
+  /** The pending import of the chunk finishes loading. */
+  arrive: () => Promise<void>;
+  /** The pending import of the chunk fails. */
+  fail: (err: unknown) => Promise<void>;
+  /** How many times the chunk was imported. */
+  imports: () => number;
   mountIslands: ReturnType<typeof vi.fn>;
   /** Clicks the island's (swapped-in) theme button received. */
   islandClicks: () => number;
 }
 
+/** Lets pending I/O and promise callbacks run (timers stay faked). */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 /**
- * Stands in for the islands chunk: once it arrives, mountIslands swaps a
- * fresh theme button, which counts its clicks, in for the static one.
+ * Stands in for the islands chunk: each import waits until the test lets it
+ * arrive or fail; once it arrives, mountIslands swaps a fresh theme button,
+ * which counts its clicks, in for the static one.
  */
 function stubChunk(mountError?: Error): Chunk {
-  let arrive!: () => void;
-  let fail!: (err: unknown) => void;
-  const gate = new Promise<void>((resolve, reject) => {
-    arrive = resolve;
-    fail = reject;
-  });
+  const requests: PromiseWithResolvers<void>[] = [];
+  let settled = 0;
+  /** The oldest import not yet settled, once the loader has made it. */
+  const nextRequest = async (): Promise<PromiseWithResolvers<void>> => {
+    while (requests.length <= settled) {
+      await tick();
+    }
+    settled += 1;
+    return requests[settled - 1];
+  };
   let clicks = 0;
   const mountIslands = vi.fn(() => {
     if (mountError !== undefined) {
@@ -46,10 +61,24 @@ function stubChunk(mountError?: Error): Chunk {
     document.getElementById("theme-toggle")?.replaceWith(fresh);
   });
   vi.doMock(ISLANDS_CHUNK, async () => {
-    await gate;
+    const request = Promise.withResolvers<void>();
+    requests.push(request);
+    await request.promise;
     return { mountIslands };
   });
-  return { arrive, fail, mountIslands, islandClicks: () => clicks };
+  return {
+    arrive: async () => {
+      (await nextRequest()).resolve();
+      await tick();
+    },
+    fail: async (err) => {
+      (await nextRequest()).reject(err);
+      await tick();
+    },
+    imports: () => requests.length,
+    mountIslands,
+    islandClicks: () => clicks,
+  };
 }
 
 async function loadLoader(): Promise<
@@ -80,6 +109,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.doUnmock(ISLANDS_CHUNK);
   sentry.captureException.mockReset();
   document.body.replaceChildren();
@@ -140,8 +170,38 @@ describe("ensureIslands", () => {
     expect(chunk.mountIslands).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli user, when the islands chunk cannot load, the static shell stays, nothing is replayed and clicks are no longer held back", async () => {
+  it("As a dotli user on a flaky connection, when the islands chunk fails to load once, the retry mounts the islands and my early click still opens the menu", async () => {
     // Given
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const loading = ensureIslands();
+    click(byId("theme-toggle"));
+
+    // When: the first load fails.
+    await chunk.fail(new Error("chunk failed"));
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS - 1);
+
+    // Then: no retry yet, and clicks are still held back.
+    expect(chunk.imports()).toBe(1);
+    expect(sentry.captureException).not.toHaveBeenCalled();
+    expect(click(byId("theme-toggle")).defaultPrevented).toBe(true);
+
+    // When: the retry starts and succeeds.
+    await vi.advanceTimersByTimeAsync(1);
+    await chunk.arrive();
+    await loading;
+
+    // Then
+    expect(chunk.imports()).toBe(2);
+    expect(chunk.mountIslands).toHaveBeenCalledTimes(1);
+    expect(chunk.islandClicks()).toBe(1);
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a dotli user, when the islands chunk cannot load even on the retry, the static shell stays, the failure is reported once, nothing is replayed and clicks are no longer held back", async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const staticButton = byId("theme-toggle");
@@ -149,10 +209,12 @@ describe("ensureIslands", () => {
     staticButton.addEventListener("click", staticClicks);
     const loading = ensureIslands();
     click(staticButton);
-    const err = new Error("chunk failed");
+    const err = new Error("chunk failed again");
 
     // When
-    chunk.fail(err);
+    await chunk.fail(new Error("chunk failed"));
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    await chunk.fail(err);
 
     // Then
     await expect(loading).resolves.toBeUndefined();
@@ -169,10 +231,12 @@ describe("ensureIslands", () => {
     // When
     const after = click(staticButton);
     await ensureIslands();
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS * 2);
 
-    // Then
+    // Then: no third attempt.
     expect(after.defaultPrevented).toBe(false);
     expect(staticClicks).toHaveBeenCalledTimes(2);
+    expect(chunk.imports()).toBe(2);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
   });
 

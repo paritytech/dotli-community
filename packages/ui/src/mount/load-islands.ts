@@ -8,6 +8,7 @@
 // them off the startup bundle is the point, so everything here is Solid-free.
 
 import { captureException } from "@dotli/metrics/sentry";
+import type * as Islands from "../components/shell/islands";
 
 /**
  * The islands' triggers: the static buttons users can click before the
@@ -17,6 +18,12 @@ import { captureException } from "@dotli/metrics/sentry";
  */
 const TRIGGERS = "#theme-toggle";
 
+/** How long to wait before the one retry of a failed chunk load. */
+const RETRY_DELAY_MS = 1000;
+
+const importIslands = (): Promise<typeof Islands> =>
+  import("../components/shell/islands");
+
 let loading: Promise<void> | null = null;
 
 /**
@@ -25,10 +32,11 @@ let loading: Promise<void> | null = null;
  *
  * Until the islands mount, a click on a trigger is held back (its default
  * prevented) and replayed on the live trigger afterwards, at most once per
- * trigger, so an early click is not lost. When the chunk cannot load, or
- * mounting the islands throws, the static shell stays, the failure is
- * reported to Sentry (`islands_load_error` or `islands_mount_error`) and
- * nothing is replayed. A failed load is not retried.
+ * trigger, so an early click is not lost. A failed chunk load is retried
+ * once, after about a second, with clicks still held back. When the retry
+ * fails too, or mounting the islands throws, the static shell stays, the
+ * failure is reported to Sentry once (`islands_load_error` or
+ * `islands_mount_error`) and nothing is replayed.
  */
 export function ensureIslands(): Promise<void> {
   if (loading !== null) {
@@ -47,23 +55,29 @@ export function ensureIslands(): Promise<void> {
     document.removeEventListener("click", holdBack, true);
   };
   document.addEventListener("click", holdBack, true);
-  loading = import("../components/shell/islands").then(
-    ({ mountIslands }) => {
-      stopHoldingBack();
-      try {
-        mountIslands();
-      } catch (err) {
-        captureException(err, { kind: "islands_mount_error" });
-        return;
-      }
-      for (const id of pending) {
-        document.getElementById(id)?.click();
-      }
-    },
-    (err: unknown) => {
-      stopHoldingBack();
-      captureException(err, { kind: "islands_load_error" });
-    },
-  );
+  loading = importIslands()
+    .catch(() =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, RETRY_DELAY_MS);
+      }).then(importIslands),
+    )
+    .then(
+      ({ mountIslands }) => {
+        stopHoldingBack();
+        try {
+          mountIslands();
+        } catch (err) {
+          captureException(err, { kind: "islands_mount_error" });
+          return;
+        }
+        for (const id of pending) {
+          document.getElementById(id)?.click();
+        }
+      },
+      (err: unknown) => {
+        stopHoldingBack();
+        captureException(err, { kind: "islands_load_error" });
+      },
+    );
   return loading;
 }

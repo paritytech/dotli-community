@@ -1177,6 +1177,7 @@ async function main(): Promise<void> {
   // `index.html`. Their absence is a build/deploy bug, not a recoverable
   // runtime branch, so fail loud so monitoring catches it instead of silently
   // leaving the page in its initial loading state.
+  // `urlBar` is looked up only for this invariant check.
   const urlBar = document.getElementById("topbar-url");
   if (urlBar === null) {
     const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
