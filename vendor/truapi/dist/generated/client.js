@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "7eb6dbf2b5c734ff";
+export const TRUAPI_WIRE_SCHEMA_HASH = "848a3872e06c635b";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -884,6 +884,108 @@ export class PaymentClient {
         });
     }
 }
+/**
+ * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
+ *
+ * The host owns TLS, certificate verification and length framing; the guest
+ * verifies every byte it consumes. Access requires the manifest capability
+ * `capabilities.network.jam = { genesis }` and is granted only for that
+ * genesis. A grant is separate from account, signing and storage authority.
+ */
+export class PeerTransportClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Dial one peer. The host builds the ALPN from `genesis` and requires the
+     * peer certificate to carry `ed25519` (QUIC) or to hash to the
+     * certificate derived from `p256` (WebTransport).
+     */
+    dial(request, options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_DIAL,
+            payload: T.VersionedHostPeerTransportDialRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportDialResponse, S.CallError(T.VersionedHostPeerTransportDialError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Open a bidirectional stream on a connection and send its kind byte. */
+    open(request, options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_OPEN,
+            payload: T.VersionedHostPeerTransportOpenRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportOpenResponse, S.CallError(T.VersionedHostPeerTransportOpenError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Queue one message; the host prepends the `u32` little-endian length. */
+    send(request, options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_SEND,
+            payload: T.VersionedHostPeerTransportSendRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportSendResponse, S.CallError(T.VersionedHostPeerTransportSendError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Poll one complete message without blocking; the host strips the length. */
+    recv(request, options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_RECV,
+            payload: T.VersionedHostPeerTransportRecvRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportRecvResponse, S.CallError(T.VersionedHostPeerTransportRecvError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Abort a stream in both directions. */
+    reset(request, options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_RESET,
+            payload: T.VersionedHostPeerTransportResetRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportResetResponse, S.CallError(T.VersionedHostPeerTransportResetError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Close a connection and every stream on it. */
+    close(request, options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_CLOSE,
+            payload: T.VersionedHostPeerTransportCloseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportCloseResponse, S.CallError(T.VersionedHostPeerTransportCloseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Drain connection, stream-finish and inbound-stream events. */
+    events(options) {
+        return this.#transport.request({
+            ids: W.PEER_TRANSPORT_EVENTS,
+            payload: T.VersionedHostPeerTransportEventsRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostPeerTransportEventsResponse, S.CallError(T.VersionedHostPeerTransportEventsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
 /** Permission request methods. */
 export class PermissionsClient {
     #transport;
@@ -1497,6 +1599,7 @@ export function createClient(transport) {
         locale: new LocaleClient(transport),
         notifications: new NotificationsClient(transport),
         payment: new PaymentClient(transport),
+        peerTransport: new PeerTransportClient(transport),
         permissions: new PermissionsClient(transport),
         pocket: new PocketClient(transport),
         preimage: new PreimageClient(transport),

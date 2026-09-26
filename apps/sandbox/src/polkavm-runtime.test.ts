@@ -4,9 +4,23 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  encodeWireMessage,
+  MESSAGE_TYPE_REQUEST,
+  TRUAPI_CODEC_VERSION,
+  VersionedHostHandshakeRequest,
+  VersionedHostPeerTransportEventsRequest,
+} from "@parity/truapi";
+import { createPeerTransportSession } from "@parity/truapi/peer-transport";
+import {
+  ACCOUNT_GET_ACCOUNT,
+  PEER_TRANSPORT_EVENTS,
+  SYSTEM_HANDSHAKE,
+} from "@parity/truapi/wire-table";
+import {
   accumulateRelativePointerDelta,
   HostFrameResponseQueue,
   describePolkaVmPackage,
+  dispatchHostFrame,
   encodedInput,
   encodedWheelInput,
   encodedTextInput,
@@ -17,6 +31,7 @@ import {
   installPageCacheRestoreReload,
   postFirstUiPlatformCommand,
   matchingFileInputHandlers,
+  peerTransportGrantText,
   polkavmWebFallbackEntrypoint,
   polkaVmCompatibilityError,
   validateFiles,
@@ -27,6 +42,7 @@ import {
   waitForTruapiPort,
   type HostFrameResponseQueueOptions,
   validatedFileInputHandlers,
+  type PolkaVmDescriptor,
   type TruapiPortScope,
   type TruapiPortTarget,
 } from "./polkavm-runtime";
@@ -476,6 +492,7 @@ describe("PolkaVM package recognition", () => {
       requiredAssets: ["game/doom.wad"],
       fileInputHandlers: [],
       manifestVersion: null,
+      jamGenesis: null,
     });
   });
 
@@ -498,12 +515,55 @@ describe("PolkaVM package recognition", () => {
       requiredAssets: [],
       fileInputHandlers: [],
       manifestVersion: 2,
+      jamGenesis: null,
     });
     expect(() => describePolkaVmPackage(files)).toThrow(
       /external App manifest is required/,
     );
     expect(() => describePolkaVmPackage(files, `${manifest}\n`)).toThrow(
       /does not match/,
+    );
+  });
+
+  it("grants peer transport only for a well-formed capabilities.network.jam.genesis", () => {
+    const withNetwork = (network: unknown): string => {
+      const manifest = JSON.parse(doomAppV2Manifest()) as Record<
+        string,
+        unknown
+      >;
+      (manifest.capabilities as Record<string, unknown>).network = network;
+      return JSON.stringify(manifest);
+    };
+    const files = { "app.polkavm": new Uint8Array([1, 2, 3]) };
+    const genesis = "ab".repeat(32);
+    const describe = (manifest: string): PolkaVmDescriptor | null =>
+      describePolkaVmPackage(
+        { ...files, "manifest.json": encoder.encode(manifest) },
+        manifest,
+      );
+
+    expect(describe(withNetwork({ jam: { genesis } }))?.jamGenesis).toBe(
+      `0x${genesis}`,
+    );
+    expect(
+      describe(withNetwork({ jam: { genesis: `0x${genesis}` } }))?.jamGenesis,
+    ).toBe(`0x${genesis}`);
+    expect(() =>
+      describe(withNetwork({ jam: { genesis: genesis.slice(2) } })),
+    ).toThrow("32-byte");
+    expect(() =>
+      describe(withNetwork({ jam: { genesis: genesis.toUpperCase() } })),
+    ).toThrow("32-byte");
+    expect(() =>
+      describe(withNetwork({ jam: { genesis, endpoints: [] } })),
+    ).toThrow("{ jam: { genesis } }");
+    expect(() => describe(withNetwork({ http: {} }))).toThrow(
+      "{ jam: { genesis } }",
+    );
+    expect(() => describe(withNetwork("jam"))).toThrow("{ jam: { genesis } }");
+    expect(peerTransportGrantText(null)).toEqual([]);
+    expect(peerTransportGrantText(`0x${genesis}`).join(" ")).toContain(
+      "0xabababab",
     );
   });
 
@@ -723,6 +783,7 @@ describe("PolkaVM package recognition", () => {
       requiredAssets: [],
       fileInputHandlers: [],
       manifestVersion: 2,
+      jamGenesis: null,
     });
   });
 
@@ -750,6 +811,7 @@ describe("PolkaVM package recognition", () => {
       requiredAssets: [],
       fileInputHandlers: [],
       manifestVersion: 2,
+      jamGenesis: null,
     });
   });
 
@@ -994,6 +1056,136 @@ describe("PolkaVM host-frame transport", () => {
       { type: "truapi-ready" },
       parentOrigin,
     );
+  });
+});
+
+describe("PolkaVM host-frame dispatch with a peer-transport grant", () => {
+  const GENESIS = `0x${"35".repeat(32)}`;
+  let requestCounter = 0;
+  const frame = (
+    ids: { trait: number; method: number },
+    value: Uint8Array,
+  ): Uint8Array<ArrayBuffer> => {
+    const encoded = encodeWireMessage({
+      requestId: `t${String(requestCounter++)}`,
+      payload: {
+        traitId: ids.trait,
+        methodId: ids.method,
+        messageType: MESSAGE_TYPE_REQUEST,
+        value,
+      },
+    });
+    if (encoded.isErr()) {
+      throw encoded.error;
+    }
+    return new Uint8Array(encoded.value);
+  };
+  const handshake = (): Uint8Array<ArrayBuffer> =>
+    frame(
+      SYSTEM_HANDSHAKE,
+      VersionedHostHandshakeRequest.enc({
+        tag: "V1",
+        value: { codecVersion: TRUAPI_CODEC_VERSION },
+      }),
+    );
+  const events = (): Uint8Array<ArrayBuffer> =>
+    frame(
+      PEER_TRANSPORT_EVENTS,
+      VersionedHostPeerTransportEventsRequest.enc({ tag: "V1" }),
+    );
+  const settle = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("forwards everything to the host port when the manifest grants nothing", async () => {
+    const port = { postMessage: vi.fn() };
+    const responses: Uint8Array[] = [];
+    for (const request of [handshake(), events()]) {
+      expect(
+        dispatchHostFrame(
+          request,
+          port,
+          null,
+          (r) => responses.push(r),
+          () => {
+            throw new Error("unexpected peer error");
+          },
+        ),
+      ).toBe(true);
+    }
+    await settle();
+    expect(port.postMessage).toHaveBeenCalledTimes(2);
+    expect(responses).toEqual([]);
+  });
+
+  it("answers peer-transport frames locally and copies only the handshake to the session", async () => {
+    const session = createPeerTransportSession({ genesis: GENESIS });
+    const port = { postMessage: vi.fn() };
+    const responses: Uint8Array[] = [];
+    const errors: Error[] = [];
+    const onResponse = (r: Uint8Array): number => responses.push(r);
+    const onError = (e: Error): number => errors.push(e);
+
+    // Before the handshake the session is not negotiated: the grant answers
+    // NotGranted itself rather than letting the frame reach the host.
+    expect(
+      dispatchHostFrame(events(), port, session, onResponse, onError),
+    ).toBe(true);
+    await settle();
+    expect(port.postMessage).not.toHaveBeenCalled();
+    expect(responses).toHaveLength(1);
+
+    const hs = handshake();
+    const hsBytes = Uint8Array.from(hs);
+    expect(dispatchHostFrame(hs, port, session, onResponse, onError)).toBe(
+      true,
+    );
+    await settle();
+    // The host still receives the original handshake frame (and its buffer).
+    expect(port.postMessage).toHaveBeenCalledTimes(1);
+    expect(port.postMessage.mock.calls[0]?.[0]).toEqual(hsBytes);
+    expect(port.postMessage.mock.calls[0]?.[1]).toEqual([hs.buffer]);
+    // The session's handshake reply is dropped: only peer responses surface.
+    expect(responses).toHaveLength(1);
+
+    expect(
+      dispatchHostFrame(events(), port, session, onResponse, onError),
+    ).toBe(true);
+    await settle();
+    expect(port.postMessage).toHaveBeenCalledTimes(1);
+    expect(responses).toHaveLength(2);
+
+    // Frames of any other trait never touch the session.
+    expect(
+      dispatchHostFrame(
+        frame(ACCOUNT_GET_ACCOUNT, new Uint8Array()),
+        port,
+        session,
+        onResponse,
+        onError,
+      ),
+    ).toBe(true);
+    await settle();
+    expect(port.postMessage).toHaveBeenCalledTimes(2);
+    expect(responses).toHaveLength(2);
+    expect(errors).toEqual([]);
+    session.close();
+  });
+
+  it("keeps the 1 MiB host bound for non-peer frames even with a grant", () => {
+    const session = createPeerTransportSession({ genesis: GENESIS });
+    const port = { postMessage: vi.fn() };
+    const oversized = new Uint8Array(1024 * 1024 + 1);
+    expect(
+      dispatchHostFrame(
+        oversized,
+        port,
+        session,
+        () => undefined,
+        () => undefined,
+      ),
+    ).toBe(false);
+    expect(port.postMessage).not.toHaveBeenCalled();
+    session.close();
   });
 });
 

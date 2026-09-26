@@ -16,6 +16,8 @@ export function installPolkaVmMenu(
   options: {
     pause: (paused: boolean) => void;
     hasFileInput: boolean;
+    /** Host-granted network access lines; empty when the app has none. */
+    grants: readonly string[];
     retry: () => void;
     launcher: () => void;
     error?: string;
@@ -62,6 +64,23 @@ export function installPolkaVmMenu(
     list.append(item);
   }
   help.append(summary, list);
+  const network = document.createElement("details");
+  network.className = "dotli-polkavm-network";
+  const networkSummary = document.createElement("summary");
+  networkSummary.textContent = "Network access";
+  const networkList = document.createElement("ul");
+  for (const grant of options.grants) {
+    const item = document.createElement("li");
+    item.textContent = grant;
+    networkList.append(item);
+  }
+  if (options.grants.length === 0) {
+    const item = document.createElement("li");
+    item.textContent =
+      "This app has no network access beyond the host's own services.";
+    networkList.append(item);
+  }
+  network.append(networkSummary, networkList);
   const changeFile = options.hasFileInput
     ? button("Change Game / Choose file")
     : null;
@@ -72,7 +91,7 @@ export function installPolkaVmMenu(
   retry.hidden = options.error === undefined;
   const launcher = button("Return to launcher");
   launcher.hidden = !options.hasFileInput;
-  dialog.append(heading, message, resume, help);
+  dialog.append(heading, message, resume, help, network);
   if (changeFile !== null) {
     dialog.append(changeFile);
   }
