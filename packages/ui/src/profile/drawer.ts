@@ -9,6 +9,7 @@
 // avatar or a failure message. It is not a blocking modal: it asks nothing,
 // and presenting another profile replaces the one on screen.
 
+import { log } from "@dotli/shared/log";
 import { createMoodRing, INTENSITY, MOOD_PALETTE, type MoodRingHandle } from "./mood-ring";
 import { moodIsCurrent, type Mood } from "./profile-record";
 
@@ -221,6 +222,11 @@ export function showProfileDrawer(
       if (closed) {
         return;
       }
+      // Name and message only: no error on this path carries the reference.
+      log.warn(
+        "[profile] drawer load failed:",
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      );
       fail(failureMessage(error));
     },
   );

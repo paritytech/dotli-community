@@ -23,13 +23,13 @@ const VECTOR = JSON.parse(
 
 const mocks = vi.hoisted(() => ({
   bitswapGet: vi.fn(async (_cid: string): Promise<Uint8Array> => new Uint8Array()),
-  resolveSeitySlot: vi.fn(),
+  resolveSeitySlotRemote: vi.fn(),
 }));
 
 vi.mock("@dotli/content/bitswap", () => ({ bitswapGet: mocks.bitswapGet }));
 vi.mock("@dotli/content/ipfs", () => ({ fetchFromIpfs: vi.fn() }));
 vi.mock("@dotli/config/mode", () => ({ getBackend: () => "smoldot-direct" }));
-vi.mock("@dotli/resolver/resolve", () => ({ resolveSeitySlot: mocks.resolveSeitySlot }));
+vi.mock("@dotli/protocol/client", () => ({ resolveSeitySlotRemote: mocks.resolveSeitySlotRemote }));
 
 const product: ProductContext = { productId: "egui-chat.dot", executionKind: "App" };
 const BLOBS_BY_CID = new Map(
@@ -62,11 +62,11 @@ describe("Seity contacts references", () => {
       if (bytes === undefined) throw new Error(`no blob for ${cid}`);
       return bytes;
     });
-    mocks.resolveSeitySlot.mockReset();
-    mocks.resolveSeitySlot.mockImplementation(async (lookupKey: string) =>
+    mocks.resolveSeitySlotRemote.mockReset();
+    mocks.resolveSeitySlotRemote.mockImplementation(async (lookupKey: string) =>
       lookupKey === VECTOR.registry.lookupKey
-        ? { owner: `0x${"aa".repeat(20)}`, cidDigest: VECTOR.registry.cidDigest, version: 1n }
-        : { owner: `0x${"00".repeat(20)}`, cidDigest: `0x${"00".repeat(32)}`, version: 0n },
+        ? { owner: `0x${"aa".repeat(20)}`, cidDigest: VECTOR.registry.cidDigest, version: "1" }
+        : { owner: `0x${"00".repeat(20)}`, cidDigest: `0x${"00".repeat(32)}`, version: "0" },
     );
   });
 
@@ -83,7 +83,7 @@ describe("Seity contacts references", () => {
     await createProfilePlatform().presentProfile(product, { reference: VECTOR.reference });
     await settle();
 
-    expect(mocks.resolveSeitySlot).toHaveBeenCalledWith(VECTOR.registry.lookupKey);
+    expect(mocks.resolveSeitySlotRemote).toHaveBeenCalledWith(VECTOR.registry.lookupKey);
     expect(drawer()?.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/);
     expect(drawer()?.querySelector(".profile-drawer-mood")?.textContent).toBe("Hyped · loud · 23 h left");
     expect(drawer()?.querySelector(".profile-mood-ring")).not.toBeNull();

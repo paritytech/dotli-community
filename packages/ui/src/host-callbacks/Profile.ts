@@ -23,6 +23,7 @@ import {
   openSeityBlob,
   parseSeityBlobReference,
 } from "../profile/seity-reference";
+import { resolveSeitySlotRemote } from "@dotli/protocol/client";
 import { createPreimageAdapters } from "./Preimage";
 
 /** Bulletin retrieval can wait on bitswap providers attaching. */
@@ -112,10 +113,10 @@ async function loadContactsProfile(
   reference: SeityContactsReference,
   signal: AbortSignal,
 ): Promise<LoadedProfile> {
-  const { resolveSeitySlot } = await import("@dotli/resolver/resolve");
-  const slot = await resolveSeitySlot(reference.lookupKey);
+  // The light client lives in the protocol worker, so the read goes there.
+  const slot = await resolveSeitySlotRemote(reference.lookupKey);
   // Never anchored, revoked (zero digest) or no registry: nothing to show.
-  if (slot === null || slot.version === 0n || /^0x0{64}$/.test(slot.cidDigest)) {
+  if (slot === null || slot.version === "0" || /^0x0{64}$/.test(slot.cidDigest)) {
     return { avatar: null };
   }
   const sealed = await fetchCiphertext(slot.cidDigest, signal);

@@ -34,6 +34,7 @@ import {
   resolveExecutableManifest,
   resolveOwner,
   resolveRootManifest,
+  resolveSeitySlot,
   setResolverAssetHubProvider,
   setResolverPeopleProvider,
   waitForAssetHubFinalized,
@@ -383,6 +384,21 @@ async function handleRequest(
       return;
     }
 
+    case "resolveSeitySlot": {
+      const payload = request.payload as ProtocolRequestMap["resolveSeitySlot"];
+      assertString(payload.lookupKey, "lookupKey");
+      const slot = await resolveSeitySlot(payload.lookupKey as `0x${string}`, {
+        syncTimeoutMs,
+      });
+      sendToPort(port, {
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: request.id,
+        ok: true,
+        result: slot === null ? null : { ...slot, version: slot.version.toString() },
+      });
+      return;
+    }
     case "resolveOwner": {
       const payload = request.payload as ProtocolRequestMap["resolveOwner"];
       assertString(payload.label, "label");

@@ -18,6 +18,7 @@ export interface ProtocolRequestMap {
   warmup: Record<string, never>;
   resolveDotName: { label: string };
   resolveOwner: { label: string };
+  resolveSeitySlot: { lookupKey: string };
   resolveExecutableManifest: {
     label: string;
     kind: "app" | "widget" | "worker";
