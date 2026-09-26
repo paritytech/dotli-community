@@ -6,8 +6,9 @@
 // The topbar button appears when the loaded product declares chat in its
 // worker manifest (announced via `dotli:chat-availability`) and a session is
 // active. The panel docks to the right edge and shrinks the product iframe
-// while open, mirroring the debug panel's right dock. Its contents are Solid
-// components loaded on first use (components/chat/ChatPanel.tsx).
+// while open (through product-frame-layout), mirroring the debug panel's
+// right dock. Its contents are Solid components loaded on first use
+// (components/chat/ChatPanel.tsx).
 
 import {
   chatButtonVisible,
@@ -17,17 +18,8 @@ import {
   setChatPanelOpen,
   totalChatUnread,
 } from "../state/chat-panel";
+import { setChatWidth } from "../product-frame-layout";
 import { ensureChatPanel, prefetchChatPanel } from "./load";
-
-function adjustIframe(panel: HTMLElement, open: boolean): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("#app iframe");
-  if (iframe === null) {
-    return;
-  }
-  iframe.style.width = open
-    ? `calc(100vw - ${String(panel.offsetWidth)}px)`
-    : "100%";
-}
 
 /** Wire the chat button + panel. Called once from `initTopBar`. */
 export function initChatPanel(): void {
@@ -61,7 +53,8 @@ export function initChatPanel(): void {
       panel.style.width = `${String(state.width)}px`;
     }
     if (state.open || wasOpen) {
-      adjustIframe(panel, state.open);
+      // The panel is border-box, so its width is exactly `state.width`.
+      setChatWidth(state.open ? state.width : 0);
     }
     wasOpen = state.open;
     if (visible && !prefetched) {

@@ -75,6 +75,9 @@ async function loadAutoHide(): Promise<
   // Logged in, as the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import("@dotli/ui/state/auth");
   setLoggedIn(true);
+  // The bridge hands each rendered product frame to the layout module.
+  const { attachProductFrame } = await import("@dotli/ui/product-frame-layout");
+  attachProductFrame(appFrame());
   const mod = await import("@dotli/ui/topbar-autohide");
   dispose = mod.disposeTopbarAutoHide;
   return mod;
@@ -345,23 +348,39 @@ describe("topbar auto-hide motion and layout", () => {
     );
   });
 
+  it("As a reduced-motion user, the app frame follows the bar without a slide", async () => {
+    // Given
+    stubReducedMotion(true);
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(appFrame().style.transform).toBe("translateY(0)");
+    expect(appFrame().style.transition).toBe("none");
+  });
+
   it("As a dotli integrator, a re-rendered product frame keeps the hidden-bar geometry", async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     vi.advanceTimersByTime(HIDE_DELAY_MS);
 
-    // When a new render restyles the frame with the topbar offset
-    appFrame().style.top = "56px";
-    appFrame().style.height = "calc(100dvh - 56px)";
-    window.dispatchEvent(
-      new CustomEvent("dotli:product-loaded", { detail: { label: "demo" } }),
-    );
+    // When a new render hands the layout module a fresh frame
+    const { attachProductFrame } =
+      await import("@dotli/ui/product-frame-layout");
+    const frame = document.createElement("iframe");
+    appFrame().replaceWith(frame);
+    frame.id = "app-frame";
+    attachProductFrame(frame);
 
     // Then
     expect(appFrame().style.top).toBe("0px");
     expect(appFrame().style.height).toBe("100vh");
     expect(appFrame().style.transform).toBe("translateY(0)");
+    expect(appFrame().style.transition).toContain("transform");
   });
 
   it("As a logged-out user, the bar is pinned and the app frame makes room for it", async () => {

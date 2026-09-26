@@ -8,12 +8,10 @@
 // so home, settings, permissions and login never become mouse-only.
 //
 import { isMobileDevice } from "@dotli/shared/device";
-import { productIframeBox } from "./product-iframe-box";
+import { setTopbarLayout } from "./product-frame-layout";
 import { getLoggedIn } from "./state/auth";
 import { setTopbarVisible } from "./state/topbar";
 
-const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
-const SAFE_TOP = "var(--safe-top, 0px)";
 const HIDE_DELAY_MS = 5000;
 const SLIDE_TRANSITION = "transform 0.3s ease";
 const HOVER_STRIP_HEIGHT = "6px";
@@ -92,28 +90,17 @@ function applySlideTransition(): void {
  * the product document never relayouts. Cost: the app's bottom strip sits
  * off-screen for the moment the bar is revealed.
  */
-function applyAppFrameGeometry(): void {
-  const frame = getAppFrame();
-  if (frame === null) {
-    return;
-  }
-  if (appFrameTracking) {
-    const box = productIframeBox({ topbarOffset: false });
-    frame.style.top = box.top;
-    frame.style.height = box.height;
-    frame.style.transition =
-      reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION;
-    // --topbar-height already includes the top inset, so shift by the rest.
-    frame.style.transform = visible
-      ? `translateY(calc(${TOPBAR_HEIGHT} - ${SAFE_TOP}))`
-      : "translateY(0)";
-  } else {
-    const box = productIframeBox({ topbarOffset: true });
-    frame.style.top = box.top;
-    frame.style.height = box.height;
-    frame.style.transition = "";
-    frame.style.transform = "";
-  }
+function syncFrameLayout(): void {
+  setTopbarLayout(
+    appFrameTracking
+      ? {
+          offset: false,
+          shown: visible,
+          transition:
+            reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION,
+        }
+      : { offset: true, shown: true, transition: "" },
+  );
 }
 
 function setVisible(next: boolean): void {
@@ -130,7 +117,7 @@ function setVisible(next: boolean): void {
     appFrameTracking = true;
   }
   if (appFrameTracking) {
-    applyAppFrameGeometry();
+    syncFrameLayout();
   }
   setTopbarVisible(next);
 }
@@ -328,18 +315,13 @@ function bindListeners(): void {
   );
   document.addEventListener("keydown", onKeyDown, { signal });
 
-  // Rendering a product restyles the frame, so restate the geometry.
-  window.addEventListener("dotli:product-loaded", applyAppFrameGeometry, {
-    signal,
-  });
-
   const reducedMotion = reducedMotionQuery();
   if (typeof reducedMotion?.addEventListener === "function") {
     reducedMotion.addEventListener(
       "change",
       () => {
         applySlideTransition();
-        applyAppFrameGeometry();
+        syncFrameLayout();
       },
       { signal },
     );
@@ -378,7 +360,7 @@ export function pinTopbarVisible(): void {
   }
   if (appFrameTracking) {
     appFrameTracking = false;
-    applyAppFrameGeometry();
+    syncFrameLayout();
   }
   setVisible(true);
 }

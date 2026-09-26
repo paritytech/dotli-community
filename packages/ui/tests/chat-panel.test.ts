@@ -9,6 +9,17 @@ import type {
 } from "@parity/truapi";
 import type { RenderSink } from "@parity/truapi-host";
 
+// happy-dom drops a calc() that holds a var(), so the box helper returns plain
+// stand-in values here. product-frame-layout tests cover the inset terms.
+vi.mock("@dotli/ui/product-iframe-box", () => ({
+  productIframeBox: () => ({
+    top: "56px",
+    left: "0px",
+    width: "calc(100% - 10px)",
+    height: "calc(100dvh - 56px)",
+  }),
+}));
+
 // The panel and service keep module-level state (listeners, connection
 // registry), so each test loads a fresh module instance via resetModules.
 async function loadChatModules(): Promise<{
@@ -566,22 +577,50 @@ describe("chat panel", () => {
 
   it("As a user, opening the panel narrows the app and closing restores it", async () => {
     const { panel } = await loadChatModules();
+    const layout = await import("@dotli/ui/product-frame-layout");
+    const iframe = document.querySelector<HTMLIFrameElement>("#app iframe")!;
+    layout.attachProductFrame(iframe);
     panel.initChatPanel();
     loadProduct("chatty-iframe");
-    const iframe = document.querySelector<HTMLIFrameElement>("#app iframe")!;
 
     byId("chat-button").click();
     expect(byId("chat-panel").hidden).toBe(false);
     expect(byId("chat-button").getAttribute("aria-expanded")).toBe("true");
     expect(byId("chat-button").classList.contains("active")).toBe(true);
     expect(byId("chat-panel").style.width).toBe("360px");
-    expect(iframe.style.width.startsWith("calc(100vw - ")).toBe(true);
+    expect(iframe.style.width).toBe("calc(calc(100% - 10px) - 360px)");
+
+    // Dragging the resize handle follows the panel's width.
+    const state = await import("@dotli/ui/state/chat-panel");
+    state.setChatPanelWidth(420);
+    expect(iframe.style.width).toBe("calc(calc(100% - 10px) - 420px)");
 
     await settle(() => document.getElementById("chat-panel-close") !== null);
     byId("chat-panel-close").click();
     expect(byId("chat-panel").hidden).toBe(true);
     expect(byId("chat-button").getAttribute("aria-expanded")).toBe("false");
-    expect(iframe.style.width).toBe("100%");
+    // Closed, the frame gets the whole safe box, as a fresh render does.
+    expect(iframe.style.width).toBe("calc(100% - 10px)");
+  });
+
+  it("As a user, reloading the product with the panel open keeps the app narrowed", async () => {
+    const { panel } = await loadChatModules();
+    const layout = await import("@dotli/ui/product-frame-layout");
+    layout.attachProductFrame(
+      document.querySelector<HTMLIFrameElement>("#app iframe")!,
+    );
+    panel.initChatPanel();
+    loadProduct("chatty-reload");
+    byId("chat-button").click();
+
+    // A reload renders a fresh frame and hands it to the layout module.
+    const fresh = document.createElement("iframe");
+    byId("app").replaceChildren(fresh);
+    layout.attachProductFrame(fresh);
+    loadProduct("chatty-reload");
+
+    expect(byId("chat-panel").hidden).toBe(false);
+    expect(fresh.style.width).toBe("calc(calc(100% - 10px) - 360px)");
   });
 
   it("As a user, Escape closes the panel and returns focus to the chat button", async () => {

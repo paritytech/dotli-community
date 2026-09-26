@@ -48,7 +48,7 @@ import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
-import { productIframeBox } from "./product-iframe-box";
+import { attachProductFrame } from "./product-frame-layout";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
 import { setProductLoaded } from "./state/product";
 import { describeWireFrame } from "./debug-wire-describe";
@@ -422,13 +422,12 @@ function getDeepPath(): string {
   return p + search + hash;
 }
 
-/** Pin the product iframe to the area the host chrome and the insets leave. */
-function applyIframeStyling(
-  iframe: HTMLIFrameElement,
-  opts: { topbarOffset: boolean },
-): void {
-  const box = productIframeBox(opts);
-  iframe.style.cssText = `position:fixed;top:${box.top};left:${box.left};width:${box.width};height:${box.height};border:none;margin:0;padding:0;`;
+/**
+ * Pin the product iframe to the area the host chrome and the insets leave.
+ * product-frame-layout owns its geometry from here on.
+ */
+function applyIframeStyling(iframe: HTMLIFrameElement): void {
+  attachProductFrame(iframe);
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 }
@@ -1002,7 +1001,6 @@ export async function renderIframe(
     productId: options.productId,
   };
 
-  const hasTopbar = document.getElementById("topbar") !== null;
   const iframeUrl = new URL(url, window.location.href);
   emitDotliDebugEvent({
     layer: "bridge",
@@ -1033,7 +1031,7 @@ export async function renderIframe(
     timestamp: Date.now(),
     payload: { label, productId },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost);
   host.iframe.addEventListener(
     "load",
@@ -1204,7 +1202,7 @@ export async function renderAppSubdomain(
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: true });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost, loading === null ? [] : [loading]);
   host.iframe.addEventListener(
     "load",

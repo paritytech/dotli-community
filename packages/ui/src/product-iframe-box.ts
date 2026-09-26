@@ -7,8 +7,8 @@
  * The host viewport covers the whole display, so this box is what keeps the
  * product clear of the status bar, the home indicator and the sensor housing.
  * The host owns the iframe's geometry, so it is the only place that can reserve
- * them. The values live here rather than at the two call sites so the full
- * styling in `bridge.ts` and the topbar autohide in the host cannot drift.
+ * them. `product-frame-layout.ts` is the only writer and builds every frame
+ * position from this box.
  *
  * Every value carries a px fallback because these are set as inline styles.
  * Unlike the rules in `styles.css`, they do not ship with the file that defines
