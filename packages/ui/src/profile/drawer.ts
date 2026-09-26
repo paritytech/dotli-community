@@ -10,7 +10,12 @@
 // and presenting another profile replaces the one on screen.
 
 import { log } from "@dotli/shared/log";
-import { createMoodRing, INTENSITY, MOOD_PALETTE, type MoodRingHandle } from "./mood-ring";
+import {
+  createMoodRing,
+  INTENSITY,
+  MOOD_PALETTE,
+  type MoodRingHandle,
+} from "./mood-ring";
 import { moodIsCurrent, type Mood } from "./profile-record";
 
 /** What a reference opened to. Either half may be missing. */
@@ -29,7 +34,10 @@ export interface ProfileDrawerOptions {
 const AVATAR_PX = 160;
 
 function moodLine(mood: Mood, nowSecs = Date.now() / 1000): string {
-  const hoursLeft = Math.max(1, Math.round((mood.setAt + mood.ttlSecs - nowSecs) / 3600));
+  const hoursLeft = Math.max(
+    1,
+    Math.round((mood.setAt + mood.ttlSecs - nowSecs) / 3600),
+  );
   return `${MOOD_PALETTE[mood.kind].label} · ${INTENSITY[mood.intensity].label.toLowerCase()} · ${String(hoursLeft)} h left`;
 }
 
@@ -188,7 +196,8 @@ export function showProfileDrawer(
       if (closed) {
         return;
       }
-      const currentMood = mood !== undefined && moodIsCurrent(mood) ? mood : undefined;
+      const currentMood =
+        mood !== undefined && moodIsCurrent(mood) ? mood : undefined;
       if (currentMood !== undefined) {
         ring = createMoodRing(currentMood, AVATAR_PX);
         portrait.prepend(ring.element);
@@ -225,7 +234,9 @@ export function showProfileDrawer(
       // Name and message only: no error on this path carries the reference.
       log.warn(
         "[profile] drawer load failed:",
-        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error),
       );
       fail(failureMessage(error));
     },

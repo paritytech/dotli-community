@@ -395,7 +395,8 @@ async function handleRequest(
         kind: "response",
         id: request.id,
         ok: true,
-        result: slot === null ? null : { ...slot, version: slot.version.toString() },
+        result:
+          slot === null ? null : { ...slot, version: slot.version.toString() },
       });
       return;
     }

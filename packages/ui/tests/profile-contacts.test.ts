@@ -13,27 +13,47 @@ import { InvalidProfileReferenceError } from "@dotli/ui/profile/seity-reference"
 // blobs it fetches (sealed record, re-sealed avatar), and what it must draw.
 const VECTOR = JSON.parse(
   // happy-dom replaces import.meta.url, so resolve from the package root vitest runs in.
-  readFileSync(join(process.cwd(), "tests/fixtures/seity-contacts-v1.json"), "utf8"),
+  readFileSync(
+    join(process.cwd(), "tests/fixtures/seity-contacts-v1.json"),
+    "utf8",
+  ),
 ) as {
   reference: string;
-  registry: { lookupKey: `0x${string}`; cidDigest: `0x${string}`; version: number };
+  registry: {
+    lookupKey: `0x${string}`;
+    cidDigest: `0x${string}`;
+    version: number;
+  };
   blobs: Record<string, string>;
-  expect: { avatarPlaintext: string; mood: { kind: string; intensity: string; setAt: number; ttlSecs: number } };
+  expect: {
+    avatarPlaintext: string;
+    mood: { kind: string; intensity: string; setAt: number; ttlSecs: number };
+  };
 };
 
 const mocks = vi.hoisted(() => ({
-  bitswapGet: vi.fn(async (_cid: string): Promise<Uint8Array> => new Uint8Array()),
+  bitswapGet: vi.fn(
+    async (_cid: string): Promise<Uint8Array> => new Uint8Array(),
+  ),
   resolveSeitySlotRemote: vi.fn(),
 }));
 
 vi.mock("@dotli/content/bitswap", () => ({ bitswapGet: mocks.bitswapGet }));
 vi.mock("@dotli/content/ipfs", () => ({ fetchFromIpfs: vi.fn() }));
 vi.mock("@dotli/config/mode", () => ({ getBackend: () => "smoldot-direct" }));
-vi.mock("@dotli/protocol/client", () => ({ resolveSeitySlotRemote: mocks.resolveSeitySlotRemote }));
+vi.mock("@dotli/protocol/client", () => ({
+  resolveSeitySlotRemote: mocks.resolveSeitySlotRemote,
+}));
 
-const product: ProductContext = { productId: "egui-chat.dot", executionKind: "App" };
+const product: ProductContext = {
+  productId: "egui-chat.dot",
+  executionKind: "App",
+};
 const BLOBS_BY_CID = new Map(
-  Object.entries(VECTOR.blobs).map(([digest, hex]) => [hashToCid(digest).toString(), fromHex(hex)]),
+  Object.entries(VECTOR.blobs).map(([digest, hex]) => [
+    hashToCid(digest).toString(),
+    fromHex(hex),
+  ]),
 );
 
 function drawer(): HTMLElement | null {
@@ -44,7 +64,10 @@ function drawer(): HTMLElement | null {
 async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) {
     await vi.advanceTimersByTimeAsync(1_000);
-    if (drawer()?.querySelector(".profile-drawer-status")?.textContent !== "Loading profile…") {
+    if (
+      drawer()?.querySelector(".profile-drawer-status")?.textContent !==
+      "Loading profile…"
+    ) {
       return;
     }
   }
@@ -63,10 +86,19 @@ describe("Seity contacts references", () => {
       return bytes;
     });
     mocks.resolveSeitySlotRemote.mockReset();
-    mocks.resolveSeitySlotRemote.mockImplementation(async (lookupKey: string) =>
-      lookupKey === VECTOR.registry.lookupKey
-        ? { owner: `0x${"aa".repeat(20)}`, cidDigest: VECTOR.registry.cidDigest, version: "1" }
-        : { owner: `0x${"00".repeat(20)}`, cidDigest: `0x${"00".repeat(32)}`, version: "0" },
+    mocks.resolveSeitySlotRemote.mockImplementation(
+      async (lookupKey: string) =>
+        lookupKey === VECTOR.registry.lookupKey
+          ? {
+              owner: `0x${"aa".repeat(20)}`,
+              cidDigest: VECTOR.registry.cidDigest,
+              version: "1",
+            }
+          : {
+              owner: `0x${"00".repeat(20)}`,
+              cidDigest: `0x${"00".repeat(32)}`,
+              version: "0",
+            },
     );
   });
 
@@ -76,22 +108,36 @@ describe("Seity contacts references", () => {
   });
 
   it("parses the reference profile-core writes", () => {
-    expect(parseContactsReference(VECTOR.reference).lookupKey).toBe(VECTOR.registry.lookupKey);
+    expect(parseContactsReference(VECTOR.reference).lookupKey).toBe(
+      VECTOR.registry.lookupKey,
+    );
   });
 
   it("resolves the slot, opens the record and draws the avatar with its mood", async () => {
-    await createProfilePlatform().presentProfile(product, { reference: VECTOR.reference });
+    await createProfilePlatform().presentProfile(product, {
+      reference: VECTOR.reference,
+    });
     await settle();
 
-    expect(mocks.resolveSeitySlotRemote).toHaveBeenCalledWith(VECTOR.registry.lookupKey);
-    expect(drawer()?.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/);
-    expect(drawer()?.querySelector(".profile-drawer-mood")?.textContent).toBe("Hyped · loud · 23 h left");
+    expect(mocks.resolveSeitySlotRemote).toHaveBeenCalledWith(
+      VECTOR.registry.lookupKey,
+    );
+    expect(drawer()?.querySelector("img")?.getAttribute("src")).toMatch(
+      /^blob:/,
+    );
+    expect(drawer()?.querySelector(".profile-drawer-mood")?.textContent).toBe(
+      "Hyped · loud · 23 h left",
+    );
     expect(drawer()?.querySelector(".profile-mood-ring")).not.toBeNull();
   });
 
   it("hides a lapsed mood but still draws the avatar", async () => {
-    vi.setSystemTime((VECTOR.expect.mood.setAt + VECTOR.expect.mood.ttlSecs + 1) * 1000);
-    await createProfilePlatform().presentProfile(product, { reference: VECTOR.reference });
+    vi.setSystemTime(
+      (VECTOR.expect.mood.setAt + VECTOR.expect.mood.ttlSecs + 1) * 1000,
+    );
+    await createProfilePlatform().presentProfile(product, {
+      reference: VECTOR.reference,
+    });
     await settle();
 
     expect(drawer()?.querySelector("img")).not.toBeNull();
@@ -110,7 +156,9 @@ describe("Seity contacts references", () => {
 
   it("rejects a malformed contacts reference without opening UI or echoing the seed", async () => {
     const bad = VECTOR.reference.slice(0, -2);
-    const call = createProfilePlatform().presentProfile(product, { reference: bad });
+    const call = createProfilePlatform().presentProfile(product, {
+      reference: bad,
+    });
     await expect(call).rejects.toBeInstanceOf(InvalidProfileReferenceError);
     await expect(call).rejects.not.toThrow(bad.slice(-64));
     expect(drawer()).toBeNull();

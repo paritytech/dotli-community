@@ -1462,7 +1462,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         if (!options.resolveSeitySlot) {
           throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_SEITY_SLOT_UNSUPPORTED);
         }
-        const payload = request.payload as ProtocolRequestMap["resolveSeitySlot"];
+        const payload =
+          request.payload as ProtocolRequestMap["resolveSeitySlot"];
         assertStr(payload.lookupKey, "lookupKey");
         const slot = await options.resolveSeitySlot(
           payload.lookupKey as `0x${string}`,
@@ -1473,7 +1474,10 @@ function createEngine(options: EngineOptions): ProtocolEngine {
           kind: "response",
           id: request.id,
           ok: true,
-          result: slot === null ? null : { ...slot, version: slot.version.toString() },
+          result:
+            slot === null
+              ? null
+              : { ...slot, version: slot.version.toString() },
         });
         return;
       }

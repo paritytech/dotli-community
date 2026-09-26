@@ -21,12 +21,54 @@ interface Palette {
 }
 
 export const MOOD_PALETTE: Record<MoodKind, Palette> = {
-  calm: { label: "Calm", a: "#2dd4bf", b: "#38bdf8", c: "#0e7490", speed: 0.25, turb: 0.3 },
-  focused: { label: "Focused", a: "#8b5cf6", b: "#c4b5fd", c: "#4338ca", speed: 0.4, turb: 0.15 },
-  hyped: { label: "Hyped", a: "#e6007a", b: "#ff8a3d", c: "#ffd166", speed: 1.3, turb: 0.9 },
-  social: { label: "Social", a: "#fbbf24", b: "#fde68a", c: "#ea580c", speed: 0.8, turb: 0.5 },
-  "low-key": { label: "Low-key", a: "#b48ead", b: "#6b4d78", c: "#3b2a4a", speed: 0.2, turb: 0.2 },
-  away: { label: "Away", a: "#8c8f98", b: "#dadbe0", c: "#404249", speed: 0.08, turb: 0.05 },
+  calm: {
+    label: "Calm",
+    a: "#2dd4bf",
+    b: "#38bdf8",
+    c: "#0e7490",
+    speed: 0.25,
+    turb: 0.3,
+  },
+  focused: {
+    label: "Focused",
+    a: "#8b5cf6",
+    b: "#c4b5fd",
+    c: "#4338ca",
+    speed: 0.4,
+    turb: 0.15,
+  },
+  hyped: {
+    label: "Hyped",
+    a: "#e6007a",
+    b: "#ff8a3d",
+    c: "#ffd166",
+    speed: 1.3,
+    turb: 0.9,
+  },
+  social: {
+    label: "Social",
+    a: "#fbbf24",
+    b: "#fde68a",
+    c: "#ea580c",
+    speed: 0.8,
+    turb: 0.5,
+  },
+  "low-key": {
+    label: "Low-key",
+    a: "#b48ead",
+    b: "#6b4d78",
+    c: "#3b2a4a",
+    speed: 0.2,
+    turb: 0.2,
+  },
+  away: {
+    label: "Away",
+    a: "#8c8f98",
+    b: "#dadbe0",
+    c: "#404249",
+    speed: 0.08,
+    turb: 0.05,
+  },
 };
 
 export const INTENSITY: Record<MoodIntensity, { label: string; k: number }> = {
@@ -109,7 +151,11 @@ export function createMoodRing(mood: Mood, avatarPx: number): MoodRingHandle {
   };
 
   const canvas = document.createElement("canvas");
-  const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: true });
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    premultipliedAlpha: true,
+    antialias: true,
+  });
   if (gl === null) {
     return fallback();
   }
@@ -158,7 +204,8 @@ export function createMoodRing(mood: Mood, avatarPx: number): MoodRingHandle {
   const u = (name: string): WebGLUniformLocation | null =>
     gl.getUniformLocation(program, name);
   const half = (size / 2) * dpr;
-  const widthPx = Math.max(3, Math.min(6, avatarPx * 0.05)) * (0.7 + 0.32 * k) * dpr;
+  const widthPx =
+    Math.max(3, Math.min(6, avatarPx * 0.05)) * (0.7 + 0.32 * k) * dpr;
   gl.uniform1f(u("u_half"), half);
   gl.uniform1f(u("u_inner"), ((avatarPx / 2 + 3) * dpr) / half);
   gl.uniform1f(u("u_width"), widthPx / half);

@@ -58,9 +58,7 @@ class Reader {
 
   u32(): number {
     const b = this.take(4);
-    return (
-      (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0
-    );
+    return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
   }
 
   u64(): number {
@@ -79,7 +77,9 @@ class Reader {
       case 2: {
         const rest = this.take(3);
         return (
-          ((first | (rest[0] << 8) | (rest[1] << 16) | (rest[2] << 24)) >>> 2) >>> 0
+          ((first | (rest[0] << 8) | (rest[1] << 16) | (rest[2] << 24)) >>>
+            2) >>>
+          0
         );
       }
       default:

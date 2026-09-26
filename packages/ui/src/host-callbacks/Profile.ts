@@ -116,11 +116,17 @@ async function loadContactsProfile(
   // The light client lives in the protocol worker, so the read goes there.
   const slot = await resolveSeitySlotRemote(reference.lookupKey);
   // Never anchored, revoked (zero digest) or no registry: nothing to show.
-  if (slot === null || slot.version === "0" || /^0x0{64}$/.test(slot.cidDigest)) {
+  if (
+    slot === null ||
+    slot.version === "0" ||
+    /^0x0{64}$/.test(slot.cidDigest)
+  ) {
     return { avatar: null };
   }
   const sealed = await fetchCiphertext(slot.cidDigest, signal);
-  const record = decodeProfileRecord(await openContactsRecord(sealed, reference));
+  const record = decodeProfileRecord(
+    await openContactsRecord(sealed, reference),
+  );
   if (record.avatarReference === undefined) {
     return { avatar: null, mood: record.mood };
   }
