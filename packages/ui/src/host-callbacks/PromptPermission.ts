@@ -170,7 +170,7 @@ async function decidePromptPermissionWhenActive(
     }, 0);
   } else {
     // No browser-level gate, so the grant takes effect as is. The event keeps
-    // the topbar in sync.
+    // the permissions button in sync.
     recordPermissionChange({ kind: "grant", label, permission: name });
   }
   return decision === "granted-once" ? "AllowOnce" : "AllowAlways";

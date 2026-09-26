@@ -176,16 +176,16 @@ export function PermissionsPopover(): JSX.Element {
   });
 
   // While a dropdown is open: its selected option has the focus, and Escape
-  // or a click outside its row closes it. This Escape listener comes after
+  // or a click outside its select closes it. This Escape listener comes after
   // the popover's, which leaves Escape to it (shouldHandleEscape).
   createEffect(openRow, (name) => {
     if (name === null) {
       return;
     }
     menu?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
-    const row = menu?.parentElement;
+    const wrap = menu?.parentElement;
     const onClick = (ev: MouseEvent): void => {
-      if (row?.contains(ev.target as Node) !== true) {
+      if (wrap?.contains(ev.target as Node) !== true) {
         closeDropdown();
       }
     };
@@ -234,7 +234,11 @@ export function PermissionsPopover(): JSX.Element {
         permission: name,
       });
     })().catch(() => {
-      fetchStatuses();
+      // Re-read only while open, as refresh() does: a closed popover reads
+      // afresh on its next open.
+      if (untrack(surface.open)) {
+        fetchStatuses();
+      }
     });
   };
 

@@ -26,7 +26,7 @@ export const permissionsStore: ReadableStore<PermissionsState> = permissions;
 export const getPermissionsState = permissions.get;
 
 /**
- * Also dispatches the event the topbar and bridge listen for:
+ * Also dispatches the event the permissions island and bridge listen for:
  * `dotli:permission-changed` for grants, `dotli:device-permission-changed`
  * for device permissions (the bridge reloads the iframe on it). Both events
  * always carry `{ label, permission }`.

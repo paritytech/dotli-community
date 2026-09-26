@@ -342,6 +342,54 @@ describe("PermissionsPopover", () => {
     );
   });
 
+  it("As a user, a change that fails re-reads the statuses while the popover is open, and not once it is closed", async () => {
+    // Given: every change waits until the test fails it; reads are counted.
+    const changes: ((err: Error) => void)[] = [];
+    let reads = 0;
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: async (requests) => {
+          reads += 1;
+          return requests.map(() => "NotDetermined" as const);
+        },
+        setPermissionAuthorizationStatus: () =>
+          new Promise((_resolve, reject) => {
+            changes.push(reject);
+          }),
+      }),
+    );
+    setProductLoaded(LABEL, "app.dot");
+    await renderPopover();
+    await openPopover();
+    select("Notifications").click();
+    await settleAll();
+    option("Allowed").click();
+    await settleAll();
+    const beforeFailure = reads;
+
+    // When: the change fails while the popover is open.
+    changes[0](new Error("core down"));
+    await settleAll();
+
+    // Then
+    expect(reads).toBe(beforeFailure + 1);
+
+    // When: another change fails after the popover closed.
+    select("Notifications").click();
+    await settleAll();
+    option("Denied").click();
+    await settleAll();
+    byId("permissions-button").click();
+    await settleAll();
+    expect(isOpen()).toBe(false);
+    const afterClose = reads;
+    changes[1](new Error("core down"));
+    await settleAll();
+
+    // Then: nothing is read until the next open.
+    expect(reads).toBe(afterClose);
+  });
+
   it("As a keyboard user, choosing a permission keeps my focus on that row's select", async () => {
     // Given
     provide();

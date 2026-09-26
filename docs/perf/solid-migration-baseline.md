@@ -645,9 +645,9 @@ popover; `PermissionsPopover.tsx` (with `PermissionRow.tsx`) replaces the
 imperative permissions popover. `AuthModal.tsx` draws the QR into a `<canvas>`
 via the existing `qrcode` package, still a separate lazy chunk reached by a
 dynamic `import()` from inside the islands chunk (see qrcode chunk note
-below). Solid-free controllers (`auth-controller.ts` and friends) stay on the
-startup path, unchanged from before this sub-project — only the shell's
-rendering swaps to Solid.
+below). Solid-free controllers (`auth-controller.ts` and
+`state/auth-modal.ts`, moved out of `topbar.ts` in this sub-project) stay on
+the startup path, still eager — only the shell's rendering swaps to Solid.
 
 Functional regression check: a fresh
 `VITE_NETWORKS=paseo-next-v2,previewnet bun run build` followed by

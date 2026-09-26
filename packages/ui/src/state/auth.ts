@@ -12,7 +12,7 @@ export const getAuthState = auth.get;
 
 /**
  * Also dispatches `dotli:truapi-auth-state` with the same detail as before:
- * the e2e global setup and the topbar and chat panel listen for it.
+ * the auth controller, the chat panel and the e2e global setup listen for it.
  */
 export function setAuthState(next: DotliAuthState): void {
   auth.set(next);
