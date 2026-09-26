@@ -61,6 +61,10 @@ server {
     root ${WEBROOT}/host;
     index index.html;
 
+    resolver 127.0.0.53 valid=300s ipv6=off;
+    resolver_timeout 5s;
+    include /etc/nginx/snippets/dotli-identity-proxy.conf;
+
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
@@ -100,6 +104,8 @@ server {
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
     include /etc/nginx/snippets/dotli-sw-app.conf;
 
+    location ^~ /__dotli-identity { return 404; }
+
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
@@ -132,6 +138,8 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-iframeable.conf;
 
+    location ^~ /__dotli-identity { return 404; }
+
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
@@ -162,6 +170,10 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+
+    resolver 127.0.0.53 valid=300s ipv6=off;
+    resolver_timeout 5s;
+    include /etc/nginx/snippets/dotli-identity-proxy.conf;
 
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
