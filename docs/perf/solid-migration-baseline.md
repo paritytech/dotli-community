@@ -632,3 +632,136 @@ machine (`PERF_RUNS=20`, Playwright called directly because `test:perf` pins
 End-to-end (context, not gated): 3.71s → 3.71s (+0.1%), Mann-Whitney z=0.30,
 not significant.
 Gate (no regression beyond 5%): **pass**.
+
+## After sub-project 4c (auth, pairing, user, permissions islands)
+
+The auth button, the QR pairing modal, the user popover and the permissions
+popover became lazy Solid "islands," swapped into the still-static,
+still-prerendered shell after boot by `packages/ui/src/components/shell/islands.tsx`
+(loaded by `packages/ui/src/mount/load-islands.ts`, same loader as sub-project
+4b's theme/URL-pill/offline-banner islands). `AuthButton.tsx`, `AuthModal.tsx`,
+and `UserPopover.tsx` replace the imperative auth button, QR modal and user
+popover; `PermissionsPopover.tsx` (with `PermissionRow.tsx`) replaces the
+imperative permissions popover. `AuthModal.tsx` draws the QR into a `<canvas>`
+via the existing `qrcode` package, still a separate lazy chunk reached by a
+dynamic `import()` from inside the islands chunk (see qrcode chunk note
+below). Solid-free controllers (`auth-controller.ts` and friends) stay on the
+startup path, unchanged from before this sub-project — only the shell's
+rendering swaps to Solid.
+
+Functional regression check: a fresh
+`VITE_NETWORKS=paseo-next-v2,previewnet bun run build` followed by
+`bun run test:functional` (port 5173 freed first, no stale preview server)
+passed **43 passed, 2 skipped** — identical count to sub-projects 4a and 4b.
+All eight `ui-smoke.spec.ts` cases passed (the same set as 4b; no new case
+this round), including "the prerendered shell is hydrated in place and its
+login button opens the QR modal" and "I can open the login QR modal and
+close it again." The name-submit test passed on the first try (162 ms), no
+rerun needed.
+
+e2e selector check (e2e cannot run locally — the `truapi-host` CLI is
+missing): read `apps/host/tests/e2e/{global-setup.ts,truapi.spec.ts,fixtures/paired.ts}`
+against the new island components' markup.
+
+- `#auth-button` — `AuthButton.tsx:60` (and the static placeholder,
+  `Shell.tsx:67`, which the island swaps in for on mount).
+- `#auth-modal-qr canvas` — `AuthModal.tsx` renders `{drawnQr().canvas}`
+  inside the `#auth-modal-qr` div (`AuthModal.tsx:268-269`); the static
+  placeholder is `Shell.tsx:510`.
+- `#user-popover-username` — `UserPopover.tsx:81` (static placeholder
+  `Shell.tsx:532`).
+- `#auth-button .user-badge` — `AuthButton.tsx:78` (`.user-badge-anon`
+  variant at `AuthButton.tsx:73` for the signed-out state, not selected by
+  these tests).
+
+All four selectors still match. The e2e suite's only other host-shell
+selector is a generic role-based one (`getByRole("button", { name:
+/^(Always allow|Allow)$/ })`) plus `.signing-modal-backdrop`, both from the
+"Permission Request" grant modal added in sub-project 1 — unrelated to this
+sub-project's permissions *popover* (`#permissions-popover*`, `PermissionRow.tsx`),
+which no e2e test references.
+
+Measured on `feat/solid-v2-foundation` at `61b4b16b` against the end of
+sub-project 4b (`650a9df9`, "chore(ui): tidy sub-project 4b leftovers"),
+built in a temporary git worktree
+(`git worktree add <scratchpad>/wt-4b-end 650a9df9`, `bun install`, same
+build command), eager path via `bun scripts/eager-path-size.ts`. The
+worktree was removed afterwards (`git worktree remove`).
+
+| Eager path | Before 4c gzip | After 4c gzip | Δ gzip | Gate |
+|---|---:|---:|---:|---|
+| host | 96,633 | 93,886 | -2,747 | ≤ 96,831 B absolute (per-commit budget): pass, 2,945 B headroom |
+| sandbox | 44,831 | 44,839 | +8 | unchanged (±50 B): pass |
+
+(The 4b-end worktree, built at `650a9df9` — one tidy-up commit after
+`3d37d976`, the commit the "After sub-project 4b" section above measured —
+re-measured at 96,633 B gzip host / 44,831 B gzip sandbox: 2 B over the
+"about 96,631 B" figure the task brief quoted for this commit, the usual
+gzip-framing noise, and close to `3d37d976`'s own 96,667 B / 44,834 B.)
+
+Solid in startup chunks (sourcemap `sources`): unchanged from 4a/4b — still
+confined to `root-*.js` (`@solidjs/signals`, `solid-js`, `@solidjs/web`, and
+the shared `mount/root.ts` helper). Every other host eager chunk checked
+`ok []` via sourcemap `sources` (`index`, `scheduled-notifications`,
+`topbar`, `url-pill`, `toasts`, `dist`, `html`, `shared-mode`, `chat-panel`,
+`network`, `client`, `scale-ts`, `scale`, `errors`, `spans`, `log`,
+`create-store`, `perf`, `utils`); `host rolldown-runtime-hePW80VL.js` (no
+emitted `.js.map`, as in prior sections) was checked with a raw-text grep
+instead — also negative. Sandbox: **absent** — both `index-*.js` and
+`fetch-*.js` checked `ok []` via sourcemap `sources`.
+
+**Lazy islands chunk** (host-only, absent from `dist/index.html`'s
+`modulepreload` tags): `islands-DrHHfBc9.js` (hash from the measurement
+build) 31,243 B raw / 9,302 B gzip — up from 4b's 11,823 B raw / 3,708 B
+gzip, since it now also carries `AuthButton.tsx`, `AuthModal.tsx`,
+`UserPopover.tsx`, `PermissionsPopover.tsx` and `PermissionRow.tsx` (the
+theme/URL-pill/offline-banner islands from 4b are unchanged inside it).
+
+**`qrcode` chunk**: still `browser-CCrYwriZ.js`, still a separate lazy
+chunk (absent from the eager path), byte-for-byte **unchanged from every
+prior section back to "Before sub-project 0"**: 23,475 B raw / 8,772 B
+gzip, confirmed both by `wc -c`/`gzip -c` and by its sourcemap `sources`
+array (27 entries, all under `node_modules/.bun/qrcode@1.5.4`, plus
+`lib/browser.js` as the entry — no other module). Reached by a dynamic
+`import()` from inside the islands chunk (`AuthModal.tsx`'s `toCanvas`
+call), not statically bundled into it.
+
+### Running total vs the pre-migration baseline
+
+| | Host eager gzip | Δ vs pre-migration (74,649 B) |
+|---|---:|---:|
+| Pre-migration (`d8f0167`) | 74,649 | — |
+| After sub-project 4b (`3d37d976`) | 96,667 | +22,018 |
+| After sub-project 4b, re-measured at `650a9df9` | 96,633 | +21,984 |
+| After sub-project 4c (`61b4b16b`) | 93,886 | **+19,237** |
+
+Within the amended whole-migration host limit of +25,600 B gzip, with
+6,363 B of margin — more headroom than sub-project 4b left (3,582 B),
+because this sub-project's own eager-path delta was negative (deferring the
+new island components off the eager path, same pattern as 4b's design
+note).
+
+### Cold start A/B (20 runs each)
+
+`feat/solid-v2-foundation` at the end of sub-project 4b (`650a9df9`, built
+in the temporary worktree above) and at HEAD after sub-project 4c
+(`61b4b16b`), built with the same command and measured back to back on the
+same idle machine (`PERF_RUNS=20`, Playwright called directly because
+`test:perf` pins 10 runs).
+
+| Build | Host total p50 | p95 | cv | discarded |
+|---|---:|---:|---:|---:|
+| before (4b end) | 2,635 ms | 3,011 ms | 0.09 | 0 |
+| after (4c) | 2,700 ms | 2,998 ms | 0.07 | 0 |
+
+Δ p50: **+2.47%**, well inside the ±5% gate. Both runs were clean (cv ≤
+0.09, 0 discarded outliers each), so no re-run was needed. `compare.ts`
+End-to-end (context, not gated, vs the pre-migration `base.json`): COLD
+START 3.85s → 3.91s (+1.6%), Mann-Whitney z=0.96, not significant; WARM
+START 1.69s → 2.05s (+21.2%, z=3.04, significant) — WARM START is not a
+gated phase here (the gate is `Host total`, cold phase only, per the
+umbrella spec), and this A/B's own before/after WARM p50s (not shown above)
+were both taken on the same idle machine back to back, so the regression
+`compare.ts` reports there is against the older pre-migration baseline, not
+against 4b; LUKEWARM START 4.41s → 4.42s (+0.1%), not significant.
+Gate (no regression beyond 5%): **pass**.
