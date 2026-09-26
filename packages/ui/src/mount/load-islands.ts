@@ -9,6 +9,7 @@
 // them off the startup bundle is the point, so everything here is Solid-free.
 
 import { captureException } from "@dotli/metrics/sentry";
+import { disableAuthModal } from "../auth-controller";
 import { topbarStore } from "../state/topbar";
 
 /**
@@ -54,7 +55,9 @@ function followOfflineWithoutIslands(banner: HTMLElement | null): void {
  * load, or mountIslands itself throws, the static shell stays, the failure
  * is reported to Sentry (`islands_load_error` or `islands_mount_error`) and
  * nothing is replayed. Whenever the banner island is not mounted, the static
- * offline banner still follows the connection.
+ * offline banner still follows the connection, and whenever the auth-modal
+ * island is not mounted, the auth modal is disabled (disableAuthModal), so
+ * a login never holds the blocking-modal lease for a modal nobody can see.
  *
  * A failed load is not retried: browsers cache a failed module fetch, so a
  * second import() of the same chunk fails at once without refetching.
@@ -83,9 +86,12 @@ export function ensureIslands(): Promise<void> {
       stopHoldingBack();
       const banner = staticBanner();
       try {
-        mountIslands();
+        if (mountIslands().includes("auth-modal")) {
+          disableAuthModal();
+        }
       } catch (err) {
         captureException(err, { kind: "islands_mount_error" });
+        disableAuthModal();
         return;
       } finally {
         followOfflineWithoutIslands(banner);
@@ -97,6 +103,7 @@ export function ensureIslands(): Promise<void> {
     (err: unknown) => {
       stopHoldingBack();
       captureException(err, { kind: "islands_load_error" });
+      disableAuthModal();
       followOfflineWithoutIslands(staticBanner());
     },
   );

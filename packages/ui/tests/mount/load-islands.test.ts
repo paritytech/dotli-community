@@ -6,6 +6,7 @@
 // tests/components/shell/islands.test.tsx.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -36,6 +37,8 @@ interface StubOptions {
   mountError?: Error;
   /** The banner island fails and its static node stays, as mountIsland does. */
   bannerIslandFails?: boolean;
+  /** Islands mountIslands reports as failed (besides the banner). */
+  failedIslands?: string[];
 }
 
 /**
@@ -73,12 +76,16 @@ function stubChunk(options: StubOptions = {}): Chunk {
       permissionsClicks += 1;
     });
     document.getElementById("permissions-button")?.replaceWith(permissions);
-    if (options.bannerIslandFails !== true) {
+    const failed = [...(options.failedIslands ?? [])];
+    if (options.bannerIslandFails === true) {
+      failed.push("offline-banner");
+    } else {
       const banner = document.createElement("div");
       banner.id = "offline-banner";
       banner.style.display = "none";
       document.getElementById("offline-banner")?.replaceWith(banner);
     }
+    return failed;
   });
   vi.doMock(ISLANDS_CHUNK, async () => {
     const request = Promise.withResolvers<void>();
@@ -106,6 +113,78 @@ async function loadLoader(): Promise<
   typeof import("@dotli/ui/mount/load-islands")
 > {
   return import("@dotli/ui/mount/load-islands");
+}
+
+/**
+ * Wires the loader's instance of the auth controller (modules are reset per
+ * test) to a real blocking-modal queue, as initTopBar does at boot, and
+ * counts the login requests and cancels it dispatches.
+ */
+async function initAuth(): Promise<{
+  coordinator: BlockingModalCoordinator;
+  modalOpen: () => boolean;
+  loginRequests: () => number;
+  cancels: () => number;
+}> {
+  const [{ initAuthController }, { createBlockingModalCoordinator }, modal] =
+    await Promise.all([
+      import("@dotli/ui/auth-controller"),
+      import("@dotli/ui/blocking-modal-queue"),
+      import("@dotli/ui/state/auth-modal"),
+    ]);
+  const coordinator = createBlockingModalCoordinator();
+  initAuthController(coordinator);
+  let loginRequests = 0;
+  let cancels = 0;
+  window.addEventListener("dotli:truapi-login-request", () => {
+    loginRequests += 1;
+  });
+  window.addEventListener("dotli:truapi-cancel-login", () => {
+    cancels += 1;
+  });
+  return {
+    coordinator,
+    modalOpen: () => modal.getAuthModalState().open,
+    loginRequests: () => loginRequests,
+    cancels: () => cancels,
+  };
+}
+
+function requestLogin(): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:request-login", {
+      detail: { reason: "Sign the transfer", label: "localhost:3000" },
+    }),
+  );
+}
+
+function corePairing(): void {
+  window.dispatchEvent(
+    new CustomEvent("dotli:truapi-auth-state", {
+      detail: {
+        tag: "Pairing",
+        deeplink: "polkadotapp://pair?handshake=test",
+        label: "localhost:3000",
+      },
+    }),
+  );
+}
+
+/** Whether a blocking prompt enqueued now runs (rather than waiting). */
+async function blockingPromptRuns(
+  coordinator: BlockingModalCoordinator,
+): Promise<boolean> {
+  const scope = coordinator.createScope();
+  let ran = false;
+  // Disposing a still-queued prompt rejects it.
+  scope
+    .enqueue(() => {
+      ran = true;
+    })
+    .catch(() => undefined);
+  await tick();
+  scope.dispose();
+  return ran;
 }
 
 function byId(id: string): HTMLElement {
@@ -481,5 +560,143 @@ describe("ensureIslands", () => {
     // Then
     expect(byId("offline-banner")).toBe(staticBanner);
     expect(staticBanner.style.display).toBe("block");
+  });
+});
+
+describe("ensureIslands and the auth modal", () => {
+  it("As a product, when the islands chunk cannot load while my login waits on the invisible modal, the login is cancelled and my next blocking prompt proceeds", async () => {
+    // Given: a login holds the blocking-modal lease before the chunk arrives,
+    // and a permission prompt queues behind it.
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const auth = await initAuth();
+    const loading = ensureIslands();
+    requestLogin();
+    expect(auth.modalOpen()).toBe(true);
+    const prompt = auth.coordinator.createScope();
+    let promptRan = false;
+    const queued = prompt.enqueue(() => {
+      promptRan = true;
+    });
+
+    // When
+    await chunk.fail(new Error("chunk failed"));
+    await loading;
+    await queued;
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(1);
+    expect(promptRan).toBe(true);
+    prompt.dispose();
+  });
+
+  it("As a product, after the islands chunk failed to load, a new login is cancelled instead of taking the blocking-modal lease", async () => {
+    // Given
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const auth = await initAuth();
+    const loading = ensureIslands();
+    await chunk.fail(new Error("chunk failed"));
+    await loading;
+
+    // When: a direct login request.
+    requestLogin();
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(1);
+    expect(auth.loginRequests()).toBe(0);
+    expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
+
+    // When: the core starts pairing for a product.
+    corePairing();
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(2);
+    expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
+  });
+
+  it("As a product, when mounting the islands throws, a pending login is cancelled and later logins do not take the lease", async () => {
+    // Given
+    const chunk = stubChunk({ mountError: new Error("mount failed") });
+    const { ensureIslands } = await loadLoader();
+    const auth = await initAuth();
+    const loading = ensureIslands();
+    requestLogin();
+
+    // When
+    await chunk.arrive();
+    await loading;
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(1);
+    expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
+
+    // When
+    corePairing();
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(2);
+  });
+
+  it("As a product, when only the auth-modal island fails to mount, a pending login is cancelled, my next prompt proceeds and later logins are cancelled", async () => {
+    // Given
+    const chunk = stubChunk({ failedIslands: ["auth-modal"] });
+    const { ensureIslands } = await loadLoader();
+    const auth = await initAuth();
+    const loading = ensureIslands();
+    requestLogin();
+    expect(auth.modalOpen()).toBe(true);
+
+    // When
+    await chunk.arrive();
+    await loading;
+
+    // Then: the other islands mounted.
+    expect(byId("offline-banner").style.display).toBe("none");
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(1);
+    expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
+
+    // When
+    requestLogin();
+    corePairing();
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(3);
+    expect(auth.loginRequests()).toBe(1);
+    expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a product, when the auth-modal island mounts, even if another island fails, my login keeps its modal and lease", async () => {
+    // Given
+    const chunk = stubChunk({ failedIslands: ["theme"] });
+    const { ensureIslands } = await loadLoader();
+    const auth = await initAuth();
+    const loading = ensureIslands();
+    requestLogin();
+
+    // When
+    await chunk.arrive();
+    await loading;
+
+    // Then
+    expect(auth.modalOpen()).toBe(true);
+    expect(auth.cancels()).toBe(0);
+    expect(await blockingPromptRuns(auth.coordinator)).toBe(false);
+
+    // When: a later Pairing reuses the lease.
+    corePairing();
+
+    // Then
+    expect(auth.modalOpen()).toBe(true);
+    expect(auth.cancels()).toBe(0);
+    expect(auth.loginRequests()).toBe(1);
   });
 });

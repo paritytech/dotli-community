@@ -277,6 +277,58 @@ describe("auth controller: blocking-modal lease", () => {
     expect(getAuthModalState().open).toBe(false);
   });
 
+  it("As the host, disabling the modal while a login holds the lease releases it and cancels that login once; later opens and retries cancel instead of presenting", async () => {
+    // Given
+    const {
+      coordinator,
+      getAuthModalState,
+      openAuthModal,
+      disableAuthModal,
+      retryLogin,
+    } = await load();
+    const cancels = countEvents("dotli:truapi-cancel-login");
+    const requests = countEvents("dotli:truapi-login-request");
+    openAuthModal("why", "localhost:3000");
+    expect(getAuthModalState().open).toBe(true);
+    const next = coordinator.createScope();
+    let nextRan = false;
+    const queued = next.enqueue(() => {
+      nextRan = true;
+    });
+
+    // When
+    disableAuthModal();
+    await queued;
+
+    // Then
+    expect(cancels.count).toBe(1);
+    expect(nextRan).toBe(true);
+    expect(getAuthModalState().open).toBe(false);
+
+    // When
+    const presented = openAuthModal();
+    retryLogin();
+
+    // Then
+    expect(presented).toBe(false);
+    expect(cancels.count).toBe(3);
+    expect(requests.count).toBe(0);
+    expect(getAuthModalState().open).toBe(false);
+    next.dispose();
+  });
+
+  it("As the host, disabling the modal with no login in flight cancels nothing", async () => {
+    // Given
+    const { disableAuthModal } = await load();
+    const cancels = countEvents("dotli:truapi-cancel-login");
+
+    // When
+    disableAuthModal();
+
+    // Then
+    expect(cancels.count).toBe(0);
+  });
+
   it("As the host, opening without a coordinator is a wiring error", async () => {
     // Given
     const { openAuthModal } = await import("@dotli/ui/auth-controller");

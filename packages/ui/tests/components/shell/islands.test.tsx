@@ -174,10 +174,11 @@ describe("shell islands", () => {
     });
 
     // When
-    mountIslands();
+    const failed = mountIslands();
     await flushAll();
 
     // Then
+    expect(failed).toEqual([]);
     for (const [i, id] of THEME_IDS.entries()) {
       const fresh = byId(id);
       expect(countById(id)).toBe(1);
@@ -348,10 +349,11 @@ describe("shell islands", () => {
     const before = THEME_IDS.map(byId);
 
     // When
-    mountIslands();
+    const failed = mountIslands();
     await flushAll();
 
     // Then
+    expect(failed).toEqual(["theme"]);
     for (const [i, id] of THEME_IDS.entries()) {
       expect(byId(id)).toBe(before[i]);
       expect(countById(id)).toBe(1);
@@ -374,10 +376,11 @@ describe("shell islands", () => {
     const staticToggle = byId("theme-toggle");
 
     // When
-    mountIslands();
+    const failed = mountIslands();
     await flushAll();
 
     // Then
+    expect(failed).toEqual(["url-pill"]);
     expect(byId("topbar-url")).toBe(staticBar);
     expect(countById("topbar-url")).toBe(1);
     expect(byId("theme-toggle")).not.toBe(staticToggle);
@@ -396,10 +399,11 @@ describe("shell islands", () => {
     const staticBar = byId("topbar-url");
 
     // When
-    mountIslands();
+    const failed = mountIslands();
     await flushAll();
 
     // Then
+    expect(failed).toEqual(["offline-banner"]);
     expect(countById("offline-banner")).toBe(0);
     expect(byId("theme-toggle")).not.toBe(staticToggle);
     expect(byId("topbar-url")).not.toBe(staticBar);

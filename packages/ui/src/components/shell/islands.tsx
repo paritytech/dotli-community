@@ -81,13 +81,13 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
  * (reported by mountRoot) or an id is missing on either side (reported here
  * as `island_missing_node`), the static nodes stay and the island is
  * unmounted. Focus inside a static node moves into its replacement (see
- * carryFocus).
+ * carryFocus). Returns whether the island was swapped in.
  */
 function mountIsland(
   name: string,
   view: () => JSX.Element,
   ids: string[],
-): void {
+): boolean {
   const container = document.createElement("div");
   const dispose = mountRoot(`island:${name}`, container, view);
   const pairs: [stale: Element, fresh: Element][] = [];
@@ -107,7 +107,7 @@ function mountIsland(
         );
       }
       dispose();
-      return;
+      return false;
     }
     pairs.push([stale, fresh]);
   }
@@ -122,48 +122,62 @@ function mountIsland(
   if (refocus !== null) {
     carryFocus(...refocus);
   }
+  return true;
 }
 
 /**
  * Mount `name` with mountIsland, on its own: a throw that escapes the
  * island's error boundary is reported (`island_mount_error`), leaves its
  * static nodes in place (unless the throw came mid-swap) and does not stop
- * the other islands.
+ * the other islands. Returns whether the island was swapped in.
  */
 function mountIsolated(
   name: string,
   view: () => JSX.Element,
   ids: string[],
-): void {
+): boolean {
   try {
-    mountIsland(name, view, ids);
+    return mountIsland(name, view, ids);
   } catch (err) {
     reportRootErrorOnce(err, `island:${name}`, { kind: "island_mount_error" });
     disposeRoot(`island:${name}`);
+    return false;
   }
 }
 
-/** Mount every shell island over its static markup. */
-export function mountIslands(): void {
-  mountIsolated("theme", () => <ThemeToggle />, [
-    "theme-toggle",
-    "theme-popover",
-  ]);
+/**
+ * Mount every shell island over its static markup. Returns the names of the
+ * islands that failed to mount (already reported), so the loader can fall
+ * back for them.
+ */
+export function mountIslands(): string[] {
+  const failed: string[] = [];
+  const mount = (
+    name: string,
+    view: () => JSX.Element,
+    ids: string[],
+  ): void => {
+    if (!mountIsolated(name, view, ids)) {
+      failed.push(name);
+    }
+  };
+  mount("theme", () => <ThemeToggle />, ["theme-toggle", "theme-popover"]);
   // The URL bar element itself is swapped (main.ts only checks that
   // `#topbar-url` exists and writes the url-pill store, never the element).
-  mountIsolated("url-pill", () => <UrlPill />, ["topbar-url"]);
-  mountIsolated("offline-banner", () => <OfflineBanner />, ["offline-banner"]);
+  mount("url-pill", () => <UrlPill />, ["topbar-url"]);
+  mount("offline-banner", () => <OfflineBanner />, ["offline-banner"]);
   // The static auth button stays disabled until this swap (it is none of
   // the loader's click triggers). The popover and the modal render the auth
   // stores, which the eager auth controller has kept since boot.
-  mountIsolated("auth-button", () => <AuthButton />, ["auth-button"]);
-  mountIsolated("user-popover", () => <UserPopover />, ["user-popover"]);
-  mountIsolated("auth-modal", () => <AuthModal />, ["auth-modal-backdrop"]);
+  mount("auth-button", () => <AuthButton />, ["auth-button"]);
+  mount("user-popover", () => <UserPopover />, ["user-popover"]);
+  mount("auth-modal", () => <AuthModal />, ["auth-modal-backdrop"]);
   // The static permissions button is enabled, so a click on it before this
   // swap is held back and replayed by the loader (one of its triggers).
-  mountIsolated("permissions", () => <PermissionsPopover />, [
+  mount("permissions", () => <PermissionsPopover />, [
     "permissions-button",
     "permissions-popover-backdrop",
     "permissions-popover",
   ]);
+  return failed;
 }

@@ -20,6 +20,8 @@ import { resetAuthModal, updateAuthModal } from "./state/auth-modal";
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
 let releaseAuthModal: (() => void) | null = null;
+/** Set by disableAuthModal: no modal view can ever show. */
+let authModalDisabled = false;
 
 /**
  * Wire the login request and auth-state listeners and report the initial
@@ -33,8 +35,9 @@ export function initAuthController(
   window.addEventListener("dotli:request-login", (e: Event) => {
     const detail = (e as CustomEvent<{ reason?: string; label?: string }>)
       .detail;
-    openAuthModal(detail.reason, detail.label);
-    requestTruapiLogin(detail.reason);
+    if (openAuthModal(detail.reason, detail.label)) {
+      requestTruapiLogin(detail.reason);
+    }
   });
 
   // Single ordered auth-state stream owned by the Rust core (plus the boot
@@ -227,8 +230,9 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
 
 /** The login button while logged out, and the error view's Retry. */
 export function startLogin(): void {
-  openAuthModal();
-  requestTruapiLogin();
+  if (openAuthModal()) {
+    requestTruapiLogin();
+  }
 }
 export { startLogin as retryLogin };
 
@@ -246,11 +250,20 @@ export function requestTruapiLogin(reason?: string): void {
   );
 }
 
+/**
+ * Present the modal (spinner view) and take the blocking-modal lease.
+ * Returns false when the modal is disabled: the login is cancelled instead,
+ * and nothing is presented.
+ */
 export function openAuthModal(
   reason?: string,
   label?: string,
   options: { dotSuffix?: boolean } = {},
-): void {
+): boolean {
+  if (authModalDisabled) {
+    cancelTruapiLogin();
+    return false;
+  }
   // A bare "localhost:<port>" label means dotli is in localhost-proxy
   // mode rendering a local dev server directly (apps/host/src/main.ts
   // localhost-proxy branch). Show it as-is. Deployed dotNs products
@@ -269,6 +282,21 @@ export function openAuthModal(
     view: { kind: "spinner" },
   });
   ensureAuthModalLease();
+  return true;
+}
+
+/**
+ * The modal view can never show (the islands chunk failed to load, or the
+ * auth-modal island failed to mount). A login would hold the blocking-modal
+ * lease for a modal nobody can see or close, stalling every later blocking
+ * prompt, so release any lease held now and, from here on, cancel each login
+ * that would open the modal instead of taking the lease.
+ */
+export function disableAuthModal(): void {
+  authModalDisabled = true;
+  if (authModalScope !== null) {
+    closeAuthModal();
+  }
 }
 
 export function closeAuthModal(
@@ -285,8 +313,12 @@ export function closeAuthModal(
   if (opts.skipTruapiCancel !== true) {
     // User-initiated close: cancel any in-flight login in the core so the
     // pairing flow stops polling and resolves as Rejected.
-    window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
+    cancelTruapiLogin();
   }
+}
+
+function cancelTruapiLogin(): void {
+  window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
 }
 
 function ensureAuthModalLease(): void {
