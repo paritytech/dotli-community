@@ -17,6 +17,7 @@ import { stripClientTemplatesPlugin } from "./src/mount/strip-client-templates-p
 const HYDRATION_TESTS = [
   "tests/mount/hydrate-shell.test.tsx",
   "tests/mount/hydrate-root.test.tsx",
+  "tests/mount/hydrate-fallback-islands.test.tsx",
   "tests/components/shell/islands.test.tsx",
 ];
 
