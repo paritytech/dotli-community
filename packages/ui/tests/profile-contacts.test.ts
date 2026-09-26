@@ -60,18 +60,20 @@ function drawer(): HTMLElement | null {
   return document.querySelector(".profile-drawer");
 }
 
-/** Two preimage polls (record, then avatar), each after the poller's first delay. */
+/**
+ * Two preimage polls (record, then avatar), each after the poller's first delay.
+ * WebCrypto and the envelope decode run on real time, not the fake clock, so
+ * each check advances the fake timers a little and then yields real time.
+ */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 10; i++) {
-    await vi.advanceTimersByTimeAsync(1_000);
-    if (
-      drawer()?.querySelector(".profile-drawer-status")?.textContent !==
-      "Loading profile…"
-    ) {
-      return;
-    }
-  }
-  throw new Error("the drawer never finished loading");
+  await vi.waitFor(
+    () => {
+      expect(
+        drawer()?.querySelector(".profile-drawer-status")?.textContent,
+      ).not.toBe("Loading profile…");
+    },
+    { timeout: 10_000, interval: 50 },
+  );
 }
 
 describe("Seity contacts references", () => {
