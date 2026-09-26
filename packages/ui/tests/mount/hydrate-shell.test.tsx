@@ -15,6 +15,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { createEffect, createRoot, createSignal, flush } from "solid-js";
 import { renderShellOnServer } from "../helpers/shell-ssr";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -35,6 +36,26 @@ function hydrationMessages(spy: ReturnType<typeof vi.spyOn>): string[] {
   return spy.mock.calls
     .map((args) => args.map(String).join(" "))
     .filter((message) => /hydrat/i.test(message));
+}
+
+/**
+ * Whether Solid still processes updates. An error that escapes every
+ * boundary halts the whole reactive system, every root on the page.
+ */
+function reactivityRuns(): boolean {
+  let seen = -1;
+  const [count, setCount] = createSignal(0);
+  const dispose = createRoot((disposeRoot) => {
+    createEffect(count, (value) => {
+      seen = value;
+    });
+    return disposeRoot;
+  });
+  flush();
+  setCount(1);
+  flush();
+  dispose();
+  return seen === 1;
 }
 
 describe("hydrateShell", () => {
@@ -77,6 +98,7 @@ describe("hydrateShell", () => {
     expect(hydrationMessages(error)).toEqual([]);
     expect(shell.dataset.hydrated).toBe("shell");
     expect(sentry.captureException).not.toHaveBeenCalled();
+    expect(reactivityRuns()).toBe(true);
   });
 
   it("As a user, a click handler attached to the auth button after hydration runs when I click it", async () => {
@@ -98,35 +120,41 @@ describe("hydrateShell", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it("As a user, markup that does not match the shell is replaced by a client-rendered shell that works, and the mismatch goes to Sentry", async () => {
+  it("As a user, prerendered markup that does not match the shell is restored as it was, works, and the mismatch goes to Sentry", async () => {
     // Given
     const { hydrateShell } = await import("@dotli/ui/mount/hydrate-shell");
-    const shell = injectShell(
-      '<div _hk=shell0 id="topbar"><span class="stale">stale</span></div>',
-    );
-    const stale = byId("topbar");
-    // Solid's dev build warns about the key misses; expected here.
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A prerender with a hydration key the client does not know (from
+    // another build, say) on the fourth top-level element: the first three
+    // are claimed before the miss.
+    const staleKey = /_hk=\S+( class="mode-popover-backdrop")/;
+    expect(serverHtml).toMatch(staleKey);
+    const staleHtml = serverHtml.replace(staleKey, "_hk=stale$1");
+    const shell = injectShell(staleHtml);
+    const prerendered = shell.innerHTML;
+    // Solid's dev build may warn about the key miss; expected here.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // When
     hydrateShell();
 
     // Then
-    expect(hydrationMessages(warn).length).toBeGreaterThan(0);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
       root: "shell",
       kind: "hydration_failed",
     });
     expect(shell.dataset.hydrated).toBe("fallback");
-    expect(byId("topbar")).not.toBe(stale);
-    expect(shell.querySelector(".stale")).toBeNull();
+    expect(shell.innerHTML).toBe(prerendered);
+    expect(reactivityRuns()).toBe(true);
     for (const id of [
       ...SHELL_IDS,
       "auth-modal-backdrop",
+      "user-popover",
+      "mode-popover",
       "permissions-popover",
     ]) {
       expect(shell.querySelectorAll(`#${id}`)).toHaveLength(1);
+      expect(document.querySelectorAll(`#${id}`)).toHaveLength(1);
     }
     const authButton = byId("auth-button") as HTMLButtonElement;
     const onClick = vi.fn();

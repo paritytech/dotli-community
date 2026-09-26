@@ -16,6 +16,7 @@ import {
   PRERENDER_BUILD_SERVER_ENV,
   prerenderPlugin,
 } from "../../packages/ui/src/mount/prerender-plugin";
+import { stripClientTemplatesPlugin } from "../../packages/ui/src/mount/strip-client-templates-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -265,6 +266,13 @@ export default defineConfig({
       ...(process.env[PRERENDER_BUILD_SERVER_ENV] === "1"
         ? { dev: false }
         : {}),
+    }),
+    // The prerendered shell is only ever hydrated, so its client module
+    // does not need its DOM templates (~4 KB gzip on the startup path).
+    // `vite dev` keeps them, so Solid's HMR can still re-render it.
+    stripClientTemplatesPlugin({
+      files: [resolve(PACKAGES, "ui/src/components/shell/Shell.tsx")],
+      apply: "build",
     }),
     wasm(),
     runtimeNetworkConfigScript(),

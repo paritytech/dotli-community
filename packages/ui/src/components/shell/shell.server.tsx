@@ -6,8 +6,21 @@
 // bundled into the client.
 
 import { renderToString } from "@solidjs/web";
+import { withHydrationBoundary } from "../../mount/hydration-boundary";
 import { SHELL_RENDER_ID, Shell } from "./Shell";
 
 export function renderShell(): string {
-  return renderToString(() => <Shell />, { renderId: SHELL_RENDER_ID });
+  // The same boundary hydrateRoot hydrates inside (keys must line up); a
+  // render error is rethrown so the build fails instead of shipping an empty
+  // shell.
+  return renderToString(
+    () =>
+      withHydrationBoundary(
+        () => <Shell />,
+        (err) => {
+          throw err;
+        },
+      ),
+    { renderId: SHELL_RENDER_ID },
+  );
 }

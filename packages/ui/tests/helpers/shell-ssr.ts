@@ -19,6 +19,7 @@
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
 import { createServer } from "vite";
+import { stripClientTemplatesPlugin } from "@dotli/ui/mount/strip-client-templates-plugin";
 
 const UI_ROOT = resolve(import.meta.dirname, "../..");
 
@@ -31,7 +32,14 @@ export async function renderShellOnServer(): Promise<string> {
     logLevel: "warn",
     appType: "custom",
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-    plugins: [solid({ ssr: true })],
+    // The host build's shell plugins; stripping client templates must leave
+    // this SSR render untouched.
+    plugins: [
+      solid({ ssr: true }),
+      stripClientTemplatesPlugin({
+        files: [resolve(UI_ROOT, "src/components/shell/Shell.tsx")],
+      }),
+    ],
     resolve: { alias: { "@dotli/ui": resolve(UI_ROOT, "src") } },
   });
   try {

@@ -64,7 +64,7 @@ test.describe("Shell UI smoke", () => {
 
     // Then
     // Set by hydrateShell() only when Solid claimed every prerendered node;
-    // a mismatch client-renders the shell and sets "fallback" instead.
+    // a mismatch restores the prerendered markup and sets "fallback" instead.
     await expect(page.locator("#shell")).toHaveAttribute(
       "data-hydrated",
       "shell",

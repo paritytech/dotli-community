@@ -4,11 +4,13 @@
 import { defineConfig } from "vitest/config";
 import solid from "@solidjs/vite-plugin";
 import { resolve } from "node:path";
+import { stripClientTemplatesPlugin } from "./src/mount/strip-client-templates-plugin.ts";
 
 // Hydration tests need components compiled hydratable, the way the host build
 // compiles them (`solid({ ssr: true })` in apps/host/vite.config.ts). In test
 // mode @solidjs/vite-plugin always compiles non-hydratable, so the hydration
-// project runs under its own mode.
+// project runs under its own mode. It also drops the shell's client templates
+// the way the host build does, so the tests hydrate the module that ships.
 const HYDRATION_TESTS = ["tests/mount/hydrate-shell.test.tsx"];
 
 const shared = {
@@ -44,7 +46,14 @@ export default defineConfig({
         // Outside test mode the plugin no longer adds the `browser`
         // condition itself.
         resolve: { ...shared.resolve, conditions: ["browser"] },
-        plugins: [solid({ ssr: true })],
+        plugins: [
+          solid({ ssr: true }),
+          stripClientTemplatesPlugin({
+            files: [
+              resolve(import.meta.dirname, "src/components/shell/Shell.tsx"),
+            ],
+          }),
+        ],
         test: {
           name: "hydration",
           include: HYDRATION_TESTS,

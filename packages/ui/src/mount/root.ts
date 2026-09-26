@@ -4,6 +4,7 @@
 import { createComponent, Errored, untrack } from "solid-js";
 import { hydrate, render, type JSX } from "@solidjs/web";
 import { captureException } from "@dotli/metrics/sentry";
+import { withHydrationBoundary } from "./hydration-boundary";
 
 const roots = new Map<string, () => void>();
 
@@ -93,11 +94,11 @@ export interface HydrateRootOptions extends MountRootOptions {
 
 /** Outcome of {@link hydrateRoot}. */
 export interface HydratedRoot {
-  /** Unmounts the root (hydrated or client-rendered). */
+  /** Unmounts the root (a no-op after a failed hydration). */
   dispose: () => void;
   /**
    * `true` when Solid claimed the server-rendered nodes in place; `false`
-   * when hydration failed and `view` was client-rendered from scratch.
+   * when hydration failed and the server-rendered nodes were restored.
    */
   hydrated: boolean;
 }
@@ -132,17 +133,25 @@ function resolvedNodes(value: unknown, into: Node[] = []): Node[] {
  * Solid claims the existing nodes instead of creating new ones, so imperative
  * code holding references to them keeps working.
  *
- * Hydration counts as failed when it throws, or when the view did not resolve
- * to exactly the elements the server rendered into `container`, in order:
- * for markup it cannot match, Solid does not throw but creates detached
- * replacement nodes, which would silently cut imperative references loose.
- * A failure is reported to Sentry with `{ root: name, kind:
- * "hydration_failed" }`, `container` is emptied and `view` is client-rendered
- * with {@link mountRoot}, so the root still works.
+ * The server render must wrap `view` in {@link withHydrationBoundary} too:
+ * the hydrate pass runs inside it, and a boundary on one side only would
+ * shift Solid's hydration keys.
  *
- * The hydrate pass has no error boundary: one around `view` here and not in
- * the server render would shift Solid's hydration keys. Only the fallback
- * render has mountRoot's boundary.
+ * Hydration counts as failed when it throws (the boundary catches it), or
+ * when the view did not resolve to exactly the elements the server rendered
+ * into `container`, in order: for markup it cannot match, Solid can create
+ * detached replacement nodes instead, which would silently cut imperative
+ * references loose. A failure is reported to Sentry with `{ root: name,
+ * kind: "hydration_failed" }` and `container` gets back a copy of its
+ * server-rendered children, taken before hydrating.
+ *
+ * That snapshot fallback is valid only while `view` is static (the 4a host
+ * shell): the restored nodes are plain DOM that Solid does not own, so any
+ * reactive part would be dead. It is also what lets the shell ship without
+ * its client templates (mount/strip-client-templates-plugin.ts), which only
+ * a client render would use. Sub-project 4b must replace it before the shell
+ * gets reactive components, e.g. by keeping the snapshot for the static parts
+ * and lazily client-rendering the islands on this failure path.
  */
 export function hydrateRoot(
   name: string,
@@ -152,45 +161,54 @@ export function hydrateRoot(
 ): HydratedRoot {
   disposeRoot(name);
   const serverElements = [...container.children];
+  const snapshot = [...container.childNodes].map((node) =>
+    node.cloneNode(true),
+  );
   let produced: unknown;
   let dispose: (() => void) | undefined;
   let failure: unknown;
   try {
     ensureHydrationGlobal();
     dispose = hydrate(
-      () => {
-        produced = view();
-        return produced as JSX.Element;
-      },
+      () =>
+        withHydrationBoundary(
+          () => {
+            produced = view();
+            return produced as JSX.Element;
+          },
+          (err) => {
+            failure ??= err;
+          },
+        ),
       container,
       { renderId: options.renderId },
     );
-    const claimed = resolvedNodes(produced).filter(
-      (node) => node instanceof Element,
-    );
-    const matches =
-      claimed.length === serverElements.length &&
-      claimed.every(
-        (node, i) =>
-          node === serverElements[i] && node.parentNode === container,
+    if (failure === undefined) {
+      const claimed = resolvedNodes(produced).filter(
+        (node) => node instanceof Element,
       );
-    if (!matches) {
-      failure = new Error(
-        `[hydrate] root "${name}" did not claim its server-rendered nodes: the server rendered ${String(serverElements.length)} top-level element(s) and the view resolved to ${String(claimed.length)}, which are not those same nodes in the same order`,
-      );
+      const matches =
+        claimed.length === serverElements.length &&
+        claimed.every(
+          (node, i) =>
+            node === serverElements[i] && node.parentNode === container,
+        );
+      if (!matches) {
+        failure = new Error(
+          `[hydrate] root "${name}" did not claim its server-rendered nodes: the server rendered ${String(serverElements.length)} top-level element(s) and the view resolved to ${String(claimed.length)}, which are not those same nodes in the same order`,
+        );
+      }
     }
   } catch (err) {
-    failure = err;
+    failure ??= err;
   }
   if (failure !== undefined) {
     dispose?.();
     captureException(failure, { root: name, kind: "hydration_failed" });
     options.onError?.(failure);
-    container.replaceChildren();
-    return {
-      dispose: mountRoot(name, container, view, options),
-      hydrated: false,
-    };
+    container.replaceChildren(...snapshot);
+    // Nothing to unmount: the restored nodes are not a Solid root.
+    return { dispose: () => undefined, hydrated: false };
   }
   const hydratedDispose = dispose as () => void;
   const disposeThis = (): void => {
