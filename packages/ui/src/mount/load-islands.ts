@@ -8,7 +8,6 @@
 // them off the startup bundle is the point, so everything here is Solid-free.
 
 import { captureException } from "@dotli/metrics/sentry";
-import type * as Islands from "../components/shell/islands";
 import { topbarStore } from "../state/topbar";
 
 /**
@@ -19,22 +18,18 @@ import { topbarStore } from "../state/topbar";
  */
 const TRIGGERS = "#theme-toggle";
 
-/** How long to wait before the one retry of a failed chunk load. */
-const RETRY_DELAY_MS = 1000;
-
-const importIslands = (): Promise<typeof Islands> =>
-  import("../components/shell/islands");
-
 let loading: Promise<void> | null = null;
 
 /**
- * Without the islands chunk, drive the static `#offline-banner` the way the
- * offline-banner island would: shown while offline and the topbar is
- * visible. Being offline at boot is the likeliest reason the chunk failed.
+ * When the offline-banner island did not replace the static `#offline-banner`
+ * (the chunk failed to load, mounting threw, or the banner island failed),
+ * drive the static banner the way the island would: shown while offline and
+ * the topbar is visible. Being offline at boot is the likeliest reason the
+ * chunk failed. A swapped-out static banner is left alone, so the island and
+ * this never both drive a banner.
  */
-function followOfflineWithoutIslands(): void {
-  const banner = document.getElementById("offline-banner");
-  if (banner === null) {
+function followOfflineWithoutIslands(banner: HTMLElement | null): void {
+  if (banner?.isConnected !== true) {
     return;
   }
   const update = (): void => {
@@ -53,12 +48,14 @@ function followOfflineWithoutIslands(): void {
  *
  * Until the islands mount, a click on a trigger is held back (its default
  * prevented) and replayed on the live trigger afterwards, at most once per
- * trigger, so an early click is not lost. A failed chunk load is retried
- * once, after about a second, with clicks still held back. When the retry
- * fails too, or mounting the islands throws, the static shell stays, the
- * failure is reported to Sentry once (`islands_load_error` or
- * `islands_mount_error`) and nothing is replayed. When the chunk cannot
- * load, the static offline banner still follows the connection.
+ * trigger, so an early click is not lost. When the chunk cannot load, or
+ * mounting the islands throws, the static shell stays, the failure is
+ * reported to Sentry (`islands_load_error` or `islands_mount_error`) and
+ * nothing is replayed. Whenever the banner island is not mounted, the static
+ * offline banner still follows the connection.
+ *
+ * A failed load is not retried: browsers cache a failed module fetch, so a
+ * second import() of the same chunk fails at once without refetching.
  */
 export function ensureIslands(): Promise<void> {
   if (loading !== null) {
@@ -77,30 +74,29 @@ export function ensureIslands(): Promise<void> {
     document.removeEventListener("click", holdBack, true);
   };
   document.addEventListener("click", holdBack, true);
-  loading = importIslands()
-    .catch(() =>
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, RETRY_DELAY_MS);
-      }).then(importIslands),
-    )
-    .then(
-      ({ mountIslands }) => {
-        stopHoldingBack();
-        try {
-          mountIslands();
-        } catch (err) {
-          captureException(err, { kind: "islands_mount_error" });
-          return;
-        }
-        for (const id of pending) {
-          document.getElementById(id)?.click();
-        }
-      },
-      (err: unknown) => {
-        stopHoldingBack();
-        captureException(err, { kind: "islands_load_error" });
-        followOfflineWithoutIslands();
-      },
-    );
+  const staticBanner = (): HTMLElement | null =>
+    document.getElementById("offline-banner");
+  loading = import("../components/shell/islands").then(
+    ({ mountIslands }) => {
+      stopHoldingBack();
+      const banner = staticBanner();
+      try {
+        mountIslands();
+      } catch (err) {
+        captureException(err, { kind: "islands_mount_error" });
+        return;
+      } finally {
+        followOfflineWithoutIslands(banner);
+      }
+      for (const id of pending) {
+        document.getElementById(id)?.click();
+      }
+    },
+    (err: unknown) => {
+      stopHoldingBack();
+      captureException(err, { kind: "islands_load_error" });
+      followOfflineWithoutIslands(staticBanner());
+    },
+  );
   return loading;
 }

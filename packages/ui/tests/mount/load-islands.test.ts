@@ -12,9 +12,6 @@ vi.mock("@dotli/metrics/sentry", () => sentry);
 
 const ISLANDS_CHUNK = "@dotli/ui/components/shell/islands";
 
-/** How long the loader waits before retrying a failed chunk load. */
-const RETRY_DELAY_MS = 1000;
-
 interface Chunk {
   /** The pending import of the chunk finishes loading. */
   arrive: () => Promise<void>;
@@ -27,17 +24,25 @@ interface Chunk {
   islandClicks: () => number;
 }
 
-/** Lets pending I/O and promise callbacks run (timers stay faked). */
+/** Lets pending I/O and promise callbacks run. */
 function tick(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+interface StubOptions {
+  /** mountIslands throws this before swapping anything. */
+  mountError?: Error;
+  /** The banner island fails and its static node stays, as mountIsland does. */
+  bannerIslandFails?: boolean;
 }
 
 /**
  * Stands in for the islands chunk: each import waits until the test lets it
  * arrive or fail; once it arrives, mountIslands swaps a fresh theme button,
- * which counts its clicks, in for the static one.
+ * which counts its clicks, and a fresh offline banner in for the static
+ * ones.
  */
-function stubChunk(mountError?: Error): Chunk {
+function stubChunk(options: StubOptions = {}): Chunk {
   const requests: PromiseWithResolvers<void>[] = [];
   let settled = 0;
   /** The oldest import not yet settled, once the loader has made it. */
@@ -50,8 +55,8 @@ function stubChunk(mountError?: Error): Chunk {
   };
   let clicks = 0;
   const mountIslands = vi.fn(() => {
-    if (mountError !== undefined) {
-      throw mountError;
+    if (options.mountError !== undefined) {
+      throw options.mountError;
     }
     const fresh = document.createElement("button");
     fresh.id = "theme-toggle";
@@ -59,6 +64,12 @@ function stubChunk(mountError?: Error): Chunk {
       clicks += 1;
     });
     document.getElementById("theme-toggle")?.replaceWith(fresh);
+    if (options.bannerIslandFails !== true) {
+      const banner = document.createElement("div");
+      banner.id = "offline-banner";
+      banner.style.display = "none";
+      document.getElementById("offline-banner")?.replaceWith(banner);
+    }
   });
   vi.doMock(ISLANDS_CHUNK, async () => {
     const request = Promise.withResolvers<void>();
@@ -98,8 +109,12 @@ function click(target: Element): MouseEvent {
   return event;
 }
 
+let windowListeners: ReturnType<typeof vi.spyOn<Window, "addEventListener">>;
+
 beforeEach(() => {
   vi.resetModules();
+  // Recorded so afterEach can remove what the offline fallback adds.
+  windowListeners = vi.spyOn(window, "addEventListener");
   document.body.innerHTML = [
     '<button id="theme-toggle" class="topbar-btn"><svg><path d="M0 0"/></svg></button>',
     '<div id="theme-popover" class="more-popover theme-popover"></div>',
@@ -110,8 +125,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const [type, listener] of windowListeners.mock.calls) {
+    window.removeEventListener(type, listener);
+  }
   vi.restoreAllMocks();
-  vi.useRealTimers();
   vi.doUnmock(ISLANDS_CHUNK);
   sentry.captureException.mockReset();
   document.body.replaceChildren();
@@ -172,38 +189,8 @@ describe("ensureIslands", () => {
     expect(chunk.mountIslands).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli user on a flaky connection, when the islands chunk fails to load once, the retry mounts the islands and my early click still opens the menu", async () => {
+  it("As a dotli user, when the islands chunk cannot load, it is not retried: the static shell stays, the failure is reported once, nothing is replayed and clicks are no longer held back", async () => {
     // Given
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const chunk = stubChunk();
-    const { ensureIslands } = await loadLoader();
-    const loading = ensureIslands();
-    click(byId("theme-toggle"));
-
-    // When: the first load fails.
-    await chunk.fail(new Error("chunk failed"));
-    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS - 1);
-
-    // Then: no retry yet, and clicks are still held back.
-    expect(chunk.imports()).toBe(1);
-    expect(sentry.captureException).not.toHaveBeenCalled();
-    expect(click(byId("theme-toggle")).defaultPrevented).toBe(true);
-
-    // When: the retry starts and succeeds.
-    await vi.advanceTimersByTimeAsync(1);
-    await chunk.arrive();
-    await loading;
-
-    // Then
-    expect(chunk.imports()).toBe(2);
-    expect(chunk.mountIslands).toHaveBeenCalledTimes(1);
-    expect(chunk.islandClicks()).toBe(1);
-    expect(sentry.captureException).not.toHaveBeenCalled();
-  });
-
-  it("As a dotli user, when the islands chunk cannot load even on the retry, the static shell stays, the failure is reported once, nothing is replayed and clicks are no longer held back", async () => {
-    // Given
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const staticButton = byId("theme-toggle");
@@ -211,11 +198,9 @@ describe("ensureIslands", () => {
     staticButton.addEventListener("click", staticClicks);
     const loading = ensureIslands();
     click(staticButton);
-    const err = new Error("chunk failed again");
+    const err = new Error("chunk failed");
 
     // When
-    await chunk.fail(new Error("chunk failed"));
-    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
     await chunk.fail(err);
 
     // Then
@@ -233,12 +218,12 @@ describe("ensureIslands", () => {
     // When
     const after = click(staticButton);
     await ensureIslands();
-    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS * 2);
+    await tick();
 
-    // Then: no third attempt.
+    // Then: no second attempt.
     expect(after.defaultPrevented).toBe(false);
     expect(staticClicks).toHaveBeenCalledTimes(2);
-    expect(chunk.imports()).toBe(2);
+    expect(chunk.imports()).toBe(1);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
   });
 
@@ -266,7 +251,7 @@ describe("ensureIslands", () => {
   it("As a dotli user, when mounting the islands throws, it is reported as a mount failure, nothing is replayed and clicks are no longer held back", async () => {
     // Given
     const err = new Error("mount failed");
-    const chunk = stubChunk(err);
+    const chunk = stubChunk({ mountError: err });
     const { ensureIslands } = await loadLoader();
     const staticButton = byId("theme-toggle");
     const staticClicks = vi.fn();
@@ -295,7 +280,6 @@ describe("ensureIslands", () => {
 
   it("As a user who is offline when the page boots, so the islands chunk cannot load, I still see the static offline banner, and it follows the connection and the topbar", async () => {
     // Given
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let online = false;
     vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
     const chunk = stubChunk();
@@ -305,15 +289,8 @@ describe("ensureIslands", () => {
     const staticBanner = byId("offline-banner");
     const loading = ensureIslands();
 
-    // When: the first load fails; the banner waits for the retry.
+    // When
     await chunk.fail(new Error("offline"));
-
-    // Then
-    expect(staticBanner.style.display).toBe("none");
-
-    // When: the retry fails too.
-    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
-    await chunk.fail(new Error("still offline"));
     await loading;
 
     // Then
@@ -350,7 +327,6 @@ describe("ensureIslands", () => {
 
   it("As a dotli user online whose islands chunk cannot load, the static offline banner stays hidden until the connection drops", async () => {
     // Given
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let online = true;
     vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
     const chunk = stubChunk();
@@ -359,8 +335,6 @@ describe("ensureIslands", () => {
 
     // When
     await chunk.fail(new Error("chunk failed"));
-    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
-    await chunk.fail(new Error("chunk failed again"));
     await loading;
 
     // Then
@@ -379,6 +353,7 @@ describe("ensureIslands", () => {
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
+    const staticBanner = byId("offline-banner");
     const loading = ensureIslands();
 
     // When
@@ -386,8 +361,55 @@ describe("ensureIslands", () => {
     await loading;
     window.dispatchEvent(new Event("offline"));
 
-    // Then: the stand-in chunk has no banner island, so the static banner
-    // would only show if the loader drove it.
+    // Then: the stand-in banner island is hidden, and only the loader could
+    // show either banner.
+    expect(byId("offline-banner")).not.toBe(staticBanner);
     expect(byId("offline-banner").style.display).toBe("none");
+    expect(staticBanner.style.display).toBe("none");
+  });
+
+  it("As a user offline, when the banner island alone fails to mount, I still see the static offline banner", async () => {
+    // Given
+    let online = false;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    const chunk = stubChunk({ bannerIslandFails: true });
+    const { ensureIslands } = await loadLoader();
+    const staticBanner = byId("offline-banner");
+    const loading = ensureIslands();
+
+    // When
+    await chunk.arrive();
+    await loading;
+
+    // Then: the other islands mounted; the static banner follows the
+    // connection.
+    expect(chunk.islandClicks()).toBe(0);
+    expect(byId("theme-toggle").isConnected).toBe(true);
+    expect(byId("offline-banner")).toBe(staticBanner);
+    expect(staticBanner.style.display).toBe("block");
+
+    // When
+    online = true;
+    window.dispatchEvent(new Event("online"));
+
+    // Then
+    expect(staticBanner.style.display).toBe("none");
+  });
+
+  it("As a user offline, when mounting the islands throws, I still see the static offline banner", async () => {
+    // Given
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const chunk = stubChunk({ mountError: new Error("mount failed") });
+    const { ensureIslands } = await loadLoader();
+    const staticBanner = byId("offline-banner");
+    const loading = ensureIslands();
+
+    // When
+    await chunk.arrive();
+    await loading;
+
+    // Then
+    expect(byId("offline-banner")).toBe(staticBanner);
+    expect(staticBanner.style.display).toBe("block");
   });
 });
