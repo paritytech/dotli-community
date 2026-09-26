@@ -190,3 +190,34 @@ The popover uses `createPopover({ trapFocus: true })` plus the backdrop. Focus r
   - Report the lazy islands chunk size and apply spec decision 9: if the chunk is over 20 KB gzip, report it as a finding instead of splitting it yourself.
 - [ ] Cold start, 20-run A/B: `Host total` must be at most +5%.
 - [ ] Record an "After sub-project 4d" section in `docs/perf/solid-migration-baseline.md`, and commit: `docs(perf): record sub-project 4d sizes and cold start`.
+
+---
+
+## Amendment: Task 3b (runs after Task 3; spec decision 12)
+
+### Task 3b: Route the debug dock and sandbox-checker through the frame layout
+
+**Files:**
+- Modify `packages/ui/src/product-frame-layout.ts`: add `setDockInset({ right, bottom }: { right: number; bottom: number })`, where the values are px and 0 means none, and fix the "only writer" doc comments.
+- Modify `packages/truapi-debug/src/iframe-layout.ts`: make it compute insets only, or delete it and update its tests.
+- Modify `packages/ui/src/components/truapi-debug/Panel.tsx`:
+  - `refit` calls `setDockInset`;
+  - dispose and `restoreIframeLayout` reset the inset to 0;
+  - no more direct iframe style writes.
+- Modify `packages/ui/src/components/sandbox-checker/mount.tsx` and `ViolationPanel.tsx`: use `setDockInset({ bottom })`.
+- Tests: extend `product-frame-layout.test.ts`, and update the truapi-debug and sandbox-checker tests. Add a bridge test asserting that `attachProductFrame` is called on both render paths.
+
+**Behaviour:**
+- The width is the safe box width minus the chat width and the right inset.
+- The height is the box height minus the bottom inset.
+- A product reload keeps both the chat width and the dock inset.
+- Hiding or revealing the topbar keeps the dock inset.
+- Closing the debug panel restores the full layout with the chat width, safe insets and tracked top still applied.
+
+**Tests:** the clash sequences from the Task 1 review (`.superpowers/sdd/.../task-1-review.md`) each become a test:
+- chat open or drag with the dock at the bottom;
+- a reload with chat open and the dock on the right;
+- a bar hide with the dock at the bottom;
+- a panel close with chat open.
+
+- [ ] Write the tests first, then implement. Run the checks and commit: `fix(ui): route the debug dock through the product frame layout`.

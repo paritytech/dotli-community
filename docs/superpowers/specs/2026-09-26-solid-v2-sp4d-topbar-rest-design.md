@@ -60,3 +60,9 @@ There is no visible change apart from the fixes listed in decisions 2 and 3.
 - The chains, settings and More pieces render from islands.
 - `topbar.ts` holds only boot wiring.
 - All tests and gates pass, and the results are recorded.
+
+## Amendment (2026-09-26, after the Task 1 review)
+
+| # | Topic | Decision |
+|---|---|---|
+| 12 | Dock insets | The truapi-debug dock and the sandbox-checker also write the product iframe's geometry. They are reached through `bridge.ts:1059`/`1230` and `packages/truapi-debug/src/iframe-layout.ts`. Inventory §4 wrongly said they write a different element. Debug mode can be turned on from Settings.<br>Add `setDockInset({ right, bottom })` to `product-frame-layout.ts`. The layout subtracts the inset from width and height.<br>`Panel.tsx` `refit` and `restoreIframeLayout`, and the sandbox-checker, call it instead of writing styles. `iframe-layout.ts` only computes insets, or is deleted.<br>This ships as Task 3b, after Task 3 has lowered startup |
