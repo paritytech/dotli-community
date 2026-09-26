@@ -32,20 +32,23 @@ describe("permissions store", () => {
     expect(getPermissionsState()).toEqual({ version: 0, last: null });
   });
 
-  it("As a listener, a grant with no permission fires dotli:permission-changed { label } with no permission key", async () => {
+  it("As PromptPermission, a grant fires dotli:permission-changed { label, permission }", async () => {
     // Given
     const events = capture("dotli:permission-changed");
 
     // When
-    recordPermissionChange({ kind: "grant", label: "myapp" });
+    recordPermissionChange({
+      kind: "grant",
+      label: "myapp",
+      permission: "camera",
+    });
     await settle();
 
     // Then
-    expect(events.details).toEqual([{ label: "myapp" }]);
-    expect("permission" in (events.details[0] as object)).toBe(false);
+    expect(events.details).toEqual([{ label: "myapp", permission: "camera" }]);
     expect(permissionsStore.get()).toEqual({
       version: 1,
-      last: { kind: "grant", label: "myapp" },
+      last: { kind: "grant", label: "myapp", permission: "camera" },
     });
     events.stop();
   });
