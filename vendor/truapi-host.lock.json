@@ -3,7 +3,7 @@
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
   "upstreamBranch": "cbh/seity-contacts",
   "upstreamRevision": "298cf4286c07cf0c5dc40116d3e957cc1caf5d1b",
-  "pullRequest": "https://github.com/paritytech/host-rust-core/pull/1001",
+  "pullRequest": "https://github.com/paritytech/host-rust-core/pull/1009",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
