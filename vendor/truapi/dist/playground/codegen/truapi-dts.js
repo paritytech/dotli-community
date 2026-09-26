@@ -7043,7 +7043,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "5e0d5318926dc17f";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "7eb6dbf2b5c734ff";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;

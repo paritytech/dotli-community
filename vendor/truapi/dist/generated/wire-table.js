@@ -425,22 +425,22 @@ export const WORKER_END_OPERATION = {
     kind: "request",
 };
 export const PROFILE_PRESENT = {
-    trait: 20,
+    trait: 22,
     method: 0,
     kind: "request",
 };
 export const PROFILE_DISCLOSE = {
-    trait: 20,
+    trait: 22,
     method: 1,
     kind: "request",
 };
 export const PROFILE_RETRACT = {
-    trait: 20,
+    trait: 22,
     method: 2,
     kind: "request",
 };
 export const PROFILE_PRESENT_CONTACT = {
-    trait: 20,
+    trait: 22,
     method: 3,
     kind: "request",
 };
