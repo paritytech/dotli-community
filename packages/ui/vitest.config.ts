@@ -11,7 +11,10 @@ import { stripClientTemplatesPlugin } from "./src/mount/strip-client-templates-p
 // mode @solidjs/vite-plugin always compiles non-hydratable, so the hydration
 // project runs under its own mode. It also drops the shell's client templates
 // the way the host build does, so the tests hydrate the module that ships.
-const HYDRATION_TESTS = ["tests/mount/hydrate-shell.test.tsx"];
+const HYDRATION_TESTS = [
+  "tests/mount/hydrate-shell.test.tsx",
+  "tests/mount/hydrate-root.test.tsx",
+];
 
 const shared = {
   resolve: {

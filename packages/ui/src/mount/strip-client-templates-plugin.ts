@@ -24,8 +24,9 @@
 //
 // Only the client compile is touched; the SSR compile that prerenders the
 // markup is left alone. The host applies it to `vite build` only, so `vite
-// dev` keeps the templates and Solid's HMR can re-render the shell. Imported by apps/host/vite.config.ts and
-// packages/ui/vitest.config.ts (`hydration` project).
+// dev` keeps the templates and Solid's HMR can re-render the shell. Imported
+// by apps/host/vite.config.ts and packages/ui/vitest.config.ts (`hydration`
+// project).
 
 import { parseSync, Visitor, type ESTree, type Plugin } from "vite";
 
@@ -42,11 +43,18 @@ const STATIC_HYDRATION_IMPORTS = new Set([
   "getNextSibling",
 ]);
 
-/**
- * The Solid runtime modules. `solid-js/refresh` (dev-only HMR registration)
- * is not among them: it renders nothing itself.
- */
-const SOLID_RUNTIME = new Set(["solid-js", "@solidjs/web", "@solidjs/signals"]);
+/** The Solid runtime packages; their subpath exports count too. */
+const SOLID_RUNTIME = ["solid-js", "@solidjs/web", "@solidjs/signals"];
+
+/** Dev-only HMR registration: it renders nothing itself. */
+const SOLID_HMR = "solid-js/refresh";
+
+function isSolidRuntime(source: string): boolean {
+  return (
+    source !== SOLID_HMR &&
+    SOLID_RUNTIME.some((pkg) => source === pkg || source.startsWith(`${pkg}/`))
+  );
+}
 
 function fail(id: string, message: string): never {
   throw new Error(`[strip-client-templates] ${id}: ${message}`);
@@ -75,7 +83,7 @@ export function stripClientTemplates(code: string, id: string): string {
   for (const statement of program.body) {
     if (
       statement.type !== "ImportDeclaration" ||
-      !SOLID_RUNTIME.has(statement.source.value)
+      !isSolidRuntime(statement.source.value)
     ) {
       continue;
     }
@@ -119,7 +127,15 @@ export function stripClientTemplates(code: string, id: string): string {
     if (!result.startsWith(`${templateLocal}(`, call.start)) {
       fail(id, `AST offsets do not match the source at ${String(call.start)}`);
     }
-    result = result.slice(0, call.start) + "undefined" + result.slice(call.end);
+    // Keep the removed text's line breaks, so every line after it keeps its
+    // number (see the source map note in the plugin).
+    const lineBreaks =
+      result.slice(call.start, call.end).split("\n").length - 1;
+    result =
+      result.slice(0, call.start) +
+      "undefined" +
+      "\n".repeat(lineBreaks) +
+      result.slice(call.end);
   }
   return result;
 }
@@ -140,19 +156,38 @@ export function stripClientTemplatesPlugin(
   options: StripClientTemplatesOptions,
 ): Plugin {
   const files = new Set(options.files);
+  const stripped = new Set<string>();
   return {
     name: "dotli-strip-client-templates",
     apply: options.apply,
     transform(code, id) {
-      if (!files.has(id.split("?")[0])) {
+      const file = id.split("?")[0];
+      if (!files.has(file) || this.environment.config.consumer !== "client") {
         return null;
       }
-      if (this.environment.config.consumer !== "client") {
-        return null;
-      }
-      // Each template() call sits on its own `var _tmpl$ = ...` line, so the
-      // other lines keep their positions and the incoming source map holds.
+      stripped.add(file);
+      // No line is added or removed, so the incoming source map stays right
+      // line for line; only columns after a replaced call on the same line
+      // (the rest of Solid's `var _tmpl$ = ...` declarations) shift.
       return { code: stripClientTemplates(code, id), map: null };
+    },
+    buildEnd(error) {
+      // A listed file the client build never compiled (renamed, moved, or
+      // reached through a different path) would silently ship its templates
+      // again. Only a client build compiles every module it bundles.
+      if (
+        error !== undefined ||
+        this.environment.mode !== "build" ||
+        this.environment.config.consumer !== "client"
+      ) {
+        return;
+      }
+      const missing = [...files].filter((file) => !stripped.has(file));
+      if (missing.length > 0) {
+        this.error(
+          `[strip-client-templates] the client build never compiled ${missing.join(", ")}; check the paths passed to stripClientTemplatesPlugin (renamed or moved file?)`,
+        );
+      }
     },
   };
 }

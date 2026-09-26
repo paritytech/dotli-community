@@ -5,22 +5,9 @@
 // Loaded only through Vite's SSR module loading at build/dev time, never
 // bundled into the client.
 
-import { renderToString } from "@solidjs/web";
-import { withHydrationBoundary } from "../../mount/hydration-boundary";
+import { renderHydratableToString } from "../../mount/render-hydratable";
 import { SHELL_RENDER_ID, Shell } from "./Shell";
 
 export function renderShell(): string {
-  // The same boundary hydrateRoot hydrates inside (keys must line up); a
-  // render error is rethrown so the build fails instead of shipping an empty
-  // shell.
-  return renderToString(
-    () =>
-      withHydrationBoundary(
-        () => <Shell />,
-        (err) => {
-          throw err;
-        },
-      ),
-    { renderId: SHELL_RENDER_ID },
-  );
+  return renderHydratableToString(() => <Shell />, SHELL_RENDER_ID);
 }

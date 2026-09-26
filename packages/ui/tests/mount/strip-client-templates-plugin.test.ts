@@ -9,7 +9,7 @@
 
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
-import { createServer, type ViteDevServer } from "vite";
+import { build, createServer, type Rolldown, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   stripClientTemplates,
@@ -22,6 +22,35 @@ const OTHER_COMPONENT = resolve(
   UI_ROOT,
   "src/components/chat/ResizeHandle.tsx",
 );
+
+/**
+ * Production client build of `entry` with the shell plugins; returns the
+ * bundled JavaScript.
+ */
+async function buildClient(entry: string): Promise<string> {
+  const output = (await build({
+    configFile: false,
+    root: UI_ROOT,
+    logLevel: "silent",
+    plugins: [
+      solid({ ssr: true }),
+      stripClientTemplatesPlugin({ files: [SHELL] }),
+    ],
+    resolve: { alias: { "@dotli/ui": resolve(UI_ROOT, "src") } },
+    build: {
+      write: false,
+      minify: false,
+      rollupOptions: {
+        input: resolve(import.meta.dirname, entry),
+        // Keep the entry's exports, so the shell is not tree-shaken away.
+        preserveEntrySignatures: "strict",
+      },
+    },
+  })) as Rolldown.RolldownOutput;
+  return output.output
+    .map((file) => (file.type === "chunk" ? file.code : ""))
+    .join("\n");
+}
 
 /** Markup that only a template string (or the SSR output) contains. */
 const SHELL_MARKUP = ["topbar-logo", "<svg", "auth-modal-backdrop"];
@@ -89,6 +118,26 @@ describe("stripClientTemplatesPlugin", () => {
   });
 });
 
+describe("stripClientTemplatesPlugin in a production build", () => {
+  it("As the host's startup bundle, a client build that bundles the shell ships none of its markup", async () => {
+    // When
+    const code = await buildClient("fixtures/shell-entry.ts");
+
+    // Then
+    expect(code).toMatch(/function Shell\(/);
+    for (const markup of SHELL_MARKUP) {
+      expect(code).not.toContain(markup);
+    }
+  });
+
+  it("As a build, a listed file the client build never compiles fails the build instead of shipping its templates again", async () => {
+    // When / Then
+    await expect(buildClient("fixtures/plain-entry.ts")).rejects.toThrow(
+      /never compiled .*Shell\.tsx/,
+    );
+  });
+});
+
 describe("stripClientTemplates", () => {
   it("As a build, a component with reactive Solid imports fails instead of losing the templates it renders from", () => {
     // Given
@@ -102,6 +151,46 @@ describe("stripClientTemplates", () => {
     expect(() => stripClientTemplates(code, "P.tsx")).toThrow(
       /imports "insert"/,
     );
+  });
+
+  it("As a build, reactive imports from a Solid subpath export fail too, while HMR registration is allowed", () => {
+    // Given
+    const code = (source: string, name: string) =>
+      [
+        'import { template as _$template, getNextElement as _$getNextElement } from "@solidjs/web";',
+        `import { ${name} as _$x } from "${source}";`,
+        "var _tmpl$ = _$template(`<p>`);",
+        "export const P = () => [_$getNextElement(_tmpl$), _$x];",
+      ].join("\n");
+
+    // When / Then
+    expect(() =>
+      stripClientTemplates(code("solid-js/store", "createStore"), "P.tsx"),
+    ).toThrow(/imports "createStore" from solid-js\/store/);
+    expect(() =>
+      stripClientTemplates(code("solid-js/refresh", "$$registry"), "P.tsx"),
+    ).not.toThrow();
+  });
+
+  it("As a build, a template spanning lines keeps its line breaks, so later lines keep their numbers", () => {
+    // Given
+    const code = [
+      'import { template as _$template, getNextElement as _$getNextElement } from "@solidjs/web";',
+      "var _tmpl$ = _$template(`<p>one",
+      "two`);",
+      "export const P = () => _$getNextElement(_tmpl$);",
+    ].join("\n");
+
+    // When
+    const stripped = stripClientTemplates(code, "P.tsx");
+
+    // Then
+    expect(stripped.split("\n")).toEqual([
+      'import { template as _$template, getNextElement as _$getNextElement } from "@solidjs/web";',
+      "var _tmpl$ = undefined",
+      ";",
+      "export const P = () => _$getNextElement(_tmpl$);",
+    ]);
   });
 
   it("As a build, a non-hydratable compile fails instead of rendering empty nodes", () => {

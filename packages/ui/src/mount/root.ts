@@ -16,12 +16,17 @@ const reportedByRoot = new Map<string, WeakSet<object>>();
 
 /**
  * Report `err` for root `name` to Sentry, once per distinct error object per
- * root. Non-object thrown values (a thrown string, number, etc.) cannot be
- * tracked in a `WeakSet` and are always reported.
+ * root, with `{ root: name }` plus `tags`. Non-object thrown values (a thrown
+ * string, number, etc.) cannot be tracked in a `WeakSet` and are always
+ * reported.
  */
-export function reportRootErrorOnce(err: unknown, name: string): void {
+export function reportRootErrorOnce(
+  err: unknown,
+  name: string,
+  tags: Record<string, string> = {},
+): void {
   if (typeof err !== "object" || err === null) {
-    captureException(err, { root: name });
+    captureException(err, { root: name, ...tags });
     return;
   }
   let reported = reportedByRoot.get(name);
@@ -33,7 +38,7 @@ export function reportRootErrorOnce(err: unknown, name: string): void {
     return;
   }
   reported.add(err);
-  captureException(err, { root: name });
+  captureException(err, { root: name, ...tags });
 }
 
 export interface MountRootOptions {
@@ -133,9 +138,10 @@ function resolvedNodes(value: unknown, into: Node[] = []): Node[] {
  * Solid claims the existing nodes instead of creating new ones, so imperative
  * code holding references to them keeps working.
  *
- * The server render must wrap `view` in {@link withHydrationBoundary} too:
- * the hydrate pass runs inside it, and a boundary on one side only would
- * shift Solid's hydration keys.
+ * The server render must use `renderHydratableToString`
+ * (mount/render-hydratable.ts): the hydrate pass runs inside the same
+ * {@link withHydrationBoundary}, and a boundary on one side only would shift
+ * Solid's hydration keys.
  *
  * Hydration counts as failed when it throws (the boundary catches it), or
  * when the view did not resolve to exactly the elements the server rendered
@@ -143,7 +149,10 @@ function resolvedNodes(value: unknown, into: Node[] = []): Node[] {
  * detached replacement nodes instead, which would silently cut imperative
  * references loose. A failure is reported to Sentry with `{ root: name,
  * kind: "hydration_failed" }` and `container` gets back a copy of its
- * server-rendered children, taken before hydrating.
+ * server-rendered children, taken before hydrating. An error the hydrated
+ * view raises later is caught by the same boundary (which then renders
+ * nothing) and reported once with `{ root: name, kind: "render_error" }`,
+ * followed by `options.onError`.
  *
  * That snapshot fallback is valid only while `view` is static (the 4a host
  * shell): the restored nodes are plain DOM that Solid does not own, so any
@@ -167,6 +176,7 @@ export function hydrateRoot(
   let produced: unknown;
   let dispose: (() => void) | undefined;
   let failure: unknown;
+  let hydrating = true;
   try {
     ensureHydrationGlobal();
     dispose = hydrate(
@@ -177,7 +187,14 @@ export function hydrateRoot(
             return produced as JSX.Element;
           },
           (err) => {
-            failure ??= err;
+            if (hydrating) {
+              failure ??= err;
+              return;
+            }
+            // Raised by the hydrated view later on: the boundary shows
+            // nothing in its place, so report it like mountRoot does.
+            reportRootErrorOnce(err, name, { kind: "render_error" });
+            options.onError?.(err);
           },
         ),
       container,
@@ -201,6 +218,8 @@ export function hydrateRoot(
     }
   } catch (err) {
     failure ??= err;
+  } finally {
+    hydrating = false;
   }
   if (failure !== undefined) {
     dispose?.();
