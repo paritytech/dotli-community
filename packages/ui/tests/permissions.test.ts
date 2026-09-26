@@ -417,6 +417,11 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, always allowing transactions saves the grant", async () => {
     // Given
+    const events: unknown[] = [];
+    const onPermissionChanged = (e: Event): void => {
+      events.push((e as CustomEvent).detail);
+    };
+    window.addEventListener("dotli:permission-changed", onPermissionChanged);
     const response = createPromptPermission("myapp").remotePermission(PRODUCT, {
       permission: { tag: "ChainSubmit" },
     });
@@ -427,6 +432,8 @@ describe("three-way permission prompts", () => {
     // Then
     await expect(response).resolves.toBe("AllowAlways");
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
+    expect(events).toEqual([{ label: "myapp", permission: "ChainSubmit" }]);
+    window.removeEventListener("dotli:permission-changed", onPermissionChanged);
   });
 
   it("As a dotli user, denying transactions saves the refusal", async () => {
