@@ -1173,7 +1173,7 @@ export interface HostFrameResponseTarget {
 
 /**
  * Route one guest host frame. Every frame goes to the authenticated host port
- * except `PeerTransport` (trait 21) requests, which the execution-local peer
+ * except `PeerTransport` (trait 23) requests, which the execution-local peer
  * session answers. The handshake is the one frame both must see: the peer
  * session negotiates on a copy and its reply is dropped, so the guest only
  * ever observes the host's answer. Without a grant nothing is split.
