@@ -167,4 +167,24 @@ test.describe("Shell UI smoke", () => {
       ),
     ).toBe("1");
   });
+
+  test("As a user with JavaScript disabled, the prerendered shell still shows the topbar", async ({
+    browser,
+  }) => {
+    // Given
+    // The topbar is hidden on the landing page by JS (topbar-autohide.ts),
+    // so with JS off it stays present instead: this proves the shell is
+    // prerendered server-side, not painted in by a script.
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+
+    // When
+    await page.goto(LANDING_URL);
+
+    // Then
+    await expect(page.locator("#topbar")).toBeAttached();
+    await expect(page.locator("#auth-button")).toBeAttached();
+
+    await context.close();
+  });
 });

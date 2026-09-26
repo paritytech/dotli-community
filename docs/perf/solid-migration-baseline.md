@@ -417,3 +417,93 @@ Cold start (20 runs each, back to back): before p50 2,647 ms, after p50
 2,686 ms, Δ +1.5%; `compare.ts` End-to-end p50 3.85s → 3.69s (-4.2%),
 Mann-Whitney z=0.76, not significant.
 Gate (no regression beyond 5%): **pass**.
+
+## After sub-project 4a (shell prerender + hydration)
+
+The host shell (`#topbar`, the QR pairing modal, the user popover, the mode
+and permissions popovers) is prerendered at build time from a static Solid
+component (`packages/ui/src/components/shell/Shell.tsx`, rendered by
+`mount/prerender-plugin.ts` into `#shell` in `apps/host/index.html`) and
+hydrated at boot: `apps/host/src/boot.ts` calls `hydrateShell()` before any of
+`main.ts`'s other imports (including `topbar.ts`) run, so every imperative
+reference into the shell is to a node Solid has already claimed. This is the
+first sub-project to put Solid's runtime on the host's eager path. Functional
+regression check: `apps/host/tests/functional/ui-smoke.spec.ts` gained a
+JavaScript-disabled test asserting `#topbar` and `#auth-button` are attached
+to the DOM (the topbar is hidden by JS on the landing page, so with JS off it
+stays visible) — the whole functional suite (`bun run test:functional`, a
+fresh build) passed **43 passed, 2 skipped** (42 + the new test; up from the
+prior run's 42 passed, 2 skipped).
+
+Measured on `feat/solid-v2-foundation` at `96265dfb` (Tasks 1-3 of sub-project
+4a) against the commit right before sub-project 4a's Task 1
+(`40fdc01d`, the spec/plan commit — code identical to the end of
+sub-project 5b), built in a temporary git worktree, same build command, eager
+path via `bun scripts/eager-path-size.ts`.
+
+| Eager path | Before 4a gzip | After 4a gzip | Δ gzip | Gate |
+|---|---:|---:|---:|---|
+| host | 75,295 | 101,689 | +26,394 | see running total below |
+| sandbox | 44,835 | 44,835 | +0 | unchanged (±50 B): pass |
+
+Solid in startup chunks (sourcemap `sources`): **present on the host**,
+confined to one new chunk, `host root-*.js` (58,778 B raw / 21,804 B gzip,
+hash from the measurement build). Its `sources` array holds
+`packages/ui/src/mount/root.ts` (the shared Solid hydrate/render helper
+already used by the lazily-loaded overlay and chat mounts) plus
+`@solidjs/signals`, `solid-js`, and `@solidjs/web` — 19 entries, no other
+non-Solid source. `hydrate-shell.tsx` and `components/shell/Shell.tsx` (the
+shell markup itself) are **not** in this chunk; they're inlined into
+`index-*.js` instead, confirmed via `grep -l hydrate-shell
+apps/host/dist/assets/*.js.map` (only `index-*.js` matches) and by reading
+`root-*.js.map`'s own `sources` array directly. Every other host eager chunk
+checked `ok []` via sourcemap `sources`; `host
+rolldown-runtime-hePW80VL.js` ships with no emitted `.js.map` (as in prior
+sections), checked with a raw-text `grep` for `solid-js`/`@solidjs` instead —
+also negative. Sandbox: **absent** — both `index-*.js` and `fetch-*.js`
+checked `ok []` via sourcemap `sources`.
+
+### Running total vs the pre-migration baseline
+
+| | Host eager gzip | Δ vs pre-migration (74,649 B) |
+|---|---:|---:|
+| Pre-migration (`d8f0167`) | 74,649 | — |
+| After sub-project 4a (`96265dfb`) | 101,689 | **+27,040** |
+
+Amended whole-migration host limit: **+25,600 B (+25 KB) gzip** over the
+pre-migration baseline. The running total after sub-project 4a is **+27,040 B,
+1,440 B (≈5.6%) over that limit** — the first sub-project to land over budget
+since the "Solid-free stores" addendum brought sub-project 0 back under it.
+The overage traces entirely to this sub-project's own delta (+26,394 B gzip,
+almost all of it the new `root-*.js` chunk's Solid runtime — see chunk note
+above), on top of the +2,138 B of pre-existing chunk churn the running total
+already carried in from Tasks 1-11 (unrelated to Solid, per that section's
+notes). This was anticipated: sub-project 0's "Ruling" flagged that "the
+Solid reactive core is needed on the eager path by sub-project 4 anyway," and
+the owner amended the whole-migration limit to +25 KB specifically for this.
+Flagged here for the owner's attention; sub-project 4a's task list is
+recording-only and does not call for remediation (e.g. trimming
+`topbar-autohide.ts`/`topbar.ts` once later sub-projects fold the shell's
+imperative behavior into Solid) — that is out of scope for this task.
+
+### Cold start A/B (20 runs each)
+
+`feat/solid-v2-foundation` before sub-project 4a Task 1 (`40fdc01d`) and
+after Tasks 1-3 (`96265dfb`), built with the same command and measured back
+to back on the same idle machine (`PERF_RUNS=20`, Playwright called directly
+because `test:perf` pins 10 runs).
+
+| Build | Host total p50 | p95 | cv | discarded |
+|---|---:|---:|---:|---:|
+| before | 3,456 ms | 4,977 ms | 0.20 | 1 |
+| after | 3,481 ms | 4,944 ms | 0.22 | 6 |
+
+Δ p50: **+0.7%**, well inside the ±5% gate. `compare.ts` End-to-end (context,
+not gated): 4.66s → 5.12s (+9.9%), p95 6.40s → 6.73s (+5.2%), Mann-Whitney
+z=1.12, not significant — the usual pattern in this doc of `Host total`
+moving less than `End-to-end`, whose P2P/gateway phases are noisier and
+outside the host's own boot time. The "after" run discarded more outliers
+(6 of 20, vs 1 of 20 before; cv 0.22 vs 0.20) but the discard rule (>2x the
+run's own best time) only trims tail noise and both runs' p50/cv stay in the
+same range as prior sections, so this doesn't change the verdict.
+Gate (no regression beyond 5%): **pass**.
