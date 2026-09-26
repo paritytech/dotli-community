@@ -18,7 +18,7 @@ features.
 
 | Topic | Decision |
 |---|---|
-| Scope | Full: topbar, auth/QR, popovers, landing, error and loading pages, chat, toasts, modals, truapi-debug panel, sandbox-checker panel, static host markup |
+| Scope | Full: topbar, auth/QR, popovers, landing, loading page, chat, toasts, modals, truapi-debug panel, sandbox-checker panel, static host markup. **Error pages (host and sandbox) stay imperative** (amended 2026-09-26, owner decision): they are the failure UI and must render even when no chunk can load |
 | Solid version | Ship on 2.0 RC, **pinned exact** (`solid-js`, `@solidjs/web`, `@solidjs/signals` `2.0.0-rc.9`; `@solidjs/vite-plugin` `3.0.0-next.44`; `@solidjs/testing-library` `1.0.0-beta.3`). Bumps land in their own `chore:` PRs |
 | Delivery | Foundation first, then one area per sub-project, each merged to `main` and shipped |
 | CSS | Keep the global stylesheets in `packages/ui/src/styles/`. Components emit the same class names and ids. CSS cleanup is a separate future project |
@@ -161,8 +161,8 @@ Baselines are recorded on `main` in sub-project 0 (`docs/perf/solid-migration-ba
 
 | Metric | Gate |
 |---|---|
-| Host eager path gzip (entry `index-*.js` plus every chunk it statically imports / modulepreloads) | Solid runtime adds at most +15 KB gzip over the whole migration; each later sub-project at most +2 KB net of deleted code |
-| Sandbox eager path gzip (entry chunk plus every chunk it statically imports / modulepreloads) | at most +10 KB gzip over the whole migration |
+| Host eager path gzip (entry `index-*.js` plus every chunk it statically imports / modulepreloads) | at most **+25 KB** gzip over the whole migration (amended 2026-09-26, owner decision; was +15 KB, which Solid's ~15.5 KB runtime alone reaches once the shell hydrates in sub-project 4); each sub-project other than 4 at most +2 KB net of deleted code |
+| Sandbox eager path gzip (entry chunk plus every chunk it statically imports / modulepreloads) | at most +10 KB gzip over the whole migration; **no Solid at sandbox startup** (amended 2026-09-26) |
 | Cold start `dotli:main:start` → `:end` (median of 10, `test:perf`) | no regression beyond 5% |
 | First paint (sub-project 4) | topbar and loading screen present with JS disabled (Playwright) |
 
@@ -187,11 +187,11 @@ description from its comment and a `test:perf:compare` run.
 | 0 | Foundation | Pinned deps, JSX tooling, stores fed by current producers, overlay-mount and test helpers, baselines, delete `alias-permission-modal.ts`. No user-visible change. Spec: `2026-09-25-solid-v2-sp0-foundation-design.md` |
 | 1 | Modals and toasts | `permission-modal`, `preimage-modal`, `password-prompt`, `UserConfirmation`, `notification` → components in the `overlays` root, loaded lazily (no Solid on either startup path). Spec: `2026-09-25-solid-v2-sp1-overlays-design.md` |
 | 2 | Chat | `chat/panel`, `custom-renderer`, `custom-message`; chat shell markup leaves `index.html`. Lazy chat chunk; custom renderer reused unchanged. Spec: `2026-09-25-solid-v2-sp2-chat-design.md` |
-| 3 | Pages in `#app` | loading screen driver, error pages, landing; sandbox error / retry; `activateHost` switches to root disposers |
+| 3 | Pages in `#app` | landing page (on the host startup path, after sub-project 4 puts Solid there) and `activateHost` switching to root disposers. Error pages and the sandbox error / retry screen stay imperative (amended 2026-09-26). Runs **after** sub-project 4 |
 | 4 | Shell + prerender | topbar split into components (auth/QR, user, theme, more, permissions, network, settings/diagnostics), autohide, verification shield, URL pill, offline banner, `product-frame-layout.ts`, prerender plugin and hydration; unify the `dotli:permission-changed` detail to `{ label, permission }` for both producers (today `PromptPermission` sends `{ label }` and the topbar permissions popover sends `{ label, permission }`) |
 | 5 | Dev tools | truapi-debug panel (resolution view, timeline), sandbox-checker panel |
 
-Order: 0 → 1 → 2 → 3 → 4 → 5. Sub-projects 1 and 2 may run in parallel after 0.
+Order (amended 2026-09-26): 0 → 1 → 2 → 5 → 4 → 3. Sub-project 4 comes before 3 because the landing page is first paint and needs Solid on the host startup path, which sub-project 4 introduces.
 
 ## Risks
 
