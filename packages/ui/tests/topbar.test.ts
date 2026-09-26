@@ -86,7 +86,8 @@ beforeEach(() => {
 describe("topbar disconnect", () => {
   it("As a dotli integrator, the host emits the Rust-core disconnect request", async () => {
     // Given
-    const { requestTruapiDisconnect } = await import("@dotli/ui/topbar");
+    const { requestTruapiDisconnect } =
+      await import("@dotli/ui/auth-controller");
     let requests = 0;
     window.addEventListener(
       "dotli:truapi-disconnect-request",
@@ -107,17 +108,14 @@ describe("topbar disconnect", () => {
     // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
+    const { setAuthState } = await import("@dotli/ui/state/auth");
     let requests = 0;
     window.addEventListener("dotli:truapi-disconnect-request", () => {
       requests += 1;
     });
 
     initTopBar();
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: { tag: "Connected", session: { connected: true } },
-      }),
-    );
+    setAuthState({ tag: "Connected", session: { connected: true } });
 
     // When
     document.getElementById("auth-button")?.click();
@@ -141,23 +139,20 @@ describe("topbar disconnect", () => {
     // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
+    const { setAuthState } = await import("@dotli/ui/state/auth");
     initTopBar();
 
     // When
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: {
-          tag: "Connected",
-          session: {
-            connected: true,
-            publicKey:
-              "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-            liteUsername: "pgherveou.04",
-            primaryUsername: "pgherveou.04",
-          },
-        },
-      }),
-    );
+    setAuthState({
+      tag: "Connected",
+      session: {
+        connected: true,
+        publicKey:
+          "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        liteUsername: "pgherveou.04",
+        primaryUsername: "pgherveou.04",
+      },
+    });
 
     // Then
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
@@ -171,22 +166,19 @@ describe("topbar disconnect", () => {
     // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
+    const { setAuthState } = await import("@dotli/ui/state/auth");
     initTopBar();
 
     // When: a session installed on a network where the account has no dotNS
     // record carries no usernames at all.
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: {
-          tag: "Connected",
-          session: {
-            connected: true,
-            publicKey:
-              "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-          },
-        },
-      }),
-    );
+    setAuthState({
+      tag: "Connected",
+      session: {
+        connected: true,
+        publicKey:
+          "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      },
+    });
 
     // Then
     const badge = document
@@ -202,14 +194,10 @@ describe("topbar disconnect", () => {
     );
 
     // When: reconnecting with a username clears the hint again.
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: {
-          tag: "Connected",
-          session: { connected: true, liteUsername: "pgherveou.04" },
-        },
-      }),
-    );
+    setAuthState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
 
     // Then
     expect(document.getElementById("auth-button")?.textContent).toBe("PG");
@@ -449,6 +437,7 @@ describe("topbar login cancellation", () => {
     // Given
     installTopbarDom();
     const { initTopBar } = await import("@dotli/ui/topbar");
+    const { setAuthState } = await import("@dotli/ui/state/auth");
     initTopBar();
     let cancels = 0;
     window.addEventListener("dotli:truapi-cancel-login", () => {
@@ -465,14 +454,10 @@ describe("topbar login cancellation", () => {
         },
       }),
     );
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: {
-          tag: "Connected",
-          session: { connected: true, liteUsername: "pgherveou.04" },
-        },
-      }),
-    );
+    setAuthState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
 
     // Then
     expect(
