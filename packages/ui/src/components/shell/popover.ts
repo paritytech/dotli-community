@@ -13,6 +13,7 @@ export interface PopoverOptions {
   /**
    * Focus the surface on open, keep Tab and Shift+Tab inside it, and hand
    * focus back to the trigger on close unless the user moved it elsewhere.
+   * The surface must be focusable (`tabindex="-1"`).
    */
   trapFocus?: boolean;
   /**
@@ -154,7 +155,7 @@ export function createPopover(options: PopoverOptions): Popover {
       const surface = options.surface();
       // A surface removed from the document without a close must not keep
       // acting on key events.
-      if (surface?.isConnected !== true) {
+      if (surface?.isConnected === false) {
         return;
       }
       if (ev.key === "Escape") {
@@ -163,7 +164,11 @@ export function createPopover(options: PopoverOptions): Popover {
         if (returnFocus && options.trapFocus !== true) {
           focusTrigger(options.trigger());
         }
-      } else if (ev.key === "Tab" && options.trapFocus === true) {
+      } else if (
+        ev.key === "Tab" &&
+        options.trapFocus === true &&
+        surface !== undefined
+      ) {
         containTab(ev, surface);
       }
     };

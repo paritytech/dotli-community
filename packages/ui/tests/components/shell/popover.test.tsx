@@ -312,6 +312,41 @@ describe("createPopover", () => {
     expect(document.activeElement).toBe(byId("outside"));
   });
 
+  it("As a keyboard user, Escape on a focus-trapping popover closes it and hands focus back to the trigger", async () => {
+    // Given
+    const popover = renderPopover({ trapFocus: true });
+    await openPopover(popover);
+    byId("last").focus();
+
+    // When
+    press("Escape");
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(false);
+    expect(document.activeElement).toBe(byId("trigger"));
+  });
+
+  it("As a keyboard user, Escape still closes a popover whose surface is not rendered", async () => {
+    // Given
+    let popover: Popover | undefined;
+    renderComponent(() => {
+      popover = createPopover({
+        trigger: () => undefined,
+        surface: () => undefined,
+      });
+      return null;
+    });
+    await openPopover(popover as Popover);
+
+    // When
+    press("Escape");
+    await settle();
+
+    // Then
+    expect(popover?.open()).toBe(false);
+  });
+
   it("As a page, unmounting an open popover removes every listener it added", async () => {
     // Given
     const onClose = vi.fn();

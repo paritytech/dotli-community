@@ -162,4 +162,26 @@ describe("Island", () => {
     );
     expect(reactivityRuns()).toBe(true);
   });
+
+  it("As the test setup, the shell look-alike is compiled without its templates, like Shell.tsx, so it can only be hydrated", async () => {
+    // Given
+    const { disposeRoot, mountRoot } = await import("@dotli/ui/mount/root");
+    const container = document.createElement("div");
+    document.body.append(container);
+
+    // When
+    mountRoot("island-strip-probe", container, () => <IslandShell />);
+    disposeRoot("island-strip-probe");
+
+    // Then
+    expect(container.innerHTML).toBe("");
+    // A stripped template leaves Solid nothing to create the nodes from
+    // (see mount/strip-client-templates-plugin.ts).
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringMatching(/^Hydration Mismatch/) as string,
+      }),
+      { root: "island-strip-probe" },
+    );
+  });
 });
