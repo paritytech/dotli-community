@@ -532,3 +532,103 @@ outside the host's own boot time. The "after" run discarded more outliers
 run's own best time) only trims tail noise and both runs' p50/cv stay in the
 same range as prior sections, so this doesn't change the verdict.
 Gate (no regression beyond 5%): **pass**.
+
+## After sub-project 4b (lazy shell islands)
+
+The theme toggle, the URL pill + verification shield, and the offline banner
+became lazy Solid "islands": one lazily-loaded chunk
+(`packages/ui/src/components/shell/islands.tsx`, loaded by
+`packages/ui/src/mount/load-islands.ts`) swaps them into the still-static,
+still-prerendered shell after boot, replacing the imperative versions of
+those three pieces. Functional regression check: a fresh
+`VITE_NETWORKS=paseo-next-v2,previewnet bun run build` followed by
+`bun run test:functional` (port 5173 freed first, no stale preview server)
+passed **43 passed, 2 skipped** — identical to sub-project 4a's count, and
+including the theme, offline, QR and hydration tests in `ui-smoke.spec.ts`
+(all six `ui-smoke.spec.ts` cases passed, among them "the theme I pick
+applies at once and survives a reload," "I see an offline banner that goes
+away when I'm back," "I can open the login QR modal and close it again,"
+and "the prerendered shell is hydrated in place"). The name-submit test
+passed on the first try (156 ms), no rerun needed.
+
+Measured on `feat/solid-v2-foundation` at `3d37d976` against the end of
+sub-project 4a (`472cb675` — spec/plan commit only, code identical to
+`fe1d69d1`, confirmed via `git diff 472cb675 fe1d69d1 -- apps packages`
+returning nothing), built in a temporary git worktree
+(`git worktree add <scratchpad>/wt-4a-end 472cb675`, `bun install`, same
+build command), eager path via `bun scripts/eager-path-size.ts`. The
+worktree was removed afterwards (`git worktree remove`).
+
+| Eager path | Before 4b gzip | After 4b gzip | Δ gzip | Gate |
+|---|---:|---:|---:|---|
+| host | 97,510 | 96,667 | -843 | ≤ +1,024 B (amended budget ≤ 98,536 B): pass |
+| sandbox | 44,833 | 44,834 | +1 | unchanged (±50 B): pass |
+
+(The 4a-end worktree re-measured at 97,510 B gzip, 2 B under the 97,512 B
+figure recorded when it was first measured — the same ±2 B gzip-framing
+noise already documented in the "Solid-free stores" section.)
+
+Solid in startup chunks (sourcemap `sources`): unchanged from 4a — still
+confined to `root-*.js` (`@solidjs/signals`, `solid-js`, `@solidjs/web`, and
+the shared `mount/root.ts` helper). Two new chunks land on the host eager
+path this sub-project: `topbar-*.js` (471 B raw / 285 B gzip, sourcemap
+`sources`: `state/topbar.ts` only) and `verification-shield-*.js` (1,107 B
+raw / 590 B gzip, `sources`: `state/theme.ts`, `theme-controller.ts`,
+`state/url-pill.ts`, `verification-shield.ts`) — both are pre-existing
+plain-JS state/logic modules that the imperative shell and the new islands
+now share, not Solid code. Every other host eager chunk checked `ok []` via
+sourcemap `sources` for `solid-js`/`@solidjs`; `host
+rolldown-runtime-hePW80VL.js` (no emitted `.js.map`, as in prior sections)
+was checked with a raw-text grep instead — also negative. These two new
+chunks' combined 875 B gzip is outweighed by drops elsewhere (`index-*.js`
+37,179 → 35,568 B gzip; `toasts-*.js` 1,921 → 1,797 B gzip), for a net
+**-843 B** on the host eager path — this sub-project made the eager path
+smaller, not larger. Sandbox: **absent**, and no islands chunk — the shell
+islands are host-only, so sandbox's two eager chunks are byte-for-byte the
+same modules as 4a (only content hashes changed).
+
+The interactive Solid island components themselves (`ThemeToggle.tsx`,
+`UrlPill.tsx`, `VerificationShield.tsx`, `OfflineBanner.tsx`, `popover.ts`,
+`islands.tsx`) are confined to one new chunk that is **lazy only** — absent
+from `dist/index.html`'s `modulepreload` tags, not on the eager path — `host
+islands-6fF34_RA.js` (hash from the measurement build): 11,823 B raw /
+3,708 B gzip.
+
+**Design change note:** the design iterated before landing on lazy islands.
+An earlier version that rendered the interactive island components eagerly
+(no `load-islands.ts` deferral) measured **99,189 B gzip** on the host eager
+path; an interim spike measured **97,619 B gzip**. The lazy-islands design
+measured above (96,667 B) beats both, and beats the sub-project 4a baseline
+itself (97,510 B) — deferring the islands' own weight off the eager path
+more than paid for the two small new eager chunks noted above.
+
+### Running total vs the pre-migration baseline
+
+| | Host eager gzip | Δ vs pre-migration (74,649 B) |
+|---|---:|---:|
+| Pre-migration (`d8f0167`) | 74,649 | — |
+| After sub-project 4a size fix (`472cb675`, re-measured here) | 97,510 | +22,861 |
+| After sub-project 4b (`3d37d976`) | 96,667 | **+22,018** |
+
+Within the amended whole-migration host limit of +25,600 B gzip, with
+3,582 B of margin — more headroom than sub-project 4a left (2,738 B),
+because this sub-project's own eager-path delta was negative.
+
+### Cold start A/B (20 runs each)
+
+`feat/solid-v2-foundation` at the end of sub-project 4a (`472cb675`, built in
+the temporary worktree above) and at HEAD after sub-project 4b (`3d37d976`),
+built with the same command and measured back to back on the same idle
+machine (`PERF_RUNS=20`, Playwright called directly because `test:perf` pins
+10 runs).
+
+| Build | Host total p50 | p95 | cv | discarded |
+|---|---:|---:|---:|---:|
+| before (4a end) | 2,639 ms | 2,905 ms | 0.07 | 0 |
+| after (4b) | 2,608 ms | 3,186 ms | 0.09 | 0 |
+
+Δ p50: **-1.2%** (faster), well inside the ±5% gate. Both runs were clean
+(cv ≤ 0.09, 0 discarded outliers each), so no re-run was needed. `compare.ts`
+End-to-end (context, not gated): 3.71s → 3.71s (+0.1%), Mann-Whitney z=0.30,
+not significant.
+Gate (no regression beyond 5%): **pass**.
