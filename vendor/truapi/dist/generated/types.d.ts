@@ -1897,6 +1897,54 @@ export type VersionedHostProductDeviceChatResponse =
     value: HostProductDeviceChatResponse;
 };
 export declare const VersionedHostProductDeviceChatResponse: S.Codec<VersionedHostProductDeviceChatResponse>;
+/** Versioned envelope for [`HostProfileDiscloseError`]. */
+export type VersionedHostProfileDiscloseError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileDiscloseError;
+};
+export declare const VersionedHostProfileDiscloseError: S.Codec<VersionedHostProfileDiscloseError>;
+/** Versioned envelope for [`HostProfileDiscloseRequest`]. */
+export type VersionedHostProfileDiscloseRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileDiscloseRequest;
+};
+export declare const VersionedHostProfileDiscloseRequest: S.Codec<VersionedHostProfileDiscloseRequest>;
+/** Versioned envelope for [`HostProfileDiscloseResponse`]. */
+export type VersionedHostProfileDiscloseResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfileDiscloseResponse: S.Codec<VersionedHostProfileDiscloseResponse>;
+/** Versioned envelope for [`HostProfilePresentContactError`]. */
+export type VersionedHostProfilePresentContactError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentContactError;
+};
+export declare const VersionedHostProfilePresentContactError: S.Codec<VersionedHostProfilePresentContactError>;
+/** Versioned envelope for [`HostProfilePresentContactRequest`]. */
+export type VersionedHostProfilePresentContactRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentContactRequest;
+};
+export declare const VersionedHostProfilePresentContactRequest: S.Codec<VersionedHostProfilePresentContactRequest>;
+/** Versioned envelope for [`HostProfilePresentContactResponse`]. */
+export type VersionedHostProfilePresentContactResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfilePresentContactResponse: S.Codec<VersionedHostProfilePresentContactResponse>;
 /** Versioned envelope for [`HostProfilePresentError`]. */
 export type VersionedHostProfilePresentError = 
 /** Version 1 payload. */
@@ -1921,6 +1969,30 @@ export type VersionedHostProfilePresentResponse =
     value?: undefined;
 };
 export declare const VersionedHostProfilePresentResponse: S.Codec<VersionedHostProfilePresentResponse>;
+/** Versioned envelope for [`HostProfileRetractError`]. */
+export type VersionedHostProfileRetractError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileRetractError;
+};
+export declare const VersionedHostProfileRetractError: S.Codec<VersionedHostProfileRetractError>;
+/** Versioned envelope for [`HostProfileRetractRequest`]. */
+export type VersionedHostProfileRetractRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfileRetractRequest: S.Codec<VersionedHostProfileRetractRequest>;
+/** Versioned envelope for [`HostProfileRetractResponse`]. */
+export type VersionedHostProfileRetractResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfileRetractResponse: S.Codec<VersionedHostProfileRetractResponse>;
 /** Versioned envelope for [`HostPushNotificationCancelError`]. */
 export type VersionedHostPushNotificationCancelError = 
 /** Version 1 payload. */
@@ -4472,6 +4544,64 @@ export interface HostPocketRemoveCardRequest {
     cardId: string;
 }
 export declare const HostPocketRemoveCardRequest: S.Codec<HostPocketRemoveCardRequest>;
+/** Profile disclosure failure. */
+export type HostProfileDiscloseError = 
+/** The reference is empty, too long, or not printable ASCII. */
+{
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfileDiscloseError: S.Codec<HostProfileDiscloseError>;
+/**
+ * Request to give the user's chat contacts a profile reference.
+ *
+ * The reference is a bearer capability for everyone the host relays it to.
+ * The host stores it as the user's own and never parses it.
+ */
+export interface HostProfileDiscloseRequest {
+    /** Opaque profile reference, e.g. a Seity contacts reference. */
+    reference: string;
+}
+export declare const HostProfileDiscloseRequest: S.Codec<HostProfileDiscloseRequest>;
+/** Contact profile presentation failure. */
+export type HostProfilePresentContactError = 
+/** This contact has not shared a profile with the user. */
+{
+    tag: "NotShared";
+    value?: undefined;
+}
+/** The host holds a reference it cannot parse. */
+ | {
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfilePresentContactError: S.Codec<HostProfilePresentContactError>;
+/**
+ * Request to show a chat contact's profile in host-owned UI.
+ *
+ * The product names the contact, never a reference: the host looks up the
+ * reference that contact's host sent, so the product cannot read, keep or
+ * substitute it.
+ */
+export interface HostProfilePresentContactRequest {
+    /** The contact's authenticated root identity, as the chat API names it. */
+    peerIdentity: HexString;
+}
+export declare const HostProfilePresentContactRequest: S.Codec<HostProfilePresentContactRequest>;
 /** Profile presentation failure. */
 export type HostProfilePresentError = 
 /** The reference is malformed or names a format this host cannot open. */
@@ -4499,6 +4629,21 @@ export interface HostProfilePresentRequest {
     reference: string;
 }
 export declare const HostProfilePresentRequest: S.Codec<HostProfilePresentRequest>;
+/** Profile retraction failure. */
+export type HostProfileRetractError = 
+/** Another product disclosed the reference the host holds. */
+{
+    tag: "NotDiscloser";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfileRetractError: S.Codec<HostProfileRetractError>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [`HostPushNotificationResponse`]. */

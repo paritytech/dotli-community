@@ -9,11 +9,28 @@
 // avatar or a failure message. It is not a blocking modal: it asks nothing,
 // and presenting another profile replaces the one on screen.
 
+import { log } from "@dotli/shared/log";
+import { createMoodRing, INTENSITY, MOOD_PALETTE, type MoodRingHandle } from "./mood-ring";
+import { moodIsCurrent, type Mood } from "./profile-record";
+
+/** What a reference opened to. Either half may be missing. */
+export interface LoadedProfile {
+  readonly avatar: Uint8Array | null;
+  readonly mood?: Mood;
+}
+
 export interface ProfileDrawerOptions {
   /** Product that asked for the presentation, shown as attribution. */
   readonly productId: string;
-  /** Fetch and decrypt the avatar. Aborted when the drawer closes. */
-  readonly loadAvatar: (signal: AbortSignal) => Promise<Uint8Array>;
+  /** Fetch and decrypt the profile. Aborted when the drawer closes. */
+  readonly loadProfile: (signal: AbortSignal) => Promise<LoadedProfile>;
+}
+
+const AVATAR_PX = 160;
+
+function moodLine(mood: Mood, nowSecs = Date.now() / 1000): string {
+  const hoursLeft = Math.max(1, Math.round((mood.setAt + mood.ttlSecs - nowSecs) / 3600));
+  return `${MOOD_PALETTE[mood.kind].label} · ${INTENSITY[mood.intensity].label.toLowerCase()} · ${String(hoursLeft)} h left`;
 }
 
 export interface ProfileDrawerHandle {
@@ -90,11 +107,17 @@ export function showProfileDrawer(
   closeBtn.textContent = "×";
   header.append(heading, closeBtn);
 
+  const portrait = document.createElement("div");
+  portrait.className = "profile-drawer-portrait";
   const avatar = document.createElement("div");
   avatar.className = "profile-drawer-avatar";
   const spinner = document.createElement("div");
   spinner.className = "spinner";
   avatar.appendChild(spinner);
+  portrait.appendChild(avatar);
+
+  const moodText = document.createElement("p");
+  moodText.className = "profile-drawer-mood";
 
   const status = document.createElement("p");
   status.className = "profile-drawer-status";
@@ -105,12 +128,13 @@ export function showProfileDrawer(
   attribution.className = "profile-drawer-attribution";
   attribution.textContent = `Shown by ${options.productId}. Seity profile content is self-described; dot.li does not verify it.`;
 
-  drawer.append(header, avatar, status, attribution);
+  drawer.append(header, portrait, moodText, status, attribution);
   backdrop.appendChild(drawer);
   document.body.appendChild(backdrop);
 
   const aborter = new AbortController();
   let objectUrl: string | null = null;
+  let ring: MoodRingHandle | null = null;
   let closed = false;
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -129,6 +153,7 @@ export function showProfileDrawer(
       aborter.abort();
       document.removeEventListener("keydown", onKeyDown);
       backdrop.remove();
+      ring?.stop();
       if (objectUrl !== null) {
         URL.revokeObjectURL(objectUrl);
         objectUrl = null;
@@ -158,9 +183,25 @@ export function showProfileDrawer(
     status.classList.add("profile-drawer-status-error");
   };
 
-  options.loadAvatar(aborter.signal).then(
-    (bytes) => {
+  options.loadProfile(aborter.signal).then(
+    ({ avatar: bytes, mood }) => {
       if (closed) {
+        return;
+      }
+      const currentMood = mood !== undefined && moodIsCurrent(mood) ? mood : undefined;
+      if (currentMood !== undefined) {
+        ring = createMoodRing(currentMood, AVATAR_PX);
+        portrait.prepend(ring.element);
+        moodText.textContent = moodLine(currentMood);
+      }
+      if (bytes === null) {
+        if (currentMood === undefined) {
+          fail("This person is not sharing a profile right now.");
+        } else {
+          avatar.replaceChildren();
+          avatar.classList.add("profile-drawer-avatar-empty");
+          status.textContent = "";
+        }
         return;
       }
       const type = rasterImageType(bytes);
@@ -181,6 +222,11 @@ export function showProfileDrawer(
       if (closed) {
         return;
       }
+      // Name and message only: no error on this path carries the reference.
+      log.warn(
+        "[profile] drawer load failed:",
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      );
       fail(failureMessage(error));
     },
   );

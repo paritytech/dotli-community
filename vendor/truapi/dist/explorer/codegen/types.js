@@ -3762,6 +3762,77 @@ export const types = [
         ],
     },
     {
+        id: "host-profile-disclose-error",
+        name: "HostProfileDiscloseError",
+        category: "profile",
+        definition: 'export type HostProfileDiscloseError =\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Profile disclosure failure.",
+        variants: [
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The reference is empty, too long, or not printable ASCII.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-disclose-request",
+        name: "HostProfileDiscloseRequest",
+        category: "profile",
+        definition: "export interface HostProfileDiscloseRequest {\n  reference: string;\n}",
+        description: "Request to give the user's chat contacts a profile reference.\n\nThe reference is a bearer capability for everyone the host relays it to.\nThe host stores it as the user's own and never parses it.",
+        fields: [
+            {
+                name: "reference",
+                type: "string",
+                description: "Opaque profile reference, e.g. a Seity contacts reference.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-contact-error",
+        name: "HostProfilePresentContactError",
+        category: "profile",
+        definition: 'export type HostProfilePresentContactError =\n  | { tag: "NotShared"; value?: undefined }\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Contact profile presentation failure.",
+        variants: [
+            {
+                name: "NotShared",
+                type: '{ tag: "NotShared"; value?: undefined }',
+                description: "This contact has not shared a profile with the user.",
+            },
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The host holds a reference it cannot parse.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-contact-request",
+        name: "HostProfilePresentContactRequest",
+        category: "profile",
+        definition: "export interface HostProfilePresentContactRequest {\n  peerIdentity: HexString;\n}",
+        description: "Request to show a chat contact's profile in host-owned UI.\n\nThe product names the contact, never a reference: the host looks up the\nreference that contact's host sent, so the product cannot read, keep or\nsubstitute it.",
+        fields: [
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "The contact's authenticated root identity, as the chat API names it.",
+            },
+        ],
+    },
+    {
         id: "host-profile-present-error",
         name: "HostProfilePresentError",
         category: "profile",
@@ -3791,6 +3862,25 @@ export const types = [
                 name: "reference",
                 type: "string",
                 description: "Opaque profile reference, e.g. a Seity `<cid>#<key>` blob reference.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-retract-error",
+        name: "HostProfileRetractError",
+        category: "profile",
+        definition: 'export type HostProfileRetractError =\n  | { tag: "NotDiscloser"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Profile retraction failure.",
+        variants: [
+            {
+                name: "NotDiscloser",
+                type: '{ tag: "NotDiscloser"; value?: undefined }',
+                description: "Another product disclosed the reference the host holds.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
             },
         ],
     },

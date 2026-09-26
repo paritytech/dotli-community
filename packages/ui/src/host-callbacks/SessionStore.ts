@@ -437,6 +437,10 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case "ProductSubtree":
       case "SsoResponderRequestLedger":
       case "ProductManifest":
+      case "ProfileDisclosure":
+      case "ProfileReferencesReceived":
+        // Profile references, like the grants above, carry no wallet scope of
+        // their own, so the generation keeps one identity's from another.
         return (
           hexNoPrefix(new TextEncoder().encode(`${generation}:`)) + encoded
         );
@@ -593,6 +597,13 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     // grant expires without touching the others.
     case "ProductManifest":
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
+    // The user's own disclosed profile reference: one per wallet.
+    case "ProfileDisclosure":
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-disclosure`;
+    // Contacts' references, per chat product like its roster, so clearing
+    // the product clears them.
+    case "ProfileReferencesReceived":
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-references-received:${key.value.productId}`;
     case "MainPurseCoinage":
     case "NativeChatDevice":
     case "NativeChatFileChunk":
@@ -606,7 +617,10 @@ function storesSecretMaterial(key: CoreStorageKey): boolean {
     key.tag === "AllowanceKeys" ||
     key.tag === "AutoSigningKey" ||
     key.tag === "AutoSigningKeys" ||
-    key.tag === "DeviceEncryptionKey"
+    key.tag === "DeviceEncryptionKey" ||
+    // Bearer capabilities: whoever reads one can open the profile it names.
+    key.tag === "ProfileDisclosure" ||
+    key.tag === "ProfileReferencesReceived"
   );
 }
 

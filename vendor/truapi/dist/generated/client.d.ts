@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "c8972ad11436a788";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "5e0d5318926dc17f";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -323,6 +323,28 @@ export declare class ProfileClient {
      * returned; a reference this host cannot parse is `InvalidReference`.
      */
     present(request: T.HostProfilePresentRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentError>>;
+    /**
+     * Give the user's chat contacts this reference to their profile.
+     *
+     * The host stores it as the user's own and relays it to each contact,
+     * replacing whatever it sent before; the product never learns who they
+     * are. App executions only. A reference this core cannot screen is
+     * `InvalidReference`.
+     */
+    disclose(request: T.HostProfileDiscloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfileDiscloseError>>;
+    /**
+     * Withdraw the reference this product disclosed. Contacts are told to
+     * drop what they hold. A product that did not disclose it is refused.
+     */
+    retract(options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfileRetractError>>;
+    /**
+     * Show a chat contact's profile in host-owned UI.
+     *
+     * The product names the contact; the host looks up the reference that
+     * contact shared and presents it as `present` would. The reference never
+     * reaches the product. A contact who shared nothing is `NotShared`.
+     */
+    presentContact(request: T.HostProfilePresentContactRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentContactError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {

@@ -26,6 +26,7 @@ import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
 import type { PhaseCallback, StatusCallback } from "./access-raw-storage";
 import { createRawApi, type Api } from "./api";
 import { readExecutableManifest, readRootManifest } from "./manifest";
+import { readSeitySlot, type SeitySlot } from "./seity-registry";
 import type {
   ExecutableKind,
   ExecutableManifest,
@@ -428,4 +429,20 @@ export async function resolveOwner(
     node,
     dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
   );
+}
+
+/**
+ * Read one Seity registry slot on the active network's Asset Hub. Rejects
+ * when the network has no Seity registry configured.
+ */
+export async function resolveSeitySlot(
+  lookupKey: `0x${string}`,
+  opts: ResolveOptions = {},
+): Promise<SeitySlot | null> {
+  const registry = getActiveServicesConfig().seity?.REGISTRY;
+  if (registry === undefined) {
+    throw new Error("no Seity registry is configured for this network");
+  }
+  const api = await ensureClient(opts);
+  return readSeitySlot(api, registry, lookupKey);
 }

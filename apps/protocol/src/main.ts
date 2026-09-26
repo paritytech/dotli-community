@@ -57,6 +57,7 @@ import type {
   RootManifest,
 } from "@dotli/resolver/manifest";
 import type { ResolveOptions } from "@dotli/resolver/resolve";
+import type { SeitySlot } from "@dotli/resolver/seity-registry";
 import { isExecutableKind } from "@dotli/shared/executables";
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
@@ -859,6 +860,7 @@ async function initDirectMode(): Promise<void> {
     resolveExecutableManifest,
     resolveOwner,
     resolveRootManifest,
+    resolveSeitySlot,
     setResolverAssetHubProvider,
     setResolverPeopleProvider,
     waitForPeopleFinalized,
@@ -1029,6 +1031,7 @@ async function initDirectMode(): Promise<void> {
     },
     resolveDotName,
     resolveOwner,
+    resolveSeitySlot,
     resolveExecutableManifest,
     resolveRootManifest,
   });
@@ -1359,6 +1362,10 @@ interface EngineOptions {
     label: string,
     opts?: ResolveOptions,
   ) => Promise<string | null>;
+  resolveSeitySlot?: (
+    lookupKey: `0x${string}`,
+    opts?: ResolveOptions,
+  ) => Promise<SeitySlot | null>;
   /**
    * Product-manifest readers.
    *
@@ -1451,6 +1458,25 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
+      case "resolveSeitySlot": {
+        if (!options.resolveSeitySlot) {
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_SEITY_SLOT_UNSUPPORTED);
+        }
+        const payload = request.payload as ProtocolRequestMap["resolveSeitySlot"];
+        assertStr(payload.lookupKey, "lookupKey");
+        const slot = await options.resolveSeitySlot(
+          payload.lookupKey as `0x${string}`,
+          { syncTimeoutMs },
+        );
+        respond({
+          namespace: "dotli:protocol",
+          kind: "response",
+          id: request.id,
+          ok: true,
+          result: slot === null ? null : { ...slot, version: slot.version.toString() },
+        });
+        return;
+      }
       case "resolveOwner": {
         if (!options.resolveOwner) {
           throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);

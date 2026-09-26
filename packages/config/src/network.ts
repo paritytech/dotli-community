@@ -63,6 +63,8 @@ export interface ServicesConfig {
     readonly decimals: number;
   };
   readonly dotns: DotnsContracts;
+  /** Seity's slot registry on Asset Hub; absent where Seity is not deployed. */
+  readonly seity?: { readonly REGISTRY: string };
 }
 
 const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
@@ -112,6 +114,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
       TLD: "paseo",
     },
+    // paritytech/seity registry/deployments/paseo-next-v2/deployment.json
+    seity: { REGISTRY: "0x90ddece099d26f66d13bb46b9db49dbb2083cb15" },
   },
   [NetworkName.PREVIEWNET]: {
     label: "Previewnet",
