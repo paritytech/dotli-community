@@ -269,7 +269,11 @@ export default defineConfig({
     }),
     // The prerendered shell is only ever hydrated, so its client module
     // does not need its DOM templates (~4 KB gzip on the startup path).
-    // `vite dev` keeps them, so Solid's HMR can still re-render it.
+    // `vite dev` keeps them, so Solid's HMR can still re-render it. That dev
+    // HMR re-render replaces Shell.tsx's DOM nodes with fresh ones, so the
+    // imperative topbar wiring (packages/ui/src/topbar.ts) - which runs once
+    // against the hydrated DOM - goes stale; a full reload after editing
+    // Shell.tsx in dev is expected.
     stripClientTemplatesPlugin({
       files: [resolve(PACKAGES, "ui/src/components/shell/Shell.tsx")],
       apply: "build",

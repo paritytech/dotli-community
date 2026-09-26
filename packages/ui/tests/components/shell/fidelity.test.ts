@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The host shell markup is a frozen contract (imperative code in
-// apps/host/src/topbar.ts, and Playwright selectors, select these ids and
+// packages/ui/src/topbar.ts, and Playwright selectors, select these ids and
 // classes verbatim). This test proves that prerendering <Shell/> reproduces
 // tests/components/shell/original-shell.html - the exact block that used to
 // live in apps/host/index.html before it was replaced by the `#shell`

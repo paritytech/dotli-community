@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertProductionSsrPosture,
   injectPrerendered,
   prerenderPlugin,
 } from "@dotli/ui/mount/prerender-plugin";
@@ -97,7 +98,94 @@ describe("injectPrerendered", () => {
   });
 });
 
+describe("assertProductionSsrPosture", () => {
+  it("As the ssr environment resolved with the dev condition, it fails loudly", () => {
+    // Given
+    const server = {
+      config: {
+        ssr: { resolve: { conditions: ["solid", "development", "node"] } },
+      },
+    };
+
+    // When / Then
+    expect(() => assertProductionSsrPosture(server)).toThrow(
+      /resolved its ssr environment.*"development"/s,
+    );
+  });
+
+  it("As the ssr environment resolved without the dev condition, it passes", () => {
+    // Given
+    const server = {
+      config: { ssr: { resolve: { conditions: ["solid", "node"] } } },
+    };
+
+    // When / Then
+    expect(() => assertProductionSsrPosture(server)).not.toThrow();
+  });
+
+  it("As `ssr.resolve` is absent entirely, it does not mistake that for dev posture", () => {
+    // Given
+    const server = { config: { ssr: {} } };
+
+    // When / Then
+    expect(() => assertProductionSsrPosture(server)).not.toThrow();
+  });
+});
+
 describe("prerenderPlugin", () => {
+  it("As a missing entry would silently ship an empty shell, configResolved fails loudly", () => {
+    // Given
+    const plugin = prerenderPlugin({
+      placeholder: PLACEHOLDER,
+      entry: "/definitely/does/not/exist/shell.server.tsx",
+      exportName: "renderShell",
+    });
+
+    // When / Then
+    expect(() =>
+      callConfigResolved(plugin, {
+        command: "serve",
+        configFile: "/repo/apps/host/vite.config.ts",
+        inlineConfig: {},
+        root: "/repo/apps/host",
+        mode: "development",
+      }),
+    ).toThrow(/entry not found/);
+  });
+
+  it("As the build-time render server resolves to dev ssr posture, it fails loudly and closes the server", async () => {
+    // Given
+    const close = vi.fn().mockResolvedValue(undefined);
+    vite.createServer.mockResolvedValue({
+      config: {
+        ssr: { resolve: { conditions: ["solid", "development", "node"] } },
+      },
+      ssrLoadModule: vi.fn(),
+      close,
+    });
+    const plugin = prerenderPlugin({
+      placeholder: PLACEHOLDER,
+      entry: import.meta.filename,
+      exportName: "renderShell",
+    });
+    callConfigResolved(plugin, {
+      command: "build",
+      configFile: "/repo/apps/host/vite.config.ts",
+      inlineConfig: {},
+      root: "/repo/apps/host",
+      mode: "production",
+    });
+
+    // When / Then
+    await expect(
+      callTransformIndexHtml(plugin, `<body>${PLACEHOLDER}</body>`, {
+        path: "/index.html",
+        filename: "index.html",
+      }),
+    ).rejects.toThrow(/resolved its ssr environment/);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it("As an empty render would ship an empty shell, it fails loudly instead", async () => {
     // Given
     const plugin = prerenderPlugin({
@@ -167,6 +255,7 @@ describe("prerenderPlugin", () => {
       /* asserted on below, not printed */
     });
     vite.createServer.mockResolvedValue({
+      config: { ssr: { resolve: { conditions: ["solid", "node"] } } },
       ssrLoadModule: () => Promise.reject(new Error("boom-render")),
       close: () => Promise.reject(new Error("boom-close")),
     });

@@ -4,12 +4,12 @@
 // Static reproduction of the host shell markup that used to live directly in
 // apps/host/index.html (see tests/components/shell/original-shell.html for
 // the frozen fixture this must match). Every id, class, attribute and SVG
-// path here is part of the DOM contract: apps/host/src/topbar.ts and the
+// path here is part of the DOM contract: packages/ui/src/topbar.ts and the
 // Playwright suite select these nodes by id/class, and the imperative shell
-// code isn't touched in this sub-project. No behavior lives here yet -
-// hydration (sub-project task 3) is what makes this interactive; today the
-// unchanged imperative code in topbar.ts still does that work against the
-// prerendered DOM, exactly like it did against the static HTML before.
+// code isn't touched in this sub-project. No behavior lives here - hydration
+// (mount/hydrate-shell.tsx) is what makes the prerendered markup interactive;
+// the unchanged imperative code in topbar.ts wires up against the hydrated
+// DOM, exactly like it did against the static HTML before.
 //
 // The section comments below (Top Bar, QR Pairing Modal, ...) mirror the
 // original HTML comments. They're written as JSX comments on purpose: a JSX
