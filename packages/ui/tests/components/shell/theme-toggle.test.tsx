@@ -344,6 +344,25 @@ describe("ThemeToggle", () => {
     row.remove();
   });
 
+  it("As a dotli user whose browser blocks storage, picking a theme still applies it and closes the menu", async () => {
+    // Given
+    await openThemeMenu("light", "light");
+    const blocked = (): never => {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    };
+    vi.stubGlobal("localStorage", { getItem: blocked, setItem: blocked });
+
+    // When
+    themeOption("dark")?.click();
+    await settle();
+
+    // Then
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(themeButton().title).toBe("Theme: Dark");
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(themeButton());
+  });
+
   it("As a mobile user, picking a theme while the theme button is hidden hands focus to the More button", async () => {
     // Given: on narrow screens CSS hides the theme button, so it cannot
     // take focus; the menu is reached through the More button.

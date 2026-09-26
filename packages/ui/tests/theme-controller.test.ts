@@ -23,6 +23,14 @@ async function loadController(): Promise<
   return { ...controller, ...store };
 }
 
+/** A localStorage whose every access throws, as when the browser blocks it. */
+function blockedStorage(): Pick<Storage, "getItem" | "setItem"> {
+  const blocked = (): never => {
+    throw new DOMException("The operation is insecure.", "SecurityError");
+  };
+  return { getItem: blocked, setItem: blocked };
+}
+
 describe("theme controller", () => {
   it("As a dotli user, a fresh profile defaults to the System option", async () => {
     // Given
@@ -72,6 +80,51 @@ describe("theme controller", () => {
       "system",
     );
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("As a dotli user whose browser blocks storage, the theme falls back to System and follows the OS", async () => {
+    // Given
+    const os = stubColorScheme("light");
+    vi.stubGlobal("localStorage", blockedStorage());
+    const { initTheme, getThemeState: state } = await loadController();
+
+    // When
+    initTheme();
+
+    // Then
+    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
+      "system",
+    );
+    expect(state()).toEqual({ pref: "system", resolved: "light" });
+
+    // When
+    os.set("dark");
+
+    // Then
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(state()).toEqual({ pref: "system", resolved: "dark" });
+  });
+
+  it("As a dotli user whose browser blocks storage, the theme I select still applies", async () => {
+    // Given
+    stubColorScheme("light");
+    vi.stubGlobal("localStorage", blockedStorage());
+    const {
+      initTheme,
+      selectThemePref,
+      getThemeState: state,
+    } = await loadController();
+    initTheme();
+
+    // When
+    selectThemePref("dark");
+
+    // Then
+    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
+      "dark",
+    );
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(state()).toEqual({ pref: "dark", resolved: "dark" });
   });
 
   it("As the TrUAPI theme bridge, initTheme fires dotli:theme-changed", async () => {

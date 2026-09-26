@@ -19,12 +19,18 @@ export const THEME_KEY = "dotli-theme";
 /**
  * Read the persisted theme preference.
  *
- * An absent key means "system" so pre-existing users keep following the OS.
+ * An absent key means "system" so pre-existing users keep following the OS;
+ * so does storage the browser blocks.
  */
 function getStoredThemePref(): ThemePref {
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored === "light" || stored === "dark" || stored === "system") {
-    return stored;
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "light" || stored === "dark" || stored === "system") {
+      return stored;
+    }
+    // eslint-disable-next-line no-restricted-syntax -- storage the browser blocks (SecurityError) means no stored choice: follow the OS, as the inline bootstrap script does.
+  } catch {
+    /* storage blocked: fall back to "system" */
   }
   return "system";
 }
@@ -63,6 +69,11 @@ export function initTheme(): void {
 
 /** Persist and apply the preference the user picked. */
 export function selectThemePref(pref: ThemePref): void {
-  localStorage.setItem(THEME_KEY, pref);
+  try {
+    localStorage.setItem(THEME_KEY, pref);
+    // eslint-disable-next-line no-restricted-syntax -- storage the browser blocks (SecurityError) must not stop the pick: it applies to this page only.
+  } catch {
+    /* storage blocked: the choice is not persisted */
+  }
   applyThemePref(pref);
 }

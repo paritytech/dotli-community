@@ -22,8 +22,9 @@ import { ThemeToggle } from "./ThemeToggle";
  * id. The swap happens in one go, so there is never a moment with two
  * elements per id or with half an island. If the island fails to render
  * (reported by mountRoot) or an id is missing on either side, the static
- * nodes stay and the island is unmounted. Focus on a static node moves to
- * its replacement.
+ * nodes stay and the island is unmounted. Focus inside a static node moves
+ * into its replacement: to the element with the focused element's id, or to
+ * the replacement itself when there is none.
  */
 function mountIsland(
   name: string,
@@ -42,12 +43,19 @@ function mountIsland(
     }
     pairs.push([stale, fresh]);
   }
+  const focused = document.activeElement;
+  let refocus: Element | null = null;
   for (const [stale, fresh] of pairs) {
-    const hadFocus = document.activeElement === stale;
-    stale.replaceWith(fresh);
-    if (hadFocus && fresh instanceof HTMLElement) {
-      fresh.focus();
+    if (focused !== null && stale.contains(focused)) {
+      refocus =
+        (focused.id === ""
+          ? null
+          : fresh.querySelector(`[id="${focused.id}"]`)) ?? fresh;
     }
+    stale.replaceWith(fresh);
+  }
+  if (refocus instanceof HTMLElement || refocus instanceof SVGElement) {
+    refocus.focus();
   }
 }
 

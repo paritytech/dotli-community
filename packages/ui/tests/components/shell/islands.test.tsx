@@ -229,6 +229,38 @@ describe("shell islands", () => {
     expect(document.activeElement).toBe(byId("theme-toggle"));
   });
 
+  it("As a keyboard user focused inside a static island node, focus moves to the element with the same id in the live island", async () => {
+    // Given: any element with an id, e.g. Task 3's shield button inside the
+    // URL pill; the theme button's icon stands in for it here.
+    const staticIcon = byId("theme-icon-moon");
+    staticIcon.setAttribute("tabindex", "-1");
+    staticIcon.focus();
+    expect(document.activeElement).toBe(staticIcon);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(byId("theme-icon-moon")).not.toBe(staticIcon);
+    expect(document.activeElement).toBe(byId("theme-icon-moon"));
+  });
+
+  it("As a keyboard user focused inside a static island node on an element without an id, focus moves to the live node that replaced its container", async () => {
+    // Given
+    const staticOption = themeOption("dark") as HTMLElement;
+    staticOption.focus();
+    expect(document.activeElement).toBe(staticOption);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(staticOption.isConnected).toBe(false);
+    expect(document.activeElement).toBe(byId("theme-popover"));
+  });
+
   it("As a dotli user, a theme island that throws while rendering leaves the static markup in place and is reported once", async () => {
     // Given
     themeIsland.broken = true;

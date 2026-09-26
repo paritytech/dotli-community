@@ -11,7 +11,9 @@ import { captureException } from "@dotli/metrics/sentry";
 
 /**
  * The islands' triggers: the static buttons users can click before the
- * islands mount, which do nothing on their own. A selector of ids.
+ * islands mount, which do nothing on their own. Each must be an `#id`
+ * selector (comma-separated): a held click is replayed by looking its
+ * target's id up again, on the live element that replaced it.
  */
 const TRIGGERS = "#theme-toggle";
 
@@ -23,9 +25,10 @@ let loading: Promise<void> | null = null;
  *
  * Until the islands mount, a click on a trigger is held back (its default
  * prevented) and replayed on the live trigger afterwards, at most once per
- * trigger, so an early click is not lost. When the chunk cannot load, the
- * static shell stays, the failure is reported to Sentry and nothing is
- * replayed. A failed load is not retried.
+ * trigger, so an early click is not lost. When the chunk cannot load, or
+ * mounting the islands throws, the static shell stays, the failure is
+ * reported to Sentry (`islands_load_error` or `islands_mount_error`) and
+ * nothing is replayed. A failed load is not retried.
  */
 export function ensureIslands(): Promise<void> {
   if (loading !== null) {
@@ -44,17 +47,23 @@ export function ensureIslands(): Promise<void> {
     document.removeEventListener("click", holdBack, true);
   };
   document.addEventListener("click", holdBack, true);
-  loading = import("../components/shell/islands")
-    .then(({ mountIslands }) => {
+  loading = import("../components/shell/islands").then(
+    ({ mountIslands }) => {
       stopHoldingBack();
-      mountIslands();
+      try {
+        mountIslands();
+      } catch (err) {
+        captureException(err, { kind: "islands_mount_error" });
+        return;
+      }
       for (const id of pending) {
         document.getElementById(id)?.click();
       }
-    })
-    .catch((err: unknown) => {
+    },
+    (err: unknown) => {
       stopHoldingBack();
       captureException(err, { kind: "islands_load_error" });
-    });
+    },
+  );
   return loading;
 }

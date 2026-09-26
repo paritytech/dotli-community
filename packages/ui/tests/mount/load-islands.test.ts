@@ -26,7 +26,7 @@ interface Chunk {
  * Stands in for the islands chunk: once it arrives, mountIslands swaps a
  * fresh theme button, which counts its clicks, in for the static one.
  */
-function stubChunk(): Chunk {
+function stubChunk(mountError?: Error): Chunk {
   let arrive!: () => void;
   let fail!: (err: unknown) => void;
   const gate = new Promise<void>((resolve, reject) => {
@@ -35,6 +35,9 @@ function stubChunk(): Chunk {
   });
   let clicks = 0;
   const mountIslands = vi.fn(() => {
+    if (mountError !== undefined) {
+      throw mountError;
+    }
     const fresh = document.createElement("button");
     fresh.id = "theme-toggle";
     fresh.addEventListener("click", () => {
@@ -72,6 +75,7 @@ beforeEach(() => {
     '<button id="theme-toggle" class="topbar-btn"><svg><path d="M0 0"/></svg></button>',
     '<div id="theme-popover" class="more-popover theme-popover"></div>',
     '<button id="other" type="button">Other</button>',
+    '<button class="more-row" data-target="theme-toggle">Theme</button>',
   ].join("");
 });
 
@@ -170,5 +174,56 @@ describe("ensureIslands", () => {
     expect(after.defaultPrevented).toBe(false);
     expect(staticClicks).toHaveBeenCalledTimes(2);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a mobile user, tapping the More menu's Theme row before the islands mount opens the theme menu once they do", async () => {
+    // Given: topbar.ts's More menu forwards a row tap as a click on its
+    // target, after stopping the row's own click.
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const row = document.querySelector(".more-row") as HTMLElement;
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.getElementById(row.dataset.target ?? "")?.click();
+    });
+    const loading = ensureIslands();
+
+    // When
+    click(row);
+    chunk.arrive();
+    await loading;
+
+    // Then
+    expect(chunk.islandClicks()).toBe(1);
+  });
+
+  it("As a dotli user, when mounting the islands throws, it is reported as a mount failure, nothing is replayed and clicks are no longer held back", async () => {
+    // Given
+    const err = new Error("mount failed");
+    const chunk = stubChunk(err);
+    const { ensureIslands } = await loadLoader();
+    const staticButton = byId("theme-toggle");
+    const staticClicks = vi.fn();
+    staticButton.addEventListener("click", staticClicks);
+    const loading = ensureIslands();
+    click(staticButton);
+
+    // When
+    chunk.arrive();
+
+    // Then
+    await expect(loading).resolves.toBeUndefined();
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(err, {
+      kind: "islands_mount_error",
+    });
+    expect(staticClicks).toHaveBeenCalledTimes(1);
+
+    // When
+    const after = click(staticButton);
+
+    // Then
+    expect(after.defaultPrevented).toBe(false);
+    expect(staticClicks).toHaveBeenCalledTimes(2);
   });
 });
