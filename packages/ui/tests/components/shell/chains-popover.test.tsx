@@ -490,10 +490,14 @@ describe("The network popover island", () => {
     expect(isOpen()).toBe(false);
   });
 
-  it("As a dotli user, a blocking modal coming up closes it", async () => {
+  it("As a dotli user, a blocking modal coming up closes it, stopping the countdown and the network watch", async () => {
     // Given
+    monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
+    notify();
     await renderPopover();
     await openPopover();
+    expect(vi.getTimerCount()).toBe(1);
+    expect(monitor.stopNetworkWatch).not.toHaveBeenCalled();
 
     // When
     setBlockingModalActive(true);
@@ -501,6 +505,8 @@ describe("The network popover island", () => {
 
     // Then
     expect(isOpen()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
   });
 
   it("As a visitor, the button shows once the product is on screen, whether that came before or after the mount", async () => {
