@@ -249,6 +249,13 @@ export interface ProtocolWalletStorageChangedEnvelope {
   state: SharedWalletState;
 }
 
+/** This page's wallet custody was handed to another tab; stop the wallet. */
+export interface ProtocolCoreCustodyRevokedEnvelope {
+  namespace: "dotli:protocol";
+  kind: "core-custody-revoked";
+  siteId: string;
+}
+
 export type ProtocolEnvelope =
   | ProtocolRequestEnvelope
   | ProtocolProgressEnvelope
@@ -264,7 +271,8 @@ export type ProtocolEnvelope =
   | ProtocolChainDetailEnvelope
   | ProtocolNetBytesEnvelope
   | ProtocolAuthStorageChangedEnvelope
-  | ProtocolWalletStorageChangedEnvelope;
+  | ProtocolWalletStorageChangedEnvelope
+  | ProtocolCoreCustodyRevokedEnvelope;
 
 const VALID_KINDS = new Set([
   "request",
@@ -281,6 +289,7 @@ const VALID_KINDS = new Set([
   "net-bytes",
   "auth-storage-changed",
   "wallet-storage-changed",
+  "core-custody-revoked",
 ]);
 
 // postMessage data is untrusted and the envelope type alone cannot reject a

@@ -118,7 +118,11 @@ import {
 } from "@dotli/protocol/wallet-storage";
 import { PROTOCOL_APP_ERRORS } from "./errors";
 import { isCoreCustodyOperation } from "@dotli/protocol/core-custody";
-import { CORE_CUSTODY_DB_NAME, handleCoreCustody } from "./core-custody";
+import {
+  CORE_CUSTODY_DB_NAME,
+  handleCoreCustody,
+  onCoreCustodyRevoked,
+} from "./core-custody";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
@@ -357,6 +361,19 @@ function bindSharedWalletListener(): void {
     return;
   }
   const channel = new BroadcastChannel("dotli:shared-wallet");
+  onCoreCustodyRevoked(() => {
+    if (parentOrigin === null || window.parent === window) {
+      return;
+    }
+    window.parent.postMessage(
+      {
+        namespace: "dotli:protocol",
+        kind: "core-custody-revoked",
+        siteId: SITE_ID,
+      },
+      parentOrigin,
+    );
+  });
   channel.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
     if (

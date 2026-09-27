@@ -1,12 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { CoreCustodyOperation } from "@dotli/protocol/core-custody";
+import {
+  CORE_CUSTODY_BUSY_ERROR,
+  type CoreCustodyOperation,
+} from "@dotli/protocol/core-custody";
 import { withSharedWalletRevision } from "./wallet-storage";
 
 export const CORE_CUSTODY_DB_NAME = "dotli-native-core-custody";
 const STORE = "records";
 const KEY = "encryption-key";
+const CUSTODY_LOCK = "dotli:native-core-custody";
+const HANDOVER_CHANNEL = "dotli:native-core-custody-handover";
 let lease:
   | {
       token: string;
@@ -18,6 +23,35 @@ let lease:
 let acquiring = false;
 let pageActive = true;
 let pageLifetime = 0;
+let revokedListener: (() => void) | undefined;
+let handoverChannel: BroadcastChannel | undefined;
+
+/** Called when another tab takes this page's lease; the wallet must stop. */
+export function onCoreCustodyRevoked(listener: () => void): void {
+  revokedListener = listener;
+}
+
+// Only a page that owns custody listens, so a takeover request reaches exactly
+// the tab that has to let go. Releasing the lease first makes every later
+// write from that tab's core fail its lease check before the new owner reads.
+function listenForHandover(): void {
+  if (handoverChannel !== undefined) {
+    return;
+  }
+  handoverChannel = new BroadcastChannel(HANDOVER_CHANNEL);
+  handoverChannel.addEventListener("message", (event: MessageEvent) => {
+    const owner = lease;
+    if (
+      (event.data as { kind?: unknown } | null)?.kind !== "release" ||
+      !owner
+    ) {
+      return;
+    }
+    lease = undefined;
+    owner.release();
+    revokedListener?.();
+  });
+}
 
 // A lease belongs to this host iframe's parent, not to a product or a TTL.
 // Page destruction releases Web Locks even if JavaScript never runs cleanup.
@@ -80,6 +114,32 @@ export async function handleCoreCustody(
   operation: CoreCustodyOperation,
   deadlineMs?: number,
 ): Promise<string | Uint8Array | Blob | undefined> {
+  if (operation.action === "takeover") {
+    if (lease || acquiring) {
+      throw new Error("This page already runs the test wallet");
+    }
+    const request = new BroadcastChannel(HANDOVER_CHANNEL);
+    request.postMessage({ kind: "release" });
+    request.close();
+    // Granted only once no tab holds custody; release it at once so this
+    // page's reload can acquire it the normal way.
+    try {
+      await navigator.locks.request(
+        CUSTODY_LOCK,
+        deadlineMs === undefined
+          ? {}
+          : {
+              signal: AbortSignal.timeout(Math.max(0, deadlineMs - Date.now())),
+            },
+        () => undefined,
+      );
+    } catch {
+      throw new Error(
+        "The other tab did not hand over the test wallet. Close it and try again.",
+      );
+    }
+    return;
+  }
   if (operation.action === "acquire") {
     if (!pageActive) {
       throw new Error("Private custody host is inactive");
@@ -103,46 +163,45 @@ export async function handleCoreCustody(
     const ready = Promise.withResolvers<string>();
     const released = Promise.withResolvers<undefined>();
     void navigator.locks
-      .request(
-        "dotli:native-core-custody",
-        { ifAvailable: true },
-        async (lock) => {
-          if (!lock) {
-            throw new Error(
-              "The test wallet is active in another tab. Close it before opening it here.",
-            );
-          }
-          const held = Promise.withResolvers<undefined>();
-          await withSharedWalletRevision(
-            operation.walletRevision,
-            async () => {
-              // Check durable storage before giving any runtime custody authority.
-              const db = await openDatabase();
-              db.close();
-              if (!pageActive || lifetime !== pageLifetime) {
-                throw new Error(
-                  "Private custody host closed while acquiring custody",
-                );
-              }
-              if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-                throw new Error("Private custody request expired");
-              }
-              const token = crypto.randomUUID();
-              lease = {
-                token,
-                revision: operation.walletRevision,
-                released: released.promise,
-                release: () => {
-                  held.resolve(undefined);
-                },
-              };
-              ready.resolve(token);
-            },
-            deadlineMs,
+      .request(CUSTODY_LOCK, { ifAvailable: true }, async (lock) => {
+        if (!lock) {
+          const busy = new Error(
+            "The test wallet is active in another tab. Close it before opening it here.",
           );
-          await held.promise;
-        },
-      )
+          busy.name = CORE_CUSTODY_BUSY_ERROR;
+          throw busy;
+        }
+        const held = Promise.withResolvers<undefined>();
+        await withSharedWalletRevision(
+          operation.walletRevision,
+          async () => {
+            // Check durable storage before giving any runtime custody authority.
+            const db = await openDatabase();
+            db.close();
+            if (!pageActive || lifetime !== pageLifetime) {
+              throw new Error(
+                "Private custody host closed while acquiring custody",
+              );
+            }
+            if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+              throw new Error("Private custody request expired");
+            }
+            const token = crypto.randomUUID();
+            lease = {
+              token,
+              revision: operation.walletRevision,
+              released: released.promise,
+              release: () => {
+                held.resolve(undefined);
+              },
+            };
+            listenForHandover();
+            ready.resolve(token);
+          },
+          deadlineMs,
+        );
+        await held.promise;
+      })
       .catch((error: unknown) => {
         ready.reject(error);
       })

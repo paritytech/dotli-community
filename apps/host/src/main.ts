@@ -168,8 +168,43 @@ import {
   trustedProviderHosts,
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
+  TAKE_OVER_WALLET_BTN_LABEL,
+  walletInOtherTab,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
+import { WALLET_CUSTODY_REVOKED_EVENT } from "@dotli/protocol/core-custody";
+
+// Both a boot refused by another tab's wallet and a tab whose wallet another
+// tab just took over land here: nothing is broken, so offer the two ways out.
+function showWalletInOtherTab(): void {
+  const page = walletInOtherTab();
+  const reload = (): void => {
+    window.location.reload();
+  };
+  showErrorPage({
+    title: page.title,
+    detail: page.message,
+    actions: [
+      {
+        label: TAKE_OVER_WALLET_BTN_LABEL,
+        primary: true,
+        onClick: () => {
+          void import("@dotli/ui/bridge")
+            .then(({ takeOverTestWallet }) => takeOverTestWallet())
+            .catch((error: unknown) => {
+              showError(
+                page.title,
+                error instanceof Error ? error.message : String(error),
+                { label: RELOAD_BTN_LABEL, onClick: reload },
+              );
+            });
+        },
+      },
+      { label: RELOAD_BTN_LABEL, onClick: reload },
+    ],
+  });
+}
+window.addEventListener(WALLET_CUSTODY_REVOKED_EVENT, showWalletInOtherTab);
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -2237,6 +2272,10 @@ async function main(): Promise<void> {
       },
     });
     const error = describeError(err, chainBackend !== "rpc-gateway");
+    if (error.recovery === "take-over-wallet") {
+      showWalletInOtherTab();
+      return;
+    }
     if (error.recovery === "none") {
       showError(error.title, error.message, undefined, error.tips);
       return;

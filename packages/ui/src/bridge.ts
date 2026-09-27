@@ -43,7 +43,11 @@ import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
 import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
-import { requestCoreCustody } from "@dotli/protocol/client";
+import {
+  requestCoreCustody,
+  subscribeCoreCustodyRevoked,
+} from "@dotli/protocol/client";
+import { WALLET_CUSTODY_REVOKED_EVENT } from "@dotli/protocol/core-custody";
 import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
@@ -285,6 +289,27 @@ function disposeWalletRuntimes(): void {
   }
 }
 window.addEventListener("pagehide", disposeWalletRuntimes);
+
+let custodyRevocationBound = false;
+
+function bindCustodyRevocation(): void {
+  if (custodyRevocationBound) {
+    return;
+  }
+  custodyRevocationBound = true;
+  subscribeCoreCustodyRevoked(() => {
+    // The lease is already gone, so this page's writes fail closed. Stop the
+    // signing workers before they try, then let the shell explain why.
+    disposeWalletRuntimes();
+    window.dispatchEvent(new Event(WALLET_CUSTODY_REVOKED_EVENT));
+  });
+}
+
+/** Move the test wallet to this tab: the owning tab stops, then this one reloads. */
+export async function takeOverTestWallet(): Promise<void> {
+  await requestCoreCustody({ action: "takeover" });
+  window.location.reload();
+}
 const liveLocalWallets = new Map<WorkerSigningHostRuntime, LiveLocalWallet>();
 const providerWallets = new WeakMap<CoreProvider, LiveLocalWallet>();
 let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
@@ -2049,6 +2074,7 @@ async function createCoreProvider(
         throw new Error("Private wallet custody was not acquired");
       }
       custodyLease = acquired;
+      bindCustodyRevocation();
     }
     if (isRuntimeDisposed()) {
       throw new Error("Wallet host closed while acquiring custody");
