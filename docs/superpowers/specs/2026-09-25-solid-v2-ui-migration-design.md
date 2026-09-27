@@ -23,7 +23,7 @@ features.
 | Delivery | Foundation first, then one area per sub-project, each merged to `main` and shipped |
 | CSS | Keep the global stylesheets in `packages/ui/src/styles/`. Components emit the same class names and ids. CSS cleanup is a separate future project |
 | State | Typed signal stores in `packages/ui/src/state/`. Producers call store setters. Window events are kept only while something outside the UI still listens |
-| First paint | Build-time prerender (`renderToString`) of the host shell, chat shell, and loading screen into `index.html`, then `hydrate` in the browser |
+| First paint | Build-time prerender (`renderToString`) of the host shell, chat shell, and loading screen into `index.html`, then `hydrate` in the browser. **Loading screen** (amended 2026-09-27): it stays static first-paint markup in `index.html`, and a lazy island swaps in over it rather than hydrating it (SP3 spec decision 3, for the startup-bytes reason in the 4b Amendment's decision 14) |
 | Plugin mode | `@solidjs/vite-plugin` without `start` mode. Host: `ssr: true` (hydratable output). Sandbox: default client output |
 
 ## Architecture
@@ -93,14 +93,16 @@ Browser-only values (session, localStorage, `matchMedia`) are written after
 |---|---|---|---|
 | `shell` | `#topbar` + auth modal + popovers | prerender + `hydrate`, `renderId: "shell"` | 4 |
 | `chat` | `aside#chat-panel` | `render` in 2, prerender + `hydrate` (`renderId: "chat"`) in 4 | 2, 4 |
-| `loading` | `#app > .loading` | prerender + `hydrate`, `renderId: "loading"` | 3 |
-| `page` | `#app > #app-view` | `render` on error / landing | 3 |
+| `loading` | `#app > #app-loading` | static markup in `index.html`, then a lazy island swapped in over it (amended 2026-09-27: SP3 spec decision 3, 4b Amendment decision 14) | 3 |
+| `page` | `#app > #app-view` | `render` for the landing page only; error pages stay imperative (amended 2026-09-27: SP3 spec decision 4) | 3 |
 | `overlays` | `#overlay-root`, last child of `body` | `render` at boot; toast stack + modal outlet | 1 |
 | dev panels | own lazy containers | `render` | 5 |
 
 `#app` stays shared with the product iframe (`bridge.ts` / `@parity/truapi-host`).
 Solid owns only child containers inside it. `activateHost` calls the stored root
-disposers instead of pruning nodes or writing `innerHTML = ""`.
+disposers instead of pruning nodes or writing `innerHTML = ""`. The `loading`
+and `page` disposers live in the app-root registry (`mount/app-roots.ts`,
+amended 2026-09-27).
 
 Iframe geometry writes (today in `bridge.ts`, `topbar-autohide.ts`,
 `chat/panel.ts`, `truapi-debug/panel.ts`, `sandbox-checker-ui.ts`) are
@@ -114,7 +116,11 @@ favicon, `postMessage` bridges, `wipeOriginState` / `applyAndReset`, the
 sandbox `document.write` handoff. Inside components, via refs and effects: the
 QR canvas (lazy `qrcode`, stale-payload guard), rAF typewriter and progress
 crawl, the chains `slideStrip` layout read, focus traps, the chat
-`IntersectionObserver`.
+`IntersectionObserver`. Outside components (amended 2026-09-27): the chat
+button and unread badge sync in `chat/panel.ts`, which writes
+`chatPanelStore` onto the static shell nodes. The button must show before the
+islands chunk mounts, and an island would add bytes to that chunk for no
+visible gain.
 
 Promise APIs (`showPermissionRequestModal`, `showPreimageSubmitModal`,
 `showPasswordPrompt`, UserConfirmation) push an entry into a modal store rendered
