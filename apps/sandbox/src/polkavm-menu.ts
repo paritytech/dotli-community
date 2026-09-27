@@ -16,8 +16,8 @@ export function installPolkaVmMenu(
   options: {
     pause: (paused: boolean) => void;
     hasFileInput: boolean;
-    /** Host-granted network access lines; empty when the app has none. */
-    grants: readonly string[];
+    /** Lines describing network access the host granted this execution; read on every open. */
+    grants: () => readonly string[];
     retry: () => void;
     launcher: () => void;
     error?: string;
@@ -69,18 +69,21 @@ export function installPolkaVmMenu(
   const networkSummary = document.createElement("summary");
   networkSummary.textContent = "Network access";
   const networkList = document.createElement("ul");
-  for (const grant of options.grants) {
-    const item = document.createElement("li");
-    item.textContent = grant;
-    networkList.append(item);
-  }
-  if (options.grants.length === 0) {
-    const item = document.createElement("li");
-    item.textContent =
-      "This app has no network access beyond the host's own services.";
-    networkList.append(item);
-  }
   network.append(networkSummary, networkList);
+  const renderGrants = (): void => {
+    const grants = options.grants();
+    networkList.replaceChildren(
+      ...(grants.length === 0
+        ? ["This app has no network access beyond the host's own services."]
+        : grants
+      ).map((grant) => {
+        const item = document.createElement("li");
+        item.textContent = grant;
+        return item;
+      }),
+    );
+  };
+  renderGrants();
   const changeFile = options.hasFileInput
     ? button("Change Game / Choose file")
     : null;
@@ -107,6 +110,7 @@ export function installPolkaVmMenu(
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
+    renderGrants();
     options.pause(true);
     dialog.showModal();
     toggle.setAttribute("aria-expanded", "true");

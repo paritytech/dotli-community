@@ -2,22 +2,22 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
   "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "f32dd568586b44a5cfe06a57b7568bc998945146",
+  "upstreamRevision": "e7dbb0aad1ca89b00ff62988830d9cd84c6721a5",
   "pullRequest": "https://github.com/paritytech/host-rust-core/pull/1011",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.20.0",
-      "sourceArchiveSha256": "29167645dee203e780f2744961e39c5596100fbdb3ce5c47bd8eeae3c22805e6",
-      "clientSha256": "fe9c0e4b9c70e94a606680b7acc1ac608fb43d84ba381788be79c5d2e2e5601c"
+      "sourceArchiveSha256": "0f52a54805b6ed6207d3ed4ac53a68f6ccd8fd845bffe8533f729139f0b226a2",
+      "clientSha256": "ac9624bd52f9a97b172818aec6baab4290f6ccfb5930c46b6f9b2893b9b51f89"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.20.0",
       "sourceArchiveSha256": "f82ded96677563052600f87776dba74906dbf25c0c6e011680df0299daab7f97",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "b5876adb60c4f579644ae5f19df02474626542b0d554b67e70f1729fc957e4bc"
+      "wasmSha256": "9b9e1b6e06446cd494931528e32cceb6e8570125c379f53c2596baff0e7afe5e"
     }
   },
-  "wasmUpstreamRevision": "f32dd568586b44a5cfe06a57b7568bc998945146"
+  "wasmUpstreamRevision": "e7dbb0aad1ca89b00ff62988830d9cd84c6721a5"
 }

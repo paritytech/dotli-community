@@ -15,8 +15,9 @@ import { blockingModalAbortError } from "./blocking-modal-queue";
 // variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
 // Biometrics, Notifications), Chat identity authority, identity disclosure,
 // and the internal submitted gates (ChainSubmit, PreimageSubmit,
-// StatementSubmit). `OpenUrl` is auto-granted at the container level and never
-// reaches this modal.
+// StatementSubmit), plus JAM peer access (`JamPeers`), which names the JAM
+// network it covers. `OpenUrl` is auto-granted at the container level and
+// never reaches this modal.
 // Returns an explicit decision so callers can distinguish "Deny" from
 // dismissing the dialog without storing a denial. With `allowOnce`, the prompt
 // also offers a one-time grant and highlights it over "Always allow".
@@ -106,6 +107,26 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
 };
 
+const JAM_PEERS_ICON =
+  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>' +
+  '<line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>' +
+  '<line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+
+/** The question asked before an app may reach the validators of one JAM network. */
+export function jamPeersPermissionText(label: string, genesis: string): string {
+  return `Allow ${withActiveTld(label)} to connect to JAM network ${genesis.slice(0, 10)}… (read-only peer access, no accounts or signing)?`;
+}
+
+interface PermissionPrompt {
+  icon: string;
+  description: string;
+  /** Full value behind an abbreviated description, shown on hover. */
+  detail?: string;
+  /** Granting reloads the application (iframe `allow`-gated permissions). */
+  reloads: boolean;
+}
+
 export type PermissionPromptDecision =
   "granted" | "granted-once" | "denied" | "dismissed";
 
@@ -123,6 +144,47 @@ export function showPermissionRequestModal(
   signal?: AbortSignal,
   options: PermissionRequestModalOptions = {},
 ): Promise<PermissionPromptDecision> {
+  return showPermissionPrompt(
+    label,
+    {
+      icon: PERMISSION_ICONS[permission],
+      description: PERMISSION_DESCRIPTIONS[permission],
+      reloads: isDevicePermission(permission),
+    },
+    signal,
+    options,
+  );
+}
+
+/**
+ * Ask whether `label` may open read-only peer connections to the validators
+ * of the JAM network `genesis`. The core persists "Always allow" and "Deny"
+ * per product and genesis; "Allow once" lasts for the running execution.
+ */
+export function showJamPeersPermissionModal(
+  label: string,
+  genesis: string,
+  signal?: AbortSignal,
+): Promise<PermissionPromptDecision> {
+  return showPermissionPrompt(
+    label,
+    {
+      icon: JAM_PEERS_ICON,
+      description: jamPeersPermissionText(label, genesis),
+      detail: genesis,
+      reloads: false,
+    },
+    signal,
+    { allowOnce: true },
+  );
+}
+
+function showPermissionPrompt(
+  label: string,
+  prompt: PermissionPrompt,
+  signal: AbortSignal | undefined,
+  options: PermissionRequestModalOptions,
+): Promise<PermissionPromptDecision> {
   return new Promise((resolve, reject) => {
     const backdrop = document.createElement("div");
     backdrop.className = "signing-modal-backdrop";
@@ -133,7 +195,7 @@ export function showPermissionRequestModal(
     // Icon
     const iconWrap = document.createElement("div");
     iconWrap.className = "permission-modal-icon";
-    iconWrap.innerHTML = PERMISSION_ICONS[permission];
+    iconWrap.innerHTML = prompt.icon;
     modal.appendChild(iconWrap);
 
     // Heading
@@ -170,12 +232,15 @@ export function showPermissionRequestModal(
 
     const permValue = document.createElement("div");
     permValue.className = "signing-field-value";
-    permValue.textContent = PERMISSION_DESCRIPTIONS[permission];
+    permValue.textContent = prompt.description;
+    if (prompt.detail !== undefined) {
+      permValue.title = prompt.detail;
+    }
     permField.appendChild(permValue);
 
     desc.appendChild(permField);
 
-    if (isDevicePermission(permission)) {
+    if (prompt.reloads) {
       const notice = document.createElement("div");
       notice.className = "permission-modal-notice";
       notice.textContent =

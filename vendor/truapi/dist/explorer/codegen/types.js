@@ -3486,7 +3486,7 @@ export const types = [
             {
                 name: "NotGranted",
                 type: '{ tag: "NotGranted"; value?: undefined }',
-                description: "This execution has no peer-transport grant for the requested genesis.",
+                description: "The product holds no `RemotePermission::JamPeers` grant for the\nrequested genesis, or this host offers no peer transport.",
             },
             {
                 name: "Refused",
@@ -3515,7 +3515,7 @@ export const types = [
             {
                 name: "genesis",
                 type: "HexString",
-                description: "Genesis header hash; the host derives the ALPN from it and requires a\nmatching manifest grant.",
+                description: "Genesis header hash; the host derives the ALPN from it and requires a\n`RemotePermission::JamPeers` grant for it.",
             },
             {
                 name: "ip",
@@ -5655,8 +5655,8 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n;',
-        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered\nimplicitly by the corresponding business calls when not yet granted.",
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n;',
+        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also\ntriggered implicitly by the corresponding business calls when not yet\ngranted (`PeerTransport::dial` for `JamPeers`).",
         variants: [
             {
                 name: "Remote",
@@ -5682,6 +5682,11 @@ export const types = [
                 name: "StatementSubmit",
                 type: '{ tag: "StatementSubmit"; value?: undefined }',
                 description: "Submitting statements on behalf of the user via `remote_statement_store_submit`.",
+            },
+            {
+                name: "JamPeers",
+                type: '{ tag: "JamPeers"; value: { genesis: HexString } }',
+                description: "Read-only peer access over JAMNP-S QUIC/WebTransport to the validators\nof one JAM chain, through the `PeerTransport` service.\n\nThe app names the endpoints it dials; the grant covers only peers of\n`genesis`. Every byte received is untrusted, and the grant carries no\naccount, signing or submission authority.",
             },
         ],
     },

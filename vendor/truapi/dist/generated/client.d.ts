@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "848a3872e06c635b";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "f58208ff32af792b";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -263,9 +263,13 @@ export declare class PaymentClient {
  * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
  *
  * The host owns TLS, certificate verification and length framing; the guest
- * verifies every byte it consumes. Access requires the manifest capability
- * `capabilities.network.jam = { genesis }` and is granted only for that
- * genesis. A grant is separate from account, signing and storage authority.
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: `dial` requires
+ * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
+ * its `genesis`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted `dial` opened. A grant is
+ * separate from account, signing and storage authority.
  */
 export declare class PeerTransportClient {
     #private;

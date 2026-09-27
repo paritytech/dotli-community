@@ -3708,8 +3708,9 @@ export const VersionedRemoteChainTransactionStopResponse: Codec<VersionedRemoteC
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * \`ChainSubmit\`, \`PreimageSubmit\`, and \`StatementSubmit\` are also triggered
- * implicitly by the corresponding business calls when not yet granted.
+ * \`ChainSubmit\`, \`PreimageSubmit\`, \`StatementSubmit\` and \`JamPeers\` are also
+ * triggered implicitly by the corresponding business calls when not yet
+ * granted (\`PeerTransport::dial\` for \`JamPeers\`).
  */
 export type RemotePermission = 
 /**
@@ -3751,6 +3752,20 @@ export type RemotePermission =
  | {
     tag: "StatementSubmit";
     value?: undefined;
+}
+/**
+ * Read-only peer access over JAMNP-S QUIC/WebTransport to the validators
+ * of one JAM chain, through the \`PeerTransport\` service.
+ *
+ * The app names the endpoints it dials; the grant covers only peers of
+ * \`genesis\`. Every byte received is untrusted, and the grant carries no
+ * account, signing or submission authority.
+ */
+ | {
+    tag: "JamPeers";
+    value: {
+        genesis: HexString;
+    };
 };
 export const RemotePermission: Codec<RemotePermission>;
 /** Versioned envelope for [\`RemotePermissionError\`]. */
@@ -5263,7 +5278,7 @@ export const HostPeerTransportDialError: Codec<HostPeerTransportDialError>;
 export interface HostPeerTransportDialRequest {
     /**
      * Genesis header hash; the host derives the ALPN from it and requires a
-     * matching manifest grant.
+     * \`RemotePermission::JamPeers\` grant for it.
      */
     genesis: HexString;
     /** Peer IP address, IPv6 or v4-mapped IPv6. */
@@ -7383,7 +7398,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "848a3872e06c635b";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "f58208ff32af792b";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -7638,9 +7653,13 @@ export declare class PaymentClient {
  * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
  *
  * The host owns TLS, certificate verification and length framing; the guest
- * verifies every byte it consumes. Access requires the manifest capability
- * \`capabilities.network.jam = { genesis }\` and is granted only for that
- * genesis. A grant is separate from account, signing and storage authority.
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: \`dial\` requires
+ * [\`RemotePermission::JamPeers\`](crate::v01::RemotePermission::JamPeers) for
+ * its \`genesis\`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted \`dial\` opened. A grant is
+ * separate from account, signing and storage authority.
  */
 export declare class PeerTransportClient {
     #private;

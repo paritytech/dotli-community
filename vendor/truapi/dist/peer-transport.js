@@ -23,14 +23,6 @@ const recvResult = S.Result(T.VersionedHostPeerTransportRecvResponse, S.CallErro
 const resetResult = S.Result(T.VersionedHostPeerTransportResetResponse, S.CallError(T.VersionedHostPeerTransportResetError));
 const closeResult = S.Result(T.VersionedHostPeerTransportCloseResponse, S.CallError(T.VersionedHostPeerTransportCloseError));
 const eventsResult = S.Result(T.VersionedHostPeerTransportEventsResponse, S.CallError(T.VersionedHostPeerTransportEventsError));
-/** Validate and normalize the manifest `capabilities.network.jam.genesis` value. */
-export function validatePeerTransportGenesis(genesis) {
-    const hex = genesis.startsWith("0x") ? genesis.slice(2) : genesis;
-    if (!/^[0-9a-f]{64}$/.test(hex)) {
-        throw new Error("JAM genesis must be a 32-byte lower-case hex header hash");
-    }
-    return `0x${hex}`;
-}
 /** Trait id of a request frame, or `undefined` when it does not decode. */
 export function frameTraitId(frame) {
     const decoded = decodeWireMessage(frame);
@@ -93,12 +85,29 @@ export function peerUrl(ip, port) {
     return `https://[${groups.join(":")}]:${port}`;
 }
 /**
- * Create the browser PeerTransport endpoint for one execution. The host must
- * have checked the manifest grant before calling this constructor and must
- * fence late replies against execution stop or replacement.
+ * Create the browser PeerTransport endpoint for one execution. Every `dial`
+ * is authorized for its genesis through `options.authorize` before anything
+ * connects; the other methods act only on connections an authorized dial
+ * opened. The host must fence late replies against execution stop or
+ * replacement.
  */
 export function createPeerTransportSession(options) {
-    const genesis = validatePeerTransportGenesis(options.genesis);
+    const decisions = new Map();
+    const authorized = (genesis) => {
+        let decision = decisions.get(genesis);
+        if (decision === undefined) {
+            decision = (async () => {
+                try {
+                    return (await options.authorize(genesis)) === true;
+                }
+                catch {
+                    return false;
+                }
+            })();
+            decisions.set(genesis, decision);
+        }
+        return decision;
+    };
     const connect = options.connect ??
         ((url, hashes) => new WebTransport(url, {
             serverCertificateHashes: hashes.map((value) => ({ algorithm: "sha-256", value: value })),
@@ -230,8 +239,10 @@ export function createPeerTransportSession(options) {
         }
     };
     const dial = async (request) => {
-        if (request.genesis !== genesis)
+        if (!(await authorized(request.genesis)))
             return domain(dialResult, "NotGranted");
+        if (closed)
+            return frameworkResult.enc({ success: false, value: { tag: "Denied" } });
         if (connections.size >= PEER_TRANSPORT_MAX_CONNECTIONS)
             return domain(dialResult, "Limit");
         // Browsers only expose WebTransport; JAMNP-S QUIC needs the P-256 identity.

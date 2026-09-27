@@ -23,7 +23,10 @@ import {
   setPermissionStatus,
   type EnforceablePermissionName,
 } from "../permissions";
-import { showPermissionRequestModal } from "../permission-modal";
+import {
+  showJamPeersPermissionModal,
+  showPermissionRequestModal,
+} from "../permission-modal";
 import { showNotification } from "../notification";
 import {
   createBlockingModalScope,
@@ -36,8 +39,9 @@ import { ERRORS } from "../errors";
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
 // reliably intercepted from inside the sandbox. Auto-grant either.
+// `JamPeers` carries its genesis and has its own prompt.
 function gatedRemotePermissionName(
-  tag: RemotePermission["tag"],
+  tag: Exclude<RemotePermission["tag"], "JamPeers">,
 ): EnforceablePermissionName | null {
   switch (tag) {
     case "ChainSubmit":
@@ -76,7 +80,16 @@ export function createPromptPermission(
     _product,
     request,
   ) => {
-    const name = gatedRemotePermissionName(request.permission.tag);
+    const { permission } = request;
+    if (permission.tag === "JamPeers") {
+      return modalScope.enqueue((signal) =>
+        decideJamPeersPermission(label, permission.value.genesis, {
+          limiter,
+          signal,
+        }),
+      );
+    }
+    const name = gatedRemotePermissionName(permission.tag);
     if (name === null) {
       return "AllowOnce";
     }
@@ -89,6 +102,33 @@ export function createPromptPermission(
   };
 
   return { devicePermission, remotePermission };
+}
+
+// The core asks only while the product's stored decision for this genesis is
+// undetermined, and itself persists "Always allow" and "Deny" per product and
+// genesis, so the next dial of that network in any execution is answered
+// without a prompt. A dismissal stores nothing.
+async function decideJamPeersPermission(
+  label: string,
+  genesis: string,
+  options: { limiter: { allow: () => boolean }; signal: AbortSignal },
+): Promise<PermissionDecision> {
+  const { limiter, signal } = options;
+  if (!limiter.allow()) {
+    throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
+  }
+  const decision = await showJamPeersPermissionModal(label, genesis, signal);
+  throwIfAborted(signal);
+  switch (decision) {
+    case "dismissed":
+      throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
+    case "denied":
+      return "Deny";
+    case "granted":
+      return "AllowAlways";
+    case "granted-once":
+      return "AllowOnce";
+  }
 }
 
 interface PromptOptions {
