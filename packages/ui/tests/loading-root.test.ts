@@ -10,6 +10,7 @@ vi.mock("@dotli/metrics/sentry", () => sentry);
 type Ui = typeof import("@dotli/ui/ui");
 type Controller = typeof import("@dotli/ui/loading-controller");
 type AppRoots = typeof import("@dotli/ui/mount/app-roots");
+type LoadingState = typeof import("@dotli/ui/state/loading");
 
 // Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;
@@ -41,7 +42,7 @@ const PARKED_PHASES: LoadingPhase[] = [
 function installLoadingDom(): void {
   document.body.innerHTML = `
     <div id="app">
-      <div class="loading">
+      <div class="loading" id="app-loading">
         <div class="loading-progress" id="loading-progress">
           <div class="loading-progress-fill" id="loading-progress-fill"></div>
           <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
@@ -56,16 +57,18 @@ describe("The loading screen is a tracked app root", () => {
   let ui: Ui;
   let ctl: Controller;
   let roots: AppRoots;
+  let state: LoadingState;
 
   beforeEach(async () => {
     vi.resetModules();
     vi.useFakeTimers();
     installLoadingDom();
     // `ui.ts` binds `#app` when it loads, so it loads after the fixture.
-    [ui, ctl, roots] = await Promise.all([
+    [ui, ctl, roots, state] = await Promise.all([
       import("@dotli/ui/ui"),
       import("@dotli/ui/loading-controller"),
       import("@dotli/ui/mount/app-roots"),
+      import("@dotli/ui/state/loading"),
     ]);
   });
 
@@ -75,32 +78,30 @@ describe("The loading screen is a tracked app root", () => {
     vi.useRealTimers();
   });
 
+  /** Where the bar stands. */
+  const progress = (): number => state.getLoadingState().progress;
+
   /** Start a load whose bar is crawling. */
-  function startLoading(): HTMLElement {
-    const fill = document.getElementById("loading-progress-fill");
-    if (fill === null) {
-      throw new Error("fixture has no progress fill");
-    }
+  function startLoading(): void {
     ctl.initPhases(PHASES);
     ctl.advancePhase(0);
     // Prove the crawl really is running before anything stops it.
-    const before = fill.style.width;
+    const before = progress();
     vi.advanceTimersByTime(1_000);
-    expect(fill.style.width).not.toBe(before);
-    return fill;
+    expect(progress()).not.toBe(before);
   }
 
   it("As a visitor whose name has no content, the loading bar stops ticking behind the error", () => {
     // Given
-    const fill = startLoading();
+    startLoading();
 
     // When
     ui.showNoContentError("nothing");
-    const frozen = fill.style.width;
+    const frozen = progress();
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then no crawl tick lands after the error
-    expect(fill.style.width).toBe(frozen);
+    expect(progress()).toBe(frozen);
     expect(document.querySelector(".error-page-title")?.textContent).toBe(
       "This app can't be reached",
     );
@@ -108,15 +109,15 @@ describe("The loading screen is a tracked app root", () => {
 
   it("As a visitor whose load failed, the loading bar stops ticking behind the error", () => {
     // Given
-    const fill = startLoading();
+    startLoading();
 
     // When
     ui.showErrorPage({ title: "Failed" });
-    const frozen = fill.style.width;
+    const frozen = progress();
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then
-    expect(fill.style.width).toBe(frozen);
+    expect(progress()).toBe(frozen);
   });
 
   it("As a visitor whose load parked, the stall watch fires while the loading screen is up", () => {
@@ -189,17 +190,17 @@ describe("The loading screen is a tracked app root", () => {
 
   it("As the shell, disposing the loading root stops its timers and removes the overlay", () => {
     // Given
-    const fill = startLoading();
+    startLoading();
     const loading = document.querySelector("#app > .loading");
 
     // When
     roots.disposeAppRoot("loading");
-    const frozen = fill.style.width;
+    const frozen = progress();
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then
     expect(loading?.isConnected).toBe(false);
-    expect(fill.style.width).toBe(frozen);
+    expect(progress()).toBe(frozen);
   });
 
   it("As the shell, disposing the loading root stops the stall watch", () => {

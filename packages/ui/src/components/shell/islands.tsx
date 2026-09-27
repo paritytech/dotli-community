@@ -6,7 +6,8 @@
 // is prerendered and hydrated as it is; here each island is client-rendered
 // into a detached container and swapped in for those static nodes by id,
 // wherever they are now (the landing page, ui.ts, moves the theme nodes out
-// of `#shell`).
+// of `#shell`). The loading screen is an island too, over the static screen
+// apps/host/index.html paints in `#app` (see mountLoadingIsland).
 //
 // An island's root container is that detached element, so Solid's delegated
 // events (onClick, ...) would listen on a node outside the document: islands
@@ -15,9 +16,15 @@
 
 import type { JSX } from "@solidjs/web";
 import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
+import {
+  adoptLoadingScreen,
+  stopStaticSpinner,
+} from "../../loading-controller";
+import { getLoadingState } from "../../state/loading";
 import { AuthButton } from "./AuthButton";
 import { AuthModal } from "./AuthModal";
 import { ChainsPopover } from "./ChainsPopover";
+import { LoadingScreen } from "./LoadingScreen";
 import { MoreMenu } from "./MoreMenu";
 import { OfflineBanner } from "./OfflineBanner";
 import { PermissionsPopover } from "./PermissionsPopover";
@@ -84,12 +91,14 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
  * (reported by mountRoot) or an id is missing on either side (reported here
  * as `island_missing_node`), the static nodes stay and the island is
  * unmounted. Focus inside a static node moves into its replacement (see
- * carryFocus). Returns whether the island was swapped in.
+ * carryFocus). `beforeSwap` runs once the swap is certain, right before it.
+ * Returns whether the island was swapped in.
  */
 function mountIsland(
   name: string,
   view: () => JSX.Element,
   ids: string[],
+  beforeSwap?: () => void,
 ): boolean {
   const container = document.createElement("div");
   const dispose = mountRoot(`island:${name}`, container, view);
@@ -114,6 +123,7 @@ function mountIsland(
     }
     pairs.push([stale, fresh]);
   }
+  beforeSwap?.();
   const focused = document.activeElement;
   let refocus: [focused: Element, stale: Element, fresh: Element] | null = null;
   for (const [stale, fresh] of pairs) {
@@ -138,14 +148,53 @@ function mountIsolated(
   name: string,
   view: () => JSX.Element,
   ids: string[],
+  beforeSwap?: () => void,
 ): boolean {
   try {
-    return mountIsland(name, view, ids);
+    return mountIsland(name, view, ids, beforeSwap);
   } catch (err) {
     reportRootErrorOnce(err, `island:${name}`, { kind: "island_mount_error" });
     disposeRoot(`island:${name}`);
     return false;
   }
+}
+
+const LOADING_ID = "app-loading";
+
+/**
+ * Mount the loading screen island over the static screen from
+ * apps/host/index.html, and make it the `"loading"` app root: disposing that
+ * root (an error page, the product frame, the end of the dismiss fade) now
+ * disposes the island and removes its node, where before it removed the
+ * static screen. The root's timers still stop with it.
+ *
+ * Skipped when there is no screen left to take over: the static one is gone
+ * (an error page, a direct iframe render or the landing page replaced it) or
+ * the loading root was already disposed. Returns false only when mounting
+ * failed, which leaves the static screen and its inline spinner in place.
+ */
+export function mountLoadingIsland(): boolean {
+  if (
+    document.getElementById(LOADING_ID) === null ||
+    getLoadingState().phase === "gone"
+  ) {
+    return true;
+  }
+  const mounted = mountIsolated(
+    "loading",
+    () => <LoadingScreen />,
+    [LOADING_ID],
+    // The inline script would otherwise keep animating the detached petals.
+    stopStaticSpinner,
+  );
+  if (mounted) {
+    const screen = document.getElementById(LOADING_ID);
+    adoptLoadingScreen(() => {
+      disposeRoot("island:loading");
+      screen?.remove();
+    });
+  }
+  return mounted;
 }
 
 /**
@@ -198,5 +247,10 @@ export function mountIslands(): string[] {
   // id at click time, so they reach the live islands; the Chat row follows
   // the chat-panel store, which chat/panel.ts keeps from boot.
   mount("more", () => <MoreMenu />, ["more-button", "more-popover"]);
+  // Not a loader trigger: nothing on it is clickable. The one island that is
+  // also an app root (see mountLoadingIsland).
+  if (!mountLoadingIsland()) {
+    failed.push("loading");
+  }
   return failed;
 }

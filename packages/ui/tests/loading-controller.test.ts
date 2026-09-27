@@ -30,7 +30,7 @@ function stubMotionPreference(): void {
 function installLoadingDom(): void {
   document.body.innerHTML = `
     <div id="app">
-      <div class="loading">
+      <div class="loading" id="app-loading">
         <div class="loading-progress" id="loading-progress" aria-valuenow="0">
           <div class="loading-progress-fill" id="loading-progress-fill"></div>
           <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
@@ -355,68 +355,81 @@ describe("The loading controller drives the loading store", () => {
     expect(progress()).toBe(frozen);
   });
 
-  it("As a visitor, the interim renderer draws the store into the loading markup", () => {
+  it("As the shell, disposing the loading root before the island mounts removes the static screen and stops its spinner", async () => {
     // Given
-    reducedMotion = true;
+    const stopSpinner = vi.fn();
+    window.__stopLoadingSpinner = stopSpinner;
     ctl.initPhases([
-      { label: "a", base: 42, target: 50, expectedMs: 5_000, stage: "relay" },
+      { label: "a", base: 5, target: 90, expectedMs: 60_000, stage: "relay" },
     ]);
+    const screen = document.getElementById("app-loading");
+    const roots = await import("@dotli/ui/mount/app-roots");
 
     // When
-    ctl.advancePhase(0);
-    ctl.setLoadingWarning("Slow <b>peers</b>");
+    roots.disposeAppRoot("loading");
 
     // Then
-    const pct = document.getElementById("loading-progress-pct");
-    expect(document.getElementById("loading-progress-fill")?.style.width).toBe(
-      "42%",
-    );
-    expect(pct?.textContent).toBe("42%");
-    expect(
-      document
-        .getElementById("loading-progress")
-        ?.getAttribute("aria-valuenow"),
-    ).toBe("42");
-    expect(document.getElementById("status")?.textContent).toBe(
-      "Connecting to Polkadot",
-    );
-    expect(document.getElementById("status-sr")?.textContent).toBe(
-      "Connecting to Polkadot",
-    );
-    const warning = document.getElementById("loading-warning");
-    expect(warning?.classList.contains("visible")).toBe(true);
-    expect(document.getElementById("loading-warning-text")?.textContent).toBe(
-      "Slow <b>peers</b>",
-    );
-    expect(warning?.querySelector("b")).toBeNull();
-
-    // When
-    ctl.setLoadingWarning(null);
-
-    // Then
-    expect(warning?.classList.contains("visible")).toBe(false);
-    expect(document.getElementById("loading-warning-text")?.textContent).toBe(
-      "",
-    );
+    expect(screen?.isConnected).toBe(false);
+    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    delete window.__stopLoadingSpinner;
   });
 
-  it("As a visitor, the interim renderer fades the overlay and removes it after 300 ms", () => {
+  it("As a visitor whose app loaded before the island mounted, the static screen goes after 300 ms", () => {
     // Given
-    const loading = document.querySelector<HTMLElement>("#app > .loading");
+    const screen = document.getElementById("app-loading");
 
     // When
     ctl.dismissLoading();
+    vi.advanceTimersByTime(FADE_MS - 1);
 
     // Then
-    expect(loading?.style.opacity).toBe("0");
-    expect(loading?.style.pointerEvents).toBe("none");
-    expect(loading?.style.transition).toBe("opacity 0.3s ease");
-    expect(loading?.isConnected).toBe(true);
+    expect(screen?.isConnected).toBe(true);
 
     // When
-    vi.advanceTimersByTime(FADE_MS);
+    vi.advanceTimersByTime(1);
 
     // Then
-    expect(loading?.isConnected).toBe(false);
+    expect(screen?.isConnected).toBe(false);
+    expect(store.getLoadingState().phase).toBe("gone");
+  });
+
+  it("As the shell, a screen the island adopted is disposed with the loading root, timers and all", async () => {
+    // Given a crawling bar
+    ctl.initPhases([
+      { label: "a", base: 5, target: 90, expectedMs: 60_000, stage: "relay" },
+    ]);
+    ctl.advancePhase(0);
+    const disposeScreen = vi.fn();
+
+    // When the island takes the screen over
+    ctl.adoptLoadingScreen(disposeScreen);
+    const before = progress();
+    vi.advanceTimersByTime(1_000);
+
+    // Then nothing was disposed and the load goes on
+    expect(disposeScreen).not.toHaveBeenCalled();
+    expect(store.getLoadingState().phase).toBe("active");
+    expect(progress()).toBeGreaterThan(before);
+
+    // When
+    const roots = await import("@dotli/ui/mount/app-roots");
+    roots.disposeAppRoot("loading");
+    const frozen = progress();
+    vi.advanceTimersByTime(10_000);
+
+    // Then the island's dispose ran instead of the static fallback
+    expect(disposeScreen).toHaveBeenCalledTimes(1);
+    expect(document.getElementById("app-loading")?.isConnected).toBe(true);
+    expect(progress()).toBe(frozen);
+    expect(store.getLoadingState().phase).toBe("gone");
+
+    // When a late signal restarts a timer, the root is the static fallback
+    // again and never the disposed island
+    ctl.releasePhaseProgress();
+    ctl.setLoadingStage("content");
+    roots.disposeAppRoot("loading");
+
+    // Then
+    expect(disposeScreen).toHaveBeenCalledTimes(1);
   });
 });

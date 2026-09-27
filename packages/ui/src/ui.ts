@@ -12,7 +12,7 @@ import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
 import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
 import type { DotLabelResult } from "@dotli/shared/html";
 import { setProductError } from "./state/product";
-import { disposeAppRoots } from "./mount/app-roots";
+import { disposeAppRoot, disposeAppRoots } from "./mount/app-roots";
 
 const app = document.getElementById("app") ?? document.body;
 
@@ -295,6 +295,9 @@ export function showLanding(): void {
 
   app.style.marginTop = "0";
   app.style.minHeight = "100dvh";
+  // The landing page replaces the loading screen, so its root goes first,
+  // island and all, if the islands mounted before this.
+  disposeAppRoot("loading");
   app.innerHTML = `
     <div class="landing">
       <div class="landing-auth" id="landing-auth"></div>

@@ -2,16 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The loading screen's behaviour: the progress bar, the stage narration, the
-// stall watch and the dismiss. It writes the loading store and never touches
-// the DOM, so it stays on the startup path without Solid.
+// stall watch and the dismiss. It writes the loading store, which the loading
+// screen island (components/shell/LoadingScreen.tsx) renders, so it stays on
+// the startup path without Solid. The one DOM it touches is the static screen
+// from apps/host/index.html, which it removes when the loading root is
+// disposed before the island has taken the screen over.
 
 import { isSandboxOrigin } from "@dotli/config/config";
 import { withActiveTld } from "@dotli/config/network";
-import { registerAppRoot } from "./mount/app-roots";
+import { disposeAppRoot, registerAppRoot } from "./mount/app-roots";
 import { getLoadingState, updateLoading } from "./state/loading";
-import { renderLoadingDom } from "./loading-dom";
 
-renderLoadingDom();
+declare global {
+  interface Window {
+    /** Set by the inline petal spinner in apps/host/index.html. */
+    __stopLoadingSpinner?: () => void;
+  }
+}
 
 // Phase-based loading indicator.
 //
@@ -539,6 +546,23 @@ export function stopStatusTick(): void {
 /** True while the loading screen is registered as the `"loading"` app root. */
 let loadingRootLive = false;
 
+/** Stop the inline petal spinner that animates the static screen. */
+export function stopStaticSpinner(): void {
+  window.__stopLoadingSpinner?.();
+}
+
+/** The static screen apps/host/index.html paints, with its spinner. */
+function removeStaticScreen(): void {
+  stopStaticSpinner();
+  document.getElementById("app-loading")?.remove();
+}
+
+/**
+ * Takes the loading screen off the page, as part of disposing the loading
+ * root. The static screen until the island adopts it, then the island.
+ */
+let disposeScreen: () => void = removeStaticScreen;
+
 /**
  * Track the loading screen as the `"loading"` app root, so whatever replaces
  * it (the product frame, an error page) stops its timers instead of leaving
@@ -559,7 +583,22 @@ function trackLoadingRoot(): void {
     // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
     updateLoading({ phase: "gone" });
+    // A root registered again later, by a late signal, has no island left to
+    // dispose, only a static screen that is already gone.
+    const dispose = disposeScreen;
+    disposeScreen = removeStaticScreen;
+    dispose();
   });
+}
+
+/**
+ * Hand the loading root's screen over to the island that replaced the static
+ * one: disposing the root now runs `dispose` instead of removing the static
+ * screen. The root itself, and every timer it tracks, carries on untouched.
+ */
+export function adoptLoadingScreen(dispose: () => void): void {
+  disposeScreen = dispose;
+  trackLoadingRoot();
 }
 
 /**
@@ -583,11 +622,14 @@ export function dismissLoading(): void {
   if (getLoadingState().phase !== "active") {
     return;
   }
-  // The fade is a 0.3s opacity transition, so the screen goes once it ends.
+  // The fade is a 0.3s opacity transition, so the screen goes once it ends,
+  // with its root. Tracked first, so there is a root to dispose even for a
+  // screen whose load never started a timer.
+  trackLoadingRoot();
   updateLoading({ phase: "dismissing" });
   setTimeout(() => {
     if (getLoadingState().phase === "dismissing") {
-      updateLoading({ phase: "gone" });
+      disposeAppRoot("loading");
     }
   }, 300);
 }
