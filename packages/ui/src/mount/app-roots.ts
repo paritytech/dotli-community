@@ -9,8 +9,9 @@
  * disposes them through here rather than removing their nodes, so their timers
  * and listeners stop with them.
  *
- * Solid-free on purpose: `ui.ts` registers the loading root, and the sandbox
- * imports `ui.ts` without Solid on its startup path.
+ * Solid-free on purpose: `loading-controller.ts` registers the loading root
+ * on the host's startup path, and the sandbox imports `ui.ts`, which disposes
+ * the roots, without Solid on its startup path.
  */
 import { captureException } from "@dotli/metrics/sentry";
 

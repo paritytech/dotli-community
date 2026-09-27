@@ -28,6 +28,8 @@ import {
   showErrorPage,
   showNoContentError,
   showLanding,
+} from "@dotli/ui/ui";
+import {
   initPhases,
   advancePhase,
   nudgePhaseProgress,
@@ -39,8 +41,8 @@ import {
   stopStatusTick,
   listenForSandboxStatus,
   onSandboxDone,
-} from "@dotli/ui/ui";
-import type { LoadingPhase } from "@dotli/ui/ui";
+} from "@dotli/ui/loading-controller";
+import type { LoadingPhase } from "@dotli/ui/loading-controller";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
 import { chainRoleForKey } from "@dotli/ui/chain-roles";
 import type { ChainRole } from "@dotli/config/network";

@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoadingPhase } from "@dotli/ui/ui";
+import type { LoadingPhase } from "@dotli/ui/loading-controller";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
 
 type Ui = typeof import("@dotli/ui/ui");
+type Controller = typeof import("@dotli/ui/loading-controller");
 type AppRoots = typeof import("@dotli/ui/mount/app-roots");
 
-// Mirror of PROGRESS_STALL_MS in ui.ts.
+// Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;
 
 // One long clock-driven band, so the crawl moves the bar on every tick.
@@ -53,6 +54,7 @@ function installLoadingDom(): void {
 
 describe("The loading screen is a tracked app root", () => {
   let ui: Ui;
+  let ctl: Controller;
   let roots: AppRoots;
 
   beforeEach(async () => {
@@ -60,8 +62,9 @@ describe("The loading screen is a tracked app root", () => {
     vi.useFakeTimers();
     installLoadingDom();
     // `ui.ts` binds `#app` when it loads, so it loads after the fixture.
-    [ui, roots] = await Promise.all([
+    [ui, ctl, roots] = await Promise.all([
       import("@dotli/ui/ui"),
+      import("@dotli/ui/loading-controller"),
       import("@dotli/ui/mount/app-roots"),
     ]);
   });
@@ -78,8 +81,8 @@ describe("The loading screen is a tracked app root", () => {
     if (fill === null) {
       throw new Error("fixture has no progress fill");
     }
-    ui.initPhases(PHASES);
-    ui.advancePhase(0);
+    ctl.initPhases(PHASES);
+    ctl.advancePhase(0);
     // Prove the crawl really is running before anything stops it.
     const before = fill.style.width;
     vi.advanceTimersByTime(1_000);
@@ -119,11 +122,11 @@ describe("The loading screen is a tracked app root", () => {
   it("As a visitor whose load parked, the stall watch fires while the loading screen is up", () => {
     // Given
     const onStall = vi.fn();
-    ui.initPhases(PARKED_PHASES);
-    ui.onProgressStall(onStall);
+    ctl.initPhases(PARKED_PHASES);
+    ctl.onProgressStall(onStall);
 
     // When
-    ui.advancePhase(0);
+    ctl.advancePhase(0);
     vi.advanceTimersByTime(STALL_MS + 100);
 
     // Then the fixture really does stall, so the tests below can fail
@@ -133,9 +136,9 @@ describe("The loading screen is a tracked app root", () => {
   it("As a visitor whose name has no content, the stall watch does not fire behind the error", () => {
     // Given
     const onStall = vi.fn();
-    ui.initPhases(PARKED_PHASES);
-    ui.onProgressStall(onStall);
-    ui.advancePhase(0);
+    ctl.initPhases(PARKED_PHASES);
+    ctl.onProgressStall(onStall);
+    ctl.advancePhase(0);
 
     // When
     ui.showNoContentError("nothing");
@@ -202,9 +205,9 @@ describe("The loading screen is a tracked app root", () => {
   it("As the shell, disposing the loading root stops the stall watch", () => {
     // Given
     const onStall = vi.fn();
-    ui.initPhases(PARKED_PHASES);
-    ui.onProgressStall(onStall);
-    ui.advancePhase(0);
+    ctl.initPhases(PARKED_PHASES);
+    ctl.onProgressStall(onStall);
+    ctl.advancePhase(0);
 
     // When
     roots.disposeAppRoot("loading");
@@ -225,7 +228,7 @@ describe("The loading screen is a tracked app root", () => {
       roots.registerAppRoot("page", () => {
         throw failure;
       });
-      ui.initPhases(PHASES);
+      ctl.initPhases(PHASES);
       const loading = document.querySelector("#app > .loading");
 
       // When
@@ -244,11 +247,11 @@ describe("The loading screen is a tracked app root", () => {
 
   it("As the shell, starting the loading phases again keeps the overlay on screen", () => {
     // Given
-    ui.initPhases(PHASES);
+    ctl.initPhases(PHASES);
     const loading = document.querySelector("#app > .loading");
 
     // When
-    ui.initPhases(PHASES);
+    ctl.initPhases(PHASES);
 
     // Then
     expect(loading?.isConnected).toBe(true);
