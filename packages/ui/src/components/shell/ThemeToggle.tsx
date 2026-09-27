@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { themeStore, type ThemePref } from "../../state/theme";
 import { selectThemePref } from "../../theme-controller";
@@ -18,12 +17,16 @@ const THEME_LABEL: Record<ThemePref, string> = {
  * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`),
  * a shell island (see islands.tsx): Shell.tsx prerenders the same markup
  * statically (title "Theme", no option checked), and this component is
- * swapped in for it after boot. The menu is a modal menu (createPopover's
- * `menu` mode): opening focuses the checked option, ArrowUp/ArrowDown
- * (wrapping), Home and End move between options, Escape closes and hands
- * focus back to the button, and Tab is prevented. Picking an option applies
- * it through theme-controller.ts, closes the menu and focuses the button (or
- * the "More" button, when the theme button is hidden on narrow screens).
+ * swapped in for it after boot. The menu is a modal menu, like Radix
+ * DropdownMenu with a RadioGroup (createPopover's `menu` mode, which owns
+ * its keys and focus): a keyboard opening focuses the first option and a
+ * pointer opening the menu itself; ArrowUp/ArrowDown (wrapping), Home, End
+ * and typeahead move between the options (`menuitemradio`, `aria-checked`
+ * on the current one); Escape closes and hands focus back to the button;
+ * Tab is prevented; and a press outside closes it without reaching what is
+ * underneath. Picking an option applies it through theme-controller.ts,
+ * closes the menu and focuses the button (or the "More" button, when the
+ * theme button is hidden on narrow screens).
  *
  * The button's icon comes from CSS on `<html data-theme-pref>`, which the
  * inline bootstrap script and theme-controller.ts own, never this component.
@@ -43,50 +46,10 @@ export function ThemeToggle(): JSX.Element {
     surface: () => popover,
   });
 
-  const options = (): HTMLButtonElement[] =>
-    Array.from(
-      popover?.querySelectorAll<HTMLButtonElement>(".theme-popover-option") ??
-        [],
-    );
-
-  createEffect(menu.open, (open) => {
-    if (!open) {
-      return;
-    }
-    // Focus lands on the checked option so arrow keys and Escape work
-    // immediately after opening.
-    const all = options();
-    const checked = untrack(pref);
-    (
-      all.find((option) => option.dataset.themeOption === checked) ?? all[0]
-    ).focus();
-  });
-
-  // Native listeners (added in the refs below), not Solid's onClick/onKeyDown:
-  // Solid 2 delegates those to the root's container, which is the detached
-  // element the island renders into before it is swapped in (islands.tsx).
-  // The landing page (components/landing/) also moves the button and the
-  // menu around.
-  const onKeyDown = (e: KeyboardEvent): void => {
-    // Escape and Tab are the menu's (createPopover), which leaves the keys
-    // handled here alone.
-    const all = options();
-    const index = all.indexOf(document.activeElement as HTMLButtonElement);
-    let next: HTMLButtonElement | undefined;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      const delta = e.key === "ArrowDown" ? 1 : -1;
-      next = all[(index + delta + all.length) % all.length];
-    } else if (e.key === "Home") {
-      next = all[0];
-    } else if (e.key === "End") {
-      next = all[all.length - 1];
-    }
-    if (next !== undefined) {
-      e.preventDefault();
-      next.focus();
-    }
-  };
-
+  // Native listeners (added in the refs below), not Solid's onClick: Solid 2
+  // delegates it to the root's container, which is the detached element the
+  // island renders into before it is swapped in (islands.tsx). The landing
+  // page (components/landing/) also moves the button and the menu around.
   const onClick = (e: MouseEvent): void => {
     const option = (e.target as HTMLElement).closest<HTMLElement>(
       ".theme-popover-option",
@@ -166,13 +129,13 @@ export function ThemeToggle(): JSX.Element {
       <div
         ref={(el) => {
           popover = el;
-          el.addEventListener("keydown", onKeyDown);
           el.addEventListener("click", onClick);
         }}
         class={["more-popover theme-popover", { open: menu.open() }]}
         id="theme-popover"
         role="menu"
         aria-label="Theme"
+        tabindex="-1"
       >
         <button
           class="more-row theme-popover-option"

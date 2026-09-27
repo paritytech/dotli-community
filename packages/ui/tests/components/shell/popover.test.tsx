@@ -22,7 +22,7 @@ type HarnessOptions = Omit<PopoverOptions, "trigger" | "surface" | "mode">;
  * on it tests only what the popover does with it.
  */
 function renderPopover(
-  mode: PopoverMode,
+  mode: PopoverOptions["mode"],
   options: HarnessOptions = {},
   { empty = false, link = false }: { empty?: boolean; link?: boolean } = {},
 ): Popover & { unmount: () => void } {
@@ -633,6 +633,20 @@ describe("createPopover, menu mode (Radix DropdownMenu, modal)", () => {
     expect(popover.open()).toBe(false);
   });
 
+  it("As a mouse user whose click left focus on the trigger, opening the menu with a pointer moves focus to the menu content", async () => {
+    // Given: a browser that focuses a button on click keeps focus on the
+    // trigger through a pointer opening.
+    const popover = renderPopover("menu");
+    byId("trigger").focus();
+
+    // When
+    popover.toggle();
+    await settle();
+
+    // Then
+    expect(document.activeElement).toBe(byId("surface"));
+  });
+
   it("As a mouse user, opening the menu with a pointer focuses the menu content", async () => {
     // Given
     const popover = renderPopover("menu");
@@ -960,5 +974,50 @@ describe("createPopover, dialog mode (Radix Dialog, modal)", () => {
     expect(click.defaultPrevented).toBe(false);
     expect(popover.open()).toBe(false);
     expect(document.activeElement).toBe(byId("trigger"));
+  });
+});
+
+describe("createPopover, mode chosen on each opening", () => {
+  it("As a user, a mode given as a function is asked each time it opens, and that opening behaves in the mode it returned", async () => {
+    // Given
+    document.body.style.overflow = "scroll";
+    let mode: "popover" | "dialog" = "popover";
+    const popover = renderPopover(() => mode);
+
+    // When
+    await openPopover(popover);
+
+    // Then: a non-modal popover, which leaves Tab and scroll alone.
+    expect(document.activeElement).toBe(byId("first"));
+    byId("last").focus();
+    expect(press("Tab").defaultPrevented).toBe(false);
+    expect(document.body.style.overflow).toBe("scroll");
+
+    // When: it closes and opens again, now asked for a dialog.
+    popover.setOpen(false);
+    await settle();
+    mode = "dialog";
+    await openPopover(popover);
+
+    // Then
+    byId("last").focus();
+    const tab = press("Tab");
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(byId("first"));
+    expect(document.body.style.overflow).toBe("hidden");
+
+    // When: the mode changes while it is open.
+    mode = "popover";
+    byId("last").focus();
+
+    // Then: the opening keeps the mode it opened in.
+    expect(press("Tab").defaultPrevented).toBe(true);
+
+    // When
+    popover.setOpen(false);
+    await settle();
+
+    // Then
+    expect(document.body.style.overflow).toBe("scroll");
   });
 });

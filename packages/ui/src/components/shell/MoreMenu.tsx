@@ -13,8 +13,15 @@ import { createPopover } from "./popover";
  * click time, so it reaches whichever element holds that id then: the live
  * island, or the static button before it is swapped in (whose click the
  * islands loader holds back and replays). The Chat row shows whenever the
- * chat button does. The flyout is a modal menu (createPopover's `menu`
- * mode).
+ * chat button does.
+ *
+ * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
+ * `menu` mode, which owns its keys and focus), with the rows as its menu
+ * items. Choosing a row closes the flyout and hands focus back to the More
+ * button, then forwards the click, so the surface it opens takes focus as
+ * its own mode dictates, and hands it back to the More button when it
+ * closes (its own button being hidden on the narrow screens that show this
+ * menu).
  */
 export function MoreMenu(): JSX.Element {
   let button: HTMLButtonElement | undefined;
@@ -34,7 +41,7 @@ export function MoreMenu(): JSX.Element {
     // The row's own click must not reach a document-level close-outside
     // listener, which would see it as outside the popover it opens.
     e.stopPropagation();
-    menu.setOpen(false);
+    menu.onItemChosen();
     const targetId = row.dataset.target;
     if (targetId !== undefined) {
       document.getElementById(targetId)?.click();
@@ -52,6 +59,7 @@ export function MoreMenu(): JSX.Element {
         class="topbar-btn topbar-more-btn"
         title="More"
         aria-label="More"
+        aria-haspopup="menu"
         aria-expanded={menu.open() ? "true" : "false"}
         aria-controls="more-popover"
       >
@@ -68,10 +76,15 @@ export function MoreMenu(): JSX.Element {
         }}
         class={["more-popover", { open: menu.open() }]}
         id="more-popover"
+        role="menu"
+        aria-labelledby="more-button"
+        tabindex="-1"
       >
         <button
           class="more-row"
           id="more-row-chat"
+          role="menuitem"
+          tabindex="-1"
           data-target="chat-button"
           hidden={!chatButtonVisible(chat())}
         >
@@ -89,7 +102,12 @@ export function MoreMenu(): JSX.Element {
           </svg>
           <span>Chat</span>
         </button>
-        <button class="more-row" data-target="permissions-button">
+        <button
+          class="more-row"
+          role="menuitem"
+          tabindex="-1"
+          data-target="permissions-button"
+        >
           <svg
             width="14"
             height="14"
@@ -105,7 +123,12 @@ export function MoreMenu(): JSX.Element {
           </svg>
           <span>Permissions</span>
         </button>
-        <button class="more-row" data-target="theme-toggle">
+        <button
+          class="more-row"
+          role="menuitem"
+          tabindex="-1"
+          data-target="theme-toggle"
+        >
           <svg
             class="more-row-icon-sun"
             width="14"
@@ -157,7 +180,12 @@ export function MoreMenu(): JSX.Element {
           </svg>
           <span>Theme</span>
         </button>
-        <button class="more-row" data-target="mode-button">
+        <button
+          class="more-row"
+          role="menuitem"
+          tabindex="-1"
+          data-target="mode-button"
+        >
           <svg
             width="14"
             height="14"

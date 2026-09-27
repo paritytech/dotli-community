@@ -18,6 +18,12 @@ import { CacheToggle, RadioRow, SectionHeader } from "./SettingsRows";
 const SETTINGS_ICON_PATH =
   "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z";
 
+/**
+ * Where the popover becomes a full-screen sheet: the breakpoint of
+ * `.mode-popover` in styles/topbar.css.
+ */
+const SHEET_QUERY = "(max-width: 560px)";
+
 const CHAIN_CHOICES: [Backend, string][] = [
   [
     "smoldot-direct",
@@ -263,10 +269,14 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * worker choice the browser cannot run), and the boot's URL settings step
  * must see the saved value first.
  *
- * A press outside (the backdrop included), focus leaving it, Escape, the
- * mobile sheet's close button and a blocking modal close the popover, a
- * non-modal one (createPopover's `popover` mode); unless the user moved
- * focus elsewhere, it goes back to the button or, when that is hidden
+ * On a wide screen it is a non-modal popover (createPopover's `popover`
+ * mode): a press outside (the backdrop included), focus leaving it, Escape
+ * and a blocking modal close it. On a narrow screen, where CSS makes it a
+ * full-screen sheet, it is a modal dialog (`dialog` mode, `aria-modal`):
+ * Tab stays inside, the page does not scroll, and Escape, the sheet's close
+ * button and a blocking modal close it. The width is read at each opening,
+ * against the stylesheet's breakpoint. Unless the user moved focus
+ * elsewhere, closing hands it back to the button or, when that is hidden
  * (narrow screens), to the More button.
  * The popover's content stays after a close, for the fade-out, and is
  * rendered afresh on the next opening. The mobile "More" menu's Settings
@@ -275,8 +285,11 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
 export function SettingsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
+  /** Whether the current (or last) opening is the modal sheet. */
+  const [sheet, setSheet] = createSignal(false);
+  let sheetOpening = false;
   const surface = createPopover({
-    mode: "popover",
+    mode: () => (sheetOpening ? "dialog" : "popover"),
     trigger: () => button,
     surface: () => popover,
   });
@@ -296,6 +309,8 @@ export function SettingsPopover(): JSX.Element {
           el.addEventListener("click", () => {
             if (!untrack(surface.open)) {
               setOpening((n) => n + 1);
+              sheetOpening = window.matchMedia(SHEET_QUERY).matches;
+              setSheet(sheetOpening);
             }
             surface.toggle();
           });
@@ -342,6 +357,7 @@ export function SettingsPopover(): JSX.Element {
         id="mode-popover"
         role="dialog"
         aria-label="Settings"
+        aria-modal={surface.open() && sheet() ? "true" : undefined}
         tabindex="-1"
       >
         <div class="mode-popover-content" id="mode-popover-content">

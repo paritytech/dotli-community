@@ -31,6 +31,27 @@ function original(id: string): Element {
   return template.content.querySelector(`[id="${id}"]`) as Element;
 }
 
+/**
+ * The static markup plus the ARIA of a Radix DropdownMenu: the button
+ * announces the menu it opens, and the flyout is a focusable menu, named by
+ * the button, whose rows are menu items reached by roving focus.
+ */
+function expected(id: string): Element {
+  const el = original(id).cloneNode(true) as Element;
+  if (id === "more-button") {
+    el.setAttribute("aria-haspopup", "menu");
+  } else {
+    el.setAttribute("role", "menu");
+    el.setAttribute("aria-labelledby", "more-button");
+    el.setAttribute("tabindex", "-1");
+    for (const row of el.querySelectorAll(".more-row")) {
+      row.setAttribute("role", "menuitem");
+      row.setAttribute("tabindex", "-1");
+    }
+  }
+  return el;
+}
+
 function byId(id: string): HTMLElement {
   return document.getElementById(id) as HTMLElement;
 }
@@ -106,7 +127,7 @@ afterEach(() => {
 });
 
 describe("MoreMenu", () => {
-  it("As a mobile user, the More button and flyout render exactly the shell's static markup, closed and without the Chat row, with no warning", async () => {
+  it("As a mobile user, the More button and flyout render the shell's static markup plus the menu ARIA, closed and without the Chat row, with no warning", async () => {
     // Given
     const warn = vi.spyOn(console, "warn");
     const error = vi.spyOn(console, "error");
@@ -117,7 +138,7 @@ describe("MoreMenu", () => {
     // Then
     for (const id of ["more-button", "more-popover"]) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
-      expect(normalized(byId(id)).isEqualNode(normalized(original(id)))).toBe(
+      expect(normalized(byId(id)).isEqualNode(normalized(expected(id)))).toBe(
         true,
       );
     }
@@ -266,5 +287,111 @@ describe("MoreMenu", () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(byId("more-button").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("As a screen-reader user, the More button announces the menu it opens, and the rows are its menu items", async () => {
+    // When
+    await renderMenu();
+
+    // Then
+    const button = byId("more-button");
+    expect(button.getAttribute("aria-haspopup")).toBe("menu");
+    expect(button.getAttribute("aria-controls")).toBe("more-popover");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    const popover = byId("more-popover");
+    expect(popover.getAttribute("role")).toBe("menu");
+    expect(popover.getAttribute("aria-labelledby")).toBe("more-button");
+    expect(popover.getAttribute("tabindex")).toBe("-1");
+    for (const el of popover.querySelectorAll(".more-row")) {
+      expect(el.getAttribute("role")).toBe("menuitem");
+      expect(el.getAttribute("tabindex")).toBe("-1");
+    }
+  });
+
+  it("As a keyboard user, Enter on the More button opens the flyout on its first visible row, and the arrow keys and typeahead move between rows", async () => {
+    // Given
+    await renderMenu();
+    byId("more-button").focus();
+
+    // When
+    await pressKey("Enter");
+
+    // Then: the hidden Chat row is skipped.
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(row("permissions-button"));
+
+    // When / Then
+    await pressKey("ArrowDown");
+    expect(document.activeElement).toBe(row("theme-toggle"));
+    await pressKey("s");
+    expect(document.activeElement).toBe(row("mode-button"));
+    await pressKey("ArrowDown");
+    expect(document.activeElement).toBe(row("permissions-button"));
+    await pressKey("End");
+    expect(document.activeElement).toBe(row("mode-button"));
+  });
+
+  it("As a mouse user, tapping the More button focuses the flyout itself", async () => {
+    // When
+    await openMenu();
+
+    // Then
+    expect(document.activeElement).toBe(byId("more-popover"));
+  });
+
+  it("As a keyboard user, Tab in the open flyout is prevented, so focus stays in it", async () => {
+    // Given
+    await openMenu();
+    row("theme-toggle").focus();
+
+    // When
+    const tab = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    row("theme-toggle").dispatchEvent(tab);
+    await settle();
+
+    // Then
+    expect(tab.defaultPrevented).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(row("theme-toggle"));
+  });
+
+  it("As a mobile user, a tap outside the flyout only closes it: the tap does not reach what is underneath", async () => {
+    // Given
+    await openMenu();
+    const clicks = vi.fn();
+    byId("outside").addEventListener("click", clicks);
+
+    // When
+    pointerPress(byId("outside"));
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(clicks).not.toHaveBeenCalled();
+  });
+
+  it("As a keyboard user, choosing a row closes the flyout and hands focus back to the More button before the row forwards its click", async () => {
+    // Given
+    await openMenu();
+    const theme = target("theme-toggle");
+    let focusAtForward: Element | null = null;
+    theme.el.addEventListener("click", () => {
+      focusAtForward = document.activeElement;
+    });
+    row("theme-toggle").focus();
+
+    // When: a focused button turns Enter into a click.
+    row("theme-toggle").click();
+    await settle();
+
+    // Then
+    expect(theme.clicks()).toBe(1);
+    expect(focusAtForward).toBe(byId("more-button"));
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId("more-button"));
   });
 });

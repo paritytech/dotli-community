@@ -147,6 +147,29 @@ function withoutStoreState(el: Element): Element {
   return copy;
 }
 
+/**
+ * The static `el` plus the ARIA of a Radix DropdownMenu, which only the
+ * island renders: the menus take focus, the More button announces its menu,
+ * and the More flyout is a menu named by its button, of menu items.
+ */
+function withMenuAria(el: Element): Element {
+  const copy = el.cloneNode(true) as Element;
+  if (copy.id === "theme-popover") {
+    copy.setAttribute("tabindex", "-1");
+  } else if (copy.id === "more-button") {
+    copy.setAttribute("aria-haspopup", "menu");
+  } else if (copy.id === "more-popover") {
+    copy.setAttribute("role", "menu");
+    copy.setAttribute("aria-labelledby", "more-button");
+    copy.setAttribute("tabindex", "-1");
+    for (const row of copy.querySelectorAll(".more-row")) {
+      row.setAttribute("role", "menuitem");
+      row.setAttribute("tabindex", "-1");
+    }
+  }
+  return copy;
+}
+
 async function flushAll(): Promise<void> {
   flush();
   await Promise.resolve();
@@ -196,7 +219,11 @@ describe("shell islands", () => {
     const error = vi.spyOn(console, "error");
     const before = THEME_IDS.map((id) => {
       const el = byId(id);
-      return { el, place: placeOf(el), markup: withoutStoreState(el) };
+      return {
+        el,
+        place: placeOf(el),
+        markup: withMenuAria(withoutStoreState(el)),
+      };
     });
 
     // When
@@ -237,10 +264,10 @@ describe("shell islands", () => {
     btn.click();
     await flushAll();
 
-    // Then
+    // Then: a pointer opening focuses the menu itself.
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement).toBe(themeOption("light"));
+    expect(document.activeElement).toBe(byId("theme-popover"));
 
     // When
     themeOption("dark")?.click();
@@ -276,7 +303,7 @@ describe("shell islands", () => {
 
     // Then
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
-    expect(document.activeElement).toBe(themeOption("system"));
+    expect(document.activeElement).toBe(byId("theme-popover"));
   });
 
   it("As a keyboard user who had focused the static theme button, focus stays on the button once the island swaps in", async () => {
@@ -333,20 +360,23 @@ describe("shell islands", () => {
   });
 
   it("As a keyboard user focused on a static node whose live counterpart is not focusable, focus moves to the first focusable element in it", async () => {
-    // Given: the live `#theme-popover` is a plain div, not focusable.
-    const staticPopover = byId("theme-popover");
-    staticPopover.setAttribute("tabindex", "-1");
-    staticPopover.focus();
-    expect(document.activeElement).toBe(staticPopover);
+    // Given: the live `#topbar-url` is a plain div, not focusable, holding
+    // the shield button.
+    showProductPill("app", ".dot.li");
+    setVerificationShieldState("verified");
+    const staticUrl = byId("topbar-url");
+    staticUrl.setAttribute("tabindex", "-1");
+    staticUrl.focus();
+    expect(document.activeElement).toBe(staticUrl);
 
     // When
     mountIslands();
     await flushAll();
 
     // Then
-    expect(staticPopover.isConnected).toBe(false);
-    expect(byId("theme-popover").hasAttribute("tabindex")).toBe(false);
-    expect(document.activeElement).toBe(themeOption("light"));
+    expect(staticUrl.isConnected).toBe(false);
+    expect(byId("topbar-url").hasAttribute("tabindex")).toBe(false);
+    expect(document.activeElement).toBe(byId("verification-shield"));
   });
 
   it("As a keyboard user focused on a static node whose live counterpart has nothing focusable, the unfocusable live node is not focused", async () => {
@@ -700,7 +730,8 @@ describe("shell islands", () => {
     expect(byId("auth-modal-title").textContent).toBe(
       "app.dot is asking you to sign in",
     );
-    expect(document.activeElement).toBe(byId("auth-modal-backdrop"));
+    // Its first control, as a Radix Dialog focuses.
+    expect(document.activeElement).toBe(byId("auth-modal-close"));
   });
 
   it("As a visitor on the landing page, the auth button is swapped in where the page moved it, and opens the user popover there", async () => {
@@ -763,7 +794,7 @@ describe("shell islands", () => {
 
     // Then
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
-    expect(document.activeElement).toBe(themeOption("system"));
+    expect(document.activeElement).toBe(byId("theme-popover"));
 
     // When
     byId("auth-button").click();
@@ -996,7 +1027,11 @@ describe("shell islands", () => {
     const error = vi.spyOn(console, "error");
     const before = MORE_IDS.map((id) => {
       const el = byId(id);
-      return { el, place: placeOf(el), markup: withoutStoreState(el) };
+      return {
+        el,
+        place: placeOf(el),
+        markup: withMenuAria(withoutStoreState(el)),
+      };
     });
 
     // When

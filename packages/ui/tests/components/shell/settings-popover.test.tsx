@@ -16,6 +16,7 @@ import {
   tabTo,
 } from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
+import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
 import {
   oldModeBackdrop,
   oldModeButton,
@@ -149,6 +150,33 @@ function infoRow(label: string): HTMLElement {
     throw new Error(`no "${label}" row`);
   }
   return found;
+}
+
+/**
+ * The viewport width against the CSS breakpoint where the popover becomes a
+ * full-screen sheet, `(max-width: 560px)`: happy-dom cannot evaluate it.
+ * Flip `narrow` to resize.
+ */
+function stubViewport(narrow: boolean): { narrow: boolean } {
+  const viewport = { narrow };
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    get matches() {
+      return query === "(max-width: 560px)" && viewport.narrow;
+    },
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+  return viewport;
+}
+
+/** The popover's controls that Tab reaches, in order. */
+function tabbables(): HTMLElement[] {
+  return Array.from(
+    byId("mode-popover").querySelectorAll<HTMLElement>(
+      "button:not([disabled]), input:not([disabled])",
+    ),
+  ).filter((el) => !(el instanceof HTMLInputElement && !el.checked));
 }
 
 async function renderPopover({ seed = true } = {}): Promise<void> {
@@ -809,5 +837,123 @@ describe("The settings popover island", () => {
     expect(byId("mode-popover-backdrop").classList.contains("open")).toBe(
       false,
     );
+  });
+
+  it("As a mobile user, the full-screen settings sheet is a modal dialog: it traps Tab, keeps focus, locks the page scroll and says it is modal", async () => {
+    // Given
+    stubViewport(true);
+    document.body.style.overflow = "";
+    await renderPopover();
+    byId("mode-button").focus();
+
+    // When
+    await openPopover();
+
+    // Then
+    const popover = byId("mode-popover");
+    expect(popover.getAttribute("role")).toBe("dialog");
+    expect(popover.getAttribute("aria-modal")).toBe("true");
+    expect(popover.contains(document.activeElement)).toBe(true);
+    expect(document.body.style.overflow).toBe("hidden");
+
+    // When: Tab on the last control.
+    const controls = tabbables();
+    controls[controls.length - 1].focus();
+    const tab = press("Tab");
+
+    // Then: it wraps to the first.
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(controls[0]);
+
+    // When: focus lands outside, as a modal dialog never lets it.
+    byId("outside").focus();
+    await settle();
+
+    // Then: a dialog does not close on focus leaving it.
+    expect(isOpen()).toBe(true);
+
+    // When
+    (
+      document.querySelector(".mode-popover-sheet-close") as HTMLElement
+    ).click();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(popover.hasAttribute("aria-modal")).toBe(false);
+    expect(document.body.style.overflow).toBe("");
+  });
+
+  it("As a desktop user, the settings popover is not modal: no aria-modal, no scroll lock, and Tab moves on", async () => {
+    // Given
+    stubViewport(false);
+    document.body.style.overflow = "";
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byId("mode-popover").hasAttribute("aria-modal")).toBe(false);
+    expect(document.body.style.overflow).toBe("");
+    const controls = tabbables();
+    controls[controls.length - 1].focus();
+    expect(press("Tab").defaultPrevented).toBe(false);
+  });
+
+  it("As a user who resized the window, the settings open as a sheet or a popover by the width at each opening", async () => {
+    // Given: opened wide, then closed.
+    const viewport = stubViewport(false);
+    await renderPopover();
+    await openPopover();
+    expect(byId("mode-popover").hasAttribute("aria-modal")).toBe(false);
+    press("Escape");
+    await settle();
+
+    // When: narrowed, then opened again.
+    viewport.narrow = true;
+    await openPopover();
+
+    // Then
+    expect(byId("mode-popover").getAttribute("aria-modal")).toBe("true");
+    const controls = tabbables();
+    controls[controls.length - 1].focus();
+    expect(press("Tab").defaultPrevented).toBe(true);
+
+    // When: widened while open, then closed and opened.
+    viewport.narrow = false;
+    press("Escape");
+    await settle();
+    await openPopover();
+
+    // Then
+    expect(byId("mode-popover").hasAttribute("aria-modal")).toBe(false);
+  });
+
+  it("As a mobile user, the settings sheet I opened from the More menu takes focus, and closing it hands focus back to the More button", async () => {
+    // Given: on narrow screens CSS hides the settings button, so it cannot
+    // take focus; the sheet is reached through the More menu.
+    stubViewport(true);
+    await renderPopover();
+    cleanups.push(mountMoreMenu());
+    await settle();
+    byId("mode-button").focus = () => undefined;
+
+    // When
+    await tapMoreRow("mode-button");
+    await settle();
+
+    // Then
+    expect(byId("more-popover").classList.contains("open")).toBe(false);
+    expect(isOpen()).toBe(true);
+    expect(byId("mode-popover").contains(document.activeElement)).toBe(true);
+
+    // When
+    press("Escape");
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId("more-button"));
   });
 });

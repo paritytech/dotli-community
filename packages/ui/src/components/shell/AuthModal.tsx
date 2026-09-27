@@ -1,21 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createEffect,
-  createSignal,
-  Match,
-  Show,
-  Switch,
-  untrack,
-} from "solid-js";
+import { createEffect, createSignal, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { isMobileDevice } from "@dotli/shared/device";
 import { log } from "@dotli/shared/log";
 import { closeAuthModal, retryLogin } from "../../auth-controller";
-import { authModalStore, type AuthModalView } from "../../state/auth-modal";
+import {
+  authModalStore,
+  getAuthModalState,
+  type AuthModalView,
+} from "../../state/auth-modal";
 import { useStore } from "../use-store";
-import { containTab, focusLostOrInside, focusTrigger } from "./popover";
+import { createPopover } from "./popover";
 
 // Lists the current Polkadot Mobile store listings for phones without the app.
 const POLKADOT_MOBILE_DOWNLOAD_URL = "https://docs.polkadot.com/apps/";
@@ -91,8 +88,10 @@ function ErrorBody(props: { view: ErrorView }): JSX.Element {
  * "Show QR instead", and the "get the app" link shows until pairing is past
  * the QR.
  *
- * While open it is a modal dialog: it takes the focus, keeps Tab inside, and
- * gives the focus back to the auth button when it closes. Escape, Cancel
+ * While open it is a modal dialog, like Radix Dialog (createPopover's
+ * `dialog` mode, driven by the store's `open`): it focuses its first control
+ * (links skipped) or else itself, keeps Tab inside, stops the page scrolling,
+ * and gives the focus back to the auth button when it closes. Escape, Cancel
  * and a click on the backdrop itself close it, which cancels the login.
  * It is itself a blocking modal (the controller opens it only once it holds
  * the blocking-modal lease), so it never closes on one coming up.
@@ -162,47 +161,36 @@ export function AuthModal(): JSX.Element {
     return d !== null && d.payload === pairingPayload() ? d : undefined;
   };
 
-  // The focus trap, while open.
+  const dialog = createPopover({
+    mode: "dialog",
+    trigger: authButton,
+    surface: () => backdrop,
+    closeOnBlockingModal: false,
+    onClose: () => {
+      // Escape closed it: close the store too, which cancels the login. A
+      // close that came from the store (Cancel, the backdrop, a finished
+      // login) finds it closed already.
+      if (getAuthModalState().open) {
+        closeAuthModal();
+      }
+    },
+  });
+  // The dialog follows the store.
   createEffect(
     () => state().open,
     (open) => {
-      const surface = backdrop;
-      if (!open || surface === undefined) {
+      if (!open || backdrop?.isConnected !== false) {
+        dialog.setOpen(open);
         return;
       }
-      const onKeyDown = (ev: KeyboardEvent): void => {
-        // A modal removed from the document must not keep acting on keys.
-        if (!surface.isConnected) {
-          return;
+      // Already open as the island mounts: it renders detached and is
+      // swapped in right after (islands.tsx), so open the dialog, which
+      // takes the focus, once it is in the document.
+      queueMicrotask(() => {
+        if (getAuthModalState().open) {
+          dialog.setOpen(true);
         }
-        if (ev.key === "Escape") {
-          closeAuthModal();
-        } else if (ev.key === "Tab") {
-          containTab(ev, surface);
-        }
-      };
-      document.addEventListener("keydown", onKeyDown);
-      let trapped = true;
-      if (surface.isConnected) {
-        surface.focus();
-      } else {
-        // Already open as the island mounts: it renders detached and is
-        // swapped in right after (islands.tsx), so take the focus then.
-        queueMicrotask(() => {
-          if (trapped) {
-            surface.focus();
-          }
-        });
-      }
-      return () => {
-        trapped = false;
-        document.removeEventListener("keydown", onKeyDown);
-        // Closed, not disposed while open: restore focus unless the user
-        // already moved it elsewhere.
-        if (!untrack(() => state().open) && focusLostOrInside(surface)) {
-          focusTrigger(authButton());
-        }
-      };
+      });
     },
   );
 

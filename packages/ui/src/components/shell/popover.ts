@@ -24,8 +24,13 @@ import { useStore } from "../use-store";
 export type PopoverMode = "popover" | "menu" | "dialog";
 
 export interface PopoverOptions {
-  /** See PopoverMode. */
-  mode: PopoverMode;
+  /**
+   * See PopoverMode. A function is asked at each opening, and that opening
+   * keeps the mode it returned until it closes: for a surface whose layout
+   * decides (the settings popover, a modal sheet on narrow screens). A menu
+   * is always a menu, so a function cannot return one.
+   */
+  mode: PopoverMode | (() => Exclude<PopoverMode, "menu">);
   /** The button that opens the popover. */
   trigger: () => HTMLElement | undefined;
   /** The popover itself. */
@@ -87,7 +92,7 @@ function focusables(surface: HTMLElement): HTMLElement[] {
 }
 
 /** Keeps Tab and Shift+Tab inside `surface`. */
-export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
+function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
   const items = focusables(surface);
   if (items.length === 0) {
     ev.preventDefault();
@@ -108,7 +113,7 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
 }
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
-export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
+function focusLostOrInside(surface: HTMLElement | undefined): boolean {
   const active = document.activeElement;
   return (
     active === null ||
@@ -121,7 +126,7 @@ export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
  * Focus the trigger. A trigger hidden on narrow screens (reached through the
  * "more" menu) cannot take focus, so the "more" button gets it instead.
  */
-export function focusTrigger(trigger: HTMLElement | undefined): void {
+function focusTrigger(trigger: HTMLElement | undefined): void {
   trigger?.focus();
   if (trigger !== undefined && document.activeElement !== trigger) {
     document.getElementById("more-button")?.focus();
@@ -218,6 +223,8 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * - `dialog`: Tab and Shift+Tab are trapped inside, and the page does not
  *   scroll while it is open.
  *
+ * A `mode` function picks `popover` or `dialog` afresh at each opening.
+ *
  * Key events a component handled already (`defaultPrevented`) are left
  * alone. Call it inside a component: its listeners go when the component is
  * disposed, and those for the open state when it closes.
@@ -307,7 +314,8 @@ export function createPopover(options: PopoverOptions): Popover {
     if (!isOpen) {
       return;
     }
-    const mode = options.mode;
+    const mode =
+      typeof options.mode === "function" ? options.mode() : options.mode;
     keepFocus = false;
     const keyboard = openedWithKeyboard;
     openedWithKeyboard = false;

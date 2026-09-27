@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
 import { AuthModal } from "@dotli/ui/components/shell/AuthModal";
 import { setAuthState } from "@dotli/ui/state/auth";
+import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
 import { renderComponent } from "../../helpers/solid";
 import {
@@ -408,9 +410,7 @@ describe("AuthModal login flow", () => {
     await authState(pairing());
 
     // Then
-    const backdrop = byId("auth-modal-backdrop");
     expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(backdrop);
 
     // When
     press("Escape");
@@ -445,6 +445,86 @@ describe("AuthModal login flow", () => {
     // Then
     expect(shiftTab.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(byId("auth-modal-close"));
+  });
+
+  it("As a keyboard user, the open modal focuses its first control, not a link, as a Radix Dialog does", async () => {
+    // Given
+    await renderModal();
+    byId("auth-button").focus();
+
+    // When
+    await authState(pairing());
+
+    // Then: the get-app link is hidden on desktop, and the QR (a canvas)
+    // takes no focus, so Cancel is the first control.
+    expect(document.activeElement).toBe(byId("auth-modal-close"));
+  });
+
+  it("As a user, the page does not scroll behind the open modal, and scrolls again once it closes", async () => {
+    // Given
+    document.body.style.overflow = "auto";
+    await renderModal();
+
+    // When
+    await authState(pairing());
+
+    // Then
+    expect(document.body.style.overflow).toBe("hidden");
+
+    // When
+    byId("auth-modal-close").click();
+    await settleQr();
+
+    // Then
+    expect(document.body.style.overflow).toBe("auto");
+    document.body.style.overflow = "";
+  });
+
+  it("As a user, the modal stays open, focused and trapping Tab through its own blocking-modal lease, while the theme menu closes for it", async () => {
+    // Given: the theme menu is open when a product asks for a login.
+    renderComponent(() => <ThemeToggle />);
+    await renderModal();
+    byId("theme-toggle").click();
+    await settleQr();
+    expect(byId("theme-popover").classList.contains("open")).toBe(true);
+
+    // When: the controller takes the lease, which marks a blocking modal up.
+    await authState(pairing());
+    setBlockingModalActive(true);
+    await settleQr();
+
+    // Then
+    expect(byId("theme-popover").classList.contains("open")).toBe(false);
+    expect(isOpen()).toBe(true);
+    expect(byId("auth-modal-backdrop").contains(document.activeElement)).toBe(
+      true,
+    );
+    byId("auth-modal-close").focus();
+    const tab = press("Tab");
+    expect(tab.defaultPrevented).toBe(true);
+    expect(byId("auth-modal-backdrop").contains(document.activeElement)).toBe(
+      true,
+    );
+    setBlockingModalActive(false);
+  });
+
+  it("As a user, when my login completes the modal closes and focus goes back to the auth button", async () => {
+    // Given
+    await renderModal();
+    await authState(pairing());
+    expect(byId("auth-modal-backdrop").contains(document.activeElement)).toBe(
+      true,
+    );
+
+    // When
+    await authState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId("auth-button"));
   });
 
   it("As a dotli integrator, the host closes the pairing modal when the session connects", async () => {

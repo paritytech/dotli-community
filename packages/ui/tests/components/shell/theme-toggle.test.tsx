@@ -84,6 +84,19 @@ async function openThemeMenu(
   return themeButton();
 }
 
+/** Open the menu from the keyboard: Enter on the focused theme button. */
+async function openThemeMenuWithKeyboard(
+  stored: "light" | "dark" | "system",
+  os: "light" | "dark",
+): Promise<HTMLButtonElement> {
+  await renderToggle(stored, os);
+  themeButton().focus();
+  const event = await pressThemeKey("Enter");
+  expect(event.defaultPrevented).toBe(true);
+  expect(isOpen()).toBe(true);
+  return themeButton();
+}
+
 async function pressThemeKey(key: string): Promise<KeyboardEvent> {
   const event = new KeyboardEvent("keydown", {
     key,
@@ -115,6 +128,7 @@ describe("ThemeToggle", () => {
     expect(popover.className).toBe("more-popover theme-popover");
     expect(popover.getAttribute("role")).toBe("menu");
     expect(popover.getAttribute("aria-label")).toBe("Theme");
+    expect(popover.getAttribute("tabindex")).toBe("-1");
     const options = Array.from(
       popover.querySelectorAll<HTMLButtonElement>(".theme-popover-option"),
     );
@@ -152,7 +166,8 @@ describe("ThemeToggle", () => {
     expect(themeOption("light")?.getAttribute("aria-checked")).toBe("true");
     expect(themeOption("dark")?.getAttribute("aria-checked")).toBe("false");
     expect(themeOption("system")?.getAttribute("aria-checked")).toBe("false");
-    expect(document.activeElement).toBe(themeOption("light"));
+    // A pointer opening focuses the menu itself, as in Radix DropdownMenu.
+    expect(document.activeElement).toBe(popover);
     expect(btn.title).toBe("Theme: Light");
     expect(btn.getAttribute("aria-label")).toBe("Theme: Light");
   });
@@ -211,9 +226,18 @@ describe("ThemeToggle", () => {
     expect(themeButton().title).toBe("Theme: System");
   });
 
+  it("As a keyboard user, Enter on the theme button opens the menu on its first option, whichever is checked", async () => {
+    // When
+    await openThemeMenuWithKeyboard("system", "dark");
+
+    // Then: Radix DropdownMenu focuses the first item, not the checked one.
+    expect(document.activeElement).toBe(themeOption("light"));
+    expect(themeOption("system")?.getAttribute("aria-checked")).toBe("true");
+  });
+
   it("As a keyboard user, I press ArrowDown in the theme menu and focus moves to the next option", async () => {
     // Given
-    await openThemeMenu("light", "dark");
+    await openThemeMenuWithKeyboard("light", "dark");
 
     // When
     const event = await pressThemeKey("ArrowDown");
@@ -225,7 +249,8 @@ describe("ThemeToggle", () => {
 
   it("As a keyboard user, I press ArrowDown on the last theme option and focus wraps to the first", async () => {
     // Given
-    await openThemeMenu("system", "dark");
+    await openThemeMenuWithKeyboard("system", "dark");
+    await pressThemeKey("End");
 
     // When
     await pressThemeKey("ArrowDown");
@@ -236,7 +261,7 @@ describe("ThemeToggle", () => {
 
   it("As a keyboard user, I press ArrowUp on the first theme option and focus wraps to the last", async () => {
     // Given
-    await openThemeMenu("light", "dark");
+    await openThemeMenuWithKeyboard("light", "dark");
 
     // When
     await pressThemeKey("ArrowUp");
@@ -247,7 +272,8 @@ describe("ThemeToggle", () => {
 
   it("As a keyboard user, I press Home in the theme menu and focus moves to the first option", async () => {
     // Given
-    await openThemeMenu("system", "dark");
+    await openThemeMenuWithKeyboard("system", "dark");
+    await pressThemeKey("End");
 
     // When
     await pressThemeKey("Home");
@@ -258,13 +284,51 @@ describe("ThemeToggle", () => {
 
   it("As a keyboard user, I press End in the theme menu and focus moves to the last option", async () => {
     // Given
-    await openThemeMenu("light", "dark");
+    await openThemeMenuWithKeyboard("light", "dark");
 
     // When
     await pressThemeKey("End");
 
     // Then
     expect(document.activeElement).toBe(themeOption("system"));
+  });
+
+  it("As a keyboard user, typing a letter in the theme menu focuses the option starting with it", async () => {
+    // Given
+    await openThemeMenuWithKeyboard("light", "dark");
+
+    // When
+    const event = await pressThemeKey("s");
+
+    // Then
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(themeOption("system"));
+
+    // When
+    await pressThemeKey("D");
+
+    // Then
+    expect(document.activeElement).toBe(themeOption("dark"));
+  });
+
+  it("As a mouse user whose click left focus on the theme button, the menu still takes focus", async () => {
+    // Given: a browser that focuses a button on click.
+    await renderToggle("dark", "dark");
+    themeButton().focus();
+
+    // When
+    themeButton().click();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(themePopover());
+
+    // When: the arrow keys work from the menu itself.
+    await pressThemeKey("ArrowDown");
+
+    // Then
+    expect(document.activeElement).toBe(themeOption("light"));
   });
 
   it("As a keyboard user, I press Escape in the theme menu and it closes without changing the theme", async () => {
@@ -283,7 +347,7 @@ describe("ThemeToggle", () => {
 
   it("As a keyboard user, I press Tab in the theme menu and nothing happens: focus stays in the open menu", async () => {
     // Given
-    const btn = await openThemeMenu("light", "dark");
+    const btn = await openThemeMenuWithKeyboard("light", "dark");
     const focused = document.activeElement;
 
     // When
@@ -298,7 +362,7 @@ describe("ThemeToggle", () => {
 
   it("As a keyboard user, I press Enter on a focused option and it selects that theme", async () => {
     // Given
-    const btn = await openThemeMenu("light", "dark");
+    const btn = await openThemeMenuWithKeyboard("light", "dark");
     await pressThemeKey("ArrowDown");
 
     // When: a focused button turns Enter into a click.
@@ -321,6 +385,23 @@ describe("ThemeToggle", () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(btn.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("As a dotli user, a click outside the theme menu only closes it: the click does not reach what is underneath", async () => {
+    // Given
+    await openThemeMenu("dark", "dark");
+    const outside = document.getElementById("outside") as HTMLElement;
+    const clicks = vi.fn();
+    outside.addEventListener("click", clicks);
+
+    // When
+    pointerPress(outside);
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(clicks).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(outside);
   });
 
   it("As a dotli user, the theme menu closes when a blocking modal comes up", async () => {
@@ -350,7 +431,33 @@ describe("ThemeToggle", () => {
       document.getElementById("more-popover")?.classList.contains("open"),
     ).toBe(false);
     expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(themeOption("dark"));
+    expect(document.activeElement).toBe(themePopover());
+    unmountMore();
+  });
+
+  it("As a mobile user, the theme menu I opened from the More menu takes focus, and Escape hands it back to the More button", async () => {
+    // Given: on narrow screens CSS hides the theme button, so it cannot take
+    // focus.
+    await renderToggle("dark", "dark");
+    const unmountMore = mountMoreMenu();
+    themeButton().focus = () => undefined;
+
+    // When
+    await tapMoreRow("theme-toggle");
+    await settle();
+
+    // Then: the theme menu took focus, and its keys work.
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(themePopover());
+    await pressThemeKey("ArrowDown");
+    expect(document.activeElement).toBe(themeOption("light"));
+
+    // When
+    await pressThemeKey("Escape");
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(document.getElementById("more-button"));
     unmountMore();
   });
 
@@ -413,13 +520,13 @@ describe("ThemeToggle", () => {
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(themeOption("light"));
+    expect(document.activeElement).toBe(themePopover());
 
     // When
     await pressThemeKey("ArrowDown");
 
     // Then
-    expect(document.activeElement).toBe(themeOption("dark"));
+    expect(document.activeElement).toBe(themeOption("light"));
 
     // When
     themeOption("dark")?.click();
