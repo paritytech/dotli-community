@@ -1035,3 +1035,24 @@ machine (`PERF_RUNS=20`, Playwright called directly because `test:perf` pins
 (context, not gated): p50 4,123 ms → 4,232 ms (+2.64%), p95 6,372 ms →
 5,543 ms.
 Gate (no regression beyond 5%): **pass**.
+
+## After the Radix focus work (popover, menu and dialog modes)
+
+The shell popovers, menus and dialogs now follow Radix Popover, DropdownMenu
+and Dialog focus behaviour (`c4d3aef4..a70cd053`). The change rewires
+listeners and ARIA only, with no new dependencies. Both builds use
+`VITE_NETWORKS=paseo-next-v2,previewnet`; `d92315f3` was rebuilt fresh in a
+temporary worktree.
+
+| Measurement | `d92315f3` (end of SP3) | `a70cd053` | Δ |
+|---|---:|---:|---:|
+| Host startup, eager path (gzip) | 89,164 B | 89,175 B | **+11 B** |
+| Islands chunk (lazy, gzip) | 17,224 B | 18,024 B | +800 B |
+
+The host limit was raised by owner decision on 2026-09-27 to +35 KB over the
+pre-migration 74,649 B, i.e. 110,489 B. HEAD is at +14,526 B, leaving
+**21,314 B of margin**. The islands chunk stays under its 20 KB gzip target.
+
+Functional suite (`bun run test:functional`, including `ui-smoke` and
+`host-settings`): 71 passed, 2 skipped, 0 failed. Cold start was not re-run,
+because this change does no startup work.
