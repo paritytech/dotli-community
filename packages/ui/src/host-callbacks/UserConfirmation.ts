@@ -267,8 +267,8 @@ function createSignPayloadFields(
   if (review.tag === "Product") {
     return createPayloadFields(
       label,
-      formatProductAccount(review.value.account),
-      review.value.payload,
+      formatProductAccount(review.value.request.account),
+      review.value.request.payload,
     );
   }
 
@@ -311,10 +311,11 @@ function createTransactionFields(
   label: string,
   review: CreateTransactionReview,
 ): ConfirmationField[] {
-  const payload = review.value;
+  const payload =
+    review.tag === "Product" ? review.value.payload : review.value;
   const signer =
     review.tag === "Product"
-      ? formatProductAccount(review.value.signer)
+      ? formatProductAccount(review.value.payload.signer)
       : review.value.signer;
 
   return [

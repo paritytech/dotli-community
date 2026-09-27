@@ -38,7 +38,7 @@ export const CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
  */
-export const CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: ProductAccountTxPayload, LegacyAccount: LegacyAccountTxPayload }));
+export const CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: ProductAccountTxPayload }), LegacyAccount: LegacyAccountTxPayload }));
 /**
  * What the operating system currently says about a device capability.
  *
@@ -174,13 +174,13 @@ export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identit
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */
-export const SignPayloadReview = S.lazy(() => S.TaggedUnion({ Product: HostSignPayloadRequest, LegacyAccount: HostSignPayloadWithLegacyAccountRequest }));
+export const SignPayloadReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: HostSignPayloadRequest }), LegacyAccount: HostSignPayloadWithLegacyAccountRequest }));
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
  * Hosts must display the payload according to `watermarked` and warn that
  * unwatermarked signatures can authorize transactions.
  */
-export const SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ request: HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
+export const SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
 /**
  * Review shown before signing an RFC-0023 VRF transcript.
  */
@@ -191,7 +191,7 @@ export const SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, re
  * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
  * not present it with the raw-signing convention.
  */
-export const StatementStoreProductSignReview = S.lazy(() => S.Struct({ account: ProductAccountId, payload: S.Bytes() }));
+export const StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingProductId: S.Option(S.str), account: ProductAccountId, payload: S.Bytes() }));
 /**
  * Review shown before a user-confirmed core action continues.
  */

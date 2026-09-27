@@ -91,10 +91,58 @@ export interface WorkerSigningHostRuntime extends Omit<WorkerPairingHostRuntime,
     /** Complete native UID auth/proofs and wait for on-chain ownership confirmation. */
     registerLocalLiteUsername(baseUsername: string, identityBackendBaseUrl: string, onProgress?: (progress: LocalIdentityProgress) => void): Promise<LocalIdentity>;
 }
+/**
+ * Why the wire debugger is (not) enabled, so a no-dial is never silent. No
+ * browser store and no runtime switch: the host passes the dial in, the build's
+ * value is the default, and it is resolved once.
+ */
+export type DebuggerEnablement = {
+    readonly url: string | null;
+    readonly reason: "enabled-from-option" | "enabled-from-build" | "production-build" | "production-build-configured" | "refused-not-loopback" | "not-configured";
+};
+/**
+ * Which of the two production verdicts applies. The build half is the one that
+ * matters: the env var is substituted at build time, so it is still readable in
+ * a production bundle, and a build made with it but without
+ * `NODE_ENV=development` is exactly the case that must not go quiet.
+ */
+export declare function productionReason(fromOption: string | null | undefined, fromBuild: string | null): "production-build" | "production-build-configured";
+/**
+ * Resolve the dev-build switches into one verdict. Exported so the precedence is
+ * testable without a bundler.
+ *
+ * Precedence, where an omitted option is the only one that defers to the build:
+ *
+ *  - option set to a URL  -> dial it, whatever the build says
+ *  - option set null/""   -> OFF, whatever the build says
+ *  - option omitted       -> the build's value, if it carries one
+ *
+ * Folding `null` in with "omitted" is the easy mistake: it falls through to the
+ * build, leaving an embedder that compiled a URL in no way to refuse the dial
+ * short of rebuilding. A resolved URL is loopback `ws://` or it is refused (§6).
+ */
+export declare function resolveDebuggerEnablement(fromOption: string | null | undefined, fromBuild: string | null): DebuggerEnablement;
 interface CreateWebWorkerHostRuntimeOptions {
     logLevel?: LogLevel;
     hostConfig: WebWorkerHostConfig | WebWorkerSigningHostConfig;
     initTimeoutMs?: number;
+    /**
+     * Dev-only: a loopback `ws://` wire debugger to stream tapped frames to.
+     *
+     * Omit to take what the build was compiled with
+     * (`VITE_TRUAPI_DEBUGGER_URL`); pass `null` or `""` to refuse it even when the
+     * build carries one. Ignored outside a dev build. Resolved once, at creation,
+     * and not changeable from the page.
+     */
+    debugger?: string | null;
+    /**
+     * Dev-only: whether to show the built-in indicator while a dial is live.
+     *
+     * Defaults to `true`. Pass `false` only when this host renders its own visible
+     * signal - the point is that a tap streaming frames off this host is never
+     * invisible, not that this particular badge is used.
+     */
+    debuggerIndicator?: boolean;
     /**
      * Host role the worker constructs. Omitted means `"pairing"`.
      *
@@ -117,4 +165,20 @@ export interface CreateWebWorkerSigningHostRuntimeOptions extends CreateWebWorke
 export type WebWorkerHostCallbacks = RequiredHostCallbacks;
 export declare function createWebWorkerPairingHostRuntime(worker: Worker, host: WebWorkerHostCallbacks, options: CreateWebWorkerPairingHostRuntimeOptions): Promise<WorkerPairingHostRuntime>;
 export declare function createWebWorkerSigningHostRuntime(worker: Worker, host: WebWorkerHostCallbacks, options: CreateWebWorkerSigningHostRuntimeOptions): Promise<WorkerSigningHostRuntime>;
+/**
+ * Put `owner`'s debugger dial into service: say once whether it will dial, show
+ * the endpoint in the page for as long as it does, and hand back the URL the
+ * worker's `init` message carries.
+ *
+ * The three are one decision, so they are one function: a host that resolves a
+ * dial and then reports, badges or forwards something else is the §9 failure.
+ * Taking the resolved enablement as an argument is what makes it testable.
+ */
+export declare function installDebuggerDial(owner: object, enablement: DebuggerEnablement, indicator: boolean | undefined): string | null;
+/**
+ * Take `owner`'s dial out of service. Its worker is gone, so nothing streams on
+ * its account any more, and a badge naming an endpoint no frame reaches is the
+ * silent-tap failure read backwards.
+ */
+export declare function releaseDebuggerDial(owner: object): void;
 export {};

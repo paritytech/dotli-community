@@ -309,7 +309,10 @@ export type CreateTransactionReview =
  */
 {
     tag: "Product";
-    value: ProductAccountTxPayload;
+    value: {
+        callingProductId?: string;
+        payload: ProductAccountTxPayload;
+    };
 }
 /**
  * Legacy-account transaction request.
@@ -906,7 +909,10 @@ export type SignPayloadReview =
  */
 {
     tag: "Product";
-    value: HostSignPayloadRequest;
+    value: {
+        callingProductId?: string;
+        request: HostSignPayloadRequest;
+    };
 }
 /**
  * Legacy-account signing request.
@@ -927,6 +933,7 @@ export type SignRawReview =
 {
     tag: "Product";
     value: {
+        callingProductId?: string;
         request: HostSignRawRequest;
         watermarked: boolean;
     };
@@ -961,6 +968,11 @@ export interface SignVrfReview {
  * not present it with the raw-signing convention.
  */
 export interface StatementStoreProductSignReview {
+    /**
+     * Product that asked, when the request carries a caller. See
+     * `SignPayloadReview::Product`.
+     */
+    callingProductId?: string;
     /**
      * Product account that will sign the statement payload.
      */
@@ -1778,6 +1790,10 @@ export interface UserConfirmation {
     confirmPermission?(review: UserConfirmationReview): Promise<PermissionDecision>;
     /**
      * Confirm a reviewed action before the core continues.
+     *
+     * The core drops this future when the request behind the review is
+     * withdrawn, and an answer given afterwards reaches nobody. A host should
+     * dismiss its prompt when that happens.
      */
     confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }

@@ -56,7 +56,7 @@ var init_host_callbacks = __esm({
     ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
     CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
-    CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: import_truapi.ProductAccountTxPayload, LegacyAccount: import_truapi.LegacyAccountTxPayload }));
+    CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi.ProductAccountTxPayload }), LegacyAccount: import_truapi.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi.ChainIdentifier, genesisHash: import_truapi.Bytes32 }));
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
@@ -83,10 +83,10 @@ var init_host_callbacks = __esm({
     ProductSubtreeReview = S.lazy(() => S.Struct({ productId: S.str }));
     ResourceAllocationReview = S.lazy(() => S.Struct({ callingProductId: S.str, resources: S.Vector(import_truapi.AllocatableResource) }));
     SessionUiInfo = S.lazy(() => S.Struct({ publicKey: import_truapi.Bytes32, identityAccountId: S.Option(import_truapi.Bytes32), chatPublicKey: S.Option(import_truapi.Bytes32), deviceEncPublicKey: S.Option(import_truapi.Bytes32), peerStatementAccountId: S.Option(import_truapi.Bytes32), deviceStatementAccountId: S.Option(import_truapi.Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
-    SignPayloadReview = S.lazy(() => S.TaggedUnion({ Product: import_truapi.HostSignPayloadRequest, LegacyAccount: import_truapi.HostSignPayloadWithLegacyAccountRequest }));
-    SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ request: import_truapi.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
+    SignPayloadReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi.HostSignPayloadRequest }), LegacyAccount: import_truapi.HostSignPayloadWithLegacyAccountRequest }));
+    SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
     SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, request: import_truapi.HostAccountSignVrfRequest }));
-    StatementStoreProductSignReview = S.lazy(() => S.Struct({ account: import_truapi.ProductAccountId, payload: S.Bytes() }));
+    StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingProductId: S.Option(S.str), account: import_truapi.ProductAccountId, payload: S.Bytes() }));
     UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview }));
   }
 });
@@ -974,6 +974,17 @@ var MAX_JSON_RPC_CONNECTIONS = 64;
 var COINAGE_WALLET_CALLBACKS = {
   nativeCoinage: true
 };
+function isLoopbackWsUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "ws:")
+      return false;
+    const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return host === "localhost" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  } catch {
+    return false;
+  }
+}
 
 // dist/web/create-worker-host-runtime.js
 var import_scale3 = require("@parity/truapi/scale");
@@ -1786,49 +1797,71 @@ var DEV_LOG_LEVEL_KEY = "truapi:logLevel";
 function readPersistedLogLevel() {
   return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
 }
-var DEV_DEBUGGER_URL_KEY = "truapi:debugger";
-function readPersistedDebuggerUrl() {
-  let dev = false;
+function buildTimeDebuggerUrl() {
+  let raw;
   try {
-    dev = import_meta.env.DEV === true;
+    raw = import_meta.env.VITE_TRUAPI_DEBUGGER_URL;
   } catch {
-    dev = false;
+    return null;
   }
-  if (!dev) {
-    let switchSet = false;
-    try {
-      const key = globalThis.localStorage?.getItem(DEV_DEBUGGER_URL_KEY);
-      switchSet = key !== null && key !== void 0 && key !== "";
-    } catch {
-      switchSet = false;
-    }
-    return {
-      url: null,
-      reason: switchSet ? "production-build-switch-set" : "production-build"
-    };
+  if (typeof raw !== "string")
+    return null;
+  const url = raw.trim();
+  return url === "" ? null : url;
+}
+function debuggerBuildAllows() {
+  try {
+    return import_meta.env.DEV === true;
+  } catch {
+    return false;
   }
-  const storage = globalThis.localStorage;
-  if (storage === void 0)
-    return { url: null, reason: "no-storage" };
-  const url = storage.getItem(DEV_DEBUGGER_URL_KEY);
-  if (url === null || url === "")
-    return { url: null, reason: "no-key" };
-  return { url, reason: "enabled" };
+}
+function productionReason(fromOption, fromBuild) {
+  const asked = fromOption === void 0 ? fromBuild !== null : typeof fromOption === "string" && fromOption !== "";
+  return asked ? "production-build-configured" : "production-build";
+}
+function readDebuggerEnablement(fromOption) {
+  const fromBuild = buildTimeDebuggerUrl();
+  if (!debuggerBuildAllows()) {
+    return { url: null, reason: productionReason(fromOption, fromBuild) };
+  }
+  return resolveDebuggerEnablement(fromOption, fromBuild);
+}
+function resolveDebuggerEnablement(fromOption, fromBuild) {
+  if (typeof fromOption === "string" && fromOption !== "")
+    return refuseUnlessLoopback(fromOption, "enabled-from-option");
+  if (fromOption !== void 0)
+    return { url: null, reason: "not-configured" };
+  if (fromBuild !== null)
+    return refuseUnlessLoopback(fromBuild, "enabled-from-build");
+  return { url: null, reason: "not-configured" };
+}
+function refuseUnlessLoopback(url, reason) {
+  if (!isLoopbackWsUrl(url))
+    return { url: null, reason: "refused-not-loopback" };
+  return { url, reason };
 }
 function reportDebuggerEnablement(e) {
   if (e.reason === "production-build")
     return;
-  if (e.reason === "production-build-switch-set") {
-    console.info(`[truapi] wire debugger: off (the "${DEV_DEBUGGER_URL_KEY}" switch is set, but \`import.meta.env.DEV\` did not resolve true, so the dial is compiled out. Either this is a production build - rebuild the host in dev mode - or the bundler did not substitute that token.`);
+  if (e.reason === "production-build-configured") {
+    console.info("[truapi] wire debugger: off (a dial was configured, but `import.meta.env.DEV` did not resolve true, so the tap is compiled out. Either this is a production build - rebuild the host in dev mode - or the bundler did not substitute that token.");
     return;
   }
   const origin = globalThis.location?.origin ?? "(unknown origin)";
-  if (e.reason === "enabled") {
-    console.info(`[truapi] wire debugger: dialling ${e.url} (origin ${origin})`);
+  if (e.reason === "enabled-from-option") {
+    console.info(`[truapi] wire debugger: dialling ${e.url} from the host's option (origin ${origin})`);
     return;
   }
-  const why = e.reason === "no-storage" ? "no localStorage in this realm" : `no "${DEV_DEBUGGER_URL_KEY}" key on origin ${origin} - localStorage is per-origin, so set it on THIS origin (the realm that creates the host runtime), then reload. A key on another origin is invisible here`;
-  console.info(`[truapi] wire debugger: off (${why})`);
+  if (e.reason === "enabled-from-build") {
+    console.info(`[truapi] wire debugger: dialling ${e.url} from the build (origin ${origin})`);
+    return;
+  }
+  if (e.reason === "refused-not-loopback") {
+    console.warn(`[truapi] wire debugger: off (the configured dial is not a \`ws://\` URL on a loopback host, so it was refused. The tap forwards frames verbatim, payloads included, and never leaves this machine.) on origin ${origin}`);
+    return;
+  }
+  console.info(`[truapi] wire debugger: off (this host passed no \`debugger\` option and the build carries no VITE_TRUAPI_DEBUGGER_URL) on origin ${origin}`);
 }
 function persistLogLevel(level) {
   globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
@@ -2321,6 +2354,7 @@ function teardown(state, error, fault) {
     handleWorkerDemandChanged(state, productId, false);
   }
   state.workerDemandListeners.clear();
+  releaseDebuggerDial(state);
   if (fault) {
     state.worker.terminate();
   } else {
@@ -2532,15 +2566,17 @@ function createWebWorkerHostRuntime(worker, host, options) {
         }
       }
     };
-    const onError = (e) => {
+    const failInit = (error) => {
       cleanupInit();
+      releaseDebuggerDial(state);
       worker.terminate();
-      reject(new Error(`worker init failed: ${e.message}`));
+      reject(error);
+    };
+    const onError = (e) => {
+      failInit(new Error(`worker init failed: ${e.message}`));
     };
     const onInitMessageError = () => {
-      cleanupInit();
-      worker.terminate();
-      reject(new Error("worker message could not be deserialized during init"));
+      failInit(new Error("worker message could not be deserialized during init"));
     };
     const onRuntimeError = (e) => {
       console.error("[truapi worker]", e.message);
@@ -2549,8 +2585,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
     const onMessageError = () => {
       notifyFault(new Error("worker message could not be deserialized"));
     };
-    const debuggerEnablement = readPersistedDebuggerUrl();
-    reportDebuggerEnablement(debuggerEnablement);
+    const debuggerDial = installDebuggerDial(state, readDebuggerEnablement(options.debugger), options.debuggerIndicator);
     const onInitMessage = (ev) => {
       const msg = ev.data;
       if (msg.kind === "loaded") {
@@ -2566,7 +2601,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             identityBackend: host.identityBackend !== void 0,
             coinageWallet: callbacks.nativeCoinage !== void 0
           },
-          debuggerUrl: debuggerEnablement.url
+          debuggerUrl: debuggerDial
         });
       } else if (msg.kind === "ready") {
         state.coreWireSchemaHash = msg.schema;
@@ -2578,9 +2613,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
         exposeDevGlobal(runtime);
         resolve(runtime);
       } else if (msg.kind === "fatalError") {
-        cleanupInit();
-        worker.terminate();
-        reject(new Error(`worker init reported error: ${msg.error}`));
+        failInit(new Error(`worker init reported error: ${msg.error}`));
       }
     };
     const cleanupInit = () => {
@@ -2591,9 +2624,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
     };
     const timeoutMs = options.initTimeoutMs ?? 3e4;
     const initTimeout = setTimeout(() => {
-      cleanupInit();
-      worker.terminate();
-      reject(new Error(`worker init timed out after ${timeoutMs}ms`));
+      failInit(new Error(`worker init timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     worker.addEventListener("error", onError);
     worker.addEventListener("messageerror", onInitMessageError);
@@ -3052,6 +3083,66 @@ function buildProvider(state, core, runtime) {
     }
   };
   return provider;
+}
+var DEBUGGER_INDICATOR_ID = "truapi-debugger-indicator";
+var liveDebuggerDials = /* @__PURE__ */ new Map();
+var indicatorRepaintQueued = false;
+function installDebuggerDial(owner, enablement, indicator) {
+  reportDebuggerEnablement(enablement);
+  if (enablement.url !== null && indicator !== false)
+    liveDebuggerDials.set(owner, enablement.url);
+  else
+    liveDebuggerDials.delete(owner);
+  paintDebuggerIndicator();
+  return enablement.url;
+}
+function releaseDebuggerDial(owner) {
+  if (!liveDebuggerDials.delete(owner))
+    return;
+  paintDebuggerIndicator();
+}
+function paintDebuggerIndicator() {
+  try {
+    const doc = globalThis.document;
+    if (doc === void 0)
+      return;
+    if (doc.body === null) {
+      if (!indicatorRepaintQueued) {
+        indicatorRepaintQueued = true;
+        doc.addEventListener("DOMContentLoaded", () => {
+          indicatorRepaintQueued = false;
+          paintDebuggerIndicator();
+        }, { once: true });
+      }
+      return;
+    }
+    const existing = doc.getElementById(DEBUGGER_INDICATOR_ID);
+    const endpoints = [...new Set(liveDebuggerDials.values())];
+    if (endpoints.length === 0) {
+      existing?.remove();
+      return;
+    }
+    const el = existing ?? doc.createElement("div");
+    if (existing === null) {
+      el.id = DEBUGGER_INDICATOR_ID;
+      el.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:2147483647;padding:4px 8px;border-radius:6px;pointer-events:none;background:#7a1f3d;color:#fff;font:600 11px/1.4 ui-monospace,monospace;box-shadow:0 2px 8px rgba(0,0,0,.4)";
+      doc.body.appendChild(el);
+    }
+    el.textContent = "TrUAPI wire \u2192 ";
+    endpoints.forEach((endpoint, i) => {
+      if (i > 0)
+        el.appendChild(doc.createTextNode(", "));
+      const link = doc.createElement("a");
+      link.href = endpoint.replace(/^ws/, "http");
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = endpoint;
+      link.style.cssText = "color:inherit;text-decoration:underline;pointer-events:auto";
+      el.appendChild(link);
+    });
+    el.title = "This host is streaming product wire frames to a debugger.";
+  } catch {
+  }
 }
 function exposeDevGlobal(target) {
   devGlobalTargets.add(target);
