@@ -198,10 +198,11 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * `toggle`.
  *
  * In every mode, opening focuses the first tabbable element in the surface,
- * or the surface itself when it has a tabindex; Escape closes and hands focus back to the trigger;
- * a pointerdown outside the trigger and the surface closes; and so do a
- * blocking modal coming up (unless `closeOnBlockingModal` is false) and, with
- * `closeOnBlur`, the window losing focus. Closing hands focus back to the
+ * or the surface itself when it has a tabindex; Escape closes and hands
+ * focus back to the trigger; a pointerdown outside the trigger and the
+ * surface closes; and so do a blocking modal coming up (unless
+ * `closeOnBlockingModal` is false) and, with `closeOnBlur`, the window
+ * losing focus. Closing hands focus back to the
  * trigger, unless the user moved it elsewhere (or, for `popover`, closed it
  * by interacting outside). Per mode:
  *
@@ -242,6 +243,10 @@ export function createPopover(options: PopoverOptions): Popover {
   const setOpen = (next: boolean): void => {
     const wasOpen = current;
     current = next;
+    if (!next) {
+      // A keyboard opening undone in the same batch must not mark the next.
+      openedWithKeyboard = false;
+    }
     setOpenSignal(next);
     if (wasOpen && !next) {
       options.onClose?.();
@@ -318,6 +323,11 @@ export function createPopover(options: PopoverOptions): Popover {
       if (mode === "popover") {
         keepFocus = true;
       } else if (mode === "menu") {
+        // Like Radix's modal menu, which blocks outside pointer events: the
+        // press neither takes focus (a prevented pointerdown skips the
+        // mousedown focus, which Radix's trigger relies on too) nor
+        // activates what is underneath.
+        ev.preventDefault();
         swallowNextClick();
       }
       setOpen(false);
@@ -384,25 +394,24 @@ export function createPopover(options: PopoverOptions): Popover {
     if (options.closeOnBlur === true) {
       window.addEventListener("blur", onBlur);
     }
-    const bodyOverflow = document.body.style.overflow;
-    if (mode === "dialog") {
-      document.body.style.overflow = "hidden";
-    }
-
     if (surface !== undefined) {
-      const first =
+      // Like Radix's FocusScope: the first candidate that takes focus, links
+      // skipped, else the surface (only one with a tabindex can take focus
+      // in a browser).
+      const candidates =
         mode === "menu"
           ? keyboard
-            ? menuItems(surface)[0]
-            : undefined
-          : focusables(surface)[0];
-      if (first !== undefined) {
-        first.focus();
-      } else if (surface.hasAttribute("tabindex")) {
-        // Only a surface with a tabindex can take focus in a browser.
+            ? menuItems(surface)
+            : []
+          : focusables(surface).filter(
+              (el) => !(el instanceof HTMLAnchorElement),
+            );
+      if (!focusFirst(candidates) && surface.hasAttribute("tabindex")) {
         surface.focus();
       }
     }
+    // Last, so nothing after it can throw and leave the page locked.
+    const unlockScroll = mode === "dialog" ? lockScroll() : undefined;
 
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
@@ -410,9 +419,7 @@ export function createPopover(options: PopoverOptions): Popover {
       document.removeEventListener("focusout", onFocusOut);
       surface?.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("blur", onBlur);
-      if (mode === "dialog") {
-        document.body.style.overflow = bodyOverflow;
-      }
+      unlockScroll?.();
       // Closed, not disposed while open: hand focus back unless the user
       // moved it elsewhere.
       if (!current && !keepFocus && focusLostOrInside(options.surface())) {
@@ -434,11 +441,52 @@ export function createPopover(options: PopoverOptions): Popover {
   };
 }
 
+/** Focus the first element that takes focus; whether one did. */
+function focusFirst(candidates: HTMLElement[]): boolean {
+  for (const el of candidates) {
+    el.focus();
+    if (document.activeElement === el) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Open dialogs holding the page's scroll lock. */
+let scrollLocks = 0;
+/** `body.style.overflow` from before the first lock. */
+let unlockedOverflow = "";
+
+/**
+ * Lock page scroll until the returned function is called (more calls do
+ * nothing). Counted, so dialogs closing in any order restore the page only
+ * when the last one closes, and to what it was before the first.
+ */
+function lockScroll(): () => void {
+  if (scrollLocks === 0) {
+    unlockedOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  scrollLocks += 1;
+  let locked = true;
+  return () => {
+    if (!locked) {
+      return;
+    }
+    locked = false;
+    scrollLocks -= 1;
+    if (scrollLocks === 0) {
+      document.body.style.overflow = unlockedOverflow;
+    }
+  };
+}
+
 /**
  * Stops the click that follows an outside pointerdown from reaching what is
  * underneath, the way Radix's modal menu disables outside pointer events.
  * A press that never becomes a click (a scroll, a drag) stops waiting at
- * the next pointerdown.
+ * its pointercancel or the next pointerdown or keydown, so a later keyboard
+ * or programmatic click is not eaten.
  */
 function swallowNextClick(): void {
   const swallow = (ev: MouseEvent): void => {
@@ -448,8 +496,12 @@ function swallowNextClick(): void {
   };
   const stop = (): void => {
     document.removeEventListener("click", swallow, true);
-    document.removeEventListener("pointerdown", stop, true);
+    for (const type of ["pointerdown", "pointercancel", "keydown"]) {
+      document.removeEventListener(type, stop, true);
+    }
   };
   document.addEventListener("click", swallow, true);
-  document.addEventListener("pointerdown", stop, true);
+  for (const type of ["pointerdown", "pointercancel", "keydown"]) {
+    document.addEventListener(type, stop, true);
+  }
 }

@@ -16,15 +16,15 @@ type HarnessOptions = Omit<PopoverOptions, "trigger" | "surface" | "mode">;
 
 /**
  * A trigger, a surface, and a button outside both. The popover and dialog
- * surfaces hold two buttons; the menu surface holds menu items (one of them
- * hidden) and no tabbable element. `empty` renders a surface with nothing
- * focusable in it. The trigger has no click handler of its own, so a click
+ * surfaces hold two buttons (after a link, with `link`); the menu surface
+ * holds menu items (one of them hidden) and no tabbable element. `empty`
+ * renders a surface with nothing focusable in it. The trigger has no click handler of its own, so a click
  * on it tests only what the popover does with it.
  */
 function renderPopover(
   mode: PopoverMode,
   options: HarnessOptions = {},
-  { empty = false }: { empty?: boolean } = {},
+  { empty = false, link = false }: { empty?: boolean; link?: boolean } = {},
 ): Popover & { unmount: () => void } {
   let popover: Popover | undefined;
   function Harness() {
@@ -63,6 +63,11 @@ function renderPopover(
       }
       return (
         <>
+          {link ? (
+            <a id="link" href="#somewhere">
+              Link
+            </a>
+          ) : null}
           <button id="first" type="button">
             First
           </button>
@@ -125,22 +130,22 @@ function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
 
 /**
  * A mouse press on `el`: pointerdown, then (as a browser does, moving focus
- * on mousedown) focus when `el` takes it, then the click. Returns the click,
+ * on mousedown unless the pointerdown was prevented) focus when `el` takes
+ * it, then the click. Returns the click,
  * and whether it reached `el`'s own listeners.
  */
 function pointerClick(el: HTMLElement): {
   click: MouseEvent;
   reached: boolean;
 } {
-  el.dispatchEvent(
-    new PointerEvent("pointerdown", {
-      bubbles: true,
-      cancelable: true,
-      pointerType: "mouse",
-      button: 0,
-    }),
-  );
-  if (el instanceof HTMLButtonElement) {
+  const down = new PointerEvent("pointerdown", {
+    bubbles: true,
+    cancelable: true,
+    pointerType: "mouse",
+    button: 0,
+  });
+  el.dispatchEvent(down);
+  if (el instanceof HTMLButtonElement && !down.defaultPrevented) {
     el.focus();
   }
   let reached = false;
@@ -218,6 +223,18 @@ describe("createPopover, in every mode", () => {
       expect(document.activeElement).toBe(byId("first"));
     },
   );
+
+  it("As a keyboard user, opening a popover skips links, as Radix's FocusScope does, and any control that will not take focus", async () => {
+    // Given
+    const popover = renderPopover("popover", {}, { link: true });
+    byId("first").focus = () => undefined;
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(document.activeElement).toBe(byId("last"));
+  });
 
   it.each<PopoverMode>(["popover", "dialog"])(
     "As a keyboard user, opening a %s with nothing tabbable in it focuses the surface itself",
@@ -742,6 +759,64 @@ describe("createPopover, menu mode (Radix DropdownMenu, modal)", () => {
     document.removeEventListener("click", documentClicks);
   });
 
+  it("As a user, an outside press on a menu does not move focus there: focus goes back to the trigger", async () => {
+    // Given
+    const popover = await openWithKey("ArrowDown");
+
+    // When
+    const down = new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "mouse",
+    });
+    byId("outside").dispatchEvent(down);
+    await settle();
+
+    // Then: the prevented pointerdown keeps the browser from focusing it.
+    expect(down.defaultPrevented).toBe(true);
+    expect(popover.open()).toBe(false);
+    expect(document.activeElement).toBe(byId("trigger"));
+  });
+
+  it.each(["pointercancel", "keydown"])(
+    "As a user, an outside press that ends in a %s instead of a click does not swallow a later keyboard or programmatic click",
+    async (type) => {
+      // Given: a touch outside turns into a scroll, or a key is pressed.
+      const popover = renderPopover("menu");
+      await openPopover(popover);
+      byId("outside").dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, cancelable: true }),
+      );
+      await settle();
+      expect(popover.open()).toBe(false);
+      document.dispatchEvent(new Event(type, { bubbles: true }));
+      const clicks = vi.fn();
+      byId("outside").addEventListener("click", clicks);
+
+      // When
+      byId("outside").click();
+
+      // Then
+      expect(clicks).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("As a mouse user, a keyboard opening undone before it rendered does not make my next pointer opening focus the first item", async () => {
+    // Given: Enter opens the menu and something closes it in the same batch.
+    const popover = renderPopover("menu");
+    byId("trigger").focus();
+    press("Enter");
+    popover.setOpen(false);
+    await settle();
+
+    // When
+    popover.toggle();
+    await settle();
+
+    // Then
+    expect(document.activeElement).toBe(byId("surface"));
+  });
+
   it("As a user, an outside pointerdown whose click never comes does not swallow a later click", async () => {
     // Given: a press outside that turns into a scroll, so no click follows.
     const popover = renderPopover("menu");
@@ -812,18 +887,77 @@ describe("createPopover, dialog mode (Radix Dialog, modal)", () => {
     expect(document.body.style.overflow).toBe("scroll");
   });
 
+  it.each([
+    ["in the order they opened", ["a", "b"]],
+    ["nested, the last opened first", ["b", "a"]],
+  ])(
+    "As a user, with two dialogs open, the page stays locked until the last one closes, %s, then scrolls as before",
+    async (_order, closing) => {
+      // Given
+      document.body.style.overflow = "scroll";
+      const dialogs = {
+        a: renderPopover("dialog"),
+        b: renderPopover("dialog"),
+      };
+      await openPopover(dialogs.a);
+      await openPopover(dialogs.b);
+      expect(document.body.style.overflow).toBe("hidden");
+
+      // When
+      dialogs[closing[0] as "a" | "b"].setOpen(false);
+      await settle();
+
+      // Then
+      expect(document.body.style.overflow).toBe("hidden");
+
+      // When
+      dialogs[closing[1] as "a" | "b"].setOpen(false);
+      await settle();
+
+      // Then
+      expect(document.body.style.overflow).toBe("scroll");
+    },
+  );
+
+  it("As a user, a dialog unmounted while open releases its scroll lock once, whatever closes after", async () => {
+    // Given
+    document.body.style.overflow = "auto";
+    const a = renderPopover("dialog");
+    const b = renderPopover("dialog");
+    await openPopover(a);
+    await openPopover(b);
+
+    // When
+    a.unmount();
+    await settle();
+
+    // Then
+    expect(document.body.style.overflow).toBe("hidden");
+
+    // When
+    b.setOpen(false);
+    await settle();
+
+    // Then
+    expect(document.body.style.overflow).toBe("auto");
+  });
+
   it("As a user, a click on the backdrop closes the dialog and focus goes back to the trigger", async () => {
     // Given
     const popover = renderPopover("dialog");
     await openPopover(popover);
 
-    // When: the backdrop is outside the dialog's surface.
-    document.body.dispatchEvent(
-      new PointerEvent("pointerdown", { bubbles: true }),
+    // When: the backdrop (here the harness's wrapper, which takes no focus)
+    // is outside the dialog's surface.
+    const { click, reached } = pointerClick(
+      byId("surface").parentElement as HTMLElement,
     );
     await settle();
 
-    // Then
+    // Then: the click still reaches the backdrop, whose own handler may
+    // close.
+    expect(reached).toBe(true);
+    expect(click.defaultPrevented).toBe(false);
     expect(popover.open()).toBe(false);
     expect(document.activeElement).toBe(byId("trigger"));
   });
