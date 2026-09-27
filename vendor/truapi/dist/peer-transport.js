@@ -12,7 +12,12 @@ export const PEER_TRANSPORT_MAX_BUFFERED_BYTES_PER_CONNECTION = 4 << 20;
 /** Largest request frame: a `send` of a maximal message plus SCALE and wire overhead. */
 export const PEER_TRANSPORT_MAX_FRAME_BYTES = PEER_TRANSPORT_MAX_MESSAGE_BYTES + 4096;
 const MAX_PENDING_EVENTS = 1024;
-const DIAL_TIMEOUT_MS = 10_000;
+/**
+ * Bound on one `dial`, from its arrival to its reply, the permission decision
+ * included. A guest that waits at least this long for a dial reply never
+ * misses one, and anything a dial would open after it is closed instead.
+ */
+export const PEER_TRANSPORT_DIAL_TIMEOUT_MS = 10_000;
 const textEncoder = new TextEncoder();
 const handshakeResult = S.Result(T.VersionedHostHandshakeResponse, S.CallError(T.VersionedHostHandshakeError));
 const frameworkResult = S.Result(S._void, S.CallError(S._void));
@@ -23,6 +28,7 @@ const recvResult = S.Result(T.VersionedHostPeerTransportRecvResponse, S.CallErro
 const resetResult = S.Result(T.VersionedHostPeerTransportResetResponse, S.CallError(T.VersionedHostPeerTransportResetError));
 const closeResult = S.Result(T.VersionedHostPeerTransportCloseResponse, S.CallError(T.VersionedHostPeerTransportCloseError));
 const eventsResult = S.Result(T.VersionedHostPeerTransportEventsResponse, S.CallError(T.VersionedHostPeerTransportEventsError));
+const cancelledReply = frameworkResult.enc({ success: false, value: { tag: "Cancelled" } });
 /** Trait id of a request frame, or `undefined` when it does not decode. */
 export function frameTraitId(frame) {
     const decoded = decodeWireMessage(frame);
@@ -88,7 +94,11 @@ export function peerUrl(ip, port) {
  * Create the browser PeerTransport endpoint for one execution. Every `dial`
  * is authorized for its genesis through `options.authorize` before anything
  * connects; the other methods act only on connections an authorized dial
- * opened. The host must fence late replies against execution stop or
+ * opened. A dial answers within its deadline, prompt included: one still
+ * waiting then answers `Unreachable`, a CANCEL naming it answers `Cancelled`,
+ * and in both cases whatever it opened is closed without holding a slot. The
+ * permission decision is remembered either way, so a retry does not ask
+ * again. The host must fence late replies against execution stop or
  * replacement.
  */
 export function createPeerTransportSession(options) {
@@ -113,6 +123,9 @@ export function createPeerTransportSession(options) {
             serverCertificateHashes: hashes.map((value) => ({ algorithm: "sha-256", value: value })),
         }));
     const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+    const dialTimeoutMs = options.dialTimeoutMs ?? PEER_TRANSPORT_DIAL_TIMEOUT_MS;
+    /** In-flight dials by request id; CANCEL or `close` withdraws one with its reply. */
+    const pendingDials = new Map();
     let closed = false;
     let negotiated = false;
     let nextConn = 1;
@@ -238,8 +251,16 @@ export function createPeerTransportSession(options) {
             // The connection is closing; `closed` handling reports it.
         }
     };
-    const dial = async (request) => {
-        if (!(await authorized(request.genesis)))
+    /**
+     * One dial. `withdrawn` settles with the reply when the guest cancels or the
+     * deadline passes; the guest then no longer waits for what this dial opens,
+     * so nothing it opens outlives it or holds a connection slot.
+     */
+    const dial = async (request, withdrawn) => {
+        const granted = await Promise.race([authorized(request.genesis), withdrawn]);
+        if (granted instanceof Uint8Array)
+            return granted;
+        if (!granted)
             return domain(dialResult, "NotGranted");
         if (closed)
             return frameworkResult.enc({ success: false, value: { tag: "Denied" } });
@@ -260,17 +281,13 @@ export function createPeerTransportSession(options) {
         }
         const conn = { id: nextConn++, transport, streams: new Map(), closed: false };
         connections.set(conn.id, conn);
-        // Executor form: this package's lib target predates Promise.withResolvers.
-        let timer;
-        try {
-            await Promise.race([
-                transport.ready,
-                new Promise((_resolve, reject) => {
-                    timer = setTimeout(() => reject(new Error("timeout")), DIAL_TIMEOUT_MS);
-                }),
-            ]);
-        }
-        catch (error) {
+        const failure = await Promise.race([
+            transport.ready.then(() => undefined, () => domain(dialResult, "Refused")),
+            withdrawn,
+        ]);
+        if (failure !== undefined || closed) {
+            // The guest never learns this connection id, so it frees its slot
+            // without a `ConnClosed` event.
             connections.delete(conn.id);
             conn.closed = true;
             try {
@@ -279,18 +296,28 @@ export function createPeerTransportSession(options) {
             catch {
                 // Never opened.
             }
-            return domain(dialResult, error instanceof Error && error.message === "timeout" ? "Unreachable" : "Refused");
-        }
-        finally {
-            clearTimeout(timer);
-        }
-        if (closed) {
-            dropConnection(conn);
-            return frameworkResult.enc({ success: false, value: { tag: "Denied" } });
+            return failure ?? frameworkResult.enc({ success: false, value: { tag: "Denied" } });
         }
         void transport.closed.then(() => dropConnection(conn), () => dropConnection(conn));
         void acceptLoop(conn);
         return ok(dialResult, { tag: "V1", value: { conn: conn.id } });
+    };
+    /** Run one dial frame: register it for CANCEL and arm its deadline. */
+    const dialFrame = async (requestId, request) => {
+        // Executor form: this package's lib target predates Promise.withResolvers.
+        let withdraw;
+        const withdrawn = new Promise((resolve) => {
+            withdraw = resolve;
+        });
+        pendingDials.set(requestId, withdraw);
+        const timer = setTimeout(() => withdraw(domain(dialResult, "Unreachable")), dialTimeoutMs);
+        try {
+            return await dial(request, withdrawn);
+        }
+        finally {
+            clearTimeout(timer);
+            pendingDials.delete(requestId);
+        }
     };
     const open = async (request) => {
         const conn = connections.get(request.conn);
@@ -388,7 +415,11 @@ export function createPeerTransportSession(options) {
                 if (request.payload.traitId !== PEER_TRANSPORT_DIAL.trait || request.payload.value.length !== 0) {
                     throw new Error("Invalid cancellation frame");
                 }
-                // Every method answers within one host tick; nothing is cancellable.
+                // Only a dial can outlast one host tick: it may wait on a permission
+                // prompt and a handshake. The dial itself answers `Cancelled`; a
+                // CANCEL naming nothing in flight lost the race and is dropped.
+                if (hasIds(request, PEER_TRANSPORT_DIAL))
+                    pendingDials.get(request.requestId)?.(cancelledReply);
                 return new Uint8Array();
             }
             if (request.payload.messageType !== MESSAGE_TYPE_REQUEST) {
@@ -417,7 +448,13 @@ export function createPeerTransportSession(options) {
             try {
                 if (hasIds(request, PEER_TRANSPORT_DIAL)) {
                     const value = exact(T.VersionedHostPeerTransportDialRequest, request.payload.value).value;
-                    return reply(request, negotiated ? await dial(value) : domain(dialResult, "NotGranted"));
+                    if (!negotiated)
+                        return reply(request, domain(dialResult, "NotGranted"));
+                    // Two live dials sharing an id leave neither addressable by CANCEL;
+                    // like the core dispatcher, the second is dropped unanswered.
+                    if (pendingDials.has(request.requestId))
+                        return new Uint8Array();
+                    return reply(request, await dialFrame(request.requestId, value));
                 }
                 if (hasIds(request, PEER_TRANSPORT_OPEN)) {
                     const value = exact(T.VersionedHostPeerTransportOpenRequest, request.payload.value).value;
@@ -453,6 +490,9 @@ export function createPeerTransportSession(options) {
         },
         close() {
             closed = true;
+            const denied = frameworkResult.enc({ success: false, value: { tag: "Denied" } });
+            for (const withdraw of [...pendingDials.values()])
+                withdraw(denied);
             for (const conn of [...connections.values()])
                 dropConnection(conn);
             events.length = 0;

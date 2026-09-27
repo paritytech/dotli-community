@@ -5,6 +5,12 @@ export declare const PEER_TRANSPORT_MAX_MESSAGE_BYTES: number;
 export declare const PEER_TRANSPORT_MAX_BUFFERED_BYTES_PER_CONNECTION: number;
 /** Largest request frame: a `send` of a maximal message plus SCALE and wire overhead. */
 export declare const PEER_TRANSPORT_MAX_FRAME_BYTES: number;
+/**
+ * Bound on one `dial`, from its arrival to its reply, the permission decision
+ * included. A guest that waits at least this long for a dial reply never
+ * misses one, and anything a dial would open after it is closed instead.
+ */
+export declare const PEER_TRANSPORT_DIAL_TIMEOUT_MS = 10000;
 /** Minimal WebTransport surface the session needs; lets tests inject a fake. */
 export interface WebTransportLike {
     readonly ready: Promise<unknown>;
@@ -30,6 +36,8 @@ export interface PeerTransportOptions {
     connect?: (url: string, certificateHashes: Uint8Array[]) => WebTransportLike;
     /** Unix seconds used to select certificate validity periods; defaults to the wall clock. */
     now?: () => number;
+    /** Dial deadline in milliseconds; defaults to {@link PEER_TRANSPORT_DIAL_TIMEOUT_MS}. */
+    dialTimeoutMs?: number;
 }
 /** Execution-local peer endpoint. It provides no account or signing authority. */
 export interface PeerTransportSession {
@@ -46,7 +54,11 @@ export declare function peerUrl(ip: Uint8Array, port: number): string;
  * Create the browser PeerTransport endpoint for one execution. Every `dial`
  * is authorized for its genesis through `options.authorize` before anything
  * connects; the other methods act only on connections an authorized dial
- * opened. The host must fence late replies against execution stop or
+ * opened. A dial answers within its deadline, prompt included: one still
+ * waiting then answers `Unreachable`, a CANCEL naming it answers `Cancelled`,
+ * and in both cases whatever it opened is closed without holding a slot. The
+ * permission decision is remembered either way, so a retry does not ask
+ * again. The host must fence late replies against execution stop or
  * replacement.
  */
 export declare function createPeerTransportSession(options: PeerTransportOptions): PeerTransportSession;
