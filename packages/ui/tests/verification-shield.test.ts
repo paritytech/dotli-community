@@ -9,9 +9,11 @@ import {
 } from "@dotli/ui/verification-shield";
 import {
   pointerPress,
+  pointerPressUnfocusable,
   renderComponent,
   resetStores,
   settle,
+  tabTo,
 } from "./helpers/solid";
 
 function button(): HTMLButtonElement {
@@ -85,6 +87,58 @@ describe("verification shield", () => {
 
     // Then
     expect(isClosed()).toBe(true);
+  });
+
+  it("As a screen-reader user, the shield is a disclosure: it says whether the explainer is shown, and the explainer is plain text, not a dialog", async () => {
+    // Given
+    const trigger = button();
+
+    // Then
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.getAttribute("aria-controls")).toBe(VERIFICATION_TOOLTIP_ID);
+    expect(trigger.hasAttribute("aria-haspopup")).toBe(false);
+    expect(panel().hasAttribute("role")).toBe(false);
+    expect(panel().hasAttribute("tabindex")).toBe(false);
+
+    // When
+    trigger.focus();
+    await openShield();
+
+    // Then: the explainer has nothing to focus, so focus stays on the shield.
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("As a keyboard user, Tab away from the shield closes the explainer and focus moves on", async () => {
+    // Given
+    const next = document.createElement("button");
+    next.id = "next-button";
+    document.body.append(next);
+    button().focus();
+    await openShield();
+
+    // When
+    const tab = tabTo(next);
+    await settle();
+
+    // Then
+    expect(tab.defaultPrevented).toBe(false);
+    expect(isClosed()).toBe(true);
+    expect(document.activeElement).toBe(next);
+  });
+
+  it("As a mouse user, a press elsewhere closes the explainer without handing focus back to the shield", async () => {
+    // Given
+    button().focus();
+    await openShield();
+
+    // When: the press lands on nothing that takes focus.
+    pointerPressUnfocusable(document.body);
+    await settle();
+
+    // Then
+    expect(isClosed()).toBe(true);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("As a keyboard user, Escape closes the explainer and returns focus to the shield", async () => {

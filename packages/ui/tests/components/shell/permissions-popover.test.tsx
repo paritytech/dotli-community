@@ -15,7 +15,12 @@ import {
 import { setProductError, setProductLoaded } from "@dotli/ui/state/product";
 import { recordPermissionChange } from "@dotli/ui/state/permissions";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import { renderComponent, resetStores } from "../../helpers/solid";
+import {
+  pointerPressUnfocusable,
+  renderComponent,
+  resetStores,
+  tabTo,
+} from "../../helpers/solid";
 import {
   oldPermissionsBackdrop,
   oldPermissionsButton,
@@ -479,6 +484,79 @@ describe("PermissionsPopover", () => {
       "false",
     );
     expect(document.activeElement).toBe(byId("permissions-button"));
+  });
+
+  it("As a screen-reader user, the button announces the dialog it opens and whether it is open", async () => {
+    // Given
+    provide();
+    setProductLoaded(LABEL, "app.dot");
+    await renderPopover();
+    const button = byId("permissions-button");
+    const popover = byId("permissions-popover");
+
+    // Then
+    expect(popover.getAttribute("role")).toBe("dialog");
+    expect(popover.getAttribute("aria-label")).toBe("Permissions");
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button.getAttribute("aria-controls")).toBe("permissions-popover");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("As a keyboard user, opening it moves focus in, and Tab past the last select closes it and focus moves on", async () => {
+    // Given
+    provide();
+    setProductLoaded(LABEL, "app.dot");
+    await renderPopover();
+    byId("permissions-button").focus();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byId("permissions-popover").contains(document.activeElement)).toBe(
+      true,
+    );
+
+    // Given
+    const selects = byId("permissions-popover").querySelectorAll<HTMLElement>(
+      ".permissions-popover-select",
+    );
+    expect(selects.length).toBeGreaterThan(0);
+    selects[selects.length - 1].focus();
+    await settleAll();
+    expect(isOpen()).toBe(true);
+
+    // When
+    const tab = tabTo(byId("outside"));
+    await settleAll();
+
+    // Then
+    expect(tab.defaultPrevented).toBe(false);
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId("outside"));
+  });
+
+  it("As a user, a press on the backdrop closes the popover without handing focus back to the button", async () => {
+    // Given
+    provide();
+    setProductLoaded(LABEL, "app.dot");
+    await renderPopover();
+    byId("permissions-button").focus();
+    await openPopover();
+
+    // When: the backdrop covers the page, and takes no focus.
+    pointerPressUnfocusable(byId("permissions-popover-backdrop"));
+    await settleAll();
+
+    // Then: focus follows the press.
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("As a user, a click outside a row closes its dropdown, a second select opens in its place, and a click on the backdrop closes the popover", async () => {

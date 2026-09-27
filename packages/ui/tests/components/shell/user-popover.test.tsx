@@ -8,7 +8,12 @@ import { requestTruapiDisconnect } from "@dotli/ui/auth-controller";
 import { setAuthState } from "@dotli/ui/state/auth";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import type { TruapiSessionUiState } from "@dotli/ui/host-callbacks/SessionStore";
-import { pointerPress, renderComponent } from "../../helpers/solid";
+import {
+  pointerPress,
+  pointerPressUnfocusable,
+  renderComponent,
+  tabTo,
+} from "../../helpers/solid";
 import {
   byId,
   press,
@@ -48,12 +53,18 @@ function isOpen(): boolean {
   return byId("user-popover").classList.contains("open");
 }
 
-/** The popover as topbar.ts left it, plus the tabindex the focus trap needs. */
+/**
+ * The popover as topbar.ts left it, plus what a Radix-style non-modal popover
+ * carries: role="dialog", named by its "Welcome back" heading, and the
+ * tabindex that lets it take focus.
+ */
 function expectMarkup(
   popover: Element,
   opts: Parameters<typeof oldUserPopover>[0],
 ): void {
   const expected = oldUserPopover(opts);
+  expected.setAttribute("role", "dialog");
+  expected.setAttribute("aria-label", "Welcome back");
   expected.setAttribute("tabindex", "-1");
   expect(normalized(popover).isEqualNode(normalized(expected))).toBe(true);
 }
@@ -208,6 +219,76 @@ describe("UserPopover", () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(byId("auth-button"));
+  });
+
+  it("As a screen-reader user, the account button announces the popover it opens and whether it is open", async () => {
+    // Given
+    const popover = await renderAccount({
+      connected: true,
+      liteUsername: "pgherveou.04",
+    });
+    const button = byId("auth-button");
+
+    // Then
+    expect(popover.getAttribute("role")).toBe("dialog");
+    expect(popover.getAttribute("aria-label")).toBe("Welcome back");
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button.getAttribute("aria-controls")).toBe("user-popover");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+
+    // When
+    press("Escape");
+    await settleAll();
+
+    // Then
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+
+    // When: logging out turns the button back into the login button.
+    setAuthState({ tag: "Disconnected" });
+    await settleAll();
+
+    // Then
+    expect(button.hasAttribute("aria-haspopup")).toBe(false);
+    expect(button.hasAttribute("aria-expanded")).toBe(false);
+    expect(button.hasAttribute("aria-controls")).toBe(false);
+  });
+
+  it("As a keyboard user, Tab past Log out closes the popover and focus moves on", async () => {
+    // Given
+    await renderAccount({ connected: true, liteUsername: "pgherveou.04" });
+    byId("auth-button").focus();
+    await openPopover();
+    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
+
+    // When
+    const tab = tabTo(byId("outside"));
+    await settleAll();
+
+    // Then
+    expect(tab.defaultPrevented).toBe(false);
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId("outside"));
+  });
+
+  it("As a logged-in user, a press outside closes the popover without handing focus back to the account button", async () => {
+    // Given
+    await renderAccount({ connected: true, liteUsername: "pgherveou.04" });
+    byId("auth-button").focus();
+    await openPopover();
+
+    // When: the press lands on nothing that takes focus.
+    pointerPressUnfocusable(document.body);
+    await settleAll();
+
+    // Then: focus follows the press, as in a Radix non-modal popover.
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("As a logged-in user, a click outside closes the popover", async () => {

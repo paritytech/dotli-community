@@ -25,7 +25,16 @@ async function renderButton(): Promise<HTMLButtonElement> {
   return byId<HTMLButtonElement>("auth-button");
 }
 
+/**
+ * The button as topbar.ts left it. Logged in, it also carries the ARIA of a
+ * Radix-style popover trigger for the user popover it opens.
+ */
 function expectMarkup(button: Element, expected: Element): void {
+  if (expected.getAttribute("aria-label") === "Account") {
+    expected.setAttribute("aria-haspopup", "dialog");
+    expected.setAttribute("aria-expanded", "false");
+    expected.setAttribute("aria-controls", "user-popover");
+  }
   expect(normalized(button).isEqualNode(normalized(expected))).toBe(true);
 }
 

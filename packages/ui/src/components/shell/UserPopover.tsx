@@ -1,13 +1,30 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onCleanup, Show } from "solid-js";
+import { createSignal, onCleanup, Show, type Accessor } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { requestTruapiDisconnect } from "../../auth-controller";
 import { sessionUsername, shortenAccount, useAccount } from "./account";
 import { createPopover } from "./popover";
 
 let toggle: (() => void) | null = null;
+
+/**
+ * The mounted popover's open state, for the auth button's `aria-expanded`.
+ * A signal, so the button (another island) follows the popover that mounts
+ * after it.
+ */
+const [mountedOpen, setMountedOpen] = createSignal<{
+  open: Accessor<boolean>;
+} | null>(null, {
+  // Written by the popover island's own owner, and read by the button's.
+  ownedWrite: true,
+});
+
+/** Whether the user popover is open; false while it is not mounted. */
+export function userPopoverOpen(): boolean {
+  return mountedOpen()?.open() === true;
+}
 
 /**
  * Open or close the user popover, as the auth button does when logged in.
@@ -25,9 +42,11 @@ export function toggleUserPopover(): void {
  * Rust core to disconnect.
  *
  * The auth button (the AuthButton island) opens and closes it through
- * toggleUserPopover(). A press outside, focus leaving it, Escape and a
- * blocking modal close it, a non-modal popover (createPopover's `popover`
- * mode) that hands focus back to the auth button unless the user moved it.
+ * toggleUserPopover(), and follows its open state through userPopoverOpen().
+ * A press outside, focus leaving it, Escape and a blocking modal close it, a
+ * non-modal popover (createPopover's `popover` mode, `role="dialog"` named
+ * after its "Welcome back" heading) that hands focus back to the auth button
+ * unless the user moved it.
  */
 export function UserPopover(): JSX.Element {
   let popover: HTMLDivElement | undefined;
@@ -56,9 +75,11 @@ export function UserPopover(): JSX.Element {
     surface: () => popover,
   });
   toggle = menu.toggle;
+  setMountedOpen({ open: menu.open });
   onCleanup(() => {
     if (toggle === menu.toggle) {
       toggle = null;
+      setMountedOpen(null);
     }
   });
 
@@ -74,6 +95,8 @@ export function UserPopover(): JSX.Element {
       }}
       class={["user-popover", { open: menu.open() }]}
       id="user-popover"
+      role="dialog"
+      aria-label="Welcome back"
       tabindex="-1"
     >
       <div class="user-popover-name">

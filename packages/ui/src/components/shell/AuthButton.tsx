@@ -6,7 +6,7 @@ import type { JSX } from "@solidjs/web";
 import { startLogin } from "../../auth-controller";
 import { getAuthState } from "../../state/auth";
 import { sessionInitials, useAccount } from "./account";
-import { toggleUserPopover } from "./UserPopover";
+import { toggleUserPopover, userPopoverOpen } from "./UserPopover";
 
 function UserIcon(): JSX.Element {
   return (
@@ -37,8 +37,9 @@ function UserIcon(): JSX.Element {
  * Logged out, it shows the person icon and a click starts a login. Logged
  * in, it shows the account's initials (`.user-badge`, or the icon as
  * `.user-badge-anon` without a username) and a click toggles the user
- * popover (the UserPopover island). It renders the auth stores, whatever
- * they held when it mounted.
+ * popover (the UserPopover island), whose trigger ARIA it then carries
+ * (`aria-haspopup="dialog"`, `aria-expanded`, `aria-controls`). It renders
+ * the auth stores, whatever they held when it mounted.
  */
 export function AuthButton(): JSX.Element {
   const account = useAccount();
@@ -62,6 +63,11 @@ export function AuthButton(): JSX.Element {
       class="topbar-btn"
       title={label()}
       aria-label={label()}
+      aria-haspopup={account.loggedIn() ? "dialog" : undefined}
+      aria-expanded={
+        account.loggedIn() ? (userPopoverOpen() ? "true" : "false") : undefined
+      }
+      aria-controls={account.loggedIn() ? "user-popover" : undefined}
     >
       <Show
         when={account.loggedIn() && account.session()}

@@ -643,8 +643,11 @@ describe("shell islands", () => {
         normalized(oldAuthButton("logged-out")),
       ),
     ).toBe(true);
-    // The popover gains the tabindex its focus trap needs.
+    // The popover gains the role, name and tabindex of a Radix-style
+    // non-modal popover.
     const popover = oldUserPopover({ username: "", hint: false, open: false });
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", "Welcome back");
     popover.setAttribute("tabindex", "-1");
     expect(
       normalized(byId("user-popover")).isEqualNode(normalized(popover)),

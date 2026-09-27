@@ -42,3 +42,37 @@ export function pointerPress(el: Element): void {
   );
   (el as HTMLElement).click();
 }
+
+/**
+ * A mouse press on `el`, which cannot take focus: as in a browser, the
+ * press's mousedown drops focus to the body before the click.
+ */
+export function pointerPressUnfocusable(el: Element): void {
+  el.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "mouse",
+    }),
+  );
+  (document.activeElement as HTMLElement | null)?.blur();
+  (el as HTMLElement).click();
+}
+
+/**
+ * Tab from the focused element to `next`, the element after it in the page's
+ * Tab order: the keydown, then, unless a handler prevented it, the focus move
+ * the browser would make (happy-dom makes none). Returns the keydown.
+ */
+export function tabTo(next: HTMLElement): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key: "Tab",
+    bubbles: true,
+    cancelable: true,
+  });
+  (document.activeElement ?? document.body).dispatchEvent(event);
+  if (!event.defaultPrevented) {
+    next.focus();
+  }
+  return event;
+}

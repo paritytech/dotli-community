@@ -18,8 +18,10 @@ import {
 } from "@dotli/ui/state/topbar";
 import {
   pointerPress,
+  pointerPressUnfocusable,
   renderComponent,
   resetStores,
+  tabTo,
 } from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
@@ -472,6 +474,58 @@ describe("The network popover island", () => {
     expect(isOpen()).toBe(false);
     expect(byId("chains-button").getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(byId("chains-button"));
+  });
+
+  it("As a screen-reader user, the button announces the dialog it opens and whether it is open", async () => {
+    // Given
+    await renderPopover();
+    const button = byId("chains-button");
+    const popover = byId("chains-popover");
+
+    // Then
+    expect(popover.getAttribute("role")).toBe("dialog");
+    expect(popover.getAttribute("aria-label")).toBe("Network");
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button.getAttribute("aria-controls")).toBe("chains-popover");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("As a keyboard user, Tab out of the popover closes it and focus moves on", async () => {
+    // Given
+    await renderPopover();
+    byId("chains-button").focus();
+    await openPopover();
+    expect(byId("chains-popover").contains(document.activeElement)).toBe(true);
+
+    // When
+    const tab = tabTo(byId("outside"));
+    await settle();
+
+    // Then
+    expect(tab.defaultPrevented).toBe(false);
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(byId("outside"));
+  });
+
+  it("As a dotli user, a press outside closes it without handing focus back to the button", async () => {
+    // Given
+    await renderPopover();
+    byId("chains-button").focus();
+    await openPopover();
+
+    // When: the press lands on nothing that takes focus.
+    pointerPressUnfocusable(document.body);
+    await settle();
+
+    // Then: focus follows the press.
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("As a dotli user, a click outside closes it, and a click inside does not", async () => {

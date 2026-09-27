@@ -10,8 +10,10 @@ import { initSettingsStore } from "@dotli/ui/state/settings";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import {
   pointerPress,
+  pointerPressUnfocusable,
   renderComponent,
   resetStores,
+  tabTo,
 } from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import {
@@ -681,6 +683,67 @@ describe("The settings popover island", () => {
     );
     expect(byId("mode-button").getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(byId("mode-button"));
+  });
+
+  it("As a screen-reader user, the button announces the dialog it opens and whether it is open", async () => {
+    // Given
+    await renderPopover();
+    const settingsButton = byId("mode-button");
+    const popover = byId("mode-popover");
+
+    // Then
+    expect(popover.getAttribute("role")).toBe("dialog");
+    expect(popover.getAttribute("aria-label")).toBe("Settings");
+    expect(settingsButton.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(settingsButton.getAttribute("aria-controls")).toBe("mode-popover");
+    expect(settingsButton.getAttribute("aria-expanded")).toBe("false");
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(settingsButton.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("As a keyboard user on desktop, Tab past the last control closes it and focus moves on", async () => {
+    // Given
+    await renderPopover();
+    byId("mode-button").focus();
+    await openPopover();
+    expect(byId("mode-popover").contains(document.activeElement)).toBe(true);
+    const controls = byId("mode-popover").querySelectorAll<HTMLElement>(
+      "button:not([disabled])",
+    );
+    controls[controls.length - 1].focus();
+    await settle();
+    expect(isOpen()).toBe(true);
+
+    // When
+    const tab = tabTo(byId("outside"));
+    await settle();
+
+    // Then
+    expect(tab.defaultPrevented).toBe(false);
+    expect(isOpen()).toBe(false);
+    expect(byId("mode-popover-backdrop").classList.contains("open")).toBe(
+      false,
+    );
+    expect(document.activeElement).toBe(byId("outside"));
+  });
+
+  it("As a dotli user on desktop, a press on the backdrop closes it without handing focus back to the button", async () => {
+    // Given
+    await renderPopover();
+    byId("mode-button").focus();
+    await openPopover();
+
+    // When: the backdrop covers the page, and takes no focus.
+    pointerPressUnfocusable(byId("mode-popover-backdrop"));
+    await settle();
+
+    // Then: focus follows the press.
+    expect(isOpen()).toBe(false);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button", async () => {
