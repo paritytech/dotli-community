@@ -40,6 +40,12 @@ import {
   oldPermissionsPopover,
 } from "./old-permissions-markup";
 import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
+import {
+  oldModeBackdrop,
+  oldModeButton,
+  oldModePopover,
+} from "./old-settings-markup";
+import { initSettingsStore } from "@dotli/ui/state/settings";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
 import { setChainsButtonVisible } from "@dotli/ui/topbar";
 import { setProductLoaded } from "@dotli/ui/state/product";
@@ -77,6 +83,7 @@ const PERMISSIONS_IDS = [
   "permissions-popover",
 ];
 const CHAINS_IDS = ["chains-button", "chains-popover"];
+const SETTINGS_IDS = ["mode-button", "mode-popover-backdrop", "mode-popover"];
 
 let serverHtml = "";
 
@@ -161,6 +168,7 @@ describe("shell islands", () => {
     disposeRoot("island:auth-modal");
     disposeRoot("island:permissions");
     disposeRoot("island:chains");
+    disposeRoot("island:settings");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -873,5 +881,60 @@ describe("shell islands", () => {
 
     // Then
     expect(byId("chains-button").classList.contains("visible")).toBe(false);
+  });
+
+  it("As a dotli user, the settings button, backdrop and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning", async () => {
+    // Given: the host seeds the settings store at boot, before the islands.
+    initSettingsStore();
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const before = SETTINGS_IDS.map((id) => {
+      const el = byId(id);
+      return { el, place: placeOf(el) };
+    });
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    for (const [i, id] of SETTINGS_IDS.entries()) {
+      const fresh = byId(id);
+      expect(countById(id)).toBe(1);
+      expect(fresh).not.toBe(before[i].el);
+      expect(before[i].el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(before[i].place);
+    }
+    expect(
+      normalized(byId("mode-button")).isEqualNode(
+        normalized(oldModeButton({ open: false, verified: true })),
+      ),
+    ).toBe(true);
+    expect(
+      normalized(byId("mode-popover-backdrop")).isEqualNode(
+        normalized(oldModeBackdrop({ open: false })),
+      ),
+    ).toBe(true);
+    expect(
+      normalized(byId("mode-popover")).isEqualNode(
+        normalized(oldModePopover({ open: false })),
+      ),
+    ).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+
+    // When
+    byId("mode-button").click();
+    await flushAll();
+
+    // Then
+    expect(byId("mode-popover").classList.contains("open")).toBe(true);
+    expect(byId("mode-popover-backdrop").classList.contains("open")).toBe(true);
+    expect(document.activeElement).toBe(byId("mode-popover"));
+    expect(
+      byId("mode-popover").querySelector(".mode-popover-sheet-title")
+        ?.textContent,
+    ).toBe("Settings");
   });
 });

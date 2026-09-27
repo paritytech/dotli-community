@@ -52,9 +52,6 @@ async function flushMicrotasks(): Promise<void> {
 function installTopbarDom(): void {
   document.body.innerHTML = `
     <a id="topbar-home"></a>
-    <button id="mode-button"></button>
-    <div id="mode-popover"><div id="mode-popover-content"></div></div>
-    <div id="mode-popover-backdrop"></div>
   `;
 }
 
@@ -73,7 +70,9 @@ beforeEach(() => {
 // their tests are tests/components/shell/auth-button, user-popover and
 // auth-modal, and the controller's are tests/auth-controller.test.ts. The
 // permissions popover is an island too: tests/components/shell/
-// permissions-popover.test.tsx.
+// permissions-popover.test.tsx. So are the network popover
+// (chains-popover.test.tsx) and the settings popover
+// (settings-popover.test.tsx).
 
 describe("topbar boot rehydration", () => {
   it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {
@@ -138,94 +137,6 @@ describe("topbar boot rehydration", () => {
     // Then
     expect(getAuthState()).toEqual({ tag: "Disconnected" });
     expect(getLoggedIn()).toBe(false);
-  });
-});
-
-describe("topbar popover keyboard access", () => {
-  it("As a dotli integrator, the host closes the settings popover on Escape and restores trigger focus", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-    const modeButton = document.getElementById("mode-button");
-    const modePopover = document.getElementById("mode-popover");
-
-    // When
-    modeButton?.click();
-
-    // Then
-    expect(modePopover?.classList.contains("open")).toBe(true);
-    expect(modeButton?.getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement).toBe(modePopover);
-
-    // When
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-
-    // Then
-    expect(modePopover?.classList.contains("open")).toBe(false);
-    expect(modeButton?.getAttribute("aria-expanded")).toBe("false");
-    expect(document.activeElement).toBe(modeButton);
-  });
-
-  it("As a dotli integrator, the host wraps Tab focus inside the settings popover", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-    document.getElementById("mode-button")?.click();
-    const modePopover = document.getElementById("mode-popover");
-    const focusables = Array.from(
-      modePopover?.querySelectorAll<HTMLElement>(
-        "button:not([disabled]), input:not([disabled])",
-      ) ?? [],
-    );
-    expect(focusables.length).toBeGreaterThan(1);
-    focusables[focusables.length - 1].focus();
-
-    // When
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
-
-    // Then
-    expect(document.activeElement).toBe(focusables[0]);
-
-    // When
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true }),
-    );
-
-    // Then
-    expect(document.activeElement).toBe(focusables[focusables.length - 1]);
-
-    // Close so the trap's document listener doesn't leak into other tests.
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  });
-
-  it("As a dotli integrator, the host keeps focus on the checked backend radio across re-renders", async () => {
-    // Given
-    installTopbarDom();
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    initTopBar();
-    document.getElementById("mode-button")?.click();
-    const group = document.querySelector<HTMLElement>(
-      '[role="radiogroup"][aria-label="Network Transport"]',
-    );
-    expect(group).not.toBeNull();
-    const toggle = document.querySelector('[role="switch"]');
-    expect(toggle?.getAttribute("aria-label")).toBe("dotNS cache");
-
-    // When
-    const next = Array.from(
-      group?.querySelectorAll<HTMLInputElement>("input") ?? [],
-    ).find((radio) => !radio.checked && !radio.disabled);
-    next?.click();
-
-    // Then
-    const checked = group?.querySelector<HTMLInputElement>("input:checked");
-    expect(checked?.value).toBe(next?.value);
-    expect(document.activeElement).toBe(checked);
-
-    // Cleanup
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
   });
 });
 

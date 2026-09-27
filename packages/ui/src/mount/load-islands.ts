@@ -18,7 +18,8 @@ import { topbarStore } from "../state/topbar";
  * selector (comma-separated): a held click is replayed by looking its
  * target's id up again, on the live element that replaced it.
  */
-const TRIGGERS = "#theme-toggle, #permissions-button, #chains-button";
+const TRIGGERS =
+  "#theme-toggle, #permissions-button, #chains-button, #mode-button";
 
 let loading: Promise<void> | null = null;
 

@@ -372,7 +372,7 @@ export function ChainsPopover(): JSX.Element {
       <button
         ref={(el) => {
           button = el;
-          // No stopPropagation: the shared outside-click closer in topbar.ts
+          // No stopPropagation: the settings island's outside-click closer
           // has to see this click to shut Settings, which sits at the same
           // fixed position and would otherwise render on top of this panel.
           el.addEventListener("click", surface.toggle);

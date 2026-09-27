@@ -59,11 +59,8 @@ import {
   WARNING_MIN_LOAD_MS,
   type CriticalChain,
 } from "./warnings";
-import {
-  initTopBar,
-  setChainsButtonVisible,
-  wipeOriginState,
-} from "@dotli/ui/topbar";
+import { initTopBar, setChainsButtonVisible } from "@dotli/ui/topbar";
+import { wipeOriginState } from "@dotli/ui/settings-actions";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
 import type { ShieldState } from "@dotli/ui/verification-shield";
 import {

@@ -3,7 +3,12 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { getSettingsState, initSettingsStore } from "@dotli/ui/state/settings";
-import { getBackend, getCacheSettings } from "@dotli/config/mode";
+import {
+  getBackend,
+  getCacheSettings,
+  isSharedWorkerAvailable,
+  isVerifiedSession,
+} from "@dotli/config/mode";
 import { getEnabledNetworks, getNetwork } from "@dotli/config/network";
 import { resetStores } from "../helpers/solid";
 
@@ -27,6 +32,8 @@ describe("settings store", () => {
       cache: getCacheSettings(),
       network: getNetwork(),
       enabledNetworks: getEnabledNetworks(),
+      sharedWorkerAvailable: isSharedWorkerAvailable(),
+      verified: isVerifiedSession(getBackend()),
     });
   });
 });

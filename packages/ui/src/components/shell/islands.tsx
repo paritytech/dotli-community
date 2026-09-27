@@ -20,6 +20,7 @@ import { AuthModal } from "./AuthModal";
 import { ChainsPopover } from "./ChainsPopover";
 import { OfflineBanner } from "./OfflineBanner";
 import { PermissionsPopover } from "./PermissionsPopover";
+import { SettingsPopover } from "./SettingsPopover";
 import { ThemeToggle } from "./ThemeToggle";
 import { UrlPill } from "./UrlPill";
 import { UserPopover } from "./UserPopover";
@@ -184,5 +185,13 @@ export function mountIslands(): string[] {
   // (setChainsButtonVisible) until this swap; the island reads the store
   // that call also writes.
   mount("chains", () => <ChainsPopover />, ["chains-button", "chains-popover"]);
+  // Also a loader trigger, and the mobile "More" menu's Settings row
+  // forwards its tap to it. The popover renders the settings store the host
+  // seeds at boot.
+  mount("settings", () => <SettingsPopover />, [
+    "mode-button",
+    "mode-popover-backdrop",
+    "mode-popover",
+  ]);
   return failed;
 }

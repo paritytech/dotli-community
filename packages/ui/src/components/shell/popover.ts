@@ -46,7 +46,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 
-/** The surface's controls in Tab order (as topbar.ts's trapPopoverFocus). */
+/** The surface's controls in Tab order. */
 function focusables(surface: HTMLElement): HTMLElement[] {
   return Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
     .filter(
@@ -94,8 +94,7 @@ export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
 
 /**
  * Focus the trigger. A trigger hidden on narrow screens (reached through the
- * "more" menu) cannot take focus, so the "more" button gets it instead, as in
- * topbar.ts's trapPopoverFocus.
+ * "more" menu) cannot take focus, so the "more" button gets it instead.
  */
 export function focusTrigger(trigger: HTMLElement | undefined): void {
   trigger?.focus();
@@ -110,9 +109,10 @@ export function focusTrigger(trigger: HTMLElement | undefined): void {
  * Escape (handing focus back to the trigger when focus was inside the
  * surface or lost to the body, which Safari does after a pointer click), on
  * window blur (`closeOnBlur`), and when a blocking modal comes up
- * (`topbarStore`'s `blockingModalActive` turning true). `trapFocus` adds
- * topbar.ts's trapPopoverFocus behaviour. The component renders the open
- * state (`.open`, `aria-expanded`) and wires the trigger to `toggle`.
+ * (`topbarStore`'s `blockingModalActive` turning true). `trapFocus` adds a
+ * focus trap with focus restore (see PopoverOptions). The component renders
+ * the open state (`.open`, `aria-expanded`) and wires the trigger to
+ * `toggle`.
  *
  * Call it inside a component: its listeners exist only while the popover is
  * open, and all of them go when it closes or the component is disposed.
