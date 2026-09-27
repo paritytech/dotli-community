@@ -28,6 +28,8 @@ const wallet = vi.hoisted(() => ({
   verified: true,
   failRefresh: false,
   refreshCalls: 0,
+  // The bridge's handler for "another tab took this page's custody".
+  revokeCustody: undefined as (() => void) | undefined,
   refreshGate: undefined as Promise<void> | undefined,
   claimGate: undefined as Promise<void> | undefined,
   claimStarted: false,
@@ -81,6 +83,10 @@ vi.mock("@dotli/protocol/client", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   requestCoreCustody: async (operation: { action: string }) =>
     operation.action === "acquire" ? "test-custody-lease" : undefined,
+  subscribeCoreCustodyRevoked: (listener: () => void) => {
+    wallet.revokeCustody = listener;
+    return () => {};
+  },
 }));
 vi.mock("@parity/truapi-host/worker-runtime?worker", () => ({
   default: class {},
@@ -261,6 +267,7 @@ describe("host-owned experimental identity", () => {
     wallet.verified = true;
     wallet.failRefresh = false;
     wallet.refreshCalls = 0;
+    wallet.revokeCustody = undefined;
     wallet.refreshGate = undefined;
     wallet.claimGate = undefined;
     wallet.claimStarted = false;
@@ -299,6 +306,23 @@ describe("host-owned experimental identity", () => {
       session: { primaryUsername: "alice.westend" },
     });
     expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("stops its wallet workers when another tab takes the test wallet over", async () => {
+    const { experimentalWalletControls: controls } = boot();
+    await controls.getIdentity();
+    expect(wallet.sessions[0]?.disposed).toBe(false);
+    const revoked = vi.fn();
+    window.addEventListener("dotli:wallet-custody-revoked", revoked);
+    try {
+      wallet.revokeCustody?.();
+      // Its lease is already gone: a worker left running would only fail
+      // writes, so the page must stop it and let the shell explain why.
+      expect(wallet.sessions[0]?.disposed).toBe(true);
+      expect(revoked).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("dotli:wallet-custody-revoked", revoked);
+    }
   });
 
   it("publishes restored native identity without trusting a disk username or emitting bare Connected", async () => {

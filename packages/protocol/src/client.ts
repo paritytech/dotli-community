@@ -87,6 +87,7 @@ const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
+const coreCustodyRevokedListeners = new Set<() => void>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
@@ -401,6 +402,11 @@ function bindMessageListener(): void {
               );
             }
           }
+        }
+        return;
+      case "core-custody-revoked":
+        if (msg.siteId === SITE_ID) {
+          broadcast(coreCustodyRevokedListeners, undefined, "Custody revoked");
         }
         return;
       case "smoldot-db":
@@ -772,6 +778,14 @@ export function subscribeSharedWallet(
   sharedWalletListeners.add(listener);
   return () => {
     sharedWalletListeners.delete(listener);
+  };
+}
+
+/** Another tab took this page's test-wallet custody; its runtimes must stop. */
+export function subscribeCoreCustodyRevoked(listener: () => void): () => void {
+  coreCustodyRevokedListeners.add(listener);
+  return () => {
+    coreCustodyRevokedListeners.delete(listener);
   };
 }
 

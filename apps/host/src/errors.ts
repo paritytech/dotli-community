@@ -9,6 +9,7 @@ import { getActiveServicesConfig } from "@dotli/config/network";
 import { BACKEND_LABELS } from "@dotli/config/mode";
 import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
 import type { ResolverErrorName } from "@dotli/resolver/errors";
+import { CORE_CUSTODY_BUSY_ERROR } from "@dotli/protocol/core-custody";
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
 // here at compile time. `instanceof` is unavailable because the error arrived
@@ -42,6 +43,8 @@ export const HOST_ERRORS = {
     "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
   TOPBAR_URL_NODE_MISSING: "Required DOM node missing: #topbar-url",
+  WALLET_IN_OTHER_TAB:
+    "Only one tab can use the test wallet at a time, so its coins and Chat messages stay in sync.",
 } as const;
 
 /**
@@ -70,6 +73,8 @@ export const RELOAD_BTN_LABEL = "Reload";
 export const OPEN_SETTINGS_BTN_LABEL = "Open Settings";
 
 export const TRY_ANYWAY_BTN_LABEL = "Try Anyway";
+
+export const TAKE_OVER_WALLET_BTN_LABEL = "Use it here";
 
 export const GO_BACK_BTN_LABEL = "Go Back";
 
@@ -129,7 +134,9 @@ export function trustedProviderHosts(): string[] {
   ];
 }
 
-export type Recovery = "switch-backend" | "reload" | "none";
+/** `take-over-wallet`: move the test wallet from the tab that has it. */
+export type Recovery =
+  "switch-backend" | "reload" | "take-over-wallet" | "none";
 
 /**
  * Headlines for the full-page error surface.
@@ -145,6 +152,8 @@ export const ERROR_TITLES = {
   CONTENT_UNAVAILABLE: "This app couldn't be downloaded",
   /** The files arrived intact and are simply not a runnable app. */
   APP_UNUSABLE: "This app can't be opened",
+  /** Nothing failed to load: the test wallet is running in another tab. */
+  WALLET_IN_OTHER_TAB: "Test wallet is open in another tab",
 } as const;
 
 /**
@@ -170,6 +179,7 @@ export type ErrorKind =
   | "hub-sync-timeout"
   | "light-client-timeout"
   | "rpc-timeout"
+  | "wallet-in-other-tab"
   | "unknown";
 
 export interface ErrorDescription {
@@ -256,6 +266,9 @@ function classifyError(
   // compile error rather than a silently unkeyed error page.
   const msg = err instanceof Error ? err.message : String(err);
 
+  if (err instanceof Error && err.name === CORE_CUSTODY_BUSY_ERROR) {
+    return walletInOtherTab();
+  }
   if (err instanceof ProtocolFatalError) {
     return {
       kind: "protocol-fatal",
@@ -428,4 +441,15 @@ function classifyError(
     };
   }
   return { kind: "unknown", message: msg, recovery: "switch-backend" };
+}
+
+/** Also shown when a tab loses its wallet to another tab mid-session. */
+export function walletInOtherTab(): ErrorDescription {
+  return {
+    kind: "wallet-in-other-tab",
+    title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
+    message: HOST_ERRORS.WALLET_IN_OTHER_TAB,
+    recovery: "take-over-wallet",
+    tips: [],
+  };
 }
