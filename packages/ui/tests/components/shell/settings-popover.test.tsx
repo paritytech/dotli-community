@@ -250,6 +250,61 @@ describe("The settings popover island", () => {
     expect(byId("mode-button").className).toBe("topbar-btn gateway-mode");
   });
 
+  it("As a mobile user opening it before the settings store is seeded, the sheet can be closed every way and fills in once the store is seeded", async () => {
+    // Given: the islands mounted before the host seeded the settings.
+    await renderPopover({ seed: false });
+
+    // When
+    await openPopover();
+
+    // Then: no settings yet, but the sheet header and its close button are
+    // there.
+    expect(document.querySelector(".mode-popover-columns")).toBeNull();
+    expect(document.querySelector(".mode-popover-sheet-close")).not.toBeNull();
+
+    // When
+    press("Escape");
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+
+    // When
+    await openPopover();
+    byId("mode-popover-backdrop").click();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+
+    // When
+    await openPopover();
+    (
+      document.querySelector(".mode-popover-sheet-close") as HTMLElement
+    ).click();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+
+    // When: opened again, then the host seeds the store.
+    await openPopover();
+    setNetwork("previewnet");
+    initSettingsStore();
+    await settle();
+
+    // Then: the content appears without reopening.
+    expect(isOpen()).toBe(true);
+    expectPopoverMatches({
+      chain: "smoldot-direct",
+      network: "previewnet",
+      cache: DEFAULT_CACHE,
+      enabledNetworks: ["paseo-next-v2", "previewnet"],
+      sharedWorkerSupported: typeof SharedWorker !== "undefined",
+      debugOn: false,
+    });
+  });
+
   it("As a dotli user opening it with several networks, it matches what the topbar rendered", async () => {
     // Given
     setNetwork("previewnet");

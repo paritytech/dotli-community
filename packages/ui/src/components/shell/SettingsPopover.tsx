@@ -28,15 +28,36 @@ const CHAIN_CHOICES: [Backend, string][] = [
 ];
 
 /**
+ * The mobile-only sheet header. On phones the popover becomes a full-screen
+ * sheet (CSS), which has no tappable backdrop to dismiss it, so it needs an
+ * explicit title and close control. Hidden on desktop, where the backdrop
+ * still handles dismissal. It sits outside the panel so the sheet can be
+ * closed even while the settings are not seeded yet.
+ */
+function SheetHeader(props: { close: () => void }): JSX.Element {
+  return (
+    <div class="mode-popover-sheet-header">
+      <span class="mode-popover-sheet-title">Settings</span>
+      <button
+        ref={(el) => {
+          el.addEventListener("click", props.close);
+        }}
+        class="mode-popover-sheet-close"
+        aria-label="Close settings"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/**
  * The popover's content for one opening. It starts from the saved settings
  * and keeps the changes in a draft: nothing is saved or reloaded until Save
  * & Apply, and the next opening starts afresh, so a closed popover drops
  * its draft.
  */
-function SettingsPanel(props: {
-  saved: SettingsState;
-  close: () => void;
-}): JSX.Element {
+function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const saved = untrack(() => props.saved);
   const persisted: ModeDraft = {
     chain: saved.backend,
@@ -91,22 +112,6 @@ function SettingsPanel(props: {
 
   return (
     <>
-      {/* Mobile-only sheet header. On phones the popover becomes a
-          full-screen sheet (CSS), which has no tappable backdrop to dismiss
-          it, so it needs an explicit title and close control. Hidden on
-          desktop, where the backdrop still handles dismissal. */}
-      <div class="mode-popover-sheet-header">
-        <span class="mode-popover-sheet-title">Settings</span>
-        <button
-          ref={(el) => {
-            el.addEventListener("click", props.close);
-          }}
-          class="mode-popover-sheet-close"
-          aria-label="Close settings"
-        >
-          ✕
-        </button>
-      </div>
       {/* Two-column grid. Left: backend / cache. Right: diagnostics. Save &
           Apply and the footer span both columns at the bottom. Collapses to
           a single column on narrow viewports (CSS). */}
@@ -252,7 +257,8 @@ function SettingsPanel(props: {
  *
  * The saved settings come only from settingsStore, which the host seeds at
  * boot, possibly after this island mounted: until then the button shows no
- * mark and the popover no content. The island never reads @dotli/config
+ * mark and the popover only its sheet header, and an opening under way when
+ * the store is seeded fills in then. The island never reads @dotli/config
  * itself, because reading can rewrite a setting (getBackend drops a shared
  * worker choice the browser cannot run), and the boot's URL settings step
  * must see the saved value first.
@@ -338,15 +344,20 @@ export function SettingsPopover(): JSX.Element {
         tabindex="-1"
       >
         <div class="mode-popover-content" id="mode-popover-content">
+          {/* Rendered from the first opening on, settings or not, so the
+              sheet always has its close button. */}
+          <Show when={opening() > 0}>
+            <SheetHeader close={close} />
+          </Show>
           {/* Keyed on the opening, and taking it as a parameter (Show calls
               only a child that declares one), so each opening mounts a
-              fresh panel. */}
-          <Show when={opening()} keyed>
+              fresh panel. Until the store is seeded the key is 0, which
+              renders nothing; the seeding then mounts the panel of an
+              opening already under way. */}
+          <Show when={settings() === null ? 0 : opening()} keyed>
             {(_opening: number) => {
               const saved = untrack(settings);
-              return saved === null ? null : (
-                <SettingsPanel saved={saved} close={close} />
-              );
+              return saved === null ? null : <SettingsPanel saved={saved} />;
             }}
           </Show>
         </div>
