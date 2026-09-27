@@ -11,7 +11,6 @@ import {
   type DotliDebugBusEvent,
 } from "@dotli/truapi-debug/dotli-debug-bus";
 import { EventStore } from "@dotli/truapi-debug/event-store";
-import { restoreIframeLayout } from "@dotli/truapi-debug/iframe-layout";
 import { createResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
 import { mountRoot } from "../../mount/root";
 import { Panel, PANEL_ID } from "./Panel";
@@ -113,6 +112,5 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     unsubscribe();
     disposeView();
     container.remove();
-    restoreIframeLayout();
   };
 }

@@ -42,8 +42,9 @@ import {
   matches,
   type FilterState,
 } from "@dotli/truapi-debug/filters";
-import { adjustIframeForPanel } from "@dotli/truapi-debug/iframe-layout";
+import { panelDockInset } from "@dotli/truapi-debug/iframe-layout";
 import type { ResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
+import { setDockInset } from "../../product-frame-layout";
 import { DetailPane } from "./DetailPane";
 import { EventList, type Selection } from "./EventList";
 import { Filters } from "./Filters";
@@ -174,26 +175,27 @@ export function Panel(props: {
     }
   });
 
+  // The frame layout keeps the inset across product reloads and bar moves,
+  // so it only needs reporting when the panel's own box changes.
   const refit = (): void => {
-    adjustIframeForPanel({
-      collapsed: collapsed(),
-      dock: dock(),
-      width: panelEl?.offsetWidth ?? 0,
-      height: panelEl?.offsetHeight ?? 0,
-    });
+    setDockInset(
+      panelDockInset({
+        collapsed: collapsed(),
+        dock: dock(),
+        width: panelEl?.offsetWidth ?? 0,
+        height: panelEl?.offsetHeight ?? 0,
+      }),
+      "debug",
+    );
   };
-
-  // When a new product iframe is mounted, re-apply the iframe size so the
-  // panel doesn't cover freshly-rendered app content.
-  window.addEventListener("dotli:product-loaded", refit);
   onCleanup(() => {
-    window.removeEventListener("dotli:product-loaded", refit);
+    setDockInset({ right: 0, bottom: 0 }, "debug");
   });
 
   /**
    * Lay the panel out for the current dock: clear inline resize overrides and
    * split sizes (each orientation starts from its CSS default), pin the top,
-   * and refit the host iframe.
+   * and refit the product iframe.
    */
   const applyDockLayout = (persist: boolean): void => {
     const el = panelEl;

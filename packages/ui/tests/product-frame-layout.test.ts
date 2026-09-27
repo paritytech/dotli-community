@@ -6,6 +6,7 @@ import {
   attachProductFrame,
   resetProductFrameLayout,
   setChatWidth,
+  setDockInset,
   setTopbarLayout,
 } from "@dotli/ui/product-frame-layout";
 
@@ -201,5 +202,149 @@ describe("product frame layout", () => {
     expect(style.top).toBe(HIDDEN_BAR_TOP);
     expect(style.height).toBe(HIDDEN_BAR_HEIGHT);
     expect(style.transform).toBe("");
+  });
+});
+
+describe("product frame layout: docked panels", () => {
+  it("As a dotli developer, a right dock narrows the frame and a bottom dock shortens it", () => {
+    // Given
+    const { frame, style } = recordingFrame();
+    attachProductFrame(frame);
+
+    // When
+    setDockInset({ right: 400, bottom: 0 }, "debug");
+
+    // Then
+    expect(style.width).toBe(`calc(${SAFE_WIDTH} - 400px)`);
+    expect(style.height).toBe(BELOW_BAR_HEIGHT);
+
+    // When
+    setDockInset({ right: 0, bottom: 300 }, "debug");
+
+    // Then
+    expect(style.width).toBe(SAFE_WIDTH);
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+  });
+
+  it("As a dotli developer, opening, dragging and closing chat keeps the bottom dock's reservation", () => {
+    // Given
+    const { frame, style } = recordingFrame();
+    attachProductFrame(frame);
+    setDockInset({ right: 0, bottom: 300 }, "debug");
+
+    // When chat opens
+    setChatWidth(360);
+
+    // Then
+    expect(style.width).toBe(`calc(${SAFE_WIDTH} - 360px)`);
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+
+    // When chat is dragged wider
+    setChatWidth(420);
+
+    // Then
+    expect(style.width).toBe(`calc(${SAFE_WIDTH} - 420px)`);
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+
+    // When chat closes
+    setChatWidth(0);
+
+    // Then
+    expect(style.width).toBe(SAFE_WIDTH);
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+  });
+
+  it("As a dotli developer, a product reload with chat open and a right dock keeps both", () => {
+    // Given
+    const first = recordingFrame();
+    attachProductFrame(first.frame);
+    setChatWidth(360);
+    setDockInset({ right: 400, bottom: 0 }, "debug");
+
+    // When the product re-renders into a new frame
+    const second = recordingFrame();
+    attachProductFrame(second.frame);
+
+    // Then
+    expect(second.style.width).toBe(`calc(${SAFE_WIDTH} - 760px)`);
+    expect(second.style.height).toBe(BELOW_BAR_HEIGHT);
+  });
+
+  it("As a dotli developer, hiding and revealing the bar keeps the bottom dock's reservation", () => {
+    // Given
+    const { frame, style } = recordingFrame();
+    attachProductFrame(frame);
+    setDockInset({ right: 0, bottom: 300 }, "debug");
+
+    // When the bar hides
+    setTopbarLayout({ offset: false, shown: false, transition: SLIDE });
+
+    // Then
+    expect(style.height).toBe(`calc(${HIDDEN_BAR_HEIGHT} - 300px)`);
+    expect(style.transform).toBe("translateY(0)");
+
+    // When the bar comes back
+    setTopbarLayout({ offset: false, shown: true, transition: SLIDE });
+
+    // Then
+    expect(style.height).toBe(`calc(${HIDDEN_BAR_HEIGHT} - 300px)`);
+    expect(style.transform).toBe(SHIFT_BELOW_BAR);
+  });
+
+  it("As a dotli developer, closing the dock with chat open restores the full layout", () => {
+    // Given
+    const { frame, style } = recordingFrame();
+    attachProductFrame(frame);
+    setChatWidth(360);
+    setTopbarLayout({ offset: false, shown: false, transition: SLIDE });
+    setDockInset({ right: 0, bottom: 300 }, "debug");
+
+    // When
+    setDockInset({ right: 0, bottom: 0 }, "debug");
+
+    // Then chat, the safe insets and the tracked bar all still apply
+    expect(style).toEqual({
+      position: "fixed",
+      top: HIDDEN_BAR_TOP,
+      left: "var(--safe-left, 0px)",
+      width: `calc(${SAFE_WIDTH} - 360px)`,
+      height: HIDDEN_BAR_HEIGHT,
+      transform: "translateY(0)",
+      transition: SLIDE,
+      border: "none",
+      margin: "0",
+      padding: "0",
+    });
+  });
+
+  it("As a dotli developer, the debug dock and the sandbox checker reserve their space side by side", () => {
+    // Given
+    const { frame, style } = recordingFrame();
+    attachProductFrame(frame);
+
+    // When both panels sit at the bottom
+    setDockInset({ right: 0, bottom: 300 }, "debug");
+    setDockInset({ right: 0, bottom: 120 }, "sandbox-checker");
+
+    // Then
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 420px)`);
+
+    // When the sandbox checker goes away
+    setDockInset({ right: 0, bottom: 0 }, "sandbox-checker");
+
+    // Then the debug dock keeps its space
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+  });
+
+  it("As a dotli integrator, a dock reported before any product frame applies once one attaches", () => {
+    // Given
+    setDockInset({ right: 0, bottom: 300 }, "debug");
+    const { frame, style } = recordingFrame();
+
+    // When
+    attachProductFrame(frame);
+
+    // Then
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
   });
 });

@@ -9,6 +9,7 @@
 
 import { createEffect, createSignal, For, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { setDockInset } from "../../product-frame-layout";
 
 interface Violation {
   id: number;
@@ -56,24 +57,20 @@ export function ViolationPanel(props: {
   const [violations, setViolations] = createSignal<Violation[]>([]);
   const [collapsed, setCollapsed] = createSignal(false);
   const [height, setHeight] = createSignal<number | null>(null);
-  // Read once: the iframe never changes for the panel's lifetime, and both
-  // `adjustIframe` and `onMessage` run outside a tracking scope (an effect's
-  // untracked callback and a native `message` listener), where reading
-  // `props.iframe` directly would trip the `STRICT_READ_UNTRACKED` dev
-  // diagnostic.
+  // Read once: the iframe never changes for the panel's lifetime, and
+  // `onMessage` runs outside a tracking scope (a native `message` listener),
+  // where reading `props.iframe` directly would trip the
+  // `STRICT_READ_UNTRACKED` dev diagnostic.
   const iframe = untrack(() => props.iframe);
   let panel: HTMLDivElement | undefined;
   let log: HTMLDivElement | undefined;
   let handle: HTMLDivElement | undefined;
   let nextId = 0;
   let dragging = false;
-  const topbarOffset = document.getElementById("topbar") !== null ? 56 : 0;
 
-  const adjustIframe = (isCollapsed: boolean): void => {
-    const panelHeight = isCollapsed
-      ? COLLAPSED_HEIGHT
-      : (panel?.offsetHeight ?? 0);
-    iframe.style.height = `calc(100dvh - ${String(topbarOffset)}px - ${String(panelHeight)}px)`;
+  // The frame layout keeps the product clear of the panel's height.
+  const reserve = (bottom: number): void => {
+    setDockInset({ right: 0, bottom }, "sandbox-checker");
   };
 
   const onMessage = (event: MessageEvent): void => {
@@ -130,6 +127,7 @@ export function ViolationPanel(props: {
       dragging = false;
       document.body.style.userSelect = "";
     }
+    reserve(0);
   });
 
   // New entry: scroll to it. Visible, collapsed or resized: refit the frame.
@@ -146,7 +144,7 @@ export function ViolationPanel(props: {
     () => [violations().length > 0, collapsed(), height()] as const,
     ([visible, isCollapsed]) => {
       if (visible) {
-        adjustIframe(isCollapsed);
+        reserve(isCollapsed ? COLLAPSED_HEIGHT : (panel?.offsetHeight ?? 0));
       }
     },
   );

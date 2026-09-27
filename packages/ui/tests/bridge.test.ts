@@ -372,6 +372,35 @@ describe("bridge render lifecycle", () => {
     );
   }, 10_000);
 
+  it("As a dApp user, both render paths hand the product frame to the frame layout", async () => {
+    // Given
+    const [{ renderIframe, renderAppSubdomain }, layout] = await Promise.all([
+      import("@dotli/ui/bridge"),
+      import("@dotli/ui/product-frame-layout"),
+    ]);
+    const renders = [
+      () => renderIframe("https://product.example/app", "product"),
+      () => renderAppSubdomain("cid", "product"),
+    ];
+
+    for (const [index, render] of renders.entries()) {
+      // When
+      layout.setTopbarLayout({ offset: true, shown: true, transition: "" });
+      const rendered = render();
+      await waitForProviderRequests(index + 1);
+      mocks.coreProviderDefers[index].resolve(makeProvider());
+      await rendered;
+      const { iframe } = mocks.iframeHosts[index];
+
+      // Then the frame is placed
+      expect(iframe.style.position).toBe("fixed");
+
+      // And later layout changes reach it
+      layout.setTopbarLayout({ offset: false, shown: false, transition: "" });
+      expect(iframe.style.transform).toBe("translateY(0)");
+    }
+  }, 10_000);
+
   it.each(["/x.dot@evil.com/pay", "/foo.dotify/pay"])(
     "As a user, the host keeps an adversarial deep path on the app sandbox origin: %s",
     async (path) => {

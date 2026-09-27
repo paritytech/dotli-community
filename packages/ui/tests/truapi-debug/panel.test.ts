@@ -23,6 +23,7 @@ type SetupOptions = Parameters<PanelModule["setupTruapiDebugPanel"]>[0];
 const PANEL_ID = "truapi-debug-panel";
 
 let bus: Bus;
+let layout: typeof import("@dotli/ui/product-frame-layout");
 let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
@@ -49,6 +50,8 @@ beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   bus = await import("@dotli/truapi-debug/dotli-debug-bus");
+  // Imported after the reset so the panel reports to this same instance.
+  layout = await import("@dotli/ui/product-frame-layout");
   panelModule = await loadPanel();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableDotliDebugBuffering();
@@ -225,45 +228,27 @@ function stubPanelBox(width: number, height: number): void {
 }
 
 /**
- * Record every value assigned to `el.style[prop]`. happy-dom's CSS parser
- * drops some valid values (a bare `100dvh`), so the stored style cannot
- * always be read back.
+ * Hand the frame layout a stand-in product frame that records each style
+ * declaration as written. happy-dom's CSS parser discards a `calc()` holding
+ * a `var()`, so a real iframe would read back empty inset-aware values.
  */
-function recordStyleWrites(
-  el: HTMLElement,
-  prop: "height" | "width",
-): string[] {
-  const writes: string[] = [];
-  const style = el.style;
-  const recording = new Proxy(style, {
-    get: (target, key) => {
-      const value: unknown = Reflect.get(target, key, target);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-    set: (target, key, value: unknown) => {
-      if (key === prop) {
-        writes.push(String(value));
-      }
-      return Reflect.set(target, key, value, target);
-    },
-  });
-  Object.defineProperty(el, "style", {
-    configurable: true,
-    get: () => recording,
-  });
-  return writes;
-}
-
-function addIframe(withTopbar: boolean): HTMLIFrameElement {
-  if (withTopbar) {
+function attachFrame(withTopbar: boolean): Record<string, string> {
+  if (withTopbar && document.getElementById("topbar") === null) {
     const topbar = document.createElement("div");
     topbar.id = "topbar";
     document.body.appendChild(topbar);
   }
-  const iframe = document.createElement("iframe");
-  document.body.appendChild(iframe);
-  return iframe;
+  const style: Record<string, string> = {};
+  layout.attachProductFrame({ style } as unknown as HTMLIFrameElement);
+  return style;
 }
+
+const SAFE_WIDTH =
+  "calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))";
+const BELOW_BAR_HEIGHT =
+  "calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))";
+const FULL_HEIGHT =
+  "calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))";
 
 function stubClipboard(writeText: ((text: string) => Promise<void>) | null) {
   Object.defineProperty(navigator, "clipboard", {
@@ -1657,115 +1642,129 @@ describe("truapi debug panel: product iframe geometry", () => {
   it("As a dotli developer, a bottom-docked panel shortens the product iframe by its height", () => {
     // Given
     stubPanelBox(400, 300);
-    const iframe = addIframe(true);
+    const frame = attachFrame(true);
 
     // When
     mount();
 
     // Then
-    expect(iframe.style.width).toBe("100%");
-    expect(iframe.style.height).toBe("calc(100dvh - 56px - 300px)");
+    expect(frame.width).toBe(SAFE_WIDTH);
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
 
     // When
     click(q(".td-collapse"));
 
     // Then
-    expect(iframe.style.height).toBe("calc(100dvh - 56px - 32px)");
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
   });
 
-  it("As a dotli developer, without a topbar the iframe offset is zero, and a collapsed mount reserves 32px", () => {
+  it("As a dotli developer, without a topbar the frame keeps the full safe height, and a collapsed mount reserves 32px", () => {
     // Given
     stubPanelBox(400, 300);
-    const iframe = addIframe(false);
+    const frame = attachFrame(false);
 
     // When
     mount({ startCollapsed: true });
 
     // Then
-    expect(iframe.style.width).toBe("100%");
-    expect(iframe.style.height).toBe("calc(100dvh - 0px - 32px)");
+    expect(frame.width).toBe(SAFE_WIDTH);
+    expect(frame.height).toBe(`calc(${FULL_HEIGHT} - 32px)`);
   });
 
   it("As a dotli developer, a right-docked panel narrows the iframe by its width, and collapsing gives it back", () => {
     // Given
     stubPanelBox(400, 300);
-    const iframe = addIframe(true);
+    const frame = attachFrame(true);
     mount();
 
     // When
     click(q(".td-dock"));
 
     // Then
-    expect(iframe.style.height).toBe("calc(100dvh - 56px)");
-    expect(iframe.style.width).toBe("calc(100vw - 400px)");
+    expect(frame.height).toBe(BELOW_BAR_HEIGHT);
+    expect(frame.width).toBe(`calc(${SAFE_WIDTH} - 400px)`);
 
     // When
     click(q(".td-collapse"));
 
     // Then
-    expect(iframe.style.width).toBe("100%");
-    expect(iframe.style.height).toBe("calc(100dvh - 56px)");
+    expect(frame.width).toBe(SAFE_WIDTH);
+    expect(frame.height).toBe(BELOW_BAR_HEIGHT);
 
     // When
     click(q(".td-collapse"));
     click(q(".td-dock"));
 
     // Then
-    expect(iframe.style.width).toBe("100%");
-    expect(iframe.style.height).toBe("calc(100dvh - 56px - 300px)");
+    expect(frame.width).toBe(SAFE_WIDTH);
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
   });
 
-  it("As a dotli developer, a newly loaded product iframe is refitted on dotli:product-loaded", () => {
-    // Given
-    stubPanelBox(400, 300);
+  it("As a dotli developer, dragging the panel edge refits the iframe", () => {
+    // Given (happy-dom viewport: 1024 x 768)
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.id === PANEL_ID
+          ? Number.parseFloat(this.style.height || "300")
+          : 0;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "setPointerCapture").mockImplementation(
+      () => undefined,
+    );
+    const frame = attachFrame(true);
     mount();
-    const iframe = addIframe(true);
-    expect(iframe.style.height).toBe("");
 
     // When
-    window.dispatchEvent(new CustomEvent("dotli:product-loaded"));
+    pointer(q(".td-resize-handle"), "pointerdown");
+    pointer(window, "pointermove", 0, 500);
 
     // Then
-    expect(iframe.style.height).toBe("calc(100dvh - 56px - 300px)");
-    expect(iframe.style.width).toBe("100%");
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);
+    pointer(window, "pointerup");
   });
 
-  it("As a dotli developer, dispose restores the iframe layout and stops refitting", () => {
+  it("As a dotli developer, a product reload with chat open and a right dock keeps both", () => {
     // Given
     stubPanelBox(400, 300);
-    const iframe = addIframe(true);
     localStorage.setItem("truapi-debug:dock", "right");
+    attachFrame(true);
+    layout.setChatWidth(360);
+    mount();
+
+    // When the product re-renders into a new frame and announces it
+    const reloaded = attachFrame(true);
+    window.dispatchEvent(new CustomEvent("dotli:product-loaded"));
+    layout.setChatWidth(360);
+
+    // Then
+    expect(reloaded.width).toBe(`calc(${SAFE_WIDTH} - 760px)`);
+    expect(reloaded.height).toBe(BELOW_BAR_HEIGHT);
+  });
+
+  it("As a dotli developer, closing the panel with chat open restores the full layout", () => {
+    // Given
+    stubPanelBox(400, 300);
+    const frame = attachFrame(true);
+    layout.setChatWidth(360);
+    layout.setTopbarLayout({ offset: false, shown: false, transition: "" });
     const dispose = mount();
-    expect(iframe.style.width).toBe("calc(100vw - 400px)");
+    expect(frame.height).toBe(`calc(${FULL_HEIGHT} - 300px)`);
 
     // When
     dispose();
 
-    // Then
-    expect(iframe.style.height).toBe("calc(100dvh - 56px)");
-    expect(iframe.style.width).toBe("100%");
+    // Then chat, the safe insets and the tracked bar all still apply
+    expect(frame.width).toBe(`calc(${SAFE_WIDTH} - 360px)`);
+    expect(frame.height).toBe(FULL_HEIGHT);
+    expect(frame.top).toBe("var(--safe-top, 0px)");
+    expect(frame.transform).toBe("translateY(0)");
 
-    // When
+    // When a product loads after the panel is gone
     window.dispatchEvent(new CustomEvent("dotli:product-loaded"));
 
     // Then
-    expect(iframe.style.height).toBe("calc(100dvh - 56px)");
-    expect(iframe.style.width).toBe("100%");
-  });
-
-  it("As a dotli developer, dispose without a topbar restores a full-height iframe", () => {
-    // Given
-    stubPanelBox(400, 300);
-    const iframe = addIframe(false);
-    const dispose = mount();
-    const heights = recordStyleWrites(iframe, "height");
-
-    // When
-    dispose();
-
-    // Then (happy-dom rejects a bare `100dvh`, so read the value written)
-    expect(heights.at(-1)).toBe("100dvh");
-    expect(iframe.style.width).toBe("100%");
+    expect(frame.height).toBe(FULL_HEIGHT);
   });
 });
 

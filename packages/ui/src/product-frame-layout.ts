@@ -4,11 +4,13 @@
 /**
  * The one writer of the product iframe's inline geometry.
  *
- * Three parties shape the frame: the bridge places each newly rendered frame,
- * the topbar auto-hide moves it with the bar, and the chat panel narrows it.
- * They each report their part here, and every change recomputes the whole box
- * from `productIframeBox()` and writes all of it, so a product reload keeps the
- * chat width and the chat width keeps the safe-area insets.
+ * Several parties shape the frame: the bridge places each newly rendered frame,
+ * the topbar auto-hide moves it with the bar, the chat panel narrows it, and
+ * the TrUAPI debug dock and the sandbox checker reserve an edge for their
+ * panels. They each report their part here, and every change recomputes the
+ * whole box from `productIframeBox()` and writes all of it, so a product reload
+ * keeps the chat width and the docks, and the chat width keeps the safe-area
+ * insets.
  */
 
 import { productIframeBox } from "./product-iframe-box";
@@ -25,12 +27,22 @@ export interface TopbarLayout {
   transition: string;
 }
 
+/** Space a docked panel covers along the frame's edges, in px (0 for none). */
+export interface DockInset {
+  right: number;
+  bottom: number;
+}
+
+/** The panels that can dock over the frame, at the same time. */
+export type DockSource = "debug" | "sandbox-checker";
+
 interface LayoutState {
   frame: HTMLIFrameElement | null;
   topbarOffset: boolean;
   topbarShown: boolean;
   transition: string;
   chatWidth: number;
+  docks: Partial<Record<DockSource, DockInset>>;
 }
 
 function initialState(): LayoutState {
@@ -40,6 +52,7 @@ function initialState(): LayoutState {
     topbarShown: true,
     transition: "",
     chatWidth: 0,
+    docks: {},
   };
 }
 
@@ -68,16 +81,20 @@ function write(): void {
       topbarOffset: document.getElementById("topbar") !== null,
     });
   }
-  const width =
-    state.chatWidth === 0
-      ? box.width
-      : `calc(${box.width} - ${String(state.chatWidth)}px)`;
+  // Docks at the same edge stack, so their insets add up.
+  let right = state.chatWidth;
+  let bottom = 0;
+  for (const dock of Object.values(state.docks)) {
+    right += dock.right;
+    bottom += dock.bottom;
+  }
   Object.assign(frame.style, {
     position: "fixed",
     top: box.top,
     left: box.left,
-    width,
-    height: box.height,
+    width: right === 0 ? box.width : `calc(${box.width} - ${String(right)}px)`,
+    height:
+      bottom === 0 ? box.height : `calc(${box.height} - ${String(bottom)}px)`,
     transform,
     transition,
     border: "none",
@@ -106,6 +123,12 @@ export function setTopbarLayout(layout: TopbarLayout): void {
 /** Report the docked chat panel's width in px, 0 while it is closed. */
 export function setChatWidth(px: number): void {
   state.chatWidth = px;
+  write();
+}
+
+/** Report the space `source`'s docked panel covers, all 0 once it is gone. */
+export function setDockInset(inset: DockInset, source: DockSource): void {
+  state.docks[source] = inset;
   write();
 }
 

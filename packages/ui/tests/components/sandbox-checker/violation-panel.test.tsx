@@ -1,12 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
 import { mountViolationPanel } from "@dotli/ui/components/sandbox-checker/mount";
+import {
+  attachProductFrame,
+  resetProductFrameLayout,
+  setChatWidth,
+} from "@dotli/ui/product-frame-layout";
 import { settle } from "../../helpers/solid";
 
+const BELOW_BAR_HEIGHT =
+  "calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))";
+
 let iframe: HTMLIFrameElement;
+/**
+ * The geometry the frame layout writes. happy-dom's CSS parser discards a
+ * `calc()` holding a `var()`, so the layout writes to a stand-in frame that
+ * records each declaration as written.
+ */
+let frame: Record<string, string>;
 let dispose: () => void = () => undefined;
 
 function violation(
@@ -24,11 +38,15 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="topbar"></div>';
   iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
+  frame = {};
+  attachProductFrame({ style: frame } as unknown as HTMLIFrameElement);
   dispose = mountViolationPanel(iframe);
 });
 
 afterEach(() => {
   dispose();
+  resetProductFrameLayout();
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -115,6 +133,11 @@ describe("sandbox checker violation panel", () => {
 
   it("As a dotli developer, showing, collapsing and expanding the panel resizes the app frame", async () => {
     // Given
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.id === "sandbox-checker-panel" ? 180 : 0;
+      },
+    );
     violation({
       type: "DOTLI_API_VIOLATION",
       api: "x",
@@ -127,7 +150,7 @@ describe("sandbox checker violation panel", () => {
     // Then
     expect(toggle.getAttribute("aria-label")).toBe("Toggle panel");
     expect(toggle.textContent).toBe("▼");
-    expect(iframe.style.height.startsWith("calc(100dvh - 56px - ")).toBe(true);
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
 
     // When
     fireEvent.click(toggle);
@@ -136,7 +159,13 @@ describe("sandbox checker violation panel", () => {
     // Then
     expect(panel().classList.contains("collapsed")).toBe(true);
     expect(toggle.textContent).toBe("▲");
-    expect(iframe.style.height).toBe("calc(100dvh - 56px - 32px)");
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+
+    // When: opening chat keeps the reservation
+    setChatWidth(360);
+
+    // Then
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
 
     // When: resizing while collapsed does nothing
     const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
@@ -179,7 +208,7 @@ describe("sandbox checker violation panel", () => {
 
     // Then
     expect(document.getElementById("sandbox-checker-panel")).toBeNull();
-    expect(iframe.style.height).toBe("calc(100dvh - 56px)");
+    expect(frame.height).toBe(BELOW_BAR_HEIGHT);
   });
 
   it("As a dotli developer, disposing while dragging cleans up the drag state", async () => {

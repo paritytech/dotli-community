@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Product-iframe layout adjustment so the TrUAPI debug panel never
-// overlays the host's rendered content.
+// How much of the product iframe the TrUAPI debug panel covers, so the host
+// can keep the frame clear of it. The host's frame layout applies the insets;
+// this module only computes them.
 //
 // Solid-free: consumed by the Solid truapi-debug components in
 // `packages/ui/src/components/truapi-debug/`, so it must not import
@@ -10,7 +11,10 @@
 
 import type { DockPosition } from "./dock-storage.ts";
 
-export interface IframeLayoutInput {
+/** A collapsed panel is its 32px header bar. */
+const COLLAPSED_HEIGHT_PX = 32;
+
+export interface DockInsetInput {
   collapsed: boolean;
   dock: DockPosition;
   /** Panel's rendered width in px (e.g. `panel.offsetWidth`). Only consulted for the right dock. */
@@ -19,38 +23,19 @@ export interface IframeLayoutInput {
   height: number;
 }
 
-/** Adjust the currently-mounted product iframe so the panel doesn't overlay it. */
-export function adjustIframeForPanel(input: IframeLayoutInput): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
-  if (iframe === null) {
-    return;
-  }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  const topOffset = hasTopbar ? 56 : 0;
+/** The px the panel covers along the frame's right and bottom edges. */
+export function panelDockInset(input: DockInsetInput): {
+  right: number;
+  bottom: number;
+} {
   if (input.dock === "right") {
-    iframe.style.height = `calc(100dvh - ${String(topOffset)}px)`;
-    // When collapsed, the 32px header bar overlays the top-right corner
-    // of the iframe rather than reserving a full-height column. Mirrors
-    // how bottom-dock collapse overlays only the bottom 32px.
-    iframe.style.width = input.collapsed
-      ? "100%"
-      : `calc(100vw - ${String(input.width)}px)`;
-  } else {
-    // Host's renderIframe sets inline width:100%. Restore
-    // that explicitly. Clearing to "" falls back to the HTML iframe
-    // default of 300px and breaks the layout.
-    iframe.style.width = "100%";
-    const panelHeight = input.collapsed ? 32 : input.height;
-    iframe.style.height = `calc(100dvh - ${String(topOffset)}px - ${String(panelHeight)}px)`;
+    // When collapsed, the header bar overlays the top-right corner of the
+    // frame rather than reserving a full-height column. Mirrors how the
+    // bottom-dock collapse overlays only the bottom 32px.
+    return { right: input.collapsed ? 0 : input.width, bottom: 0 };
   }
-}
-
-export function restoreIframeLayout(): void {
-  const iframe = document.querySelector<HTMLIFrameElement>("iframe");
-  if (iframe === null) {
-    return;
-  }
-  const hasTopbar = document.getElementById("topbar") !== null;
-  iframe.style.height = hasTopbar ? "calc(100dvh - 56px)" : "100dvh";
-  iframe.style.width = "100%";
+  return {
+    right: 0,
+    bottom: input.collapsed ? COLLAPSED_HEIGHT_PX : input.height,
+  };
 }

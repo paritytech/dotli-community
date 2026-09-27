@@ -18,9 +18,5 @@ export function mountViolationPanel(iframe: HTMLIFrameElement): () => void {
   return () => {
     disposeView();
     container.remove();
-    iframe.style.height =
-      document.getElementById("topbar") !== null
-        ? "calc(100dvh - 56px)"
-        : "100dvh";
   };
 }
