@@ -24,6 +24,10 @@ const wallet = vi.hoisted(() => ({
   revision: "original",
   username: undefined as string | undefined,
   cachedUsername: undefined as string | undefined,
+  // false: no chain lookup was ever recorded for this wallet revision.
+  verified: true,
+  failRefresh: false,
+  refreshCalls: 0,
   refreshGate: undefined as Promise<void> | undefined,
   claimGate: undefined as Promise<void> | undefined,
   claimStarted: false,
@@ -57,14 +61,18 @@ vi.mock("@dotli/ui/host-callbacks/SessionStore", async (original) => ({
   isCurrentLocalWallet: (context: { revision: string }) =>
     context.revision === wallet.revision,
   readLocalWalletSecret: async () => new Uint8Array(16),
-  readVerifiedLocalIdentity: async () => ({
-    identityAccountId: wallet.account,
-    liteUsername: wallet.cachedUsername,
-  }),
+  readVerifiedLocalIdentity: async () =>
+    wallet.verified
+      ? {
+          identityAccountId: wallet.account,
+          liteUsername: wallet.cachedUsername,
+        }
+      : undefined,
   writeVerifiedLocalIdentity: async (
     _binding: unknown,
     identity: LocalIdentity,
   ) => {
+    wallet.verified = true;
     wallet.cachedUsername = identity.liteUsername;
   },
   onStoredSessionChanged: () => () => {},
@@ -122,6 +130,10 @@ vi.mock("@parity/truapi-host/web", () => ({
       },
       refreshLocalIdentity: async () => {
         assertLive();
+        wallet.refreshCalls++;
+        if (wallet.failRefresh) {
+          throw new Error("Identity chain unavailable");
+        }
         if (wallet.failProductRefresh && wallet.sessions[0] !== session) {
           throw new Error("Product identity chain unavailable");
         }
@@ -230,6 +242,9 @@ describe("host-owned experimental identity", () => {
     wallet.revision = "original";
     wallet.username = undefined;
     wallet.cachedUsername = undefined;
+    wallet.verified = true;
+    wallet.failRefresh = false;
+    wallet.refreshCalls = 0;
     wallet.refreshGate = undefined;
     wallet.claimGate = undefined;
     wallet.claimStarted = false;
@@ -289,6 +304,39 @@ describe("host-owned experimental identity", () => {
         session: expect.objectContaining({ primaryUsername: "alice.westend" }),
       }),
     ]);
+  });
+
+  it("looks up a freshly imported wallet's username without Check username", async () => {
+    wallet.verified = false;
+    wallet.username = "alice.westend";
+    const { experimentalWalletControls: controls } = boot();
+    await expect(controls.getIdentity()).resolves.toMatchObject({
+      liteUsername: "alice.westend",
+    });
+    expect(auth.at(-1)).toMatchObject({
+      tag: "Connected",
+      session: { primaryUsername: "alice.westend" },
+    });
+    // Recorded, so the next load trusts the verified result instead of re-reading.
+    expect(wallet.cachedUsername).toBe("alice.westend");
+  });
+
+  it("does not re-read the chain on every load once absence is verified", async () => {
+    const { experimentalWalletControls: controls } = boot();
+    const identity = await controls.getIdentity();
+    expect(identity.liteUsername).toBeUndefined();
+    expect(wallet.refreshCalls).toBe(0);
+  });
+
+  it("keeps a freshly imported wallet usable when its username lookup fails", async () => {
+    wallet.verified = false;
+    wallet.failRefresh = true;
+    const { experimentalWalletControls: controls } = boot();
+    await expect(controls.getIdentity()).resolves.toMatchObject({
+      identityAccountId: wallet.account,
+    });
+    // A failed read is not a verified absence: the next load must retry.
+    expect(wallet.verified).toBe(false);
   });
 
   it("keeps wallet identity and global auth through failed and successful product replacement", async () => {

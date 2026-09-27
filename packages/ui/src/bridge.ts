@@ -2158,9 +2158,13 @@ async function createCoreProvider(
               );
             }
           }
+          const verified =
+            owner === undefined
+              ? await readVerifiedLocalIdentity(binding)
+              : undefined;
           const usernameHint =
             owner === undefined
-              ? (await readVerifiedLocalIdentity(binding))?.liteUsername
+              ? verified?.liteUsername
               : owner.identity.liteUsername;
           if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
             throw new Error("Test wallet changed during username restoration.");
@@ -2174,6 +2178,28 @@ async function createCoreProvider(
             ) {
               throw new Error(
                 "Restored username did not match the active wallet.",
+              );
+            }
+          } else if (owner === undefined && verified === undefined) {
+            // No chain lookup has ever been recorded for this wallet revision:
+            // it was just created or imported. Look the username up once so an
+            // imported identity does not wait for a manual Check username. A
+            // failed lookup is not evidence of absence and must not block the
+            // wallet; the next boot or Check username retries.
+            try {
+              const lookedUp = await signing.refreshLocalIdentity();
+              if (
+                lookedUp.identityAccountId === binding.identityAccountId &&
+                !isRuntimeDisposed() &&
+                isCurrentLocalWallet(binding)
+              ) {
+                activatedIdentity = lookedUp;
+                await writeVerifiedLocalIdentity(binding, lookedUp);
+              }
+            } catch (error) {
+              log.warn(
+                "[dot.li] automatic test-wallet username lookup failed:",
+                error,
               );
             }
           }
