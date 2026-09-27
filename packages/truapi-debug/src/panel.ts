@@ -105,6 +105,8 @@ export interface InspectorIdentity {
   liteUsername?: string;
   fullUsername?: string;
   publicKey?: string;
+  /** The username (or its absence) was read from chain in this session. */
+  usernameVerified?: boolean;
 }
 
 export interface InspectorResource {
@@ -1073,6 +1075,25 @@ function installExperimentalWalletControls(
           title: "Username not checked",
           detail: "",
         };
+      }
+      // The host already read the username from chain while connecting, so
+      // report that result rather than asking for a manual check.
+      if (
+        usernameStatus.kind === "unknown" &&
+        currentIdentity.usernameVerified === true
+      ) {
+        usernameStatus =
+          (currentIdentity.liteUsername ?? "") !== ""
+            ? {
+                kind: "claimed",
+                title: currentIdentity.liteUsername ?? "",
+                detail: "Ownership confirmed",
+              }
+            : {
+                kind: "unclaimed",
+                title: "No username registered",
+                detail: "Checked on this network.",
+              };
       }
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {

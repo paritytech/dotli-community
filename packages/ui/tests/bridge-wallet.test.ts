@@ -27,7 +27,6 @@ const wallet = vi.hoisted(() => ({
   // false: no chain lookup was ever recorded for this wallet revision.
   verified: true,
   failRefresh: false,
-  refreshCalls: 0,
   refreshGate: undefined as Promise<void> | undefined,
   claimGate: undefined as Promise<void> | undefined,
   claimStarted: false,
@@ -130,7 +129,6 @@ vi.mock("@parity/truapi-host/web", () => ({
       },
       refreshLocalIdentity: async () => {
         assertLive();
-        wallet.refreshCalls++;
         if (wallet.failRefresh) {
           throw new Error("Identity chain unavailable");
         }
@@ -244,7 +242,6 @@ describe("host-owned experimental identity", () => {
     wallet.cachedUsername = undefined;
     wallet.verified = true;
     wallet.failRefresh = false;
-    wallet.refreshCalls = 0;
     wallet.refreshGate = undefined;
     wallet.claimGate = undefined;
     wallet.claimStarted = false;
@@ -312,20 +309,27 @@ describe("host-owned experimental identity", () => {
     const { experimentalWalletControls: controls } = boot();
     await expect(controls.getIdentity()).resolves.toMatchObject({
       liteUsername: "alice.westend",
+      usernameVerified: true,
     });
     expect(auth.at(-1)).toMatchObject({
       tag: "Connected",
       session: { primaryUsername: "alice.westend" },
     });
-    // Recorded, so the next load trusts the verified result instead of re-reading.
     expect(wallet.cachedUsername).toBe("alice.westend");
   });
 
-  it("does not re-read the chain on every load once absence is verified", async () => {
+  it("re-checks a cached absence, so a username claimed elsewhere appears", async () => {
+    // This browser checked the identity before the name was claimed, e.g. on
+    // another device; the record outlives re-imports because it is keyed by
+    // account, not by import.
+    wallet.cachedUsername = undefined;
+    wallet.username = "alice.westend";
     const { experimentalWalletControls: controls } = boot();
-    const identity = await controls.getIdentity();
-    expect(identity.liteUsername).toBeUndefined();
-    expect(wallet.refreshCalls).toBe(0);
+    await expect(controls.getIdentity()).resolves.toMatchObject({
+      liteUsername: "alice.westend",
+      usernameVerified: true,
+    });
+    expect(wallet.cachedUsername).toBe("alice.westend");
   });
 
   it("keeps a freshly imported wallet usable when its username lookup fails", async () => {
@@ -334,6 +338,7 @@ describe("host-owned experimental identity", () => {
     const { experimentalWalletControls: controls } = boot();
     await expect(controls.getIdentity()).resolves.toMatchObject({
       identityAccountId: wallet.account,
+      usernameVerified: false,
     });
     // A failed read is not a verified absence: the next load must retry.
     expect(wallet.verified).toBe(false);
