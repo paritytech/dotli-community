@@ -739,7 +739,7 @@ function installExperimentalWalletControls(
   scope.textContent =
     "English BIP-39: 12, 15, 18, 21 or 24 words. No passphrase or custom derivation path. " +
     "Uses native Polkadot host/Substrate account derivation, not Bitcoin/Ethereum seed derivation. " +
-    "Restores keys, not permissions. Check username after import. Keep the phrase private; anyone with it controls the wallet.";
+    "Restores keys, not permissions. The username is looked up automatically after import. Keep the phrase private; anyone with it controls the wallet.";
   const importButton = document.createElement("button");
   importButton.type = "button";
   importButton.className = "td-btn";
