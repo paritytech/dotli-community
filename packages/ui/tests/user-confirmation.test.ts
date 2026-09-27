@@ -133,24 +133,27 @@ describe("user confirmation modal", () => {
       value: {
         tag: "Product",
         value: {
-          account: {
-            dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: { tag: "Index", value: 2 },
-          },
-          payload: {
-            blockHash:
-              "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-            blockNumber: "0x00000000",
-            era: "0x00",
-            genesisHash:
-              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-            method: "0x0500",
-            nonce: "0x00000000",
-            signedExtensions: [],
-            specVersion: "0x00000000",
-            tip: "0x00000000000000000000000000000000",
-            transactionVersion: "0x00000000",
-            version: 4,
+          callingProductId: "truapi-playground.dot",
+          request: {
+            account: {
+              dotNsIdentifier: "truapi-playground.dot",
+              derivationIndex: { tag: "Index", value: 2 },
+            },
+            payload: {
+              blockHash:
+                "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+              blockNumber: "0x00000000",
+              era: "0x00",
+              genesisHash:
+                "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+              method: "0x0500",
+              nonce: "0x00000000",
+              signedExtensions: [],
+              specVersion: "0x00000000",
+              tip: "0x00000000000000000000000000000000",
+              transactionVersion: "0x00000000",
+              version: 4,
+            },
           },
         },
       },
@@ -316,15 +319,18 @@ describe("user confirmation modal", () => {
       value: {
         tag: "Product",
         value: {
-          signer: {
-            dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: { tag: "Index", value: 3 },
+          callingProductId: "truapi-playground.dot",
+          payload: {
+            signer: {
+              dotNsIdentifier: "truapi-playground.dot",
+              derivationIndex: { tag: "Index", value: 3 },
+            },
+            genesisHash:
+              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+            callData: "0x0500",
+            extensions: [],
+            txExtVersion: 5,
           },
-          genesisHash:
-            "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-          callData: "0x0500",
-          extensions: [],
-          txExtVersion: 5,
         },
       },
     };
