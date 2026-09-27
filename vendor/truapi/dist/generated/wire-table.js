@@ -419,37 +419,37 @@ export const WORKER_END_OPERATION = {
     method: 1,
     kind: "request",
 };
-export const PEER_TRANSPORT_DIAL = {
+export const JAM_PEER_TRANSPORT_DIAL = {
     trait: 23,
     method: 0,
     kind: "request",
 };
-export const PEER_TRANSPORT_OPEN = {
+export const JAM_PEER_TRANSPORT_OPEN = {
     trait: 23,
     method: 1,
     kind: "request",
 };
-export const PEER_TRANSPORT_SEND = {
+export const JAM_PEER_TRANSPORT_SEND = {
     trait: 23,
     method: 2,
     kind: "request",
 };
-export const PEER_TRANSPORT_RECV = {
+export const JAM_PEER_TRANSPORT_RECV = {
     trait: 23,
     method: 3,
     kind: "request",
 };
-export const PEER_TRANSPORT_RESET = {
+export const JAM_PEER_TRANSPORT_RESET = {
     trait: 23,
     method: 4,
     kind: "request",
 };
-export const PEER_TRANSPORT_CLOSE = {
+export const JAM_PEER_TRANSPORT_CLOSE = {
     trait: 23,
     method: 5,
     kind: "request",
 };
-export const PEER_TRANSPORT_EVENTS = {
+export const JAM_PEER_TRANSPORT_EVENTS = {
     trait: 23,
     method: 6,
     kind: "request",

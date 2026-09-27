@@ -10,24 +10,24 @@ import {
   MESSAGE_TYPE_RESPONSE,
   TRUAPI_CODEC_VERSION,
   VersionedHostHandshakeRequest,
-  VersionedHostPeerTransportDialError,
-  VersionedHostPeerTransportDialRequest,
-  VersionedHostPeerTransportDialResponse,
-  VersionedHostPeerTransportEventsRequest,
+  VersionedHostJamPeerTransportDialError,
+  VersionedHostJamPeerTransportDialRequest,
+  VersionedHostJamPeerTransportDialResponse,
+  VersionedHostJamPeerTransportEventsRequest,
   VersionedRemotePermissionError,
   VersionedRemotePermissionRequest,
   VersionedRemotePermissionResponse,
 } from "@parity/truapi";
 import {
-  createPeerTransportSession,
-  type PeerTransportSession,
+  createJamPeerTransportSession,
+  type JamPeerTransportSession,
   type WebTransportLike,
-} from "@parity/truapi/peer-transport";
+} from "@parity/truapi/jam-peer-transport";
 import * as S from "@parity/truapi/scale";
 import {
   ACCOUNT_GET_ACCOUNT,
-  PEER_TRANSPORT_DIAL,
-  PEER_TRANSPORT_EVENTS,
+  JAM_PEER_TRANSPORT_DIAL,
+  JAM_PEER_TRANSPORT_EVENTS,
   PERMISSIONS_REQUEST_REMOTE_PERMISSION,
   SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
@@ -43,8 +43,8 @@ const OTHER_GENESIS = `0x${"ab".repeat(32)}` as const;
 const P256 =
   "0x028874174c8f469438a1b1bab2fde75f9c4999461382ec6d47e9b3b4511294c607";
 const dialResult = S.Result(
-  VersionedHostPeerTransportDialResponse,
-  S.CallError(VersionedHostPeerTransportDialError),
+  VersionedHostJamPeerTransportDialResponse,
+  S.CallError(VersionedHostJamPeerTransportDialError),
 );
 const permissionResult = S.Result(
   VersionedRemotePermissionResponse,
@@ -79,8 +79,8 @@ const handshake = (): Uint8Array<ArrayBuffer> =>
 
 const dial = (genesis: `0x${string}`): Uint8Array<ArrayBuffer> =>
   frame(
-    PEER_TRANSPORT_DIAL,
-    VersionedHostPeerTransportDialRequest.enc({
+    JAM_PEER_TRANSPORT_DIAL,
+    VersionedHostJamPeerTransportDialRequest.enc({
       tag: "V1",
       value: {
         genesis,
@@ -114,7 +114,7 @@ function execution(answer: (genesis: string) => boolean): {
   hostFrames: Uint8Array[];
   connects: string[];
   requester: JamPeersPermissionRequester;
-  session: PeerTransportSession;
+  session: JamPeerTransportSession;
 } {
   const prompts: string[] = [];
   const hostFrames: Uint8Array[] = [];
@@ -162,7 +162,7 @@ function execution(answer: (genesis: string) => boolean): {
     },
   };
   requester = new JamPeersPermissionRequester(port);
-  const session = createPeerTransportSession({
+  const session = createJamPeerTransportSession({
     authorize: requester.authorize,
     connect: (url) => {
       connects.push(url);
@@ -173,7 +173,7 @@ function execution(answer: (genesis: string) => boolean): {
   const pending: Promise<void>[] = [];
   return {
     send: (request) => {
-      // Requests of the peer-transport trait resolve on the session's reply;
+      // Requests of the JamPeerTransport trait resolve on the session's reply;
       // everything else is posted to the host synchronously.
       const { promise, resolve } = Promise.withResolvers<undefined>();
       pending.push(promise);
@@ -191,7 +191,7 @@ function execution(answer: (genesis: string) => boolean): {
         },
       );
       expect(routed).toBe(true);
-      if (wireTrait(request) !== PEER_TRANSPORT_DIAL.trait) {
+      if (wireTrait(request) !== JAM_PEER_TRANSPORT_DIAL.trait) {
         resolve(undefined);
       }
     },
@@ -286,8 +286,8 @@ describe("PolkaVM JAM peer access as a runtime permission", () => {
     app.send(frame(ACCOUNT_GET_ACCOUNT, new Uint8Array()));
     app.send(
       frame(
-        PEER_TRANSPORT_EVENTS,
-        VersionedHostPeerTransportEventsRequest.enc({ tag: "V1" }),
+        JAM_PEER_TRANSPORT_EVENTS,
+        VersionedHostJamPeerTransportEventsRequest.enc({ tag: "V1" }),
       ),
     );
 
@@ -324,7 +324,7 @@ describe("PolkaVM JAM peer access as a runtime permission", () => {
 
   it("keeps the 1 MiB host bound for non-peer frames", () => {
     const port = { postMessage: vi.fn() };
-    const session = createPeerTransportSession({
+    const session = createJamPeerTransportSession({
       authorize: () => Promise.resolve(true),
     });
     expect(

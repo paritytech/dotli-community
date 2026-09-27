@@ -372,32 +372,32 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostWorkerEndOperationRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostWorkerEndOperationResponse, S.CallError(T.VersionedHostWorkerEndOperationError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_DIAL.trait * 256 + W.PEER_TRANSPORT_DIAL.method]: {
-        0: (payload) => T.VersionedHostPeerTransportDialRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportDialResponse, S.CallError(T.VersionedHostPeerTransportDialError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_DIAL.trait * 256 + W.JAM_PEER_TRANSPORT_DIAL.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportDialRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_OPEN.trait * 256 + W.PEER_TRANSPORT_OPEN.method]: {
-        0: (payload) => T.VersionedHostPeerTransportOpenRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportOpenResponse, S.CallError(T.VersionedHostPeerTransportOpenError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_OPEN.trait * 256 + W.JAM_PEER_TRANSPORT_OPEN.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportOpenRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportOpenResponse, S.CallError(T.VersionedHostJamPeerTransportOpenError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_SEND.trait * 256 + W.PEER_TRANSPORT_SEND.method]: {
-        0: (payload) => T.VersionedHostPeerTransportSendRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportSendResponse, S.CallError(T.VersionedHostPeerTransportSendError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_SEND.trait * 256 + W.JAM_PEER_TRANSPORT_SEND.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportSendRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportSendResponse, S.CallError(T.VersionedHostJamPeerTransportSendError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_RECV.trait * 256 + W.PEER_TRANSPORT_RECV.method]: {
-        0: (payload) => T.VersionedHostPeerTransportRecvRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportRecvResponse, S.CallError(T.VersionedHostPeerTransportRecvError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_RECV.trait * 256 + W.JAM_PEER_TRANSPORT_RECV.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportRecvRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportRecvResponse, S.CallError(T.VersionedHostJamPeerTransportRecvError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_RESET.trait * 256 + W.PEER_TRANSPORT_RESET.method]: {
-        0: (payload) => T.VersionedHostPeerTransportResetRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportResetResponse, S.CallError(T.VersionedHostPeerTransportResetError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_RESET.trait * 256 + W.JAM_PEER_TRANSPORT_RESET.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportResetRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportResetResponse, S.CallError(T.VersionedHostJamPeerTransportResetError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_CLOSE.trait * 256 + W.PEER_TRANSPORT_CLOSE.method]: {
-        0: (payload) => T.VersionedHostPeerTransportCloseRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportCloseResponse, S.CallError(T.VersionedHostPeerTransportCloseError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_CLOSE.trait * 256 + W.JAM_PEER_TRANSPORT_CLOSE.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportCloseRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportCloseResponse, S.CallError(T.VersionedHostJamPeerTransportCloseError)).dec(payload),
     },
-    [W.PEER_TRANSPORT_EVENTS.trait * 256 + W.PEER_TRANSPORT_EVENTS.method]: {
-        0: (payload) => T.VersionedHostPeerTransportEventsRequest.dec(payload),
-        1: (payload) => S.Result(T.VersionedHostPeerTransportEventsResponse, S.CallError(T.VersionedHostPeerTransportEventsError)).dec(payload),
+    [W.JAM_PEER_TRANSPORT_EVENTS.trait * 256 + W.JAM_PEER_TRANSPORT_EVENTS.method]: {
+        0: (payload) => T.VersionedHostJamPeerTransportEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload),
     },
 };

@@ -89,7 +89,7 @@ export function jamPeersGrantText(granted: readonly string[]): string[] {
 
 /**
  * Asks the host for `RemotePermission::JamPeers { genesis }` on behalf of the
- * execution-local PeerTransport session. Replies to its own requests never
+ * execution-local JamPeerTransport session. Replies to its own requests never
  * reach the guest.
  */
 export class JamPeersPermissionRequester {
@@ -102,7 +102,7 @@ export class JamPeersPermissionRequester {
     this.port = port;
   }
 
-  /** PeerTransport `authorize` callback: resolves whether the host granted `genesis`. */
+  /** JamPeerTransport `authorize` callback: resolves whether the host granted `genesis`. */
   readonly authorize = (genesis: string): Promise<boolean> => {
     if (this.closed) {
       return Promise.resolve(false);

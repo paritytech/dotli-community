@@ -7,12 +7,12 @@ import type {
   PolkaVmDebugSnapshot,
 } from "@dotli/truapi-debug/dotli-debug-types";
 import {
-  createPeerTransportSession,
-  PEER_TRANSPORT_MAX_FRAME_BYTES,
-  type PeerTransportSession,
-} from "@parity/truapi/peer-transport";
+  createJamPeerTransportSession,
+  JAM_PEER_TRANSPORT_MAX_FRAME_BYTES,
+  type JamPeerTransportSession,
+} from "@parity/truapi/jam-peer-transport";
 import {
-  PEER_TRANSPORT_DIAL,
+  JAM_PEER_TRANSPORT_DIAL,
   SYSTEM_HANDSHAKE,
 } from "@parity/truapi/wire-table";
 import {
@@ -45,7 +45,7 @@ const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
 const MAX_SAVE_BYTES = 1024 * 1024;
 const MAX_TRANSLATED_WASM_BYTES = 16 * 1024 * 1024;
 const MAX_HOST_FRAME_BYTES = 1024 * 1024;
-// A peer-transport guest keeps several requests in flight per tick (one recv
+// A JamPeerTransport guest keeps several requests in flight per tick (one recv
 // per stream plus events); the byte bound below is what limits memory.
 const MAX_PENDING_HOST_FRAMES = 256;
 const MAX_PENDING_HOST_FRAME_BYTES = 4 * 1024 * 1024;
@@ -1128,33 +1128,33 @@ export interface HostFrameResponseTarget {
 
 /**
  * Route one guest host frame. Every frame goes to the authenticated host port
- * except `PeerTransport` (trait 23) requests, which the execution-local peer
+ * except `JamPeerTransport` (trait 23) requests, which the execution-local peer
  * session answers once the host has granted the dialed JAM network. The
  * handshake is the one frame both must see: the peer session negotiates on a
  * copy and its reply is dropped, so the guest only ever observes the host's
  * answer.
  *
  * Returns `false` when the frame exceeds the bound for its route. Only a
- * peer-transport frame may exceed `MAX_HOST_FRAME_BYTES`, and then only up
+ * JamPeerTransport frame may exceed `MAX_HOST_FRAME_BYTES`, and then only up
  * to a `send` of one maximal message.
  */
 export function dispatchHostFrame(
   request: Uint8Array<ArrayBuffer>,
   hostFramePort: HostFrameResponseTarget,
-  peerSession: PeerTransportSession,
+  peerSession: JamPeerTransportSession,
   onPeerResponse: (response: Uint8Array) => void,
   onPeerError: (error: Error) => void,
 ): boolean {
   const trait = wireFrameTraitId(request);
-  if (trait === PEER_TRANSPORT_DIAL.trait) {
-    if (request.byteLength > PEER_TRANSPORT_MAX_FRAME_BYTES) {
+  if (trait === JAM_PEER_TRANSPORT_DIAL.trait) {
+    if (request.byteLength > JAM_PEER_TRANSPORT_MAX_FRAME_BYTES) {
       return false;
     }
     peerSession.handleFrame(request).then(onPeerResponse, (error: unknown) => {
       onPeerError(
         error instanceof Error
           ? error
-          : new Error("Peer-transport frame dispatch failed"),
+          : new Error("JamPeerTransport frame dispatch failed"),
       );
     });
     return true;
@@ -3125,7 +3125,7 @@ async function startPolkaVmApplication(
   // id and its reply never reaches the guest. The grant is execution-local
   // and carries no account, signing, storage or arbitrary-URL authority.
   const jamPeersPermission = new JamPeersPermissionRequester(hostFramePort);
-  const peerSession = createPeerTransportSession({
+  const peerSession = createJamPeerTransportSession({
     authorize: jamPeersPermission.authorize,
   });
   const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-worker.js"));
@@ -3963,7 +3963,7 @@ async function startPolkaVmApplication(
         if (
           !(bytes instanceof Uint8Array) ||
           bytes.byteLength === 0 ||
-          bytes.byteLength > PEER_TRANSPORT_MAX_FRAME_BYTES
+          bytes.byteLength > JAM_PEER_TRANSPORT_MAX_FRAME_BYTES
         ) {
           failRuntime(new Error("PolkaVM guest emitted an invalid host frame"));
           return;

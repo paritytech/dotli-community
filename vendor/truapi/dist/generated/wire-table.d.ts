@@ -408,37 +408,37 @@ export declare const WORKER_END_OPERATION: {
     readonly method: 1;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_DIAL: {
+export declare const JAM_PEER_TRANSPORT_DIAL: {
     readonly trait: 23;
     readonly method: 0;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_OPEN: {
+export declare const JAM_PEER_TRANSPORT_OPEN: {
     readonly trait: 23;
     readonly method: 1;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_SEND: {
+export declare const JAM_PEER_TRANSPORT_SEND: {
     readonly trait: 23;
     readonly method: 2;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_RECV: {
+export declare const JAM_PEER_TRANSPORT_RECV: {
     readonly trait: 23;
     readonly method: 3;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_RESET: {
+export declare const JAM_PEER_TRANSPORT_RESET: {
     readonly trait: 23;
     readonly method: 4;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_CLOSE: {
+export declare const JAM_PEER_TRANSPORT_CLOSE: {
     readonly trait: 23;
     readonly method: 5;
     readonly kind: "request";
 };
-export declare const PEER_TRANSPORT_EVENTS: {
+export declare const JAM_PEER_TRANSPORT_EVENTS: {
     readonly trait: 23;
     readonly method: 6;
     readonly kind: "request";
