@@ -40,7 +40,7 @@ function dimensions(canvas: HTMLCanvasElement): Dimensions {
 }
 
 export function observeSurfaceDimensions(
-  canvas: HTMLCanvasElement,
+  element: HTMLElement,
   onChange: () => void,
 ): () => void {
   const observer = new ResizeObserver(onChange);
@@ -56,7 +56,7 @@ export function observeSurfaceDimensions(
     onChange();
   };
   resolution.addEventListener("change", scaleChanged);
-  observer.observe(canvas);
+  observer.observe(element);
   return () => {
     observer.disconnect();
     resolution.removeEventListener("change", scaleChanged);
