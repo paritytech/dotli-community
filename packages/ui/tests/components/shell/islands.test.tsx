@@ -809,6 +809,7 @@ describe("shell islands", () => {
       unregister();
     }
   });
+
   it("As a dotli user, the network button and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning", async () => {
     // Given
     const warn = vi.spyOn(console, "warn");
@@ -934,6 +935,7 @@ describe("shell islands", () => {
         ?.textContent,
     ).toBe("Settings");
   });
+
   it("As a mobile user, the More button and flyout are swapped in place for a live island matching the static markup, one element per id, with no warning", async () => {
     // Given
     const warn = vi.spyOn(console, "warn");

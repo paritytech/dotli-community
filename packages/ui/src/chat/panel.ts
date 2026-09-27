@@ -24,10 +24,9 @@ import { ensureChatPanel, prefetchChatPanel } from "./load";
 /** Wire the chat button + panel. Called once from `initTopBar`. */
 export function initChatPanel(): void {
   const button = document.getElementById("chat-button");
-  const moreRow = document.getElementById("more-row-chat");
   const badge = document.getElementById("chat-unread-badge");
   const panel = document.getElementById("chat-panel");
-  if (button === null || moreRow === null || badge === null || panel === null) {
+  if (button === null || badge === null || panel === null) {
     return;
   }
 
@@ -39,9 +38,6 @@ export function initChatPanel(): void {
     const state = chatPanelStore.get();
     const visible = chatButtonVisible(state);
     button.hidden = !visible;
-    // The static "More" row, until the More island replaces it (the island
-    // renders the row from this store; this node is then detached).
-    moreRow.hidden = !visible;
     // While the panel is open the room rows carry their own badges.
     const unread = state.open ? 0 : totalChatUnread(state);
     badge.hidden = unread === 0;

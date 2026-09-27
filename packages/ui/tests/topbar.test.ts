@@ -78,6 +78,7 @@ describe("topbar boot wiring", () => {
   it("As the host, initTopBar starts the auth controller, block source, network store, chat panel, theme and home link, and rehydrates the session on idle", async () => {
     // Given
     document.body.innerHTML = `<a id="topbar-home"></a>`;
+    vi.stubEnv("VITE_APP_URL", "https://app.example/home");
     let idle: (() => void) | null = null;
     vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
       idle = callback;
@@ -137,7 +138,7 @@ describe("topbar boot wiring", () => {
         (
           document.getElementById("topbar-home") as HTMLAnchorElement
         ).getAttribute("href"),
-      ).toBe("/");
+      ).toBe("https://app.example/home");
       expect(boot.emitPersistedSessionUiState).not.toHaveBeenCalled();
 
       // When
@@ -146,6 +147,7 @@ describe("topbar boot wiring", () => {
       // Then
       expect(boot.emitPersistedSessionUiState).toHaveBeenCalledTimes(1);
     } finally {
+      vi.unstubAllEnvs();
       for (const id of [
         "@dotli/ui/auth-controller",
         "@dotli/ui/block-source",

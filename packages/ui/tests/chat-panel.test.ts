@@ -38,7 +38,6 @@ function installChatDom(): void {
     <button id="chat-button" aria-expanded="false" hidden>
       <span id="chat-unread-badge" hidden></span>
     </button>
-    <button id="more-row-chat" hidden></button>
     <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
     <div id="app"><iframe></iframe></div>
   `;
@@ -109,6 +108,28 @@ describe("chat panel", () => {
 
     window.dispatchEvent(new CustomEvent("dotli:product-error"));
     expect(button.hidden).toBe(true);
+  });
+
+  it("As a user, the chat button works on a page without the More menu's static Chat row", async () => {
+    // Given: the More menu is an island that renders its Chat row from the
+    // chat-panel store, so the panel neither needs nor touches the static
+    // row (installChatDom has none).
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    const button = byId("chat-button");
+
+    // When
+    loadProduct("chatty-no-row");
+
+    // Then
+    expect(button.hidden).toBe(false);
+
+    // When
+    button.click();
+
+    // Then
+    expect(byId("chat-panel").hidden).toBe(false);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("As a user, the chat button is hidden until I log in and hides again on logout", async () => {
