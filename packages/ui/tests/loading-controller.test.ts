@@ -335,24 +335,148 @@ describe("The loading controller drives the loading store", () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  it("As the shell, a bar restarted after the loading root was disposed is tracked again", async () => {
-    // Given
+  it("As the shell, a late signal after the loading root was disposed starts no timer", async () => {
+    // Given a load whose screen has gone
     ctl.initPhases([
       { label: "a", base: 5, target: 50, expectedMs: 60_000, stage: "relay" },
-      { label: "b", base: 50, target: 90, expectedMs: 60_000, stage: "relay" },
+      {
+        label: "b",
+        base: 50,
+        target: 90,
+        expectedMs: 60_000,
+        stage: "content",
+      },
     ]);
     ctl.advancePhase(0);
     const roots = await import("@dotli/ui/mount/app-roots");
     roots.disposeAppRoot("loading");
+    expect(vi.getTimerCount()).toBe(0);
 
-    // When a late signal starts the crawl again, and the root is disposed
+    // When late signals arrive: content bytes, a progress fraction and a
+    // phase change
+    ctl.setLoadingStage("preparing");
     ctl.advancePhase(1);
-    roots.disposeAppRoots();
-    const frozen = progress();
-    vi.advanceTimersByTime(10_000);
+    ctl.nudgePhaseProgress(0.5, "content");
 
-    // Then the crawl stopped with it
-    expect(progress()).toBe(frozen);
+    // Then no rotation, typing frame, crawl or stall watch was started
+    expect(vi.getTimerCount()).toBe(0);
+    expect(store.getLoadingState().phase).toBe("gone");
+  });
+
+  it("As the shell, the static screen is the loading root from the moment the controller loads", async () => {
+    // Given a controller that has started nothing
+    const stopSpinner = vi.fn();
+    window.__stopLoadingSpinner = stopSpinner;
+    const screen = document.getElementById("app-loading");
+    const roots = await import("@dotli/ui/mount/app-roots");
+
+    // When whatever replaces the screen disposes the roots
+    roots.disposeAppRoots();
+
+    // Then the spinner stopped and the static screen went with it
+    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    expect(screen?.isConnected).toBe(false);
+    expect(store.getLoadingState().phase).toBe("gone");
+    expect(vi.getTimerCount()).toBe(0);
+    delete window.__stopLoadingSpinner;
+  });
+
+  it("As the shell, starting the phases keeps the root the controller registered on load", async () => {
+    // Given
+    const stopSpinner = vi.fn();
+    window.__stopLoadingSpinner = stopSpinner;
+    const screen = document.getElementById("app-loading");
+
+    // When
+    ctl.initPhases([
+      { label: "a", base: 5, target: 90, expectedMs: 60_000, stage: "relay" },
+    ]);
+    ctl.advancePhase(0);
+
+    // Then the screen is still up and the load is running
+    expect(screen?.isConnected).toBe(true);
+    expect(stopSpinner).not.toHaveBeenCalled();
+    expect(store.getLoadingState().phase).toBe("active");
+
+    // When
+    const roots = await import("@dotli/ui/mount/app-roots");
+    roots.disposeAppRoot("loading");
+
+    // Then one root, disposed once
+    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    expect(screen?.isConnected).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    delete window.__stopLoadingSpinner;
+  });
+
+  it("As the shell, a page without the static screen gets no loading root when the controller loads", async () => {
+    // Given a page with no static screen, such as the sandbox's
+    vi.resetModules();
+    document.body.innerHTML = `<div id="app"></div>`;
+    const [fresh, freshStore, roots] = await Promise.all([
+      import("@dotli/ui/loading-controller"),
+      import("@dotli/ui/state/loading"),
+      import("@dotli/ui/mount/app-roots"),
+    ]);
+    const stopSpinner = vi.fn();
+    window.__stopLoadingSpinner = stopSpinner;
+
+    // When
+    roots.disposeAppRoots();
+
+    // Then nothing was registered to dispose
+    expect(stopSpinner).not.toHaveBeenCalled();
+    expect(freshStore.getLoadingState().phase).toBe("active");
+    expect(fresh.LOADING_STAGES).toContain("starting");
+    delete window.__stopLoadingSpinner;
+  });
+
+  it("As a visitor whose app loaded, the dismiss stops the headline rotation and the typing", () => {
+    // Given a headline mid-turn
+    ctl.initPhases([
+      { label: "a", base: 5, target: 90, expectedMs: 60_000, stage: "relay" },
+    ]);
+    ctl.advancePhase(0);
+    vi.advanceTimersByTime(ROTATE_MS + ERASE_MS / 2);
+    const midTurn = status();
+
+    // When
+    ctl.dismissLoading();
+    vi.advanceTimersByTime(FADE_MS);
+
+    // Then nothing is left running and the line no longer changes
+    expect(store.getLoadingState().phase).toBe("gone");
+    expect(vi.getTimerCount()).toBe(0);
+    const settled = status();
+    vi.advanceTimersByTime(ROTATE_MS * 3);
+    expect(status()).toBe(settled);
+    expect(store.getLoadingState().statusOpacity).toBe(1);
+    expect(midTurn).not.toBe("");
+  });
+
+  it("As a visitor, a second done message from the sandbox runs the done callbacks only once", () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+    const done = (): void => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "dotli:loading-status", done: true },
+          origin: SANDBOX_ORIGIN,
+        }),
+      );
+    };
+    done();
+    vi.advanceTimersByTime(FADE_MS);
+
+    // When
+    done();
+
+    // Then
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(store.getLoadingState().phase).toBe("gone");
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("As the shell, disposing the loading root before the island mounts removes the static screen and stops its spinner", async () => {

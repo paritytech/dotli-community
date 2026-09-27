@@ -20,6 +20,7 @@ import type {
 } from "@dotli/resolver/chain-sync";
 import type { ChainPhase } from "@dotli/ui/network-monitor";
 import { m, type SpanHandle, type SpanValue } from "@dotli/metrics/metrics";
+import { getLoadingState } from "@dotli/ui/state/loading";
 
 /** How a resolution ended. `abandoned` means the tab left before it did. */
 export type ResolutionOutcome = "rendered" | "error" | "abandoned";
@@ -394,12 +395,14 @@ export function startResolutionTrace(
   return trace;
 }
 
-/** The percentage the loading bar showed, which is what the visitor was shown. */
+/**
+ * The percentage the loading bar stands at, which is what the visitor was
+ * shown. Read from the loading store rather than the bar's markup, which only
+ * the loading island renders, so a load whose island had not mounted (or
+ * failed to) still reports where its bar got to.
+ */
 function readBarPercent(): number {
-  const fill = document.querySelector<HTMLElement>(".loading-progress-fill");
-  const width = fill?.style.width ?? "";
-  const parsed = Number.parseFloat(width);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return getLoadingState().progress;
 }
 
 function chainAttributes(

@@ -591,6 +591,31 @@ describe("bridge app roots", () => {
     expect(app?.firstElementChild?.tagName).toBe("IFRAME");
   }, 10_000);
 
+  it("As a visitor on a preview or local target, the first iframe render stops the static screen's spinner and removes it", async () => {
+    // Given the static screen, with no phases started, and the loading
+    // controller loaded over it as the host's startup bundle loads it
+    document.body.innerHTML = `<div id="app"><div class="loading" id="app-loading"></div></div>`;
+    const stopSpinner = vi.fn();
+    window.__stopLoadingSpinner = stopSpinner;
+    const [{ renderIframe }, loading] = await Promise.all([
+      import("@dotli/ui/bridge"),
+      import("@dotli/ui/state/loading"),
+      import("@dotli/ui/loading-controller"),
+    ]);
+
+    try {
+      // When
+      await settle(renderIframe("https://product.example/app", "product"), 0);
+
+      // Then
+      expect(stopSpinner).toHaveBeenCalledTimes(1);
+      expect(document.getElementById("app-loading")).toBeNull();
+      expect(loading.getLoadingState().phase).toBe("gone");
+    } finally {
+      delete window.__stopLoadingSpinner;
+    }
+  }, 10_000);
+
   it("As a dApp user, an error page shown over a live product is cleared when the product is rebuilt", async () => {
     // Given a product whose load failed after its frame went up
     const [{ renderAppSubdomain }, { showErrorPage }] = await Promise.all([

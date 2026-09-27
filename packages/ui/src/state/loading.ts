@@ -3,7 +3,10 @@
 
 import { createSyncStore, type ReadableStore } from "./create-store";
 
-/** Up while loading, fading out once dismissed, then gone. */
+/**
+ * Up while loading, fading out once dismissed, then gone. `"gone"` is
+ * terminal: the controller starts no timer once it is reached.
+ */
 export type LoadingScreenPhase = "active" | "dismissing" | "gone";
 
 /** What the loading screen shows. Written only by `loading-controller.ts`. */

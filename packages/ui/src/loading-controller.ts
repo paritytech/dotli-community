@@ -114,10 +114,9 @@ export function stopProgressWatch(): void {
 
 function armProgressWatch(pct: number): void {
   stopProgressWatch();
-  if (pct >= 100) {
+  if (pct >= 100 || !trackLoadingRoot()) {
     return;
   }
-  trackLoadingRoot();
   progressStallTimer = setTimeout(() => {
     progressStallListener?.(pct);
   }, PROGRESS_STALL_MS);
@@ -150,7 +149,9 @@ function setProgress(pct: number, cosmetic = false): void {
 
 function startProgressCrawl(): void {
   stopProgressCrawl();
-  trackLoadingRoot();
+  if (!trackLoadingRoot()) {
+    return;
+  }
   progressInterval = setInterval(() => {
     // A step that reports a real percentage owns the indicator, so neither the
     // crawl nor the creep may run past what it says. Both are guesses, and a
@@ -343,11 +344,10 @@ function writeStatus(message: string): void {
     return;
   }
   const previous = getLoadingState().statusText;
-  if (next === previous || prefersReducedMotion()) {
+  if (next === previous || prefersReducedMotion() || !trackLoadingRoot()) {
     updateLoading({ statusText: next });
     return;
   }
-  trackLoadingRoot();
   const start = performance.now();
   const step = (now: number): void => {
     const elapsedMs = now - start;
@@ -418,7 +418,9 @@ export function setLoadingStage(stage: LoadingStage): void {
     writeStatus(messages[line]);
     stageTimer = setTimeout(turn, MESSAGE_ROTATE_MS);
   };
-  trackLoadingRoot();
+  if (!trackLoadingRoot()) {
+    return;
+  }
   stageTimer = setTimeout(turn, firstDelay);
 }
 
@@ -569,13 +571,19 @@ let disposeScreen: () => void = removeStaticScreen;
  * them running behind the new content.
  *
  * Called whenever a timer starts, so no timer runs without a live root to
- * stop it, even one a late signal restarted after the root was disposed.
- * Once per root: starting the phases again must not dispose the screen it is
- * about to drive.
+ * stop it. Once per root: starting the phases again must not dispose the
+ * screen it is about to drive.
+ *
+ * Returns false once the screen is gone, which is terminal: nothing puts it
+ * back, so a late signal (content bytes after `done`, a signal behind an
+ * error page) must not start a timer that no root would ever stop.
  */
-function trackLoadingRoot(): void {
+function trackLoadingRoot(): boolean {
+  if (getLoadingState().phase === "gone") {
+    return false;
+  }
   if (loadingRootLive) {
-    return;
+    return true;
   }
   loadingRootLive = true;
   registerAppRoot("loading", () => {
@@ -583,12 +591,12 @@ function trackLoadingRoot(): void {
     // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
     updateLoading({ phase: "gone" });
-    // A root registered again later, by a late signal, has no island left to
-    // dispose, only a static screen that is already gone.
+    // Back to the static fallback, so the island is never disposed twice.
     const dispose = disposeScreen;
     disposeScreen = removeStaticScreen;
     dispose();
   });
+  return true;
 }
 
 /**
@@ -598,6 +606,15 @@ function trackLoadingRoot(): void {
  */
 export function adoptLoadingScreen(dispose: () => void): void {
   disposeScreen = dispose;
+  trackLoadingRoot();
+}
+
+// The static screen is live from first paint, so it is a root before any
+// timer starts. Whatever replaces it first (the landing page, a preview or
+// local-target frame, an error page shown before the phases start) then
+// stops its inline spinner and removes it, instead of leaving the spinner
+// animating detached petals for the life of the tab.
+if (typeof document !== "undefined" && document.getElementById("app-loading")) {
   trackLoadingRoot();
 }
 

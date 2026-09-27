@@ -19,18 +19,33 @@ const CHUNK = "@dotli/ui/components/landing/mount";
 type Loader = typeof import("@dotli/ui/landing/load");
 type AppRoots = typeof import("@dotli/ui/mount/app-roots");
 type Ui = typeof import("@dotli/ui/ui");
+type LoadingState = typeof import("@dotli/ui/state/loading");
 
 let load: Loader;
 let roots: AppRoots;
 let ui: Ui;
+let loading: LoadingState;
 
-/** Fresh modules, so each test gets its own memoized loader. */
+/**
+ * Fresh modules, so each test gets its own memoized loader. The loading
+ * controller loads too, over the static screen, as the host's startup
+ * bundle loads it on every path: that is what makes the screen a root.
+ */
 async function importFresh(): Promise<void> {
-  [load, roots, ui] = await Promise.all([
+  [load, roots, ui, loading] = await Promise.all([
     import("@dotli/ui/landing/load"),
     import("@dotli/ui/mount/app-roots"),
     import("@dotli/ui/ui"),
+    import("@dotli/ui/state/loading"),
+    import("@dotli/ui/loading-controller"),
   ]);
+}
+
+/** Stand in for the inline petal spinner's stop hook in apps/host/index.html. */
+function stubSpinner(): ReturnType<typeof vi.fn> {
+  const stop = vi.fn();
+  window.__stopLoadingSpinner = stop;
+  return stop;
 }
 
 /** Hold the landing chunk back until the returned function is called. */
@@ -71,6 +86,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   roots.disposeAppRoots();
+  delete window.__stopLoadingSpinner;
   vi.doUnmock(CHUNK);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -82,17 +98,15 @@ describe("landing loader", () => {
     // Given
     const release = gateChunk();
     await importFresh();
-    const disposeLoading = vi.fn(() => {
-      byId("app-loading")?.remove();
-    });
-    roots.registerAppRoot("loading", disposeLoading);
+    const stopSpinner = stubSpinner();
 
     // When
     const shown = load.showLanding();
     await settle();
 
     // Then: nothing changed while the chunk downloads.
-    expect(disposeLoading).not.toHaveBeenCalled();
+    expect(stopSpinner).not.toHaveBeenCalled();
+    expect(loading.getLoadingState().phase).toBe("active");
     expect(byId("app-loading")).not.toBeNull();
     expect(byId("topbar")?.style.display).toBe("");
     expect(byId("app-view")).toBeNull();
@@ -102,8 +116,10 @@ describe("landing loader", () => {
     await shown;
     await settle();
 
-    // Then
-    expect(disposeLoading).toHaveBeenCalledTimes(1);
+    // Then the static screen went, its spinner stopped with it
+    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    expect(byId("app-loading")).toBeNull();
+    expect(loading.getLoadingState().phase).toBe("gone");
     expect(byId("topbar")?.style.display).toBe("none");
     expect(app().style.marginTop).toBe("0px");
     expect(app().style.minHeight).toBe("100dvh");
@@ -176,8 +192,7 @@ describe("landing loader", () => {
       throw new Error("chunk failed");
     });
     await importFresh();
-    const disposeLoading = vi.fn();
-    roots.registerAppRoot("loading", disposeLoading);
+    const stopSpinner = stubSpinner();
     const reload = vi.fn();
     vi.stubGlobal("location", { reload });
 
@@ -190,7 +205,8 @@ describe("landing loader", () => {
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
       kind: "landing_load_error",
     });
-    expect(disposeLoading).toHaveBeenCalledTimes(1);
+    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    expect(byId("app-loading")).toBeNull();
     expect(document.querySelector(".error-page-title")?.textContent).toBe(
       "Something went wrong on our side",
     );
@@ -205,5 +221,72 @@ describe("landing loader", () => {
 
     // Then
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+  it("As a visitor, when the landing page fails to render, I see an error page with a reload button, and it is reported once", async () => {
+    // Given
+    const failure = new Error("landing render failed");
+    vi.doMock("@dotli/ui/components/landing/Landing", () => ({
+      Landing: () => {
+        throw failure;
+      },
+    }));
+    await importFresh();
+    const reload = vi.fn();
+    vi.stubGlobal("location", { reload });
+
+    // When
+    await load.showLanding();
+    await settle();
+
+    // Then
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(failure, {
+      root: "page",
+    });
+    expect(document.querySelector(".landing")).toBeNull();
+    expect(document.querySelector(".error-page-title")?.textContent).toBe(
+      "Something went wrong on our side",
+    );
+    expect(document.querySelectorAll(".error-page")).toHaveLength(1);
+
+    // When
+    (byId("error-retry-btn") as HTMLButtonElement).click();
+
+    // Then
+    expect(reload).toHaveBeenCalledTimes(1);
+    vi.doUnmock("@dotli/ui/components/landing/Landing");
+  });
+  it("As a visitor, a landing page whose error fallback runs twice shows the error page once", async () => {
+    // Given a landing chunk whose root reports its render error twice
+    vi.doMock(CHUNK, () => ({
+      mountLanding: (_view: HTMLElement, onError: (err: unknown) => void) => {
+        onError(new Error("first"));
+        onError(new Error("second"));
+        return () => {};
+      },
+    }));
+    await importFresh();
+    let errorPagesWritten = 0;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof HTMLElement && node.matches(".error-page")) {
+            errorPagesWritten++;
+          }
+        }
+      }
+    });
+    observer.observe(app(), { childList: true });
+
+    // When
+    await load.showLanding();
+    await settle();
+    observer.disconnect();
+
+    // Then
+    expect(errorPagesWritten).toBe(1);
+    expect(document.querySelector(".error-page-title")?.textContent).toBe(
+      "Something went wrong on our side",
+    );
   });
 });
