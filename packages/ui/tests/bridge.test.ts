@@ -456,6 +456,166 @@ describe("bridge render lifecycle", () => {
   }, 10_000);
 });
 
+describe("bridge app roots", () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.coreProviders.length = 0;
+    mocks.coreProviderDefers.length = 0;
+    mocks.coreRuntimes.length = 0;
+    mocks.iframeHosts.length = 0;
+    document.body.innerHTML = `<div id="app"><div class="loading"></div></div>`;
+    window.history.replaceState(null, "", "/");
+    mocks.createWebWorkerPairingHostRuntime.mockImplementation(() =>
+      Promise.resolve(makeRuntime()),
+    );
+    mocks.createIframeHost.mockImplementation(
+      (args: {
+        iframeUrl: string;
+        allowedOrigin: string;
+        container: HTMLElement;
+      }) => {
+        const iframe = document.createElement("iframe");
+        iframe.dataset.src = args.iframeUrl;
+        args.container.appendChild(iframe);
+        const dispose = vi.fn(() => {
+          iframe.remove();
+        });
+        mocks.iframeHosts.push({
+          iframeUrl: args.iframeUrl,
+          allowedOrigin: args.allowedOrigin,
+          iframe,
+          dispose,
+        });
+        return { iframe, dispose };
+      },
+    );
+    const [{ initBridgeEventListeners }, { createBlockingModalCoordinator }] =
+      await Promise.all([
+        import("@dotli/ui/bridge"),
+        import("@dotli/ui/blocking-modal-queue"),
+      ]);
+    initBridgeEventListeners(createBlockingModalCoordinator());
+  });
+
+  /** Register both roots the way the shell does: disposing removes the node. */
+  async function registerRoots(): Promise<{
+    loading: HTMLElement;
+    page: HTMLElement;
+    disposeLoading: ReturnType<typeof vi.fn>;
+    disposePage: ReturnType<typeof vi.fn>;
+  }> {
+    const { registerAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const app = document.getElementById("app");
+    const loading = app?.querySelector<HTMLElement>(".loading");
+    if (app === null || loading === null || loading === undefined) {
+      throw new Error("fixture has no #app > .loading");
+    }
+    const page = document.createElement("div");
+    page.id = "app-view";
+    app.appendChild(page);
+    const disposeLoading = vi.fn(() => {
+      loading.remove();
+    });
+    const disposePage = vi.fn(() => {
+      page.remove();
+    });
+    registerAppRoot("loading", disposeLoading);
+    registerAppRoot("page", disposePage);
+    return { loading, page, disposeLoading, disposePage };
+  }
+
+  async function settle(render: Promise<void>, index: number): Promise<void> {
+    await waitForProviderRequests(index + 1);
+    mocks.coreProviderDefers[index].resolve(makeProvider());
+    await render;
+  }
+
+  it("As the shell, an app-subdomain render disposes the page root and keeps the loading overlay up", async () => {
+    // Given
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const { loading, page, disposeLoading, disposePage } =
+      await registerRoots();
+
+    // When
+    await settle(renderAppSubdomain("cid", "first"), 0);
+
+    // Then
+    expect(disposePage).toHaveBeenCalledTimes(1);
+    expect(page.isConnected).toBe(false);
+    expect(disposeLoading).not.toHaveBeenCalled();
+    const app = document.getElementById("app");
+    expect(loading.parentElement).toBe(app);
+    expect(app?.querySelectorAll("iframe")).toHaveLength(1);
+  }, 10_000);
+
+  it("As the shell, a later app-subdomain render disposes a loading overlay the first one kept", async () => {
+    // Given
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const { loading, disposeLoading } = await registerRoots();
+    await settle(renderAppSubdomain("first-cid", "first"), 0);
+
+    // When
+    await settle(renderAppSubdomain("second-cid", "first"), 1);
+
+    // Then
+    expect(disposeLoading).toHaveBeenCalledTimes(1);
+    expect(loading.isConnected).toBe(false);
+    const app = document.getElementById("app");
+    expect(app?.children).toHaveLength(1);
+    expect(app?.querySelector("iframe")?.dataset.src).toContain(
+      "cid=second-cid",
+    );
+  }, 10_000);
+
+  it("As the shell, a direct iframe render disposes both the page and the loading roots", async () => {
+    // Given
+    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { disposeLoading, disposePage } = await registerRoots();
+
+    // When
+    await settle(renderIframe("https://product.example/app", "product"), 0);
+
+    // Then
+    expect(disposePage).toHaveBeenCalledTimes(1);
+    expect(disposeLoading).toHaveBeenCalledTimes(1);
+    const app = document.getElementById("app");
+    expect(app?.children).toHaveLength(1);
+    expect(app?.firstElementChild?.tagName).toBe("IFRAME");
+  }, 10_000);
+
+  it("As a dApp user, an error page shown over a live product is cleared when the product is rebuilt", async () => {
+    // Given a product whose load failed after its frame went up
+    const [{ renderAppSubdomain }, { showErrorPage }] = await Promise.all([
+      import("@dotli/ui/bridge"),
+      import("@dotli/ui/ui"),
+    ]);
+    await settle(renderAppSubdomain("cid", "reloaded"), 0);
+    showErrorPage({ title: "Failed" });
+
+    // When its sandbox asks to be rebuilt. The label is unique to this test,
+    // so bridge instances left over from earlier tests ignore the request.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "dotli:sandbox-recover" },
+        origin: mocks.iframeHosts[0].allowedOrigin,
+      }),
+    );
+    await waitForProviderRequests(2);
+    mocks.coreProviderDefers[1].resolve(makeProvider());
+    await vi.waitFor(() => {
+      expect(mocks.iframeHosts).toHaveLength(2);
+      expect(mocks.iframeHosts[1].iframe.isConnected).toBe(true);
+      expect(mocks.iframeHosts[0].dispose).toHaveBeenCalled();
+    });
+
+    // Then only the new frame is left
+    const app = document.getElementById("app");
+    expect(app?.children).toHaveLength(1);
+    expect(app?.firstElementChild).toBe(mocks.iframeHosts[1].iframe);
+  }, 10_000);
+});
+
 describe("requestCoreLogin", () => {
   beforeEach(() => {
     vi.resetModules();

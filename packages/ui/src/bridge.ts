@@ -61,6 +61,7 @@ import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { registerChatConnection } from "./chat/service";
 import { showNotification } from "./notification";
 import { ERRORS } from "./errors";
+import { disposeAppRoot, disposeAppRoots } from "./mount/app-roots";
 
 const noop = (): void => undefined;
 
@@ -990,6 +991,9 @@ export async function renderIframe(
   // permission-triggered reloads look like a permanently blank application.
   const previousHost = currentHost;
   if (previousHost === null) {
+    // This path has no loading overlay to keep, so the tracked roots go first
+    // and whatever else the page left in `#app` goes with them.
+    disposeAppRoots();
     app.innerHTML = "";
   }
   disposeLandingAuthHost();
@@ -1155,16 +1159,11 @@ export async function renderAppSubdomain(
 
   // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only prepare it on the initial render. During a permission refresh the
-  // current iframe remains visible until the replacement is ready.
+  // Only on the initial render: `activateHost` keeps it as a retained child.
+  // During a permission refresh the current iframe remains visible until the
+  // replacement is ready, and the overlay, if still up, is disposed then.
   const loading =
     previousHost === null ? app.querySelector<HTMLElement>(".loading") : null;
-  if (previousHost === null) {
-    app.innerHTML = "";
-    if (loading) {
-      app.appendChild(loading);
-    }
-  }
 
   const iframeUrl = new URL(url);
   emitDotliDebugEvent({
@@ -1261,12 +1260,17 @@ function activateHost(
     currentPanelDispose();
     currentPanelDispose = null;
   }
+  // The previous frame leaves with its host.
   previousHost?.dispose();
-  const retained = new Set<HTMLElement>([host.iframe, ...retainedChildren]);
-  for (const child of [...app.children]) {
-    if (!retained.has(child as HTMLElement)) {
-      child.remove();
-    }
+  disposeAppRoot("page");
+  if (!retainedChildren.some((child) => child.classList.contains("loading"))) {
+    disposeAppRoot("loading");
+  }
+  // The one untracked child: an error page written over a product whose frame
+  // was already up (a failure after `activateHost`), which a later rebuild of
+  // that product has to clear.
+  for (const stray of app.querySelectorAll(":scope > .error-page")) {
+    stray.remove();
   }
   currentHost = host;
 }

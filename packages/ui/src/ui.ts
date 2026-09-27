@@ -12,6 +12,7 @@ import { escapeHtml, validateDotLabel } from "@dotli/shared/html";
 import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
 import type { DotLabelResult } from "@dotli/shared/html";
 import { setProductError } from "./state/product";
+import { disposeAppRoots, registerAppRoot } from "./mount/app-roots";
 
 const app = document.getElementById("app") ?? document.body;
 
@@ -227,6 +228,7 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   progressFillEl = document.getElementById("loading-progress-fill");
   progressPctEl = document.getElementById("loading-progress-pct");
   progressBarEl = document.getElementById("loading-progress");
+  registerLoadingRoot();
 
   // Not on the first `advancePhase`, which lands seconds later once the
   // protocol frame is up. The markup already shows this stage's opening line,
@@ -565,6 +567,31 @@ export function stopStatusTick(): void {
   stopProgressWatch();
 }
 
+/** True while the loading overlay is registered as the `"loading"` app root. */
+let loadingRootLive = false;
+
+/**
+ * Track the overlay as the `"loading"` app root, so whatever replaces it (the
+ * product frame, an error page) stops its timers instead of leaving them
+ * running against detached nodes.
+ *
+ * Once per overlay: starting the phases again must not dispose the screen it
+ * is about to drive.
+ */
+function registerLoadingRoot(): void {
+  if (loadingRootLive) {
+    return;
+  }
+  loadingRootLive = true;
+  const loading = document.querySelector<HTMLElement>("#app > .loading");
+  registerAppRoot("loading", () => {
+    loadingRootLive = false;
+    // Covers the crawl, the stage messages and the stall watch.
+    stopStatusTick();
+    loading?.remove();
+  });
+}
+
 /**
  * Show or clear the stall warning under the sentences.
  *
@@ -721,8 +748,10 @@ export interface ErrorPage {
 
 /** Render a full-page error state, replacing whatever `#app` holds. */
 export function showErrorPage(page: ErrorPage): void {
-  // The markup below replaces the loading screen, so its timers have nothing
-  // left to write to.
+  // The markup below replaces the loading screen and any page, so they are
+  // disposed first and their timers stop with them. The explicit stop still
+  // covers a load whose overlay was never registered.
+  disposeAppRoots();
   stopStatusTick();
   const { title, detail, glyph } = page;
   const tips = page.tips ?? [];
@@ -811,6 +840,8 @@ export function showError(
  * typo, and a secondary hint explains the network reason without burying it.
  */
 export function showNoContentError(label: string): void {
+  // Replaces the loading screen mid-load, so its timers are stopped here too.
+  disposeAppRoots();
   const safeLabel = escapeHtml(label);
   app.innerHTML = `
     <div class="error-page">
