@@ -273,6 +273,8 @@ interface LiveLocalWallet {
   custodyLease: string;
   binding: LocalWalletIdentityBinding;
   identity: LocalIdentity;
+  /** Whether `identity`'s username came from a chain read in this session. */
+  usernameVerified: boolean;
   nativeSessionUiInfo?: { publicKey?: string; fullUsername?: string };
 }
 
@@ -401,6 +403,7 @@ async function updateLocalIdentity(
         throw new Error("Test wallet changed while confirming its username.");
       }
       wallet.identity = identity;
+      wallet.usernameVerified = true;
       if (baseUsername !== undefined && identity.liteUsername !== undefined) {
         showNotification({
           text: `${identity.liteUsername} is confirmed on-chain and ready to use.`,
@@ -416,6 +419,7 @@ async function updateLocalIdentity(
       } catch (error) {
         persistenceError = error;
       }
+
       if (!isCurrentLocalWallet(wallet.binding)) {
         throw new Error(
           "Test wallet changed while synchronizing its username.",
@@ -784,12 +788,14 @@ export const experimentalWalletControls = {
       network: string;
       publicKey?: string;
       fullUsername?: string;
+      usernameVerified: boolean;
     }
   > {
     const wallet = await activeLocalWallet();
     assertInspectorWallet(wallet);
     return {
       ...wallet.identity,
+      usernameVerified: wallet.usernameVerified,
       ...wallet.nativeSessionUiInfo,
       network: getActiveServicesConfig().label,
     };
@@ -2214,11 +2220,12 @@ async function createCoreProvider(
           identityAccountId: activatedIdentity.identityAccountId,
         };
         await withLocalIdentityUpdate(async () => {
-          const verified = await readVerifiedLocalIdentity(binding);
-          const usernameHint = verified?.liteUsername;
+          const usernameHint = (await readVerifiedLocalIdentity(binding))
+            ?.liteUsername;
           if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
             throw new Error("Test wallet changed during username restoration.");
           }
+          let usernameVerified = false;
           if (usernameHint !== undefined) {
             // Disk metadata is a hint, not proof of the active native identity.
             activatedIdentity = await signing.refreshLocalIdentity();
@@ -2229,12 +2236,14 @@ async function createCoreProvider(
                 "Restored username did not match the active wallet.",
               );
             }
-          } else if (verified === undefined) {
-            // No chain lookup has ever been recorded for this wallet revision:
-            // it was just created or imported. Look the username up once so an
-            // imported identity does not wait for a manual Check username. A
-            // failed lookup is not evidence of absence and must not block the
-            // wallet; the next boot or Check username retries.
+            usernameVerified = true;
+          } else {
+            // No username is known. A cached absence is not trusted: the
+            // identity is keyed by account, so it outlives re-imports and misses
+            // a claim made in another browser. Look it up, as a known username
+            // is re-verified above. A failed lookup is not evidence of absence
+            // and must not block the wallet; the next load or Check username
+            // retries.
             try {
               const lookedUp = await signing.refreshLocalIdentity();
               if (
@@ -2243,6 +2252,7 @@ async function createCoreProvider(
                 isCurrentLocalWallet(binding)
               ) {
                 activatedIdentity = lookedUp;
+                usernameVerified = true;
                 await writeVerifiedLocalIdentity(binding, lookedUp);
               }
             } catch (error) {
@@ -2265,6 +2275,7 @@ async function createCoreProvider(
             custodyLease,
             binding,
             identity: activatedIdentity,
+            usernameVerified,
             nativeSessionUiInfo,
           };
           liveLocalWallets.set(signing, liveWallet);
