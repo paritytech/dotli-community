@@ -7,6 +7,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
+import {
+  mountMoreMenu,
+  tapMoreRow,
+} from "../components/shell/more-menu-harness";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -29,6 +33,8 @@ interface Chunk {
   chainsClicks: () => number;
   /** Clicks the island's (swapped-in) settings button received. */
   settingsClicks: () => number;
+  /** Clicks the island's (swapped-in) More button received. */
+  moreClicks: () => number;
 }
 
 /** Lets pending I/O and promise callbacks run. */
@@ -48,8 +54,8 @@ interface StubOptions {
 /**
  * Stands in for the islands chunk: each import waits until the test lets it
  * arrive or fail; once it arrives, mountIslands swaps a fresh theme button,
- * permissions button, network button and settings button, which count their
- * clicks, and a fresh offline banner in for the static ones.
+ * permissions button, network button, settings button and More button, which
+ * count their clicks, and a fresh offline banner in for the static ones.
  */
 function stubChunk(options: StubOptions = {}): Chunk {
   const requests: PromiseWithResolvers<void>[] = [];
@@ -66,6 +72,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
   let permissionsClicks = 0;
   let chainsClicks = 0;
   let settingsClicks = 0;
+  let moreClicks = 0;
   const mountIslands = vi.fn(() => {
     if (options.mountError !== undefined) {
       throw options.mountError;
@@ -94,6 +101,12 @@ function stubChunk(options: StubOptions = {}): Chunk {
       settingsClicks += 1;
     });
     document.getElementById("mode-button")?.replaceWith(settings);
+    const more = document.createElement("button");
+    more.id = "more-button";
+    more.addEventListener("click", () => {
+      moreClicks += 1;
+    });
+    document.getElementById("more-button")?.replaceWith(more);
     const failed = [...(options.failedIslands ?? [])];
     if (options.bannerIslandFails === true) {
       failed.push("offline-banner");
@@ -126,6 +139,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
     permissionsClicks: () => permissionsClicks,
     chainsClicks: () => chainsClicks,
     settingsClicks: () => settingsClicks,
+    moreClicks: () => moreClicks,
   };
 }
 
@@ -219,6 +233,7 @@ function click(target: Element): MouseEvent {
 }
 
 let windowListeners: ReturnType<typeof vi.spyOn<Window, "addEventListener">>;
+let unmountMore: (() => void) | null = null;
 
 beforeEach(() => {
   vi.resetModules();
@@ -228,17 +243,18 @@ beforeEach(() => {
     '<button id="theme-toggle" class="topbar-btn"><svg><path d="M0 0"/></svg></button>',
     '<div id="theme-popover" class="more-popover theme-popover"></div>',
     '<button id="other" type="button">Other</button>',
-    '<button class="more-row" data-target="theme-toggle">Theme</button>',
     '<button id="permissions-button" class="topbar-btn"><svg><rect/></svg></button>',
-    '<button class="more-row" data-target="permissions-button">Permissions</button>',
     '<button id="chains-button" class="topbar-btn topbar-chains-btn visible"><svg><circle/></svg></button>',
     '<button id="mode-button" class="topbar-btn"><svg><circle/></svg></button>',
-    '<button class="more-row" data-target="mode-button">Settings</button>',
+    '<button id="more-button" class="topbar-btn topbar-more-btn"><span class="hamburger"></span></button>',
+    '<div class="more-popover" id="more-popover"></div>',
     '<div id="offline-banner" role="status" aria-live="polite" style="position:absolute;display:none">You are offline</div>',
   ].join("");
 });
 
 afterEach(() => {
+  unmountMore?.();
+  unmountMore = null;
   for (const [type, listener] of windowListeners.mock.calls) {
     window.removeEventListener(type, listener);
   }
@@ -353,23 +369,45 @@ describe("ensureIslands", () => {
     expect(chunk.settingsClicks()).toBe(2);
   });
 
-  it("As a mobile user, tapping the More menu's Settings row before the islands mount opens the settings popover once they do", async () => {
-    // Given: topbar.ts's More menu forwards a row tap as a click on its
-    // target, looked up by id at click time, after stopping the row's own
-    // click.
+  it("As a dotli user, clicks on the More button before the islands mount open it once, after they do", async () => {
+    // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
-    const row = document.querySelector(
-      '.more-row[data-target="mode-button"]',
-    ) as HTMLElement;
-    row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      document.getElementById(row.dataset.target ?? "")?.click();
-    });
+    const loading = ensureIslands();
+
+    // When: clicked twice, once on the icon inside the button.
+    const first = click(
+      byId("more-button").querySelector(".hamburger") as Element,
+    );
+    const second = click(byId("more-button"));
+    chunk.arrive();
+    await loading;
+
+    // Then
+    expect(first.defaultPrevented).toBe(true);
+    expect(second.defaultPrevented).toBe(true);
+    expect(chunk.moreClicks()).toBe(1);
+    expect(chunk.settingsClicks()).toBe(0);
+    expect(chunk.islandClicks()).toBe(0);
+
+    // When: after the mount, clicks reach the island directly.
+    const after = click(byId("more-button"));
+
+    // Then
+    expect(after.defaultPrevented).toBe(false);
+    expect(chunk.moreClicks()).toBe(2);
+  });
+
+  it("As a mobile user, the More menu's Settings row tapped before the settings island mounts opens it once it does", async () => {
+    // Given: the real More menu, mounted ahead of the settings island. Its
+    // row forwards the tap to whichever #mode-button is there at click time.
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    unmountMore = mountMoreMenu();
     const loading = ensureIslands();
 
     // When
-    click(row);
+    await tapMoreRow("mode-button");
     chunk.arrive();
     await loading;
 
@@ -377,29 +415,21 @@ describe("ensureIslands", () => {
     expect(chunk.settingsClicks()).toBe(1);
 
     // When: the same row after the mount.
-    click(row);
+    await tapMoreRow("mode-button");
 
     // Then
     expect(chunk.settingsClicks()).toBe(2);
   });
 
-  it("As a mobile user, tapping the More menu's Permissions row before the islands mount opens the permissions popover once they do", async () => {
-    // Given: topbar.ts's More menu forwards a row tap as a click on its
-    // target, looked up by id at click time, after stopping the row's own
-    // click.
+  it("As a mobile user, the More menu's Permissions row tapped before the permissions island mounts opens it once it does", async () => {
+    // Given: the real More menu, mounted ahead of the permissions island.
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
-    const row = document.querySelector(
-      '.more-row[data-target="permissions-button"]',
-    ) as HTMLElement;
-    row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      document.getElementById(row.dataset.target ?? "")?.click();
-    });
+    unmountMore = mountMoreMenu();
     const loading = ensureIslands();
 
     // When
-    click(row);
+    await tapMoreRow("permissions-button");
     chunk.arrive();
     await loading;
 
@@ -407,7 +437,7 @@ describe("ensureIslands", () => {
     expect(chunk.permissionsClicks()).toBe(1);
 
     // When: the same row after the mount.
-    click(row);
+    await tapMoreRow("permissions-button");
 
     // Then
     expect(chunk.permissionsClicks()).toBe(2);
@@ -486,25 +516,26 @@ describe("ensureIslands", () => {
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
   });
 
-  it("As a mobile user, tapping the More menu's Theme row before the islands mount opens the theme menu once they do", async () => {
-    // Given: topbar.ts's More menu forwards a row tap as a click on its
-    // target, after stopping the row's own click.
+  it("As a mobile user, the More menu's Theme row tapped before the theme island mounts opens it once it does", async () => {
+    // Given: the real More menu, mounted ahead of the theme island.
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
-    const row = document.querySelector(".more-row") as HTMLElement;
-    row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      document.getElementById(row.dataset.target ?? "")?.click();
-    });
+    unmountMore = mountMoreMenu();
     const loading = ensureIslands();
 
     // When
-    click(row);
+    await tapMoreRow("theme-toggle");
     chunk.arrive();
     await loading;
 
     // Then
     expect(chunk.islandClicks()).toBe(1);
+
+    // When: the same row after the mount.
+    await tapMoreRow("theme-toggle");
+
+    // Then
+    expect(chunk.islandClicks()).toBe(2);
   });
 
   it("As a dotli user, when mounting the islands throws, it is reported as a mount failure, nothing is replayed and clicks are no longer held back", async () => {

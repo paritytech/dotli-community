@@ -23,6 +23,7 @@ import {
   type OldPermissionsList,
 } from "./old-permissions-markup";
 import { normalized } from "./old-auth-markup";
+import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
 
 const LABEL = "localhost:3000";
 
@@ -705,28 +706,20 @@ describe("PermissionsPopover", () => {
   });
 
   it("As a mobile user, the More menu's Permissions row opens the popover by clicking the button it looks up by id", async () => {
-    // Given: topbar.ts's More menu forwards a row tap as a click on its
-    // target, after stopping the row's own click.
+    // Given: the real More menu, mounted as its own island.
     provide();
     setProductLoaded(LABEL, "app.dot");
     await renderPopover();
-    const row = document.createElement("button");
-    row.className = "more-row";
-    row.dataset.target = "permissions-button";
-    row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      document.getElementById(row.dataset.target ?? "")?.click();
-    });
-    document.body.append(row);
-    cleanups.push(() => {
-      row.remove();
-    });
+    cleanups.push(mountMoreMenu());
 
     // When
-    row.click();
+    await tapMoreRow("permissions-button");
     await settleAll();
 
     // Then
+    expect(
+      document.getElementById("more-popover")?.classList.contains("open"),
+    ).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.querySelectorAll(".permissions-popover-row")).toHaveLength(
       ALL_PERMISSIONS.length,

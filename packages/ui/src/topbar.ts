@@ -1,15 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li Top bar UI
+// dot.li Top bar boot wiring
 //
-// Wires the topbar's imperative pieces: the mobile "more" flyout and the
-// product chat. The auth button, the user popover, the QR pairing modal, the
-// permissions popover, the network (chains) popover and the settings popover
-// are shell islands (components/shell/); the auth ones are driven by
-// auth-controller.ts, and the network one by the network store, both of
-// which this starts.
-// All plain DOM manipulation, no framework.
+// Starts what the topbar needs from boot on: the auth controller, the block
+// source and network store, the product chat, the theme preference, the home
+// link and the idle session rehydrate. Every popover, and the mobile "more"
+// flyout, is a shell island (components/shell/) that renders these stores
+// when it mounts. No framework here: this runs on the startup path.
 //
 import { setBlockSource } from "./network-monitor";
 import { createBlockSource } from "./block-source";
@@ -31,58 +29,6 @@ export function initTopBar(
   // mount later and render what the controller has kept.
   initAuthController(modalCoordinator);
 
-  // Mobile-only "more" menu: collapses Permissions / Theme / Settings into a
-  // single flyout. Each row delegates to .click() on the real button so the
-  // existing handlers (and their viewport-anchored popovers) work unchanged.
-  const moreButton = document.getElementById("more-button");
-  const morePopover = document.getElementById("more-popover");
-  if (moreButton !== null && morePopover !== null) {
-    const setMoreOpen = (open: boolean): void => {
-      morePopover.classList.toggle("open", open);
-      moreButton.setAttribute("aria-expanded", String(open));
-    };
-    moreButton.addEventListener("click", () => {
-      // Don't stop propagation: let the document-level close-outside
-      // handlers run so opening the burger also closes the settings and
-      // permissions popovers (islands, closing through createPopover). The
-      // one below won't touch the more popover itself because
-      // `moreButton.contains(target)` is true for clicks on the burger.
-      setMoreOpen(!morePopover.classList.contains("open"));
-    });
-    morePopover.addEventListener("click", (e) => {
-      const row = (e.target as HTMLElement).closest<HTMLButtonElement>(
-        ".more-row",
-      );
-      if (row === null) {
-        return;
-      }
-      // Prevent the original .more-row click from bubbling to the
-      // document-level close-outside handler below: that handler would see
-      // the row click as "outside" the just-opened target popover and
-      // immediately close it back.
-      e.stopPropagation();
-      setMoreOpen(false);
-      const targetId = row.dataset.target;
-      if (targetId !== undefined) {
-        document.getElementById(targetId)?.click();
-      }
-    });
-  }
-
-  // Close popovers when clicking outside
-  document.addEventListener("click", (e) => {
-    if (
-      morePopover !== null &&
-      moreButton !== null &&
-      morePopover.classList.contains("open") &&
-      !morePopover.contains(e.target as Node) &&
-      !moreButton.contains(e.target as Node)
-    ) {
-      morePopover.classList.remove("open");
-      moreButton.setAttribute("aria-expanded", "false");
-    }
-  });
-
   // Set logo home link from VITE_APP_URL (defaults to /)
   const homeLink = document.getElementById(
     "topbar-home",
@@ -101,15 +47,6 @@ export function initTopBar(
 
   // Product chat button + docked panel
   initChatPanel();
-
-  window.addEventListener("dotli:blocking-modal-active", (event: Event) => {
-    const { active } = (event as CustomEvent<{ active: boolean }>).detail;
-    if (!active) {
-      return;
-    }
-    morePopover?.classList.remove("open");
-    moreButton?.setAttribute("aria-expanded", "false");
-  });
 
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.

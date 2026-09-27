@@ -46,6 +46,7 @@ import {
   oldModePopover,
 } from "./old-settings-markup";
 import { initSettingsStore } from "@dotli/ui/state/settings";
+import { tapMoreRow } from "./more-menu-harness";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
 import { setChainsButtonVisible } from "@dotli/ui/topbar";
 import { setProductLoaded } from "@dotli/ui/state/product";
@@ -84,6 +85,7 @@ const PERMISSIONS_IDS = [
 ];
 const CHAINS_IDS = ["chains-button", "chains-popover"];
 const SETTINGS_IDS = ["mode-button", "mode-popover-backdrop", "mode-popover"];
+const MORE_IDS = ["more-button", "more-popover"];
 
 let serverHtml = "";
 
@@ -169,6 +171,7 @@ describe("shell islands", () => {
     disposeRoot("island:permissions");
     disposeRoot("island:chains");
     disposeRoot("island:settings");
+    disposeRoot("island:more");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -762,9 +765,9 @@ describe("shell islands", () => {
   });
 
   it("As a mobile user, the More menu's Permissions row opens the swapped-in popover, and an app loaded before the islands shows its grants", async () => {
-    // Given: an app with a grant, loaded before the islands; and topbar.ts's
-    // More menu, which forwards a row tap as a click on the button it looks
-    // up by id at click time.
+    // Given: an app with a grant, loaded before the islands. The More menu
+    // is an island too, whose rows forward a tap as a click on the button
+    // they look up by id at click time.
     const unregister = registerPermissionAuthorizationProvider("app.dot", {
       getPermissionAuthorizationStatuses: async (requests) =>
         requests.map((request) =>
@@ -775,13 +778,6 @@ describe("shell islands", () => {
       setPermissionAuthorizationStatus: async () => {},
     });
     setProductLoaded("app.dot", "app.dot");
-    const row = document.querySelector(
-      '#more-popover .more-row[data-target="permissions-button"]',
-    ) as HTMLElement;
-    row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      document.getElementById(row.dataset.target ?? "")?.click();
-    });
 
     try {
       // When
@@ -795,11 +791,12 @@ describe("shell islands", () => {
       );
 
       // When
-      row.click();
+      await tapMoreRow("permissions-button");
       await flushAll();
       await flushAll();
 
       // Then
+      expect(byId("more-popover").classList.contains("open")).toBe(false);
       expect(byId("permissions-popover").classList.contains("open")).toBe(true);
       expect(
         byId("permissions-popover-backdrop").classList.contains("open"),
@@ -936,5 +933,59 @@ describe("shell islands", () => {
       byId("mode-popover").querySelector(".mode-popover-sheet-title")
         ?.textContent,
     ).toBe("Settings");
+  });
+  it("As a mobile user, the More button and flyout are swapped in place for a live island matching the static markup, one element per id, with no warning", async () => {
+    // Given
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const before = MORE_IDS.map((id) => {
+      const el = byId(id);
+      return { el, place: placeOf(el), markup: withoutStoreState(el) };
+    });
+
+    // When
+    const failed = mountIslands();
+    await flushAll();
+
+    // Then
+    expect(failed).toEqual([]);
+    for (const [i, id] of MORE_IDS.entries()) {
+      const fresh = byId(id);
+      expect(countById(id)).toBe(1);
+      expect(fresh).not.toBe(before[i].el);
+      expect(before[i].el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(before[i].place);
+      expect(withoutStoreState(fresh).isEqualNode(before[i].markup)).toBe(true);
+    }
+    expect(countById("more-row-chat")).toBe(1);
+    expect(byId("more-row-chat").hidden).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a mobile user, the swapped-in More menu's Theme and Settings rows open the swapped-in theme menu and settings popover", async () => {
+    // Given
+    initSettingsStore();
+    mountIslands();
+    await flushAll();
+
+    // When
+    await tapMoreRow("theme-toggle");
+    await flushAll();
+
+    // Then
+    expect(byId("more-popover").classList.contains("open")).toBe(false);
+    expect(byId("theme-popover").classList.contains("open")).toBe(true);
+
+    // When: the theme menu closes on the More button's tap, as on any
+    // outside tap.
+    await tapMoreRow("mode-button");
+    await flushAll();
+
+    // Then
+    expect(byId("theme-popover").classList.contains("open")).toBe(false);
+    expect(byId("more-popover").classList.contains("open")).toBe(false);
+    expect(byId("mode-popover").classList.contains("open")).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import { initTheme } from "@dotli/ui/theme-controller";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
 import { stubColorScheme } from "../../helpers/color-scheme";
+import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
 
 beforeEach(() => {
   vi.unstubAllGlobals();
@@ -322,26 +323,21 @@ describe("ThemeToggle", () => {
   });
 
   it("As a mobile user, the More menu's Theme row opens the theme menu by clicking the theme button", async () => {
-    // Given
+    // Given: the real More menu, mounted as its own island.
     await renderToggle("dark", "dark");
-    const row = document.createElement("button");
-    row.className = "more-row";
-    row.dataset.target = "theme-toggle";
-    row.addEventListener("click", (e) => {
-      // As topbar.ts's More menu does.
-      e.stopPropagation();
-      document.getElementById(row.dataset.target ?? "")?.click();
-    });
-    document.body.append(row);
+    const unmountMore = mountMoreMenu();
 
     // When
-    row.click();
+    await tapMoreRow("theme-toggle");
     await settle();
 
     // Then
+    expect(
+      document.getElementById("more-popover")?.classList.contains("open"),
+    ).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(themeOption("dark"));
-    row.remove();
+    unmountMore();
   });
 
   it("As a dotli user whose browser blocks storage, picking a theme still applies it and closes the menu", async () => {

@@ -71,8 +71,95 @@ beforeEach(() => {
 // auth-modal, and the controller's are tests/auth-controller.test.ts. The
 // permissions popover is an island too: tests/components/shell/
 // permissions-popover.test.tsx. So are the network popover
-// (chains-popover.test.tsx) and the settings popover
-// (settings-popover.test.tsx).
+// (chains-popover.test.tsx), the settings popover (settings-popover.test.tsx)
+// and the mobile "More" flyout (more-menu.test.tsx).
+
+describe("topbar boot wiring", () => {
+  it("As the host, initTopBar starts the auth controller, block source, network store, chat panel, theme and home link, and rehydrates the session on idle", async () => {
+    // Given
+    document.body.innerHTML = `<a id="topbar-home"></a>`;
+    let idle: (() => void) | null = null;
+    vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
+      idle = callback;
+      return 0;
+    });
+    const source = { stand: "in" };
+    const boot = {
+      initAuthController: vi.fn(),
+      createBlockSource: vi.fn(() => source),
+      setBlockSource: vi.fn(),
+      startNetworkStore: vi.fn(),
+      initChatPanel: vi.fn(),
+      initTheme: vi.fn(),
+      emitPersistedSessionUiState: vi.fn(),
+    };
+    vi.doMock("@dotli/ui/auth-controller", () => ({
+      initAuthController: boot.initAuthController,
+    }));
+    vi.doMock("@dotli/ui/block-source", () => ({
+      createBlockSource: boot.createBlockSource,
+    }));
+    vi.doMock("@dotli/ui/network-monitor", () => ({
+      setBlockSource: boot.setBlockSource,
+    }));
+    vi.doMock("@dotli/ui/state/network", () => ({
+      startNetworkStore: boot.startNetworkStore,
+    }));
+    vi.doMock("@dotli/ui/chat/panel", () => ({
+      initChatPanel: boot.initChatPanel,
+    }));
+    vi.doMock("@dotli/ui/theme-controller", () => ({
+      initTheme: boot.initTheme,
+    }));
+    vi.doMock("@dotli/ui/host-callbacks/SessionStore", () => ({
+      emitPersistedSessionUiState: boot.emitPersistedSessionUiState,
+    }));
+    const { createBlockingModalCoordinator } =
+      await import("@dotli/ui/blocking-modal-queue");
+    const coordinator = createBlockingModalCoordinator();
+
+    try {
+      // When
+      const topbar = await import("@dotli/ui/topbar");
+      topbar.initTopBar(coordinator);
+
+      // Then: only boot wiring is left; the popovers are islands.
+      expect(Object.keys(topbar).sort()).toEqual([
+        "initTopBar",
+        "setChainsButtonVisible",
+      ]);
+      expect(boot.initAuthController).toHaveBeenCalledWith(coordinator);
+      expect(boot.setBlockSource).toHaveBeenCalledWith(source);
+      expect(boot.startNetworkStore).toHaveBeenCalledTimes(1);
+      expect(boot.initChatPanel).toHaveBeenCalledTimes(1);
+      expect(boot.initTheme).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          document.getElementById("topbar-home") as HTMLAnchorElement
+        ).getAttribute("href"),
+      ).toBe("/");
+      expect(boot.emitPersistedSessionUiState).not.toHaveBeenCalled();
+
+      // When
+      (idle as (() => void) | null)?.();
+
+      // Then
+      expect(boot.emitPersistedSessionUiState).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const id of [
+        "@dotli/ui/auth-controller",
+        "@dotli/ui/block-source",
+        "@dotli/ui/network-monitor",
+        "@dotli/ui/state/network",
+        "@dotli/ui/chat/panel",
+        "@dotli/ui/theme-controller",
+        "@dotli/ui/host-callbacks/SessionStore",
+      ]) {
+        vi.doUnmock(id);
+      }
+    }
+  });
+});
 
 describe("topbar boot rehydration", () => {
   it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {

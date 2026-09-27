@@ -39,6 +39,8 @@ export function initChatPanel(): void {
     const state = chatPanelStore.get();
     const visible = chatButtonVisible(state);
     button.hidden = !visible;
+    // The static "More" row, until the More island replaces it (the island
+    // renders the row from this store; this node is then detached).
     moreRow.hidden = !visible;
     // While the panel is open the room rows carry their own badges.
     const unread = state.open ? 0 : totalChatUnread(state);

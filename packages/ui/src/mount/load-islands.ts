@@ -19,7 +19,7 @@ import { topbarStore } from "../state/topbar";
  * target's id up again, on the live element that replaced it.
  */
 const TRIGGERS =
-  "#theme-toggle, #permissions-button, #chains-button, #mode-button";
+  "#theme-toggle, #permissions-button, #chains-button, #mode-button, #more-button";
 
 let loading: Promise<void> | null = null;
 

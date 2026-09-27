@@ -18,6 +18,7 @@ import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
 import { AuthButton } from "./AuthButton";
 import { AuthModal } from "./AuthModal";
 import { ChainsPopover } from "./ChainsPopover";
+import { MoreMenu } from "./MoreMenu";
 import { OfflineBanner } from "./OfflineBanner";
 import { PermissionsPopover } from "./PermissionsPopover";
 import { SettingsPopover } from "./SettingsPopover";
@@ -193,5 +194,9 @@ export function mountIslands(): string[] {
     "mode-popover-backdrop",
     "mode-popover",
   ]);
+  // Also a loader trigger. Its rows forward a tap to the buttons above by
+  // id at click time, so they reach the live islands; the Chat row follows
+  // the chat-panel store, which chat/panel.ts keeps from boot.
+  mount("more", () => <MoreMenu />, ["more-button", "more-popover"]);
   return failed;
 }
