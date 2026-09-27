@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "f58208ff32af792b";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "231af4405f5a6b57";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -188,6 +188,40 @@ export declare class EntropyClient {
     /** Derive deterministic entropy. */
     derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
 }
+/**
+ * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
+ *
+ * The host owns TLS, certificate verification and length framing; the guest
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: `dial` requires
+ * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
+ * its `genesis`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted `dial` opened. A grant is
+ * separate from account, signing and storage authority.
+ */
+export declare class JamPeerTransportClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Dial one peer. The host builds the ALPN from `genesis` and requires the
+     * peer certificate to carry `ed25519` (QUIC) or to hash to the
+     * certificate derived from `p256` (WebTransport).
+     */
+    dial(request: T.HostJamPeerTransportDialRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportDialResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportDialError>>;
+    /** Open a bidirectional stream on a connection and send its kind byte. */
+    open(request: T.HostJamPeerTransportOpenRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportOpenResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportOpenError>>;
+    /** Queue one message; the host prepends the `u32` little-endian length. */
+    send(request: T.HostJamPeerTransportSendRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportSendError>>;
+    /** Poll one complete message without blocking; the host strips the length. */
+    recv(request: T.HostJamPeerTransportRecvRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportRecvResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportRecvError>>;
+    /** Abort a stream in both directions. */
+    reset(request: T.HostJamPeerTransportResetRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportResetError>>;
+    /** Close a connection and every stream on it. */
+    close(request: T.HostJamPeerTransportCloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportCloseError>>;
+    /** Drain connection, stream-finish and inbound-stream events. */
+    events(options?: CallOptions): ResultAsync<T.HostJamPeerTransportEventsResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportEventsError>>;
+}
 /** Local key/value storage scoped to the calling product. */
 export declare class LocalStorageClient {
     #private;
@@ -258,40 +292,6 @@ export declare class PaymentClient {
     }): ObservableLike<T.HostPaymentStatusSubscribeItem, S.CallErrorValue<T.VersionedHostPaymentStatusSubscribeError>>;
     /** Top up the user's payment balance. */
     topUp(request: T.HostPaymentTopUpRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPaymentTopUpError>>;
-}
-/**
- * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
- *
- * The host owns TLS, certificate verification and length framing; the guest
- * verifies every byte it consumes. Access is a runtime permission, not a
- * manifest declaration: `dial` requires
- * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
- * its `genesis`, checking the product's stored decision, prompting when it is
- * undetermined and persisting the answer per product and genesis. The other
- * methods act only on connections a granted `dial` opened. A grant is
- * separate from account, signing and storage authority.
- */
-export declare class PeerTransportClient {
-    #private;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Dial one peer. The host builds the ALPN from `genesis` and requires the
-     * peer certificate to carry `ed25519` (QUIC) or to hash to the
-     * certificate derived from `p256` (WebTransport).
-     */
-    dial(request: T.HostPeerTransportDialRequest, options?: CallOptions): ResultAsync<T.HostPeerTransportDialResponse, S.CallErrorValue<T.VersionedHostPeerTransportDialError>>;
-    /** Open a bidirectional stream on a connection and send its kind byte. */
-    open(request: T.HostPeerTransportOpenRequest, options?: CallOptions): ResultAsync<T.HostPeerTransportOpenResponse, S.CallErrorValue<T.VersionedHostPeerTransportOpenError>>;
-    /** Queue one message; the host prepends the `u32` little-endian length. */
-    send(request: T.HostPeerTransportSendRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPeerTransportSendError>>;
-    /** Poll one complete message without blocking; the host strips the length. */
-    recv(request: T.HostPeerTransportRecvRequest, options?: CallOptions): ResultAsync<T.HostPeerTransportRecvResponse, S.CallErrorValue<T.VersionedHostPeerTransportRecvError>>;
-    /** Abort a stream in both directions. */
-    reset(request: T.HostPeerTransportResetRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPeerTransportResetError>>;
-    /** Close a connection and every stream on it. */
-    close(request: T.HostPeerTransportCloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPeerTransportCloseError>>;
-    /** Drain connection, stream-finish and inbound-stream events. */
-    events(options?: CallOptions): ResultAsync<T.HostPeerTransportEventsResponse, S.CallErrorValue<T.VersionedHostPeerTransportEventsError>>;
 }
 /** Permission request methods. */
 export declare class PermissionsClient {
@@ -562,11 +562,11 @@ export interface TrUApiClient {
     readonly chat: ChatClient;
     readonly coinPayment: CoinPaymentClient;
     readonly entropy: EntropyClient;
+    readonly jamPeerTransport: JamPeerTransportClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
-    readonly peerTransport: PeerTransportClient;
     readonly permissions: PermissionsClient;
     readonly pocket: PocketClient;
     readonly preimage: PreimageClient;
