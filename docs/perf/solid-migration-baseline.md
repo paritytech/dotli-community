@@ -897,3 +897,141 @@ same idle machine (`PERF_RUNS=20`, Playwright called directly because
 4,339 ms, cv 0.09 → 0.08 — moving in step with `Host total`, unlike some
 earlier sections where the two phases diverged.
 Gate (no regression beyond 5%): **pass**.
+
+## After sub-project 3 (landing page, loading screen, root disposal)
+
+The landing page is now a lazily loaded Solid root (`packages/ui/src/components/landing/`,
+mounted by `landing/load.ts` via `mount/root.ts`, the same helper the shell,
+overlays and chat mounts already use). The loading screen became a Solid
+island (`components/shell/LoadingScreen.tsx`, swapped in by the shared
+islands loader, `mount/load-islands.ts`), driven by a Solid-free store
+(`state/loading.ts`, written by `loading-controller.ts`, both plain logic
+with no Solid import). `activateHost` and the error pages now dispose
+tracked app roots via a shared helper (`mount/app-roots.ts`) instead of
+pruning `#app` — this is shared code (`packages/ui/src/ui.ts`, used by both
+the host and the sandbox entries), which is why the sandbox's dist changed
+even though no file under `apps/sandbox/src` was touched (confirmed via
+`git diff 17bb7a79 HEAD --stat -- apps/sandbox`, no output).
+
+Functional regression check: a fresh
+`VITE_NETWORKS=paseo-next-v2,previewnet bun run build` followed by
+`bun run test:functional` (port 5173 freed first, no stale preview server)
+passed **43 passed, 2 skipped** — identical count to every prior sub-project
+4 section. All ten `ui-smoke.spec.ts` cases passed, including "submitting a
+name on the landing page takes me to that site" (the landing root) and every
+`loading.spec.ts` case that exercises the loading screen's error paths
+(panics, worker failures, sync timeouts, chunk-load failures, contenthash
+errors, and the reload-escalation/retry-switch-backend flows).
+
+e2e selector check: read `apps/host/tests/e2e/{global-setup.ts,truapi.spec.ts,fixtures/paired.ts}`
+against this sub-project's changed files (`components/landing/*`,
+`components/shell/LoadingScreen.tsx`, `components/shell/islands.tsx`,
+`loading-controller.ts`, `state/loading.ts`, `mount/app-roots.ts`,
+`bridge.ts`, `ui.ts`, `apps/host/src/main.ts`). None of the e2e suite's
+selectors changed meaning: `.user-badge`, `#auth-button`,
+`#auth-button .user-badge`, `#auth-modal-qr canvas`, and
+`#user-popover-username` all still resolve in `AuthButton.tsx`/
+`AuthModal.tsx`/`UserPopover.tsx`, none of which this sub-project modified
+beyond two doc-comment edits (`AuthButton.tsx`, `ThemeToggle.tsx`, both just
+say "components/landing/" instead of "ui.ts" — no code change). All four
+selectors still match.
+
+Measured on `feat/solid-v2-foundation` at `50244bdc` (HEAD, "feat(ui): render
+the landing page with Solid") against the end of sub-project 4d (`17bb7a79`,
+"test(ui): pin the chains ticker and watch stop when a blocking modal closes
+it" — the commit right before this sub-project's spec/plan commit,
+`0bafd4ef`), built in a temporary git worktree (`git worktree add
+<scratchpad>/wt-4d-end 17bb7a79`, `bun install`, same build command), eager
+path via `bun scripts/eager-path-size.ts`. The worktree was removed
+afterwards (`git worktree remove --force`).
+
+| Eager path | Before SP3 gzip | After SP3 gzip | Δ gzip | Gate |
+|---|---:|---:|---:|---|
+| host | 90,431 | 89,161 | -1,270 | ≤ 91,500 B absolute, < 100,249 B owner limit: pass |
+| sandbox | 44,834 | 44,615 | -219 | ≤ +200 B accepted (per the controller's ruling): pass (this is a decrease) |
+
+(`17bb7a79`'s own eager gzip re-measured identical to the "After sub-project
+4d" section's `2913f639` figures — 90,431 B host / recorded there as
+90,431 B; `17bb7a79` is a test-only commit between `2913f639` and this
+sub-project's spec commit, so no production code differs.)
+
+Solid in startup chunks (sourcemap `sources`, checked for `solid-js`,
+`@solidjs`, and `components/`): unchanged from every prior sub-project 4
+section — still confined to `root-*.js` (`@solidjs/signals`, `solid-js`,
+`@solidjs/web`, 19 entries) plus `index-*.js`'s pre-existing
+`components/shell/Shell.tsx` inline (the prerendered shell markup, noted
+since sub-project 4a — not new). Every other host eager chunk checked
+`ok []`; `host rolldown-runtime-hePW80VL.js` (no emitted `.js.map`, as in
+prior sections) was checked with a raw-text grep instead — also negative.
+Sandbox: **absent** — both eager chunks (`index-*.js`, `fetch-*.js`) checked
+`ok []` via sourcemap `sources` for all three patterns. The sandbox's one
+chunk that does hold Solid, `mount-*.js` (the sub-project 1 overlay/toast
+chunk, unchanged this sub-project), is **not** in `dist/index.html`'s
+`modulepreload` set — lazy, not startup.
+
+**Landing chunk** (host-only, lazy — absent from `dist/index.html`'s
+`modulepreload` tags): `mount-wNXBpHH0.js` (hash from the measurement build)
+7,369 B raw / 3,427 B gzip. Its sourcemap `sources` (5 entries, all
+non-`node_modules`): `dot-url.ts`, `NavForm.tsx`, `RecentPills.tsx`,
+`Landing.tsx`, `mount.tsx` — no `loading-controller.ts` or `state/loading.ts`
+(the landing page navigates via `window.location.href`, a full page
+navigation, and never reads or writes loading state; grepped its four
+source files directly for "loading" — no match).
+
+**Islands chunk** (host-only, lazy — same chunk as sub-projects 4b-4d):
+`islands-DpZIkKqJ.js` (hash from the measurement build) 57,022 B raw /
+17,224 B gzip — up from 4d's 52,394 B raw / 15,218 B gzip, since it now also
+carries `LoadingScreen.tsx` (confirmed via its sourcemap's non-`node_modules`
+sources, which include `LoadingScreen.tsx` alongside every prior
+sub-project's island components). Per spec decision 9, 17,224 B gzip is
+still under the 20 KB gzip threshold, so this is a plain measurement, not a
+finding.
+
+**`loading-controller`/`state/loading` sharing check:** grepped every host
+`.js.map` for `loading-controller` and `state/loading`; only one chunk's
+*sourcemap `sources` array* actually contains those two files:
+`settings-BAjfa4e8.js` (part of the host eager/startup set). The islands
+chunk's own sources list `LoadingScreen.tsx` but not `loading-controller.ts`
+or `state/loading.ts` — even though `islands.tsx` and `LoadingScreen.tsx`
+both import from them (confirmed by reading the source) — so the bundler
+split those two modules into the shared startup chunk rather than inlining
+a second copy into the lazy islands chunk. The landing chunk doesn't import
+`loading-controller`/`state/loading` at all (see note above), so there is
+nothing for it to duplicate. (The raw-text `grep -l` over the built `.js`
+files also hits `index-*.js` and `permissions-*.js`, but neither's sourcemap
+`sources` array lists either file — the same `sourcesContent`-embedded-comment
+false positive documented in the "After Solid-free stores" section above.)
+
+### Running total vs the pre-migration baseline
+
+| | Host eager gzip | Δ vs pre-migration (74,649 B) |
+|---|---:|---:|
+| Pre-migration (`d8f0167`) | 74,649 | — |
+| After sub-project 4d (`2913f639`) | 90,431 | +15,782 |
+| After sub-project 4d, re-measured at `17bb7a79` | 90,431 | +15,782 |
+| After sub-project 3 (`50244bdc`) | 89,161 | **+14,512** |
+
+Within the amended whole-migration host limit of +25,600 B gzip, with
+**11,088 B of margin** — more headroom than sub-project 4d left (9,818 B),
+because this sub-project's own eager-path delta was negative (-1,270 B): the
+landing page and the loading screen both moved to lazy chunks, off the
+eager path.
+
+### Cold start A/B (20 runs each)
+
+`feat/solid-v2-foundation` at the end of sub-project 4d (`17bb7a79`, built in
+the temporary worktree above) and at HEAD after sub-project 3 (`50244bdc`),
+built with the same command and measured back to back on the same idle
+machine (`PERF_RUNS=20`, Playwright called directly because `test:perf` pins
+10 runs).
+
+| Build | Host total p50 | p95 | cv | discarded |
+|---|---:|---:|---:|---:|
+| before (4d end) | 2,565 ms | 2,823 ms | 0.08 | 0 |
+| after (SP3) | 2,450 ms | 3,015 ms | 0.10 | 0 |
+
+Δ p50: **-4.48%** (faster), inside the ±5% gate. Both runs were clean
+(cv ≤ 0.10, 0 discarded outliers each), so no re-run was needed. End-to-end
+(context, not gated): p50 4,123 ms → 4,232 ms (+2.64%), p95 6,372 ms →
+5,543 ms.
+Gate (no regression beyond 5%): **pass**.
