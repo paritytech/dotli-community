@@ -765,3 +765,135 @@ were both taken on the same idle machine back to back, so the regression
 `compare.ts` reports there is against the older pre-migration baseline, not
 against 4b; LUKEWARM START 4.41s → 4.42s (+0.1%), not significant.
 Gate (no regression beyond 5%): **pass**.
+
+## After sub-project 4d (frame layout, autohide, chains, settings, more)
+
+The product iframe's geometry got a single owner
+(`packages/ui/src/product-frame-layout.ts`, with `product-iframe-box.ts`),
+including dock insets, and topbar autohide was fixed. The chains popover,
+the settings/diagnostics popover, and the "more" flyout became lazy Solid
+"islands," swapped into the still-static, still-prerendered shell after boot
+by `packages/ui/src/components/shell/islands.tsx` (same loader,
+`packages/ui/src/mount/load-islands.ts`, as every prior islands
+sub-project). `ChainsPopover.tsx` (with `chains-format.ts`) replaces the
+imperative chains popover, `SettingsPopover.tsx`/`SettingsRows.tsx`/
+`Diagnostics.tsx` (with the new `settings-actions.ts`) replace the settings
+and diagnostics popover, and `MoreMenu.tsx` replaces the imperative "more"
+flyout. `packages/ui/src/topbar.ts` is down to 80 lines (from 1,947+ lines
+of diff removed this sub-project), holding only boot wiring — every
+popover/flyout render now lives in a Solid component.
+
+Functional regression check: a fresh
+`VITE_NETWORKS=paseo-next-v2,previewnet bun run build` followed by
+`bun run test:functional` (port 5173 freed first, no stale preview server)
+passed **43 passed, 2 skipped** — identical count to sub-projects 4a, 4b,
+and 4c. All eight `ui-smoke.spec.ts` cases passed. The name-submit test
+("submitting a name on the landing page takes me to that site") passed on
+the first try (154 ms), no rerun needed.
+
+e2e selector check (e2e cannot run locally — the `truapi-host` CLI is
+missing): read `apps/host/tests/e2e/{global-setup.ts,truapi.spec.ts,fixtures/paired.ts,helpers/*.ts}`
+against the current shell markup. None of this sub-project's changed files
+(`ChainsPopover.tsx`, `SettingsPopover.tsx`, `SettingsRows.tsx`,
+`Diagnostics.tsx`, `MoreMenu.tsx`, `product-frame-layout.ts`,
+`topbar-autohide.ts`, the slimmed `topbar.ts`) touch any id or class the
+e2e suite selects on. The four selectors carried over from sub-project 4c
+still match, confirmed directly in the current shell components:
+
+- `#auth-button` — `AuthButton.tsx:60` (static placeholder `Shell.tsx:67`).
+- `#auth-modal-qr canvas` — `AuthModal.tsx:268-269` (static placeholder
+  `Shell.tsx:510`).
+- `#user-popover-username` — `UserPopover.tsx:81` (static placeholder
+  `Shell.tsx:532`).
+- `#auth-button .user-badge` — `AuthButton.tsx:78`.
+
+The rest of the e2e suite's selectors (`.user-badge`, `"Switch to Gateway"`,
+`.signing-modal-backdrop`, `"Always allow"`/`"Allow"`, product-frame
+`data-testid` locators, `h1:has-text("Host Playground")`, `div.break-all`)
+resolve inside `apps/host/src/main.ts`/`errors.ts` or the product iframe
+under test, none of which this sub-project touched — unrelated, same as the
+4c section's note on the permission grant modal.
+
+Measured on `feat/solid-v2-foundation` at `2913f639` (HEAD, "fix(ui): drop
+the chat panel's static More-row write and tighten the topbar boot test")
+against the end of sub-project 4c (`07463e3d`, "chore(ui): tidy sub-project
+4c leftovers"), built in a temporary git worktree (`git worktree add
+<scratchpad>/wt-4c-end 07463e3d`, `bun install`, same build command), eager
+path via `bun scripts/eager-path-size.ts`. The worktree was removed
+afterwards (`git worktree remove --force`, needed because the build and
+perf-test artifacts left the worktree dirty).
+
+| Eager path | Before 4d gzip | After 4d gzip | Δ gzip | Gate |
+|---|---:|---:|---:|---|
+| host | 93,978 | 90,431 | -3,547 | ≤ 94,177 B absolute: pass |
+| sandbox | 44,837 | 44,838 | +1 | unchanged (±50 B): pass |
+
+Solid in startup chunks (sourcemap `sources`): unchanged from 4a/4b/4c —
+still confined to `root-*.js` (`@solidjs/signals`, `solid-js`,
+`@solidjs/web`, and the shared `mount/root.ts` helper, 19 entries). Every
+other host eager chunk checked `ok []` via sourcemap `sources` (`index`,
+`preload-helper`, `network`, `create-store`, `permissions`, `log`,
+`runtime-config`, `spans`, `html`, `client`, `active-manifest`, `settings`,
+`topbar`, `toasts`, `scale-ts`, `utils`, `scale`, `dist`,
+`scheduled-notifications`, `shared-mode`, `product-frame-layout`, `perf`);
+`host rolldown-runtime-hePW80VL.js` (no emitted `.js.map`, as in prior
+sections) was checked with a raw-text grep instead — also negative.
+Sandbox: **absent** — both `index-*.js` and `fetch-*.js` checked `ok []` via
+sourcemap `sources`. The new eager chunk `product-frame-layout-*.js` (1,174 B
+raw / 601 B gzip) holds only `product-iframe-box.ts` and
+`product-frame-layout.ts` — plain logic, no Solid.
+
+**Lazy islands chunk** (host-only, absent from `dist/index.html`'s
+`modulepreload` tags): `islands-CHyZAMEb.js` (hash from the measurement
+build) 52,394 B raw / **15,218 B gzip** — up from 4c's 31,243 B raw /
+9,302 B gzip, since it now also carries `ChainsPopover.tsx`,
+`chains-format.ts`, `SettingsPopover.tsx`, `SettingsRows.tsx`,
+`Diagnostics.tsx`, and `MoreMenu.tsx` (confirmed via its sourcemap's 19
+non-`node_modules` `sources`, alongside every prior sub-project's island
+components: `AuthButton.tsx`, `AuthModal.tsx`, `UserPopover.tsx`,
+`PermissionsPopover.tsx`, `PermissionRow.tsx`, `ThemeToggle.tsx`,
+`UrlPill.tsx`, `VerificationShield.tsx`, `OfflineBanner.tsx`, `popover.ts`,
+`account.ts`, `islands.tsx`). Per spec decision 9: 15,218 B gzip is **under
+the 20 KB gzip threshold**, so this is reported as a plain measurement, not
+a finding — no split needed.
+
+**`qrcode` chunk**: still `browser-CCrYwriZ.js`, still a separate lazy
+chunk (absent from the eager path), byte-for-byte **unchanged from every
+prior section back to "Before sub-project 0"**: 23,475 B raw / 8,772 B
+gzip.
+
+### Running total vs the pre-migration baseline
+
+| | Host eager gzip | Δ vs pre-migration (74,649 B) |
+|---|---:|---:|
+| Pre-migration (`d8f0167`) | 74,649 | — |
+| After sub-project 4c (`61b4b16b`) | 93,886 | +19,237 |
+| After sub-project 4c, re-measured at `07463e3d` | 93,978 | +19,329 |
+| After sub-project 4d (`2913f639`) | 90,431 | **+15,782** |
+
+Within the amended whole-migration host limit of +25,600 B gzip, with
+**9,818 B of margin** — the most headroom of any sub-project recorded here,
+because this sub-project's own eager-path delta was negative (-3,547 B):
+the chains/settings/more islands moved off the eager path the same way
+4b's and 4c's islands did, and `topbar.ts`'s 1,947-line shrink removed
+imperative rendering code that used to ship eagerly.
+
+### Cold start A/B (20 runs each)
+
+`feat/solid-v2-foundation` at the end of sub-project 4c (`07463e3d`, built
+in the temporary worktree above) and at HEAD after sub-project 4d
+(`2913f639`), built with the same command and measured back to back on the
+same idle machine (`PERF_RUNS=20`, Playwright called directly because
+`test:perf` pins 10 runs).
+
+| Build | Host total p50 | p95 | cv | discarded |
+|---|---:|---:|---:|---:|
+| before (4c end) | 2,618 ms | 3,151 ms | 0.08 | 0 |
+| after (4d) | 2,565 ms | 3,126 ms | 0.10 | 0 |
+
+Δ p50: **-2.02%** (faster), well inside the ±5% gate. Both runs were clean
+(cv ≤ 0.10, 0 discarded outliers each), so no re-run was needed. End-to-end
+(context, not gated): p50 3,707 ms → 3,712 ms (+0.13%), p95 4,282 ms →
+4,339 ms, cv 0.09 → 0.08 — moving in step with `Host total`, unlike some
+earlier sections where the two phases diverged.
+Gate (no regression beyond 5%): **pass**.
