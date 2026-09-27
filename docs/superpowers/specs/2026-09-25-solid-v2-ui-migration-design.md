@@ -167,7 +167,7 @@ Baselines are recorded on `main` in sub-project 0 (`docs/perf/solid-migration-ba
 
 | Metric | Gate |
 |---|---|
-| Host eager path gzip (entry `index-*.js` plus every chunk it statically imports / modulepreloads) | at most **+25 KB** gzip over the whole migration (amended 2026-09-26, owner decision; was +15 KB, which Solid's ~15.5 KB runtime alone reaches once the shell hydrates in sub-project 4); each sub-project other than 4 at most +2 KB net of deleted code |
+| Host eager path gzip (entry `index-*.js` plus every chunk it statically imports / modulepreloads) | at most **+35 KB** gzip over the whole migration (raised 2026-09-27 by owner decision, to leave room for later UI work; the migration ended at +14.5 KB. Earlier history: +25 KB from 2026-09-26, and +15 KB originally, which Solid's ~15.5 KB runtime alone reaches once the shell hydrates in sub-project 4); each sub-project other than 4 at most +2 KB net of deleted code |
 | Sandbox eager path gzip (entry chunk plus every chunk it statically imports / modulepreloads) | at most +10 KB gzip over the whole migration; **no Solid at sandbox startup** (amended 2026-09-26) |
 | Cold start `dotli:main:start` → `:end` (median of 10, `test:perf`) | no regression beyond 5% |
 | First paint (sub-project 4) | topbar and loading screen present with JS disabled (Playwright) |
