@@ -2,25 +2,25 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
   "upstreamBranch": "feat/pvm-app-runtime",
-  "upstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f",
+  "upstreamRevision": "1762eaf4a14aab9ce2f603e7f097663edc454198",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
-      "version": "0.20.0",
-      "sourceArchiveSha256": "b79aa6dbccf3cbffbd2789d5039b7e6e12c61d2622c50346a0a935c8ef582d49",
+      "version": "0.21.0",
+      "sourceArchiveSha256": "56fd45fddd279a219b79c90d1fc44b39949db2ed20c67baeba0483fbceb0d290",
       "clientSha256": "5d3fd75f27347bb14e72d5e38b19ed4c705ce5d1e2ae8cbc88c027d88cd0af24"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
-      "version": "0.20.0",
-      "sourceArchiveSha256": "31f0e048d38dec57e139d4a12ac44897a1a87014c7e2cc33c828af571df0b6f6",
+      "version": "0.21.0",
+      "sourceArchiveSha256": "2f18b51513df9f00bfe63fdc0e3087359e5f30b846531391cb1b4fd43a2c9763",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "a9b0e08d94577c5692990cc48ea599db0beb38c69d160a071caf6e2749be7c6d",
+      "wasmSha256": "8fd21c255e8a4680a86b7642c86673c86f779caba03e5fae056ccf68d75759cc",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "296670dc3b6154791ac3ba919e728c5a4d79a90f",
+  "wasmUpstreamRevision": "1762eaf4a14aab9ce2f603e7f097663edc454198",
   "pullRequest": "https://github.com/paritytech/host-rust-core/pull/540"
 }

@@ -149,11 +149,13 @@ deploy: _require-env build
 # CI isolates snippets by site; manual deployments retain the shared directory.
 NGINX_SNIPPETS_DIR ?= /etc/nginx/snippets
 _nginx_snippet_paths = sed 's|/etc/nginx/snippets/|$(NGINX_SNIPPETS_DIR)/|g'
-_nginx_comment := \#
+# A literal "#" goes through _hash: make >= 4.3 keeps the backslash of a "\#"
+# written inside a function call, rendering "\#" into the nginx config.
+_hash := \#
 _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
-	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,$(_nginx_comment))' \
-	SENTRY='$(if $(SENTRY_DSN),,$(_nginx_comment))' \
+	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,$(_hash))' \
+	SENTRY='$(if $(SENTRY_DSN),,$(_hash))' \
 	SENTRY_INGEST='$(SENTRY_INGEST)' SENTRY_PROJECT='$(SENTRY_PROJECT)' \
 	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template | $(_nginx_snippet_paths)
 
