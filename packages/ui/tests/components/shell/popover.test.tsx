@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createPopover,
@@ -105,6 +107,11 @@ function renderPopover(
   }
   const { unmount } = renderComponent(() => <Harness />);
   return { ...(popover as Popover), unmount };
+}
+
+/** Whether a dialog holds the page's scroll lock. */
+function scrollLocked(): boolean {
+  return document.body.hasAttribute("data-scroll-locked");
 }
 
 function byId(id: string): HTMLElement {
@@ -477,7 +484,7 @@ describe("createPopover, in every mode", () => {
       for (const entry of ours) {
         expect(removed).toContainEqual(entry);
       }
-      expect(document.body.style.overflow).toBe("");
+      expect(scrollLocked()).toBe(false);
       document.body.dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true }),
       );
@@ -890,14 +897,16 @@ describe("createPopover, dialog mode (Radix Dialog, modal)", () => {
     // When
     await openPopover(popover);
 
-    // Then
-    expect(document.body.style.overflow).toBe("hidden");
+    // Then: locked through its own attribute, the page's inline style kept.
+    expect(scrollLocked()).toBe(true);
+    expect(document.body.style.overflow).toBe("scroll");
 
     // When
     popover.setOpen(false);
     await settle();
 
     // Then
+    expect(scrollLocked()).toBe(false);
     expect(document.body.style.overflow).toBe("scroll");
   });
 
@@ -915,20 +924,21 @@ describe("createPopover, dialog mode (Radix Dialog, modal)", () => {
       };
       await openPopover(dialogs.a);
       await openPopover(dialogs.b);
-      expect(document.body.style.overflow).toBe("hidden");
+      expect(scrollLocked()).toBe(true);
 
       // When
       dialogs[closing[0] as "a" | "b"].setOpen(false);
       await settle();
 
       // Then
-      expect(document.body.style.overflow).toBe("hidden");
+      expect(scrollLocked()).toBe(true);
 
       // When
       dialogs[closing[1] as "a" | "b"].setOpen(false);
       await settle();
 
       // Then
+      expect(scrollLocked()).toBe(false);
       expect(document.body.style.overflow).toBe("scroll");
     },
   );
@@ -946,14 +956,49 @@ describe("createPopover, dialog mode (Radix Dialog, modal)", () => {
     await settle();
 
     // Then
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(scrollLocked()).toBe(true);
 
     // When
     b.setOpen(false);
     await settle();
 
     // Then
+    expect(scrollLocked()).toBe(false);
     expect(document.body.style.overflow).toBe("auto");
+  });
+
+  it("As a user, closing the dialog keeps an overflow the page set while it was open, like the product frame's", async () => {
+    // Given
+    const popover = renderPopover("dialog");
+    await openPopover(popover);
+
+    // When: the product frame attaches while the dialog is open, and
+    // bridge.ts hides the body's overflow for it.
+    document.body.style.overflow = "hidden";
+    popover.setOpen(false);
+    await settle();
+
+    // Then
+    expect(scrollLocked()).toBe(false);
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("As a user, the stylesheet hides the page's overflow while a dialog holds the lock, over any inline overflow", () => {
+    // Given: the shell's base stylesheet on the page.
+    const style = document.createElement("style");
+    style.textContent = readFileSync(
+      resolve(import.meta.dirname, "../../../src/styles/base.css"),
+      "utf8",
+    );
+    document.head.append(style);
+    document.body.style.overflow = "scroll";
+
+    // When / Then
+    expect(getComputedStyle(document.body).overflow).toBe("scroll");
+    document.body.setAttribute("data-scroll-locked", "");
+    expect(getComputedStyle(document.body).overflow).toBe("hidden");
+    document.body.removeAttribute("data-scroll-locked");
+    style.remove();
   });
 
   it("As a user, a click on the backdrop closes the dialog and focus goes back to the trigger", async () => {
@@ -991,7 +1036,7 @@ describe("createPopover, mode chosen on each opening", () => {
     expect(document.activeElement).toBe(byId("first"));
     byId("last").focus();
     expect(press("Tab").defaultPrevented).toBe(false);
-    expect(document.body.style.overflow).toBe("scroll");
+    expect(scrollLocked()).toBe(false);
 
     // When: it closes and opens again, now asked for a dialog.
     popover.setOpen(false);
@@ -1004,7 +1049,7 @@ describe("createPopover, mode chosen on each opening", () => {
     const tab = press("Tab");
     expect(tab.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(byId("first"));
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(scrollLocked()).toBe(true);
 
     // When: the mode changes while it is open.
     mode = "popover";
@@ -1018,6 +1063,212 @@ describe("createPopover, mode chosen on each opening", () => {
     await settle();
 
     // Then
-    expect(document.body.style.overflow).toBe("scroll");
+    expect(scrollLocked()).toBe(false);
+  });
+});
+
+describe("createPopover, menu trigger clicks (as the islands wire them)", () => {
+  /** A menu whose trigger's click toggles it and whose items count picks. */
+  function renderWiredMenu(): Popover & { picks: ReturnType<typeof vi.fn> } {
+    const popover = renderPopover("menu");
+    byId("trigger").addEventListener("click", popover.toggle);
+    const picks = vi.fn();
+    for (const id of ["apple", "banana", "avocado", "cherry"]) {
+      byId(id).addEventListener("click", picks);
+    }
+    return { ...popover, picks };
+  }
+
+  function keyUp(key: string): KeyboardEvent {
+    const event = new KeyboardEvent("keyup", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+    (document.activeElement ?? document.body).dispatchEvent(event);
+    return event;
+  }
+
+  /** The click a browser fires for a key on a button: detail 0. */
+  function keyClick(el: HTMLElement): MouseEvent {
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      detail: 0,
+    });
+    el.dispatchEvent(click);
+    return click;
+  }
+
+  it.each([
+    ["Space", "trigger", " "],
+    ["Space", "first item", " "],
+    ["Enter", "trigger", "Enter"],
+    ["Enter", "first item", "Enter"],
+  ])(
+    "As a keyboard user, %s on the trigger opens the menu, and the click the browser still fires for the key on the %s neither closes it nor picks an item",
+    async (_name, on, key) => {
+      // Given
+      const popover = renderWiredMenu();
+      byId("trigger").focus();
+
+      // When: keydown, then (Firefox, for Space) the keyup's click.
+      press(key);
+      await settle();
+      expect(document.activeElement).toBe(byId("apple"));
+      const up = keyUp(key);
+      const click = keyClick(
+        on === "trigger" ? byId("trigger") : byId("apple"),
+      );
+      await settle();
+
+      // Then
+      expect(up.defaultPrevented).toBe(true);
+      expect(click.defaultPrevented).toBe(true);
+      expect(popover.open()).toBe(true);
+      expect(popover.picks).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(byId("apple"));
+    },
+  );
+
+  it("As a keyboard user, the guard against the key's click ends with that key: a later keyboard pick still works", async () => {
+    // Given
+    const popover = renderWiredMenu();
+    byId("trigger").focus();
+    press(" ");
+    await settle();
+    keyUp(" ");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // When: Enter on the focused item, whose click the browser fires.
+    press("Enter");
+    keyClick(byId("apple"));
+    await settle();
+
+    // Then
+    expect(popover.picks).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a keyboard user, a click on the trigger with no pointer behind it (a forwarded keyboard choice) opens the menu as a keyboard opening, on the first item", async () => {
+    // Given
+    const popover = renderWiredMenu();
+
+    // When
+    byId("trigger").click();
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(true);
+    expect(document.activeElement).toBe(byId("apple"));
+  });
+
+  it("As a mouse user, a pointer click on the trigger opens the menu on the menu content", async () => {
+    // Given
+    const popover = renderWiredMenu();
+
+    // When
+    pointerClick(byId("trigger"));
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(true);
+    expect(document.activeElement).toBe(byId("surface"));
+  });
+});
+
+describe("createPopover, touch outside (Radix usePointerDownOutside)", () => {
+  function touchDown(el: HTMLElement): PointerEvent {
+    const down = new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "touch",
+    });
+    expect(down.pointerType).toBe("touch");
+    el.dispatchEvent(down);
+    return down;
+  }
+
+  function tap(el: HTMLElement): { click: MouseEvent; reached: boolean } {
+    let reached = false;
+    const onClick = (): void => {
+      reached = true;
+    };
+    el.addEventListener("click", onClick);
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      detail: 1,
+    });
+    el.dispatchEvent(click);
+    el.removeEventListener("click", onClick);
+    return { click, reached };
+  }
+
+  it.each<PopoverMode>(["popover", "menu", "dialog"])(
+    "As a phone user, a touch outside the %s closes it only on the click that follows",
+    async (mode) => {
+      // Given
+      const popover = renderPopover(mode);
+      await openPopover(popover);
+
+      // When
+      touchDown(byId("outside"));
+      await settle();
+
+      // Then
+      expect(popover.open()).toBe(true);
+
+      // When
+      const { reached } = tap(byId("outside"));
+      await settle();
+
+      // Then: a menu swallows the click, the others let it through.
+      expect(popover.open()).toBe(false);
+      expect(reached).toBe(mode !== "menu");
+    },
+  );
+
+  it.each([
+    ["pointercancel", () => document.dispatchEvent(new Event("pointercancel"))],
+    ["scroll", () => document.dispatchEvent(new Event("scroll"))],
+  ])(
+    "As a phone user, a touch outside that becomes a %s (I started scrolling) leaves the menu open, and swallows nothing after",
+    async (_name, cancel) => {
+      // Given
+      const popover = renderPopover("menu");
+      await openPopover(popover);
+
+      // When
+      touchDown(byId("outside"));
+      cancel();
+      await settle();
+      const { reached } = tap(byId("outside"));
+      await settle();
+
+      // Then
+      expect(popover.open()).toBe(true);
+      expect(reached).toBe(true);
+    },
+  );
+
+  it("As a phone user, a touch outside the popover that becomes a scroll leaves it open", async () => {
+    // Given
+    const popover = renderPopover("popover");
+    await openPopover(popover);
+
+    // When
+    touchDown(byId("outside"));
+    byId("outside").dispatchEvent(
+      new PointerEvent("pointercancel", {
+        bubbles: true,
+        pointerType: "touch",
+      }),
+    );
+    await settle();
+    tap(byId("outside"));
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(true);
   });
 });

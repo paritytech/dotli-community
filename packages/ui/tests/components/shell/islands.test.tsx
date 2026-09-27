@@ -47,7 +47,7 @@ import {
 } from "./old-settings-markup";
 import { initSettingsStore } from "@dotli/ui/state/settings";
 import { tapMoreRow } from "./more-menu-harness";
-import { pointerPress } from "../../helpers/solid";
+import { mouseClick, pointerPress } from "../../helpers/solid";
 import { mountLandingPage } from "../../helpers/landing";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
 import { setChainsButtonVisible } from "@dotli/ui/topbar";
@@ -261,7 +261,7 @@ describe("shell islands", () => {
     expect(themeOption("light")?.getAttribute("aria-checked")).toBe("true");
 
     // When
-    btn.click();
+    mouseClick(btn);
     await flushAll();
 
     // Then: a pointer opening focuses the menu itself.
@@ -298,7 +298,7 @@ describe("shell islands", () => {
     }
 
     // When
-    byId("theme-toggle").click();
+    mouseClick(byId("theme-toggle"));
     await flushAll();
 
     // Then
@@ -668,11 +668,14 @@ describe("shell islands", () => {
     const liveButton = byId("auth-button");
     expect(liveButton.hasAttribute("disabled")).toBe(false);
     expect(liveButton.hasAttribute("aria-busy")).toBe(false);
-    expect(
-      normalized(liveButton).isEqualNode(
-        normalized(oldAuthButton("logged-out")),
-      ),
-    ).toBe(true);
+    // Logged out, it gains the trigger ARIA of the auth modal it opens.
+    const loggedOut = oldAuthButton("logged-out");
+    loggedOut.setAttribute("aria-haspopup", "dialog");
+    loggedOut.setAttribute("aria-expanded", "false");
+    loggedOut.setAttribute("aria-controls", "auth-modal-backdrop");
+    expect(normalized(liveButton).isEqualNode(normalized(loggedOut))).toBe(
+      true,
+    );
     // The popover gains the role, name and tabindex of a Radix-style
     // non-modal popover.
     const popover = oldUserPopover({ username: "", hint: false, open: false });
@@ -789,7 +792,7 @@ describe("shell islands", () => {
     }
 
     // When
-    byId("theme-toggle").click();
+    mouseClick(byId("theme-toggle"));
     await flushAll();
 
     // Then

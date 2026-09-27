@@ -6,6 +6,7 @@ import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import {
+  mouseClick,
   pointerPress,
   renderComponent,
   resetStores,
@@ -156,7 +157,7 @@ describe("ThemeToggle", () => {
     const popover = themePopover();
 
     // When
-    btn.click();
+    mouseClick(btn);
     await settle();
 
     // Then
@@ -317,7 +318,7 @@ describe("ThemeToggle", () => {
     themeButton().focus();
 
     // When
-    themeButton().click();
+    mouseClick(themeButton());
     await settle();
 
     // Then
@@ -435,6 +436,36 @@ describe("ThemeToggle", () => {
     unmountMore();
   });
 
+  it("As a keyboard user on a phone, choosing Theme in the More menu with the keyboard opens the theme menu on its first option", async () => {
+    // Given: the theme button hidden, as on narrow screens.
+    await renderToggle("dark", "dark");
+    const unmountMore = mountMoreMenu();
+    themeButton().focus = () => undefined;
+    const themeRow = document.querySelector<HTMLElement>(
+      '#more-popover .more-row[data-target="theme-toggle"]',
+    );
+    document.getElementById("more-button")?.focus();
+
+    // When: Enter opens the More menu, ArrowDown reaches Theme, and Enter
+    // picks it (the browser fires the row's click, with detail 0).
+    await pressThemeKey("Enter");
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    while (document.activeElement !== themeRow) {
+      await pressThemeKey("ArrowDown");
+    }
+    await pressThemeKey("Enter");
+    themeRow?.click();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(themeOption("light"));
+    unmountMore();
+  });
+
   it("As a mobile user, the theme menu I opened from the More menu takes focus, and Escape hands it back to the More button", async () => {
     // Given: on narrow screens CSS hides the theme button, so it cannot take
     // focus.
@@ -515,7 +546,7 @@ describe("ThemeToggle", () => {
     const btn = themeButton();
 
     // When
-    btn.click();
+    mouseClick(btn);
     await settle();
 
     // Then

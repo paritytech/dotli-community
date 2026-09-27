@@ -50,9 +50,12 @@ function followOfflineWithoutIslands(banner: HTMLElement | null): void {
  * right after hydrateShell(). Never rejects.
  *
  * Until the islands mount, a click on a trigger is held back (its default
- * prevented) and replayed on the live trigger afterwards, at most once per
- * trigger, so an early click is not lost. Each island mounts on its own
- * (mountIslands reports one that fails and goes on). When the chunk cannot
+ * prevented), and the last one is replayed once on the live trigger
+ * afterwards, with its `detail` (0 for a key's click, which opens a menu on
+ * its first item), so an early click is not lost. Only the last: replaying
+ * several would open several surfaces at once, a menu among them. Each
+ * island mounts on its own (mountIslands reports one that fails and goes
+ * on). When the chunk cannot
  * load, or mountIslands itself throws, the static shell stays, the failure
  * is reported to Sentry (`islands_load_error` or `islands_mount_error`) and
  * nothing is replayed. Whenever the banner island is not mounted, the static
@@ -67,13 +70,14 @@ export function ensureIslands(): Promise<void> {
   if (loading !== null) {
     return loading;
   }
-  const pending = new Set<string>();
+  /** The last held-back click: its trigger's id and its `detail`. */
+  let pending: { id: string; detail: number } | null = null;
   const holdBack = (ev: MouseEvent): void => {
     const trigger =
       ev.target instanceof Element ? ev.target.closest(TRIGGERS) : null;
     if (trigger !== null) {
       ev.preventDefault();
-      pending.add(trigger.id);
+      pending = { id: trigger.id, detail: ev.detail };
     }
   };
   const stopHoldingBack = (): void => {
@@ -97,8 +101,15 @@ export function ensureIslands(): Promise<void> {
       } finally {
         followOfflineWithoutIslands(banner);
       }
-      for (const id of pending) {
-        document.getElementById(id)?.click();
+      if (pending !== null) {
+        document.getElementById(pending.id)?.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            detail: pending.detail,
+          }),
+        );
       }
     },
     (err: unknown) => {

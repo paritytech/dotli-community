@@ -64,7 +64,7 @@ function currentLabel(): string | null {
  * `popover` mode).
  * An open row dropdown takes Escape first: the first Escape closes the
  * dropdown, the next the popover. The mobile "More" menu's Permissions row
- * opens it by calling `.click()` on the button, looked up by id.
+ * opens it by dispatching a click on the button, looked up by id.
  */
 export function PermissionsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;

@@ -8,7 +8,7 @@ import { setAuthState } from "@dotli/ui/state/auth";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
-import { renderComponent } from "../../helpers/solid";
+import { pointerPress, renderComponent } from "../../helpers/solid";
 import {
   byId,
   coordinator,
@@ -469,15 +469,72 @@ describe("AuthModal login flow", () => {
     await authState(pairing());
 
     // Then
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(true);
 
     // When
     byId("auth-modal-close").click();
     await settleQr();
 
     // Then
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
     expect(document.body.style.overflow).toBe("auto");
     document.body.style.overflow = "";
+  });
+
+  it("As a user who opened the modal while a product was loading, the overflow the product frame hides as it attaches stays hidden once the modal closes", async () => {
+    // Given
+    await renderModal();
+    await authState(pairing());
+    expect(isOpen()).toBe(true);
+
+    // When: the product frame attaches, and bridge.ts hides the body's
+    // overflow; then the modal closes.
+    document.body.style.overflow = "hidden";
+    byId("auth-modal-close").click();
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.body.style.overflow).toBe("hidden");
+    document.body.style.overflow = "";
+  });
+
+  it("As a user, a press outside the modal (neither its backdrop nor the auth button) closes it and cancels the login", async () => {
+    // Given
+    const cancels = recordEvents("dotli:truapi-cancel-login");
+    await renderModal();
+    await authState(pairing());
+    expect(isOpen()).toBe(true);
+
+    // When: something above the backdrop, outside it, is pressed.
+    pointerPress(byId("outside"));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(cancels.details).toHaveLength(1);
+  });
+
+  it("As a keyboard user, Retry keeps focus in the modal while the error view it sat in goes away", async () => {
+    // Given
+    await renderModal();
+    await authState({
+      tag: "LoginFailed",
+      kind: "Other",
+      reason: "Host failure",
+    });
+    const retry = document.querySelector<HTMLElement>(".auth-modal-retry");
+    retry?.focus();
+    expect(document.activeElement).toBe(retry);
+
+    // When
+    retry?.click();
+    await settleQr();
+
+    // Then: the button is gone, and focus is on the modal, not the body.
+    expect(retry?.isConnected).toBe(false);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(byId("auth-modal-backdrop"));
   });
 
   it("As a user, the modal stays open, focused and trapping Tab through its own blocking-modal lease, while the theme menu closes for it", async () => {

@@ -30,8 +30,9 @@ const THEME_LABEL: Record<ThemePref, string> = {
  *
  * The button's icon comes from CSS on `<html data-theme-pref>`, which the
  * inline bootstrap script and theme-controller.ts own, never this component.
- * The mobile "More" menu's Theme row opens this menu by calling `.click()`
- * on the button.
+ * The mobile "More" menu's Theme row opens this menu by dispatching a click
+ * on the button, with the row click's `detail`: a keyboard choice (0) opens
+ * it as a keyboard opening, on the first option.
  */
 export function ThemeToggle(): JSX.Element {
   let button: HTMLButtonElement | undefined;

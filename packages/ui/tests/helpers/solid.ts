@@ -40,7 +40,7 @@ export function pointerPress(el: Element): void {
       pointerType: "mouse",
     }),
   );
-  (el as HTMLElement).click();
+  mouseClick(el);
 }
 
 /**
@@ -56,7 +56,22 @@ export function pointerPressUnfocusable(el: Element): void {
     }),
   );
   (document.activeElement as HTMLElement | null)?.blur();
-  (el as HTMLElement).click();
+  mouseClick(el);
+}
+
+/**
+ * The click of a mouse or a tap, which (unlike a key's, or `.click()`'s)
+ * has a `detail` of at least 1.
+ */
+export function mouseClick(el: Element): MouseEvent {
+  const click = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    detail: 1,
+  });
+  el.dispatchEvent(click);
+  return click;
 }
 
 /**

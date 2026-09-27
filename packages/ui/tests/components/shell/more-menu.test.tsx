@@ -12,7 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setChatCapability } from "@dotli/shared/chat-capability";
 import { initChatPanelState } from "@dotli/ui/state/chat-panel";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import { pointerPress, resetStores, settle } from "../../helpers/solid";
+import {
+  mouseClick,
+  pointerPress,
+  resetStores,
+  settle,
+} from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import { mountMoreMenu } from "./more-menu-harness";
 
@@ -92,7 +97,7 @@ async function renderMenu(): Promise<void> {
 
 async function openMenu(): Promise<void> {
   await renderMenu();
-  byId("more-button").click();
+  mouseClick(byId("more-button"));
   await settle();
 }
 

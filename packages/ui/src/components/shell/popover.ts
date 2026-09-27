@@ -59,7 +59,12 @@ export interface PopoverOptions {
 export interface Popover {
   open: Accessor<boolean>;
   setOpen: (open: boolean) => void;
-  toggle: () => void;
+  /**
+   * Open or close; wire the trigger's click to it. For a menu, a click with
+   * `detail` 0 (a key's, or one forwarded from a keyboard choice, like the
+   * "more" menu's) opens it as a keyboard opening, on its first item.
+   */
+  toggle: (ev?: Event) => void;
   /**
    * A menu item was chosen: close and hand focus back to the trigger (or
    * the "more" button, when the trigger is hidden).
@@ -205,7 +210,9 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * In every mode, opening focuses the first tabbable element in the surface,
  * or the surface itself when it has a tabindex; Escape closes and hands
  * focus back to the trigger; a pointerdown outside the trigger and the
- * surface closes; and so do a blocking modal coming up (unless
+ * surface closes (a touch one on its click, so a scroll that starts outside
+ * does not, as Radix's usePointerDownOutside does); and so do a blocking
+ * modal coming up (unless
  * `closeOnBlockingModal` is false) and, with `closeOnBlur`, the window
  * losing focus. Closing hands focus back to the
  * trigger, unless the user moved it elsewhere (or, for `popover`, closed it
@@ -215,13 +222,15 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  *   closes it, and an outside pointerdown closes it without taking focus
  *   back, so focus follows the click.
  * - `menu`: Enter, Space or ArrowDown on the trigger opens it and focuses the
- *   first item, while a pointer opening focuses the surface; the items have
+ *   first item (the click a browser may still fire for the key is dropped),
+ *   and so does a trigger click with `detail` 0, while a pointer opening
+ *   focuses the surface; the items have
  *   roving focus (ArrowUp/ArrowDown looping, Home, End, typeahead, pointer
  *   hover); Tab is prevented; an outside pointerdown closes it and swallows
  *   its click, so the click does not activate what is underneath. Call
  *   `onItemChosen` when an item is chosen.
  * - `dialog`: Tab and Shift+Tab are trapped inside, and the page does not
- *   scroll while it is open.
+ *   scroll while it is open (`data-scroll-locked` on the body).
  *
  * A `mode` function picks `popover` or `dialog` afresh at each opening.
  *
@@ -282,6 +291,8 @@ export function createPopover(options: PopoverOptions): Popover {
   );
 
   if (options.mode === "menu") {
+    /** Ends the guard against the click of the last key handled below. */
+    let stopKeyClickGuard: (() => void) | undefined;
     // Radix DropdownMenu's trigger keys: Enter and Space toggle, ArrowDown
     // opens, and each of them focuses the first item.
     const onTriggerKeyDown = (ev: KeyboardEvent): void => {
@@ -294,6 +305,10 @@ export function createPopover(options: PopoverOptions): Popover {
       }
       // Also stops the click the key would otherwise produce.
       ev.preventDefault();
+      if (ev.key !== "ArrowDown") {
+        stopKeyClickGuard?.();
+        stopKeyClickGuard = guardKeyClick(ev.key);
+      }
       if (!current) {
         openedWithKeyboard = true;
         setOpen(true);
@@ -307,6 +322,7 @@ export function createPopover(options: PopoverOptions): Popover {
     document.addEventListener("keydown", onTriggerKeyDown);
     onCleanup(() => {
       document.removeEventListener("keydown", onTriggerKeyDown);
+      stopKeyClickGuard?.();
     });
   }
 
@@ -324,21 +340,47 @@ export function createPopover(options: PopoverOptions): Popover {
       options.trigger()?.contains(node) === true ||
       options.surface()?.contains(node) === true;
 
+    const closeOutside = (): void => {
+      if (mode === "popover") {
+        keepFocus = true;
+      }
+      setOpen(false);
+    };
+    /** Drops the close a touch outside is waiting to make on its click. */
+    let cancelTouchClose: (() => void) | undefined;
     const onPointerDown = (ev: PointerEvent): void => {
+      cancelTouchClose?.();
+      cancelTouchClose = undefined;
       if (isInside(ev.target as Node | null)) {
         return;
       }
-      if (mode === "popover") {
-        keepFocus = true;
-      } else if (mode === "menu") {
+      if (mode === "menu") {
         // Like Radix's modal menu, which blocks outside pointer events: the
         // press neither takes focus (a prevented pointerdown skips the
         // mousedown focus, which Radix's trigger relies on too) nor
-        // activates what is underneath.
+        // activates what is underneath (its click is swallowed).
         ev.preventDefault();
+      }
+      if (ev.pointerType === "touch") {
+        // Like Radix's usePointerDownOutside: a touch closes on its click,
+        // so a scroll or drag that starts outside (a pointercancel, a
+        // scroll) closes nothing. A menu's close swallows that click.
+        cancelTouchClose = awaitClick(
+          (click) => {
+            if (mode === "menu") {
+              click.preventDefault();
+              click.stopPropagation();
+            }
+            closeOutside();
+          },
+          ["pointerdown", "pointercancel", "keydown", "scroll"],
+        );
+        return;
+      }
+      if (mode === "menu") {
         swallowNextClick();
       }
-      setOpen(false);
+      closeOutside();
     };
     const onKeyDown = (ev: KeyboardEvent): void => {
       const surface = options.surface();
@@ -427,6 +469,7 @@ export function createPopover(options: PopoverOptions): Popover {
       document.removeEventListener("focusout", onFocusOut);
       surface?.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("blur", onBlur);
+      cancelTouchClose?.();
       unlockScroll?.();
       // Closed, not disposed while open: hand focus back unless the user
       // moved it elsewhere.
@@ -439,7 +482,15 @@ export function createPopover(options: PopoverOptions): Popover {
   return {
     open,
     setOpen,
-    toggle: () => {
+    toggle: (ev?: Event) => {
+      if (
+        !current &&
+        options.mode === "menu" &&
+        ev instanceof MouseEvent &&
+        ev.detail === 0
+      ) {
+        openedWithKeyboard = true;
+      }
       setOpen(!current);
     },
     onItemChosen: () => {
@@ -462,20 +513,19 @@ function focusFirst(candidates: HTMLElement[]): boolean {
 
 /** Open dialogs holding the page's scroll lock. */
 let scrollLocks = 0;
-/** `body.style.overflow` from before the first lock. */
-let unlockedOverflow = "";
 
 /**
  * Lock page scroll until the returned function is called (more calls do
- * nothing). Counted, so dialogs closing in any order restore the page only
- * when the last one closes, and to what it was before the first.
+ * nothing), with `data-scroll-locked` on the body, which base.css turns
+ * into `overflow: hidden !important`, as Radix's react-remove-scroll does.
+ * The body's inline style stays the page's own: bridge.ts hides its
+ * overflow when the product frame attaches, maybe while a dialog is open,
+ * and that must outlive the dialog. Counted, so dialogs closing in any
+ * order unlock the page only when the last one closes.
  */
 function lockScroll(): () => void {
-  if (scrollLocks === 0) {
-    unlockedOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-  }
   scrollLocks += 1;
+  document.body.setAttribute("data-scroll-locked", "");
   let locked = true;
   return () => {
     if (!locked) {
@@ -484,9 +534,35 @@ function lockScroll(): () => void {
     locked = false;
     scrollLocks -= 1;
     if (scrollLocks === 0) {
-      document.body.style.overflow = unlockedOverflow;
+      document.body.removeAttribute("data-scroll-locked");
     }
   };
+}
+
+/**
+ * Calls `onClick` with the next click, unless one of `cancelOn` comes
+ * first (a press that never becomes a click: a scroll, a drag, a new
+ * press). Returns a function that stops waiting.
+ */
+function awaitClick(
+  onClick: (ev: MouseEvent) => void,
+  cancelOn: string[],
+): () => void {
+  const click = (ev: MouseEvent): void => {
+    stop();
+    onClick(ev);
+  };
+  const stop = (): void => {
+    document.removeEventListener("click", click, true);
+    for (const type of cancelOn) {
+      document.removeEventListener(type, stop, true);
+    }
+  };
+  document.addEventListener("click", click, true);
+  for (const type of cancelOn) {
+    document.addEventListener(type, stop, true);
+  }
+  return stop;
 }
 
 /**
@@ -497,19 +573,58 @@ function lockScroll(): () => void {
  * or programmatic click is not eaten.
  */
 function swallowNextClick(): void {
-  const swallow = (ev: MouseEvent): void => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    stop();
-  };
-  const stop = (): void => {
-    document.removeEventListener("click", swallow, true);
-    for (const type of ["pointerdown", "pointercancel", "keydown"]) {
-      document.removeEventListener(type, stop, true);
+  awaitClick(
+    (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    },
+    ["pointerdown", "pointercancel", "keydown"],
+  );
+}
+
+/**
+ * Drops the click a browser may still fire for an Enter or Space the menu
+ * trigger handled on keydown: Firefox fires Space's on keyup even after a
+ * prevented keydown (Headless UI's Menu.Button works around the same), by
+ * which time the menu may have focused its first item. Until just after
+ * that key's keyup, which is prevented too, a click with `detail` 0 (a
+ * key's) is swallowed. The next keydown or pointerdown, or the window
+ * losing focus, ends it earlier. Returns a function that ends it.
+ */
+function guardKeyClick(key: string): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onClick = (ev: MouseEvent): void => {
+    if (ev.detail === 0) {
+      ev.preventDefault();
+      ev.stopPropagation();
     }
   };
-  document.addEventListener("click", swallow, true);
-  for (const type of ["pointerdown", "pointercancel", "keydown"]) {
-    document.addEventListener(type, stop, true);
-  }
+  const onKeyUp = (ev: KeyboardEvent): void => {
+    if (ev.key !== key) {
+      return;
+    }
+    ev.preventDefault();
+    document.removeEventListener("keyup", onKeyUp, true);
+    // The click comes as the keyup's default action, after its listeners.
+    timer = setTimeout(stop, 0);
+  };
+  const onKeyDown = (ev: KeyboardEvent): void => {
+    if (!ev.repeat) {
+      stop();
+    }
+  };
+  const stop = (): void => {
+    clearTimeout(timer);
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("keyup", onKeyUp, true);
+    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("pointerdown", stop, true);
+    window.removeEventListener("blur", stop);
+  };
+  document.addEventListener("click", onClick, true);
+  document.addEventListener("keyup", onKeyUp, true);
+  document.addEventListener("keydown", onKeyDown, true);
+  document.addEventListener("pointerdown", stop, true);
+  window.addEventListener("blur", stop);
+  return stop;
 }

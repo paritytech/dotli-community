@@ -253,10 +253,10 @@ describe("UserPopover", () => {
     setAuthState({ tag: "Disconnected" });
     await settleAll();
 
-    // Then
-    expect(button.hasAttribute("aria-haspopup")).toBe(false);
-    expect(button.hasAttribute("aria-expanded")).toBe(false);
-    expect(button.hasAttribute("aria-controls")).toBe(false);
+    // Then: it announces the auth modal a click now opens instead.
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-controls")).toBe("auth-modal-backdrop");
   });
 
   it("As a keyboard user, Tab past Log out closes the popover and focus moves on", async () => {

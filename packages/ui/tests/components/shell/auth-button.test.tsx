@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
 import { getAuthModalState } from "@dotli/ui/state/auth-modal";
 import { setAuthState } from "@dotli/ui/state/auth";
+import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
 import { renderComponent } from "../../helpers/solid";
 import {
   byId,
@@ -26,15 +27,21 @@ async function renderButton(): Promise<HTMLButtonElement> {
 }
 
 /**
- * The button as topbar.ts left it. Logged in, it also carries the ARIA of a
- * Radix-style popover trigger for the user popover it opens.
+ * The button as topbar.ts left it, plus the ARIA of a Radix-style trigger
+ * for what a click opens: logged in, the user popover; logged out, the
+ * auth modal (a Radix Dialog.Trigger).
  */
 function expectMarkup(button: Element, expected: Element): void {
-  if (expected.getAttribute("aria-label") === "Account") {
-    expected.setAttribute("aria-haspopup", "dialog");
-    expected.setAttribute("aria-expanded", "false");
-    expected.setAttribute("aria-controls", "user-popover");
-  }
+  const account = expected.getAttribute("aria-label") === "Account";
+  expected.setAttribute("aria-haspopup", "dialog");
+  expected.setAttribute(
+    "aria-expanded",
+    !account && getAuthModalState().open ? "true" : "false",
+  );
+  expected.setAttribute(
+    "aria-controls",
+    account ? "user-popover" : "auth-modal-backdrop",
+  );
   expect(normalized(button).isEqualNode(normalized(expected))).toBe(true);
 }
 
@@ -169,6 +176,60 @@ describe("AuthButton", () => {
     expectMarkup(button, oldAuthButton("logged-out"));
   });
 
+  it("As a logged-out screen-reader user, the button announces the auth modal a click opens, and whether it is open", async () => {
+    // Given
+    const button = await renderButton();
+    const popupAria = (): (string | null)[] =>
+      ["aria-haspopup", "aria-expanded", "aria-controls"].map((name) =>
+        button.getAttribute(name),
+      );
+
+    // Then
+    expect(popupAria()).toEqual(["dialog", "false", "auth-modal-backdrop"]);
+
+    // When
+    button.click();
+    await settleAll();
+
+    // Then
+    expect(getAuthModalState().open).toBe(true);
+    expect(popupAria()).toEqual(["dialog", "true", "auth-modal-backdrop"]);
+  });
+
+  it.each<[string, DotliAuthState]>([
+    ["Disconnected", { tag: "Disconnected" }],
+    [
+      "Pairing",
+      {
+        tag: "Pairing",
+        deeplink: "polkadotapp://pair?handshake=test",
+        label: "app",
+      },
+    ],
+    ["Authenticating", { tag: "Authenticating" }],
+    [
+      "LoginFailed",
+      { tag: "LoginFailed", kind: "Other", reason: "Host failure" },
+    ],
+  ])(
+    "As a screen-reader user, while the auth state is %s the button announces the auth modal, as a click starts a login",
+    async (_tag, state) => {
+      // Given
+      const button = await renderButton();
+
+      // When
+      setAuthState(state);
+      await settleAll();
+
+      // Then
+      expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+      expect(button.getAttribute("aria-controls")).toBe("auth-modal-backdrop");
+      expect(button.getAttribute("aria-expanded")).toBe(
+        getAuthModalState().open ? "true" : "false",
+      );
+    },
+  );
+
   it("As a logged-in screen-reader user, the button announces the user popover only while connected, when a click opens it", async () => {
     // Given
     const button = await renderButton();
@@ -193,16 +254,22 @@ describe("AuthButton", () => {
     });
     await settleAll();
 
-    // Then: still showing the badge, but announcing no popup.
+    // Then: still showing the badge, but announcing the auth modal, which
+    // the pairing opened.
     expect(button.textContent).toBe("PG");
-    expect(popupAria()).toEqual([null, null, null]);
+    expect(getAuthModalState().open).toBe(true);
+    expect(popupAria()).toEqual(["dialog", "true", "auth-modal-backdrop"]);
 
     // When
     setAuthState({ tag: "Authenticating" });
     await settleAll();
 
     // Then
-    expect(popupAria()).toEqual([null, null, null]);
+    expect(popupAria()).toEqual([
+      "dialog",
+      getAuthModalState().open ? "true" : "false",
+      "auth-modal-backdrop",
+    ]);
 
     // When
     setAuthState({

@@ -35,7 +35,7 @@ function Spinner(): JSX.Element {
   return <div class="spinner" />;
 }
 
-function ErrorBody(props: { view: ErrorView }): JSX.Element {
+function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
   return (
     <div class="auth-modal-error-view">
       <div class="auth-modal-pending-icon">
@@ -62,7 +62,7 @@ function ErrorBody(props: { view: ErrorView }): JSX.Element {
         <button
           ref={(el) => {
             el.addEventListener("click", () => {
-              retryLogin();
+              props.retry();
             });
           }}
           class="auth-modal-retry"
@@ -210,6 +210,14 @@ export function AuthModal(): JSX.Element {
     return v?.kind === "error" ? v : undefined;
   };
 
+  const retry = (): void => {
+    // The retry replaces the error view, Retry included: focus the dialog
+    // first, so focus stays in it rather than dropping to the body (Radix's
+    // FocusScope refocuses its container when the focused node goes).
+    backdrop?.focus();
+    retryLogin();
+  };
+
   const onBackdropClick = (e: MouseEvent): void => {
     // Only a click on the backdrop itself, outside the modal.
     if (e.target === e.currentTarget) {
@@ -263,7 +271,9 @@ export function AuthModal(): JSX.Element {
                 <p>Logging in...</p>
               </div>
             </Match>
-            <Match when={errorView()}>{(v) => <ErrorBody view={v()} />}</Match>
+            <Match when={errorView()}>
+              {(v) => <ErrorBody view={v()} retry={retry} />}
+            </Match>
             <Match when={view() !== null}>
               <Show when={qr()} fallback={<Spinner />}>
                 {(drawnQr) =>

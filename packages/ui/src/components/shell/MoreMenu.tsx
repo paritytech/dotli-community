@@ -9,11 +9,12 @@ import { createPopover } from "./popover";
 /**
  * The mobile "More" button and its flyout, which collapses Chat,
  * Permissions, Theme and Settings into one menu. Each row forwards its tap as
- * a click on the real button named by its `data-target`, looked up by id at
- * click time, so it reaches whichever element holds that id then: the live
- * island, or the static button before it is swapped in (whose click the
- * islands loader holds back and replays). The Chat row shows whenever the
- * chat button does.
+ * a click on the real button named by its `data-target` (keeping the tap's
+ * `detail`, 0 for a keyboard choice), looked up by id at click time, so it
+ * reaches whichever element holds that id then: the live island, or the
+ * static button before it is swapped in (whose click the islands loader
+ * holds back and replays). The Chat row shows whenever the chat button
+ * does.
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
@@ -44,7 +45,16 @@ export function MoreMenu(): JSX.Element {
     menu.onItemChosen();
     const targetId = row.dataset.target;
     if (targetId !== undefined) {
-      document.getElementById(targetId)?.click();
+      // With the row click's detail: 0 for a keyboard choice, which opens a
+      // menu (the theme menu) on its first item, as a keyboard opening does.
+      document.getElementById(targetId)?.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          detail: e.detail,
+        }),
+      );
     }
   };
 

@@ -5,6 +5,7 @@ import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { startLogin } from "../../auth-controller";
 import { authStore, getAuthState } from "../../state/auth";
+import { authModalStore } from "../../state/auth-modal";
 import { useStore } from "../use-store";
 import { sessionInitials, useAccount } from "./account";
 import { toggleUserPopover, userPopoverOpen } from "./UserPopover";
@@ -37,17 +38,24 @@ function UserIcon(): JSX.Element {
  *
  * Logged out, it shows the person icon and a click starts a login. Logged
  * in, it shows the account's initials (`.user-badge`, or the icon as
- * `.user-badge-anon` without a username) and a click toggles the user
- * popover (the UserPopover island) while the auth state is `Connected`, and
- * only then carries its trigger ARIA (`aria-haspopup="dialog"`,
- * `aria-expanded`, `aria-controls`): in a pairing started while logged in,
- * the click starts a login instead. It renders
- * the auth stores, whatever they held when it mounted.
+ * `.user-badge-anon` without a username). A click toggles the user popover
+ * (the UserPopover island) while the auth state is `Connected`, and starts
+ * a login, which opens the auth modal, in any other state (a pairing
+ * started while logged in included). Its trigger ARIA follows the click,
+ * like a Radix Popover.Trigger or Dialog.Trigger: `aria-haspopup="dialog"`,
+ * with `aria-controls` and `aria-expanded` for the user popover while
+ * `Connected`, else for the auth modal (`#auth-modal-backdrop`, open as
+ * authModalStore says). It renders the auth stores, whatever they held when
+ * it mounted.
  */
 export function AuthButton(): JSX.Element {
   const account = useAccount();
   const auth = useStore(authStore);
-  /** A click toggles the user popover (see onClick), so the ARIA says so. */
+  const authModal = useStore(authModalStore);
+  /**
+   * A click toggles the user popover, else opens the auth modal (see
+   * onClick), so the ARIA says so.
+   */
   const opensPopover = (): boolean => auth().tag === "Connected";
   const label = (): string =>
     account.loggedIn() ? "Account" : "Login with Polkadot Mobile";
@@ -69,11 +77,13 @@ export function AuthButton(): JSX.Element {
       class="topbar-btn"
       title={label()}
       aria-label={label()}
-      aria-haspopup={opensPopover() ? "dialog" : undefined}
+      aria-haspopup="dialog"
       aria-expanded={
-        opensPopover() ? (userPopoverOpen() ? "true" : "false") : undefined
+        (opensPopover() ? userPopoverOpen() : authModal().open)
+          ? "true"
+          : "false"
       }
-      aria-controls={opensPopover() ? "user-popover" : undefined}
+      aria-controls={opensPopover() ? "user-popover" : "auth-modal-backdrop"}
     >
       <Show
         when={account.loggedIn() && account.session()}

@@ -27,6 +27,8 @@ interface Chunk {
   mountIslands: ReturnType<typeof vi.fn>;
   /** Clicks the island's (swapped-in) theme button received. */
   islandClicks: () => number;
+  /** The `detail` of each click the island's theme button received. */
+  islandClickDetails: () => number[];
   /** Clicks the island's (swapped-in) permissions button received. */
   permissionsClicks: () => number;
   /** Clicks the island's (swapped-in) network button received. */
@@ -69,6 +71,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
     return requests[settled - 1];
   };
   let clicks = 0;
+  const clickDetails: number[] = [];
   let permissionsClicks = 0;
   let chainsClicks = 0;
   let settingsClicks = 0;
@@ -79,8 +82,9 @@ function stubChunk(options: StubOptions = {}): Chunk {
     }
     const fresh = document.createElement("button");
     fresh.id = "theme-toggle";
-    fresh.addEventListener("click", () => {
+    fresh.addEventListener("click", (ev) => {
       clicks += 1;
+      clickDetails.push(ev.detail);
     });
     document.getElementById("theme-toggle")?.replaceWith(fresh);
     const permissions = document.createElement("button");
@@ -136,6 +140,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
     imports: () => requests.length,
     mountIslands,
     islandClicks: () => clicks,
+    islandClickDetails: () => clickDetails,
     permissionsClicks: () => permissionsClicks,
     chainsClicks: () => chainsClicks,
     settingsClicks: () => settingsClicks,
@@ -225,9 +230,16 @@ function byId(id: string): HTMLElement {
   return document.getElementById(id) as HTMLElement;
 }
 
-/** Clicks `target` the way a user does; returns the dispatched event. */
-function click(target: Element): MouseEvent {
-  const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+/**
+ * Clicks `target` the way a user does (`detail` 1 for a mouse, 0 for a
+ * key); returns the dispatched event.
+ */
+function click(target: Element, detail = 0): MouseEvent {
+  const event = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    detail,
+  });
   target.dispatchEvent(event);
   return event;
 }
@@ -442,6 +454,68 @@ describe("ensureIslands", () => {
     // Then
     expect(chunk.permissionsClicks()).toBe(2);
   });
+
+  it.each([
+    ["theme, then settings", ["theme-toggle", "mode-button"], "mode-button"],
+    [
+      "theme, settings, then theme again",
+      ["theme-toggle", "mode-button", "theme-toggle"],
+      "theme-toggle",
+    ],
+    [
+      "More, then permissions",
+      ["more-button", "permissions-button"],
+      "permissions-button",
+    ],
+  ])(
+    "As a dotli user who clicked several buttons before the islands mount (%s), only the last one opens, so two surfaces never open at once",
+    async (_order, clicked, last) => {
+      // Given
+      const chunk = stubChunk();
+      const { ensureIslands } = await loadLoader();
+      const loading = ensureIslands();
+
+      // When
+      for (const id of clicked) {
+        click(byId(id));
+      }
+      chunk.arrive();
+      await loading;
+
+      // Then
+      const received: Record<string, number> = {
+        "theme-toggle": chunk.islandClicks(),
+        "mode-button": chunk.settingsClicks(),
+        "more-button": chunk.moreClicks(),
+        "permissions-button": chunk.permissionsClicks(),
+        "chains-button": chunk.chainsClicks(),
+      };
+      for (const [id, count] of Object.entries(received)) {
+        expect(count, id).toBe(id === last ? 1 : 0);
+      }
+    },
+  );
+
+  it.each([
+    ["a mouse click", 1],
+    ["a key's click", 0],
+  ])(
+    "As a dotli user, the replayed click keeps the held one's detail (%s), so a menu opens as that click would have opened it",
+    async (_kind, detail) => {
+      // Given
+      const chunk = stubChunk();
+      const { ensureIslands } = await loadLoader();
+      const loading = ensureIslands();
+
+      // When
+      click(byId("theme-toggle"), detail);
+      chunk.arrive();
+      await loading;
+
+      // Then
+      expect(chunk.islandClickDetails()).toEqual([detail]);
+    },
+  );
 
   it("As a dotli user, clicks elsewhere before the mount, and every click after it, pass through untouched", async () => {
     // Given

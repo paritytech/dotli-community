@@ -854,7 +854,7 @@ describe("The settings popover island", () => {
     expect(popover.getAttribute("role")).toBe("dialog");
     expect(popover.getAttribute("aria-modal")).toBe("true");
     expect(popover.contains(document.activeElement)).toBe(true);
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(true);
 
     // When: Tab on the last control.
     const controls = tabbables();
@@ -881,7 +881,7 @@ describe("The settings popover island", () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(popover.hasAttribute("aria-modal")).toBe(false);
-    expect(document.body.style.overflow).toBe("");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
   });
 
   it("As a desktop user, the settings popover is not modal: no aria-modal, no scroll lock, and Tab moves on", async () => {
@@ -895,7 +895,7 @@ describe("The settings popover island", () => {
 
     // Then
     expect(byId("mode-popover").hasAttribute("aria-modal")).toBe(false);
-    expect(document.body.style.overflow).toBe("");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
     const controls = tabbables();
     controls[controls.length - 1].focus();
     expect(press("Tab").defaultPrevented).toBe(false);

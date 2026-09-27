@@ -280,16 +280,16 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * (narrow screens), to the More button.
  * The popover's content stays after a close, for the fade-out, and is
  * rendered afresh on the next opening. The mobile "More" menu's Settings
- * row opens it by calling `.click()` on the button, looked up by id.
+ * row opens it by dispatching a click on the button, looked up by id.
  */
 export function SettingsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   /** Whether the current (or last) opening is the modal sheet. */
   const [sheet, setSheet] = createSignal(false);
-  let sheetOpening = false;
   const surface = createPopover({
-    mode: () => (sheetOpening ? "dialog" : "popover"),
+    // Asked as it opens, after the click below set `sheet`.
+    mode: () => (untrack(sheet) ? "dialog" : "popover"),
     trigger: () => button,
     surface: () => popover,
   });
@@ -309,8 +309,7 @@ export function SettingsPopover(): JSX.Element {
           el.addEventListener("click", () => {
             if (!untrack(surface.open)) {
               setOpening((n) => n + 1);
-              sheetOpening = window.matchMedia(SHEET_QUERY).matches;
-              setSheet(sheetOpening);
+              setSheet(window.matchMedia(SHEET_QUERY).matches);
             }
             surface.toggle();
           });
