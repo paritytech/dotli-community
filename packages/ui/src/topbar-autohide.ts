@@ -30,6 +30,7 @@ const TOPBAR_SURFACE_IDS = [
   "mode-popover",
   "permissions-popover",
   "auth-modal-backdrop",
+  "chains-popover",
 ];
 
 // The mobile "more" flyout and the shield explainer live inside #topbar, so
@@ -41,6 +42,7 @@ const OPEN_SURFACE_IDS = [
 ];
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
+let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
 let hoverStrip: HTMLElement | null = null;
 let revealButton: HTMLButtonElement | null = null;
@@ -309,7 +311,10 @@ function bindListeners(): void {
     "focusout",
     () => {
       // activeElement only settles after focusout, so check on the next tick.
-      setTimeout(syncFocus, 0);
+      focusoutTimer = setTimeout(() => {
+        focusoutTimer = null;
+        syncFocus();
+      }, 0);
     },
     { signal },
   );
@@ -352,6 +357,12 @@ export function armTopbarAutoHide(): void {
 export function pinTopbarVisible(): void {
   armed = false;
   cancelHide();
+  // A focus check queued by focusout must not run against a pinned or
+  // disposed bar.
+  if (focusoutTimer !== null) {
+    clearTimeout(focusoutTimer);
+    focusoutTimer = null;
+  }
   getTopbar()?.removeAttribute("aria-keyshortcuts");
   // A pinned bar needs no reveal control, and a stray tab stop would just
   // sit in the way.

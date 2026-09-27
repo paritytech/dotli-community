@@ -31,6 +31,7 @@ function installTopbarDom(): void {
     <div class="mode-popover" id="mode-popover"></div>
     <div class="permissions-popover" id="permissions-popover"></div>
     <div class="auth-modal-backdrop" id="auth-modal-backdrop"></div>
+    <div class="more-popover chains-popover" id="chains-popover"><button id="chains-row">row</button></div>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
     </div>
@@ -196,6 +197,65 @@ describe("topbar auto-hide reveal", () => {
 
     // Then
     expect(isHidden()).toBe(true);
+  });
+
+  it("As a keyboard user, the bar stays up while I read the open chains popover", async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    const chains = document.getElementById("chains-popover") as HTMLElement;
+    chains.classList.add("open");
+
+    // When focus sits inside it, outside #topbar
+    focusElement(document.getElementById("chains-row") as HTMLElement);
+    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When it closes and focus returns to the app, the bar hides again
+    chains.classList.remove("open");
+    focusElement(appFrame());
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it("As a keyboard user, Alt+Shift+T leaves the bar under an open chains popover", async () => {
+    // Given the bar is up and the chains popover is open
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    document.getElementById("chains-popover")?.classList.add("open");
+
+    // When
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyT",
+        altKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    // Then the popover owns the moment, so the bar stays
+    expect(isHidden()).toBe(false);
+  });
+
+  it("As a dotli integrator, pinning the bar drops a queued focus check", async () => {
+    // Given a focusout has queued its next-tick focus check
+    const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
+    armTopbarAutoHide();
+    // Armed: the hide timer is pending, alongside timers owned by other modules.
+    const armedTimers = vi.getTimerCount();
+    document.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    expect(vi.getTimerCount()).toBe(armedTimers + 1);
+
+    // When
+    pinTopbarVisible();
+
+    // Then both the hide timer and the queued focus check are gone
+    expect(vi.getTimerCount()).toBe(armedTimers - 1);
   });
 
   it("As a keyboard user, Alt+Shift+T toggles the bar and moves focus with it", async () => {
