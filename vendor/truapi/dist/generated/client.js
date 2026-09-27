@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "27b9c7f113a9e96c";
+export const TRUAPI_WIRE_SCHEMA_HASH = "eb7589907767e84c";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -855,9 +855,13 @@ export class PaymentClient {
  * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
  *
  * The host owns TLS, certificate verification and length framing; the guest
- * verifies every byte it consumes. Access requires the manifest capability
- * `capabilities.network.jam = { genesis }` and is granted only for that
- * genesis. A grant is separate from account, signing and storage authority.
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: `dial` requires
+ * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
+ * its `genesis`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted `dial` opened. A grant is
+ * separate from account, signing and storage authority.
  */
 export class PeerTransportClient {
     #transport;

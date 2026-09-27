@@ -444,6 +444,37 @@ describe("three-way permission prompts", () => {
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("denied");
   });
 
+  it("As a dotli user, I am asked which JAM network an app may reach", async () => {
+    const genesis = `0x3539${"ab".repeat(30)}` as const;
+    for (const [button, decision] of [
+      ["Always allow", "AllowAlways"],
+      ["Allow once", "AllowOnce"],
+      ["Deny", "Deny"],
+    ] as const) {
+      // Given
+      const response = createPromptPermission("myapp").remotePermission(
+        PRODUCT,
+        { permission: { tag: "JamPeers", value: { genesis } } },
+      );
+      await vi.waitFor(() => {
+        expect(promptButtonTexts()).toContain(button);
+      });
+      const question = document.querySelector<HTMLElement>(
+        ".signing-field-value[title]",
+      );
+      expect(question?.textContent).toMatch(
+        /^Allow myapp\.\S+ to connect to JAM network 0x3539abab… \(read-only peer access, no accounts or signing\)\?$/,
+      );
+      expect(question?.title).toBe(genesis);
+
+      // When
+      await clickPromptButton(button);
+
+      // Then
+      await expect(response).resolves.toBe(decision);
+    }
+  });
+
   it("As a dotli user, I can allow a single notification", async () => {
     // Given
     const response = createPromptPermission("myapp").devicePermission(

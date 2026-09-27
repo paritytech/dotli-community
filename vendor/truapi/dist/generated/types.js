@@ -311,7 +311,7 @@ export const VersionedRemoteChainTransactionBroadcastResponse = S.lazy(() => S.i
 export const VersionedRemoteChainTransactionStopError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedRemoteChainTransactionStopRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, RemoteChainTransactionStopRequest] }));
 export const VersionedRemoteChainTransactionStopResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
-export const RemotePermission = S.lazy(() => S.TaggedUnion({ Remote: S.Struct({ domains: S.Vector(S.str) }), WebRtc: S._void, ChainSubmit: S._void, PreimageSubmit: S._void, StatementSubmit: S._void }));
+export const RemotePermission = S.lazy(() => S.TaggedUnion({ Remote: S.Struct({ domains: S.Vector(S.str) }), WebRtc: S._void, ChainSubmit: S._void, PreimageSubmit: S._void, StatementSubmit: S._void, JamPeers: S.Struct({ genesis: S.Hex(32) }) }));
 export const VersionedRemotePermissionError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
 export const VersionedRemotePermissionRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, RemotePermissionRequest] }));
 export const VersionedRemotePermissionResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, RemotePermissionResponse] }));

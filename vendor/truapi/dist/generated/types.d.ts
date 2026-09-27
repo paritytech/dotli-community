@@ -2713,8 +2713,9 @@ export declare const VersionedRemoteChainTransactionStopResponse: S.Codec<Versio
 /**
  * One remote-operation permission requested by the product (RFC 0002).
  *
- * `ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered
- * implicitly by the corresponding business calls when not yet granted.
+ * `ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also
+ * triggered implicitly by the corresponding business calls when not yet
+ * granted (`PeerTransport::dial` for `JamPeers`).
  */
 export type RemotePermission = 
 /**
@@ -2756,6 +2757,20 @@ export type RemotePermission =
  | {
     tag: "StatementSubmit";
     value?: undefined;
+}
+/**
+ * Read-only peer access over JAMNP-S QUIC/WebTransport to the validators
+ * of one JAM chain, through the `PeerTransport` service.
+ *
+ * The app names the endpoints it dials; the grant covers only peers of
+ * `genesis`. Every byte received is untrusted, and the grant carries no
+ * account, signing or submission authority.
+ */
+ | {
+    tag: "JamPeers";
+    value: {
+        genesis: HexString;
+    };
 };
 export declare const RemotePermission: S.Codec<RemotePermission>;
 /** Versioned envelope for [`RemotePermissionError`]. */
@@ -4268,7 +4283,7 @@ export declare const HostPeerTransportDialError: S.Codec<HostPeerTransportDialEr
 export interface HostPeerTransportDialRequest {
     /**
      * Genesis header hash; the host derives the ALPN from it and requires a
-     * matching manifest grant.
+     * `RemotePermission::JamPeers` grant for it.
      */
     genesis: HexString;
     /** Peer IP address, IPv6 or v4-mapped IPv6. */
