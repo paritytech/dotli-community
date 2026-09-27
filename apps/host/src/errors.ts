@@ -45,6 +45,9 @@ export const HOST_ERRORS = {
   TOPBAR_URL_NODE_MISSING: "Required DOM node missing: #topbar-url",
   WALLET_IN_OTHER_TAB:
     "Only one tab can use the test wallet at a time, so its coins and Chat messages stay in sync.",
+  WALLET_PAUSED:
+    "Paused: the test wallet is in use in another tab. Click or type here to use it in this tab.",
+  WALLET_RESUMING: "Moving the test wallet to this tab…",
 } as const;
 
 /**
