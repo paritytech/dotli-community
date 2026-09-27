@@ -37,7 +37,7 @@
 | User popover | `popover` |
 | Permissions popover | `popover` (its row dropdowns keep their current select-like keyboard, and an open row dropdown still consumes Escape first) |
 | Chains popover | `popover` |
-| Verification shield explainer | `popover` (keeps `closeOnBlur`) |
+| Verification shield explainer | `popover` (keeps `closeOnBlur`); kept as a disclosure (button + `aria-expanded`, nothing focusable in the panel) |
 | Settings, desktop | `popover` |
 | Theme menu | `menu` |
 | "More" flyout | `menu`, with its rows as `menuitem` |

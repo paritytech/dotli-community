@@ -169,6 +169,52 @@ describe("AuthButton", () => {
     expectMarkup(button, oldAuthButton("logged-out"));
   });
 
+  it("As a logged-in screen-reader user, the button announces the user popover only while connected, when a click opens it", async () => {
+    // Given
+    const button = await renderButton();
+    const popupAria = (): (string | null)[] =>
+      ["aria-haspopup", "aria-expanded", "aria-controls"].map((name) =>
+        button.getAttribute(name),
+      );
+    setAuthState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
+    await settleAll();
+
+    // Then
+    expect(popupAria()).toEqual(["dialog", "false", "user-popover"]);
+
+    // When: a pairing starts while logged in, so a click starts a login.
+    setAuthState({
+      tag: "Pairing",
+      deeplink: "polkadotapp://pair?handshake=test",
+      label: "app",
+    });
+    await settleAll();
+
+    // Then: still showing the badge, but announcing no popup.
+    expect(button.textContent).toBe("PG");
+    expect(popupAria()).toEqual([null, null, null]);
+
+    // When
+    setAuthState({ tag: "Authenticating" });
+    await settleAll();
+
+    // Then
+    expect(popupAria()).toEqual([null, null, null]);
+
+    // When
+    setAuthState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
+    await settleAll();
+
+    // Then
+    expect(popupAria()).toEqual(["dialog", "false", "user-popover"]);
+  });
+
   it("As a logged-out user, clicking the button requests a login and opens the pairing modal", async () => {
     // Given
     const loginRequests = recordEvents("dotli:truapi-login-request");
