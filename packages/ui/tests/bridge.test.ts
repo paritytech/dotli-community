@@ -1,3 +1,6 @@
+// @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
+// The product and protocol frames are never navigated in these tests, and
+// happy-dom would otherwise try to fetch their pages from a dev server.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MESSAGE_TYPE_RESPONSE,
@@ -579,6 +582,10 @@ describe("bridge app roots", () => {
     // Then
     expect(disposePage).toHaveBeenCalledTimes(1);
     expect(disposeLoading).toHaveBeenCalledTimes(1);
+    // Page first, then loading.
+    expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(
+      disposeLoading.mock.invocationCallOrder[0],
+    );
     const app = document.getElementById("app");
     expect(app?.children).toHaveLength(1);
     expect(app?.firstElementChild?.tagName).toBe("IFRAME");

@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
+vi.mock("@dotli/metrics/sentry", () => sentry);
+
 import {
   disposeAppRoot,
   disposeAppRoots,
@@ -11,6 +15,7 @@ import {
 describe("app roots", () => {
   afterEach(() => {
     disposeAppRoots();
+    sentry.captureException.mockClear();
   });
 
   it("As the shell, disposing a root runs its disposer exactly once", () => {
@@ -112,5 +117,66 @@ describe("app roots", () => {
 
     // Then
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("As the shell, disposing every root runs the page disposer before the loading one", () => {
+    // Given
+    const order: string[] = [];
+    registerAppRoot("loading", () => order.push("loading"));
+    registerAppRoot("page", () => order.push("page"));
+
+    // When
+    disposeAppRoots();
+
+    // Then
+    expect(order).toEqual(["page", "loading"]);
+  });
+
+  it("As the shell, a throwing page disposer is reported once and the loading root is still disposed", () => {
+    // Given
+    const failure = new Error("page teardown failed");
+    const page = vi.fn(() => {
+      throw failure;
+    });
+    const loading = vi.fn();
+    registerAppRoot("page", page);
+    registerAppRoot("loading", loading);
+
+    // When
+    expect(() => {
+      disposeAppRoots();
+    }).not.toThrow();
+    disposeAppRoots();
+
+    // Then the failed root counts as disposed
+    expect(page).toHaveBeenCalledTimes(1);
+    expect(loading).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(failure, {
+      kind: "app_root_dispose_error",
+      root: "page",
+    });
+  });
+
+  it("As the shell, a root registered by the disposer it replaces is disposed too", () => {
+    // Given
+    const replacement = vi.fn();
+    registerAppRoot("loading", () => {
+      registerAppRoot("loading", replacement);
+    });
+    const latest = vi.fn();
+
+    // When
+    registerAppRoot("loading", latest);
+
+    // Then
+    expect(replacement).toHaveBeenCalledTimes(1);
+    expect(latest).not.toHaveBeenCalled();
+
+    // When
+    disposeAppRoot("loading");
+
+    // Then
+    expect(latest).toHaveBeenCalledTimes(1);
   });
 });

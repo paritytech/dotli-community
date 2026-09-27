@@ -12,6 +12,8 @@
  * Solid-free on purpose: `ui.ts` registers the loading root, and the sandbox
  * imports `ui.ts` without Solid on its startup path.
  */
+import { captureException } from "@dotli/metrics/sentry";
+
 export type AppRootName = "loading" | "page";
 
 const disposers = new Map<AppRootName, () => void>();
@@ -22,10 +24,19 @@ const disposers = new Map<AppRootName, () => void>();
  */
 export function registerAppRoot(name: AppRootName, dispose: () => void): void {
   disposeAppRoot(name);
+  // Again, for a root the old disposer registered under this name on its way
+  // out. It would otherwise be overwritten below without being disposed.
+  disposeAppRoot(name);
   disposers.set(name, dispose);
 }
 
-/** Dispose the root called `name`. Does nothing if it is not live. */
+/**
+ * Dispose the root called `name`. Does nothing if it is not live.
+ *
+ * Never throws. A failing disposer is reported and the root still counts as
+ * disposed, so the next root is disposed and an error page replacing them
+ * still renders.
+ */
 export function disposeAppRoot(name: AppRootName): void {
   const dispose = disposers.get(name);
   if (dispose === undefined) {
@@ -33,7 +44,11 @@ export function disposeAppRoot(name: AppRootName): void {
   }
   // Dropped before it runs, so a disposer that reaches back here is a no-op.
   disposers.delete(name);
-  dispose();
+  try {
+    dispose();
+  } catch (err) {
+    captureException(err, { kind: "app_root_dispose_error", root: name });
+  }
 }
 
 /** Dispose every live root: the page first, then the loading overlay. */

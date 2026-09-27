@@ -4,6 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadingPhase } from "@dotli/ui/ui";
 
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
+vi.mock("@dotli/metrics/sentry", () => sentry);
+
 type Ui = typeof import("@dotli/ui/ui");
 type AppRoots = typeof import("@dotli/ui/mount/app-roots");
 
@@ -18,6 +21,19 @@ const PHASES: LoadingPhase[] = [
     target: 90,
     expectedMs: 60_000,
     stage: "relay",
+  },
+];
+
+// A band that waits for a real percentage, so the bar parks at its base and
+// the stall watch fires unless something stops it.
+const PARKED_PHASES: LoadingPhase[] = [
+  {
+    label: "Fetching content",
+    base: 10,
+    target: 90,
+    expectedMs: 10_000,
+    stage: "content",
+    reportsProgress: true,
   },
 ];
 
@@ -52,17 +68,17 @@ describe("The loading screen is a tracked app root", () => {
 
   afterEach(() => {
     roots.disposeAppRoots();
+    sentry.captureException.mockClear();
     vi.useRealTimers();
   });
 
-  /** Start a load whose bar is crawling and whose stall watch is armed. */
-  function startLoading(onStall: (pct: number) => void): HTMLElement {
+  /** Start a load whose bar is crawling. */
+  function startLoading(): HTMLElement {
     const fill = document.getElementById("loading-progress-fill");
     if (fill === null) {
       throw new Error("fixture has no progress fill");
     }
     ui.initPhases(PHASES);
-    ui.onProgressStall(onStall);
     ui.advancePhase(0);
     // Prove the crawl really is running before anything stops it.
     const before = fill.style.width;
@@ -73,17 +89,15 @@ describe("The loading screen is a tracked app root", () => {
 
   it("As a visitor whose name has no content, the loading bar stops ticking behind the error", () => {
     // Given
-    const onStall = vi.fn();
-    const fill = startLoading(onStall);
+    const fill = startLoading();
 
     // When
     ui.showNoContentError("nothing");
     const frozen = fill.style.width;
     vi.advanceTimersByTime(STALL_MS * 5);
 
-    // Then no crawl tick and no stall report lands after the error
+    // Then no crawl tick lands after the error
     expect(fill.style.width).toBe(frozen);
-    expect(onStall).not.toHaveBeenCalled();
     expect(document.querySelector(".error-page-title")?.textContent).toBe(
       "This app can't be reached",
     );
@@ -91,8 +105,7 @@ describe("The loading screen is a tracked app root", () => {
 
   it("As a visitor whose load failed, the loading bar stops ticking behind the error", () => {
     // Given
-    const onStall = vi.fn();
-    const fill = startLoading(onStall);
+    const fill = startLoading();
 
     // When
     ui.showErrorPage({ title: "Failed" });
@@ -101,6 +114,34 @@ describe("The loading screen is a tracked app root", () => {
 
     // Then
     expect(fill.style.width).toBe(frozen);
+  });
+
+  it("As a visitor whose load parked, the stall watch fires while the loading screen is up", () => {
+    // Given
+    const onStall = vi.fn();
+    ui.initPhases(PARKED_PHASES);
+    ui.onProgressStall(onStall);
+
+    // When
+    ui.advancePhase(0);
+    vi.advanceTimersByTime(STALL_MS + 100);
+
+    // Then the fixture really does stall, so the tests below can fail
+    expect(onStall).toHaveBeenCalledTimes(1);
+  });
+
+  it("As a visitor whose name has no content, the stall watch does not fire behind the error", () => {
+    // Given
+    const onStall = vi.fn();
+    ui.initPhases(PARKED_PHASES);
+    ui.onProgressStall(onStall);
+    ui.advancePhase(0);
+
+    // When
+    ui.showNoContentError("nothing");
+    vi.advanceTimersByTime(STALL_MS * 5);
+
+    // Then
     expect(onStall).not.toHaveBeenCalled();
   });
 
@@ -112,14 +153,15 @@ describe("The loading screen is a tracked app root", () => {
       expect(document.querySelector(".error-page")).toBeNull();
       seen.push(name);
     };
-    roots.registerAppRoot("page", record("page"));
+    // Registered loading first, so the order below is the dispose order.
     roots.registerAppRoot("loading", record("loading"));
+    roots.registerAppRoot("page", record("page"));
 
     // When
     ui.showErrorPage({ title: "Failed" });
 
     // Then
-    expect(seen.sort()).toEqual(["loading", "page"]);
+    expect(seen).toEqual(["page", "loading"]);
     expect(document.querySelector(".error-page")).not.toBeNull();
   });
 
@@ -130,21 +172,21 @@ describe("The loading screen is a tracked app root", () => {
       expect(document.querySelector(".error-page")).toBeNull();
       seen.push(name);
     };
-    roots.registerAppRoot("page", record("page"));
+    // Registered loading first, so the order below is the dispose order.
     roots.registerAppRoot("loading", record("loading"));
+    roots.registerAppRoot("page", record("page"));
 
     // When
     ui.showNoContentError("nothing");
 
     // Then
-    expect(seen.sort()).toEqual(["loading", "page"]);
+    expect(seen).toEqual(["page", "loading"]);
     expect(document.querySelector(".error-page")).not.toBeNull();
   });
 
   it("As the shell, disposing the loading root stops its timers and removes the overlay", () => {
     // Given
-    const onStall = vi.fn();
-    const fill = startLoading(onStall);
+    const fill = startLoading();
     const loading = document.querySelector("#app > .loading");
 
     // When
@@ -155,8 +197,50 @@ describe("The loading screen is a tracked app root", () => {
     // Then
     expect(loading?.isConnected).toBe(false);
     expect(fill.style.width).toBe(frozen);
+  });
+
+  it("As the shell, disposing the loading root stops the stall watch", () => {
+    // Given
+    const onStall = vi.fn();
+    ui.initPhases(PARKED_PHASES);
+    ui.onProgressStall(onStall);
+    ui.advancePhase(0);
+
+    // When
+    roots.disposeAppRoot("loading");
+    vi.advanceTimersByTime(STALL_MS * 5);
+
+    // Then
     expect(onStall).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["error page", (u: Ui) => u.showErrorPage({ title: "Failed" })],
+    ["no-content page", (u: Ui) => u.showNoContentError("nothing")],
+  ])(
+    "As a visitor, the %s still renders when the page root fails to dispose",
+    (_name, show) => {
+      // Given
+      const failure = new Error("page teardown failed");
+      roots.registerAppRoot("page", () => {
+        throw failure;
+      });
+      ui.initPhases(PHASES);
+      const loading = document.querySelector("#app > .loading");
+
+      // When
+      show(ui);
+
+      // Then the loading root is still disposed and the error page is up
+      expect(loading?.isConnected).toBe(false);
+      expect(document.querySelector(".error-page-title")).not.toBeNull();
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(sentry.captureException).toHaveBeenCalledWith(failure, {
+        kind: "app_root_dispose_error",
+        root: "page",
+      });
+    },
+  );
 
   it("As the shell, starting the loading phases again keeps the overlay on screen", () => {
     // Given
