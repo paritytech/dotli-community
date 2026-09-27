@@ -69,6 +69,9 @@ function write(): void {
   if (!state.topbarOffset) {
     // Tracking the auto-hiding bar: the box keeps its hidden-bar size and a
     // transform follows the bar, so the product document never relayouts.
+    // While the bar is shown and the frame is slid down, a bottom dock covers
+    // the same strip auto-hide already gives up; that is deliberate, since the
+    // height stays fixed so the product never re-lays out on bar moves.
     box = productIframeBox({ topbarOffset: false });
     transition = state.transition;
     // --topbar-height already includes the top inset, so shift by the rest.

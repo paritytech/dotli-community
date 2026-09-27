@@ -187,6 +187,11 @@ describe("sandbox checker violation panel", () => {
 
   it("As a dotli developer, disposing removes the panel, stops listening and restores the frame height", async () => {
     // Given
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.id === "sandbox-checker-panel" ? 180 : 0;
+      },
+    );
     violation({
       type: "DOTLI_API_VIOLATION",
       api: "x",
@@ -194,6 +199,7 @@ describe("sandbox checker violation panel", () => {
       timestamp: 0,
     });
     await settle();
+    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
 
     // When
     dispose();
