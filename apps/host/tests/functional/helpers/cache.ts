@@ -5,6 +5,7 @@
  * Probes for the dotli host caching layers.
  */
 
+import { expect } from "@playwright/test";
 import type { BrowserContext, Page } from "@playwright/test";
 
 /** True if the host's main frame set the cold-path resolve mark. */
@@ -26,7 +27,7 @@ export function hostResolveStarted(page: Page): Promise<boolean> {
  */
 const cachedCidExists = (label: string): Promise<boolean> =>
   new Promise<boolean>((resolve) => {
-    const open = indexedDB.open("dotli", 1);
+    const open = indexedDB.open("dotli");
     open.onsuccess = () => {
       try {
         const tx = open.result.transaction("cids", "readonly");
@@ -63,10 +64,12 @@ export async function waitForCachedCid(
   label: string,
   timeoutMs: number,
 ): Promise<void> {
-  await page.waitForFunction(cachedCidExists, label, {
-    timeout: timeoutMs,
-    polling: 200,
-  });
+  await expect
+    .poll(() => hasCachedCid(page, label), {
+      timeout: timeoutMs,
+      intervals: [200],
+    })
+    .toBe(true);
 }
 
 /**
