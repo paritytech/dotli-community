@@ -31,9 +31,9 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
 /**
  * The URL pill's shield (`#verification-shield`) and its "How was this site
  * loaded?" explainer (`#verification-tooltip`), a disclosure: the button
- * toggles the explainer, which closes on a click outside both, on Escape
- * (focus back to the button when it was inside or lost to the body), on
- * window blur (a tap inside the product iframe) and when a blocking modal
+ * toggles the explainer (createPopover's `popover` mode), which closes on a
+ * press outside both, on focus leaving both, on Escape (focus back to the
+ * button when it was inside or lost to the body), on window blur (a tap inside the product iframe) and when a blocking modal
  * comes up. `state` is null until the host knows how the product was loaded:
  * the verified glyph shows (CSS) and no row is marked as this site.
  *
@@ -49,6 +49,7 @@ export function VerificationShield(props: {
   let button: HTMLButtonElement | undefined;
   let tooltip: HTMLDivElement | undefined;
   const disclosure = createPopover({
+    mode: "popover",
     trigger: () => button,
     surface: () => tooltip,
     closeOnBlur: true,

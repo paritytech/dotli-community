@@ -263,10 +263,11 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * worker choice the browser cannot run), and the boot's URL settings step
  * must see the saved value first.
  *
- * A click outside (the backdrop included), Escape, the mobile sheet's close
- * button and a blocking modal close the popover; while open it holds the
- * focus (createPopover's trapFocus), and on close the focus goes back to
- * the button or, when that is hidden (narrow screens), to the More button.
+ * A press outside (the backdrop included), focus leaving it, Escape, the
+ * mobile sheet's close button and a blocking modal close the popover, a
+ * non-modal one (createPopover's `popover` mode); unless the user moved
+ * focus elsewhere, it goes back to the button or, when that is hidden
+ * (narrow screens), to the More button.
  * The popover's content stays after a close, for the fade-out, and is
  * rendered afresh on the next opening. The mobile "More" menu's Settings
  * row opens it by calling `.click()` on the button, looked up by id.
@@ -275,9 +276,9 @@ export function SettingsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const surface = createPopover({
+    mode: "popover",
     trigger: () => button,
     surface: () => popover,
-    trapFocus: true,
   });
   /** Counts the openings: each renders the content afresh. */
   const [opening, setOpening] = createSignal(0);

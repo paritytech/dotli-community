@@ -6,7 +6,7 @@ import type { JSX } from "@solidjs/web";
 import { themeStore, type ThemePref } from "../../state/theme";
 import { selectThemePref } from "../../theme-controller";
 import { useStore } from "../use-store";
-import { createPopover, focusTrigger } from "./popover";
+import { createPopover } from "./popover";
 
 const THEME_LABEL: Record<ThemePref, string> = {
   light: "Light",
@@ -18,11 +18,11 @@ const THEME_LABEL: Record<ThemePref, string> = {
  * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`),
  * a shell island (see islands.tsx): Shell.tsx prerenders the same markup
  * statically (title "Theme", no option checked), and this component is
- * swapped in for it after boot. The menu follows the menu-button pattern:
- * opening focuses the checked option, ArrowUp/ArrowDown (wrapping), Home and
- * End move between options, Escape closes and hands focus back to the
- * button, and Tab closes so focus moves on. Picking an option applies it
- * through theme-controller.ts, closes the menu and focuses the button (or
+ * swapped in for it after boot. The menu is a modal menu (createPopover's
+ * `menu` mode): opening focuses the checked option, ArrowUp/ArrowDown
+ * (wrapping), Home and End move between options, Escape closes and hands
+ * focus back to the button, and Tab is prevented. Picking an option applies
+ * it through theme-controller.ts, closes the menu and focuses the button (or
  * the "More" button, when the theme button is hidden on narrow screens).
  *
  * The button's icon comes from CSS on `<html data-theme-pref>`, which the
@@ -38,6 +38,7 @@ export function ThemeToggle(): JSX.Element {
   const title = (): string => `Theme: ${THEME_LABEL[pref()]}`;
 
   const menu = createPopover({
+    mode: "menu",
     trigger: () => button,
     surface: () => popover,
   });
@@ -67,7 +68,8 @@ export function ThemeToggle(): JSX.Element {
   // The landing page (components/landing/) also moves the button and the
   // menu around.
   const onKeyDown = (e: KeyboardEvent): void => {
-    // Escape is the popover's (createPopover): it closes and returns focus.
+    // Escape and Tab are the menu's (createPopover), which leaves the keys
+    // handled here alone.
     const all = options();
     const index = all.indexOf(document.activeElement as HTMLButtonElement);
     let next: HTMLButtonElement | undefined;
@@ -78,9 +80,6 @@ export function ThemeToggle(): JSX.Element {
       next = all[0];
     } else if (e.key === "End") {
       next = all[all.length - 1];
-    } else if (e.key === "Tab") {
-      // Options are not tabbable (tabindex=-1), so Tab leaves the menu.
-      menu.setOpen(false);
     }
     if (next !== undefined) {
       e.preventDefault();
@@ -95,8 +94,7 @@ export function ThemeToggle(): JSX.Element {
     const next = option?.dataset.themeOption;
     if (next === "light" || next === "dark" || next === "system") {
       selectThemePref(next);
-      menu.setOpen(false);
-      focusTrigger(button);
+      menu.onItemChosen();
     }
   };
 

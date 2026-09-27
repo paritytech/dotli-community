@@ -7,7 +7,12 @@ import {
   VERIFICATION_SHIELD_ID,
   VERIFICATION_TOOLTIP_ID,
 } from "@dotli/ui/verification-shield";
-import { renderComponent, resetStores, settle } from "./helpers/solid";
+import {
+  pointerPress,
+  renderComponent,
+  resetStores,
+  settle,
+} from "./helpers/solid";
 
 function button(): HTMLButtonElement {
   return document.getElementById(VERIFICATION_SHIELD_ID) as HTMLButtonElement;
@@ -130,9 +135,7 @@ describe("verification shield", () => {
     expect(isOpen()).toBe(true);
 
     // When: a tap lands outside the shield
-    document
-      .getElementById("other-button")
-      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    pointerPress(document.getElementById("other-button") as HTMLElement);
     await settle();
 
     // Then

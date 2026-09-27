@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setChatCapability } from "@dotli/shared/chat-capability";
 import { initChatPanelState } from "@dotli/ui/state/chat-panel";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import { resetStores, settle } from "../../helpers/solid";
+import { pointerPress, resetStores, settle } from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import { mountMoreMenu } from "./more-menu-harness";
 
@@ -235,7 +235,7 @@ describe("MoreMenu", () => {
     await openMenu();
 
     // When
-    byId("outside").click();
+    pointerPress(byId("outside"));
     await settle();
 
     // Then

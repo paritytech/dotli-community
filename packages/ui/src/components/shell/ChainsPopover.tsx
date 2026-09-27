@@ -339,17 +339,17 @@ function ChainsPanel(props: { now: Accessor<number> }): JSX.Element {
  * the content forces (reported once, as `island:chains`), and when the island
  * unmounts.
  *
- * A click outside, Escape and a blocking modal close the popover; while open
- * it holds the focus (createPopover's trapFocus).
+ * A press outside, focus leaving it, Escape and a blocking modal close the
+ * popover, a non-modal one (createPopover's `popover` mode).
  */
 export function ChainsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const topbar = useStore(topbarStore);
   const surface = createPopover({
+    mode: "popover",
     trigger: () => button,
     surface: () => popover,
-    trapFocus: true,
   });
   const [now, setNow] = createSignal(Date.now());
 

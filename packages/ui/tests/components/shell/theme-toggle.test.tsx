@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import { renderComponent, resetStores, settle } from "../../helpers/solid";
+import {
+  pointerPress,
+  renderComponent,
+  resetStores,
+  settle,
+} from "../../helpers/solid";
 import { stubColorScheme } from "../../helpers/color-scheme";
 import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
 import { mountLandingPage } from "../../helpers/landing";
@@ -276,18 +281,19 @@ describe("ThemeToggle", () => {
     expect(localStorage.getItem("dotli-theme")).toBe("light");
   });
 
-  it("As a keyboard user, I press Tab in the theme menu and it closes so focus leaves the menu", async () => {
+  it("As a keyboard user, I press Tab in the theme menu and nothing happens: focus stays in the open menu", async () => {
     // Given
     const btn = await openThemeMenu("light", "dark");
+    const focused = document.activeElement;
 
     // When
     const event = await pressThemeKey("Tab");
 
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    // The browser moves focus on: Tab is not swallowed.
-    expect(event.defaultPrevented).toBe(false);
+    // Then: a modal menu prevents Tab, as Radix DropdownMenu does.
+    expect(event.defaultPrevented).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(focused);
   });
 
   it("As a keyboard user, I press Enter on a focused option and it selects that theme", async () => {
@@ -309,7 +315,7 @@ describe("ThemeToggle", () => {
     const btn = await openThemeMenu("dark", "dark");
 
     // When
-    document.getElementById("outside")?.click();
+    pointerPress(document.getElementById("outside") as HTMLElement);
     await settle();
 
     // Then

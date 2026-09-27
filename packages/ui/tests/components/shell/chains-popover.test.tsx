@@ -16,7 +16,11 @@ import {
   recordChainsButtonVisible,
   setBlockingModalActive,
 } from "@dotli/ui/state/topbar";
-import { renderComponent, resetStores } from "../../helpers/solid";
+import {
+  pointerPress,
+  renderComponent,
+  resetStores,
+} from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
 
@@ -483,7 +487,7 @@ describe("The network popover island", () => {
     expect(isOpen()).toBe(true);
 
     // When
-    byId("outside").click();
+    pointerPress(byId("outside"));
     await settle();
 
     // Then

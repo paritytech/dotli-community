@@ -8,7 +8,7 @@ import { requestTruapiDisconnect } from "@dotli/ui/auth-controller";
 import { setAuthState } from "@dotli/ui/state/auth";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import type { TruapiSessionUiState } from "@dotli/ui/host-callbacks/SessionStore";
-import { renderComponent } from "../../helpers/solid";
+import { pointerPress, renderComponent } from "../../helpers/solid";
 import {
   byId,
   press,
@@ -184,7 +184,7 @@ describe("UserPopover", () => {
     expect(disconnects.details).toHaveLength(1);
   });
 
-  it("As a keyboard user, the open popover takes focus, keeps Tab inside and closes on Escape, handing focus back to the account button", async () => {
+  it("As a keyboard user, the open popover takes focus, does not trap Tab and closes on Escape, handing focus back to the account button", async () => {
     // Given
     await renderAccount({ connected: true, liteUsername: "pgherveou.04" });
     byId("auth-button").focus();
@@ -192,25 +192,14 @@ describe("UserPopover", () => {
     // When
     await openPopover();
 
-    // Then
-    expect(document.activeElement).toBe(byId("user-popover"));
+    // Then: Log out is the only control.
+    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
 
-    // When: Log out is the only control, so Tab and Shift+Tab wrap onto it.
-    byId("user-popover-disconnect").focus();
+    // When
     const tab = press("Tab");
-    const shiftTab = press("Tab", { shiftKey: true });
 
-    // Then
-    expect(tab.defaultPrevented).toBe(true);
-    expect(shiftTab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
-
-    // When: focus escaped the popover somehow, Tab brings it back.
-    byId("outside").focus();
-    press("Tab");
-
-    // Then
-    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
+    // Then: a non-modal popover lets Tab move on.
+    expect(tab.defaultPrevented).toBe(false);
 
     // When
     press("Escape");
@@ -234,7 +223,7 @@ describe("UserPopover", () => {
     expect(isOpen()).toBe(true);
 
     // When
-    byId("outside").click();
+    pointerPress(byId("outside"));
     await settleAll();
 
     // Then

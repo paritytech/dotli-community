@@ -8,7 +8,11 @@ import { setNetwork } from "@dotli/config/network";
 import { SettingsPopover } from "@dotli/ui/components/shell/SettingsPopover";
 import { initSettingsStore } from "@dotli/ui/state/settings";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import { renderComponent, resetStores } from "../../helpers/solid";
+import {
+  pointerPress,
+  renderComponent,
+  resetStores,
+} from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import {
   oldModeBackdrop,
@@ -98,15 +102,15 @@ function isOpen(): boolean {
   return byId("mode-popover").classList.contains("open");
 }
 
-function press(key: string, init: KeyboardEventInit = {}): void {
-  (document.activeElement ?? document.body).dispatchEvent(
-    new KeyboardEvent("keydown", {
-      key,
-      bubbles: true,
-      cancelable: true,
-      ...init,
-    }),
-  );
+function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  (document.activeElement ?? document.body).dispatchEvent(event);
+  return event;
 }
 
 function button(text: string): HTMLButtonElement {
@@ -644,7 +648,7 @@ describe("The settings popover island", () => {
     expect(assign).toHaveBeenCalledWith("https://app.dot.li/?debug=off");
   });
 
-  it("As a keyboard user, opening it focuses the popover, Tab stays inside, and Escape closes it, handing focus back to the button", async () => {
+  it("As a keyboard user, opening it focuses its first control, Tab is not trapped, and Escape closes it, handing focus back to the button", async () => {
     // Given
     await renderPopover();
 
@@ -652,25 +656,19 @@ describe("The settings popover island", () => {
     await openPopover();
 
     // Then
-    expect(document.activeElement).toBe(byId("mode-popover"));
     const focusables = Array.from(
       byId("mode-popover").querySelectorAll<HTMLElement>(
         "button:not([disabled]), input:not([disabled])",
       ),
     ).filter((el) => !(el instanceof HTMLInputElement && !el.checked));
+    expect(document.activeElement).toBe(focusables[0]);
     focusables[focusables.length - 1].focus();
 
     // When
-    press("Tab");
+    const tab = press("Tab");
 
-    // Then
-    expect(document.activeElement).toBe(focusables[0]);
-
-    // When
-    press("Tab", { shiftKey: true });
-
-    // Then
-    expect(document.activeElement).toBe(focusables[focusables.length - 1]);
+    // Then: a non-modal popover lets Tab move on.
+    expect(tab.defaultPrevented).toBe(false);
 
     // When
     press("Escape");
@@ -727,7 +725,7 @@ describe("The settings popover island", () => {
 
     // When
     await openPopover();
-    byId("outside").click();
+    pointerPress(byId("outside"));
     await settle();
 
     // Then

@@ -13,12 +13,14 @@ import { createPopover } from "./popover";
  * click time, so it reaches whichever element holds that id then: the live
  * island, or the static button before it is swapped in (whose click the
  * islands loader holds back and replays). The Chat row shows whenever the
- * chat button does.
+ * chat button does. The flyout is a modal menu (createPopover's `menu`
+ * mode).
  */
 export function MoreMenu(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const menu = createPopover({
+    mode: "menu",
     trigger: () => button,
     surface: () => popover,
   });

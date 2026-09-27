@@ -25,9 +25,9 @@ export function toggleUserPopover(): void {
  * Rust core to disconnect.
  *
  * The auth button (the AuthButton island) opens and closes it through
- * toggleUserPopover(). A click outside, Escape and a blocking modal close
- * it; while open it holds the focus, as the permissions popover does
- * (createPopover's trapFocus), and gives it back to the auth button.
+ * toggleUserPopover(). A press outside, focus leaving it, Escape and a
+ * blocking modal close it, a non-modal popover (createPopover's `popover`
+ * mode) that hands focus back to the auth button unless the user moved it.
  */
 export function UserPopover(): JSX.Element {
   let popover: HTMLDivElement | undefined;
@@ -49,11 +49,11 @@ export function UserPopover(): JSX.Element {
   };
 
   const menu = createPopover({
+    mode: "popover",
     // Looked up by id: the button is another island, which the landing page
     // may have moved.
     trigger: () => document.getElementById("auth-button") ?? undefined,
     surface: () => popover,
-    trapFocus: true,
   });
   toggle = menu.toggle;
   onCleanup(() => {

@@ -47,6 +47,7 @@ import {
 } from "./old-settings-markup";
 import { initSettingsStore } from "@dotli/ui/state/settings";
 import { tapMoreRow } from "./more-menu-harness";
+import { pointerPress } from "../../helpers/solid";
 import { mountLandingPage } from "../../helpers/landing";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
 import { setChainsButtonVisible } from "@dotli/ui/topbar";
@@ -728,7 +729,7 @@ describe("shell islands", () => {
 
     // Then
     expect(byId("user-popover").classList.contains("open")).toBe(true);
-    expect(document.activeElement).toBe(byId("user-popover"));
+    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
   });
 
   it("As a visitor on the landing page, when the islands swap in before the page mounts, the page moves the live auth and theme controls into its corner, and they work there", async () => {
@@ -977,7 +978,9 @@ describe("shell islands", () => {
     // Then
     expect(byId("mode-popover").classList.contains("open")).toBe(true);
     expect(byId("mode-popover-backdrop").classList.contains("open")).toBe(true);
-    expect(document.activeElement).toBe(byId("mode-popover"));
+    expect(document.activeElement).toBe(
+      byId("mode-popover").querySelector("button"),
+    );
     expect(
       byId("mode-popover").querySelector(".mode-popover-sheet-title")
         ?.textContent,
@@ -1028,8 +1031,16 @@ describe("shell islands", () => {
     expect(byId("more-popover").classList.contains("open")).toBe(false);
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
 
-    // When: the theme menu closes on the More button's tap, as on any
-    // outside tap.
+    // When: the More button's tap is outside the theme menu, a modal menu,
+    // so it only closes the menu: its click is swallowed.
+    pointerPress(byId("more-button"));
+    await flushAll();
+
+    // Then
+    expect(byId("theme-popover").classList.contains("open")).toBe(false);
+    expect(byId("more-popover").classList.contains("open")).toBe(false);
+
+    // When
     await tapMoreRow("mode-button");
     await flushAll();
 

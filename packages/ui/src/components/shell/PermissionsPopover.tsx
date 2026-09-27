@@ -59,8 +59,9 @@ function currentLabel(): string | null {
  * winning. The button carries `.has-grants` while the product has any
  * permission granted.
  *
- * A click outside (the backdrop included), Escape and a blocking modal close
- * the popover; while open it holds the focus (createPopover's trapFocus).
+ * A press outside (the backdrop included), focus leaving it, Escape and a
+ * blocking modal close the popover, a non-modal one (createPopover's
+ * `popover` mode).
  * An open row dropdown takes Escape first: the first Escape closes the
  * dropdown, the next the popover. The mobile "More" menu's Permissions row
  * opens it by calling `.click()` on the button, looked up by id.
@@ -92,9 +93,9 @@ export function PermissionsPopover(): JSX.Element {
 
   let fetchToken = 0;
   const surface = createPopover({
+    mode: "popover",
     trigger: () => button,
     surface: () => popover,
-    trapFocus: true,
     shouldHandleEscape: () => untrack(openRow) === null,
     onClose: () => {
       closeDropdown();

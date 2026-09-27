@@ -27,3 +27,18 @@ export async function settle(): Promise<void> {
 }
 
 export { resetAllStoresForTests as resetStores } from "@dotli/ui/state/create-store";
+
+/**
+ * A mouse press on `el`: pointerdown, which is what dismisses a shell
+ * popover pressed outside (components/shell/popover.ts), then the click.
+ */
+export function pointerPress(el: Element): void {
+  el.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "mouse",
+    }),
+  );
+  (el as HTMLElement).click();
+}
