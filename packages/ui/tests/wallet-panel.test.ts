@@ -180,6 +180,18 @@ describe("wallet failure presentation", () => {
     expect(button("Claim username").disabled).toBe(true);
     expect(button("Retry wallet verification").disabled).toBe(false);
   });
+
+  it("reports the host's automatic username lookup instead of asking for a manual check", async () => {
+    const unclaimed = { ...cached, liteUsername: undefined };
+    wallet.getCachedIdentity = () => unclaimed;
+    wallet.getIdentity = async () => ({ ...unclaimed, usernameVerified: true });
+    dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
+    const status = () =>
+      document.querySelector(".td-wallet-username strong")?.textContent;
+    await vi.waitFor(() => {
+      expect(status()).toBe("No username registered");
+    });
+  });
 });
 
 async function prepareClaim() {
