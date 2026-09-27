@@ -1188,12 +1188,19 @@ describe("createPopover, touch outside (Radix usePointerDownOutside)", () => {
     return down;
   }
 
+  function touchUp(el: HTMLElement): void {
+    el.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerType: "touch" }),
+    );
+  }
+
   function tap(el: HTMLElement): { click: MouseEvent; reached: boolean } {
     let reached = false;
     const onClick = (): void => {
       reached = true;
     };
     el.addEventListener("click", onClick);
+    touchUp(el);
     const click = new MouseEvent("click", {
       bubbles: true,
       cancelable: true,
@@ -1205,7 +1212,7 @@ describe("createPopover, touch outside (Radix usePointerDownOutside)", () => {
   }
 
   it.each<PopoverMode>(["popover", "menu", "dialog"])(
-    "As a phone user, a touch outside the %s closes it only on the click that follows",
+    "As a phone user, a touch outside the %s closes it only once it is a tap",
     async (mode) => {
       // Given
       const popover = renderPopover(mode);
@@ -1250,6 +1257,40 @@ describe("createPopover, touch outside (Radix usePointerDownOutside)", () => {
       expect(reached).toBe(true);
     },
   );
+
+  it.each<PopoverMode>(["popover", "menu"])(
+    "As an iPhone user, a tap outside the %s closes it even when no click follows",
+    async (mode) => {
+      // Given: iOS fires no click on a non-interactive element when the only
+      // listeners are on the document.
+      const popover = renderPopover(mode);
+      await openPopover(popover);
+
+      // When
+      touchDown(byId("outside"));
+      touchUp(byId("outside"));
+      await settle();
+
+      // Then
+      expect(popover.open()).toBe(false);
+    },
+  );
+
+  it("As an iPhone user, after a tap closed the menu with no click, my next tap is not swallowed", async () => {
+    // Given
+    const popover = renderPopover("menu");
+    await openPopover(popover);
+    touchDown(byId("outside"));
+    touchUp(byId("outside"));
+    await settle();
+
+    // When: the next press, on something with a click listener.
+    touchDown(byId("outside"));
+    const { reached } = tap(byId("outside"));
+
+    // Then
+    expect(reached).toBe(true);
+  });
 
   it("As a phone user, a touch outside the popover that becomes a scroll leaves it open", async () => {
     // Given

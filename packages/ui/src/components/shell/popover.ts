@@ -362,14 +362,17 @@ export function createPopover(options: PopoverOptions): Popover {
         ev.preventDefault();
       }
       if (ev.pointerType === "touch") {
-        // Like Radix's usePointerDownOutside: a touch closes on its click,
-        // so a scroll or drag that starts outside (a pointercancel, a
-        // scroll) closes nothing. A menu's close swallows that click.
-        cancelTouchClose = awaitClick(
-          (click) => {
+        // Like Radix's usePointerDownOutside: a touch closes only once it
+        // is a tap, so a scroll or drag that starts outside (a
+        // pointercancel, a scroll) closes nothing. The tap is its pointerup,
+        // not its click: iOS fires no click on a non-interactive element
+        // when the only listeners are on the document. A menu's close
+        // swallows the click, if one follows.
+        cancelTouchClose = awaitEvent(
+          "pointerup",
+          () => {
             if (mode === "menu") {
-              click.preventDefault();
-              click.stopPropagation();
+              swallowNextClick();
             }
             closeOutside();
           },
@@ -540,27 +543,28 @@ function lockScroll(): () => void {
 }
 
 /**
- * Calls `onClick` with the next click, unless one of `cancelOn` comes
- * first (a press that never becomes a click: a scroll, a drag, a new
- * press). Returns a function that stops waiting.
+ * Calls `onEvent` with the next `type` event, unless one of `cancelOn`
+ * comes first (a press that never becomes a tap or a click: a scroll, a
+ * drag, a new press). Returns a function that stops waiting.
  */
-function awaitClick(
-  onClick: (ev: MouseEvent) => void,
+function awaitEvent<K extends "click" | "pointerup">(
+  type: K,
+  onEvent: (ev: DocumentEventMap[K]) => void,
   cancelOn: string[],
 ): () => void {
-  const click = (ev: MouseEvent): void => {
+  const handle = (ev: DocumentEventMap[K]): void => {
     stop();
-    onClick(ev);
+    onEvent(ev);
   };
   const stop = (): void => {
-    document.removeEventListener("click", click, true);
-    for (const type of cancelOn) {
-      document.removeEventListener(type, stop, true);
+    document.removeEventListener(type, handle, true);
+    for (const cancel of cancelOn) {
+      document.removeEventListener(cancel, stop, true);
     }
   };
-  document.addEventListener("click", click, true);
-  for (const type of cancelOn) {
-    document.addEventListener(type, stop, true);
+  document.addEventListener(type, handle, true);
+  for (const cancel of cancelOn) {
+    document.addEventListener(cancel, stop, true);
   }
   return stop;
 }
@@ -573,7 +577,8 @@ function awaitClick(
  * or programmatic click is not eaten.
  */
 function swallowNextClick(): void {
-  awaitClick(
+  awaitEvent(
+    "click",
     (ev) => {
       ev.preventDefault();
       ev.stopPropagation();

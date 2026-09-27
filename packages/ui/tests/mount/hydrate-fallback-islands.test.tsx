@@ -25,6 +25,7 @@ import {
   vi,
 } from "vitest";
 import { flush } from "solid-js";
+import { mouseClick } from "../helpers/solid";
 import { renderShellOnServer } from "../helpers/shell-ssr";
 import { stubColorScheme } from "../helpers/color-scheme";
 import { hydrateShell } from "@dotli/ui/mount/hydrate-shell";
@@ -138,7 +139,7 @@ describe("shell islands after a hydration fallback", () => {
 
     // Theme toggle: opens its popover and applies a selected option.
     const themeButton = byId("theme-toggle");
-    themeButton.click();
+    mouseClick(themeButton);
     await flushAll();
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
 

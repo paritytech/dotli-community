@@ -158,7 +158,7 @@ describe("MoreMenu", () => {
     await renderMenu();
 
     // When
-    byId("more-button").click();
+    mouseClick(byId("more-button"));
     await settle();
 
     // Then
@@ -166,7 +166,7 @@ describe("MoreMenu", () => {
     expect(byId("more-button").getAttribute("aria-expanded")).toBe("true");
 
     // When
-    byId("more-button").click();
+    mouseClick(byId("more-button"));
     await settle();
 
     // Then

@@ -80,7 +80,7 @@ async function openThemeMenu(
   os: "light" | "dark",
 ): Promise<HTMLButtonElement> {
   await renderToggle(stored, os);
-  themeButton().click();
+  mouseClick(themeButton());
   await settle();
   return themeButton();
 }

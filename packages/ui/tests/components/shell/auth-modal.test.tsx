@@ -8,7 +8,7 @@ import { setAuthState } from "@dotli/ui/state/auth";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
-import { pointerPress, renderComponent } from "../../helpers/solid";
+import { mouseClick, pointerPress, renderComponent } from "../../helpers/solid";
 import {
   byId,
   coordinator,
@@ -541,7 +541,7 @@ describe("AuthModal login flow", () => {
     // Given: the theme menu is open when a product asks for a login.
     renderComponent(() => <ThemeToggle />);
     await renderModal();
-    byId("theme-toggle").click();
+    mouseClick(byId("theme-toggle"));
     await settleQr();
     expect(byId("theme-popover").classList.contains("open")).toBe(true);
 
