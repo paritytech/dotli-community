@@ -173,38 +173,79 @@ import {
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
 import { WALLET_CUSTODY_REVOKED_EVENT } from "@dotli/protocol/core-custody";
+import { claimAutoTakeover, onNextInteraction } from "./wallet-handover";
 
-// Both a boot refused by another tab's wallet and a tab whose wallet another
-// tab just took over land here: nothing is broken, so offer the two ways out.
-function showWalletInOtherTab(): void {
+function takeOverWallet(): Promise<void> {
+  return import("@dotli/ui/bridge").then(({ takeOverTestWallet }) =>
+    takeOverTestWallet(),
+  );
+}
+
+// The fallback when moving the wallet automatically did not work.
+function showWalletInOtherTab(detail?: string): void {
   const page = walletInOtherTab();
   const reload = (): void => {
     window.location.reload();
   };
   showErrorPage({
     title: page.title,
-    detail: page.message,
+    detail: detail ?? page.message,
     actions: [
       {
         label: TAKE_OVER_WALLET_BTN_LABEL,
         primary: true,
         onClick: () => {
-          void import("@dotli/ui/bridge")
-            .then(({ takeOverTestWallet }) => takeOverTestWallet())
-            .catch((error: unknown) => {
-              showError(
-                page.title,
-                error instanceof Error ? error.message : String(error),
-                { label: RELOAD_BTN_LABEL, onClick: reload },
-              );
-            });
+          void takeOverWallet().catch((error: unknown) => {
+            showError(
+              page.title,
+              error instanceof Error ? error.message : String(error),
+              { label: RELOAD_BTN_LABEL, onClick: reload },
+            );
+          });
         },
       },
       { label: RELOAD_BTN_LABEL, onClick: reload },
     ],
   });
 }
-window.addEventListener(WALLET_CUSTODY_REVOKED_EVENT, showWalletInOtherTab);
+
+// Opening an app uses the wallet, so take it from the tab that has it.
+function takeOverWalletForBoot(): void {
+  let storage: Storage | undefined;
+  try {
+    storage = window.sessionStorage;
+  } catch {
+    storage = undefined;
+  }
+  if (storage === undefined || !claimAutoTakeover(storage)) {
+    showWalletInOtherTab();
+    return;
+  }
+  void takeOverWallet().catch((error: unknown) => {
+    showWalletInOtherTab(error instanceof Error ? error.message : undefined);
+  });
+}
+
+// Another tab took the wallet. Keep this app on screen, paused, and take the
+// wallet back when the user interacts with this tab again.
+function showWalletPaused(): void {
+  if (document.querySelector(".wallet-paused-banner") !== null) {
+    return;
+  }
+  const banner = document.createElement("div");
+  banner.className = "wallet-paused-banner";
+  banner.setAttribute("role", "status");
+  banner.textContent = HOST_ERRORS.WALLET_PAUSED;
+  document.body.append(banner);
+  onNextInteraction(() => {
+    banner.textContent = HOST_ERRORS.WALLET_RESUMING;
+    void takeOverWallet().catch((error: unknown) => {
+      banner.remove();
+      showWalletInOtherTab(error instanceof Error ? error.message : undefined);
+    });
+  });
+}
+window.addEventListener(WALLET_CUSTODY_REVOKED_EVENT, showWalletPaused);
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -2273,7 +2314,7 @@ async function main(): Promise<void> {
     });
     const error = describeError(err, chainBackend !== "rpc-gateway");
     if (error.recovery === "take-over-wallet") {
-      showWalletInOtherTab();
+      takeOverWalletForBoot();
       return;
     }
     if (error.recovery === "none") {
