@@ -2727,11 +2727,16 @@ function installInput(
   };
   const surfaceScale = (): number =>
     Math.max(1 / 32, Math.min(4, window.devicePixelRatio || 1));
+  // A framebuffer canvas takes its frame's size and is fitted, letterboxed,
+  // into the surface, so the space an app can fill is the surface itself.
+  // Apps that render at the reported size fill it exactly; fixed-size apps
+  // ignore the record and stay letterboxed.
+  const metricsElement: HTMLElement =
+    graphicsProfile === "framebuffer"
+      ? (canvas.parentElement ?? canvas)
+      : canvas;
   const sendSurfaceMetrics = (): void => {
-    if (graphicsProfile === "framebuffer") {
-      return;
-    }
-    const bounds = canvas.getBoundingClientRect();
+    const bounds = metricsElement.getBoundingClientRect();
     const scale = surfaceScale();
     const width = clamp(bounds.width * scale, 1, 4_096);
     const height = clamp(bounds.height * scale, 1, 4_096);
@@ -2850,10 +2855,10 @@ function installInput(
   };
   coarsePointer.addEventListener("change", updateTouchControls);
   document.addEventListener("visibilitychange", focusChanged);
-  const stopObservingDimensions =
-    graphicsProfile !== "framebuffer"
-      ? observeSurfaceDimensions(canvas, sendSurfaceMetrics)
-      : null;
+  const stopObservingDimensions = observeSurfaceDimensions(
+    metricsElement,
+    sendSurfaceMetrics,
+  );
   canvas.addEventListener("focus", focusChanged);
   canvas.addEventListener("blur", focusChanged);
   window.addEventListener("focus", focusChanged);
@@ -2920,7 +2925,7 @@ function installInput(
       document.removeEventListener("visibilitychange", focusChanged);
       touchControls?.cleanup();
       touchCaptureActive = false;
-      stopObservingDimensions?.();
+      stopObservingDimensions();
       if (
         document.activeElement === canvas ||
         (textInput !== null && document.activeElement === textInput)
