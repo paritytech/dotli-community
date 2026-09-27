@@ -445,3 +445,22 @@ export type WorkerToMain = {
     kind: "chainClose";
     connId: number;
 };
+/**
+ * Is `url` a `ws://` URL on a loopback host? The tap forwards every frame
+ * verbatim, key material included, and redacts nothing, so loopback is the whole
+ * confinement story.
+ *
+ * `ws://` only, matching the native sink. A loopback socket has no path for TLS
+ * to defend, so `wss://` would buy nothing and cost a certificate `localhost`
+ * cannot get from a real CA.
+ *
+ * `WsDebugSink::connect` resolves the host and checks every address; this matches
+ * the normalized hostname. A Worker has no resolver and needs none, since this
+ * same string is handed to `new WebSocket`, so the native "validate one string,
+ * dial another" gap cannot open here.
+ *
+ * Accepts what the native sink accepts: `localhost`, 127.0.0.0/8 and `::1`. An
+ * IPv4-mapped literal is refused in both, since `Ipv6Addr::is_loopback` matches
+ * only `::1`.
+ */
+export declare function isLoopbackWsUrl(url: string): boolean;

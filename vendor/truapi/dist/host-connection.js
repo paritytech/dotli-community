@@ -3,6 +3,9 @@ import { createClient } from "./generated/client.js";
 import { createInternalClient, } from "./generated/internal-client.js";
 import { SYSTEM_HANDSHAKE } from "./generated/wire-table.js";
 import { ConnectionResetError, createWebSocketProviderFactory, decodeWireMessage, } from "./transport.js";
+// A host can refuse a reconnect for a moment while it rebinds its listener. A
+// visible page redials after these pauses, then waits for its next call.
+const VISIBLE_RETRY_DELAYS_MS = [250, 1_000, 4_000];
 /** Creates a client whose interrupted operations fail and whose later calls reconnect. */
 export function createHostConnection(url, createProvider = createWebSocketProviderFactory()) {
     const now = performance.now.bind(performance);
@@ -13,6 +16,7 @@ export function createHostConnection(url, createProvider = createWebSocketProvid
     let legacy;
     let legacyPort;
     let status = "disconnected";
+    let retries = 0;
     const listeners = new Set();
     function setStatus(next) {
         if (status === next)
@@ -45,8 +49,15 @@ export function createHostConnection(url, createProvider = createWebSocketProvid
         connection.provider.dispose();
         if (!current)
             setStatus("disconnected");
-        if (connection.verified && !stopped)
+        if (stopped)
+            return;
+        const delay = VISIBLE_RETRY_DELAYS_MS[retries];
+        if (connection.verified)
             setTimeout(activate, 0);
+        else if (delay !== undefined && page?.visibilityState === "visible") {
+            retries += 1;
+            setTimeout(activate, delay);
+        }
     }
     function open() {
         if (stopped)
@@ -91,6 +102,7 @@ export function createHostConnection(url, createProvider = createWebSocketProvid
                 throw new ConnectionResetError();
             connection.verified = true;
             connection.checkedAt = now();
+            retries = 0;
             setStatus("connected");
         })
             .catch((error) => {
@@ -111,8 +123,10 @@ export function createHostConnection(url, createProvider = createWebSocketProvid
     }
     const page = typeof document === "undefined" ? undefined : document;
     const onVisibilityChange = () => {
-        if (page?.visibilityState === "visible")
-            activate();
+        if (page?.visibilityState !== "visible")
+            return;
+        retries = 0;
+        activate();
     };
     page?.addEventListener("visibilitychange", onVisibilityChange);
     function stop() {
