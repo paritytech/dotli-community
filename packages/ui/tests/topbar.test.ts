@@ -34,6 +34,8 @@ vi.mock("@dotli/protocol/client", () => ({
       sharedAuth.listeners.delete(listener);
     };
   },
+  // initTopBar's block source, read by the network store it starts.
+  isRemoteChainConnectable: () => false,
 }));
 
 const device = vi.hoisted(() => ({ mobile: false }));

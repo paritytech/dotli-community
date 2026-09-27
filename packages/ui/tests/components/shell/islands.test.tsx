@@ -39,7 +39,9 @@ import {
   oldPermissionsButton,
   oldPermissionsPopover,
 } from "./old-permissions-markup";
+import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
+import { setChainsButtonVisible } from "@dotli/ui/topbar";
 import { setProductLoaded } from "@dotli/ui/state/product";
 import {
   setVerificationShieldState,
@@ -74,6 +76,7 @@ const PERMISSIONS_IDS = [
   "permissions-popover-backdrop",
   "permissions-popover",
 ];
+const CHAINS_IDS = ["chains-button", "chains-popover"];
 
 let serverHtml = "";
 
@@ -157,6 +160,7 @@ describe("shell islands", () => {
     disposeRoot("island:user-popover");
     disposeRoot("island:auth-modal");
     disposeRoot("island:permissions");
+    disposeRoot("island:chains");
     disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
@@ -799,5 +803,75 @@ describe("shell islands", () => {
     } finally {
       unregister();
     }
+  });
+  it("As a dotli user, the network button and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning", async () => {
+    // Given
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const before = CHAINS_IDS.map((id) => {
+      const el = byId(id);
+      return { el, place: placeOf(el) };
+    });
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    for (const [i, id] of CHAINS_IDS.entries()) {
+      const fresh = byId(id);
+      expect(countById(id)).toBe(1);
+      expect(fresh).not.toBe(before[i].el);
+      expect(before[i].el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(before[i].place);
+    }
+    expect(
+      normalized(byId("chains-button")).isEqualNode(
+        normalized(oldChainsButton({ open: false, visible: false })),
+      ),
+    ).toBe(true);
+    expect(
+      normalized(byId("chains-popover")).isEqualNode(
+        normalized(oldChainsPopover({ open: false })),
+      ),
+    ).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("As a visitor whose product rendered before the islands loaded, the swapped-in network button shows, keeps following the host and opens", async () => {
+    // Given: the host reveals the button on the static markup.
+    setChainsButtonVisible(true);
+    expect(byId("chains-button").classList.contains("visible")).toBe(true);
+
+    // When
+    mountIslands();
+    await flushAll();
+
+    // Then
+    expect(
+      normalized(byId("chains-button")).isEqualNode(
+        normalized(oldChainsButton({ open: false, visible: true })),
+      ),
+    ).toBe(true);
+
+    // When
+    byId("chains-button").click();
+    await flushAll();
+
+    // Then
+    expect(byId("chains-popover").classList.contains("open")).toBe(true);
+    expect(document.activeElement).toBe(byId("chains-popover"));
+    expect(
+      byId("chains-popover").querySelector(".chains-status")?.textContent,
+    ).toBe("Starting");
+
+    // When
+    setChainsButtonVisible(false);
+    await flushAll();
+
+    // Then
+    expect(byId("chains-button").classList.contains("visible")).toBe(false);
   });
 });

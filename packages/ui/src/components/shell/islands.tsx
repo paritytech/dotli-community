@@ -17,6 +17,7 @@ import type { JSX } from "@solidjs/web";
 import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
 import { AuthButton } from "./AuthButton";
 import { AuthModal } from "./AuthModal";
+import { ChainsPopover } from "./ChainsPopover";
 import { OfflineBanner } from "./OfflineBanner";
 import { PermissionsPopover } from "./PermissionsPopover";
 import { ThemeToggle } from "./ThemeToggle";
@@ -179,5 +180,9 @@ export function mountIslands(): string[] {
     "permissions-popover-backdrop",
     "permissions-popover",
   ]);
+  // Also a loader trigger. The static button is shown or not by the host
+  // (setChainsButtonVisible) until this swap; the island reads the store
+  // that call also writes.
+  mount("chains", () => <ChainsPopover />, ["chains-button", "chains-popover"]);
   return failed;
 }

@@ -2,49 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@dotli/protocol/client", () => ({
-  readSharedAuthStorage: async () => null,
-  writeSharedAuthStorage: async () => undefined,
-  clearSharedAuthStorage: async () => undefined,
-  subscribeSharedAuthStorage: () => () => undefined,
-}));
+import { getActiveChainRoles } from "@dotli/config/network";
+import { ChainsPopover } from "@dotli/ui/components/shell/ChainsPopover";
+import { resetNetworkMonitor, setBlockSource } from "@dotli/ui/network-monitor";
+import { startNetworkStore } from "@dotli/ui/state/network";
+import { renderComponent, resetStores, settle } from "./helpers/solid";
 
 const BAR = ".chains-bar[data-block]";
-
-/** The topbar markup `initTopBar` insists on, plus the network panel. */
-function installDom(): void {
-  document.body.innerHTML = `
-    <a id="topbar-home"></a>
-    <button id="auth-button" disabled></button>
-    <div id="auth-modal-backdrop">
-      <div id="auth-modal-title"></div>
-      <div id="auth-modal-qr"></div>
-      <div id="auth-modal-reason"></div>
-      <div id="auth-modal-hint"></div>
-      <a id="auth-modal-get-app" hidden></a>
-      <button id="auth-modal-close"></button>
-    </div>
-    <div id="user-popover">
-      <span id="user-popover-username"></span>
-      <button id="user-popover-disconnect"></button>
-    </div>
-    <button id="theme-toggle" aria-expanded="false"></button>
-    <div id="theme-popover" role="menu">
-      <button class="theme-popover-option" role="menuitemradio" aria-checked="false" data-theme-option="light" tabindex="-1"></button>
-      <button class="theme-popover-option" role="menuitemradio" aria-checked="false" data-theme-option="dark" tabindex="-1"></button>
-      <button class="theme-popover-option" role="menuitemradio" aria-checked="false" data-theme-option="system" tabindex="-1"></button>
-    </div>
-    <button id="mode-button"></button>
-    <div id="mode-popover"><div id="mode-popover-content"></div></div>
-    <div id="mode-popover-backdrop"></div>
-    <button id="permissions-button"></button>
-    <div id="permissions-popover"><div id="permissions-popover-list"></div></div>
-    <div id="permissions-popover-backdrop"></div>
-    <button id="chains-button" aria-expanded="false"></button>
-    <div class="more-popover chains-popover" id="chains-popover"></div>
-  `;
-}
 
 /**
  * happy-dom does no layout, so every box measures zero and the slide would be
@@ -71,24 +35,22 @@ function stubLayout(): void {
 }
 
 /** Push a block onto the one chain these tests drive. */
-let emit: (blockNumber: number) => void;
+let emit: (blockNumber: number) => Promise<void>;
+let stopStore: () => void = () => undefined;
 
 /** Open the panel against a block source the test drives by hand. */
 async function openPanel(): Promise<HTMLElement> {
-  const monitor = await import("@dotli/ui/network-monitor");
-  const { getActiveChainRoles } = await import("@dotli/config/network");
   const relay = getActiveChainRoles()[0].genesis;
   const emitters = new Map<string, (n: number) => void>();
-  emit = (n) => {
+  emit = async (n) => {
     const push = emitters.get(relay);
     if (push === undefined) {
       throw new Error("nothing subscribed to the relay");
     }
     push(n);
+    await settle();
   };
-  const { initTopBar } = await import("@dotli/ui/topbar");
-  initTopBar();
-  monitor.setBlockSource({
+  setBlockSource({
     isReachable: () => true,
     subscribe: (genesis, onBlock) => {
       emitters.set(genesis, onBlock);
@@ -97,7 +59,11 @@ async function openPanel(): Promise<HTMLElement> {
       };
     },
   });
+  stopStore = startNetworkStore();
+  renderComponent(() => <ChainsPopover />);
+  await settle();
   document.getElementById("chains-button")?.click();
+  await settle();
   const strip = document
     .getElementById("chains-popover")
     ?.querySelector<HTMLElement>(".chains-bars");
@@ -107,18 +73,17 @@ async function openPanel(): Promise<HTMLElement> {
   return strip;
 }
 
-beforeEach(async () => {
-  vi.resetModules();
-  vi.restoreAllMocks();
+beforeEach(() => {
   localStorage.clear();
-  installDom();
   stubLayout();
-  const monitor = await import("@dotli/ui/network-monitor");
-  monitor.resetNetworkMonitor();
+  resetNetworkMonitor();
 });
 
 afterEach(() => {
-  document.body.innerHTML = "";
+  stopStore();
+  resetNetworkMonitor();
+  resetStores();
+  vi.restoreAllMocks();
 });
 
 describe("The network panel blocks arrive as motion", () => {
@@ -127,9 +92,9 @@ describe("The network panel blocks arrive as motion", () => {
     const strip = await openPanel();
 
     // When
-    emit(100);
-    emit(101);
-    emit(102);
+    await emit(100);
+    await emit(101);
+    await emit(102);
 
     // Then
     const marks = strip.querySelectorAll<HTMLElement>(BAR);
@@ -140,13 +105,13 @@ describe("The network panel blocks arrive as motion", () => {
   it("As a user watching a chain, a block already on screen keeps its own bar", async () => {
     // Given
     const strip = await openPanel();
-    emit(100);
-    emit(101);
-    emit(102);
+    await emit(100);
+    await emit(101);
+    await emit(102);
     const first = strip.querySelector<HTMLElement>('[data-block="101"]');
 
     // When
-    emit(103);
+    await emit(103);
 
     // Then
     expect(strip.querySelector('[data-block="101"]')).toBe(first);
@@ -155,12 +120,12 @@ describe("The network panel blocks arrive as motion", () => {
   it("As a user watching a chain, the strip glides left as the new block appears", async () => {
     // Given
     const strip = await openPanel();
-    emit(100);
-    emit(101);
-    emit(102);
+    await emit(100);
+    await emit(101);
+    await emit(102);
 
     // When
-    emit(103);
+    await emit(103);
 
     // Then
     expect(strip.classList.contains("is-sliding")).toBe(true);
@@ -169,15 +134,49 @@ describe("The network panel blocks arrive as motion", () => {
     expect(newest?.classList.contains("is-new")).toBe(true);
   });
 
+  it("As a user watching a chain, a new bar drops its landing mark once its animation ends", async () => {
+    // Given
+    const strip = await openPanel();
+    await emit(100);
+    await emit(101);
+    await emit(102);
+    await emit(103);
+    const newest = strip.querySelector<HTMLElement>(
+      '[data-block="103"]',
+    ) as HTMLElement;
+    expect(newest.classList.contains("is-new")).toBe(true);
+
+    // When
+    newest.dispatchEvent(new Event("animationend"));
+
+    // Then
+    expect(newest.classList.contains("is-new")).toBe(false);
+  });
+
   it("As a user opening the panel on a chain with history, nothing slides", async () => {
     // Given
     const strip = await openPanel();
 
     // When
-    emit(100);
-    emit(101);
+    await emit(100);
+    await emit(101);
 
     // Then
     expect(strip.classList.contains("is-sliding")).toBe(false);
+  });
+
+  it("As a user with a narrow panel, only the newest blocks that fit are shown", async () => {
+    // Given: the strip fits (200 + 4) / (4 + 4) = 25 marks.
+    const strip = await openPanel();
+
+    // When
+    for (let n = 100; n <= 130; n += 1) {
+      await emit(n);
+    }
+
+    // Then
+    const marks = [...strip.querySelectorAll<HTMLElement>(BAR)];
+    expect(marks).toHaveLength(25);
+    expect(marks.at(-1)?.dataset.block).toBe("130");
   });
 });

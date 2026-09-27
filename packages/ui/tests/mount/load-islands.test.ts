@@ -25,6 +25,8 @@ interface Chunk {
   islandClicks: () => number;
   /** Clicks the island's (swapped-in) permissions button received. */
   permissionsClicks: () => number;
+  /** Clicks the island's (swapped-in) network button received. */
+  chainsClicks: () => number;
 }
 
 /** Lets pending I/O and promise callbacks run. */
@@ -43,9 +45,9 @@ interface StubOptions {
 
 /**
  * Stands in for the islands chunk: each import waits until the test lets it
- * arrive or fail; once it arrives, mountIslands swaps a fresh theme button
- * and a fresh permissions button, which count their clicks, and a fresh
- * offline banner in for the static ones.
+ * arrive or fail; once it arrives, mountIslands swaps a fresh theme button,
+ * permissions button and network button, which count their clicks, and a
+ * fresh offline banner in for the static ones.
  */
 function stubChunk(options: StubOptions = {}): Chunk {
   const requests: PromiseWithResolvers<void>[] = [];
@@ -60,6 +62,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
   };
   let clicks = 0;
   let permissionsClicks = 0;
+  let chainsClicks = 0;
   const mountIslands = vi.fn(() => {
     if (options.mountError !== undefined) {
       throw options.mountError;
@@ -76,6 +79,12 @@ function stubChunk(options: StubOptions = {}): Chunk {
       permissionsClicks += 1;
     });
     document.getElementById("permissions-button")?.replaceWith(permissions);
+    const chains = document.createElement("button");
+    chains.id = "chains-button";
+    chains.addEventListener("click", () => {
+      chainsClicks += 1;
+    });
+    document.getElementById("chains-button")?.replaceWith(chains);
     const failed = [...(options.failedIslands ?? [])];
     if (options.bannerIslandFails === true) {
       failed.push("offline-banner");
@@ -106,6 +115,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
     mountIslands,
     islandClicks: () => clicks,
     permissionsClicks: () => permissionsClicks,
+    chainsClicks: () => chainsClicks,
   };
 }
 
@@ -211,6 +221,7 @@ beforeEach(() => {
     '<button class="more-row" data-target="theme-toggle">Theme</button>',
     '<button id="permissions-button" class="topbar-btn"><svg><rect/></svg></button>',
     '<button class="more-row" data-target="permissions-button">Permissions</button>',
+    '<button id="chains-button" class="topbar-btn topbar-chains-btn visible"><svg><circle/></svg></button>',
     '<div id="offline-banner" role="status" aria-live="polite" style="position:absolute;display:none">You are offline</div>',
   ].join("");
 });
@@ -271,6 +282,35 @@ describe("ensureIslands", () => {
     // Then
     expect(after.defaultPrevented).toBe(false);
     expect(chunk.permissionsClicks()).toBe(2);
+  });
+
+  it("As a dotli user, clicks on the network button before the islands mount open it once, after they do", async () => {
+    // Given
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const loading = ensureIslands();
+
+    // When: clicked twice, once on the globe inside the button.
+    const first = click(
+      byId("chains-button").querySelector("circle") as Element,
+    );
+    const second = click(byId("chains-button"));
+    chunk.arrive();
+    await loading;
+
+    // Then
+    expect(first.defaultPrevented).toBe(true);
+    expect(second.defaultPrevented).toBe(true);
+    expect(chunk.chainsClicks()).toBe(1);
+    expect(chunk.permissionsClicks()).toBe(0);
+    expect(chunk.islandClicks()).toBe(0);
+
+    // When: after the mount, clicks reach the island directly.
+    const after = click(byId("chains-button"));
+
+    // Then
+    expect(after.defaultPrevented).toBe(false);
+    expect(chunk.chainsClicks()).toBe(2);
   });
 
   it("As a mobile user, tapping the More menu's Permissions row before the islands mount opens the permissions popover once they do", async () => {
