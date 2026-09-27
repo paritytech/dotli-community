@@ -64,7 +64,8 @@ export function ThemeToggle(): JSX.Element {
   // Native listeners (added in the refs below), not Solid's onClick/onKeyDown:
   // Solid 2 delegates those to the root's container, which is the detached
   // element the island renders into before it is swapped in (islands.tsx).
-  // The landing page (ui.ts) also moves the button and the menu around.
+  // The landing page (components/landing/) also moves the button and the
+  // menu around.
   const onKeyDown = (e: KeyboardEvent): void => {
     // Escape is the popover's (createPopover): it closes and returns focus.
     const all = options();

@@ -30,8 +30,9 @@ function UserIcon(): JSX.Element {
  * The topbar's auth button (`#auth-button`), a shell island (see
  * islands.tsx). Shell.tsx prerenders it disabled and "Connecting...", and it
  * stays so until this component is swapped in, enabled, after boot (so it is
- * none of the islands loader's click triggers). The landing page (ui.ts)
- * moves the button into `#landing-auth`; the swap happens where it is.
+ * none of the islands loader's click triggers). The landing page
+ * (components/landing/) moves the button into `#landing-auth`; the swap
+ * happens where it is.
  *
  * Logged out, it shows the person icon and a click starts a login. Logged
  * in, it shows the account's initials (`.user-badge`, or the icon as

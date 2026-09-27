@@ -24,8 +24,10 @@ export default [
   {
     // The shell's islands (components/shell/islands.tsx) render into a
     // detached container, which is where Solid delegates `onClick`-style
-    // events: they would never fire once the island is swapped in.
-    files: ["src/components/shell/**/*.tsx"],
+    // events: they would never fire once the island is swapped in. The
+    // landing page follows the same rule, since it moves island nodes into
+    // its own tree.
+    files: ["src/components/shell/**/*.tsx", "src/components/landing/**/*.tsx"],
     rules: {
       "no-restricted-syntax": [
         "error",

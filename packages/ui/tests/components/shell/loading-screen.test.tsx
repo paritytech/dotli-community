@@ -38,7 +38,8 @@ import {
 import { disposeRoot } from "@dotli/ui/mount/root";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
 import { getLoadingState, updateLoading } from "@dotli/ui/state/loading";
-import { showErrorPage, showLanding } from "@dotli/ui/ui";
+import { showErrorPage } from "@dotli/ui/ui";
+import { showLanding } from "@dotli/ui/landing/load";
 
 const INDEX_HTML = readFileSync(
   resolve(import.meta.dirname, "../../../../../apps/host/index.html"),
@@ -378,7 +379,7 @@ describe("Loading screen island", () => {
     runFrames(100);
 
     // When
-    showLanding();
+    await showLanding();
     await settle();
 
     // Then

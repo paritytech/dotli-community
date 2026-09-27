@@ -8,6 +8,14 @@ import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
 import { stubColorScheme } from "../../helpers/color-scheme";
 import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
+import { mountLandingPage } from "../../helpers/landing";
+
+// The landing page loads the recent names from the shared storage frame,
+// which happy-dom would try to fetch.
+vi.mock("@dotli/ui/recent-labels", () => ({
+  loadRecentLabels: () => Promise.resolve([]),
+  forgetRecentLabel: () => Promise.resolve(),
+}));
 
 beforeEach(() => {
   vi.unstubAllGlobals();
@@ -380,13 +388,17 @@ describe("ThemeToggle", () => {
   });
 
   it("As a visitor on the landing page, the theme menu still works after the page moves the button and menu out of the shell", async () => {
-    // Given: ui.ts moves both into the landing page's top-right corner,
-    // outside the root Solid rendered them in.
+    // Given: the landing page moves both into its top-right corner, after
+    // the auth button, outside the root Solid rendered them in.
     await renderToggle("light", "dark");
-    const landingAuth = document.createElement("div");
-    landingAuth.id = "landing-auth";
-    document.body.append(landingAuth);
-    landingAuth.append(themeButton(), themePopover());
+    const authButton = document.createElement("button");
+    authButton.id = "auth-button";
+    document.body.append(authButton);
+    const landing = mountLandingPage();
+    await settle();
+    const landingAuth = document.getElementById("landing-auth");
+    expect(themeButton().parentElement).toBe(landingAuth);
+    expect(themePopover().parentElement).toBe(landingAuth);
     const btn = themeButton();
 
     // When
@@ -411,7 +423,7 @@ describe("ThemeToggle", () => {
     expect(localStorage.getItem("dotli-theme")).toBe("dark");
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(btn);
-    landingAuth.remove();
+    landing.dispose();
   });
 
   it("As a dotli user, the System option's label follows the store after an OS change", async () => {

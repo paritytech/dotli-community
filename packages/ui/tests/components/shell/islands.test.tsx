@@ -47,6 +47,7 @@ import {
 } from "./old-settings-markup";
 import { initSettingsStore } from "@dotli/ui/state/settings";
 import { tapMoreRow } from "./more-menu-harness";
+import { mountLandingPage } from "../../helpers/landing";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
 import { setChainsButtonVisible } from "@dotli/ui/topbar";
 import { setProductLoaded } from "@dotli/ui/state/product";
@@ -58,6 +59,12 @@ import {
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
+// The landing page loads the recent names from the shared storage frame,
+// which happy-dom would try to fetch.
+vi.mock("@dotli/ui/recent-labels", () => ({
+  loadRecentLabels: () => Promise.resolve([]),
+  forgetRecentLabel: () => Promise.resolve(),
+}));
 
 // Lets a test make the theme island throw while it renders.
 const themeIsland = vi.hoisted(() => ({ broken: false }));
@@ -88,6 +95,7 @@ const SETTINGS_IDS = ["mode-button", "mode-popover-backdrop", "mode-popover"];
 const MORE_IDS = ["more-button", "more-popover"];
 
 let serverHtml = "";
+let landing: ReturnType<typeof mountLandingPage> | null = null;
 
 function byId(id: string): HTMLElement {
   return document.getElementById(id) as HTMLElement;
@@ -162,6 +170,8 @@ describe("shell islands", () => {
   });
 
   afterEach(() => {
+    landing?.dispose();
+    landing = null;
     disposeRoot("island:theme");
     disposeRoot("island:url-pill");
     disposeRoot("island:offline-banner");
@@ -243,11 +253,11 @@ describe("shell islands", () => {
   });
 
   it("As a visitor on the landing page, the theme toggle is swapped in where the page moved it, outside the shell, and works there", async () => {
-    // Given: ui.ts moves both into the landing page's top-right corner.
-    const landingAuth = document.createElement("div");
-    landingAuth.id = "landing-auth";
-    document.body.append(landingAuth);
-    landingAuth.append(byId("theme-toggle"), byId("theme-popover"));
+    // Given: the landing page mounts first and moves both into its top-right
+    // corner, after the auth button.
+    landing = mountLandingPage();
+    await flushAll();
+    const landingAuth = byId("landing-auth");
 
     // When
     mountIslands();
@@ -256,7 +266,7 @@ describe("shell islands", () => {
     // Then
     for (const [i, id] of THEME_IDS.entries()) {
       expect(countById(id)).toBe(1);
-      expect(placeOf(byId(id))).toEqual({ parent: landingAuth, index: i });
+      expect(placeOf(byId(id))).toEqual({ parent: landingAuth, index: i + 1 });
     }
 
     // When
@@ -690,11 +700,11 @@ describe("shell islands", () => {
   });
 
   it("As a visitor on the landing page, the auth button is swapped in where the page moved it, and opens the user popover there", async () => {
-    // Given: ui.ts moves the button into the landing page's corner.
-    const landingAuth = document.createElement("div");
-    landingAuth.id = "landing-auth";
-    document.body.append(landingAuth);
-    landingAuth.append(byId("auth-button"));
+    // Given: the landing page mounts first and moves the button into its
+    // corner.
+    landing = mountLandingPage();
+    await flushAll();
+    const landingAuth = byId("landing-auth");
     setAuthState({
       tag: "Connected",
       session: { connected: true, liteUsername: "pgherveou.04" },
@@ -719,6 +729,44 @@ describe("shell islands", () => {
     // Then
     expect(byId("user-popover").classList.contains("open")).toBe(true);
     expect(document.activeElement).toBe(byId("user-popover"));
+  });
+
+  it("As a visitor on the landing page, when the islands swap in before the page mounts, the page moves the live auth and theme controls into its corner, and they work there", async () => {
+    // Given
+    setAuthState({
+      tag: "Connected",
+      session: { connected: true, liteUsername: "pgherveou.04" },
+    });
+    setLoggedIn(true);
+    mountIslands();
+    await flushAll();
+    const live = ["auth-button", ...THEME_IDS].map((id) => byId(id));
+
+    // When
+    landing = mountLandingPage();
+    await flushAll();
+
+    // Then
+    const landingAuth = byId("landing-auth");
+    expect([...landingAuth.children]).toEqual(live);
+    for (const id of ["auth-button", ...THEME_IDS]) {
+      expect(countById(id)).toBe(1);
+    }
+
+    // When
+    byId("theme-toggle").click();
+    await flushAll();
+
+    // Then
+    expect(byId("theme-popover").classList.contains("open")).toBe(true);
+    expect(document.activeElement).toBe(themeOption("system"));
+
+    // When
+    byId("auth-button").click();
+    await flushAll();
+
+    // Then
+    expect(byId("user-popover").classList.contains("open")).toBe(true);
   });
 
   it("As a dotli user, the permissions button, backdrop and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning", async () => {

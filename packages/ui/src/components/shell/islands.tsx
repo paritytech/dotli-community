@@ -5,9 +5,10 @@
 // mount/load-islands.ts. Shell.tsx keeps every piece's static markup, which
 // is prerendered and hydrated as it is; here each island is client-rendered
 // into a detached container and swapped in for those static nodes by id,
-// wherever they are now (the landing page, ui.ts, moves the theme nodes out
-// of `#shell`). The loading screen is an island too, over the static screen
-// apps/host/index.html paints in `#app` (see mountLoadingIsland).
+// wherever they are now (the landing page, components/landing/, moves the
+// auth and theme nodes out of `#shell`). The loading screen is an island
+// too, over the static screen apps/host/index.html paints in `#app` (see
+// mountLoadingIsland).
 //
 // An island's root container is that detached element, so Solid's delegated
 // events (onClick, ...) would listen on a node outside the document: islands
