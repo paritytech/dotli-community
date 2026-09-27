@@ -311,6 +311,9 @@ function bindListeners(): void {
     "focusout",
     () => {
       // activeElement only settles after focusout, so check on the next tick.
+      if (focusoutTimer !== null) {
+        clearTimeout(focusoutTimer);
+      }
       focusoutTimer = setTimeout(() => {
         focusoutTimer = null;
         syncFocus();
