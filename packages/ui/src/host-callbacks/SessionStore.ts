@@ -732,6 +732,11 @@ function currentWalletVersion(): number {
   return sharedWalletState.version;
 }
 
+/** Safari keeps the test wallet per app: another app holds one, this one not. */
+export function isLocalWalletStoredInOtherApp(): boolean {
+  return sharedWalletState?.storedInOtherApp === true;
+}
+
 /**
  * Hydrate from host.<root>, then migrate an origin-local encrypted wallet only
  * if the shared store is uninitialized (or already holds exactly that wallet).

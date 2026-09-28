@@ -294,6 +294,8 @@ Under **Debug → Wallet → Recovery**, **Reveal recovery phrase** requires con
 
 Only one tab of a browser profile runs the test wallet at a time, because two tabs starting their own wallet cores would claim allowances twice and overwrite each other's state. Opening an app with the test wallet in another tab moves it there automatically: the tab that had it stops its wallet first, then hands it over. That tab keeps its app on screen with a **Paused** banner and takes the wallet back the next time you click or type in it; background activity never moves the wallet, so two tabs cannot bounce it between them. If the tab that has it does not respond, the new tab shows **Test wallet is open in another tab**; close the other tab and reload.
 
+Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing coordinating them; avoid using both at once. When another app already has a wallet, the wallet panel warns that **Use test wallet** would start a different one. Chrome, Brave and other Chromium browsers share one wallet across apps.
+
 This is experimental custody, not a secure vault: malicious scripts on any trusted host origin can recover the shared keys despite encryption. Wallet secrets never enter sandbox origins or HTTP mode synchronization. Never use valuable funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
 
 Keep `VITE_APP_DEBUG` unset or false in production builds.

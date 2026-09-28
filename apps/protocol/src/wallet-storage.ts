@@ -12,6 +12,12 @@ const STORE = "wallet";
 const SLOT = "state-v1";
 const LOCK = "dotli:shared-wallet-v1";
 const NONCE_LENGTH = 12;
+/**
+ * Non-secret presence marker. Safari keys this frame's IndexedDB by the app
+ * page it is embedded in, but shares its localStorage across apps, so the
+ * marker tells an app that another app holds the wallet.
+ */
+const STORED_MARKER = "dotli:test-wallet-stored";
 
 interface WalletRecord {
   version: number;
@@ -65,11 +71,17 @@ function writeRecord(db: IDBDatabase, record: WalletRecord): Promise<void> {
 }
 
 function stateOf(record: WalletRecord | undefined): SharedWalletState {
+  const hasWallet = record?.encrypted !== undefined;
+  if (hasWallet) {
+    localStorage.setItem(STORED_MARKER, "1");
+  }
   return {
     version: record?.version ?? 0,
     revision: record?.revision ?? null,
     enabled: record?.enabled ?? false,
-    hasWallet: record?.encrypted !== undefined,
+    hasWallet,
+    storedInOtherApp:
+      !hasWallet && localStorage.getItem(STORED_MARKER) !== null,
   };
 }
 
@@ -254,6 +266,9 @@ export async function handleWalletOperation(
           throw new Error("Wallet request expired");
         }
         await writeRecord(db, next);
+        if (operation.action === "delete") {
+          localStorage.removeItem(STORED_MARKER);
+        }
         const nextState = stateOf(next);
         changed(nextState);
         returnedSecret = operation.action === "create";

@@ -38,6 +38,7 @@ beforeEach(() => {
     isActive: () => true,
     networkLabel: () => "Paseo",
     getCachedIdentity: () => cached,
+    storedInOtherApp: async () => false,
     getIdentity: vi.fn(),
     getProduct: async () => null,
     getAllowanceSnapshot: async () => {
@@ -62,6 +63,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   document.body.replaceChildren();
+});
+
+function otherAppNotice(): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>(".td-wallet-hint")].find(
+    (hint) => hint.textContent?.includes("separately for each app") === true,
+  );
+}
+
+describe("browser that keeps the test wallet per app", () => {
+  it("warns that Use test wallet would start a different wallet when another app holds one", async () => {
+    wallet.isActive = () => false;
+    wallet.getCachedIdentity = () => undefined;
+    wallet.storedInOtherApp = async () => true;
+    dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
+
+    await vi.waitFor(() => {
+      expect(otherAppNotice()?.hidden).toBe(false);
+    });
+    expect(otherAppNotice()?.textContent).toContain(
+      "import the same recovery phrase",
+    );
+  });
+
+  it("stays hidden while this app runs its own test wallet", async () => {
+    const storedInOtherApp = vi.fn(async () => true);
+    wallet.storedInOtherApp = storedInOtherApp;
+    dispose = setupTruapiDebugPanel({ experimentalWallet: wallet });
+
+    await vi.waitFor(() => {
+      expect(storedInOtherApp).toHaveBeenCalled();
+    });
+    await Promise.resolve();
+    expect(otherAppNotice()?.hidden).toBe(true);
+  });
 });
 
 describe("wallet failure presentation", () => {

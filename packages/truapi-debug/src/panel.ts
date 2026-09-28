@@ -149,6 +149,8 @@ export interface SetupOptions {
     isActive(): boolean;
     networkLabel(): string;
     getCachedIdentity(): InspectorIdentity | undefined;
+    /** Another app holds this browser's test wallet; this app has none. */
+    storedInOtherApp(): Promise<boolean>;
     getIdentity(): Promise<InspectorIdentity>;
     getProduct(): Promise<InspectorProduct | null>;
     getAllowanceSnapshot(): Promise<WalletAllowanceSnapshot>;
@@ -726,9 +728,17 @@ function installExperimentalWalletControls(
   const walletActions = document.createElement("div");
   walletActions.className = "td-wallet-actions";
   walletActions.append(activate, disconnect);
+  const otherAppNotice = document.createElement("p");
+  otherAppNotice.className = "td-wallet-hint";
+  otherAppNotice.setAttribute("role", "status");
+  otherAppNotice.hidden = true;
+  otherAppNotice.textContent =
+    "This browser keeps the test wallet separately for each app (Safari does this), and another app already has one. " +
+    "Use test wallet here would start a different wallet: import the same recovery phrase under Recovery instead, or use Chrome or Brave to share one wallet across apps.";
   overview.append(
     network,
     walletActions,
+    otherAppNotice,
     registeredName,
     elapsed,
     errorDetails,
@@ -763,6 +773,7 @@ function installExperimentalWalletControls(
   let identityReadGeneration = 0;
   let identityLoading = wallet.isActive();
   let identityUnavailable = false;
+  let storedInOtherApp = false;
   let identityGeneration = 0;
   let usernameStatus: {
     kind: "unknown" | "claimed" | "unclaimed" | "failed";
@@ -821,6 +832,7 @@ function installExperimentalWalletControls(
             : "Identity account unavailable"
           : "Identity: connect the experimental wallet to view";
     activate.hidden = active;
+    otherAppNotice.hidden = active || !storedInOtherApp;
     activate.textContent = activating ? "Connecting…" : "Use test wallet";
     disconnect.hidden = !active;
     usernameLabel.hidden = !showClaim;
@@ -1281,6 +1293,14 @@ function installExperimentalWalletControls(
     }
   });
 
+  const checkOtherApp = (): void => {
+    void wallet.storedInOtherApp().then((stored) => {
+      if (!disposed) {
+        storedInOtherApp = stored;
+        renderUsername();
+      }
+    });
+  };
   const run = async (
     operation:
       | "activate"
@@ -1396,6 +1416,7 @@ function installExperimentalWalletControls(
       if (!isDisposed()) {
         content.removeAttribute("aria-busy");
         syncButtons();
+        checkOtherApp();
       }
     }
   };
@@ -1415,6 +1436,7 @@ function installExperimentalWalletControls(
     void run("deleteWallet");
   });
   void loadIdentity();
+  checkOtherApp();
   return () => {
     disposed = true;
     stopClaimTimer();
