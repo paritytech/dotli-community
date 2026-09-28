@@ -36,6 +36,25 @@ describe("resuming a paused tab", () => {
     expect(resume).toHaveBeenCalledTimes(1);
   });
 
+  it("resumes on a click into the app frame that had focus when the tab paused", () => {
+    vi.useFakeTimers();
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    frame.focus();
+    const resume = vi.fn();
+    onNextInteraction(resume);
+
+    // Switching away while paused is not an interaction.
+    window.dispatchEvent(new Event("blur"));
+    vi.runAllTimers();
+    expect(resume).not.toHaveBeenCalled();
+
+    frame.focus();
+    window.dispatchEvent(new Event("blur"));
+    vi.runAllTimers();
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores the window losing focus to another tab", () => {
     vi.useFakeTimers();
     const resume = vi.fn();
