@@ -45,9 +45,10 @@ import { chatCapabilityFor } from "@dotli/shared/chat-capability";
 import { log } from "@dotli/shared/log";
 import {
   requestCoreCustody,
-  subscribeCoreCustodyRevoked,
+  requestWalletOwner,
+  subscribeWalletOwnerRevoked,
 } from "@dotli/protocol/client";
-import { WALLET_CUSTODY_REVOKED_EVENT } from "@dotli/protocol/core-custody";
+import { WALLET_OWNER_REVOKED_EVENT } from "@dotli/protocol/wallet-owner";
 import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
@@ -292,25 +293,37 @@ function disposeWalletRuntimes(): void {
 }
 window.addEventListener("pagehide", disposeWalletRuntimes);
 
-let custodyRevocationBound = false;
+// One tab of the profile runs the test wallet. Every wallet core this page
+// starts shares one lease, acquired before the first one starts.
+let walletOwnerLease: Promise<string | undefined> | undefined;
+let walletOwnerRevocationBound = false;
 
-function bindCustodyRevocation(): void {
-  if (custodyRevocationBound) {
-    return;
+async function ensureWalletOwner(): Promise<void> {
+  if (!walletOwnerRevocationBound) {
+    walletOwnerRevocationBound = true;
+    subscribeWalletOwnerRevoked(yieldWalletOwner);
   }
-  custodyRevocationBound = true;
-  subscribeCoreCustodyRevoked(() => {
-    // The lease is already gone, so this page's writes fail closed. Stop the
-    // signing workers before they try, then let the shell explain why.
-    disposeWalletRuntimes();
-    window.dispatchEvent(new Event(WALLET_CUSTODY_REVOKED_EVENT));
-  });
+  walletOwnerLease ??= requestWalletOwner({ action: "acquire" }).catch(
+    (error: unknown) => {
+      walletOwnerLease = undefined;
+      throw error;
+    },
+  );
+  await walletOwnerLease;
 }
 
-/** Move the test wallet to this tab: the owning tab stops, then this one reloads. */
-export async function takeOverTestWallet(): Promise<void> {
-  await requestCoreCustody({ action: "takeover" });
-  window.location.reload();
+// Another tab asked for the wallet: stop this page's cores first, then release,
+// so the two tabs never run the wallet at the same time.
+function yieldWalletOwner(lease: string): void {
+  walletOwnerLease = undefined;
+  if (
+    isExperimentalWalletActive() &&
+    (liveLocalWallets.size > 0 || localRuntimeDisposers.size > 0)
+  ) {
+    disposeWalletRuntimes();
+    window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
+  }
+  void requestWalletOwner({ action: "release", lease }).catch(noop);
 }
 const liveLocalWallets = new Map<WorkerSigningHostRuntime, LiveLocalWallet>();
 const providerWallets = new WeakMap<CoreProvider, LiveLocalWallet>();
@@ -2072,6 +2085,12 @@ async function createCoreProvider(
       throw new Error("Wallet host closed while starting");
     }
     if (localContext !== undefined && owner === undefined) {
+      // The tab lease comes first: it moves the wallet here from another tab,
+      // whose custody is released when its runtimes stop.
+      await ensureWalletOwner();
+      if (isRuntimeDisposed()) {
+        throw new Error("Wallet host closed while taking the test wallet");
+      }
       const acquired = await requestCoreCustody({
         action: "acquire",
         walletRevision: localContext.revision,
@@ -2080,7 +2099,6 @@ async function createCoreProvider(
         throw new Error("Private wallet custody was not acquired");
       }
       custodyLease = acquired;
-      bindCustodyRevocation();
     }
     if (isRuntimeDisposed()) {
       throw new Error("Wallet host closed while acquiring custody");

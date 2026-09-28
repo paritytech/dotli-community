@@ -3,18 +3,16 @@
 
 /**
  * `Error.name` of a refused `acquire`: another tab of this browser profile
- * runs the test wallet. Survives the postMessage hop, unlike `instanceof`.
+ * still holds the test wallet's custody. Survives the postMessage hop.
  */
 export const CORE_CUSTODY_BUSY_ERROR = "WalletCustodyBusyError";
 
-/** Fired on the host `window` after another tab took this page's test wallet. */
-export const WALLET_CUSTODY_REVOKED_EVENT = "dotli:wallet-custody-revoked";
-
-/** Host-shell transport only. Never exposed through the product RPC bridge. */
+/**
+ * Host-shell transport only. Never exposed through the product RPC bridge.
+ * Moving the wallet between tabs is the owner lease's job (`wallet-owner.ts`).
+ */
 export type CoreCustodyOperation =
   | { action: "acquire"; walletRevision: string | null }
-  // Ask the owning tab to stop its wallet, then wait until custody is free.
-  | { action: "takeover" }
   | { action: "release"; lease: string }
   | { action: "read"; lease: string; key: string }
   | { action: "clear"; lease: string; key: string }
@@ -39,9 +37,6 @@ export function isCoreCustodyOperation(
       (value.walletRevision === null ||
         typeof value.walletRevision === "string")
     );
-  }
-  if (value.action === "takeover") {
-    return true;
   }
   if (!("lease" in value) || typeof value.lease !== "string") {
     return false;
