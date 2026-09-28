@@ -7,6 +7,11 @@ export interface SharedWalletState {
   revision: string | null;
   enabled: boolean;
   hasWallet: boolean;
+  /**
+   * No wallet in this store, but another app's store holds one: the browser
+   * keeps storage separately per app (Safari), so the wallet is not shared.
+   */
+  storedInOtherApp: boolean;
 }
 
 export type SharedWalletOperation =
@@ -40,7 +45,8 @@ export function isSharedWalletState(
     state.version >= 0 &&
     (state.revision === null || typeof state.revision === "string") &&
     typeof state.enabled === "boolean" &&
-    typeof state.hasWallet === "boolean"
+    typeof state.hasWallet === "boolean" &&
+    typeof state.storedInOtherApp === "boolean"
   );
 }
 
