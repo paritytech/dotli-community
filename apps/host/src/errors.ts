@@ -9,6 +9,7 @@ import { getActiveServicesConfig } from "@dotli/config/network";
 import { BACKEND_LABELS } from "@dotli/config/mode";
 import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
 import type { ResolverErrorName } from "@dotli/resolver/errors";
+import { WALLET_OWNER_BUSY_ERROR } from "@dotli/protocol/wallet-owner";
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
 // here at compile time. `instanceof` is unavailable because the error arrived
@@ -42,6 +43,11 @@ export const HOST_ERRORS = {
     "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
   TOPBAR_URL_NODE_MISSING: "Required DOM node missing: #topbar-url",
+  WALLET_IN_OTHER_TAB:
+    "Only one tab can use the test wallet at a time, and the tab that has it did not hand it over. Close that tab, then reload this one.",
+  WALLET_PAUSED:
+    "Paused: the test wallet is in use in another tab. Click or type here to use it in this tab.",
+  WALLET_RESUMING: "Moving the test wallet to this tab…",
 } as const;
 
 /**
@@ -145,6 +151,7 @@ export const ERROR_TITLES = {
   CONTENT_UNAVAILABLE: "This app couldn't be downloaded",
   /** The files arrived intact and are simply not a runnable app. */
   APP_UNUSABLE: "This app can't be opened",
+  WALLET_IN_OTHER_TAB: "Test wallet is open in another tab",
 } as const;
 
 /**
@@ -170,6 +177,7 @@ export type ErrorKind =
   | "hub-sync-timeout"
   | "light-client-timeout"
   | "rpc-timeout"
+  | "wallet-in-other-tab"
   | "unknown";
 
 export interface ErrorDescription {
@@ -256,6 +264,9 @@ function classifyError(
   // compile error rather than a silently unkeyed error page.
   const msg = err instanceof Error ? err.message : String(err);
 
+  if (err instanceof Error && err.name === WALLET_OWNER_BUSY_ERROR) {
+    return walletInOtherTab();
+  }
   if (err instanceof ProtocolFatalError) {
     return {
       kind: "protocol-fatal",
@@ -428,4 +439,15 @@ function classifyError(
     };
   }
   return { kind: "unknown", message: msg, recovery: "switch-backend" };
+}
+
+/** The tab running the test wallet did not hand it over in time. */
+export function walletInOtherTab(): ErrorDescription {
+  return {
+    kind: "wallet-in-other-tab",
+    title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
+    message: HOST_ERRORS.WALLET_IN_OTHER_TAB,
+    recovery: "reload",
+    tips: [],
+  };
 }
