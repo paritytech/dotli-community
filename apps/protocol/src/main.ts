@@ -387,6 +387,7 @@ function bindSharedWalletListener(): void {
           revision: data.state.revision,
           enabled: data.state.enabled,
           hasWallet: data.state.hasWallet,
+          storedInOtherApp: data.state.storedInOtherApp,
         },
       },
       parentOrigin,
