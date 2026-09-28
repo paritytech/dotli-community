@@ -10,6 +10,7 @@ import { BACKEND_LABELS } from "@dotli/config/mode";
 import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
 import type { ResolverErrorName } from "@dotli/resolver/errors";
 import { CORE_CUSTODY_BUSY_ERROR } from "@dotli/protocol/core-custody";
+import { WALLET_OWNER_BUSY_ERROR } from "@dotli/protocol/wallet-owner";
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
 // here at compile time. `instanceof` is unavailable because the error arrived
@@ -44,7 +45,10 @@ export const HOST_ERRORS = {
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
   TOPBAR_URL_NODE_MISSING: "Required DOM node missing: #topbar-url",
   WALLET_IN_OTHER_TAB:
-    "Only one tab can use the test wallet at a time, so its coins and Chat messages stay in sync.",
+    "Only one tab can use the test wallet at a time, and the tab that has it did not hand it over. Close that tab, then reload this one.",
+  WALLET_PAUSED:
+    "Paused: the test wallet is in use in another tab. Click or type here to use it in this tab.",
+  WALLET_RESUMING: "Moving the test wallet to this tab…",
 } as const;
 
 /**
@@ -73,8 +77,6 @@ export const RELOAD_BTN_LABEL = "Reload";
 export const OPEN_SETTINGS_BTN_LABEL = "Open Settings";
 
 export const TRY_ANYWAY_BTN_LABEL = "Try Anyway";
-
-export const TAKE_OVER_WALLET_BTN_LABEL = "Use it here";
 
 export const GO_BACK_BTN_LABEL = "Go Back";
 
@@ -134,9 +136,7 @@ export function trustedProviderHosts(): string[] {
   ];
 }
 
-/** `take-over-wallet`: move the test wallet from the tab that has it. */
-export type Recovery =
-  "switch-backend" | "reload" | "take-over-wallet" | "none";
+export type Recovery = "switch-backend" | "reload" | "none";
 
 /**
  * Headlines for the full-page error surface.
@@ -152,7 +152,7 @@ export const ERROR_TITLES = {
   CONTENT_UNAVAILABLE: "This app couldn't be downloaded",
   /** The files arrived intact and are simply not a runnable app. */
   APP_UNUSABLE: "This app can't be opened",
-  /** Nothing failed to load: the test wallet is running in another tab. */
+
   WALLET_IN_OTHER_TAB: "Test wallet is open in another tab",
 } as const;
 
@@ -266,7 +266,11 @@ function classifyError(
   // compile error rather than a silently unkeyed error page.
   const msg = err instanceof Error ? err.message : String(err);
 
-  if (err instanceof Error && err.name === CORE_CUSTODY_BUSY_ERROR) {
+  if (
+    err instanceof Error &&
+    (err.name === WALLET_OWNER_BUSY_ERROR ||
+      err.name === CORE_CUSTODY_BUSY_ERROR)
+  ) {
     return walletInOtherTab();
   }
   if (err instanceof ProtocolFatalError) {
@@ -443,13 +447,13 @@ function classifyError(
   return { kind: "unknown", message: msg, recovery: "switch-backend" };
 }
 
-/** Also shown when a tab loses its wallet to another tab mid-session. */
+/** The tab running the test wallet did not hand it over in time. */
 export function walletInOtherTab(): ErrorDescription {
   return {
     kind: "wallet-in-other-tab",
     title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
     message: HOST_ERRORS.WALLET_IN_OTHER_TAB,
-    recovery: "take-over-wallet",
+    recovery: "reload",
     tips: [],
   };
 }

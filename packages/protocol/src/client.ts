@@ -57,6 +57,7 @@ import type {
   SharedWalletState,
 } from "./wallet-storage";
 import { isSharedWalletState } from "./wallet-storage";
+import type { WalletOwnerOperation } from "./wallet-owner";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -87,7 +88,7 @@ const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
-const coreCustodyRevokedListeners = new Set<() => void>();
+const walletOwnerRevokedListeners = new Set<(lease: string) => void>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
@@ -404,9 +405,18 @@ function bindMessageListener(): void {
           }
         }
         return;
-      case "core-custody-revoked":
-        if (msg.siteId === SITE_ID) {
-          broadcast(coreCustodyRevokedListeners, undefined, "Custody revoked");
+      case "wallet-owner-revoked":
+        if (msg.siteId === SITE_ID && typeof msg.lease === "string") {
+          for (const listener of walletOwnerRevokedListeners) {
+            try {
+              listener(msg.lease);
+            } catch (error) {
+              log.error(
+                "[dot.li protocol] Wallet owner listener failed:",
+                error,
+              );
+            }
+          }
         }
         return;
       case "smoldot-db":
@@ -626,7 +636,8 @@ async function postRequest<M extends ProtocolRequestMethod>(
   needsProtocolReady = !isSharedAuthRequestMethod(method) &&
     !isSharedModeRequestMethod(method) &&
     method !== "walletStorage" &&
-    method !== "coreCustody",
+    method !== "coreCustody" &&
+    method !== "walletOwner",
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
@@ -781,14 +792,6 @@ export function subscribeSharedWallet(
   };
 }
 
-/** Another tab took this page's test-wallet custody; its runtimes must stop. */
-export function subscribeCoreCustodyRevoked(listener: () => void): () => void {
-  coreCustodyRevokedListeners.add(listener);
-  return () => {
-    coreCustodyRevokedListeners.delete(listener);
-  };
-}
-
 /** Private host-shell custody channel; no product API forwards this method. */
 export async function requestCoreCustody(
   operation: CoreCustodyOperation,
@@ -806,6 +809,27 @@ export async function requestCoreCustody(
     throw new Error("Invalid private custody response");
   }
   return result;
+}
+
+/** Make this page the one tab running the test wallet; see `wallet-owner.ts`. */
+export async function requestWalletOwner(
+  operation: WalletOwnerOperation,
+): Promise<string | undefined> {
+  const result = await postRequest("walletOwner", {
+    siteId: SITE_ID,
+    operation,
+  });
+  return typeof result === "string" ? result : undefined;
+}
+
+/** Another tab asked for the test wallet this page runs. */
+export function subscribeWalletOwnerRevoked(
+  listener: (lease: string) => void,
+): () => void {
+  walletOwnerRevokedListeners.add(listener);
+  return () => {
+    walletOwnerRevokedListeners.delete(listener);
+  };
 }
 
 export async function readSharedAuthStorage(
