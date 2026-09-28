@@ -10,6 +10,7 @@ export const HOST_ERRORS = {
   SW_FAILED_TO_START: 'The light client failed to start on the shared worker.',
   SW_SYNC_TIMEOUT: "The light client couldn't sync in time on the shared worker.",
   SW_TIMED_OUT: 'The light client timed out during startup.',
+  WORKER_INIT_TIMEOUT: 'The browser worker took too long to start.',
   HUB_SYNC_TIMEOUT: 'Light client timed out syncing to Asset Hub - no connection with peers.',
   LIGHT_CLIENT_TIMEOUT: 'The connection with other peers is too slow.',
   RPC_TIMEOUT: "The trusted provider didn't respond in time.",

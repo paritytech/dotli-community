@@ -82,6 +82,7 @@ export type Recovery = 'switch-backend' | 'reload' | 'none';
 export type ErrorKind =
   | 'protocol-fatal'
   | 'protocol-init-failed'
+  | 'worker-init-timeout'
   | 'chain-spec-rejected'
   | 'module-fetch-failed'
   | 'contenthash-unsupported'
@@ -307,6 +308,16 @@ function classifyError(
       kind: 'hub-sync-timeout',
       message: HOST_ERRORS.HUB_SYNC_TIMEOUT,
       recovery: 'switch-backend',
+    };
+  }
+  if (msg.includes('worker init timed out')) {
+    return {
+      kind: 'worker-init-timeout',
+      title: ERROR_TITLES.HOST_UNAVAILABLE,
+      message: HOST_ERRORS.WORKER_INIT_TIMEOUT,
+      recovery: 'switch-backend',
+      tips: [],
+      resetProtocol: true,
     };
   }
   if (err instanceof ProtocolInitFailedError) {
