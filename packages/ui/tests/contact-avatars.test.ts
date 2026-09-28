@@ -73,12 +73,14 @@ function slot(
   reference: string,
   rect: [number, number, number],
   clip: [number, number, number, number] = [0, 0, 10_000, 10_000],
+  sharedAt = 1n,
 ): PlacedAvatar {
   return {
     slot: id,
     reference,
     rect: { x: rect[0], y: rect[1], width: rect[2], height: rect[2] },
     clip: { x: clip[0], y: clip[1], width: clip[2], height: clip[3] },
+    sharedAt,
   };
 }
 
@@ -287,6 +289,44 @@ describe("host-drawn contact avatars", () => {
     expect(slots()).toHaveLength(1);
     expect(slots()[0]?.querySelector("img")).not.toBeNull();
     expect(slots()[0]?.querySelector(".profile-mood-ring")).not.toBeNull();
+  });
+
+  it("reloads a renewed share and keeps the old photo until it arrives", async () => {
+    const clip: [number, number, number, number] = [0, 0, 400, 800];
+    await draw(
+      "viewport",
+      [400, 800],
+      placement(400, 800, [slot(1, "photo", [0, 0, 44], clip, 5n)]),
+    );
+    const src = () => slots()[0]?.querySelector("img")?.getAttribute("src");
+    expect(src()).toBe("blob:avatar-1");
+
+    // The same share placed again is served from the cache.
+    overlay.place(
+      placement(400, 800, [slot(1, "photo", [0, 0, 44], clip, 5n)]),
+    );
+    await settle();
+    expect(loads).toEqual(["photo"]);
+
+    overlay.place(
+      placement(400, 800, [slot(1, "photo", [0, 0, 44], clip, 6n)]),
+    );
+    vi.advanceTimersToNextFrame();
+    expect(loads).toEqual(["photo", "photo"]);
+    expect(src()).toBe("blob:avatar-1");
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+
+    await settle();
+    expect(src()).toBe("blob:avatar-2");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:avatar-1");
+
+    // An older share arriving late does not reload.
+    overlay.place(
+      placement(400, 800, [slot(1, "photo", [0, 0, 44], clip, 5n)]),
+    );
+    await settle();
+    expect(loads).toEqual(["photo", "photo"]);
+    expect(src()).toBe("blob:avatar-2");
   });
 
   it("replaces the previous placement and removes the layer when cleared", async () => {

@@ -78,12 +78,18 @@ export type AvatarProfileLoader = (
  * placement shows are retained; released ones stay for a while so a list
  * scrolling back does not refetch, and their blob URLs are revoked when they
  * are evicted.
+ *
+ * A contact reuses one reference across shares, so each placement also says
+ * when the share arrived: a later share reloads the reference, and the old
+ * profile stays drawn until the new one has loaded.
  */
 export interface AvatarProfileCache {
   /** The settled profile; `null` when there is nothing to draw, `undefined` while unknown. */
   peek(reference: string): AvatarProfile | null | undefined;
-  /** Load a reference once, however many overlays ask. */
+  /** Load a reference once per share, however many overlays ask. */
   load(reference: string): Promise<void>;
+  /** Note the share time of a placed reference; a later one makes it reload. */
+  renew(reference: string, sharedAt: bigint): void;
   retain(reference: string): void;
   release(reference: string): void;
 }
@@ -92,7 +98,11 @@ interface CacheEntry {
   users: number;
   value: AvatarProfile | null | undefined;
   loading: Promise<void> | null;
-  readonly aborter: AbortController;
+  aborter: AbortController;
+  /** Latest share time seen; `null` before any placement names one. */
+  sharedAt: bigint | null;
+  /** A later share arrived after `value` was loaded. */
+  stale: boolean;
 }
 
 /** Released references kept loaded by default. */
@@ -114,6 +124,8 @@ export function createAvatarProfileCache(
         value: undefined,
         loading: null,
         aborter: new AbortController(),
+        sharedAt: null,
+        stale: false,
       };
       entries.set(reference, entry);
     }
@@ -137,11 +149,15 @@ export function createAvatarProfileCache(
   const settle = (
     reference: string,
     entry: CacheEntry,
+    aborter: AbortController,
     loaded: LoadedProfile | null,
   ): void => {
-    if (entries.get(reference) !== entry) {
+    // A newer share or an eviction superseded this load.
+    if (entries.get(reference) !== entry || entry.aborter !== aborter) {
       return;
     }
+    entry.loading = null;
+    entry.stale = false;
     const bytes = loaded?.avatar ?? null;
     const type = bytes === null ? null : rasterImageType(bytes);
     const photoUrl =
@@ -150,11 +166,15 @@ export function createAvatarProfileCache(
         : URL.createObjectURL(
             new Blob([bytes as Uint8Array<ArrayBuffer>], { type }),
           );
+    // The superseded photo is revoked only now, so it stays drawn until then.
+    const previous = entry.value?.photoUrl;
     entry.value =
       loaded === null || (photoUrl === null && loaded.mood === undefined)
         ? null
         : { photoUrl, mood: loaded.mood };
-    entry.loading = null;
+    if (previous !== undefined && previous !== null) {
+      URL.revokeObjectURL(previous);
+    }
   };
 
   return {
@@ -163,23 +183,24 @@ export function createAvatarProfileCache(
     },
     load(reference) {
       const entry = entryFor(reference);
-      if (entry.value !== undefined) {
+      if (entry.value !== undefined && !entry.stale) {
         return Promise.resolve();
       }
       if (entry.loading !== null) {
         return entry.loading;
       }
+      const aborter = entry.aborter;
       let run: (signal: AbortSignal) => Promise<LoadedProfile>;
       try {
         run = loader(reference);
       } catch {
         // An unparseable reference draws nothing; the product is not told.
-        settle(reference, entry, null);
+        settle(reference, entry, aborter, null);
         return Promise.resolve();
       }
-      entry.loading = run(entry.aborter.signal).then(
+      entry.loading = run(aborter.signal).then(
         (loaded) => {
-          settle(reference, entry, loaded);
+          settle(reference, entry, aborter, loaded);
         },
         (error: unknown) => {
           // Name only: no error on this path carries the reference.
@@ -187,10 +208,32 @@ export function createAvatarProfileCache(
             "[profile] contact avatar load failed:",
             error instanceof Error ? error.name : typeof error,
           );
-          settle(reference, entry, null);
+          // A renewed share that fails to load keeps drawing the last one.
+          if (entry.stale && entry.aborter === aborter) {
+            entry.loading = null;
+            entry.stale = false;
+            return;
+          }
+          settle(reference, entry, aborter, null);
         },
       );
       return entry.loading;
+    },
+    renew(reference, sharedAt) {
+      const entry = entryFor(reference);
+      if (entry.sharedAt !== null && sharedAt <= entry.sharedAt) {
+        return;
+      }
+      const first = entry.sharedAt === null;
+      entry.sharedAt = sharedAt;
+      if (first && entry.value === undefined) {
+        return;
+      }
+      // Drop any load of the older share; the next `load` starts afresh.
+      entry.aborter.abort();
+      entry.aborter = new AbortController();
+      entry.loading = null;
+      entry.stale = entry.value !== undefined;
     },
     retain(reference) {
       entryFor(reference).users += 1;
@@ -314,7 +357,7 @@ export function createContactAvatarOverlay(
   layer.setAttribute("aria-hidden", "true");
 
   const views = new Map<number, SlotView>();
-  const waiting = new Set<string>();
+  const waiting = new Map<string, Promise<void>>();
   let retained: readonly string[] = [];
   let placed: PlacedAvatars | null = null;
   let frame: HTMLIFrameElement | null = null;
@@ -472,13 +515,18 @@ export function createContactAvatarOverlay(
 
   /** Load `reference` if it is not already, and draw once it arrives. */
   const request = (reference: string): void => {
-    if (waiting.has(reference) || cache.peek(reference) !== undefined) {
+    // The cache hands back the same promise while one load runs; a renewed
+    // share starts another, which is followed too.
+    const loading = cache.load(reference);
+    if (waiting.get(reference) === loading) {
       return;
     }
-    waiting.add(reference);
+    waiting.set(reference, loading);
     // Draw into whatever placement is current once it arrives.
-    void cache.load(reference).then(() => {
-      waiting.delete(reference);
+    void loading.then(() => {
+      if (waiting.get(reference) === loading) {
+        waiting.delete(reference);
+      }
       schedule();
     });
   };
@@ -608,9 +656,11 @@ export function createContactAvatarOverlay(
       flush();
       return;
     }
-    // Loads start now rather than at the next frame.
-    for (const reference of references) {
-      request(reference);
+    // A later share of a placed reference reloads it; loads start now rather
+    // than at the next frame.
+    for (const avatar of next.avatars) {
+      cache.renew(avatar.reference, avatar.sharedAt);
+      request(avatar.reference);
     }
     schedule();
   };
