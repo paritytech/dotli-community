@@ -56,6 +56,7 @@ import type {
   SharedWalletState,
 } from "./wallet-storage";
 import { isSharedWalletState } from "./wallet-storage";
+import type { WalletOwnerOperation } from "./wallet-owner";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -86,6 +87,7 @@ const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const sharedWalletListeners = new Set<(state: SharedWalletState) => void>();
+const walletOwnerRevokedListeners = new Set<(lease: string) => void>();
 const chainSyncListeners = new Set<
   (event: ProtocolChainSyncEnvelope) => void
 >();
@@ -402,6 +404,20 @@ function bindMessageListener(): void {
           }
         }
         return;
+      case "wallet-owner-revoked":
+        if (msg.siteId === SITE_ID && typeof msg.lease === "string") {
+          for (const listener of walletOwnerRevokedListeners) {
+            try {
+              listener(msg.lease);
+            } catch (error) {
+              log.error(
+                "[dot.li protocol] Wallet owner listener failed:",
+                error,
+              );
+            }
+          }
+        }
+        return;
       case "smoldot-db":
         // `isProtocolEnvelope` validates only namespace and kind, and these
         // values become Sentry tags: gate them so a buggy frame cannot write
@@ -618,7 +634,8 @@ async function postRequest<M extends ProtocolRequestMethod>(
   onProgress?: (message: string) => void,
   needsProtocolReady = !isSharedAuthRequestMethod(method) &&
     !isSharedModeRequestMethod(method) &&
-    method !== "walletStorage",
+    method !== "walletStorage" &&
+    method !== "walletOwner",
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
@@ -736,6 +753,27 @@ export function subscribeSharedWallet(
   sharedWalletListeners.add(listener);
   return () => {
     sharedWalletListeners.delete(listener);
+  };
+}
+
+/** Make this page the one tab running the test wallet; see `wallet-owner.ts`. */
+export async function requestWalletOwner(
+  operation: WalletOwnerOperation,
+): Promise<string | undefined> {
+  const result = await postRequest("walletOwner", {
+    siteId: SITE_ID,
+    operation,
+  });
+  return typeof result === "string" ? result : undefined;
+}
+
+/** Another tab asked for the test wallet this page runs. */
+export function subscribeWalletOwnerRevoked(
+  listener: (lease: string) => void,
+): () => void {
+  walletOwnerRevokedListeners.add(listener);
+  return () => {
+    walletOwnerRevokedListeners.delete(listener);
   };
 }
 

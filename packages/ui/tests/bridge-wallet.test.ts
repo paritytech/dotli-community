@@ -44,6 +44,11 @@ const wallet = vi.hoisted(() => ({
   }[],
 }));
 
+const owner = vi.hoisted(() => ({
+  requests: [] as { action: string; lease?: string }[],
+  revoked: new Set<(lease: string) => void>(),
+}));
+
 vi.mock("@dotli/config/config", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   DEBUG: true,
@@ -52,6 +57,17 @@ vi.mock("@dotli/shared/chat-capability", () => ({
   chatCapabilityFor: async () => false,
 }));
 vi.mock("@dotli/ui/notification", () => ({ showNotification: vi.fn() }));
+vi.mock("@dotli/protocol/client", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  requestWalletOwner: async (operation: { action: string; lease?: string }) => {
+    owner.requests.push(operation);
+    return operation.action === "acquire" ? "page-lease" : undefined;
+  },
+  subscribeWalletOwnerRevoked: (listener: (lease: string) => void) => {
+    owner.revoked.add(listener);
+    return () => owner.revoked.delete(listener);
+  },
+}));
 vi.mock("@dotli/ui/host-callbacks/SessionStore", async (original) => ({
   ...(await original<Record<string, unknown>>()),
   initializeLocalWalletState: async () => {},
@@ -251,6 +267,8 @@ describe("host-owned experimental identity", () => {
     wallet.failProductRefresh = false;
     wallet.closeNextProvider = false;
     wallet.sessions.length = 0;
+    owner.requests.length = 0;
+    owner.revoked.clear();
     auth.length = 0;
     localStorage.clear();
     localStorage.setItem("dotli:local-wallet-enabled", "1");
@@ -280,6 +298,41 @@ describe("host-owned experimental identity", () => {
       session: { primaryUsername: "alice.westend" },
     });
     expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("takes one tab lease before starting any wallet core, shared by the page", async () => {
+    const { experimentalWalletControls: controls, renderIframe } = boot();
+    await controls.getIdentity();
+    await renderIframe("https://first.example/", "first");
+
+    expect(wallet.sessions.length).toBeGreaterThan(1);
+    expect(owner.requests).toEqual([{ action: "acquire" }]);
+  });
+
+  it("stops every wallet core and pauses before releasing the tab lease to another tab", async () => {
+    const { experimentalWalletControls: controls, renderIframe } = boot();
+    await controls.getIdentity();
+    await renderIframe("https://first.example/", "first");
+    const paused = vi.fn();
+    window.addEventListener("dotli:test-wallet-owner-revoked", paused);
+    const disposedAtRelease: boolean[] = [];
+    const release = owner.requests.push.bind(owner.requests);
+    owner.requests.push = (...items) => {
+      if (items.some((item) => item.action === "release")) {
+        disposedAtRelease.push(wallet.sessions.every((s) => s.disposed));
+      }
+      return release(...items);
+    };
+
+    for (const listener of owner.revoked) listener("page-lease");
+
+    expect(paused).toHaveBeenCalledTimes(1);
+    expect(disposedAtRelease).toEqual([true]);
+    expect(owner.requests.at(-1)).toEqual({
+      action: "release",
+      lease: "page-lease",
+    });
+    window.removeEventListener("dotli:test-wallet-owner-revoked", paused);
   });
 
   it("publishes restored native identity without trusting a disk username or emitting bare Connected", async () => {

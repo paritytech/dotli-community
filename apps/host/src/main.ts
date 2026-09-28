@@ -158,6 +158,27 @@ import {
   TRY_ANYWAY_BTN_LABEL,
 } from "./errors";
 import { parsePreviewTargetUrl } from "./preview-route";
+import { WALLET_OWNER_REVOKED_EVENT } from "@dotli/protocol/wallet-owner";
+import { onNextInteraction } from "./wallet-handover";
+
+// Another tab took the test wallet. Keep this app on screen, paused, and take
+// the wallet back when the user next interacts with this tab: reloading asks
+// the other tab to hand it over.
+function showWalletPaused(): void {
+  if (document.querySelector(".wallet-paused-banner") !== null) {
+    return;
+  }
+  const banner = document.createElement("div");
+  banner.className = "wallet-paused-banner";
+  banner.setAttribute("role", "status");
+  banner.textContent = HOST_ERRORS.WALLET_PAUSED;
+  document.body.append(banner);
+  onNextInteraction(() => {
+    banner.textContent = HOST_ERRORS.WALLET_RESUMING;
+    window.location.reload();
+  });
+}
+window.addEventListener(WALLET_OWNER_REVOKED_EVENT, showWalletPaused);
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
