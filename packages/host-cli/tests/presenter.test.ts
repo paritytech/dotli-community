@@ -232,6 +232,79 @@ describe("createTerminalPresenter prompt routing", () => {
     presenter.dispose();
   });
 
+  it("As a CLI user granting a permission, I can allow it once, allow it always, or refuse", async () => {
+    // Given
+    const answers = ["o\n", "a\n", "nope\n"];
+    const out = sink();
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      openTty: () => {
+        const tty = fakeTty();
+        setTimeout(() => tty.type(answers.shift() ?? "\n"), 5);
+        return tty.streams;
+      },
+    });
+
+    // When
+    const decisions = [
+      await presenter.confirmPermission?.(REQUEST),
+      await presenter.confirmPermission?.(REQUEST),
+      await presenter.confirmPermission?.(REQUEST),
+    ];
+
+    // Then
+    expect(decisions).toEqual(["AllowOnce", "AllowAlways", "Deny"]);
+    presenter.dispose();
+  });
+
+  it("As a CLI user, a bare Enter never grants a permission for good", async () => {
+    // Given
+    // defaultYes exists so an operator can hold Enter through a batch. A
+    // lasting authority grant must still be asked for explicitly.
+    const out = sink();
+    const withDefault = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      defaultYes: true,
+      openTty: () => {
+        const tty = fakeTty();
+        setTimeout(() => tty.type("\n"), 5);
+        return tty.streams;
+      },
+    });
+    const withoutDefault = createTerminalPresenter({
+      output: sink().stream,
+      input: "tty",
+      openTty: () => {
+        const tty = fakeTty();
+        setTimeout(() => tty.type("\n"), 5);
+        return tty.streams;
+      },
+    });
+
+    // Then
+    expect(await withDefault.confirmPermission?.(REQUEST)).toBe("AllowOnce");
+    expect(await withoutDefault.confirmPermission?.(REQUEST)).toBe("Deny");
+    withDefault.dispose();
+    withoutDefault.dispose();
+  });
+
+  it("As a process with no controlling terminal, a permission prompt denies", async () => {
+    // Given
+    const out = sink();
+    const presenter = createTerminalPresenter({
+      output: out.stream,
+      input: "tty",
+      defaultYes: true,
+      openTty: () => undefined,
+    });
+
+    // Then
+    expect(await presenter.confirmPermission?.(REQUEST)).toBe("Deny");
+    presenter.dispose();
+  });
+
   it("As a CI process with piped stdin, prompts deny automatically", async () => {
     // Given
     const out = sink();

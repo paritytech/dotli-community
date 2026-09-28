@@ -10,12 +10,17 @@ independently of the dotli app (see README, "Versioning and releases").
 
 ## 0.1.0 (unreleased)
 
-Initial release: a terminal host for `@parity/truapi-host` 0.16.0.
+Initial release: a terminal host for `@parity/truapi-host` 0.21.0 (wire
+codec 3).
 
 - The full required typed callback surface plus the optional
   permission-status probe, bridged through the package's own generated
-  adapter (no hand-written SCALE). The optional `chat` group is
-  deliberately absent (a terminal host has no chat surface).
+  adapter (no hand-written SCALE). The optional `chat` and `pocket` groups
+  are deliberately absent, since a terminal host offers neither surface.
+- `productOperations`: pending-operation bookkeeping with ids unique among
+  one product's open operations and idempotent ends. In a browser these
+  references keep a product's worker alive; this host runs the core
+  in-process, so they are recorded rather than acted on.
 - RFC-0026 `supportedChains` advertisement, role-mapped from the endpoint
   map so it can never disagree with `featureSupported` or `chain.connect`.
 - Locale subscription (BCP 47), defaulting to the process locale.

@@ -149,6 +149,39 @@ describe("createCliHost against the real wasm core", () => {
     product.dispose();
   });
 
+  it("As a product, I subscribe to a storage key and see its current value and then each change", async () => {
+    // Given
+    const product = host.createProduct({ productId: "host-cli-test.dot" });
+    const client = createClient(createTransport(product.provider));
+    const seen: (string | undefined)[] = [];
+    const waitFor = async (count: number): Promise<void> => {
+      for (let i = 0; i < 200 && seen.length < count; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+
+    // When
+    const subscription = client.localStorage
+      .subscribe({ request: { key: "watched" } })
+      .subscribe({
+        next(item) {
+          seen.push(item.value);
+        },
+      });
+    await waitFor(1);
+    await client.localStorage.write({ key: "watched", value: "0xabcd" });
+    await waitFor(2);
+
+    // Then
+    // The key is unset when the stream opens, so the first item carries no
+    // value; the write is reported as a change.
+    expect(seen[0]).toBeUndefined();
+    expect(seen[1]).toContain("abcd");
+
+    subscription.unsubscribe();
+    product.dispose();
+  });
+
   it("As a CLI user, I log out and the host clears product storage", async () => {
     // Given
     const product = host.createProduct({ productId: "host-cli-test.dot" });

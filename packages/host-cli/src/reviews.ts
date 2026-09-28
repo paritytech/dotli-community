@@ -53,8 +53,7 @@ function chainName(
 function accountLine(account: {
   dotNsIdentifier: string;
   derivationIndex:
-    | { tag: "Index"; value: number }
-    | { tag: "Raw"; value: string };
+    { tag: "Index"; value: number } | { tag: "Raw"; value: string };
 }): string {
   const index =
     account.derivationIndex.tag === "Index"

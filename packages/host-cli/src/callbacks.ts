@@ -2,23 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The typed host callbacks, implemented for a terminal host: every required
-// group plus the optional permission-status probe. The optional `chat` group
-// is deliberately absent (a terminal host has no chat surface). The
-// generated adapter (`createWasmRawCallbacks`) turns these into the raw
-// SCALE surface the wasm core calls. Hand-written SCALE callbacks are
-// exactly the drift this package exists to avoid.
+// group plus the optional permission-status probe. The optional `chat` and
+// `pocket` groups are deliberately absent, since a terminal host offers
+// neither surface. The generated adapter (`createWasmRawCallbacks`) turns
+// these into the raw SCALE surface the wasm core calls. Hand-written SCALE
+// callbacks are exactly the drift this package exists to avoid.
 
 import { ok } from "neverthrow";
 import type {
   AuthState,
   CoreStorageKey,
+  PermissionDecision,
   RequiredHostCallbacks,
 } from "@parity/truapi-host";
+import type { HexString } from "@parity/truapi";
 import type { ChainEndpoints, ChainPool } from "./chain-pool.js";
 import { fromHex, toHex } from "./hex.js";
 import type { KeyValueStore } from "./kv.js";
 import type { HostPresenter } from "./presenter.js";
-import { describeReview } from "./reviews.js";
+import { describeReview, type ConfirmRequest } from "./reviews.js";
 
 export interface HostCallbackDeps {
   coreStore: KeyValueStore;
@@ -91,6 +93,43 @@ export function createHostCallbacks(
     log,
   } = deps;
   let nextNotificationId = 1;
+  // Operations a product has begun and not yet ended, per product id. In a
+  // browser these references keep the product's worker alive. This host runs
+  // the core in-process, so nothing needs keeping alive and the bookkeeping
+  // exists to honour the contract: ids unique among ONE product's open
+  // operations, reusable afterwards, and ends idempotent.
+  const openOperations = new Map<string, Set<number>>();
+  const nextOperationId = new Map<string, number>();
+  // The wire type is a plain number, so wrap well inside u32 rather than
+  // growing without bound in a long-lived CLI.
+  const OPERATION_ID_LIMIT = 0xffff_ffff;
+  // Live `subscribeStorage` streams, per product-storage key. The core is
+  // the only writer through this host, so the write and clear callbacks are
+  // a complete change feed: no filesystem watching is needed.
+  const storageWatchers = new Map<
+    string,
+    Set<(value: string | undefined) => void>
+  >();
+  const notifyStorage = (key: string, value: string | undefined): void => {
+    for (const listener of [...(storageWatchers.get(key) ?? [])]) {
+      listener(value);
+    }
+  };
+
+  /**
+   * Ask for consent that carries a lifetime. Presenters may answer with a
+   * duration; one that only answers yes/no gets its yes read as the lasting
+   * grant, which is what the boolean permission callbacks recorded before
+   * the core could express "once".
+   */
+  const askPermission = async (
+    request: ConfirmRequest,
+  ): Promise<PermissionDecision> => {
+    if (presenter.confirmPermission !== undefined) {
+      return presenter.confirmPermission(request);
+    }
+    return (await presenter.confirm(request)) ? "AllowAlways" : "Deny";
+  };
 
   return {
     navigation: {
@@ -119,21 +158,22 @@ export function createHostCallbacks(
     },
 
     permissions: {
-      async devicePermission(request) {
-        const granted = await presenter.confirm({
+      devicePermission(product, request) {
+        return askPermission({
           title: `Allow access to: ${request}`,
-          details: [],
+          details: [`product: ${product.productId}`],
           phoneVerifies: false,
         });
-        return { granted };
       },
-      async remotePermission(request) {
-        const granted = await presenter.confirm({
+      remotePermission(product, request) {
+        return askPermission({
           title: "Grant a product permission",
-          details: [`permission: ${JSON.stringify(request.permission)}`],
+          details: [
+            `product: ${product.productId}`,
+            `permission: ${JSON.stringify(request.permission)}`,
+          ],
           phoneVerifies: false,
         });
-        return { granted };
       },
     },
 
@@ -180,11 +220,46 @@ export function createHostCallbacks(
       },
       async write(key, value) {
         await productStorageGate?.();
-        await productStore.set(key, toHex(value));
+        const hex = toHex(value);
+        await productStore.set(key, hex);
+        notifyStorage(key, hex);
       },
       async clear(key) {
         await productStorageGate?.();
         await productStore.delete(key);
+        notifyStorage(key, undefined);
+      },
+      async *subscribeStorage(key) {
+        const queue: (string | undefined)[] = [];
+        let wake: (() => void) | null = null;
+        const listener = (value: string | undefined): void => {
+          queue.push(value);
+          wake?.();
+          wake = null;
+        };
+        const listeners = storageWatchers.get(key) ?? new Set();
+        storageWatchers.set(key, listeners);
+        listeners.add(listener);
+        try {
+          await productStorageGate?.();
+          const current = await productStore.get(key);
+          // The store holds exactly the hex the write callback put there.
+          yield ok({ value: (current ?? undefined) as HexString | undefined });
+          for (;;) {
+            while (queue.length > 0) {
+              const next = queue.shift();
+              yield ok({ value: next as HexString | undefined });
+            }
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+          }
+        } finally {
+          listeners.delete(listener);
+          if (listeners.size === 0) {
+            storageWatchers.delete(key);
+          }
+        }
       },
     },
 
@@ -217,6 +292,11 @@ export function createHostCallbacks(
       confirmUserAction(review) {
         return presenter.confirm(describeReview(review, { endpoints }));
       },
+      // Identity and account disclosures whose consent has a lifetime. Same
+      // prompt content as the one-shot path, different answer shape.
+      confirmPermission(review) {
+        return askPermission(describeReview(review, { endpoints }));
+      },
     },
 
     theme: {
@@ -244,6 +324,34 @@ export function createHostCallbacks(
         // NotApplicable here. Actual grants still go through the prompting
         // `permissions` group above.
         return "NotApplicable";
+      },
+    },
+
+    productOperations: {
+      async beginOperation(product, label) {
+        const open = openOperations.get(product.productId) ?? new Set<number>();
+        openOperations.set(product.productId, open);
+        let id = nextOperationId.get(product.productId) ?? 1;
+        // Skip ids this product still has open, so a wrap cannot hand out a
+        // live id. The loop terminates because a product cannot hold
+        // OPERATION_ID_LIMIT operations at once.
+        while (open.has(id)) {
+          id = id >= OPERATION_ID_LIMIT ? 1 : id + 1;
+        }
+        open.add(id);
+        nextOperationId.set(
+          product.productId,
+          id >= OPERATION_ID_LIMIT ? 1 : id + 1,
+        );
+        log?.(
+          `beginOperation(${product.productId}, ${label === "" ? "unlabelled" : label}) -> ${String(id)}`,
+        );
+        return { id };
+      },
+      async endOperation(product, id) {
+        // Idempotent by contract: an unknown or already-ended id is a no-op,
+        // so a retry after an ambiguous failure is safe.
+        openOperations.get(product.productId)?.delete(id);
       },
     },
 

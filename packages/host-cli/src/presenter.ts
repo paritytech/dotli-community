@@ -7,7 +7,7 @@
 // can restyle without re-wiring callbacks (and tests can script decisions).
 
 import * as readline from "node:readline/promises";
-import type { AuthState } from "@parity/truapi-host";
+import type { AuthState, PermissionDecision } from "@parity/truapi-host";
 import { shortHex } from "./hex.js";
 import { renderQrTerminal } from "./qr.js";
 import type { ConfirmRequest } from "./reviews.js";
@@ -18,6 +18,16 @@ export interface HostPresenter {
   authStateChanged(state: AuthState): void;
   /** Ask the user to approve a reviewed action or permission. */
   confirm(request: ConfirmRequest): Promise<boolean>;
+  /**
+   * Ask the user to approve something whose consent has a LIFETIME: allow it
+   * once, allow it from now on, or refuse. Permissions and identity
+   * disclosures take this path.
+   *
+   * Optional. A presenter that answers only yes/no still works: the host
+   * treats a yes as the lasting grant, which is what the pre-0.21 boolean
+   * permission callbacks recorded.
+   */
+  confirmPermission?(request: ConfirmRequest): Promise<PermissionDecision>;
   /** Show a product notification. */
   notify(text: string): void;
   /** Hand a URL to the user (the CLI cannot assume a system browser). */
@@ -73,6 +83,21 @@ export function createTerminalPresenter(
   const isApproval = (answer: string): boolean => {
     const trimmed = answer.trim();
     return trimmed === "" ? defaultYes : /^y(es)?$/i.test(trimmed);
+  };
+  // A lasting grant must be asked for explicitly, so a bare Enter under
+  // `defaultYes` gives the narrowest approval rather than the broadest.
+  const readPermissionAnswer = (answer: string): PermissionDecision => {
+    const trimmed = answer.trim();
+    if (trimmed === "") {
+      return defaultYes ? "AllowOnce" : "Deny";
+    }
+    if (/^o(nce)?$/i.test(trimmed)) {
+      return "AllowOnce";
+    }
+    if (/^(a(lways)?|y(es)?)$/i.test(trimmed)) {
+      return "AllowAlways";
+    }
+    return "Deny";
   };
 
   // Word-wrap a note without ever dropping text: unbroken runs longer than
@@ -138,6 +163,90 @@ export function createTerminalPresenter(
     progressTimer.unref();
   };
 
+  /**
+   * Render one prompt and read one answer, whatever shape that answer takes.
+   *
+   * Prompts are serialized so queued reviews cannot interleave their
+   * questions, and every path that cannot reach a human returns `refusal`:
+   * a host that cannot ask must not approve.
+   */
+  function ask<T>(
+    request: ConfirmRequest,
+    label: string,
+    interpret: (answer: string) => T,
+    refusal: T,
+  ): Promise<T> {
+    pendingConfirms += 1;
+    const decision = promptChain.then(async () => {
+      if (disposed) {
+        return refusal;
+      }
+      clearProgress();
+      const lines = [
+        "",
+        `▸ ${request.title}`,
+        ...request.details.map((detail) => `    ${detail}`),
+      ];
+      const waiting = pendingConfirms - 1;
+      if (waiting > 0) {
+        lines.push(
+          `    (${String(waiting)} more approval${waiting === 1 ? "" : "s"} waiting behind this one)`,
+        );
+      }
+      if (request.phoneNote !== undefined) {
+        for (const line of wrapNote(request.phoneNote)) {
+          lines.push(`    ${line}`);
+        }
+      } else if (request.phoneVerifies) {
+        lines.push(
+          "    Verify the full details in the Polkadot app on your phone.",
+          "    Nothing is signed until you approve it there.",
+        );
+      }
+      write(`${lines.join("\n")}\n`);
+      if (input === "tty") {
+        // The standard streams belong to someone else (a git remote
+        // helper). Ask on the controlling terminal instead. Opened per
+        // prompt so an idle host holds no terminal descriptors.
+        const tty = openTty();
+        if (tty === undefined) {
+          write("  No controlling terminal, denying automatically.\n");
+          return refusal;
+        }
+        const rl = readline.createInterface({
+          input: tty.input,
+          output: tty.output,
+        });
+        try {
+          return interpret(await rl.question(label));
+        } finally {
+          rl.close();
+          tty.close();
+        }
+      }
+      if (!input.isTTY) {
+        write("  No interactive terminal, denying automatically.\n");
+        return refusal;
+      }
+      const rl = readline.createInterface({ input, output });
+      try {
+        return interpret(await rl.question(label));
+      } finally {
+        rl.close();
+      }
+    });
+    // Decrement before the next queued prompt renders: `finally` is
+    // registered ahead of the chain link below, so it settles first.
+    const settled = decision.finally(() => {
+      pendingConfirms -= 1;
+    });
+    promptChain = settled.then(
+      () => {},
+      () => {},
+    );
+    return decision;
+  }
+
   return {
     authStateChanged(state) {
       if (disposed) {
@@ -193,79 +302,20 @@ export function createTerminalPresenter(
     },
 
     confirm(request) {
-      pendingConfirms += 1;
-      const decision = promptChain.then(async () => {
-        if (disposed) {
-          return false;
-        }
-        clearProgress();
-        const lines = [
-          "",
-          `▸ ${request.title}`,
-          ...request.details.map((detail) => `    ${detail}`),
-        ];
-        const waiting = pendingConfirms - 1;
-        if (waiting > 0) {
-          lines.push(
-            `    (${String(waiting)} more approval${waiting === 1 ? "" : "s"} waiting behind this one)`,
-          );
-        }
-        if (request.phoneNote !== undefined) {
-          for (const line of wrapNote(request.phoneNote)) {
-            lines.push(`    ${line}`);
-          }
-        } else if (request.phoneVerifies) {
-          lines.push(
-            "    Verify the full details in the Polkadot app on your phone.",
-            "    Nothing is signed until you approve it there.",
-          );
-        }
-        write(`${lines.join("\n")}\n`);
-        if (input === "tty") {
-          // The standard streams belong to someone else (a git remote
-          // helper). Ask on the controlling terminal instead. Opened per
-          // prompt so an idle host holds no terminal descriptors.
-          const tty = openTty();
-          if (tty === undefined) {
-            // A host that cannot ask must not approve.
-            write("  No controlling terminal, denying automatically.\n");
-            return false;
-          }
-          const rl = readline.createInterface({
-            input: tty.input,
-            output: tty.output,
-          });
-          try {
-            const answer = await rl.question(promptLabel);
-            return isApproval(answer);
-          } finally {
-            rl.close();
-            tty.close();
-          }
-        }
-        if (!input.isTTY) {
-          // A host that cannot ask must not approve.
-          write("  No interactive terminal, denying automatically.\n");
-          return false;
-        }
-        const rl = readline.createInterface({ input, output });
-        try {
-          const answer = await rl.question(promptLabel);
-          return isApproval(answer);
-        } finally {
-          rl.close();
-        }
-      });
-      // Decrement before the next queued prompt renders: `finally` is
-      // registered ahead of the chain link below, so it settles first.
-      const settled = decision.finally(() => {
-        pendingConfirms -= 1;
-      });
-      promptChain = settled.then(
-        () => {},
-        () => {},
+      return ask(request, promptLabel, isApproval, false);
+    },
+
+    confirmPermission(request) {
+      // Consent with a lifetime. Deny stays the default on every
+      // cannot-ask path, and a bare Enter never grants the lasting form.
+      return ask(
+        request,
+        defaultYes
+          ? "  Allow? [o]nce / [a]lways / [N]o (Enter: once) "
+          : "  Allow? [o]nce / [a]lways / [N]o ",
+        readPermissionAnswer,
+        "Deny" as PermissionDecision,
       );
-      return decision;
     },
 
     notify(text) {
