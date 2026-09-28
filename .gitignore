@@ -83,3 +83,6 @@ GEMINI.md
 !vendor/truapi-debug/**/dist/**
 !vendor/truapi-debug/**/.papi
 !vendor/truapi-debug/**/.papi/**
+
+# Local planning docs (specs, plans) written by agent workflows
+docs/superpowers/

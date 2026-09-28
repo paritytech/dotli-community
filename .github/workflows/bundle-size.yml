@@ -84,7 +84,7 @@ jobs:
 
           # Eager path = module entry + every modulepreloaded chunk, gzip.
           # Budgets are the Solid migration's whole-migration limits
-          # (docs/superpowers/specs/2026-09-25-solid-v2-ui-migration-design.md):
+          # (baseline in docs/perf/solid-migration-baseline.md):
           # pre-migration 74,649 B + 15 KB (host), 45,015 B + 10 KB (sandbox).
           check_eager() {
             local label=$1 dist=$2 max=$3
