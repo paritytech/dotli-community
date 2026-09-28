@@ -128,8 +128,16 @@ export interface MoodRingHandle {
 /**
  * A ring layer sized to wrap an avatar of `avatarPx`. Place the returned
  * element centred over the avatar; it paints nothing over the avatar itself.
+ *
+ * `webgl: false` draws the still ring without a WebGL context. A layer that
+ * shows many rings at once uses it: browsers cap live contexts per page and
+ * drop the oldest, which could be the drawer's or a product's.
  */
-export function createMoodRing(mood: Mood, avatarPx: number): MoodRingHandle {
+export function createMoodRing(
+  mood: Mood,
+  avatarPx: number,
+  options: { readonly webgl?: boolean } = {},
+): MoodRingHandle {
   const palette = MOOD_PALETTE[mood.kind];
   const k = INTENSITY[mood.intensity].k;
   const age = moodAge(mood);
@@ -150,6 +158,9 @@ export function createMoodRing(mood: Mood, avatarPx: number): MoodRingHandle {
     return { element, stop: () => undefined };
   };
 
+  if (options.webgl === false) {
+    return fallback();
+  }
   const canvas = document.createElement("canvas");
   const gl = canvas.getContext("webgl", {
     alpha: true,

@@ -27,6 +27,7 @@ import { createLocaleSubscribe } from "./Locale";
 import { createAuthStateChanged } from "./AuthState";
 import { createChatPlatform } from "./Chat";
 import { createProfilePlatform } from "./Profile";
+import type { ContactAvatarOverlay } from "../profile/avatar-overlay";
 import { createSessionStoreAdapters } from "./SessionStore";
 import { createUserConfirmationAdapters } from "./UserConfirmation";
 import {
@@ -41,6 +42,8 @@ export interface CreateHostCallbacksOptions {
   pairingHostGlobal?: boolean;
   blockingModalScope?: BlockingModalScope;
   custodyLease?: string;
+  /** Avatar layer of the product frame this connection serves, if any. */
+  contactAvatars?: ContactAvatarOverlay;
 }
 
 export function createHostCallbacks(
@@ -53,6 +56,7 @@ export function createHostCallbacks(
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
     custodyLease,
+    contactAvatars,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -86,7 +90,8 @@ export function createHostCallbacks(
     // executions and without an active session.
     chat: createChatPlatform(),
     // Any product may ask the host to show a profile it references; the
-    // drawer attributes it to the product and returns nothing to it.
-    profile: createProfilePlatform(),
+    // drawer attributes it to the product and returns nothing to it. Placed
+    // contact avatars are drawn on the frame's own host layer.
+    profile: createProfilePlatform(contactAvatars),
   };
 }
