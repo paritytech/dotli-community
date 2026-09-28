@@ -1,17 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// ProfilePlatform host callbacks: `profile.present` from a product.
+// ProfilePlatform host callbacks: `profile.present` and the contact avatars a
+// product places.
 //
 // The core has already screened the reference's shape. The host parses it,
 // opens the drawer, and fetches and decrypts the avatar through its own
 // preimage path. The call resolves once the drawer is up; fetch and decrypt
 // failures are shown in the drawer, not returned, and nothing but success or
 // a parse failure reaches the product.
+//
+// Placed avatars are drawn on the host's layer over the product frame from
+// the same loader, and every placement answers success: the product must not
+// learn which of its contacts shared a profile.
 
 import type { ProfilePlatform } from "@parity/truapi-host";
 import { fromHex } from "@dotli/shared/hex";
 import { showProfileDrawer, type LoadedProfile } from "../profile/drawer";
+import {
+  createAvatarProfileCache,
+  createContactAvatarOverlay,
+  type ContactAvatarOverlay,
+} from "../profile/avatar-overlay";
 import {
   isContactsReference,
   openContactsRecord,
@@ -168,12 +178,32 @@ async function openAvatar(
   );
 }
 
-export function createProfilePlatform(): Required<ProfilePlatform> {
+/** Profiles behind placed avatars, shared by every product frame. */
+const avatarProfiles = createAvatarProfileCache(profileLoader);
+
+/** A product frame's avatar layer, drawing from the shared profile cache. */
+export function createContactAvatars(): ContactAvatarOverlay {
+  return createContactAvatarOverlay(avatarProfiles);
+}
+
+/**
+ * `avatars` is the layer of the frame this connection serves. Connections
+ * without a frame (the landing and wallet hosts) draw nothing.
+ */
+export function createProfilePlatform(
+  avatars: ContactAvatarOverlay | null = null,
+): Required<ProfilePlatform> {
   return {
     presentProfile(product, request) {
       // A parse failure thrown here rejects the call instead of escaping it.
       return new Promise<void>((resolve) => {
         presentProfileReference(product.productId, request.reference);
+        resolve();
+      });
+    },
+    placeContactAvatars(_product, placed) {
+      return new Promise<void>((resolve) => {
+        avatars?.place(placed);
         resolve();
       });
     },

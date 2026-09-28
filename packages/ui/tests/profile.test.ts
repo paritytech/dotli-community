@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProductContext } from "@parity/truapi-host";
 import { fromHex } from "@dotli/shared/hex";
-import { createProfilePlatform } from "@dotli/ui/host-callbacks/Profile";
+import {
+  createContactAvatars,
+  createProfilePlatform,
+} from "@dotli/ui/host-callbacks/Profile";
 import {
   InvalidProfileReferenceError,
   openSeityBlob,
@@ -152,5 +155,74 @@ describe("profile drawer", () => {
 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(drawer()).toBeNull();
+  });
+});
+
+describe("placed contact avatars", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mocks.bitswapGet.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("draws the shared photo over the frame and answers the product alike either way", async () => {
+    mocks.bitswapGet.mockResolvedValue(fromHex(VECTOR.ciphertext));
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const avatars = createContactAvatars();
+    avatars.attach(iframe, "viewport");
+    const at = (slot: number, reference: string) => ({
+      slot,
+      reference,
+      rect: { x: 0, y: slot * 50, width: 44, height: 44 },
+      clip: { x: 0, y: 0, width: 400, height: 800 },
+    });
+    const platform = createProfilePlatform(avatars);
+
+    await expect(
+      platform.placeContactAvatars(product, {
+        surfaceWidth: 400,
+        surfaceHeight: 800,
+        avatars: [at(1, VECTOR.reference), at(2, "not a reference")],
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      platform.placeContactAvatars(product, {
+        surfaceWidth: 400,
+        surfaceHeight: 800,
+        avatars: [at(2, "not a reference")],
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      createProfilePlatform().placeContactAvatars(product, {
+        surfaceWidth: 400,
+        surfaceHeight: 800,
+        avatars: [at(1, VECTOR.reference)],
+      }),
+    ).resolves.toBeUndefined();
+    expect(document.querySelector(".contact-avatar-overlay")).toBeNull();
+
+    await platform.placeContactAvatars(product, {
+      surfaceWidth: 400,
+      surfaceHeight: 800,
+      avatars: [at(1, VECTOR.reference), at(2, "not a reference")],
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.waitFor(() => {
+      expect(
+        document.querySelectorAll(".contact-avatar-overlay img"),
+      ).toHaveLength(1);
+    });
+    expect(
+      document
+        .querySelector(".contact-avatar-overlay img")
+        ?.getAttribute("src"),
+    ).toMatch(/^blob:/);
+
+    avatars.dispose();
+    iframe.remove();
   });
 });

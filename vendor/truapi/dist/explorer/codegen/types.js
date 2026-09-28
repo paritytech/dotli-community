@@ -128,6 +128,35 @@ export const types = [
         ],
     },
     {
+        id: "avatar-rect",
+        name: "AvatarRect",
+        category: "profile",
+        definition: "export interface AvatarRect {\n  x: number;\n  y: number;\n  width: number;\n  height: number;\n}",
+        description: "A rectangle in surface units, relative to the surface's top-left corner.",
+        fields: [
+            {
+                name: "x",
+                type: "number",
+                description: "Left edge.",
+            },
+            {
+                name: "y",
+                type: "number",
+                description: "Top edge.",
+            },
+            {
+                name: "width",
+                type: "number",
+                description: "Width.",
+            },
+            {
+                name: "height",
+                type: "number",
+                description: "Height.",
+            },
+        ],
+    },
+    {
         id: "background",
         name: "Background",
         category: "renderer",
@@ -994,6 +1023,35 @@ export const types = [
                 name: "vertical_arrangement",
                 type: "Arrangement | undefined",
                 description: "Main-axis distribution of children.",
+            },
+        ],
+    },
+    {
+        id: "contact-avatar-slot",
+        name: "ContactAvatarSlot",
+        category: "profile",
+        definition: "export interface ContactAvatarSlot {\n  slot: number;\n  peerIdentity: HexString;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "One avatar the product draws for a chat contact.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, stable for one on-screen avatar (a list row, a\nheader). The host uses it only to keep what it draws stable across\nupdates.",
+            },
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "The contact's authenticated root identity, as the chat API names it.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Bounding box of the avatar circle: square, 1 to 1024 units a side.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region the avatar is cut to, such as the scroll area.",
             },
         ],
     },
@@ -4124,6 +4182,54 @@ export const types = [
                 name: "reference",
                 type: "string",
                 description: "Opaque profile reference, e.g. a Seity contacts reference.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-place-contact-avatars-error",
+        name: "HostProfilePlaceContactAvatarsError",
+        category: "profile",
+        definition: 'export type HostProfilePlaceContactAvatarsError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Contact avatar placement failure. Says nothing about any one slot.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "This host cannot draw over the product's surface.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all, including a malformed placement.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-place-contact-avatars-request",
+        name: "HostProfilePlaceContactAvatarsRequest",
+        category: "profile",
+        definition: "export interface HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  slots: Array<ContactAvatarSlot>;\n}",
+        description: "Where a chat product draws contact avatars, so the host can draw the\nphoto and mood ring each contact shared over them, on its own layer.\n\nThe product sends geometry only. The host decides which slots it can fill\nand never says which, so the product cannot learn who shared a profile.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Width of the product's drawing surface, in the units of every rect:\nframebuffer pixels for a PolkaVM product, CSS pixels of its viewport\nfor a web product. 1 to 16384.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Height of the drawing surface, in the same units. 1 to 16384.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactAvatarSlot>",
+                description: "Replaces the product's previous placement entirely; empty clears it.\nAt most 64, each with its own `slot`.",
             },
         ],
     },

@@ -444,6 +444,11 @@ export const PROFILE_PRESENT_CONTACT = {
     method: 3,
     kind: "request",
 };
+export const PROFILE_PLACE_CONTACT_AVATARS = {
+    trait: 22,
+    method: 4,
+    kind: "request",
+};
 export const JAM_PEER_TRANSPORT_DIAL = {
     trait: 111,
     method: 0,

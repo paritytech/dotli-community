@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "a12e7f63385ee6ab";
+export const TRUAPI_WIRE_SCHEMA_HASH = "b2127af20762607d";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -1176,6 +1176,38 @@ export class ProfileClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProfilePresentContactResponse, S.CallError(T.VersionedHostProfilePresentContactError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Tell the host where this product draws chat contacts' avatars, so it
+     * can draw each contact's shared photo and mood ring over them on its own
+     * layer.
+     *
+     * Each call replaces the product's placement; an empty `slots` clears it.
+     * The host draws only for contacts who shared a profile with the user,
+     * and keeps the placement current as they share or withdraw one, until
+     * the product replaces it or goes away. The answer is the same whoever
+     * shared: nothing about any slot, and no profile data, returns to the
+     * product. Taps still reach the product, which opens a profile with
+     * `presentContact`.
+     *
+     * App executions only. Rects are in the units of the surface size the
+     * product gives: framebuffer pixels for a PolkaVM product, CSS pixels of
+     * its viewport for a web product. A placement with more than 64 slots, a
+     * surface side outside 1 to 16384, an avatar that is not square or is
+     * outside 1 to 1024 a side, or a repeated `slot` is `Unknown`. A host that
+     * cannot draw over the product is `Unsupported`; with no user signed in
+     * the call is `NotConnected`.
+     */
+    placeContactAvatars(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PLACE_CONTACT_AVATARS,
+            payload: T.VersionedHostProfilePlaceContactAvatarsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePlaceContactAvatarsResponse, S.CallError(T.VersionedHostProfilePlaceContactAvatarsError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });

@@ -790,6 +790,16 @@ export const services = [
                 exampleSource: 'const result = await truapi.profile.presentContact({\n  peerIdentity: "0x0000000000000000000000000000000000000000000000000000000000000000",\n});\nconsole.log("contact profile presentation:", result);',
                 requestType: "host-profile-present-contact-request",
             },
+            {
+                name: "place_contact_avatars",
+                type: "unary",
+                signature: "placeContactAvatars(request: HostProfilePlaceContactAvatarsRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostProfilePlaceContactAvatarsError>>>",
+                docUrl: "api/profile/trait.Profile.html#method.place_contact_avatars",
+                description: "Tell the host where this product draws chat contacts' avatars, so it\ncan draw each contact's shared photo and mood ring over them on its own\nlayer.\n\nEach call replaces the product's placement; an empty `slots` clears it.\nThe host draws only for contacts who shared a profile with the user,\nand keeps the placement current as they share or withdraw one, until\nthe product replaces it or goes away. The answer is the same whoever\nshared: nothing about any slot, and no profile data, returns to the\nproduct. Taps still reach the product, which opens a profile with\n`presentContact`.\n\nApp executions only. Rects are in the units of the surface size the\nproduct gives: framebuffer pixels for a PolkaVM product, CSS pixels of\nits viewport for a web product. A placement with more than 64 slots, a\nsurface side outside 1 to 16384, an avatar that is not square or is\noutside 1 to 1024 a side, or a repeated `slot` is `Unknown`. A host that\ncannot draw over the product is `Unsupported`; with no user signed in\nthe call is `NotConnected`.",
+                requestDescription: "HostProfilePlaceContactAvatarsRequest",
+                exampleSource: 'const result = await truapi.profile.placeContactAvatars({\n  surfaceWidth: 360,\n  surfaceHeight: 640,\n  slots: [\n    {\n      slot: 0,\n      peerIdentity: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      rect: { x: 16, y: 80, width: 44, height: 44 },\n      clip: { x: 0, y: 64, width: 360, height: 576 },\n    },\n  ],\n});\nconsole.log("contact avatars placed:", result);',
+                requestType: "host-profile-place-contact-avatars-request",
+            },
         ],
     },
     {
