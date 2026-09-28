@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, For, Show } from "solid-js";
+import { createEffect, createMemo, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   dismissAllToasts,
@@ -36,6 +36,22 @@ export function ToastStack(): JSX.Element {
     return map;
   });
   const many = createMemo(() => active().length > 1);
+
+  // While expanded, a new toast (the list grew) scrolls the newest card into
+  // view. Dismissing one, or an unrelated write, leaves the scroll alone.
+  createEffect(
+    () => items().length,
+    (count, previous) => {
+      if (
+        previous !== undefined &&
+        count > previous &&
+        cards !== undefined &&
+        untrack(expanded)
+      ) {
+        cards.scrollTop = cards.scrollHeight;
+      }
+    },
+  );
 
   // While expanded: scroll to the newest card, and collapse on an outside
   // click (capture phase) or when the window loses focus.

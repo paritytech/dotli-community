@@ -19,7 +19,9 @@
  * A move over the element already showing only writes the new position: the
  * panel's box is measured when the tooltip is shown (the panel does not move
  * under a hovering cursor), and the tooltip's own size only when its text
- * changes, so a pointermove never forces a layout.
+ * changes, so a pointermove never forces a layout. The size is measured with
+ * the tooltip at the panel's left edge, where it has room for its full
+ * width, so the right-edge clamp holds wherever it was first shown.
  *
  * Returns a function that removes the listeners.
  */
@@ -70,12 +72,16 @@ export function wireHoverTooltips(
     // then clamp to the viewport so the tooltip never gets cropped.
     const left = clientX - rect.left + 12;
     const top = clientY - rect.top + 16;
-    tooltip.style.left = `${String(left)}px`;
-    tooltip.style.top = `${String(top)}px`;
     if (size === null) {
+      // Measured at the panel's left edge: a prose tooltip wraps to the room
+      // right of its `left`, so measured near the right edge it would come
+      // out narrow and tall, and the clamp below would under-correct.
+      tooltip.style.left = "0px";
       const measured = tooltip.getBoundingClientRect();
       size = { width: measured.width, height: measured.height };
     }
+    tooltip.style.left = `${String(left)}px`;
+    tooltip.style.top = `${String(top)}px`;
     // Where the tooltip's edges land, from its size and the position just
     // written, as a fresh measure would find them.
     const right = rect.left + left + size.width;

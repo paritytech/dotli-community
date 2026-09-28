@@ -6,6 +6,7 @@
 
 import { onCleanup, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { currentProductFrame } from "../../product-frame-layout";
 
 export interface DialogProps {
   titleId: string;
@@ -76,7 +77,7 @@ function restoreFocus(target: HTMLElement | null): void {
     target.focus();
     return;
   }
-  document.querySelector<HTMLElement>("#app iframe")?.focus();
+  currentProductFrame()?.focus();
 }
 
 export function Dialog(props: DialogProps): JSX.Element {

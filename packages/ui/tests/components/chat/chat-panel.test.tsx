@@ -286,6 +286,76 @@ describe("chat panel, contact reads", () => {
     );
     expect(h.captured).toHaveLength(1);
   });
+  it("As a user back on a working list, a conversation that could not be read no longer says so", async () => {
+    // Given: a conversation whose messages cannot be read.
+    await openPanel();
+    h.messagesFail = true;
+    openChatRoom("r0");
+    await idle();
+    expect(byId("chat-panel-hint").textContent).toBe(
+      "Chat could not be loaded.",
+    );
+    const reads = h.reads.contacts;
+
+    // When: back to the list, which reads nothing new.
+    backToChatRooms();
+    await idle();
+
+    // Then
+    expect(h.reads.contacts).toBe(reads);
+    expect(rows()).toHaveLength(20);
+    expect(byId("chat-panel-hint").hidden).toBe(true);
+  });
+
+  it("As a user, a conversation that could not be read stops saying so once it can be", async () => {
+    // Given
+    await openPanel();
+    h.messagesFail = true;
+    openChatRoom("r0");
+    await idle();
+    expect(byId("chat-panel-hint").hidden).toBe(false);
+
+    // When: a new message, and this time the read works.
+    h.messagesFail = false;
+    h.messages = [text(1)];
+    message("r0");
+    await idle();
+
+    // Then
+    expect(document.querySelectorAll(".chat-msg")).toHaveLength(1);
+    expect(byId("chat-panel-hint").hidden).toBe(true);
+  });
+
+  it("As a user, a room list that could not be re-read keeps saying so until it can be, whatever the conversation reads", async () => {
+    // Given: the list shows, then a re-read of it fails.
+    await openPanel();
+    h.roomsFail = true;
+    message("r3");
+    await idle();
+    expect(byId("chat-panel-hint").textContent).toBe(
+      "Chat could not be loaded.",
+    );
+
+    // When: a conversation is read fine.
+    h.messages = [text(1)];
+    openChatRoom("r0");
+    await idle();
+
+    // Then
+    expect(document.querySelectorAll(".chat-msg")).toHaveLength(1);
+    expect(byId("chat-panel-hint").textContent).toBe(
+      "Chat could not be loaded.",
+    );
+
+    // When: back on the list, a message and a re-read that works.
+    h.roomsFail = false;
+    backToChatRooms();
+    message("r4");
+    await idle();
+
+    // Then
+    expect(byId("chat-panel-hint").hidden).toBe(true);
+  });
 });
 
 describe("chat panel, scrolling", () => {
@@ -356,6 +426,105 @@ describe("chat panel, scrolling", () => {
 
     // Then
     expect(list.scrollTop).toBe(1300);
+  });
+  /** Stand-in ResizeObservers: what each observes, and whether it is gone. */
+  function fakeResizeObservers(): {
+    instances: {
+      callback: () => void;
+      targets: Set<Element>;
+      disconnected: boolean;
+    }[];
+  } {
+    const record = {
+      instances: [] as {
+        callback: () => void;
+        targets: Set<Element>;
+        disconnected: boolean;
+      }[],
+    };
+    class FakeResizeObserver {
+      private entry: {
+        callback: () => void;
+        targets: Set<Element>;
+        disconnected: boolean;
+      };
+      constructor(callback: () => void) {
+        this.entry = { callback, targets: new Set(), disconnected: false };
+        record.instances.push(this.entry);
+      }
+      observe(target: Element): void {
+        this.entry.targets.add(target);
+      }
+      unobserve(target: Element): void {
+        this.entry.targets.delete(target);
+      }
+      disconnect(): void {
+        this.entry.disconnected = true;
+        this.entry.targets.clear();
+      }
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    return record;
+  }
+
+  it("As a user at the newest message, growth that changes no markup (an image, a font, a narrower panel) keeps me there", async () => {
+    // Given: a conversation at the bottom.
+    const observers = fakeResizeObservers();
+    await openPanel(3);
+    let height = 1000;
+    const list = sized(() => height);
+    h.messages = [text(1), text(2)];
+    openChatRoom("r0");
+    await idle();
+    expect(list.scrollTop).toBe(1000);
+    const observer = observers.instances.find((o) => o.targets.has(list));
+    expect(observer).toBeDefined();
+    const bubbles = [...list.children];
+    expect(bubbles).toHaveLength(2);
+    expect(bubbles.every((b) => observer?.targets.has(b))).toBe(true);
+
+    // When: the list grows with no DOM change, and the observer reports it.
+    height = 1250;
+    observer?.callback();
+
+    // Then
+    expect(list.scrollTop).toBe(1250);
+
+    // When: a reader scrolled up, then more growth.
+    scrollTo(list, 100);
+    height = 1400;
+    observer?.callback();
+
+    // Then
+    expect(list.scrollTop).toBe(100);
+
+    // When: the panel closes.
+    setChatPanelOpen(false);
+    await idle();
+
+    // Then
+    expect(observer?.disconnected).toBe(true);
+  });
+
+  it("As a user whose browser has no ResizeObserver, the conversation still follows new messages", async () => {
+    // Given
+    vi.stubGlobal("ResizeObserver", undefined);
+    await openPanel(3);
+    let height = 1000;
+    const list = sized(() => height);
+    h.messages = [text(1)];
+    openChatRoom("r0");
+    await idle();
+    expect(list.scrollTop).toBe(1000);
+
+    // When
+    h.messages.push(text(2));
+    height = 1100;
+    message("r0");
+    await idle();
+
+    // Then
+    expect(list.scrollTop).toBe(1100);
   });
 });
 

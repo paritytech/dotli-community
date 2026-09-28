@@ -115,6 +115,16 @@ export function attachProductFrame(iframe: HTMLIFrameElement): void {
   write();
 }
 
+/**
+ * The product frame on screen: the one attached last, while it is still in
+ * the page. During a reload the outgoing frame can stay in `#app` while the
+ * new one boots; this is always the new one.
+ */
+export function currentProductFrame(): HTMLIFrameElement | null {
+  const { frame } = state;
+  return frame?.isConnected === true ? frame : null;
+}
+
 /** Report where the bar is, from the topbar auto-hide. */
 export function setTopbarLayout(layout: TopbarLayout): void {
   state.topbarOffset = layout.offset;

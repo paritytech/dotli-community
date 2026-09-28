@@ -10,7 +10,11 @@ import {
   type ChainStatus,
   type TransferState,
 } from "../network-monitor";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  registerStoreStateReset,
+  type ReadableStore,
+} from "./create-store";
 
 export interface NetworkState {
   chains: ChainStatus[];
@@ -28,9 +32,14 @@ const network = createSyncStore<NetworkState>({
   readAt: 0,
 });
 
-let readers = 0;
+/** One token per live subscription. */
+const readers = new Set<object>();
 /** The monitor changed while nobody was subscribed; `get` rebuilds. */
 let stale = false;
+registerStoreStateReset(() => {
+  readers.clear();
+  stale = false;
+});
 
 function snapshot(): NetworkState {
   return {
@@ -57,22 +66,19 @@ function read(): NetworkState {
 export const networkStore: ReadableStore<NetworkState> = {
   get: read,
   subscribe: (listener) => {
-    readers += 1;
+    const reader = {};
+    readers.add(reader);
     const unsubscribe = network.subscribe(listener);
-    let subscribed = true;
     return () => {
-      if (subscribed) {
-        subscribed = false;
-        readers -= 1;
-        unsubscribe();
-      }
+      readers.delete(reader);
+      unsubscribe();
     };
   },
 };
 export const getNetworkState = read;
 
 function sync(): void {
-  if (readers === 0) {
+  if (readers.size === 0) {
     stale = true;
     return;
   }

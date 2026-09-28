@@ -264,15 +264,22 @@ export class EventStore {
  * of one store taken in order. Events are appended in seq order and only
  * ever leave from the head (or all at once on `clear()`), so everything past
  * `prev`'s last seq is new. Walks back from the end: O(new events).
+ *
+ * A caller that reads the live ring buffer, which it cannot keep as a
+ * snapshot, passes the last seq it saw as `{ lastSeq }` (-1 for none).
  */
 export function firstNewIndex(
-  prev: readonly StoredEvent[],
+  prev: readonly StoredEvent[] | { readonly lastSeq: EventSeq },
   next: readonly StoredEvent[],
 ): number {
-  if (prev.length === 0) {
+  let lastSeen: EventSeq;
+  if ("lastSeq" in prev) {
+    lastSeen = prev.lastSeq;
+  } else if (prev.length === 0) {
     return 0;
+  } else {
+    lastSeen = prev[prev.length - 1].seq;
   }
-  const lastSeen = prev[prev.length - 1].seq;
   let i = next.length;
   while (i > 0 && next[i - 1].seq > lastSeen) {
     i--;

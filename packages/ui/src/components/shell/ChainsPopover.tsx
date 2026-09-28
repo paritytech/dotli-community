@@ -398,9 +398,9 @@ function ChainsPanel(): JSX.Element {
  * block bars and the peer count per chain, the download while the product is
  * loading, and tips. While it is open, every chain's block arrivals are
  * watched (watchNetwork), and while a chain waits for its first block a
- * 250 ms ticker keeps its pending countdown current. Both stop when it closes, including the close a render error in
- * the content forces (reported once, as `island:chains`), and when the island
- * unmounts.
+ * 250 ms ticker keeps its pending countdown current. Both stop when it
+ * closes, including the close a render error in the content forces (reported
+ * once, as `island:chains`), and when the island unmounts.
  *
  * A press outside, focus leaving it, Escape and a blocking modal close the
  * popover, a non-modal one (createPopover's `popover` mode).

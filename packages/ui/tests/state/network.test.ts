@@ -140,4 +140,50 @@ describe("network store", () => {
     expect(monitor.watching).toBe(false);
     stopStore();
   });
+
+  it("As a test, resetting the stores forgets a reader left subscribed, so changes build no snapshot again", async () => {
+    // Given: a reader that is never unsubscribed.
+    const { networkStore, startNetworkStore } =
+      await import("@dotli/ui/state/network");
+    networkStore.subscribe(() => undefined);
+    let reads = 0;
+    Object.defineProperty(monitor, "status", {
+      configurable: true,
+      get: () => {
+        reads += 1;
+        return [];
+      },
+    });
+
+    // When
+    resetStores();
+    const stop = startNetworkStore();
+    reads = 0;
+    for (const l of monitor.listeners) {
+      l();
+    }
+
+    // Then
+    expect(reads).toBe(0);
+    stop();
+  });
+
+  it("As a test, resetting the stores drops a stale mark, so the next read gets the reset value", async () => {
+    // Given: a change with nobody subscribed marks the store stale.
+    const { networkStore, startNetworkStore } =
+      await import("@dotli/ui/state/network");
+    const stop = startNetworkStore();
+    monitor.status = [{ role: "relay", label: "Relay" }];
+    for (const l of monitor.listeners) {
+      l();
+    }
+    stop();
+
+    // When
+    resetStores();
+
+    // Then
+    expect(networkStore.get().chains).toEqual([]);
+    expect(networkStore.get().readAt).toBe(0);
+  });
 });

@@ -9,6 +9,10 @@ import {
   resetModalsForTests,
   type ModalView,
 } from "@dotli/ui/state/modals";
+import {
+  attachProductFrame,
+  resetProductFrameLayout,
+} from "@dotli/ui/product-frame-layout";
 import { renderComponent, settle } from "../../helpers/solid";
 
 type Choice = "deny" | "allow" | "once" | "dismissed";
@@ -63,6 +67,7 @@ async function mountOutlet(): Promise<void> {
 
 afterEach(() => {
   resetModalsForTests();
+  resetProductFrameLayout();
   document.body.replaceChildren();
 });
 
@@ -366,6 +371,7 @@ describe("signing dialog", () => {
     app.id = "app";
     const frame = document.createElement("iframe");
     app.appendChild(frame);
+    attachProductFrame(frame);
     const opener = document.createElement("button");
     document.body.append(app, opener);
     opener.focus();
@@ -381,5 +387,31 @@ describe("signing dialog", () => {
 
     // Then
     expect(document.activeElement).toBe(frame);
+  });
+
+  it("As a keyboard user during an app reload, focus goes to the app's new frame, not the outgoing one", async () => {
+    // Given: the outgoing frame still in the page ahead of the new one.
+    const app = document.createElement("div");
+    app.id = "app";
+    const outgoing = document.createElement("iframe");
+    const incoming = document.createElement("iframe");
+    app.append(outgoing, incoming);
+    attachProductFrame(outgoing);
+    attachProductFrame(incoming);
+    const opener = document.createElement("button");
+    document.body.append(app, opener);
+    opener.focus();
+    void openModal(permissionLike());
+    await mountOutlet();
+    opener.remove();
+
+    // When
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
+    );
+    await settle();
+
+    // Then
+    expect(document.activeElement).toBe(incoming);
   });
 });

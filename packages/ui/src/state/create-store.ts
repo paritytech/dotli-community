@@ -124,6 +124,14 @@ export function createSyncStore<T>(
   return { get: () => current, set, subscribe, reset };
 }
 
+/**
+ * Also run `reset` whenever {@link resetAllStoresForTests} runs, for module
+ * state kept beside a store. Tests only.
+ */
+export function registerStoreStateReset(reset: () => void): void {
+  registry.add(reset);
+}
+
 /** Restore every store created so far to its initial value. Tests only. */
 export function resetAllStoresForTests(): void {
   for (const reset of registry) {

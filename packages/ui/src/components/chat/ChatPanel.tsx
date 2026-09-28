@@ -116,7 +116,10 @@ function PanelBody(): JSX.Element {
   const composerError = useStore(chatPanelStore, (s) => s.composerError);
   const [contacts, setContacts] = createSignal<ContactEntry[] | null>(null);
   const [messages, setMessages] = createSignal<ChatMessageRecord[]>([]);
-  const [readError, setReadError] = createSignal(false);
+  // Kept apart so each clears when its own read works, and a failed
+  // conversation read never shows over the list.
+  const [contactsError, setContactsError] = createSignal(false);
+  const [messagesError, setMessagesError] = createSignal(false);
   const [refresh, setRefresh] = createSignal(0);
   const [now, setNow] = createSignal(Date.now());
   let messagesEl: HTMLDivElement | undefined;
@@ -138,9 +141,12 @@ function PanelBody(): JSX.Element {
     clearInterval(timer);
   });
 
-  const failedRead = (error: unknown): void => {
+  const failedRead = (
+    error: unknown,
+    setError: (on: boolean) => void,
+  ): void => {
     captureException(error, { kind: "chat_panel_read_error" });
-    setReadError(true);
+    setError(true);
   };
 
   const activeContact = createMemo(() => {
@@ -188,12 +194,12 @@ function PanelBody(): JSX.Element {
             refocusRoomId = roomId;
           }
         }
-        setReadError(false);
+        setContactsError(false);
         setContacts(contactEntries(rooms, bots, times));
       })
       .catch((error: unknown) => {
         if (!disposed && pass === contactsPass) {
-          failedRead(error);
+          failedRead(error, setContactsError);
         }
       });
   });
@@ -254,12 +260,14 @@ function PanelBody(): JSX.Element {
     const roomId = current.activeRoomId;
     if (key === null || id === null || roomId === null) {
       shownRoomId = null;
+      setMessagesError(false);
       setMessages([]);
       return;
     }
     if (roomId !== shownRoomId) {
       shownRoomId = roomId;
       stuck = true;
+      setMessagesError(false);
       setMessages([]);
     }
     const pass = ++messagesPass;
@@ -272,13 +280,13 @@ function PanelBody(): JSX.Element {
         ) {
           return;
         }
-        setReadError(false);
+        setMessagesError(false);
         setMessages(records);
         markChatRoomSeen(roomId);
       })
       .catch((error: unknown) => {
         if (!disposed && pass === messagesPass) {
-          failedRead(error);
+          failedRead(error, setMessagesError);
         }
       });
   });
@@ -300,19 +308,55 @@ function PanelBody(): JSX.Element {
   });
 
   // Custom messages draw their trees after the list renders, which makes it
-  // taller: follow that growth while the reader is at the bottom.
+  // taller: follow that growth while the reader is at the bottom. A
+  // ResizeObserver on the list and on each bubble also follows growth that
+  // changes no markup: an image or a web font that loads late, or a width
+  // change that reflows the bubbles taller.
   onSettled(() => {
-    if (messagesEl === undefined || typeof MutationObserver === "undefined") {
+    const list = messagesEl;
+    if (list === undefined) {
       return;
     }
-    const observer = new MutationObserver(stickToBottom);
-    observer.observe(messagesEl, {
+    const resize =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(stickToBottom);
+    resize?.observe(list);
+    for (const bubble of list.children) {
+      resize?.observe(bubble);
+    }
+    const mutations =
+      typeof MutationObserver === "undefined"
+        ? undefined
+        : new MutationObserver((records) => {
+            stickToBottom();
+            if (resize === undefined) {
+              return;
+            }
+            for (const record of records) {
+              if (record.target !== list) {
+                continue;
+              }
+              for (const node of record.removedNodes) {
+                if (node instanceof Element) {
+                  resize.unobserve(node);
+                }
+              }
+              for (const node of record.addedNodes) {
+                if (node instanceof Element) {
+                  resize.observe(node);
+                }
+              }
+            }
+          });
+    mutations?.observe(list, {
       childList: true,
       subtree: true,
       characterData: true,
     });
     return () => {
-      observer.disconnect();
+      mutations?.disconnect();
+      resize?.disconnect();
     };
   });
 
@@ -323,10 +367,10 @@ function PanelBody(): JSX.Element {
     "Chat";
 
   const hint = (): string | null => {
-    if (readError()) {
+    const v = view();
+    if (contactsError() || (v === "conversation" && messagesError())) {
       return READ_ERROR;
     }
-    const v = view();
     if (v === "empty") {
       return loggedIn()
         ? "Waiting for the app to start a chat."

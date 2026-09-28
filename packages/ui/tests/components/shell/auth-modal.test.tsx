@@ -37,10 +37,35 @@ vi.mock("qrcode", () => {
   };
 });
 
+// Counts the auth modal's dialog `setOpen` calls: its popover is the only
+// one in `dialog` mode here.
+const dialogSetOpen = vi.hoisted(() => ({ calls: [] as boolean[] }));
+vi.mock("@dotli/ui/components/shell/popover", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@dotli/ui/components/shell/popover")>();
+  return {
+    ...actual,
+    createPopover: (options: Parameters<typeof actual.createPopover>[0]) => {
+      const popover = actual.createPopover(options);
+      if (options.mode !== "dialog") {
+        return popover;
+      }
+      return {
+        ...popover,
+        setOpen: (next: boolean) => {
+          dialogSetOpen.calls.push(next);
+          popover.setOpen(next);
+        },
+      };
+    },
+  };
+});
+
 useAuthController();
 
 beforeEach(() => {
   device.mobile = false;
+  dialogSetOpen.calls = [];
   qr.toCanvas = vi.fn(() => Promise.resolve());
 });
 
@@ -770,23 +795,11 @@ describe("AuthModal on unrelated store writes", () => {
 
   it("As a user, the open modal's dialog is set once per open, not again on other modal writes", async () => {
     // Given
-    const backdrop = await renderModal();
+    await renderModal();
     await authState(pairing());
     expect(isOpen()).toBe(true);
-    // The dialog effect checks the backdrop is in the page each time it
-    // runs with the modal open.
-    let runs = 0;
-    const connected = Object.getOwnPropertyDescriptor(
-      Node.prototype,
-      "isConnected",
-    );
-    Object.defineProperty(backdrop, "isConnected", {
-      configurable: true,
-      get(this: Node) {
-        runs += 1;
-        return connected?.get?.call(this) as boolean;
-      },
-    });
+    const opens = dialogSetOpen.calls.length;
+    expect(dialogSetOpen.calls.at(-1)).toBe(true);
 
     // When
     updateAuthModal({ reason: "first" });
@@ -795,7 +808,7 @@ describe("AuthModal on unrelated store writes", () => {
     await settleQr();
 
     // Then
-    expect(runs).toBe(0);
+    expect(dialogSetOpen.calls.length).toBe(opens);
     expect(isOpen()).toBe(true);
   });
 });

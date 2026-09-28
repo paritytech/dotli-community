@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   attachProductFrame,
+  currentProductFrame,
   resetProductFrameLayout,
   setChatWidth,
   setDockInset,
@@ -346,5 +347,32 @@ describe("product frame layout: docked panels", () => {
 
     // Then
     expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+  });
+});
+
+describe("currentProductFrame", () => {
+  afterEach(() => {
+    resetProductFrameLayout();
+    document.body.replaceChildren();
+  });
+
+  it("As a dialog handing focus back, I get the frame attached last, and none once it left the page", () => {
+    // Given
+    const outgoing = document.createElement("iframe");
+    const incoming = document.createElement("iframe");
+    document.body.append(outgoing, incoming);
+
+    // When
+    attachProductFrame(outgoing);
+    attachProductFrame(incoming);
+
+    // Then
+    expect(currentProductFrame()).toBe(incoming);
+
+    // When
+    incoming.remove();
+
+    // Then
+    expect(currentProductFrame()).toBeNull();
   });
 });

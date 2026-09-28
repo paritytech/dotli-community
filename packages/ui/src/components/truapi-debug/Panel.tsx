@@ -144,11 +144,11 @@ class ShownCounter {
     while (this.head < this.seqs.length && this.seqs[this.head] < firstSeq) {
       this.head++;
     }
-    let i = events.length;
-    while (i > 0 && events[i - 1].seq > this.lastSeq) {
-      i--;
-    }
-    for (; i < events.length; i++) {
+    for (
+      let i = firstNewIndex({ lastSeq: this.lastSeq }, events);
+      i < events.length;
+      i++
+    ) {
       if (matches(events[i], filters)) {
         this.seqs.push(events[i].seq);
       }

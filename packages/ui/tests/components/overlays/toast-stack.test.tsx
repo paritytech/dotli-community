@@ -13,6 +13,32 @@ import {
 } from "@dotli/ui/state/toasts";
 import { renderComponent, settle } from "../../helpers/solid";
 
+/** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
+const cardLayoutReads = vi.hoisted(() => ({ count: 0 }));
+vi.mock("@dotli/ui/components/overlays/ToastCard", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@dotli/ui/components/overlays/ToastCard")
+    >();
+  return {
+    ...actual,
+    ToastCard: (props: Parameters<typeof actual.ToastCard>[0]) =>
+      actual.ToastCard({
+        get entry() {
+          return props.entry;
+        },
+        get hidden() {
+          cardLayoutReads.count += 1;
+          return props.hidden;
+        },
+        get depth() {
+          cardLayoutReads.count += 1;
+          return props.depth;
+        },
+      }),
+  };
+});
+
 function input(label: string, overrides: Partial<ToastInput> = {}): ToastInput {
   return {
     text: `${label} body`,
@@ -242,17 +268,61 @@ describe("toast stack", () => {
     expect(document.querySelector(".notif-stack")).toBeNull();
   });
 
-  it("As a dotli user, new toasts while the stack is expanded do not re-scroll it or re-add its listeners", async () => {
+  it("As a dotli user, a new toast while the stack is expanded scrolls into view, and nothing else re-scrolls it or re-adds its listeners", async () => {
     // Given: an expanded stack.
-    for (const label of ["A", "B", "C", "D"]) {
-      pushToast(input(label));
-    }
+    const ids = ["A", "B", "C", "D"].map((label) => pushToast(input(label)));
     await mountStack();
     fireEvent.click(
       document.querySelector<HTMLElement>(".notif-cards .notif-text")!,
     );
     await settle();
     expect(toastsStore.get().expanded).toBe(true);
+    const list = document.querySelector<HTMLElement>(".notif-cards")!;
+    let height = 400;
+    Object.defineProperty(list, "scrollHeight", {
+      configurable: true,
+      get: () => height,
+    });
+    const scrolls: number[] = [];
+    Object.defineProperty(list, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: (value: number) => {
+        scrolls.push(value);
+      },
+    });
+    const adds = vi.spyOn(document, "addEventListener");
+
+    // When: a toast is dismissed, and it finishes leaving.
+    dismissToast(ids[0]);
+    await settle();
+    fireEvent.animationEnd(cards()[0]);
+    await settle();
+
+    // Then
+    expect(visibleTitles()).toEqual(["B", "C", "D"]);
+    expect(scrolls).toEqual([]);
+
+    // When: two new toasts.
+    height = 500;
+    pushToast(input("E"));
+    await settle();
+    height = 600;
+    pushToast(input("F"));
+    await settle();
+
+    // Then: each scrolled the list to its end.
+    expect(visibleTitles()).toEqual(["B", "C", "D", "E", "F"]);
+    expect(scrolls).toEqual([500, 600]);
+    expect(adds).not.toHaveBeenCalled();
+    adds.mockRestore();
+  });
+
+  it("As a dotli user, a new toast while the stack is collapsed does not scroll it", async () => {
+    // Given
+    pushToast(input("A"));
+    pushToast(input("B"));
+    await mountStack();
     const list = document.querySelector<HTMLElement>(".notif-cards")!;
     let scrolls = 0;
     Object.defineProperty(list, "scrollTop", {
@@ -262,38 +332,39 @@ describe("toast stack", () => {
         scrolls += 1;
       },
     });
-    const adds = vi.spyOn(document, "addEventListener");
 
     // When
-    pushToast(input("E"));
-    await settle();
-    pushToast(input("F"));
+    pushToast(input("C"));
     await settle();
 
     // Then
-    expect(visibleTitles()).toEqual(["A", "B", "C", "D", "E", "F"]);
-    expect(adds).not.toHaveBeenCalled();
+    expect(visibleTitles()).toEqual(["A", "B", "C"]);
     expect(scrolls).toBe(0);
-    adds.mockRestore();
   });
 
-  it("As a dotli user, a toast update works out the visible cards once, not once per card", async () => {
-    // Given
+  it("As a dotli user, a toast update does a fixed amount of work per card, not work that grows with the stack", async () => {
+    // Given: eight cards.
     const ids = ["A", "B", "C", "D", "E", "F", "G", "H"].map((label) =>
       pushToast(input(label)),
     );
     await mountStack();
+    const items = toastsStore.get().items;
     const filter = vi.spyOn(Array.prototype, "filter");
+    cardLayoutReads.count = 0;
 
     // When: a visible card starts to leave.
     dismissToast(ids[7]);
     await settle();
 
-    // Then
-    const items = toastsStore.get().items;
-    const passes = filter.mock.contexts.filter((c) => c === items).length;
+    // Then: each card re-read its depth and hidden flag at most once, and
+    // the stack's passes over the toasts do not grow with the cards.
+    const next = toastsStore.get().items;
+    const passes = filter.mock.contexts.filter(
+      (c) => c === items || c === next,
+    ).length;
     filter.mockRestore();
-    expect(passes).toBe(1);
+    expect(cardLayoutReads.count).toBeLessThanOrEqual(2 * items.length);
+    expect(passes).toBeLessThanOrEqual(2);
   });
 
   it("As a dotli user, clicking a stack of one live toast and one leaving does not expand it", async () => {

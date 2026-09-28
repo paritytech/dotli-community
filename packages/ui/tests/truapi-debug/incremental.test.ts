@@ -121,6 +121,14 @@ describe("firstNewIndex()", () => {
     expect(firstNewIndex([ev(0), ev(1)], [ev(7), ev(8)])).toBe(0);
     expect(firstNewIndex([ev(0), ev(1)], [])).toBe(0);
   });
+
+  it("takes the last seq seen in place of the previous snapshot", () => {
+    expect(firstNewIndex({ lastSeq: -1 }, [ev(0), ev(1)])).toBe(0);
+    expect(firstNewIndex({ lastSeq: 1 }, [ev(0), ev(1)])).toBe(2);
+    expect(firstNewIndex({ lastSeq: 1 }, [ev(1), ev(2), ev(3)])).toBe(1);
+    expect(firstNewIndex({ lastSeq: 1 }, [ev(7), ev(8)])).toBe(0);
+    expect(firstNewIndex({ lastSeq: 1 }, [])).toBe(0);
+  });
 });
 
 describe("OpenCallTracker", () => {
