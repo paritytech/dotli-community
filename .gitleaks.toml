@@ -22,3 +22,10 @@ regexTarget = "line"
 regexes = [
   '''TRUAPI_WIRE_SCHEMA_HASH\s*[:=]\s*["'][0-9a-f]{16}["']''',
 ]
+
+[[allowlists]]
+description = "Seity contacts test vectors hold public registry lookup keys and content digests (32-byte hex hashes) that trip generic-api-key but are not secrets."
+targetRules = ["generic-api-key"]
+paths = [
+  '''packages/ui/tests/fixtures/seity-contacts-v\d+\.json$''',
+]
