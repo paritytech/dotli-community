@@ -7,6 +7,7 @@
 import { onCleanup, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { currentProductFrame } from "../../product-frame-layout";
+import { containTab } from "../focus";
 
 export interface DialogProps {
   titleId: string;
@@ -15,31 +16,6 @@ export interface DialogProps {
   /** Backdrop click and Escape. */
   onDismiss: () => void;
   children: JSX.Element;
-}
-
-const FOCUSABLE =
-  'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
-
-function trapTab(event: KeyboardEvent, dialog: HTMLElement): void {
-  const items = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
-  if (items.length === 0) {
-    event.preventDefault();
-    dialog.focus();
-    return;
-  }
-  const first = items[0];
-  const last = items[items.length - 1];
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || active === dialog)) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && active === last) {
-    event.preventDefault();
-    first.focus();
-  } else if (!dialog.contains(active)) {
-    event.preventDefault();
-    first.focus();
-  }
 }
 
 /** Where each open dialog returns focus when it closes. */
@@ -93,7 +69,7 @@ export function Dialog(props: DialogProps): JSX.Element {
       event.stopPropagation();
       props.onDismiss();
     } else if (event.key === "Tab") {
-      trapTab(event, dialog);
+      containTab(event, dialog);
     }
   };
 

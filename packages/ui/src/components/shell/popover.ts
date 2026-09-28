@@ -3,6 +3,7 @@
 
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { topbarStore } from "../../state/topbar";
+import { containTab, focusInto, lockScroll } from "../focus";
 import { useStore } from "../use-store";
 
 /**
@@ -70,51 +71,6 @@ export interface Popover {
    * the "more" button, when the trigger is hidden).
    */
   onItemChosen: () => void;
-}
-
-const FOCUSABLE_SELECTOR = [
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "a[href]",
-  '[tabindex]:not([tabindex="-1"])',
-].join(", ");
-
-/** The surface's controls in Tab order. */
-function focusables(surface: HTMLElement): HTMLElement[] {
-  return Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-    .filter(
-      // Match native tab order: unchecked radios are reached with arrow keys
-      // inside their group, not with Tab.
-      (el) =>
-        !(el instanceof HTMLInputElement && el.type === "radio" && !el.checked),
-    )
-    .filter(
-      // Skip controls CSS hides, like the sheet close button on desktop.
-      (el) => typeof el.checkVisibility !== "function" || el.checkVisibility(),
-    );
-}
-
-/** Keeps Tab and Shift+Tab inside `surface`. */
-function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
-  const items = focusables(surface);
-  if (items.length === 0) {
-    ev.preventDefault();
-    surface.focus();
-    return;
-  }
-  const active = document.activeElement;
-  const inside = active instanceof HTMLElement && surface.contains(active);
-  if (ev.shiftKey) {
-    if (!inside || active === items[0] || active === surface) {
-      ev.preventDefault();
-      items[items.length - 1].focus();
-    }
-  } else if (!inside || active === items[items.length - 1]) {
-    ev.preventDefault();
-    items[0].focus();
-  }
 }
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
@@ -451,20 +407,12 @@ export function createPopover(options: PopoverOptions): Popover {
       window.addEventListener("blur", onBlur);
     }
     if (surface !== undefined) {
-      // Like Radix's FocusScope: the first candidate that takes focus, links
-      // skipped, else the surface (only one with a tabindex can take focus
-      // in a browser).
-      const candidates =
-        mode === "menu"
-          ? keyboard
-            ? menuItems(surface)
-            : []
-          : focusables(surface).filter(
-              (el) => !(el instanceof HTMLAnchorElement),
-            );
-      if (!focusFirst(candidates) && surface.hasAttribute("tabindex")) {
-        surface.focus();
-      }
+      // A menu opened with the keyboard focuses its first item, one opened
+      // with a pointer the surface.
+      focusInto(
+        surface,
+        mode === "menu" ? (keyboard ? menuItems(surface) : []) : undefined,
+      );
     }
     // Last, so nothing after it can throw and leave the page locked.
     const unlockScroll = mode === "dialog" ? lockScroll() : undefined;
@@ -503,45 +451,6 @@ export function createPopover(options: PopoverOptions): Popover {
       setOpen(false);
       focusTrigger(options.trigger());
     },
-  };
-}
-
-/** Focus the first element that takes focus; whether one did. */
-function focusFirst(candidates: HTMLElement[]): boolean {
-  for (const el of candidates) {
-    el.focus();
-    if (document.activeElement === el) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** Open dialogs holding the page's scroll lock. */
-let scrollLocks = 0;
-
-/**
- * Lock page scroll until the returned function is called (more calls do
- * nothing), with `data-scroll-locked` on the body, which base.css turns
- * into `overflow: hidden !important`, as Radix's react-remove-scroll does.
- * The body's inline style stays the page's own: bridge.ts hides its
- * overflow when the product frame attaches, maybe while a dialog is open,
- * and that must outlive the dialog. Counted, so dialogs closing in any
- * order unlock the page only when the last one closes.
- */
-function lockScroll(): () => void {
-  scrollLocks += 1;
-  document.body.setAttribute("data-scroll-locked", "");
-  let locked = true;
-  return () => {
-    if (!locked) {
-      return;
-    }
-    locked = false;
-    scrollLocks -= 1;
-    if (scrollLocks === 0) {
-      document.body.removeAttribute("data-scroll-locked");
-    }
   };
 }
 

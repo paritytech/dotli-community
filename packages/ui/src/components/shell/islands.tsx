@@ -21,6 +21,7 @@ import { disposeAppRoot } from "../../mount/app-roots";
 import { mountRoot } from "../../mount/root";
 import { adoptLoadingScreen } from "../../loading-controller";
 import { getLoadingState } from "../../state/loading";
+import { FOCUSABLE, focusFirst } from "../focus";
 import { AuthButton } from "./AuthButton";
 import { AuthModal } from "./AuthModal";
 import { ChainsPopover } from "./ChainsPopover";
@@ -32,10 +33,6 @@ import { SettingsPopover } from "./SettingsPopover";
 import { ThemeToggle } from "./ThemeToggle";
 import { UrlPill } from "./UrlPill";
 import { UserPopover } from "./UserPopover";
-
-/** What a browser can focus (hidden and inert elements aside). */
-const FOCUSABLE =
-  "a[href],area[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),iframe,summary,[tabindex],[contenteditable]";
 
 /** The child indexes that lead from `ancestor` down to `el`. */
 function childPath(ancestor: Element, el: Element): number[] {
@@ -69,18 +66,13 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
       : fresh.id === focused.id
         ? fresh
         : fresh.querySelector(`[id="${focused.id}"]`);
-  const candidates = [same, fresh, ...fresh.querySelectorAll(FOCUSABLE)];
-  for (const el of candidates) {
-    if (
-      (el instanceof HTMLElement || el instanceof SVGElement) &&
-      el.matches(FOCUSABLE)
-    ) {
-      el.focus();
-      if (document.activeElement === el) {
-        return;
-      }
-    }
-  }
+  focusFirst(
+    [same, fresh, ...fresh.querySelectorAll(FOCUSABLE)].filter(
+      (el): el is HTMLElement | SVGElement =>
+        (el instanceof HTMLElement || el instanceof SVGElement) &&
+        el.matches(FOCUSABLE),
+    ),
+  );
 }
 
 /**
