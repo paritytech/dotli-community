@@ -233,9 +233,21 @@ export interface ContactAvatarOverlay {
   dispose(): void;
 }
 
+/** A CSS pixel box, relative to its parent. */
+interface Box {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
 interface SlotView {
   readonly root: HTMLElement;
   readonly anchor: HTMLElement;
+  rootBox: Box | null;
+  anchorBox: Box | null;
+  /** Hidden until its position holds still. */
+  moving: boolean;
   photo: HTMLElement | null;
   photoUrl: string | null;
   ring: MoodRingHandle | null;
@@ -246,21 +258,47 @@ interface SlotView {
 /** Latest a timer can be armed for (setTimeout's signed 32-bit bound). */
 const MAX_TIMER_MS = 2_147_483_647;
 
+/** Shifts up to this are layout rounding, not motion. */
+const MOTION_PX = 0.5;
+
+/** How long positions must hold still before moved avatars show again. */
+const SETTLE_MS = 150;
+
+/** Class that hides a slot while it moves; the CSS fades it out and in. */
+const MOVING_CLASS = "contact-avatar-moving";
+
 function px(value: number): string {
   return `${String(value)}px`;
 }
 
-function setBox(
-  element: HTMLElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
-  element.style.left = px(x);
-  element.style.top = px(y);
-  element.style.width = px(w);
-  element.style.height = px(h);
+function sameBox(a: Box | null, b: Box): boolean {
+  return (
+    a !== null &&
+    Math.abs(a.x - b.x) <= MOTION_PX &&
+    Math.abs(a.y - b.y) <= MOTION_PX &&
+    Math.abs(a.w - b.w) <= MOTION_PX &&
+    Math.abs(a.h - b.h) <= MOTION_PX
+  );
+}
+
+/** Write what changed of `next`; a transform moves it without layout. */
+function writeBox(element: HTMLElement, previous: Box | null, next: Box): void {
+  if (previous?.x !== next.x || previous.y !== next.y) {
+    element.style.transform = `translate3d(${px(next.x)}, ${px(next.y)}, 0)`;
+  }
+  if (previous?.w !== next.w) {
+    element.style.width = px(next.w);
+  }
+  if (previous?.h !== next.h) {
+    element.style.height = px(next.h);
+  }
+}
+
+function setMoving(view: SlotView, moving: boolean): void {
+  if (view.moving !== moving) {
+    view.moving = moving;
+    view.root.classList.toggle(MOVING_CLASS, moving);
+  }
 }
 
 function stopView(view: SlotView): void {
@@ -281,18 +319,56 @@ export function createContactAvatarOverlay(
   let placed: PlacedAvatars | null = null;
   let frame: HTMLIFrameElement | null = null;
   let fit: AvatarSurfaceFit = "viewport";
+  let mirrored = "";
+  let frameSize = "";
   let lapseTimer: ReturnType<typeof setTimeout> | null = null;
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  let frameRequest: number | null = null;
   let untrack: (() => void) | null = null;
   let disposed = false;
 
   // The layer copies the frame's inline geometry (fixed box, topbar
   // transform and its transition), so it moves with the frame exactly.
-  const mirror = (): void => {
-    if (frame === null) {
+  // Returns whether that geometry changed.
+  const mirror = (): boolean => {
+    if (frame === null || frame.style.cssText === mirrored) {
+      return false;
+    }
+    mirrored = frame.style.cssText;
+    layer.style.cssText = mirrored;
+    layer.style.pointerEvents = "none";
+    return true;
+  };
+
+  const stopSettle = (): void => {
+    if (settleTimer !== null) {
+      clearTimeout(settleTimer);
+      settleTimer = null;
+    }
+  };
+
+  // Positions reach the host a few frames after the product drew them, so a
+  // moving avatar would trail its row. Moved slots stay hidden until nothing
+  // has moved for SETTLE_MS; every movement starts the wait again.
+  const armSettle = (): void => {
+    stopSettle();
+    settleTimer = setTimeout(() => {
+      settleTimer = null;
+      for (const view of views.values()) {
+        setMoving(view, false);
+      }
+    }, SETTLE_MS);
+  };
+
+  /** The frame itself moved: every avatar trails until the product re-places them. */
+  const frameMoved = (): void => {
+    if (views.size === 0) {
       return;
     }
-    layer.style.cssText = frame.style.cssText;
-    layer.style.pointerEvents = "none";
+    for (const view of views.values()) {
+      setMoving(view, true);
+    }
+    armSettle();
   };
 
   const clearViews = (): void => {
@@ -300,8 +376,10 @@ export function createContactAvatarOverlay(
       stopView(view);
     }
     views.clear();
+    stopSettle();
   };
 
+  /** Draw one slot; returns whether it moved or first appeared. */
   const updateView = (
     slot: number,
     rect: AvatarRect,
@@ -309,17 +387,21 @@ export function createContactAvatarOverlay(
     map: SurfaceMapping,
     profile: AvatarProfile,
     mood: Mood | undefined,
-  ): void => {
+  ): boolean => {
     let view = views.get(slot);
     if (view === undefined) {
       const root = document.createElement("div");
-      root.className = "contact-avatar-slot";
+      // A new slot starts hidden and fades in once positions settle.
+      root.className = `contact-avatar-slot ${MOVING_CLASS}`;
       const anchor = document.createElement("div");
       anchor.className = "contact-avatar";
       root.appendChild(anchor);
       view = {
         root,
         anchor,
+        rootBox: null,
+        anchorBox: null,
+        moving: true,
         photo: null,
         photoUrl: null,
         ring: null,
@@ -328,23 +410,32 @@ export function createContactAvatarOverlay(
       };
       views.set(slot, view);
     }
-    layer.appendChild(view.root);
-    setBox(
-      view.root,
-      map.offsetX + clip.x0 * map.scaleX,
-      map.offsetY + clip.y0 * map.scaleY,
-      (clip.x1 - clip.x0) * map.scaleX,
-      (clip.y1 - clip.y0) * map.scaleY,
-    );
+    if (view.root.parentNode !== layer) {
+      layer.appendChild(view.root);
+    }
     const width = rect.width * map.scaleX;
     const height = rect.height * map.scaleY;
-    setBox(
-      view.anchor,
-      (rect.x - clip.x0) * map.scaleX,
-      (rect.y - clip.y0) * map.scaleY,
-      width,
-      height,
-    );
+    const rootBox: Box = {
+      x: map.offsetX + clip.x0 * map.scaleX,
+      y: map.offsetY + clip.y0 * map.scaleY,
+      w: (clip.x1 - clip.x0) * map.scaleX,
+      h: (clip.y1 - clip.y0) * map.scaleY,
+    };
+    const anchorBox: Box = {
+      x: (rect.x - clip.x0) * map.scaleX,
+      y: (rect.y - clip.y0) * map.scaleY,
+      w: width,
+      h: height,
+    };
+    const moved =
+      !sameBox(view.rootBox, rootBox) || !sameBox(view.anchorBox, anchorBox);
+    writeBox(view.root, view.rootBox, rootBox);
+    writeBox(view.anchor, view.anchorBox, anchorBox);
+    view.rootBox = rootBox;
+    view.anchorBox = anchorBox;
+    if (moved) {
+      setMoving(view, true);
+    }
 
     if (view.photoUrl !== profile.photoUrl) {
       view.photo?.remove();
@@ -376,6 +467,20 @@ export function createContactAvatarOverlay(
         view.anchor.prepend(view.ring.element);
       }
     }
+    return moved;
+  };
+
+  /** Load `reference` if it is not already, and draw once it arrives. */
+  const request = (reference: string): void => {
+    if (waiting.has(reference) || cache.peek(reference) !== undefined) {
+      return;
+    }
+    waiting.add(reference);
+    // Draw into whatever placement is current once it arrives.
+    void cache.load(reference).then(() => {
+      waiting.delete(reference);
+      schedule();
+    });
   };
 
   const render = (): void => {
@@ -398,18 +503,12 @@ export function createContactAvatarOverlay(
     );
     const nowSecs = Math.floor(Date.now() / 1000);
     let nextLapse = Number.POSITIVE_INFINITY;
+    let moved = false;
     const drawn = new Set<number>();
     for (const avatar of current.avatars) {
       const profile = cache.peek(avatar.reference);
       if (profile === undefined) {
-        if (!waiting.has(avatar.reference)) {
-          waiting.add(avatar.reference);
-          // Draw into whatever placement is current once it arrives.
-          void cache.load(avatar.reference).then(() => {
-            waiting.delete(avatar.reference);
-            render();
-          });
-        }
+        request(avatar.reference);
         continue;
       }
       if (profile === null) {
@@ -444,7 +543,9 @@ export function createContactAvatarOverlay(
         nextLapse = Math.min(nextLapse, mood.setAt + mood.ttlSecs);
       }
       drawn.add(avatar.slot);
-      updateView(avatar.slot, rect, visible, map, profile, mood);
+      if (updateView(avatar.slot, rect, visible, map, profile, mood)) {
+        moved = true;
+      }
     }
     for (const [slot, view] of views) {
       if (!drawn.has(slot)) {
@@ -453,16 +554,42 @@ export function createContactAvatarOverlay(
       }
     }
     if (views.size === 0) {
+      stopSettle();
       layer.remove();
-    } else if (layer.previousElementSibling !== frame) {
-      frame.after(layer);
+    } else {
+      if (moved) {
+        armSettle();
+      }
+      if (layer.previousElementSibling !== frame) {
+        frame.after(layer);
+      }
     }
     if (Number.isFinite(nextLapse)) {
       lapseTimer = setTimeout(
-        render,
+        schedule,
         Math.min(MAX_TIMER_MS, Math.max(0, (nextLapse - nowSecs) * 1000)),
       );
     }
+  };
+
+  // Placements can arrive faster than the screen redraws: draw only the
+  // latest, once per animation frame.
+  function schedule(): void {
+    if (frameRequest === null && !disposed) {
+      frameRequest = requestAnimationFrame(() => {
+        frameRequest = null;
+        render();
+      });
+    }
+  }
+
+  /** Draw now, dropping any pending frame, so removals are never late. */
+  const flush = (): void => {
+    if (frameRequest !== null) {
+      cancelAnimationFrame(frameRequest);
+      frameRequest = null;
+    }
+    render();
   };
 
   const show = (next: PlacedAvatars | null): void => {
@@ -477,7 +604,15 @@ export function createContactAvatarOverlay(
     }
     retained = references;
     placed = next;
-    render();
+    if (next === null) {
+      flush();
+      return;
+    }
+    // Loads start now rather than at the next frame.
+    for (const reference of references) {
+      request(reference);
+    }
+    schedule();
   };
 
   return {
@@ -488,12 +623,28 @@ export function createContactAvatarOverlay(
       untrack?.();
       frame = target;
       fit = surfaceFit;
+      mirrored = "";
       mirror();
-      const onChange = (): void => {
-        mirror();
-        render();
+      frameSize = `${String(target.clientWidth)}x${String(target.clientHeight)}`;
+      const onStyle = (): void => {
+        if (mirror()) {
+          frameMoved();
+          schedule();
+        }
       };
-      const styleObserver = new MutationObserver(onChange);
+      const onResize = (): void => {
+        const size = `${String(target.clientWidth)}x${String(target.clientHeight)}`;
+        if (size !== frameSize) {
+          frameSize = size;
+          frameMoved();
+        }
+        schedule();
+      };
+      const onWindowResize = (): void => {
+        frameMoved();
+        onResize();
+      };
+      const styleObserver = new MutationObserver(onStyle);
       styleObserver.observe(target, {
         attributes: true,
         attributeFilter: ["style"],
@@ -501,16 +652,16 @@ export function createContactAvatarOverlay(
       const resizeObserver =
         typeof ResizeObserver === "undefined"
           ? null
-          : new ResizeObserver(render);
+          : new ResizeObserver(onResize);
       resizeObserver?.observe(target);
-      window.addEventListener("resize", render);
+      window.addEventListener("resize", onWindowResize);
       untrack = () => {
         styleObserver.disconnect();
         resizeObserver?.disconnect();
-        window.removeEventListener("resize", render);
+        window.removeEventListener("resize", onWindowResize);
         untrack = null;
       };
-      render();
+      schedule();
     },
     place(next) {
       if (!disposed) {

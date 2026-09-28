@@ -18,14 +18,33 @@
 .contact-avatar-overlay * {
   pointer-events: none;
 }
-/* The product's clip: the ring and photo are cut where it ends. */
+/* The product's clip: the ring and photo are cut where it ends. Slots and
+   circles are placed by transform, so moving them needs no layout. */
 .contact-avatar-slot {
   position: absolute;
+  left: 0;
+  top: 0;
   overflow: hidden;
+  transition: opacity 120ms ease-out;
+}
+/* Positions arrive a few frames after the product drew them, so a moving
+   avatar would trail its row: it fades out until positions settle. */
+.contact-avatar-slot.contact-avatar-moving {
+  opacity: 0;
+  transition-duration: 80ms;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .contact-avatar-slot,
+  .contact-avatar-slot.contact-avatar-moving {
+    transition: none;
+  }
 }
 /* The circle's box. */
 .contact-avatar {
   position: absolute;
+  left: 0;
+  top: 0;
 }
 /* The ring is wider than the circle it wraps, so auto margins cannot centre
    it; translate instead. */

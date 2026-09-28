@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlacedAvatar, PlacedAvatars } from "@parity/truapi-host";
+import type { Window as HappyWindow } from "happy-dom";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -97,16 +98,46 @@ function slots(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>(".contact-avatar-slot")];
 }
 
+/** An element's `[x, y, width, height]` as the overlay placed it. */
 function box(element: Element | null | undefined): number[] {
   const style = (element as HTMLElement).style;
-  return [style.left, style.top, style.width, style.height].map((value) =>
-    Number.parseFloat(value),
+  const at = /^translate3d\(([-\d.]+)px, ([-\d.]+)px, 0\)$/.exec(
+    style.transform,
+  );
+  return [at?.[1], at?.[2], style.width, style.height].map((value) =>
+    Number.parseFloat(value ?? ""),
   );
 }
 
+function hidden(element: Element | undefined): boolean {
+  return getComputedStyle(element as HTMLElement).opacity === "0";
+}
+
+function fades(element: Element | undefined): boolean {
+  return getComputedStyle(element as HTMLElement).transition !== "none";
+}
+
+/** Let loads finish and the next animation frame draw them. */
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(LOAD_MS);
+  vi.advanceTimersToNextFrame();
 }
+
+/** How long positions must hold still before a moved avatar shows again. */
+const SETTLE_MS = 150;
+
+function useStyles(): HTMLStyleElement {
+  const style = document.createElement("style");
+  style.textContent = readFileSync(
+    resolve(import.meta.dirname, "../src/styles/contact-avatars.css"),
+    "utf8",
+  );
+  document.head.appendChild(style);
+  return style;
+}
+
+// The test window is happy-dom's, whose device settings drive CSS media queries.
+const happyWindow = window as unknown as HappyWindow;
 
 describe("host-drawn contact avatars", () => {
   let cache: AvatarProfileCache;
@@ -323,6 +354,7 @@ describe("host-drawn contact avatars", () => {
 
     width = 800;
     window.dispatchEvent(new Event("resize"));
+    vi.advanceTimersToNextFrame();
     expect(box(slots()[0])).toEqual([200, 0, 400, 400]);
   });
 
@@ -351,12 +383,7 @@ describe("host-drawn contact avatars", () => {
   });
 
   it("never takes pointer events or reaches into the product frame", async () => {
-    const style = document.createElement("style");
-    style.textContent = readFileSync(
-      resolve(import.meta.dirname, "../src/styles/contact-avatars.css"),
-      "utf8",
-    );
-    document.head.appendChild(style);
+    const style = useStyles();
     const iframe = frame(400, 800);
     iframe.style.pointerEvents = "auto";
     const post = vi.fn();
@@ -378,5 +405,115 @@ describe("host-drawn contact avatars", () => {
     }
     expect(post).not.toHaveBeenCalled();
     style.remove();
+  });
+
+  it("hides a moving avatar until positions hold still", async () => {
+    const style = useStyles();
+    await draw(
+      "viewport",
+      [400, 800],
+      placement(400, 800, [
+        slot(1, "photo", [0, 0, 44]),
+        slot(2, "photo", [0, 50, 44]),
+      ]),
+    );
+    const [still, moving] = slots();
+    // New avatars fade in once positions settle.
+    expect([hidden(still), hidden(moving)]).toEqual([true, true]);
+    expect(fades(still)).toBe(true);
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect([hidden(still), hidden(moving)]).toEqual([false, false]);
+
+    // Scrolling: slot 2 moves with every placement, slot 1 shifts by less
+    // than half a pixel.
+    for (const y of [60, 70, 80]) {
+      overlay.place(
+        placement(400, 800, [
+          slot(1, "photo", [0, 0.4, 44]),
+          slot(2, "photo", [0, y, 44]),
+        ]),
+      );
+      vi.advanceTimersToNextFrame();
+      expect([hidden(still), hidden(moving)]).toEqual([false, true]);
+      await vi.advanceTimersByTimeAsync(SETTLE_MS - 50);
+    }
+    expect(hidden(moving)).toBe(true);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(hidden(moving)).toBe(false);
+    expect(box(moving?.querySelector(".contact-avatar"))).toEqual([
+      0, 80, 44, 44,
+    ]);
+    style.remove();
+  });
+
+  it("hides every avatar while the frame itself moves", async () => {
+    const style = useStyles();
+    const iframe = await draw(
+      "viewport",
+      [400, 800],
+      placement(400, 800, [
+        slot(1, "photo", [0, 0, 44]),
+        slot(2, "photo", [0, 50, 44]),
+      ]),
+    );
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(slots().map(hidden)).toEqual([false, false]);
+
+    // The topbar autohides: the frame slides up.
+    iframe.style.transform = "translateY(-56px)";
+    await vi.advanceTimersByTimeAsync(1);
+    expect(slots().map(hidden)).toEqual([true, true]);
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(slots().map(hidden)).toEqual([false, false]);
+
+    window.dispatchEvent(new Event("resize"));
+    expect(slots().map(hidden)).toEqual([true, true]);
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+    expect(slots().map(hidden)).toEqual([false, false]);
+    style.remove();
+  });
+
+  it("draws only the latest of several placements, once per frame", async () => {
+    await draw(
+      "viewport",
+      [400, 800],
+      placement(400, 800, [slot(1, "photo", [0, 0, 44])]),
+    );
+    const anchor = slots()[0]?.querySelector(".contact-avatar");
+    const writes = new MutationObserver(() => undefined);
+    writes.observe(anchor as Node, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+
+    for (const y of [10, 20, 30]) {
+      overlay.place(placement(400, 800, [slot(1, "photo", [0, y, 44])]));
+    }
+    expect(box(anchor)).toEqual([0, 0, 44, 44]);
+    vi.advanceTimersToNextFrame();
+    expect(box(anchor)).toEqual([0, 30, 44, 44]);
+    // One move, and the unchanged size is left alone.
+    expect(writes.takeRecords()).toHaveLength(1);
+    writes.disconnect();
+  });
+
+  it("hides and shows without fading under reduced motion", async () => {
+    const style = useStyles();
+    const device = happyWindow.happyDOM.settings.device;
+    device.prefersReducedMotion = "reduce";
+    try {
+      await draw(
+        "viewport",
+        [400, 800],
+        placement(400, 800, [slot(1, "photo", [0, 0, 44])]),
+      );
+      const [drawn] = slots();
+      expect([hidden(drawn), fades(drawn)]).toEqual([true, false]);
+      await vi.advanceTimersByTimeAsync(SETTLE_MS);
+      expect([hidden(drawn), fades(drawn)]).toEqual([false, false]);
+    } finally {
+      device.prefersReducedMotion = "no-preference";
+      style.remove();
+    }
   });
 });
