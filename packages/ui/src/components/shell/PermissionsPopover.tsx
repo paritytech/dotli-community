@@ -91,71 +91,19 @@ export function PermissionsPopover(): JSX.Element {
     }
   };
 
-  let fetchToken = 0;
   const surface = createPopover({
     mode: "popover",
     trigger: () => button,
     surface: () => popover,
     shouldHandleEscape: () => untrack(openRow) === null,
-    onClose: () => {
-      closeDropdown();
-      // Drop what was read, and any read in flight: the next open reads
-      // afresh instead of showing statuses that may have changed since.
-      fetchToken += 1;
-      setFetched(null);
-    },
+    onClose: closeDropdown,
   });
 
-  /** Read the statuses; only the latest read, for the current product, lands. */
-  const fetchStatuses = (): void => {
-    const token = ++fetchToken;
-    closeDropdown();
-    const label = currentLabel();
-    if (label === null) {
-      // The hint for no product renders from productStore.
-      return;
-    }
-    getPermissionStatuses(label, PERMISSION_NAMES).then(
-      (statuses) => {
-        if (token === fetchToken && currentLabel() === label) {
-          setFetched({ label, statuses });
-        }
-      },
-      () => {
-        if (token === fetchToken) {
-          setFetched({ label, failed: true });
-        }
-      },
-    );
-  };
-
-  let grantsToken = 0;
-  const updateHasGrants = (): void => {
-    const token = ++grantsToken;
-    const label = currentLabel();
-    if (label === null) {
-      setHasGrants(false);
-      return;
-    }
-    hasAnyGrant(label).then(
-      (granted) => {
-        if (token === grantsToken) {
-          setHasGrants(granted);
-        }
-      },
-      () => {
-        if (token === grantsToken) {
-          setHasGrants(false);
-        }
-      },
-    );
-  };
-
+  // Moves on each event that may change the statuses, so the reads below
+  // run again even for the product already on show.
+  const [changes, setChanges] = createSignal(0);
   const refresh = (): void => {
-    updateHasGrants();
-    if (untrack(surface.open)) {
-      fetchStatuses();
-    }
+    setChanges((n) => n + 1);
   };
   for (const name of REFRESH_EVENTS) {
     window.addEventListener(name, refresh);
@@ -165,16 +113,71 @@ export function PermissionsPopover(): JSX.Element {
       window.removeEventListener(name, refresh);
     }
   });
-  // A product loaded before this island mounted.
-  if (currentLabel() !== null) {
-    updateHasGrants();
-  }
+  const label = (): string | null => {
+    changes();
+    const current = product();
+    return current.status === "loaded" ? current.label : null;
+  };
 
-  createEffect(surface.open, (open) => {
-    if (open) {
-      fetchStatuses();
+  // Each read lands only while it is current: a later read, the product
+  // changing or (for the list) the popover closing drops it, as effect
+  // cleanup runs before each re-run.
+  createEffect(label, (current) => {
+    if (current === null) {
+      setHasGrants(false);
+      return;
     }
+    let live = true;
+    const land = (granted: boolean): void => {
+      if (live) {
+        setHasGrants(granted);
+      }
+    };
+    hasAnyGrant(current).then(land, () => {
+      land(false);
+    });
+    return () => {
+      live = false;
+    };
   });
+
+  // The list is read when the popover opens, and on each change or failed
+  // write while open. Closing drops what was read: the next open reads
+  // afresh instead of showing statuses that may have changed since.
+  const [retries, setRetries] = createSignal(0);
+  createEffect(
+    () => {
+      retries();
+      return surface.open() ? label() : undefined;
+    },
+    (current) => {
+      closeDropdown();
+      if (current === undefined) {
+        setFetched(null);
+      }
+      if (current === undefined || current === null) {
+        // The hint for no product renders from productStore.
+        return;
+      }
+      let live = true;
+      const land = (read: Fetched): void => {
+        if (live && currentLabel() === current) {
+          setFetched(read);
+        }
+      };
+      getPermissionStatuses(current, PERMISSION_NAMES).then(
+        (statuses) => {
+          land({ label: current, statuses });
+        },
+        () => {
+          land({ label: current, failed: true });
+        },
+      );
+      return () => {
+        live = false;
+      };
+    },
+  );
 
   // While a dropdown is open: its selected option has the focus, and Escape
   // or a click outside its select closes it. This Escape listener comes after
@@ -235,11 +238,9 @@ export function PermissionsPopover(): JSX.Element {
         permission: name,
       });
     })().catch(() => {
-      // Re-read only while open, as refresh() does: a closed popover reads
-      // afresh on its next open.
-      if (untrack(surface.open)) {
-        fetchStatuses();
-      }
+      // Re-read the list (only while open: a closed popover reads afresh on
+      // its next open).
+      setRetries((n) => n + 1);
     });
   };
 

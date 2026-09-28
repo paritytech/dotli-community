@@ -127,12 +127,6 @@ function PanelBody(): JSX.Element {
   // Room rows by room id, to put focus back on a row the list moved.
   const rowEls = new Map<string, HTMLButtonElement>();
   let refocusRoomId: string | null = null;
-  // A contacts/messages read started before the panel closed must not act
-  // on a store that has moved on (e.g. marking a room seen after leaving).
-  let disposed = false;
-  onCleanup(() => {
-    disposed = true;
-  });
 
   const timer = setInterval(() => {
     setNow(Date.now());
@@ -166,24 +160,24 @@ function PanelBody(): JSX.Element {
   );
 
   // Contacts: re-read when the product, the session, the room and bot lists,
-  // or (while the list shows) the messages change. A newer read supersedes
-  // an older one that resolves late.
+  // or (while the list shows) the messages change. A read acts only while it
+  // is current: a newer read, or the panel closing, drops an older one that
+  // resolves late.
   const contactsKey = createMemo(() => {
     const id = productId();
     return id === null
       ? null
       : `${id}\u0000${String(loggedIn())}\u0000${String(contactsVersion())}\u0000${String(listMessageCount())}`;
   });
-  let contactsPass = 0;
   createEffect(contactsKey, (key) => {
     const id = currentChatProductId(chatPanelStore.get());
     if (key === null || id === null) {
       return;
     }
-    const pass = ++contactsPass;
+    let live = true;
     Promise.all([chatRooms(id), chatBots(id), chatLatestMessageTimes(id)])
       .then(([rooms, bots, times]) => {
-        if (disposed || pass !== contactsPass) {
+        if (!live) {
           return;
         }
         // A keyed list moves rows with insertBefore, which blurs a moved
@@ -198,10 +192,13 @@ function PanelBody(): JSX.Element {
         setContacts(contactEntries(rooms, bots, times));
       })
       .catch((error: unknown) => {
-        if (!disposed && pass === contactsPass) {
+        if (live) {
           failedRead(error, setContactsError);
         }
       });
+    return () => {
+      live = false;
+    };
   });
 
   // After the rows move: focus the row that had it, if the move blurred it.
@@ -249,7 +246,6 @@ function PanelBody(): JSX.Element {
       ? null
       : `${id}\u0000${roomId}\u0000${String(roomSeq()[roomId] ?? 0)}\u0000${String(refresh())}`;
   });
-  let messagesPass = 0;
   let shownRoomId: string | null = null;
   // Whether the reader is at the newest message. Only a scroll moves it, so
   // content that grows under a reader at the bottom keeps them there.
@@ -270,14 +266,12 @@ function PanelBody(): JSX.Element {
       setMessagesError(false);
       setMessages([]);
     }
-    const pass = ++messagesPass;
+    // As for contacts; the room check also drops a read for a room left in
+    // this same tick, before the effect re-runs (the store moves at once).
+    let live = true;
     chatMessages(id, roomId)
       .then((records) => {
-        if (
-          disposed ||
-          pass !== messagesPass ||
-          chatPanelStore.get().activeRoomId !== roomId
-        ) {
+        if (!live || chatPanelStore.get().activeRoomId !== roomId) {
           return;
         }
         setMessagesError(false);
@@ -285,10 +279,13 @@ function PanelBody(): JSX.Element {
         markChatRoomSeen(roomId);
       })
       .catch((error: unknown) => {
-        if (!disposed && pass === messagesPass) {
+        if (live) {
           failedRead(error, setMessagesError);
         }
       });
+    return () => {
+      live = false;
+    };
   });
 
   const stickToBottom = (): void => {

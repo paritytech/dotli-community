@@ -736,6 +736,48 @@ describe("PermissionsPopover", () => {
     );
   });
 
+  it("As a user who closed the popover while it was reading, the next open never shows that read", async () => {
+    // Given: every read waits until the test answers it.
+    const reads: ((statuses: PermissionAuthorizationStatus[]) => void)[] = [];
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: () =>
+          new Promise((resolve) => {
+            reads.push(resolve);
+          }),
+        setPermissionAuthorizationStatus: async () => {},
+      }),
+    );
+    setProductLoaded(LABEL, "app.dot");
+    await renderPopover();
+    const all = (status: PermissionAuthorizationStatus) =>
+      ALL_PERMISSIONS.map(() => status);
+    const answer = async (status: PermissionAuthorizationStatus) => {
+      for (const resolve of reads.splice(0)) {
+        resolve(all(status));
+      }
+      await settleAll();
+    };
+    await answer("Denied");
+
+    // When: opened, closed before the read answers, the read answers, and
+    // the popover opens again.
+    await openPopover();
+    byId("permissions-button").click();
+    await settleAll();
+    await answer("Authorized");
+    await openPopover();
+
+    // Then: nothing until the new read answers, then its statuses.
+    expect(document.querySelectorAll(".permissions-popover-row")).toHaveLength(
+      0,
+    );
+    await answer("Denied");
+    expect(byId("permissions-popover-status-Camera").textContent).toBe(
+      "Denied",
+    );
+  });
+
   it("As a user, when the app changes while the popover is open, the previous app's statuses are never shown for it", async () => {
     // Given
     provide(LABEL, { Camera: "Authorized" });

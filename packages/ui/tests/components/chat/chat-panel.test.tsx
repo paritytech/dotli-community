@@ -23,6 +23,9 @@ const h = vi.hoisted(() => ({
   roomsFail: false,
   messagesFail: false,
   sinks: [] as Sink[],
+  /** While true, each rooms and messages read waits for its release. */
+  holdReads: false,
+  held: [] as (() => void)[],
   unreadLabels: 0,
   captured: [] as unknown[],
 }));
@@ -36,7 +39,11 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
       if (h.roomsFail) {
         throw new Error("IndexedDB is gone");
       }
-      return h.rooms.map((room) => ({ ...room }));
+      const rooms = h.rooms.map((room) => ({ ...room }));
+      if (h.holdReads) {
+        await new Promise<void>((resolve) => h.held.push(resolve));
+      }
+      return rooms;
     }),
     chatBots: vi.fn(async () => []),
     chatLatestMessageTimes: vi.fn(async () => new Map(h.times)),
@@ -45,7 +52,11 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
       if (h.messagesFail) {
         throw new Error("IndexedDB is gone");
       }
-      return h.messages.map((message) => ({ ...message }));
+      const messages = h.messages.map((message) => ({ ...message }));
+      if (h.holdReads) {
+        await new Promise<void>((resolve) => h.held.push(resolve));
+      }
+      return messages;
     }),
     renderCustomMessage: (
       _productId: string,
@@ -169,6 +180,8 @@ beforeEach(() => {
   h.roomsFail = false;
   h.messagesFail = false;
   h.sinks = [];
+  h.holdReads = false;
+  h.held = [];
   h.unreadLabels = 0;
   h.captured = [];
 });
@@ -239,6 +252,31 @@ describe("chat panel, contact reads", () => {
 
     // Then: one more read for the message, none for opening the room.
     expect(h.reads.contacts - start.contacts).toBe(2);
+  });
+
+  it("As a user, when room list reads overlap, a slow earlier read never replaces a newer one", async () => {
+    // Given: a list of three rooms, and reads that wait for the test.
+    await openPanel(3);
+    h.holdReads = true;
+
+    // When: the rooms change twice; the second read answers first.
+    h.rooms = [room(0), room(1)];
+    emit("dotli:chat-rooms-changed", { productId: PRODUCT });
+    await idle();
+    h.rooms = [room(0)];
+    emit("dotli:chat-rooms-changed", { productId: PRODUCT });
+    await idle();
+    const [older, newer] = h.held;
+    expect(h.held).toHaveLength(2);
+    newer();
+    await idle();
+    older();
+    await idle();
+
+    // Then
+    expect(
+      rows().map((row) => row.querySelector(".chat-room-name")?.textContent),
+    ).toEqual(["Room 0"]);
   });
 
   it("As a user, going back to a list that missed nothing does not re-read it", async () => {
@@ -356,6 +394,62 @@ describe("chat panel, contact reads", () => {
 
     // Then
     expect(byId("chat-panel-hint").hidden).toBe(true);
+  });
+});
+
+describe("chat panel, message reads", () => {
+  it("As a user, when conversation reads overlap, a slow earlier read never replaces a newer one", async () => {
+    // Given: a room open, and reads that wait for the test.
+    await openPanel(3);
+    h.messages = [text(1)];
+    openChatRoom("r0");
+    await idle();
+    h.holdReads = true;
+
+    // When: two messages arrive; the second read answers first.
+    h.messages.push(text(2));
+    message("r0");
+    await idle();
+    h.messages.push(text(3));
+    message("r0");
+    await idle();
+    const [older, newer] = h.held;
+    expect(h.held).toHaveLength(2);
+    newer();
+    await idle();
+    older();
+    await idle();
+
+    // Then
+    expect(document.querySelectorAll(".chat-msg")).toHaveLength(3);
+  });
+
+  it("As a user who went back to the list, a conversation read that lands late shows nothing and marks nothing seen", async () => {
+    // Given: a room open, and its read waiting.
+    await openPanel(3);
+    h.holdReads = true;
+    h.messages = [text(1)];
+    message("r1");
+    await idle();
+    h.held.splice(0).forEach((release) => {
+      release();
+    });
+    await idle();
+    openChatRoom("r1");
+    await idle();
+    expect(h.held).toHaveLength(1);
+
+    // When: back to the list, then the read lands.
+    backToChatRooms();
+    await idle();
+    h.held.splice(0).forEach((release) => {
+      release();
+    });
+    await idle();
+
+    // Then
+    expect(document.querySelectorAll(".chat-msg")).toHaveLength(0);
+    expect(rows()[1].querySelector(".chat-room-unread")?.textContent).toBe("1");
   });
 });
 
