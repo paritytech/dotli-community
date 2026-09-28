@@ -18,7 +18,7 @@ describe("test wallet open in another tab", () => {
       expect(described).toMatchObject({
         kind: "wallet-in-other-tab",
         title: ERROR_TITLES.WALLET_IN_OTHER_TAB,
-        recovery: "take-over-wallet",
+        recovery: "reload",
         tips: [],
       });
     }
