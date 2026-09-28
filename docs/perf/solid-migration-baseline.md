@@ -21,38 +21,38 @@ RC changelog, re-run the measurements below.
 
 ### Chunk sizes (bytes)
 
-| Chunk | Raw | Gzip |
-|---|---:|---:|
-| host _md.js | 6,434 | 2,902 |
-| host blake2.js | 11,996 | 4,823 |
-| host bridge.js | 161,565 | 45,407 |
-| host browser.js | 23,475 | 8,772 |
-| host chain-sync.js | 3,893 | 1,728 |
-| host client.js | 12,661 | 4,680 |
-| host dotli-debug-bus.js | 708 | 438 |
-| host hex.js | 160 | 170 |
-| host index.js | 193,581 | 62,013 |
-| host manifest.js | 23,835 | 8,316 |
-| host network.js | 6,003 | 2,445 |
-| host panel.js | 93,299 | 28,774 |
-| host proofs.js | 29,603 | 9,583 |
-| host resolve.js | 161 | 164 |
-| host rolldown-runtime.js | 716 | 459 |
-| host rpc-resolve.js | 2,795 | 1,384 |
-| host scale-ts.js | 4,931 | 2,243 |
-| host spans.js | 2,530 | 1,237 |
-| host src.js | 82,724 | 28,831 |
-| host substrate-client.js | 5,953 | 2,562 |
-| host truapi_verifiable.js | 14,623 | 3,266 |
-| host twoX.js | 2,858 | 1,169 |
-| host utils.js | 3,618 | 1,572 |
-| host web.js | 25,371 | 7,490 |
-| host worker-runtime.js | 106 | 143 |
-| host worker-runtime.js | 36,640 | 10,132 |
-| host ws.js | 26,771 | 9,525 |
-| sandbox bitswap-bridge.js | 1,092 | 661 |
-| sandbox fetch.js | 3,525 | 1,443 |
-| sandbox index.js | 134,518 | 43,572 |
+| Chunk                     |     Raw |   Gzip |
+|---------------------------|--------:|-------:|
+| host _md.js               |   6,434 |  2,902 |
+| host blake2.js            |  11,996 |  4,823 |
+| host bridge.js            | 161,565 | 45,407 |
+| host browser.js           |  23,475 |  8,772 |
+| host chain-sync.js        |   3,893 |  1,728 |
+| host client.js            |  12,661 |  4,680 |
+| host dotli-debug-bus.js   |     708 |    438 |
+| host hex.js               |     160 |    170 |
+| host index.js             | 193,581 | 62,013 |
+| host manifest.js          |  23,835 |  8,316 |
+| host network.js           |   6,003 |  2,445 |
+| host panel.js             |  93,299 | 28,774 |
+| host proofs.js            |  29,603 |  9,583 |
+| host resolve.js           |     161 |    164 |
+| host rolldown-runtime.js  |     716 |    459 |
+| host rpc-resolve.js       |   2,795 |  1,384 |
+| host scale-ts.js          |   4,931 |  2,243 |
+| host spans.js             |   2,530 |  1,237 |
+| host src.js               |  82,724 | 28,831 |
+| host substrate-client.js  |   5,953 |  2,562 |
+| host truapi_verifiable.js |  14,623 |  3,266 |
+| host twoX.js              |   2,858 |  1,169 |
+| host utils.js             |   3,618 |  1,572 |
+| host web.js               |  25,371 |  7,490 |
+| host worker-runtime.js    |     106 |    143 |
+| host worker-runtime.js    |  36,640 | 10,132 |
+| host ws.js                |  26,771 |  9,525 |
+| sandbox bitswap-bridge.js |   1,092 |    661 |
+| sandbox fetch.js          |   3,525 |  1,443 |
+| sandbox index.js          | 134,518 | 43,572 |
 
 Two rows share the name `host worker-runtime.js`: the build emits two distinct
 worker-runtime chunks (`worker-runtime-DiloRcUs.js`, 106 B, and
@@ -324,11 +324,11 @@ test:perf:compare` three times (10 iterations each, cold phase) against
 the same `base.json` (20 iterations, pre-migration) used in the "Before
 sub-project 0" section. The three runs disagreed:
 
-| Run | Host total p50 | Δ % vs base (2787 ms) | cv | discarded | `test:perf:compare` "COLD START"/End-to-end |
-|---|---:|---:|---:|---:|---|
-| 1 | 3450 ms | +23.8% (slower) | 0.18 | 1 | +26.0%, Mann-Whitney z=2.78, **significant** |
-| 2 | 2642 ms | -5.2% (faster) | 0.27 | 5 | +7.7%, z=0.57, not significant |
-| 3 | 2417 ms | -13.3% (faster) | 0.12 | 0 | -8.7%, z=1.84, not significant |
+| Run | Host total p50 | Δ % vs base (2787 ms) |   cv | discarded | `test:perf:compare` "COLD START"/End-to-end  |
+|-----|---------------:|----------------------:|-----:|----------:|----------------------------------------------|
+| 1   |        3450 ms |       +23.8% (slower) | 0.18 |         1 | +26.0%, Mann-Whitney z=2.78, **significant** |
+| 2   |        2642 ms |        -5.2% (faster) | 0.27 |         5 | +7.7%, z=0.57, not significant               |
+| 3   |        2417 ms |       -13.3% (faster) | 0.12 |         0 | -8.7%, z=1.84, not significant               |
 
 Run 1 immediately followed the git-worktree `bun install` + production
 build used to re-derive the "before" eager set above, so the machine was
@@ -886,10 +886,10 @@ in the temporary worktree above) and at HEAD after sub-project 4d
 same idle machine (`PERF_RUNS=20`, Playwright called directly because
 `test:perf` pins 10 runs).
 
-| Build | Host total p50 | p95 | cv | discarded |
-|---|---:|---:|---:|---:|
-| before (4c end) | 2,618 ms | 3,151 ms | 0.08 | 0 |
-| after (4d) | 2,565 ms | 3,126 ms | 0.10 | 0 |
+| Build           | Host total p50 |      p95 |   cv | discarded |
+|-----------------|---------------:|---------:|-----:|----------:|
+| before (4c end) |       2,618 ms | 3,151 ms | 0.08 |         0 |
+| after (4d)      |       2,565 ms | 3,126 ms | 0.10 |         0 |
 
 Δ p50: **-2.02%** (faster), well inside the ±5% gate. Both runs were clean
 (cv ≤ 0.10, 0 discarded outliers each), so no re-run was needed. End-to-end
@@ -1044,10 +1044,10 @@ listeners and ARIA only, with no new dependencies. Both builds use
 `VITE_NETWORKS=paseo-next-v2,previewnet`; `d92315f3` was rebuilt fresh in a
 temporary worktree.
 
-| Measurement | `d92315f3` (end of SP3) | `a70cd053` | Δ |
-|---|---:|---:|---:|
-| Host startup, eager path (gzip) | 89,164 B | 89,175 B | **+11 B** |
-| Islands chunk (lazy, gzip) | 17,224 B | 18,024 B | +800 B |
+| Measurement                     | `d92315f3` (end of SP3) | `a70cd053` |         Δ |
+|---------------------------------|------------------------:|-----------:|----------:|
+| Host startup, eager path (gzip) |                89,164 B |   89,175 B | **+11 B** |
+| Islands chunk (lazy, gzip)      |                17,224 B |   18,024 B |    +800 B |
 
 The host limit was raised by owner decision on 2026-09-27 to +35 KB over the
 pre-migration 74,649 B, i.e. 110,489 B. HEAD is at +14,526 B, leaving
