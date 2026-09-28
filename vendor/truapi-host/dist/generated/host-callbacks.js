@@ -137,7 +137,7 @@ export const PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlway
 /**
  * One avatar to draw over a product.
  */
-export const PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: AvatarRect, clip: AvatarRect, reference: S.str }));
+export const PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: AvatarRect, clip: AvatarRect, reference: S.str, sharedAt: S.u64 }));
 /**
  * The avatars the core found drawable in one product's placement: the slots
  * whose contact shared a profile with the user, each with the reference that

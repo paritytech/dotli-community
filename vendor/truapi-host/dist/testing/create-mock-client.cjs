@@ -580,7 +580,7 @@ var init_host_callbacks = __esm({
     PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi3.DerivationIndex) }), ProfileDisclosure: S._void }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
-    PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect, reference: S.str }));
+    PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
