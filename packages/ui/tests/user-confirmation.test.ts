@@ -826,6 +826,73 @@ describe("user confirmation modal", () => {
     );
   });
 
+  it("As a dotli user, the profile disclosure prompt names the requesting product and what contacts see", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "ProfileDisclosure",
+      value: { productId: "egui-chat.dot" },
+    });
+
+    // Then
+    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
+      "Share Profile with Chat Contacts",
+    );
+    expect(modalFields()).toEqual({
+      "Requesting product": "egui-chat.dot",
+      Permission:
+        "Show this app's profile photo and mood to the people you chat with",
+    });
+    const buttons = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".signing-modal-footer button",
+      ),
+      (button) => button.textContent,
+    );
+    expect(buttons).toEqual(["Deny", "Always allow", "Allow once"]);
+
+    // When
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+
+    // Then
+    await expect(decision).resolves.toBe("Deny");
+  });
+
+  it("As a dotli user, always allowing profile disclosure is remembered", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "ProfileDisclosure",
+      value: { productId: "egui-chat.dot" },
+    });
+
+    // When
+    document
+      .querySelector<HTMLButtonElement>(".signing-btn-secondary")
+      ?.click();
+
+    // Then
+    await expect(decision).resolves.toBe("AllowAlways");
+  });
+
+  it("As a dotli user, dismissing profile disclosure records no decision", async () => {
+    // Given
+    const decision = createUserConfirmationAdapters(
+      "localhost:3000",
+    ).confirmPermission({
+      tag: "ProfileDisclosure",
+      value: { productId: "egui-chat.dot" },
+    });
+
+    // When
+    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+
+    // Then
+    await expect(decision).rejects.toThrow("User dismissed permission dialog");
+  });
+
   it("As a dotli user, a per-action confirmation keeps two buttons", () => {
     // When
     void createUserConfirmationAdapters("localhost:3000").confirmUserAction({

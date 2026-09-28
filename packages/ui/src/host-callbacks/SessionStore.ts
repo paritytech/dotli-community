@@ -424,6 +424,8 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case "NativeChatFileChunk":
       case "NativeChatProducts":
       case "DeviceEncryptionKey":
+      case "ProfileDisclosure":
+      case "ProfileReferencesReceived":
         return encoded;
       case "AuthSession":
       case "PairingDeviceIdentity":
@@ -437,10 +439,6 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case "ProductSubtree":
       case "SsoResponderRequestLedger":
       case "ProductManifest":
-      case "ProfileDisclosure":
-      case "ProfileReferencesReceived":
-        // Profile references, like the grants above, carry no wallet scope of
-        // their own, so the generation keeps one identity's from another.
         return (
           hexNoPrefix(new TextEncoder().encode(`${generation}:`)) + encoded
         );
@@ -597,13 +595,17 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
     // grant expires without touching the others.
     case "ProductManifest":
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
-    // The user's own disclosed profile reference: one per wallet.
+    // The user's own disclosed profile reference, per wallet and chain.
     case "ProfileDisclosure":
-      return `${CORE_LOCAL_STORAGE_PREFIX}profile-disclosure`;
-    // Contacts' references, per chat product like its roster, so clearing
-    // the product clears them.
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-disclosure:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
+    // Contacts' references, per wallet, chain and chat product like its
+    // roster, so clearing the product clears them.
     case "ProfileReferencesReceived":
-      return `${CORE_LOCAL_STORAGE_PREFIX}profile-references-received:${key.value.productId}`;
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-references-received:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
     case "MainPurseCoinage":
     case "NativeChatDevice":
     case "NativeChatFileChunk":

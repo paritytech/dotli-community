@@ -27,6 +27,7 @@ export type PermissionName =
   | "ChatAuthority"
   | "IdentityDisclosure"
   | "PreimageSubmit"
+  | "ProfileDisclosure"
   | "StatementSubmit";
 
 /** Device permissions the host can't actually gate (see AUTO_GRANT_DEVICE_PERMISSIONS). */
@@ -106,6 +107,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: "Biometrics", label: "Biometrics" },
   { name: "ChatAuthority", label: "Chat Identity Authority" },
   { name: "IdentityDisclosure", label: "Identity Disclosure" },
+  { name: "ProfileDisclosure", label: "Profile Disclosure" },
   { name: "ChainSubmit", label: "Sign Transactions" },
   { name: "PreimageSubmit", label: "Submit Preimages" },
   { name: "StatementSubmit", label: "Submit Statements" },
@@ -170,6 +172,9 @@ export function authorizationRequest(
   }
   if (permission === "IdentityDisclosure") {
     return { tag: "IdentityDisclosure" };
+  }
+  if (permission === "ProfileDisclosure") {
+    return { tag: "ProfileDisclosure" };
   }
   return { tag: "Device", value: permission };
 }

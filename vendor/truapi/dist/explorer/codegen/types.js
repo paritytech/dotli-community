@@ -4088,13 +4088,23 @@ export const types = [
         id: "host-profile-disclose-error",
         name: "HostProfileDiscloseError",
         category: "profile",
-        definition: 'export type HostProfileDiscloseError =\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostProfileDiscloseError =\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "PermissionDenied"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
         description: "Profile disclosure failure.",
         variants: [
             {
                 name: "InvalidReference",
                 type: '{ tag: "InvalidReference"; value?: undefined }',
                 description: "The reference is empty, too long, or not printable ASCII.",
+            },
+            {
+                name: "PermissionDenied",
+                type: '{ tag: "PermissionDenied"; value?: undefined }',
+                description: "The user declined to let this product disclose a profile to their\nchat contacts.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in, so there are no contacts to disclose to.",
             },
             {
                 name: "Unknown",
@@ -4121,7 +4131,7 @@ export const types = [
         id: "host-profile-present-contact-error",
         name: "HostProfilePresentContactError",
         category: "profile",
-        definition: 'export type HostProfilePresentContactError =\n  | { tag: "NotShared"; value?: undefined }\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostProfilePresentContactError =\n  | { tag: "NotShared"; value?: undefined }\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
         description: "Contact profile presentation failure.",
         variants: [
             {
@@ -4133,6 +4143,11 @@ export const types = [
                 name: "InvalidReference",
                 type: '{ tag: "InvalidReference"; value?: undefined }',
                 description: "The host holds a reference it cannot parse.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
             },
             {
                 name: "Unknown",
@@ -4192,13 +4207,18 @@ export const types = [
         id: "host-profile-retract-error",
         name: "HostProfileRetractError",
         category: "profile",
-        definition: 'export type HostProfileRetractError =\n  | { tag: "NotDiscloser"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostProfileRetractError =\n  | { tag: "NotDiscloser"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
         description: "Profile retraction failure.",
         variants: [
             {
                 name: "NotDiscloser",
                 type: '{ tag: "NotDiscloser"; value?: undefined }',
                 description: "Another product disclosed the reference the host holds.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
             },
             {
                 name: "Unknown",

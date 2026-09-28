@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "db49e938ce87d049";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "a12e7f63385ee6ab";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -362,8 +362,10 @@ export declare class ProfileClient {
      *
      * The host stores it as the user's own and relays it to each contact,
      * replacing whatever it sent before; the product never learns who they
-     * are. App executions only. A reference this core cannot screen is
-     * `InvalidReference`.
+     * are. App executions only. The first disclosure asks the user once for
+     * this product; a refusal, then or remembered, is `PermissionDenied`. A
+     * reference this core cannot screen is `InvalidReference`, and with no
+     * user signed in the call is `NotConnected`.
      */
     disclose(request: T.HostProfileDiscloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfileDiscloseError>>;
     /**

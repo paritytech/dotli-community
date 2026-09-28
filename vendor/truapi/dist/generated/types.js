@@ -496,13 +496,13 @@ export const HostPaymentTopUpRequest = S.lazy(() => S.Struct({ into: S.Option(Co
 export const HostPocketListSubscribeItem = S.lazy(() => S.Struct({ cards: S.Vector(PocketCard) }));
 export const HostPocketRemoveCardError = S.lazy(() => S.TaggedUnion({ Privileged: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPocketRemoveCardRequest = S.lazy(() => S.Struct({ cardId: S.str }));
-export const HostProfileDiscloseError = S.lazy(() => S.TaggedUnion({ InvalidReference: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostProfileDiscloseError = S.lazy(() => S.TaggedUnion({ InvalidReference: S._void, PermissionDenied: S._void, NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostProfileDiscloseRequest = S.lazy(() => S.Struct({ reference: S.str }));
-export const HostProfilePresentContactError = S.lazy(() => S.TaggedUnion({ NotShared: S._void, InvalidReference: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostProfilePresentContactError = S.lazy(() => S.TaggedUnion({ NotShared: S._void, InvalidReference: S._void, NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostProfilePresentContactRequest = S.lazy(() => S.Struct({ peerIdentity: S.Hex(32) }));
 export const HostProfilePresentError = S.lazy(() => S.TaggedUnion({ InvalidReference: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostProfilePresentRequest = S.lazy(() => S.Struct({ reference: S.str }));
-export const HostProfileRetractError = S.lazy(() => S.TaggedUnion({ NotDiscloser: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostProfileRetractError = S.lazy(() => S.TaggedUnion({ NotDiscloser: S._void, NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPushNotificationCancelRequest = S.lazy(() => S.Struct({ id: NotificationId }));
 export const HostPushNotificationError = S.lazy(() => S.TaggedUnion({ ScheduleLimitReached: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostPushNotificationRequest = S.lazy(() => S.Struct({ text: S.str, deeplink: S.Option(S.str), scheduledAt: S.Option(S.u64) }));
