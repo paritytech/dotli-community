@@ -98,28 +98,40 @@ const KEPT_LAYERS = new Set([
 export interface ResolutionRecorder {
   record(ev: DotliDebugEvent): void;
   clear(): void;
+  /** Oldest first. The same array for the recorder's lifetime, trimmed in
+   *  place: read it, do not keep it. */
   events(): readonly DotliDebugEvent[];
+  /** Bumped whenever `events()` changes, so a view can skip a rebuild. */
+  version(): number;
 }
 
 const RECORDER_CAP = 4000;
 
 export function createResolutionRecorder(): ResolutionRecorder {
-  let kept: DotliDebugEvent[] = [];
+  const kept: DotliDebugEvent[] = [];
+  let version = 0;
   return {
     record(ev) {
       if (!KEPT_LAYERS.has(ev.layer)) {
         return;
       }
       kept.push(ev);
+      // One at a time, as the event store does: a slice here would copy
+      // every retained event on every record once full.
       if (kept.length > RECORDER_CAP) {
-        kept = kept.slice(kept.length - RECORDER_CAP);
+        kept.shift();
       }
+      version++;
     },
     clear() {
-      kept = [];
+      kept.length = 0;
+      version++;
     },
     events() {
       return kept;
+    },
+    version() {
+      return version;
     },
   };
 }

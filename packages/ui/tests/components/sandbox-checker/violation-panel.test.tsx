@@ -243,4 +243,107 @@ describe("sandbox checker violation panel", () => {
     // Then
     expect(document.body.style.userSelect).toBe("");
   });
+
+  it("As a dotli developer, a looping product keeps only the newest 500 violations while the badge counts them all", async () => {
+    // When
+    for (let i = 0; i < 600; i++) {
+      violation({
+        type: "DOTLI_API_VIOLATION",
+        api: `api${String(i)}`,
+        details: {},
+        timestamp: 0,
+      });
+    }
+    await settle();
+
+    // Then
+    const entries = [...panel().querySelectorAll(".sc-entry")];
+    expect(entries).toHaveLength(500);
+    expect(entries[0].querySelector(".sc-api")?.textContent).toBe("api100");
+    expect(entries[499].querySelector(".sc-api")?.textContent).toBe("api599");
+    expect(panel().querySelector(".sc-badge")?.textContent).toBe("600");
+  });
+
+  it("As a dotli developer, each new violation forces at most one layout and leaves an unchanged app frame alone", async () => {
+    // Given
+    const log: string[] = [];
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.id !== "sandbox-checker-panel") {
+          return 0;
+        }
+        log.push("read");
+        return 180;
+      },
+    );
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        if (!this.classList.contains("sc-log")) {
+          return 0;
+        }
+        log.push("read");
+        return 500;
+      },
+    );
+    let heightWrites = 0;
+    const style = new Proxy({} as Record<string, string>, {
+      set(target, prop, value: string) {
+        if (prop === "height") {
+          heightWrites++;
+          log.push("write");
+        }
+        target[prop as string] = value;
+        return true;
+      },
+    });
+    attachProductFrame({ style } as unknown as HTMLIFrameElement);
+    const send = async (i: number): Promise<void> => {
+      violation({
+        type: "DOTLI_API_VIOLATION",
+        api: `api${String(i)}`,
+        details: {},
+        timestamp: 0,
+      });
+      // The new row is a DOM write.
+      log.push("write");
+      await settle();
+    };
+    await send(0);
+    const logEl = panel().querySelector<HTMLElement>(".sc-log")!;
+    let top = 0;
+    Object.defineProperty(logEl, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+        log.push("write");
+      },
+    });
+    heightWrites = 0;
+
+    // When
+    const layouts: number[] = [];
+    for (let i = 1; i <= 10; i++) {
+      log.length = 0;
+      await send(i);
+      // A read after a write forces a layout.
+      let dirty = false;
+      let forced = 0;
+      for (const op of log) {
+        if (op === "write") {
+          dirty = true;
+        } else if (dirty) {
+          forced++;
+          dirty = false;
+        }
+      }
+      layouts.push(forced);
+    }
+
+    // Then
+    expect(Math.max(...layouts)).toBe(1);
+    expect(heightWrites).toBe(0);
+    expect(top).toBe(500);
+    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+  });
 });

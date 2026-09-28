@@ -7,7 +7,12 @@
 // Rendering rules the parts rely on:
 // - The store is not reactive. `snapshot` is a copy of it, refreshed at most
 //   once per animation frame from `store.subscribe`, and synchronously on a
-//   user action that re-reads the store (filter change, tab swap).
+//   user action that re-reads the store (filter change, tab swap). A
+//   collapsed panel takes no snapshots: it keeps only its header count, from
+//   the events that arrived, and expanding catches up once.
+// - Per-frame work follows what changed, not what is retained: `visible`
+//   filters only the events a snapshot added, and returns the same array
+//   when the visible set did not change.
 // - User actions apply synchronously (`flush`), as the imperative panel did:
 //   the DOM reflects a click or keypress before the handler returns. Never
 //   call `flush()` from an effect, a memo, or `onSettled` — those already
@@ -32,6 +37,7 @@ import {
 } from "@dotli/truapi-debug/dock-storage";
 import {
   correlationKeyOf,
+  firstNewIndex,
   type EventSeq,
   type EventStore,
   type StoredEvent,
@@ -56,6 +62,32 @@ import { TimelineView } from "./TimelineView";
 
 export const PANEL_ID = "truapi-debug-panel";
 
+/**
+ * The first row still in view at `scrollTop`, found by bisection over the
+ * rows' offsets (relative to the first row, so the list's own offset drops
+ * out). Null for an empty list.
+ */
+function topRow(list: HTMLElement, scrollTop: number): HTMLElement | null {
+  const rows = list.children;
+  const first = rows[0] as HTMLElement | undefined;
+  if (first === undefined) {
+    return null;
+  }
+  const target = scrollTop + first.offsetTop;
+  let lo = 0;
+  let hi = rows.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const row = rows[mid] as HTMLElement;
+    if (row.offsetTop + row.offsetHeight > target) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return rows[lo] as HTMLElement;
+}
+
 /** What the panel last read from the store. */
 interface Snapshot {
   events: readonly StoredEvent[];
@@ -78,6 +110,58 @@ function sortProducts(
     }
     return a.localeCompare(b);
   });
+}
+
+/**
+ * How many of the store's events a filter shows, kept up to date from the
+ * live ring buffer at a cost proportional to the events that arrived or left.
+ * What a collapsed panel's header count reads.
+ */
+class ShownCounter {
+  /** Seqs of the shown events, in order, from `head` on. */
+  private seqs: EventSeq[] = [];
+  private head = 0;
+  private lastSeq = -1;
+  private filters: FilterState | null = null;
+
+  /** Start from what the panel last drew. */
+  seed(
+    shown: readonly StoredEvent[],
+    events: readonly StoredEvent[],
+    filters: FilterState,
+  ): void {
+    this.seqs = shown.map((e) => e.seq);
+    this.head = 0;
+    this.lastSeq = events.length > 0 ? events[events.length - 1].seq : -1;
+    this.filters = filters;
+  }
+
+  count(events: readonly StoredEvent[], filters: FilterState): number {
+    if (filters !== this.filters) {
+      this.seed([], [], filters);
+    }
+    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
+    while (this.head < this.seqs.length && this.seqs[this.head] < firstSeq) {
+      this.head++;
+    }
+    let i = events.length;
+    while (i > 0 && events[i - 1].seq > this.lastSeq) {
+      i--;
+    }
+    for (; i < events.length; i++) {
+      if (matches(events[i], filters)) {
+        this.seqs.push(events[i].seq);
+      }
+    }
+    if (events.length > 0) {
+      this.lastSeq = events[events.length - 1].seq;
+    }
+    if (this.head > 1024) {
+      this.seqs = this.seqs.slice(this.head);
+      this.head = 0;
+    }
+    return this.seqs.length - this.head;
+  }
 }
 
 function countsLabel(total: number, dropped: number, shown: number): string {
@@ -125,10 +209,57 @@ export function Panel(props: {
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
 
-  const visible = createMemo(() =>
-    snapshot().events.filter((e) => matches(e, filters())),
+  /** The events and filters `visible` last filtered. */
+  let filtered: {
+    events: readonly StoredEvent[];
+    filters: FilterState;
+  } | null = null;
+  const visible = createMemo<readonly StoredEvent[]>((prev) => {
+    const events = snapshot().events;
+    const current = filters();
+    const last = filtered;
+    filtered = { events, filters: current };
+    if (prev === undefined || last?.filters !== current) {
+      return events.filter((e) => matches(e, current));
+    }
+    // Same filters: drop what left the head, filter only what was appended.
+    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
+    let dropped = 0;
+    while (dropped < prev.length && prev[dropped].seq < firstSeq) {
+      dropped++;
+    }
+    const added: StoredEvent[] = [];
+    for (let i = firstNewIndex(last.events, events); i < events.length; i++) {
+      if (matches(events[i], current)) {
+        added.push(events[i]);
+      }
+    }
+    if (dropped === 0 && added.length === 0) {
+      return prev;
+    }
+    return dropped === 0
+      ? [...prev, ...added]
+      : [...prev.slice(dropped), ...added];
+  });
+  // The Resolution view draws the recorder, not the store: TrUAPI traffic
+  // (most of it) leaves this unchanged, so it does not redraw.
+  const resolutionVersion = createMemo(() => {
+    snapshot();
+    return recorder.version();
+  });
+
+  // While collapsed, the header count follows the store without a snapshot.
+  const shown = new ShownCounter();
+  const [collapsedCounts, setCollapsedCounts] = createSignal<string | null>(
+    null,
   );
+  if (untrack(collapsed)) {
+    untrack(() => {
+      shown.seed(visible(), snapshot().events, filters());
+    });
+  }
   const counts = (): string =>
+    collapsedCounts() ??
     countsLabel(snapshot().events.length, snapshot().dropped, visible().length);
 
   const refreshDetail = (): void => {
@@ -137,7 +268,8 @@ export function Panel(props: {
 
   /**
    * Apply `update` synchronously, keeping the list pinned to the bottom if it
-   * was there, or at its scroll offset otherwise.
+   * was there. Otherwise the row at the top of the view stays where it was,
+   * even as rows are evicted above it at capacity.
    */
   const commit = (update: () => void): void => {
     const list = listEl;
@@ -145,13 +277,29 @@ export function Panel(props: {
       list !== undefined &&
       list.scrollHeight - list.clientHeight - list.scrollTop < 4;
     const prevScrollTop = list?.scrollTop ?? 0;
+    const anchor =
+      list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
+    const anchorTop = anchor?.offsetTop ?? 0;
     flush(update);
     if (
       list !== undefined &&
       view() === "list" &&
       list.querySelector(".td-row") !== null
     ) {
-      list.scrollTop = wasAtBottom ? list.scrollHeight : prevScrollTop;
+      if (wasAtBottom) {
+        list.scrollTop = list.scrollHeight;
+      } else if (anchor?.isConnected === true) {
+        list.scrollTop = prevScrollTop + anchor.offsetTop - anchorTop;
+      } else {
+        list.scrollTop = prevScrollTop;
+      }
+    }
+  };
+
+  /** Re-read the store, unless nothing changed since the last snapshot. */
+  const refreshSnapshot = (): void => {
+    if (store.version() !== untrack(snapshot).version) {
+      setSnapshot(takeSnapshot());
     }
   };
 
@@ -163,9 +311,22 @@ export function Panel(props: {
     }
     frame = requestAnimationFrame(() => {
       frame = null;
-      if (store.version() !== snapshot().version) {
-        commit(() => setSnapshot(takeSnapshot()));
+      if (store.version() === snapshot().version) {
+        return;
       }
+      // No rows are on screen: only the header count follows, and
+      // expanding catches up.
+      if (collapsed()) {
+        const events = store.list();
+        const label = countsLabel(
+          events.length,
+          store.dropped(),
+          shown.count(events, filters()),
+        );
+        flush(() => setCollapsedCounts(label));
+        return;
+      }
+      commit(() => setSnapshot(takeSnapshot()));
     });
   });
   onCleanup(() => {
@@ -176,14 +337,15 @@ export function Panel(props: {
   });
 
   // The frame layout keeps the inset across product reloads and bar moves,
-  // so it only needs reporting when the panel's own box changes.
-  const refit = (): void => {
+  // so it only needs reporting when the panel's own box changes. A drag
+  // passes the size it just set (`size`), so nothing reads layout back.
+  const refit = (size?: number): void => {
     setDockInset(
       panelDockInset({
         collapsed: collapsed(),
         dock: dock(),
-        width: panelEl?.offsetWidth ?? 0,
-        height: panelEl?.offsetHeight ?? 0,
+        width: size ?? panelEl?.offsetWidth ?? 0,
+        height: size ?? panelEl?.offsetHeight ?? 0,
       }),
       "debug",
     );
@@ -236,12 +398,21 @@ export function Panel(props: {
     });
   };
 
+  const isShown = (seq: EventSeq | undefined): boolean =>
+    seq !== undefined && visible().some((e) => e.seq === seq);
+
+  // The detail pane does not depend on the filters: it is rebuilt only when
+  // the selected event leaves or enters the list.
   const changeFilters = (next: FilterState): void => {
+    const selected = selection()?.seq;
+    const wasShown = isShown(selected);
     commit(() => {
       setFilters(next);
-      setSnapshot(takeSnapshot());
-      refreshDetail();
+      refreshSnapshot();
     });
+    if (isShown(selected) !== wasShown) {
+      flush(refreshDetail);
+    }
   };
 
   const selectView = (next: PanelView): void => {
@@ -253,7 +424,7 @@ export function Panel(props: {
     tooltipEl?.classList.remove("visible");
     commit(() => {
       setView(next);
-      setSnapshot(takeSnapshot());
+      refreshSnapshot();
       refreshDetail();
     });
   };
@@ -333,7 +504,16 @@ export function Panel(props: {
               el.style.height = expandedHeight;
             }
           }
-          flush(() => setCollapsed(next));
+          if (next) {
+            shown.seed(visible(), snapshot().events, filters());
+            flush(() => setCollapsed(true));
+          } else {
+            commit(() => {
+              setCollapsed(false);
+              setCollapsedCounts(null);
+              refreshSnapshot();
+            });
+          }
           refit();
         }}
       />
@@ -352,6 +532,7 @@ export function Panel(props: {
             store={store}
             selection={selection()}
             active={view() === "list"}
+            collapsed={collapsed()}
             onSelect={select}
             listRef={(el) => {
               listEl = el;
@@ -368,7 +549,7 @@ export function Panel(props: {
           <ResolutionView
             active={view() === "resolution"}
             collapsed={collapsed()}
-            refresh={snapshot()}
+            refresh={resolutionVersion()}
             recorder={recorder}
             tooltip={() => tooltipEl}
             panel={() => panelEl}

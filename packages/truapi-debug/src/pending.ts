@@ -14,7 +14,11 @@
 // a transaction, which is where the host actually stalls. Host lifecycle
 // events are short-lived and already grouped in the timeline.
 
-import type { StoredEvent, StoredTruapiEvent } from "./event-store.ts";
+import {
+  firstNewIndex,
+  type StoredEvent,
+  type StoredTruapiEvent,
+} from "./event-store.ts";
 
 /** Requests outstanding for longer than this are called out rather than just
  *  counted, so a hung call is findable without reading every row. */
@@ -67,6 +71,101 @@ export function openCalls(events: readonly StoredEvent[]): Map<string, number> {
     requestedAt.delete(key);
   }
   return requestedAt;
+}
+
+/**
+ * `openCalls`, kept up to date from successive snapshots of one event store
+ * at a cost proportional to the events that arrived or left since the last
+ * snapshot, not to the events retained.
+ */
+export class OpenCallTracker {
+  private seen: readonly StoredEvent[] = [];
+  /** Receive times of the retained non-reply events per call, oldest first. */
+  private readonly requests = new Map<string, number[]>();
+  /** Retained replies per call. */
+  private readonly replies = new Map<string, number>();
+  private readonly openByKey = new Map<string, number>();
+  private changed: ReadonlySet<string> = new Set();
+
+  /** Every call still waiting on a reply, as `openCalls` returns it. */
+  get open(): ReadonlyMap<string, number> {
+    return this.openByKey;
+  }
+
+  /** Calls whose entry in `open` was added, moved or removed by the last
+   *  `update`. */
+  get changedKeys(): ReadonlySet<string> {
+    return this.changed;
+  }
+
+  /**
+   * Catch up with `events`, a later snapshot of the same store than the last
+   * one passed. Returns whether the open calls changed.
+   */
+  update(events: readonly StoredEvent[]): boolean {
+    const prev = this.seen;
+    this.seen = events;
+    const touched = new Set<string>();
+    // Events leave only from the head (or all at once on clear), in order.
+    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
+    for (let i = 0; i < prev.length && prev[i].seq < firstSeq; i++) {
+      const ev = prev[i];
+      if (ev.kind !== "truapi") {
+        continue;
+      }
+      const key = callKeyOf(ev);
+      touched.add(key);
+      if (ev.tag.endsWith("_response")) {
+        const left = (this.replies.get(key) ?? 1) - 1;
+        if (left > 0) {
+          this.replies.set(key, left);
+        } else {
+          this.replies.delete(key);
+        }
+      } else {
+        const times = this.requests.get(key);
+        times?.shift();
+        if (times?.length === 0) {
+          this.requests.delete(key);
+        }
+      }
+    }
+    for (let i = firstNewIndex(prev, events); i < events.length; i++) {
+      const ev = events[i];
+      if (ev.kind !== "truapi") {
+        continue;
+      }
+      const key = callKeyOf(ev);
+      touched.add(key);
+      if (ev.tag.endsWith("_response")) {
+        this.replies.set(key, (this.replies.get(key) ?? 0) + 1);
+      } else {
+        const times = this.requests.get(key);
+        if (times === undefined) {
+          this.requests.set(key, [ev.receivedAt]);
+        } else {
+          times.push(ev.receivedAt);
+        }
+      }
+    }
+    const changed = new Set<string>();
+    for (const key of touched) {
+      const since = this.replies.has(key)
+        ? undefined
+        : this.requests.get(key)?.[0];
+      if (since === this.openByKey.get(key)) {
+        continue;
+      }
+      changed.add(key);
+      if (since === undefined) {
+        this.openByKey.delete(key);
+      } else {
+        this.openByKey.set(key, since);
+      }
+    }
+    this.changed = changed;
+    return changed.size > 0;
+  }
 }
 
 /** Elapsed label for a pending badge. Seconds once past a second, because a

@@ -10,11 +10,11 @@
 // and click, so rows must never be rebuilt under streaming traffic.
 
 import {
-  createMemo,
+  createEffect,
+  createProjection,
   createSignal,
   flush,
   For,
-  onCleanup,
   Show,
   untrack,
 } from "solid-js";
@@ -30,11 +30,15 @@ import {
 } from "@dotli/truapi-debug/event-store";
 import {
   formatPending,
-  openCalls,
+  OpenCallTracker,
   pendingKeyOf,
   SLOW_AFTER_MS,
 } from "@dotli/truapi-debug/pending";
-import { systemRowData, truapiRowData } from "@dotli/truapi-debug/row-format";
+import {
+  rowClassName,
+  systemRowData,
+  truapiRowData,
+} from "@dotli/truapi-debug/row-format";
 
 /** A pending badge counts up with the clock rather than with traffic, and a
  *  host that has stalled is precisely one that has stopped emitting events,
@@ -47,12 +51,21 @@ export interface Selection {
   key: string | null;
 }
 
-/** Per-row reactive inputs, shared by every row. */
+/**
+ * Per-row reactive inputs, shared by every row. Both are keyed stores, so a
+ * row subscribes to its own entry only: a click, an arrow key or a pending
+ * call's clock re-runs the rows it changes, never all 2000 (one signal read
+ * by every row is a HUGE_FAN_OUT at capacity).
+ */
 interface RowContext {
-  selection: () => Selection | null;
-  /** Calls still waiting on a reply, keyed by pending key. */
-  open: () => Map<string, number>;
-  now: () => number;
+  /** The selected event by seq, and its group by correlation key. */
+  marks: {
+    seq: Record<EventSeq, true | undefined>;
+    key: Record<string, true | undefined>;
+  };
+  /** How long each call still waiting on a reply has waited, in ms, by
+   *  pending key. Absent once the reply lands. */
+  waiting: Record<string, number | undefined>;
 }
 
 export function EventList(props: {
@@ -65,28 +78,96 @@ export function EventList(props: {
   store: EventStore;
   selection: Selection | null;
   active: boolean;
+  /** A collapsed panel shows no rows, so the badges stand still. */
+  collapsed: boolean;
   onSelect: (seq: EventSeq) => void;
   listRef: (el: HTMLDivElement) => void;
 }): JSX.Element {
   let list: HTMLDivElement | undefined;
 
-  const [tickedAt, setTickedAt] = createSignal(0);
-  const pendingTick = setInterval(() => {
-    if (props.active) {
-      flush(() => setTickedAt(Date.now()));
-    }
-  }, PENDING_TICK_MS);
-  onCleanup(() => {
-    clearInterval(pendingTick);
-  });
+  const marks = createProjection<RowContext["marks"]>(
+    (draft) => {
+      const selection = props.selection;
+      // Only the entries that flip are written, so only their rows re-run.
+      for (const seq of Object.keys(draft.seq)) {
+        if (Number(seq) !== selection?.seq) {
+          Reflect.deleteProperty(draft.seq, seq);
+        }
+      }
+      for (const key of Object.keys(draft.key)) {
+        if (key !== selection?.key) {
+          Reflect.deleteProperty(draft.key, key);
+        }
+      }
+      if (selection !== null) {
+        draft.seq[selection.seq] = true;
+        if (selection.key !== null) {
+          draft.key[selection.key] = true;
+        }
+      }
+    },
+    { seq: {}, key: {} },
+  );
 
-  const open = createMemo(() => openCalls(props.allEvents));
-  const ctx: RowContext = {
-    selection: () => props.selection,
-    open,
+  // The badge clock. Ticks only while the rows are on screen, and renders
+  // only while a call is pending.
+  const tracker = new OpenCallTracker();
+  const [tickedAt, setTickedAt] = createSignal(0);
+  createEffect(
+    () => props.active && !props.collapsed,
+    (live) => {
+      if (!live) {
+        return;
+      }
+      const tick = setInterval(() => {
+        if (tracker.open.size > 0) {
+          flush(() => setTickedAt(Date.now()));
+        }
+      }, PENDING_TICK_MS);
+      return () => {
+        clearInterval(tick);
+      };
+    },
+  );
+
+  // Traffic writes only the calls it opened or closed; the tick, or coming
+  // back on screen, rewrites every badge once.
+  let clockAt = 0;
+  let wasLive = false;
+  const waiting = createProjection<RowContext["waiting"]>((draft) => {
+    if (!props.active || props.collapsed) {
+      wasLive = false;
+      return;
+    }
+    tracker.update(props.allEvents);
+    const tick = tickedAt();
     // The latest clock reading: the refresh that brought the rows, or the tick.
-    now: () => Math.max(props.refreshedAt, tickedAt()),
-  };
+    const now = Math.max(props.refreshedAt, tick);
+    const open = tracker.open;
+    if (!wasLive || tick !== clockAt) {
+      wasLive = true;
+      clockAt = tick;
+      for (const key of Object.keys(draft)) {
+        if (!open.has(key)) {
+          Reflect.deleteProperty(draft, key);
+        }
+      }
+      for (const [key, since] of open) {
+        draft[key] = now - since;
+      }
+      return;
+    }
+    for (const key of tracker.changedKeys) {
+      const since = open.get(key);
+      if (since === undefined) {
+        Reflect.deleteProperty(draft, key);
+      } else {
+        draft[key] = now - since;
+      }
+    }
+  }, {});
+
+  const ctx: RowContext = { marks, waiting };
 
   const rowFor = (seq: EventSeq): HTMLElement | null =>
     list?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`) ??
@@ -170,25 +251,18 @@ function renderRow(
   ctx: RowContext,
 ): JSX.Element {
   const key = correlationKeyOf(ev);
-  const first = store.firstInGroup(key);
+  // Measured against the group's first event as it stood at insert time, so
+  // a row drawn after that event was evicted shows the same latency.
+  const anchor = store.anchorOf(ev);
   const latency =
-    first !== undefined && first.seq !== ev.seq
-      ? `+${formatLatency(ev.receivedAt - first.receivedAt)}`
+    anchor !== undefined
+      ? `+${formatLatency(ev.receivedAt - anchor.receivedAt)}`
       : null;
 
-  // Class order is part of the markup contract: td-row, selected, paired, system.
   const rowClass = (): string => {
-    const selection = ctx.selection();
-    const isSelected = selection?.seq === ev.seq;
-    const isPaired = selection !== null && !isSelected && selection.key === key;
-    return [
-      "td-row",
-      isSelected ? "selected" : "",
-      isPaired ? "paired" : "",
-      ev.kind === "system" ? "system" : "",
-    ]
-      .filter((c) => c !== "")
-      .join(" ");
+    const isSelected = ctx.marks.seq[ev.seq] === true;
+    const isPaired = !isSelected && ctx.marks.key[key] === true;
+    return rowClassName(isSelected, isPaired, ev.kind === "system");
   };
 
   return (
@@ -230,8 +304,9 @@ function TruapiCells(props: {
   const ctx = untrack(() => props.ctx);
   const data = truapiRowData(ev, pendingKeyOf(ev));
   const pendingKey = data.pendingKey;
-  const startedAt = (): number | undefined =>
-    pendingKey === null ? undefined : ctx.open().get(pendingKey);
+  /** Reads this row's own entry only. */
+  const waiting = (): number | undefined =>
+    pendingKey === null ? undefined : ctx.waiting[pendingKey];
 
   return (
     <>
@@ -258,20 +333,17 @@ function TruapiCells(props: {
         <span class={data.tagClassName}>{data.displayTag}</span>
         <Latency text={untrack(() => props.latency)} />
         {/* Present until the reply lands, counting up on the clock. */}
-        <Show when={startedAt()}>
-          {(since) => {
-            const waiting = (): number => ctx.now() - since();
-            return (
-              <span
-                class={
-                  waiting() >= SLOW_AFTER_MS ? "td-pending slow" : "td-pending"
-                }
-                data-pending-key={pendingKey ?? ""}
-              >
-                {`⟳ ${formatPending(waiting())} pending`}
-              </span>
-            );
-          }}
+        <Show when={waiting() !== undefined}>
+          <span
+            class={
+              (waiting() ?? 0) >= SLOW_AFTER_MS
+                ? "td-pending slow"
+                : "td-pending"
+            }
+            data-pending-key={pendingKey ?? ""}
+          >
+            {`⟳ ${formatPending(waiting() ?? 0)} pending`}
+          </span>
         </Show>
         {data.summary !== "" ? (
           <span class="td-summary">{data.summary}</span>

@@ -6,7 +6,9 @@
 //
 // Both write inline styles on the panel element directly, as the drag moves:
 // sizes are custom properties and inline width/height the CSS grid picks up
-// without a render, and docking clears them imperatively too.
+// without a render, and docking clears them imperatively too. A move only
+// writes: nothing on the move path reads layout, so a drag never forces a
+// synchronous reflow, and the product frame is refitted once per frame.
 
 import { onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
@@ -40,11 +42,20 @@ export function ResizeHandle(props: {
   panel: () => HTMLElement | undefined;
   collapsed: boolean;
   dock: DockPosition;
-  onResize: () => void;
+  /** The panel's new size in px along the drag (height when docked at the
+   *  bottom, width when docked right). At most once per animation frame. */
+  onResize: (px: number) => void;
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
   let handle: HTMLDivElement | undefined;
   let dragging = false;
+  let resized: number | null = null;
+  let frame: number | null = null;
+  onCleanup(() => {
+    if (frame !== null) {
+      cancelAnimationFrame(frame);
+    }
+  });
 
   const stop = (): void => {
     if (!dragging) {
@@ -59,22 +70,31 @@ export function ResizeHandle(props: {
       if (!dragging || panel === undefined) {
         return;
       }
+      let clamped: number;
       if (props.dock === "right") {
         const newWidth = window.innerWidth - e.clientX;
-        const clamped = Math.max(
+        clamped = Math.max(
           MIN_RIGHT_WIDTH_PX,
           Math.min(newWidth, window.innerWidth * MAX_VIEWPORT_SHARE),
         );
         panel.style.width = `${String(clamped)}px`;
       } else {
         const newHeight = window.innerHeight - e.clientY;
-        const clamped = Math.max(
+        clamped = Math.max(
           MIN_BOTTOM_HEIGHT_PX,
           Math.min(newHeight, window.innerHeight * MAX_VIEWPORT_SHARE),
         );
         panel.style.height = `${String(clamped)}px`;
       }
-      props.onResize();
+      // The size is already known: hand it over rather than read it back.
+      resized = clamped;
+      frame ??= requestAnimationFrame(() => {
+        frame = null;
+        if (resized !== null) {
+          props.onResize(resized);
+          resized = null;
+        }
+      });
     },
     up: stop,
   });
@@ -113,6 +133,10 @@ export function BodySplitter(props: {
   const panelEl = untrack(() => props.panel);
   let splitter: HTMLDivElement | undefined;
   let dragging = false;
+  /** The body's box, measured once when the drag starts: it does not change
+   *  size while the splitter moves, and measuring on every move would read
+   *  layout right after the previous move's write. */
+  let bodyRect: DOMRect | undefined;
 
   const stop = (): void => {
     if (!dragging) {
@@ -128,7 +152,6 @@ export function BodySplitter(props: {
       if (!dragging || panel === undefined) {
         return;
       }
-      const bodyRect = splitter?.parentElement?.getBoundingClientRect();
       if (bodyRect === undefined) {
         return;
       }
@@ -166,6 +189,7 @@ export function BodySplitter(props: {
       }}
       onPointerDown={(e) => {
         dragging = true;
+        bodyRect = splitter?.parentElement?.getBoundingClientRect();
         splitter?.setPointerCapture(e.pointerId);
         splitter?.classList.add("dragging");
         document.body.style.userSelect = "none";

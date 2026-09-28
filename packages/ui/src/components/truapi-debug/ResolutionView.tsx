@@ -5,9 +5,10 @@
 //
 // Drawn by `@dotli/truapi-debug/resolution-view`, which memoizes its HTML so a
 // finished load costs nothing to redraw. This component owns the container
-// and decides when to redraw: on every panel refresh while visible, and on a
-// tick, because the block a chain is still sitting in has to keep growing
-// toward now while a chain that has gone quiet emits nothing to redraw on.
+// and decides when to redraw: when the recorder changes while visible (not
+// on TrUAPI traffic, which it does not record), and on a tick, because the
+// block a chain is still sitting in has to keep growing toward now while a
+// chain that has gone quiet emits nothing to redraw on.
 
 import { createEffect, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
@@ -25,8 +26,9 @@ const RESOLUTION_TICK_MS = 500;
 export function ResolutionView(props: {
   active: boolean;
   collapsed: boolean;
-  /** Changes on every panel refresh; redraws while active. */
-  refresh: unknown;
+  /** The recorder's version as of the last panel refresh; a change redraws
+   *  while on screen. */
+  refresh: number;
   recorder: ResolutionRecorder;
   tooltip: () => HTMLElement | undefined;
   panel: () => HTMLElement | undefined;
@@ -44,8 +46,10 @@ export function ResolutionView(props: {
     },
   );
 
+  // Re-runs only when one of these changes: an effect's function runs on
+  // every compute, so the compute reads nothing that moves with traffic.
   createEffect(
-    () => (props.active ? [props.refresh] : null),
+    () => (props.active && !props.collapsed ? props.refresh : null),
     (refresh) => {
       if (refresh !== null) {
         draw();

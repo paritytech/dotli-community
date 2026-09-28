@@ -37,9 +37,11 @@ export function TimelineView(props: {
     },
   );
 
-  // Redrawn on every refresh while visible, so pending segments grow toward
-  // "now". The selection is read at draw time only: a click is applied in
-  // place below, not by redrawing.
+  // Redrawn while visible whenever the filtered events change. The panel
+  // hands over the same array when a refresh changed nothing visible (and
+  // takes no refresh while collapsed), so such a frame lays nothing out. The
+  // selection is read at draw time only: a click is applied in place below,
+  // not by redrawing.
   createEffect(
     () => (props.active ? props.events : null),
     (events) => {

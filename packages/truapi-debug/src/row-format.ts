@@ -146,3 +146,25 @@ export function systemRowData(ev: StoredSystemEvent): SystemRowData {
     summary: summariseSystemEvent(ev),
   };
 }
+
+/**
+ * Class attribute of a list row. Order is part of the markup contract:
+ * td-row, selected, paired, system.
+ */
+export function rowClassName(
+  selected: boolean,
+  paired: boolean,
+  system: boolean,
+): string {
+  let out = "td-row";
+  if (selected) {
+    out += " selected";
+  }
+  if (paired) {
+    out += " paired";
+  }
+  if (system) {
+    out += " system";
+  }
+  return out;
+}

@@ -1718,6 +1718,8 @@ describe("truapi debug panel: product iframe geometry", () => {
     // When
     pointer(q(".td-resize-handle"), "pointerdown");
     pointer(window, "pointermove", 0, 500);
+    // The refit lands on the next animation frame.
+    vi.advanceTimersByTime(20);
 
     // Then
     expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);

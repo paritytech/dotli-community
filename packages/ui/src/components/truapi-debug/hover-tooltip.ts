@@ -16,6 +16,11 @@
  * tooltip. The default stays on one line, which is what the short timeline
  * strings want.
  *
+ * A move over the element already showing only writes the new position: the
+ * panel's box is measured when the tooltip is shown (the panel does not move
+ * under a hovering cursor), and the tooltip's own size only when its text
+ * changes, so a pointermove never forces a layout.
+ *
  * Returns a function that removes the listeners.
  */
 export function wireHoverTooltips(
@@ -23,9 +28,14 @@ export function wireHoverTooltips(
   tooltipEl: () => HTMLElement | undefined,
   panelEl: () => HTMLElement | undefined,
 ): () => void {
+  /** The element the tooltip shows for, and what was measured for it. */
+  let shownFor: Element | null = null;
+  let panelRect: DOMRect | null = null;
+  let size: { width: number; height: number } | null = null;
+
   const showAt = (
+    el: Element,
     text: string,
-    prose: boolean,
     clientX: number,
     clientY: number,
   ): void => {
@@ -34,28 +44,52 @@ export function wireHoverTooltips(
     if (tooltip === undefined || panel === undefined) {
       return;
     }
-    tooltip.textContent = text;
-    tooltip.classList.toggle("is-prose", prose);
-    tooltip.classList.add("visible");
+    const fresh =
+      el !== shownFor ||
+      panelRect === null ||
+      !tooltip.classList.contains("visible");
+    if (fresh) {
+      // Measured before any write, so this read finds layout clean.
+      panelRect = panel.getBoundingClientRect();
+    }
+    if (fresh || tooltip.textContent !== text) {
+      tooltip.textContent = text;
+      tooltip.classList.toggle(
+        "is-prose",
+        el.hasAttribute("data-tooltip-prose"),
+      );
+      tooltip.classList.add("visible");
+      size = null;
+    }
+    shownFor = el;
+    const rect = panelRect;
+    if (rect === null) {
+      return;
+    }
     // Position (viewport-fixed): offset 12px below-right of the cursor,
     // then clamp to the viewport so the tooltip never gets cropped.
-    const panelRect = panel.getBoundingClientRect();
-    const left = clientX - panelRect.left + 12;
-    const top = clientY - panelRect.top + 16;
+    const left = clientX - rect.left + 12;
+    const top = clientY - rect.top + 16;
     tooltip.style.left = `${String(left)}px`;
     tooltip.style.top = `${String(top)}px`;
+    if (size === null) {
+      const measured = tooltip.getBoundingClientRect();
+      size = { width: measured.width, height: measured.height };
+    }
+    // Where the tooltip's edges land, from its size and the position just
+    // written, as a fresh measure would find them.
+    const right = rect.left + left + size.width;
+    const bottom = rect.top + top + size.height;
     // Clamp right edge.
-    const ttRect = tooltip.getBoundingClientRect();
-    const panelRight = panelRect.right;
-    if (ttRect.right > panelRight - 4) {
-      const adjusted = left - (ttRect.right - panelRight) - 6;
+    if (right > rect.right - 4) {
+      const adjusted = left - (right - rect.right) - 6;
       tooltip.style.left = `${String(Math.max(4, adjusted))}px`;
     }
     // Flip above the cursor rather than run off the bottom. A one-line
     // timeline tooltip almost never needs this. A wrapped prose one near the
     // foot of a bottom-docked panel always would.
-    if (ttRect.bottom > window.innerHeight - 4) {
-      tooltip.style.top = `${String(top - ttRect.height - 28)}px`;
+    if (bottom > window.innerHeight - 4) {
+      tooltip.style.top = `${String(top - size.height - 28)}px`;
     }
   };
   const hide = (): void => {
@@ -71,7 +105,7 @@ export function wireHoverTooltips(
     if (text === null) {
       return;
     }
-    showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
+    showAt(el, text, e.clientX, e.clientY);
   };
   const onPointerMove = (e: PointerEvent): void => {
     if (tooltipEl()?.classList.contains("visible") !== true) {
@@ -88,7 +122,7 @@ export function wireHoverTooltips(
       hide();
       return;
     }
-    showAt(text, el.hasAttribute("data-tooltip-prose"), e.clientX, e.clientY);
+    showAt(el, text, e.clientX, e.clientY);
   };
   root.addEventListener("pointerover", onPointerOver);
   root.addEventListener("pointermove", onPointerMove);

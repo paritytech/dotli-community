@@ -4,7 +4,8 @@
 // Detail pane of the TrUAPI debug panel.
 //
 // Rebuilt only when `revision` changes, which the panel bumps on user actions
-// (selection, filter change, tab swap, clear, mount). Incoming events never
+// (selection, a filter change that hides or shows the selected event, tab
+// swap, clear, mount). Incoming events never
 // touch it: rebuilding under traffic tore down an open "What is this?" block
 // and dropped clicks inside the pane between pointerdown and click.
 
