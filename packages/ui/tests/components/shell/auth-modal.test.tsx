@@ -26,13 +26,19 @@ vi.mock("@dotli/shared/device", () => ({
 }));
 
 // The lazy `qrcode` import, whose drawing each test can hold back.
+type DrawQr = (
+  canvas: HTMLCanvasElement,
+  payload: string,
+  options?: unknown,
+) => Promise<void>;
 const qr = vi.hoisted(() => ({
-  toCanvas: null as unknown as ReturnType<typeof vi.fn>,
+  toCanvas: vi.fn<DrawQr>(() => Promise.resolve()),
 }));
 vi.mock("qrcode", () => {
   return {
     default: {
-      toCanvas: (...args: unknown[]): unknown => qr.toCanvas(...args),
+      toCanvas: (...args: Parameters<DrawQr>): Promise<void> =>
+        qr.toCanvas(...args),
     },
   };
 });
@@ -66,7 +72,7 @@ useAuthController();
 beforeEach(() => {
   device.mobile = false;
   dialogSetOpen.calls = [];
-  qr.toCanvas = vi.fn(() => Promise.resolve());
+  qr.toCanvas = vi.fn<DrawQr>(() => Promise.resolve());
 });
 
 const DEEPLINK = "polkadotapp://pair?handshake=test";
@@ -310,13 +316,9 @@ describe("AuthModal login flow", () => {
     // Given
     await renderModal();
     const scope = coordinator.createScope();
-    let releaseBlockingPrompt: (() => void) | null = null;
-    const blockingPrompt = scope.enqueue(
-      () =>
-        new Promise<void>((resolve) => {
-          releaseBlockingPrompt = resolve;
-        }),
-    );
+    const { promise: held, resolve: releaseBlockingPrompt } =
+      Promise.withResolvers<void>();
+    const blockingPrompt = scope.enqueue(() => held);
 
     // When
     byId("auth-button").click();
@@ -326,7 +328,7 @@ describe("AuthModal login flow", () => {
     expect(isOpen()).toBe(false);
 
     // When
-    releaseBlockingPrompt?.();
+    releaseBlockingPrompt();
     await blockingPrompt;
     await settleQr();
 
@@ -655,7 +657,7 @@ describe("AuthModal QR", () => {
     // Given: the drawing is held back. (A late qrcode import itself is
     // covered by auth-modal-late-qr.test.tsx.)
     const drawing = deferred();
-    qr.toCanvas = vi.fn(() => drawing.promise);
+    qr.toCanvas = vi.fn<DrawQr>(() => drawing.promise);
     await renderModal();
     await authState(pairing());
     expect(document.querySelector("#auth-modal-qr .spinner")).not.toBeNull();
@@ -673,8 +675,9 @@ describe("AuthModal QR", () => {
   it("As a user shown a new pairing code, only the newest QR is drawn in", async () => {
     // Given: the first code's drawing is held back.
     const first = deferred();
-    qr.toCanvas = vi.fn((_canvas: HTMLCanvasElement, payload: string) =>
-      payload === "polkadotapp://first" ? first.promise : Promise.resolve(),
+    qr.toCanvas = vi.fn<DrawQr>(
+      (_canvas: HTMLCanvasElement, payload: string) =>
+        payload === "polkadotapp://first" ? first.promise : Promise.resolve(),
     );
     await renderModal();
 
@@ -695,7 +698,7 @@ describe("AuthModal QR", () => {
   it("As a user who scanned, then was shown a new code, the first code's late drawing never shows", async () => {
     // Given: every drawing is held back.
     const drawings = new Map<string, () => void>();
-    qr.toCanvas = vi.fn(
+    qr.toCanvas = vi.fn<DrawQr>(
       (_canvas: HTMLCanvasElement, payload: string) =>
         new Promise<void>((resolve) => {
           drawings.set(payload, resolve);
@@ -728,7 +731,7 @@ describe("AuthModal QR", () => {
   it("As a user whose modal was closed while the QR was drawing, nothing is drawn in", async () => {
     // Given
     const drawing = deferred();
-    qr.toCanvas = vi.fn(() => drawing.promise);
+    qr.toCanvas = vi.fn<DrawQr>(() => drawing.promise);
     await renderModal();
     await authState(pairing());
 
@@ -746,18 +749,13 @@ describe("AuthModal QR", () => {
     // Given: a prompt holds the blocking-modal queue.
     await renderModal();
     const scope = coordinator.createScope();
-    let release: (() => void) | null = null;
-    const prompt = scope.enqueue(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    const prompt = scope.enqueue(() => held);
 
     // When: the core pairs while the modal waits for its lease.
     await authState(pairing());
     expect(isOpen()).toBe(false);
-    release?.();
+    release();
     await prompt;
     await settleQr();
 

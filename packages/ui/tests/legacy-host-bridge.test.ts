@@ -191,6 +191,24 @@ function decodedFollowId<T extends FollowBoundRequest>(
   return codec.dec(decoded.payload.value).value.followSubscriptionId;
 }
 
+/**
+ * One follow-bound request with its codec bound in, so a list of them can mix
+ * request types.
+ */
+function followBoundCase<T extends FollowBoundRequest>(
+  ids: MethodIds,
+  codec: Codec<T>,
+  request: T,
+): {
+  frame(requestId: string): Uint8Array;
+  followId(message: Uint8Array): string;
+} {
+  return {
+    frame: (requestId) => followBoundFrame(requestId, ids, codec, request),
+    followId: (message) => decodedFollowId(message, codec),
+  };
+}
+
 describe("createLegacyNovaChainHeadProvider", () => {
   it("As a dotli integrator, the host normalizes the legacy .dot suffix for a localhost product account", () => {
     // Given
@@ -258,10 +276,10 @@ describe("createLegacyNovaChainHeadProvider", () => {
     harness.emit(followStart("wire-follow"));
 
     const cases = [
-      {
-        ids: CHAIN_GET_HEAD_HEADER,
-        codec: VersionedRemoteChainHeadHeaderRequest,
-        request: {
+      followBoundCase(
+        CHAIN_GET_HEAD_HEADER,
+        VersionedRemoteChainHeadHeaderRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -269,11 +287,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
             hash: blockHash,
           },
         },
-      },
-      {
-        ids: CHAIN_GET_HEAD_BODY,
-        codec: VersionedRemoteChainHeadBodyRequest,
-        request: {
+      ),
+      followBoundCase(
+        CHAIN_GET_HEAD_BODY,
+        VersionedRemoteChainHeadBodyRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -281,11 +299,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
             hash: blockHash,
           },
         },
-      },
-      {
-        ids: CHAIN_GET_HEAD_STORAGE,
-        codec: VersionedRemoteChainHeadStorageRequest,
-        request: {
+      ),
+      followBoundCase(
+        CHAIN_GET_HEAD_STORAGE,
+        VersionedRemoteChainHeadStorageRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -294,37 +312,29 @@ describe("createLegacyNovaChainHeadProvider", () => {
             items: [],
           },
         },
-      },
-      {
-        ids: CHAIN_CALL_HEAD,
-        codec: VersionedRemoteChainHeadCallRequest,
-        request: {
-          tag: "V1",
-          value: {
-            genesisHash,
-            followSubscriptionId: "follow_0",
-            hash: blockHash,
-            function: "Metadata_metadata",
-            callParameters: "0x" as const,
-          },
+      ),
+      followBoundCase(CHAIN_CALL_HEAD, VersionedRemoteChainHeadCallRequest, {
+        tag: "V1",
+        value: {
+          genesisHash,
+          followSubscriptionId: "follow_0",
+          hash: blockHash,
+          function: "Metadata_metadata",
+          callParameters: "0x" as const,
         },
-      },
-      {
-        ids: CHAIN_UNPIN_HEAD,
-        codec: VersionedRemoteChainHeadUnpinRequest,
-        request: {
-          tag: "V1",
-          value: {
-            genesisHash,
-            followSubscriptionId: "follow_0",
-            hashes: [blockHash],
-          },
+      }),
+      followBoundCase(CHAIN_UNPIN_HEAD, VersionedRemoteChainHeadUnpinRequest, {
+        tag: "V1",
+        value: {
+          genesisHash,
+          followSubscriptionId: "follow_0",
+          hashes: [blockHash],
         },
-      },
-      {
-        ids: CHAIN_CONTINUE_HEAD,
-        codec: VersionedRemoteChainHeadContinueRequest,
-        request: {
+      }),
+      followBoundCase(
+        CHAIN_CONTINUE_HEAD,
+        VersionedRemoteChainHeadContinueRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -332,11 +342,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
             operationId: "operation-1",
           },
         },
-      },
-      {
-        ids: CHAIN_STOP_HEAD_OPERATION,
-        codec: VersionedRemoteChainHeadStopOperationRequest,
-        request: {
+      ),
+      followBoundCase(
+        CHAIN_STOP_HEAD_OPERATION,
+        VersionedRemoteChainHeadStopOperationRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -344,27 +354,15 @@ describe("createLegacyNovaChainHeadProvider", () => {
             operationId: "operation-1",
           },
         },
-      },
-    ] as const;
+      ),
+    ];
 
     for (const [index, item] of cases.entries()) {
       // When
-      harness.emit(
-        followBoundFrame(
-          `request-${index}`,
-          item.ids,
-          item.codec as Codec<FollowBoundRequest>,
-          item.request,
-        ),
-      );
+      harness.emit(item.frame(`request-${index}`));
 
       // Then
-      expect(
-        decodedFollowId(
-          harness.received.at(-1)!,
-          item.codec as Codec<FollowBoundRequest>,
-        ),
-      ).toBe("wire-follow");
+      expect(item.followId(harness.received.at(-1)!)).toBe("wire-follow");
     }
   });
 

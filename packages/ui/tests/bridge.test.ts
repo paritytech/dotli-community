@@ -1,8 +1,9 @@
 // @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
 // The product and protocol frames are never navigated in these tests, and
 // happy-dom would otherwise try to fetch their pages from a dev server.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
+  type WireProvider,
   MESSAGE_TYPE_RESPONSE,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginResponse,
@@ -19,15 +20,15 @@ type Deferred<T> = {
 };
 
 type MockProvider = {
-  postMessage: ReturnType<typeof vi.fn>;
-  subscribe: ReturnType<typeof vi.fn>;
-  subscribeClose: ReturnType<typeof vi.fn>;
+  postMessage: Mock<WireProvider["postMessage"]>;
+  subscribe: Mock<WireProvider["subscribe"]>;
+  subscribeClose: Mock<NonNullable<WireProvider["subscribeClose"]>>;
   disconnectSession: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   getPermissionAuthorizationStatuses: ReturnType<typeof vi.fn>;
   setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
-  dispose: ReturnType<typeof vi.fn>;
+  dispose: Mock<WireProvider["dispose"]>;
 };
 
 type MockRuntime = {
@@ -90,9 +91,11 @@ vi.mock("@dotli/metrics/metrics", () => ({
 
 function makeProvider(): MockProvider {
   const provider = {
-    postMessage: vi.fn(),
-    subscribe: vi.fn(() => () => {}),
-    subscribeClose: vi.fn(() => () => {}),
+    postMessage: vi.fn<WireProvider["postMessage"]>(),
+    subscribe: vi.fn<WireProvider["subscribe"]>(() => () => {}),
+    subscribeClose: vi.fn<NonNullable<WireProvider["subscribeClose"]>>(
+      () => () => {},
+    ),
     disconnectSession: vi.fn(async () => {}),
     getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
     getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
@@ -100,7 +103,7 @@ function makeProvider(): MockProvider {
     ),
     setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
-    dispose: vi.fn(),
+    dispose: vi.fn<WireProvider["dispose"]>(),
   };
   mocks.coreProviders.push(provider);
   return provider;
@@ -137,7 +140,7 @@ function makeLoginProvider(options: {
     ),
     setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
-    dispose: vi.fn(),
+    dispose: vi.fn<WireProvider["dispose"]>(),
   };
   return provider;
 }

@@ -370,6 +370,7 @@ describe("user confirmation modal", () => {
     const review: UserConfirmationReview = {
       tag: "ResourceAllocation",
       value: {
+        callingProductId: "localhost:3000",
         resources: [{ tag: "StatementStoreAllowance" }, { tag: "AutoSigning" }],
       },
     };

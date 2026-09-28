@@ -37,7 +37,9 @@ vi.mock("@dotli/ui/chat/service", () => ({
 class FakeObserver {
   static last: FakeObserver | undefined;
   disconnected = false;
-  constructor(private readonly callback: IntersectionObserverCallback) {
+  private readonly callback: IntersectionObserverCallback;
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
     FakeObserver.last = this;
   }
   observe(): void {}

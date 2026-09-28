@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPreimageAdapters } from "@dotli/ui/host-callbacks/Preimage";
 import { computePreimageKey } from "@dotli/content/preimage";
 import { fromHex } from "@dotli/shared/hex";
+import type { bitswapGet } from "@dotli/content/bitswap";
 
 const mocks = vi.hoisted(() => ({
   fetchFromIpfs: vi.fn(async () => ({ data: new Uint8Array() })),
-  bitswapGet: vi.fn(async () => new Uint8Array()),
+  bitswapGet: vi.fn<typeof bitswapGet>(async () => new Uint8Array()),
   getBackend: vi.fn(() => "rpc-gateway"),
 }));
 

@@ -8,7 +8,7 @@ import {
   onStoredSessionChanged,
 } from "@dotli/ui/host-callbacks/SessionStore";
 import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
-import type { CoreStorageKey } from "@parity/truapi-host";
+import type { CoreStorageKey, SessionUiInfo } from "@parity/truapi-host";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -57,11 +57,11 @@ async function flushMicrotasks(): Promise<void> {
 // The core reports these as `Bytes32` (hex), so the UI state carries them
 // through unchanged rather than encoding them.
 const SESSION_PUBLIC_KEY =
-  "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+  "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as const;
 const SESSION_IDENTITY_ACCOUNT_ID =
-  "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf";
+  "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf" as const;
 
-function connectedSessionUiInfo() {
+function connectedSessionUiInfo(): SessionUiInfo {
   return {
     publicKey: SESSION_PUBLIC_KEY,
     identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,

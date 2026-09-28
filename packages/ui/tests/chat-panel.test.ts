@@ -211,7 +211,7 @@ describe("chat panel", () => {
     ).toBe("G");
 
     items[1].click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
     expect(byId("chat-panel-rooms").hidden).toBe(true);
     expect(byId("chat-panel-title").textContent).toBe("Support");
     expect(byId("chat-panel-back").hidden).toBe(false);
@@ -366,7 +366,7 @@ describe("chat panel", () => {
       botRow.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
     ).toBe("data:image/png;base64,AAAA");
     botRow.click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
     expect(byId("chat-panel-title").textContent).toBe("Echo Bot");
     expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
 
@@ -537,7 +537,7 @@ describe("chat panel", () => {
     expect(badge.textContent).toBe("1");
 
     byId("chat-button").click();
-    await settle(() => badge.hidden);
+    await settle(() => badge.hidden === true);
     expect(badge.hidden).toBe(true);
   });
 
@@ -585,7 +585,7 @@ describe("chat panel", () => {
 
     // A message for another room while viewing this one stays unread.
     busyRow?.click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
     await service.productPostMessage(productId, "quiet", {
       tag: "Text",
       value: { text: "psst" },
@@ -744,7 +744,7 @@ describe("chat panel", () => {
         byId("chat-panel-rooms").textContent?.includes("First room") === true,
     );
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
 
     loadProduct("second-app");
     await settle(
@@ -777,7 +777,7 @@ describe("chat panel", () => {
     byId("chat-button").click();
     await settle(() => document.querySelector(".chat-room-item") !== null);
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
 
     const input = byId<HTMLInputElement>("chat-panel-input");
     const composer = byId<HTMLFormElement>("chat-panel-composer");
@@ -852,7 +852,7 @@ describe("chat panel", () => {
       byId("chat-button").click();
       await settle(() => document.querySelector(".chat-room-item") !== null);
       document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
-      await settle(() => byId("chat-panel-rooms").hidden);
+      await settle(() => byId("chat-panel-rooms").hidden === true);
 
       byId("chat-panel-close").click();
       expect(byId("chat-panel").hidden).toBe(true);
@@ -884,7 +884,7 @@ describe("chat panel", () => {
       });
     try {
       byId("chat-button").click();
-      await settle(() => byId("chat-panel").hidden);
+      await settle(() => byId("chat-panel").hidden === true);
       expect(byId("chat-panel").hidden).toBe(true);
 
       byId("chat-button").click();

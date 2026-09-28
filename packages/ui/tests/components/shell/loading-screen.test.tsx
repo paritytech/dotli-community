@@ -48,8 +48,8 @@ const INDEX_HTML = readFileSync(
 
 /** The static loading screen exactly as apps/host/index.html ships it. */
 function staticLoadingMarkup(): string {
-  // Only `#app`, up to the inline spinner script after it: parsing the whole
-  // page would make happy-dom fetch its scripts and stylesheets.
+  // Only `#app`, up to the first script after it: parsing the whole page
+  // would make happy-dom fetch its scripts and stylesheets.
   const start = INDEX_HTML.indexOf(`<div id="app">`);
   const end = INDEX_HTML.indexOf("<script", start);
   const template = document.createElement("template");
@@ -63,7 +63,8 @@ function staticLoadingMarkup(): string {
 
 const FADE_MS = 300;
 
-let reducedMotion = false;
+// The status typewriter (loading-controller.ts) runs on animation frames,
+// which the tests step by hand.
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame = 0;
 
@@ -138,9 +139,9 @@ async function settle(): Promise<void> {
 }
 
 /**
- * `el` as tag, attributes (sorted) and children, without what the store and
- * the spinner write as they go (inline styles) and without comments and
- * whitespace, so static and live markup compare node for node.
+ * `el` as tag, attributes (sorted) and children, without what the store
+ * writes as it goes (inline styles) and without comments and whitespace, so
+ * static and live markup compare node for node.
  */
 function shape(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) {
@@ -165,13 +166,6 @@ beforeEach(() => {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
   });
-  reducedMotion = false;
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query === "(prefers-reduced-motion: reduce)" && reducedMotion,
-    media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }));
   frames = new Map();
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
     nextFrame += 1;

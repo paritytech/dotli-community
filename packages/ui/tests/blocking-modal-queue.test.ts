@@ -196,13 +196,9 @@ describe("blocking modal queue", () => {
     const coordinator = createBlockingModalCoordinator();
     const activeScope = coordinator.createScope();
     const disposedScope = coordinator.createScope();
-    let finishActive: (() => void) | null = null;
-    const active = activeScope.enqueue(
-      () =>
-        new Promise<void>((resolve) => {
-          finishActive = resolve;
-        }),
-    );
+    const { promise: held, resolve: finishActive } =
+      Promise.withResolvers<void>();
+    const active = activeScope.enqueue(() => held);
     const queued = disposedScope.enqueue(() => "queued");
 
     // When
@@ -213,7 +209,7 @@ describe("blocking modal queue", () => {
     await expect(disposedScope.enqueue(() => "late")).rejects.toMatchObject({
       name: "AbortError",
     });
-    finishActive?.();
+    finishActive();
     await active;
     activeScope.dispose();
   });

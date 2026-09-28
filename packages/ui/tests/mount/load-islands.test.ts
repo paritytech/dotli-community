@@ -5,7 +5,15 @@
 // whose arrival each test controls. The real chunk is covered by
 // tests/components/shell/islands.test.tsx.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import type { BlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
 import {
   mountMoreMenu,
@@ -249,7 +257,7 @@ function click(target: Element, detail = 0): MouseEvent {
   return event;
 }
 
-let windowListeners: ReturnType<typeof vi.spyOn<Window, "addEventListener">>;
+let windowListeners: MockInstance<Window["addEventListener"]>;
 let unmountMore: (() => void) | null = null;
 
 beforeEach(() => {

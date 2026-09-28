@@ -8,7 +8,7 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
     "lint": "bunx eslint src/",
     "test": "vitest run"
   },

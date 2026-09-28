@@ -77,6 +77,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `Remote:${request.value.permission.tag}`;
     case "IdentityDisclosure":
       return "IdentityDisclosure";
+    case "AccountAccess":
+      return `AccountAccess:${request.value.targetProductId}`;
   }
 }
 

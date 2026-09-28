@@ -186,13 +186,9 @@ describe("auth controller: blocking-modal lease", () => {
     const { coordinator, getAuthModalState, openAuthModal, closeAuthModal } =
       await load();
     const scope = coordinator.createScope();
-    let releasePrompt: (() => void) | null = null;
-    const prompt = scope.enqueue(
-      () =>
-        new Promise<void>((resolve) => {
-          releasePrompt = resolve;
-        }),
-    );
+    const { promise: held, resolve: releasePrompt } =
+      Promise.withResolvers<void>();
+    const prompt = scope.enqueue(() => held);
 
     // When
     openAuthModal();
@@ -201,7 +197,7 @@ describe("auth controller: blocking-modal lease", () => {
     expect(getAuthModalState().open).toBe(false);
 
     // When
-    releasePrompt?.();
+    releasePrompt();
     await prompt;
 
     // Then
