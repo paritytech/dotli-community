@@ -77,7 +77,7 @@ var init_host_callbacks = __esm({
     PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi.DerivationIndex) }), ProfileDisclosure: S._void }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
-    PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect, reference: S.str }));
+    PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
@@ -2594,9 +2594,15 @@ function createWebWorkerHostRuntime(worker, host, options) {
       notifyFault(new Error("worker message could not be deserialized"));
     };
     const debuggerDial = installDebuggerDial(state, readDebuggerEnablement(options.debugger), options.debuggerIndicator);
+    const timeoutMs = options.initTimeoutMs ?? 3e4;
+    let initPhase = "loading WASM";
+    let cancelInitTimeout = () => {
+    };
     const onInitMessage = (ev) => {
       const msg = ev.data;
       if (msg.kind === "loaded") {
+        initPhase = "initializing the runtime";
+        scheduleInitTimeout();
         worker.postMessage({
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
@@ -2626,15 +2632,19 @@ function createWebWorkerHostRuntime(worker, host, options) {
       }
     };
     const cleanupInit = () => {
-      clearTimeout(initTimeout);
+      cancelInitTimeout();
       worker.removeEventListener("error", onError);
       worker.removeEventListener("messageerror", onInitMessageError);
       worker.removeEventListener("message", onInitMessage);
     };
-    const timeoutMs = options.initTimeoutMs ?? 3e4;
-    const initTimeout = setTimeout(() => {
-      failInit(new Error(`worker init timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
+    const scheduleInitTimeout = () => {
+      cancelInitTimeout();
+      const timeout = setTimeout(() => {
+        failInit(new Error(`worker init timed out after ${timeoutMs}ms while ${initPhase}`));
+      }, timeoutMs);
+      cancelInitTimeout = () => clearTimeout(timeout);
+    };
+    scheduleInitTimeout();
     worker.addEventListener("error", onError);
     worker.addEventListener("messageerror", onInitMessageError);
     worker.addEventListener("message", onInitMessage);

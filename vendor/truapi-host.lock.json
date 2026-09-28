@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
   "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "f46e7261dbaa576640b48431adcb1ccae38a3d7d",
+  "upstreamRevision": "ef98193c1b591fdd329276cf363546a8c12ddbcc",
   "pullRequest": "https://github.com/paritytech/host-rust-core/pull/1011",
   "packages": {
     "vendor/truapi": {
@@ -14,7 +14,7 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.21.0",
-      "sourceArchiveSha256": "3b982bb4f70418be1b1578df87c876e68f4c9e205737938fdf85087ef6214a74",
+      "sourceArchiveSha256": "7823af733e6b14be95d95ba7e7a2fcf61a430c41f41f006d3dcbf43df1ef7f3b",
       "dependencyOverride": "@parity/truapi=file:../truapi",
       "wasmSha256": "6fa5ad859a9b6f13f10e439e07cc2825b50b07aee481d963b2862e19b87c6512",
       "wasmFeatures": [
