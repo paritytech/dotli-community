@@ -16,6 +16,13 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Seity contacts test vector (produced by Seity profile-core): a throwaway registry lookup key and seed used only by unit tests, not a secret."
+targetRules = ["generic-api-key"]
+paths = [
+  '''^packages/ui/tests/fixtures/seity-contacts-v1\.json$''',
+]
+
+[[allowlists]]
 description = "TRUAPI_WIRE_SCHEMA_HASH is the public TrUAPI wire-schema fingerprint (published in @parity/truapi) that vendored truapi builds embed; it trips generic-api-key but is not a secret."
 targetRules = ["generic-api-key"]
 regexTarget = "line"
